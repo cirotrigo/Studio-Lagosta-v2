@@ -1,0 +1,172 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String?  @unique
+  name      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  creditBalance      CreditBalance?
+  usageHistory       UsageHistory[]
+  storageObjects     StorageObject[]
+  subscriptionEvents SubscriptionEvent[]
+
+  @@index([email])
+  @@index([name])
+  @@index([createdAt])
+  @@index([isActive])
+}
+
+
+// Workspace features and linkage to projects
+model Feature {
+  id          String     @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  tags        String[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+model CreditBalance {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  clerkUserId       String   @unique
+  creditsRemaining  Int      @default(100)  // Cached from Clerk
+  lastSyncedAt      DateTime @default(now())
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id])
+  usageHistory      UsageHistory[]
+
+  @@index([userId])
+  @@index([clerkUserId])
+  @@index([creditsRemaining])
+  @@index([lastSyncedAt])
+}
+
+// Track individual usage events
+model UsageHistory {
+  id              String   @id @default(cuid())
+  userId          String
+  creditBalanceId String
+  operationType   OperationType
+  creditsUsed     Int
+  details         Json?
+  timestamp       DateTime @default(now())
+
+  user            User     @relation(fields: [userId], references: [id])
+  creditBalance   CreditBalance @relation(fields: [creditBalanceId], references: [id])
+
+  @@index([userId])
+  @@index([creditBalanceId])
+  @@index([timestamp])
+  @@index([operationType])
+  @@index([userId, timestamp])
+  @@index([operationType, timestamp])
+}
+
+enum OperationType {
+  AI_TEXT_CHAT
+  AI_IMAGE_GENERATION
+}
+
+// Singleton row storing admin-configurable credit settings
+model AdminSettings {
+  id           String   @id @default("singleton")
+  featureCosts Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Subscription plans sourced from Clerk and configured credits
+model Plan {
+  id        String   @id @default(cuid())
+  clerkId   String?  @unique // Clerk plan ID (e.g., cplan_*)
+  clerkName String?
+  name      String
+  credits   Int
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  // Pricing synced from Clerk (amounts in cents)
+  currency           String?
+  priceMonthlyCents  Int?
+  priceYearlyCents   Int?
+  description        String?  @db.Text
+  features           Json?
+  badge              String?
+  highlight          Boolean  @default(false)
+  ctaType            String?  @default("checkout")
+  ctaLabel           String?
+  ctaUrl             String?
+  billingSource      String   @default("clerk")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([active])
+  @@index([sortOrder])
+}
+
+// File/object uploads tracked for admin management
+model StorageObject {
+  id           String   @id @default(cuid())
+  userId       String
+  clerkUserId  String
+  provider     String   @default("vercel_blob")
+  url          String
+  pathname     String
+  name         String
+  contentType  String?
+  size         Int
+  deletedAt    DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([clerkUserId])
+  @@index([contentType])
+  @@index([deletedAt])
+  @@index([name])
+}
+
+// Track subscription lifecycle events for revenue analytics
+model SubscriptionEvent {
+  id           String   @id @default(cuid())
+  userId       String?
+  clerkUserId  String
+  planKey      String?
+  status       String
+  eventType    String
+  occurredAt   DateTime @default(now())
+  metadata     Json?
+  createdAt    DateTime @default(now())
+
+  user         User?    @relation(fields: [userId], references: [id])
+
+  @@index([clerkUserId, occurredAt])
+  @@index([userId, occurredAt])
+}
