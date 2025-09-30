@@ -18,12 +18,12 @@ export type AnalyticsConfig = {
 }
 
 export const site = {
-  name: 'AI Coders Academy – Next.js SaaS Template',
-  shortName: 'AI Coders SaaS',
+  name: 'Lagosta Criativa - Studio',
+  shortName: 'Studio Lagosta',
   description:
     'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
   url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-  author: 'AI Coders Academy (Vinicius Lana)',
+  author: 'Lagosta Criativa (Ciro Trigo)',
   keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS', 'AI Coders Academy', 'Template', 'Microsaas'],
   ogImage: '/og-image.png',
   logo: {
