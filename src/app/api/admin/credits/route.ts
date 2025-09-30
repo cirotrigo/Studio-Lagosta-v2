@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { isAdmin } from "@/lib/admin-utils"
-import type { Prisma } from "@prisma/client"
+import type { Prisma } from "@/lib/prisma-types"
 
 export async function GET(request: Request) {
   try {

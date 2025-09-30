@@ -2,39 +2,21 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { isAdmin } from '@/lib/admin-utils'
 import { db } from '@/lib/db'
+import { Prisma } from '@/lib/prisma-types'
 
 interface PlanFeature {
-  name: string;
-  description: string | null;
-  included: boolean;
+  name: string
+  description: string | null
+  included: boolean
 }
 
-interface PlanData {
-  clerkId: string | null;
-  name: string;
-  credits: number;
-  active: boolean;
-  sortOrder: number;
-  clerkName: string | null;
-  currency: string | null;
-  priceMonthlyCents: number | null;
-  priceYearlyCents: number | null;
-  description: string | null;
-  features: PlanFeature[] | null;
-  badge: string | null;
-  highlight: boolean;
-  ctaType: string;
-  ctaLabel: string | null;
-  ctaUrl: string | null;
-  billingSource: string;
-}
-
-function normalizeFeatures(features: unknown) {
+function normalizeFeatures(features: unknown): PlanFeature[] | null {
   if (!Array.isArray(features)) return null
+
   const cleaned = features
     .map((item) => {
       if (typeof item !== 'object' || item === null) return null
-      const typedItem = item as Record<string, unknown>;
+      const typedItem = item as Record<string, unknown>
       const name = 'name' in typedItem ? String(typedItem.name).trim() : ''
       if (!name) return null
       return {
@@ -43,7 +25,8 @@ function normalizeFeatures(features: unknown) {
         included: Boolean(typedItem.included ?? true),
       }
     })
-    .filter(Boolean)
+    .filter((item): item is PlanFeature => Boolean(item))
+
   return cleaned.length > 0 ? cleaned : null
 }
 
@@ -145,7 +128,7 @@ export async function POST(req: Request) {
     try {
       const features = normalizeFeatures(body.features)
       const ctaType = normalizeCtaType(body.ctaType)
-      const data = {
+      const data: Prisma.PlanCreateInput = {
         clerkId,
         name,
         credits,
@@ -155,7 +138,7 @@ export async function POST(req: Request) {
         priceMonthlyCents: toCents(body.priceMonthlyCents),
         priceYearlyCents: toCents(body.priceYearlyCents),
         description: body.description != null ? String(body.description).trim() || null : null,
-        features,
+        features: features ? (features as unknown as Prisma.InputJsonValue) : Prisma.JsonNull,
         badge: body.badge != null ? String(body.badge).trim() || null : null,
         highlight: body.highlight != null ? Boolean(body.highlight) : undefined,
         ctaType: billingSource === 'manual' ? 'contact' : ctaType,
@@ -163,7 +146,7 @@ export async function POST(req: Request) {
         ctaUrl: body.ctaUrl != null ? String(body.ctaUrl).trim() || null : null,
         billingSource,
       }
-      const created = await db.plan.create({ data: data as PlanData })
+      const created = await db.plan.create({ data })
       return NextResponse.json({ plan: {
         id: created.id,
         clerkId: created.clerkId,
@@ -235,7 +218,7 @@ export async function PUT(_req: Request, ctx: { params: Promise<{ clerkId: strin
     }
     const current = await findPlanByIdentifier(body.planId ?? identifier)
     if (!current) return NextResponse.json({ error: 'Plano não encontrado' }, { status: 404 })
-    const data: Partial<PlanData> = {}
+    const data: Prisma.PlanUpdateInput = {}
     if (body.billingSource !== undefined) data.billingSource = normalizeBillingSource(body.billingSource)
     if (body.newClerkId != null) {
       const newId = String(body.newClerkId).trim()
@@ -253,13 +236,16 @@ export async function PUT(_req: Request, ctx: { params: Promise<{ clerkId: strin
     if (body.priceMonthlyCents !== undefined) data.priceMonthlyCents = body.priceMonthlyCents === null ? null : toCents(body.priceMonthlyCents)
     if (body.priceYearlyCents !== undefined) data.priceYearlyCents = body.priceYearlyCents === null ? null : toCents(body.priceYearlyCents)
     if (body.description !== undefined) data.description = body.description === null ? null : (String(body.description).trim() || null)
-    if (body.features !== undefined) data.features = normalizeFeatures(body.features)
+    if (body.features !== undefined) {
+      const normalized = normalizeFeatures(body.features)
+      data.features = normalized ? (normalized as unknown as Prisma.InputJsonValue) : Prisma.JsonNull
+    }
     if (body.badge !== undefined) data.badge = body.badge === null ? null : (String(body.badge).trim() || null)
     if (body.highlight !== undefined) data.highlight = Boolean(body.highlight)
     if (body.ctaType !== undefined) data.ctaType = normalizeCtaType(body.ctaType)
     if (body.ctaLabel !== undefined) data.ctaLabel = body.ctaLabel === null ? null : (String(body.ctaLabel).trim() || null)
     if (body.ctaUrl !== undefined) data.ctaUrl = body.ctaUrl === null ? null : (String(body.ctaUrl).trim() || null)
-    const updated = await db.plan.update({ where: { id: current.id }, data: data as PlanData })
+    const updated = await db.plan.update({ where: { id: current.id }, data })
     return NextResponse.json({ plan: {
       id: updated.id,
       clerkId: updated.clerkId,

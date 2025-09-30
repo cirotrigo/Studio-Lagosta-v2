@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { isAdmin } from "@/lib/admin-utils";
-import type { Prisma } from "../../../../../prisma/generated/client";
+import type { Prisma } from "@/lib/prisma-types";
 
 export async function GET(request: Request) {
   try {
@@ -18,9 +18,9 @@ export async function GET(request: Request) {
     const page = Math.max(1, Number(searchParams.get("page") || 1));
     const pageSize = Math.min(100, Math.max(1, Number(searchParams.get("pageSize") || 25)));
 
-    const whereClause: Prisma.UsageHistoryWhereInput = { AND: [] };
+    const andFilters: Prisma.UsageHistoryWhereInput[] = [];
     if (type !== "all") {
-      whereClause.AND!.push({ operationType: type as any });
+      andFilters.push({ operationType: type as any });
     }
 
     if (range !== "all") {
@@ -37,11 +37,11 @@ export async function GET(request: Request) {
           startDate.setDate(now.getDate() - 30);
           break;
       }
-      whereClause.AND!.push({ timestamp: { gte: startDate } });
+      andFilters.push({ timestamp: { gte: startDate } });
     }
 
     if (q) {
-      whereClause.AND!.push({
+      andFilters.push({
         user: {
           is: {
             OR: [
@@ -52,6 +52,8 @@ export async function GET(request: Request) {
         },
       });
     }
+
+    const whereClause: Prisma.UsageHistoryWhereInput = andFilters.length ? { AND: andFilters } : {};
 
     const [total, usageHistory] = await Promise.all([
       db.usageHistory.count({ where: whereClause }),

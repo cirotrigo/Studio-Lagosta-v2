@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { OperationType } from "@prisma/client";
+import { OperationType } from "@/lib/prisma-types";
 import { getUserFromClerkId } from '@/lib/auth-utils';
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
