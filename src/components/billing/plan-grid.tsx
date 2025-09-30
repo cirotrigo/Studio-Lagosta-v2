@@ -104,7 +104,7 @@ export function PlanGrid({ plans }: PlanGridProps) {
               </CheckoutButton>
             </SignedIn>
             <SignedOut>
-              <SignInButton mode="modal" redirectUrl="/subscribe">
+              <SignInButton mode="modal" forceRedirectUrl="/subscribe">
                 <Button className={cn('w-full relative transition-all duration-300', defaultButtonClassName)}>
                   Entre para assinar
                 </Button>

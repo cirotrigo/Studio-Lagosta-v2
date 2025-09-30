@@ -137,7 +137,7 @@ export async function POST(req: Request) {
 
       try {
         const result = await streamText({
-          model: getModel(provider, model),
+          model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
           messages: mergedMessages,
           temperature,
         })

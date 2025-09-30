@@ -44,6 +44,7 @@ type BillingPlan = {
   name: string;
   credits: number;
   active?: boolean;
+  sortOrder?: number;
   clerkName?: string | null;
   currency?: string | null;
   priceMonthlyCents?: number | null;

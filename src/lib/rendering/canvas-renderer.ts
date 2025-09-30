@@ -34,9 +34,9 @@ export async function renderDesignToPNG(
 
   await registerFonts(options.fonts ?? [])
 
-  await RenderEngine.renderDesign(ctx, design, fieldValues, {
+  await RenderEngine.renderDesign(ctx as unknown as CanvasRenderingContext2D, design, fieldValues, {
     scaleFactor,
-    imageLoader: loadImage,
+    imageLoader: async (source) => (await loadImage(source)) as unknown as CanvasImageSource,
     imageCache: options.imageCache,
     backgroundColor: options.backgroundColor,
   })
