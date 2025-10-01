@@ -31,6 +31,9 @@ import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
+import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
+import { useProject } from '@/hooks/use-project'
+import { Skeleton } from '@/components/ui/skeleton'
 
 const createTemplateSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -62,6 +65,14 @@ export default function ProjectDetailPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<string>('STORY')
   const queryClient = useQueryClient()
+
+  const {
+    data: projectDetails,
+    isLoading: isLoadingProject,
+    error: projectError,
+  } = useProject(
+    Number.isNaN(projectId) ? null : projectId,
+  )
 
   const { data: templates, isLoading } = useQuery<Template[]>({
     queryKey: ['templates', projectId],
@@ -361,12 +372,35 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">
-          <Card className="p-6">
-            <h3 className="font-semibold mb-4">Configurações do Projeto</h3>
-            <p className="text-muted-foreground">
-              Configurações adicionais estarão disponíveis em breve
-            </p>
-          </Card>
+          <div className="space-y-4">
+            <Card className="p-6">
+              <h3 className="text-lg font-semibold">Configurações do Projeto</h3>
+              <p className="text-sm text-muted-foreground">
+                Ajuste integrações e recursos extras para este projeto. Novas opções serão adicionadas em breve.
+              </p>
+            </Card>
+
+            {isLoadingProject ? (
+              <Card className="p-6">
+                <Skeleton className="h-6 w-60" />
+                <Skeleton className="mt-4 h-4 w-full" />
+                <Skeleton className="mt-2 h-4 w-1/2" />
+              </Card>
+            ) : projectDetails ? (
+              <GoogleDriveFolderSelector
+                projectId={projectId}
+                folderId={projectDetails?.googleDriveFolderId ?? null}
+                folderName={projectDetails?.googleDriveFolderName ?? null}
+              />
+            ) : (
+              <Card className="p-6">
+                <h4 className="text-base font-semibold">Não foi possível carregar as configurações</h4>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {projectError instanceof Error ? projectError.message : 'Tente atualizar a página e tente novamente.'}
+                </p>
+              </Card>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>

@@ -760,3 +760,70 @@ export async function GET() {
   }
 }
 ```
+
+## Google Drive Backup Integration
+
+The dual-storage flow uploads creatives to Vercel Blob first and then (optionally) backs them up to Google Drive.
+
+### Environment Variables
+
+```
+GOOGLE_DRIVE_CLIENT_ID=...
+GOOGLE_DRIVE_CLIENT_SECRET=...
+GOOGLE_DRIVE_REFRESH_TOKEN=...
+PUBLIC_URL=http://localhost:3000
+```
+
+`PUBLIC_URL` must match the domain used to initiate OAuth. Register the following redirect URIs in Google Cloud Console:
+
+- Local: `http://localhost:3000/google-drive-callback`
+- Production: `https://lagostacriativa.com.br/studio/google-drive-callback`
+
+### API Surface
+
+- `POST /api/google-drive/start-oauth` — Generates the OAuth URL and stores a short-lived `state` cookie.
+- `GET /api/google-drive/callback` — Exchanges the authorization code for tokens. Returns JSON consumed by the UI.
+- `GET /api/google-drive/files` — Lists folders/files (supports `mode`, `search`, `pageToken`).
+- `GET /api/google-drive/image/:fileId` — Streams thumbnails from Drive.
+- `GET /api/google-drive/test` — Lightweight connectivity check for the settings UI.
+- `PATCH /api/projects/:projectId/settings` — Persists the Drive folder metadata on the project.
+- `POST /api/projects/:projectId/generations` — Still uploads to Vercel Blob synchronously, then triggers an asynchronous Drive backup.
+
+All endpoints enforce Clerk auth and a per-user rate limit of 100 requests/hour via `assertRateLimit`.
+
+### Service Layer
+
+`src/server/google-drive-service.ts` wraps the `googleapis` Drive client:
+
+- Automatic token refresh using the shared refresh token.
+- `ensureArtesLagostaFolder` caches folder lookups for 10 minutes.
+- `uploadCreativeToArtesLagosta` uploads PNG buffers, marks files as public, and returns the public URL (`https://drive.google.com/uc?export=view&id=...`).
+- List and upload operations include timeouts (30s list / 60s upload) and exponential backoff on 429/5xx responses.
+
+### Database Fields
+
+- `Project.googleDriveFolderId`
+- `Project.googleDriveFolderName`
+- `Generation.googleDriveFileId`
+- `Generation.googleDriveBackupUrl`
+
+A Prisma migration (`20250201143000_google_drive_backup`) adds the new columns.
+
+### Frontend Hooks & Components
+
+- `useProject(projectId)` / `useUpdateProjectSettings` manage project metadata via TanStack Query.
+- `DesktopGoogleDriveModal` provides folder/image browsing with search, pagination, and navigation breadcrumbs.
+- `GoogleDriveFolderSelector` lives in the project settings tab, allowing owners to pick or remove the backup folder.
+- Creative listings (`/projects/:id/creativos`) now show a Drive button when a backup is available.
+- `/google-drive-callback` UI exchanges the OAuth code and surfaces the refresh token for operators to copy into `.env`.
+
+### Logging
+
+Key logs distinguish the dual upload flow:
+
+- `✅ Upload Vercel concluído` — primary storage success.
+- `✅ Backup Drive concluído` — successful Drive backup.
+- `⚠️ Backup Drive falhou` — Drive upload issues do not block core generation.
+
+All failures are caught and logged without affecting the primary user flow.
+

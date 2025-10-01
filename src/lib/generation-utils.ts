@@ -23,7 +23,12 @@ export interface Generation {
  * Renderiza e faz upload de um criativo
  * IMPORTANTE: Importação dinâmica para evitar bundle do @napi-rs/canvas
  */
-export async function renderGeneration(generation: Generation): Promise<string> {
+export interface RenderGenerationResult {
+  url: string
+  buffer: Buffer
+}
+
+export async function renderGeneration(generation: Generation): Promise<RenderGenerationResult> {
   console.log('[renderGeneration] Starting generation:', generation.id)
 
   if (!generation.template) {
@@ -67,7 +72,7 @@ export async function renderGeneration(generation: Generation): Promise<string> 
       console.log('[renderGeneration] Mock: Generated data URL (length:', dataUrl.length, ')')
       console.warn('⚠️  AVISO: Usando mock de desenvolvimento. Configure BLOB_READ_WRITE_TOKEN para produção!')
 
-      return dataUrl
+      return { url: dataUrl, buffer }
     }
 
     console.log('[renderGeneration] Uploading to Vercel Blob...')
@@ -78,7 +83,7 @@ export async function renderGeneration(generation: Generation): Promise<string> 
     })
     console.log('[renderGeneration] Upload successful:', result.url)
 
-    return result.url
+    return { url: result.url, buffer }
   } catch (error) {
     console.error('[renderGeneration] Error during generation:', error)
     if (error instanceof Error) {

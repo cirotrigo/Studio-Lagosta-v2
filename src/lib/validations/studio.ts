@@ -40,6 +40,32 @@ export const createProjectSchema = z.object({
 
 export const updateProjectSchema = createProjectSchema.partial()
 
+export const updateProjectSettingsSchema = z
+  .object({
+    googleDriveFolderId: z.string().trim().min(1).nullable().optional(),
+    googleDriveFolderName: z.string().trim().min(1).nullable().optional(),
+  })
+  .refine((data) => {
+    const hasId = Object.prototype.hasOwnProperty.call(data, 'googleDriveFolderId')
+    const hasName = Object.prototype.hasOwnProperty.call(data, 'googleDriveFolderName')
+
+    if (!hasId && !hasName) {
+      return false
+    }
+
+    if (hasId !== hasName) {
+      return false
+    }
+
+    if (data.googleDriveFolderId === null && data.googleDriveFolderName === null) {
+      return true
+    }
+
+    return typeof data.googleDriveFolderId === 'string' && typeof data.googleDriveFolderName === 'string'
+  }, {
+    message: 'googleDriveFolderId e googleDriveFolderName devem ser enviados juntos',
+  })
+
 export const createTemplateSchema = z.object({
   name: z.string().trim().min(1, 'Nome é obrigatório'),
   type: z.enum(['STORY', 'FEED', 'SQUARE']),

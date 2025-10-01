@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { createGenerationSchema } from '@/lib/validations/studio'
 import { renderGeneration } from '@/lib/generation-utils'
+import { googleDriveService } from '@/server/google-drive-service'
+import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 segundos para renderização
@@ -93,6 +95,8 @@ export async function POST(
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
+    assertRateLimit({ key: `generation:${userId}` })
+
     // Validar payload
     const payload = await req.json()
     const validated = createGenerationSchema.parse(payload)
@@ -128,15 +132,17 @@ export async function POST(
     // Renderizar criativo
     try {
       console.log('[API] Starting renderGeneration for generation:', generation.id)
-      const resultUrl = await renderGeneration(generation)
-      console.log('[API] renderGeneration completed, resultUrl:', resultUrl)
+      const renderResult = await renderGeneration(generation)
+      console.log('✅ Upload Vercel concluído:', renderResult.url)
 
-      // Atualizar com resultado
+      // Atualizar com resultado primário (Vercel Blob)
       const completed = await db.generation.update({
         where: { id: generation.id },
         data: {
           status: 'COMPLETED',
-          resultUrl,
+          resultUrl: renderResult.url,
+          googleDriveFileId: null,
+          googleDriveBackupUrl: null,
           completedAt: new Date(),
         },
         include: {
@@ -150,6 +156,32 @@ export async function POST(
           },
         },
       })
+
+      const driveFolderId = project.googleDriveFolderId
+      if (driveFolderId && googleDriveService.isEnabled()) {
+        void (async () => {
+          try {
+            console.log('[API] Iniciando backup no Google Drive para geração', generation.id)
+            const backup = await googleDriveService.uploadCreativeToArtesLagosta(
+              renderResult.buffer,
+              driveFolderId,
+              project.name,
+            )
+            await db.generation.update({
+              where: { id: generation.id },
+              data: {
+                googleDriveFileId: backup.fileId,
+                googleDriveBackupUrl: backup.publicUrl,
+              },
+            })
+            console.log('✅ Backup Drive concluído:', backup.fileId)
+          } catch (backupError) {
+            console.warn('⚠️ Backup Drive falhou:', backupError)
+          }
+        })()
+      } else {
+        console.log('[API] Backup Drive ignorado: sem pasta configurada ou serviço desativado')
+      }
 
       return NextResponse.json(completed, { status: 201 })
     } catch (renderError) {
@@ -183,6 +215,13 @@ export async function POST(
       )
     }
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json(
+        { error: 'Limite de requisições atingido' },
+        { status: 429, headers: { 'Retry-After': String(error.retryAfter) } },
+      )
+    }
+
     console.error('[API] Failed to create generation:', error)
 
     if (error instanceof Error && 'issues' in error) {

@@ -16,7 +16,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
-import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, Sparkles } from 'lucide-react'
+import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, Sparkles, HardDrive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface TemplateInfo {
@@ -32,6 +32,8 @@ interface GenerationRecord {
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
+  googleDriveFileId?: string | null
+  googleDriveBackupUrl?: string | null
   projectId: number
   templateName?: string | null
   projectName?: string | null
@@ -325,6 +327,15 @@ export default function ProjectCreativesPage() {
                     <Button size="sm" variant="outline" onClick={() => handleDownload(generation)} disabled={!generation.resultUrl}>
                       <Download className="mr-1 h-4 w-4" /> Baixar
                     </Button>
+                    {generation.googleDriveBackupUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')}
+                      >
+                        <HardDrive className="mr-1 h-4 w-4" /> Drive
+                      </Button>
+                    )}
                     <Button size="sm" variant="ghost" onClick={() => handleDelete(generation)}>
                       <Trash2 className="h-4 w-4 text-red-500" />
                     </Button>
@@ -393,6 +404,16 @@ export default function ProjectCreativesPage() {
                             <Download className="mr-1 h-4 w-4" />
                             Baixar
                           </Button>
+                          {generation.googleDriveBackupUrl && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')}
+                            >
+                              <HardDrive className="mr-1 h-4 w-4" />
+                              Drive
+                            </Button>
+                          )}
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(generation)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                             Remover

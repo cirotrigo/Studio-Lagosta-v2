@@ -3,6 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { createCarouselSchema } from '@/lib/validations/studio'
 import { renderGeneration } from '@/lib/generation-utils'
+import { googleDriveService } from '@/server/google-drive-service'
+import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutos para carrossel (múltiplos slides)
@@ -28,6 +30,8 @@ export async function POST(
     if (!project) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
+
+    assertRateLimit({ key: `generation:${userId}` })
 
     // Validar payload
     const payload = await req.json()
@@ -82,13 +86,15 @@ export async function POST(
     const results = await Promise.allSettled(
       generations.map(async (gen): Promise<GenerationWithTemplate> => {
         try {
-          const resultUrl = await renderGeneration(gen)
+          const renderResult = await renderGeneration(gen)
 
-          return await db.generation.update({
+          const completed = await db.generation.update({
             where: { id: gen.id },
             data: {
               status: 'COMPLETED',
-              resultUrl,
+              resultUrl: renderResult.url,
+              googleDriveFileId: null,
+              googleDriveBackupUrl: null,
               completedAt: new Date(),
             },
             include: {
@@ -102,6 +108,28 @@ export async function POST(
               },
             },
           })
+
+          if (project.googleDriveFolderId && googleDriveService.isEnabled()) {
+            try {
+              const backup = await googleDriveService.uploadCreativeToArtesLagosta(
+                renderResult.buffer,
+                project.googleDriveFolderId,
+                project.name,
+              )
+              await db.generation.update({
+                where: { id: gen.id },
+                data: {
+                  googleDriveFileId: backup.fileId,
+                  googleDriveBackupUrl: backup.publicUrl,
+                },
+              })
+              console.log('✅ Backup Drive concluído:', backup.fileId)
+            } catch (backupError) {
+              console.warn('⚠️ Backup Drive falhou (carrossel):', backupError)
+            }
+          }
+
+          return completed
         } catch (error) {
           console.error(`[API] Failed to render slide ${gen.id}:`, error)
 
@@ -141,6 +169,13 @@ export async function POST(
       { status: 201 },
     )
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return NextResponse.json(
+        { error: 'Limite de requisições atingido' },
+        { status: 429, headers: { 'Retry-After': String(error.retryAfter) } },
+      )
+    }
+
     console.error('[API] Failed to create carousel:', error)
 
     if (error instanceof Error && 'issues' in error) {
