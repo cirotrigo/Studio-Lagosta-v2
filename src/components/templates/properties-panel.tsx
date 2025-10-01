@@ -6,10 +6,150 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
+
+interface GradientPropertiesProps {
+  layerId: string
+  layerType: 'gradient' | 'gradient2'
+}
+
+function GradientProperties({ layerId, layerType }: GradientPropertiesProps) {
+  const { design, updateLayer, updateLayerStyle } = useTemplateEditor()
+  const layer = React.useMemo(() => design.layers.find((item) => item.id === layerId) ?? null, [design.layers, layerId])
+
+  if (!layer) return null
+
+  const stops = layer.style?.gradientStops ?? [
+    { color: '#000000', position: 0 },
+    { color: '#00000000', position: 1 },
+  ]
+
+  const handleGradientTypeChange = (value: 'linear' | 'radial') => {
+    updateLayerStyle(layerId, {
+      gradientType: value,
+      gradientAngle: value === 'linear' ? layer.style?.gradientAngle ?? 180 : undefined,
+    })
+  }
+
+  const handleAngleChange = (value: number) => {
+    updateLayerStyle(layerId, {
+      gradientAngle: Math.max(0, Math.min(360, value)),
+    })
+  }
+
+  const updateStop = (index: number, update: Partial<{ color: string; position: number }>) => {
+    const nextStops = stops.map((stop, idx) => (idx === index ? { ...stop, ...update } : stop))
+    updateLayerStyle(layerId, { gradientStops: nextStops })
+  }
+
+  const addStop = () => {
+    const last = stops[stops.length - 1]
+    const nextPosition = Math.min(1, (last?.position ?? 1) + 0.1)
+    const nextStops = [...stops, { color: '#FFFFFF', position: nextPosition }]
+    updateLayerStyle(layerId, { gradientStops: nextStops })
+  }
+
+  const removeStop = (index: number) => {
+    if (stops.length <= 2) return
+    const nextStops = stops.filter((_, idx) => idx !== index)
+    updateLayerStyle(layerId, { gradientStops: nextStops })
+  }
+
+  return (
+    <div className="space-y-4 rounded-md border border-border/30 bg-muted/30 p-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">Gradiente</span>
+        <span className="rounded-full bg-primary/10 px-2 py-[2px] text-[10px] font-semibold uppercase text-primary">
+          {layerType === 'gradient' ? 'Linear' : 'Radial'}
+        </span>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Tipo</Label>
+        <Select
+          value={(layer.style?.gradientType as 'linear' | 'radial') ?? 'linear'}
+          onValueChange={(value) => handleGradientTypeChange(value as 'linear' | 'radial')}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Tipo" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="linear">Linear</SelectItem>
+            <SelectItem value="radial">Radial</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {(layer.style?.gradientType ?? 'linear') === 'linear' && (
+        <div className="space-y-2">
+          <Label className="text-[11px] uppercase tracking-wide" htmlFor="gradient-angle">
+            Ângulo ({Math.round(layer.style?.gradientAngle ?? 180)}°)
+          </Label>
+          <input
+            id="gradient-angle"
+            type="range"
+            min={0}
+            max={360}
+            value={Math.round(layer.style?.gradientAngle ?? 180)}
+            onChange={(event) => handleAngleChange(Number(event.target.value))}
+          />
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label className="text-[11px] uppercase tracking-wide">Cores</Label>
+          <Button type="button" variant="outline" size="sm" onClick={addStop} disabled={stops.length >= 6}>
+            Adicionar ponto
+          </Button>
+        </div>
+        <div className="space-y-3">
+          {stops.map((stop, index) => (
+            <div key={index} className="rounded-md border border-border/40 bg-card/80 p-3 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <input
+                    aria-label={`Cor do ponto ${index + 1}`}
+                    type="color"
+                    className="h-8 w-8 rounded-md border border-border/40"
+                    value={stop.color}
+                    onChange={(event) => updateStop(index, { color: event.target.value })}
+                  />
+                  <Input
+                    className="h-8"
+                    value={stop.color}
+                    onChange={(event) => updateStop(index, { color: event.target.value })}
+                  />
+                </div>
+                {stops.length > 2 && (
+                  <Button type="button" variant="ghost" size="sm" onClick={() => removeStop(index)}>
+                    Remover
+                  </Button>
+                )}
+              </div>
+              <div className="mt-3 space-y-1">
+                <Label className="text-[11px] uppercase tracking-wide" htmlFor={`gradient-stop-${index}`}>
+                  Posição ({Math.round((stop.position ?? 0) * 100)}%)
+                </Label>
+                <input
+                  id={`gradient-stop-${index}`}
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={Math.round((stop.position ?? 0) * 100)}
+                  onChange={(event) => updateStop(index, { position: Number(event.target.value) / 100 })}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 export function PropertiesPanel() {
   const {
@@ -149,8 +289,12 @@ export function PropertiesPanel() {
                 </div>
               </div>
 
-              {selectedLayer.type === 'text' && (
-                <div className="space-y-4">
+          {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') && (
+            <GradientProperties layerId={selectedLayer.id} layerType={selectedLayer.type} />
+          )}
+
+          {selectedLayer.type === 'text' && (
+            <div className="space-y-4">
                   <div className="space-y-1">
                     <Label htmlFor="layer-content">Conteúdo</Label>
                     <Textarea

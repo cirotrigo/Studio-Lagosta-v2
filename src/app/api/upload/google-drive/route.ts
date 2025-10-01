@@ -62,6 +62,18 @@ export async function POST(req: Request) {
     const key = `uploads/${userId}/drive-${Date.now()}-${safeName}`
 
     const token = process.env.BLOB_READ_WRITE_TOKEN
+    if (!token || token.trim() === '') {
+      const base64 = buffer.toString('base64')
+      const dataUrl = `data:${mimeType ?? 'application/octet-stream'};base64,${base64}`
+      return NextResponse.json({
+        url: dataUrl,
+        pathname: key,
+        contentType: mimeType ?? null,
+        size: buffer.length,
+        name: originalName,
+      })
+    }
+
     const uploaded = await put(key, buffer, {
       access: 'public',
       token,
