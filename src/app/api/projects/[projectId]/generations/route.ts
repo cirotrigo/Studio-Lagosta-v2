@@ -127,7 +127,9 @@ export async function POST(
 
     // Renderizar criativo
     try {
+      console.log('[API] Starting renderGeneration for generation:', generation.id)
       const resultUrl = await renderGeneration(generation)
+      console.log('[API] renderGeneration completed, resultUrl:', resultUrl)
 
       // Atualizar com resultado
       const completed = await db.generation.update({
@@ -159,8 +161,24 @@ export async function POST(
         data: { status: 'FAILED' },
       })
 
+      // Mensagem de erro mais específica
+      let errorMessage = 'Erro ao renderizar criativo'
+      let errorDetails = String(renderError)
+
+      if (renderError instanceof Error) {
+        if (renderError.message.includes('BLOB_READ_WRITE_TOKEN')) {
+          errorMessage = 'Token do Vercel Blob não configurado'
+          errorDetails = 'Por favor, configure BLOB_READ_WRITE_TOKEN no arquivo .env.local. Veja SETUP-BLOB.md para instruções.'
+        } else if (renderError.message.includes('canvas')) {
+          errorMessage = 'Erro no canvas renderer'
+          errorDetails = `Problema ao renderizar a imagem: ${renderError.message}`
+        } else {
+          errorDetails = renderError.message
+        }
+      }
+
       return NextResponse.json(
-        { error: 'Erro ao renderizar criativo', details: String(renderError) },
+        { error: errorMessage, details: errorDetails },
         { status: 500 },
       )
     }

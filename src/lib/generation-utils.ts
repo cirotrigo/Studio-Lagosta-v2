@@ -24,40 +24,69 @@ export interface Generation {
  * IMPORTANTE: Importação dinâmica para evitar bundle do @napi-rs/canvas
  */
 export async function renderGeneration(generation: Generation): Promise<string> {
+  console.log('[renderGeneration] Starting generation:', generation.id)
+
   if (!generation.template) {
     throw new Error('Template not found in generation')
   }
 
   const template = generation.template
   const [width, height] = template.dimensions.split('x').map(Number)
+  console.log('[renderGeneration] Template dimensions:', { width, height })
 
-  // Importação dinâmica do CanvasRenderer (só funciona no Node.js)
-  const { CanvasRenderer } = await import('./canvas-renderer')
+  try {
+    // Importação dinâmica do CanvasRenderer (só funciona no Node.js)
+    console.log('[renderGeneration] Importing CanvasRenderer...')
+    const { CanvasRenderer } = await import('./canvas-renderer')
+    console.log('[renderGeneration] CanvasRenderer imported successfully')
 
-  // Criar renderer
-  const renderer = new CanvasRenderer(width, height)
+    // Criar renderer
+    console.log('[renderGeneration] Creating renderer...')
+    const renderer = new CanvasRenderer(width, height)
 
-  // Renderizar
-  const buffer = await renderer.renderDesign(
-    template.designData as DesignData,
-    generation.fieldValues as FieldValues,
-  )
+    // Renderizar
+    console.log('[renderGeneration] Rendering design...')
+    const buffer = await renderer.renderDesign(
+      template.designData as DesignData,
+      generation.fieldValues as FieldValues,
+    )
+    console.log('[renderGeneration] Design rendered, buffer size:', buffer.length)
 
-  // Upload para Vercel Blob
-  const key = `generations/${generation.id}.png`
-  const token = process.env.BLOB_READ_WRITE_TOKEN
+    // Upload para Vercel Blob
+    const key = `generations/${generation.id}.png`
+    const token = process.env.BLOB_READ_WRITE_TOKEN
 
-  if (!token) {
-    throw new Error('BLOB_READ_WRITE_TOKEN not configured')
+    // Mock para desenvolvimento local (quando token não está configurado)
+    if (!token || token.trim() === '') {
+      console.warn('[renderGeneration] BLOB_READ_WRITE_TOKEN not configured - using DATA URL mock for development')
+
+      // Converter buffer para data URL (base64)
+      const base64 = buffer.toString('base64')
+      const dataUrl = `data:image/png;base64,${base64}`
+
+      console.log('[renderGeneration] Mock: Generated data URL (length:', dataUrl.length, ')')
+      console.warn('⚠️  AVISO: Usando mock de desenvolvimento. Configure BLOB_READ_WRITE_TOKEN para produção!')
+
+      return dataUrl
+    }
+
+    console.log('[renderGeneration] Uploading to Vercel Blob...')
+    const result = await put(key, buffer, {
+      access: 'public',
+      token,
+      contentType: 'image/png',
+    })
+    console.log('[renderGeneration] Upload successful:', result.url)
+
+    return result.url
+  } catch (error) {
+    console.error('[renderGeneration] Error during generation:', error)
+    if (error instanceof Error) {
+      console.error('[renderGeneration] Error message:', error.message)
+      console.error('[renderGeneration] Error stack:', error.stack)
+    }
+    throw error
   }
-
-  const result = await put(key, buffer, {
-    access: 'public',
-    token,
-    contentType: 'image/png',
-  })
-
-  return result.url
 }
 
 /**
@@ -128,8 +157,13 @@ export async function generateThumbnail(template: Template): Promise<string> {
   const key = `thumbnails/template-${template.id}.png`
   const token = process.env.BLOB_READ_WRITE_TOKEN
 
-  if (!token) {
-    throw new Error('BLOB_READ_WRITE_TOKEN not configured')
+  // Mock para desenvolvimento local (quando token não está configurado)
+  if (!token || token.trim() === '') {
+    console.warn('[generateThumbnail] BLOB_READ_WRITE_TOKEN not configured - using DATA URL mock')
+    const base64 = buffer.toString('base64')
+    const dataUrl = `data:image/png;base64,${base64}`
+    console.log('[generateThumbnail] Mock: Generated data URL (length:', dataUrl.length, ')')
+    return dataUrl
   }
 
   const result = await put(key, buffer, {

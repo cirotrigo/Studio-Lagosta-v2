@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Eye } from 'lucide-react'
+import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Eye, Sparkles } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -142,6 +142,7 @@ export default function ProjectDetailPage() {
       <Tabs defaultValue="templates" className="w-full">
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="studio">Studio</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
@@ -292,6 +293,37 @@ export default function ProjectDetailPage() {
               </div>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="studio" className="mt-6">
+          <div className="flex flex-col items-center justify-center gap-6 py-16">
+            <div className="flex flex-col items-center gap-4">
+              <div className="p-4 bg-primary/10 rounded-full">
+                <Sparkles className="w-12 h-12 text-primary" />
+              </div>
+              <div className="text-center max-w-md">
+                <h3 className="font-semibold text-xl mb-2">Studio de Geração</h3>
+                <p className="text-muted-foreground mb-6">
+                  Crie criativos incríveis aplicando conteúdo dinâmico aos seus templates.
+                  Selecione fotos, personalize textos e gere suas artes prontas para publicação.
+                </p>
+                <Button asChild size="lg">
+                  <Link href={`/projects/${projectId}/studio`}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    Abrir Studio
+                  </Link>
+                </Button>
+              </div>
+            </div>
+
+            {templates && templates.length > 0 && (
+              <Card className="p-4 max-w-md w-full">
+                <p className="text-sm text-muted-foreground text-center">
+                  ✨ Você tem {templates.length} {templates.length === 1 ? 'template disponível' : 'templates disponíveis'} para usar
+                </p>
+              </Card>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
