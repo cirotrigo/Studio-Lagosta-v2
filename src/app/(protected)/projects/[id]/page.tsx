@@ -29,6 +29,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 
 const createTemplateSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -143,6 +144,7 @@ export default function ProjectDetailPage() {
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="studio">Studio</TabsTrigger>
+          <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
@@ -324,6 +326,10 @@ export default function ProjectDetailPage() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        <TabsContent value="assets" className="mt-6">
+          <ProjectAssetsPanel projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
