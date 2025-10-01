@@ -57,6 +57,29 @@ export async function POST(
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    const body = (await req.json().catch(() => null)) as { url?: string; name?: string } | null
+    const url = body?.url?.trim()
+    if (!url) {
+      return NextResponse.json({ error: 'URL inválida para o logo' }, { status: 400 })
+    }
+
+    const name = body?.name?.trim() || 'Logo'
+
+    const logo = await db.logo.create({
+      data: {
+        name,
+        fileUrl: url,
+        projectId: projectIdNum,
+        uploadedBy: userId,
+      },
+    })
+
+    return NextResponse.json(logo, { status: 201 })
+  }
+
   const form = await req.formData()
   const file = form.get('file') as File | null
   if (!file) {

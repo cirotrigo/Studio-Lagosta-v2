@@ -11,7 +11,12 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-import { Download, Trash2, Upload } from 'lucide-react'
+import { Download, Trash2, Upload, HardDrive, Loader2 } from 'lucide-react'
+import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
+import type { GoogleDriveItem } from '@/types/google-drive'
+import { useProject } from '@/hooks/use-project'
+
+type DriveStatus = 'loading' | 'available' | 'unavailable'
 
 interface LogoRecord {
   id: number
@@ -51,19 +56,91 @@ function formatDateRelative(iso: string) {
 }
 
 export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
+  const { data: projectDetails } = useProject(projectId)
+  const [driveStatus, setDriveStatus] = React.useState<DriveStatus>('loading')
+  const [driveStatusMessage, setDriveStatusMessage] = React.useState<string | null>(null)
+
+  React.useEffect(() => {
+    let isMounted = true
+
+    const checkDrive = async () => {
+      try {
+        const response = await fetch('/api/google-drive/test')
+        if (!isMounted) return
+        if (response.ok) {
+          const data = (await response.json()) as { status?: string }
+          if (data.status === 'ok') {
+            setDriveStatus('available')
+            setDriveStatusMessage(null)
+          } else {
+            setDriveStatus('unavailable')
+            setDriveStatusMessage('Integração do Google Drive indisponível no momento.')
+          }
+        } else {
+          setDriveStatus('unavailable')
+          setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
+        }
+      } catch (error) {
+        console.warn('[ProjectAssetsPanel] Falha ao verificar Google Drive', error)
+        if (!isMounted) return
+        setDriveStatus('unavailable')
+        setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
+      }
+    }
+
+    void checkDrive()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const driveFolderId = projectDetails?.googleDriveFolderId ?? null
+  const driveFolderName = projectDetails?.googleDriveFolderName ?? null
+
   return (
     <div className="space-y-8">
-      <LogoSection projectId={projectId} />
-      <ElementSection projectId={projectId} />
+      <LogoSection
+        projectId={projectId}
+        driveStatus={driveStatus}
+        driveStatusMessage={driveStatusMessage}
+        driveFolderId={driveFolderId}
+        driveFolderName={driveFolderName}
+      />
+      <ElementSection
+        projectId={projectId}
+        driveStatus={driveStatus}
+        driveStatusMessage={driveStatusMessage}
+        driveFolderId={driveFolderId}
+        driveFolderName={driveFolderName}
+      />
       <FontSection projectId={projectId} />
     </div>
   )
 }
 
-function LogoSection({ projectId }: { projectId: number }) {
+function LogoSection({
+  projectId,
+  driveStatus,
+  driveStatusMessage,
+  driveFolderId,
+  driveFolderName,
+}: {
+  projectId: number
+  driveStatus: DriveStatus
+  driveStatusMessage: string | null
+  driveFolderId: string | null
+  driveFolderName: string | null
+}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false)
+  const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
+  const [driveImporting, setDriveImporting] = React.useState(false)
+
+  const driveAvailable = driveStatus === 'available'
 
   const { data: logos, isLoading } = useQuery<LogoRecord[]>({
     queryKey: ['project-assets', projectId, 'logos'],
@@ -132,8 +209,60 @@ function LogoSection({ projectId }: { projectId: number }) {
     }
   }
 
+  const handleDriveImport = async (item: GoogleDriveItem | { id: string; name: string; kind: 'folder' }) => {
+    if ('kind' in item && item.kind === 'folder') {
+      toast({ title: 'Selecione um arquivo', description: 'Abra a pasta e escolha uma imagem.', variant: 'destructive' })
+      return
+    }
+
+    setDriveImporting(true)
+    try {
+      const uploadResponse = await fetch('/api/upload/google-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: item.id }),
+      })
+
+      if (!uploadResponse.ok) {
+        const message = await uploadResponse.text()
+        throw new Error(message || 'Falha ao copiar arquivo do Google Drive')
+      }
+
+      const uploaded = (await uploadResponse.json()) as { url?: string; name?: string }
+      if (!uploaded.url) {
+        throw new Error('Resposta inválida ao importar arquivo')
+      }
+
+      const createResponse = await fetch(`/api/projects/${projectId}/logos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: uploaded.url, name: uploaded.name ?? item.name }),
+      })
+
+      if (!createResponse.ok) {
+        const message = await createResponse.text()
+        throw new Error(message || 'Falha ao cadastrar logo importado')
+      }
+
+      await createResponse.json()
+      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'logos'] })
+      toast({ title: 'Logo importado', description: 'O arquivo do Google Drive foi adicionado ao projeto.' })
+      setIsDriveModalOpen(false)
+    } catch (error) {
+      console.error('[ProjectAssetsPanel] Drive import error (logo):', error)
+      toast({
+        title: 'Erro ao importar do Drive',
+        description: error instanceof Error ? error.message : 'Não foi possível importar este arquivo.',
+        variant: 'destructive',
+      })
+    } finally {
+      setDriveImporting(false)
+    }
+  }
+
   return (
-    <section className="space-y-4">
+    <>
+      <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Logos</h2>
@@ -149,12 +278,53 @@ function LogoSection({ projectId }: { projectId: number }) {
             className="hidden"
             onChange={handleFileChange}
           />
-          <Button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploadLogo.isPending}
-          >
-            <Upload className="mr-2 h-4 w-4" /> {uploadLogo.isPending ? 'Enviando...' : 'Enviar logo'}
-          </Button>
+          <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button disabled={uploadLogo.isPending || driveImporting}>
+                <Upload className="mr-2 h-4 w-4" /> {uploadLogo.isPending ? 'Enviando...' : 'Adicionar logo'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Adicionar logo</DialogTitle>
+                <DialogDescription>
+                  Envie um arquivo do computador ou copie uma imagem do Google Drive para este projeto.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <Button
+                  onClick={() => {
+                    setIsUploadDialogOpen(false)
+                    fileInputRef.current?.click()
+                  }}
+                  disabled={uploadLogo.isPending}
+                >
+                  <Upload className="mr-2 h-4 w-4" /> {uploadLogo.isPending ? 'Enviando...' : 'Do computador'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsUploadDialogOpen(false)
+                    setIsDriveModalOpen(true)
+                  }}
+                  disabled={!driveAvailable || driveImporting}
+                >
+                  {driveImporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <HardDrive className="mr-2 h-4 w-4" />
+                  )}
+                  {driveImporting ? 'Importando...' : 'Importar do Google Drive'}
+                </Button>
+                {driveStatus === 'loading' && (
+                  <p className="text-xs text-muted-foreground">Verificando integração do Google Drive...</p>
+                )}
+                {driveStatus === 'unavailable' && (
+                  <p className="text-xs text-destructive">{driveStatusMessage ?? 'Integração do Google Drive indisponível.'}</p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -207,15 +377,46 @@ function LogoSection({ projectId }: { projectId: number }) {
           Nenhum logo cadastrado ainda. Envie o primeiro logo para este projeto.
         </Card>
       )}
-    </section>
+      </section>
+      <DesktopGoogleDriveModal
+        open={isDriveModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDriveImporting(false)
+          }
+          setIsDriveModalOpen(open)
+        }}
+        mode="images"
+        initialFolderId={driveFolderId ?? undefined}
+        initialFolderName={driveFolderName ?? undefined}
+        onSelect={handleDriveImport}
+      />
+    </>
   )
 }
 
-function ElementSection({ projectId }: { projectId: number }) {
+function ElementSection({
+  projectId,
+  driveStatus,
+  driveStatusMessage,
+  driveFolderId,
+  driveFolderName,
+}: {
+  projectId: number
+  driveStatus: DriveStatus
+  driveStatusMessage: string | null
+  driveFolderId: string | null
+  driveFolderName: string | null
+}) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [showCategories, setShowCategories] = React.useState(false)
+  const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false)
+  const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
+  const [driveImporting, setDriveImporting] = React.useState(false)
+
+  const driveAvailable = driveStatus === 'available'
 
   const { data: elements, isLoading } = useQuery<ElementRecord[]>({
     queryKey: ['project-assets', projectId, 'elements'],
@@ -284,6 +485,57 @@ function ElementSection({ projectId }: { projectId: number }) {
     }
   }
 
+  const handleDriveImport = async (item: GoogleDriveItem | { id: string; name: string; kind: 'folder' }) => {
+    if ('kind' in item && item.kind === 'folder') {
+      toast({ title: 'Selecione um arquivo', description: 'Abra a pasta e escolha uma imagem.', variant: 'destructive' })
+      return
+    }
+
+    setDriveImporting(true)
+    try {
+      const uploadResponse = await fetch('/api/upload/google-drive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fileId: item.id }),
+      })
+
+      if (!uploadResponse.ok) {
+        const message = await uploadResponse.text()
+        throw new Error(message || 'Falha ao copiar arquivo do Google Drive')
+      }
+
+      const uploaded = (await uploadResponse.json()) as { url?: string; name?: string }
+      if (!uploaded.url) {
+        throw new Error('Resposta inválida ao importar arquivo')
+      }
+
+      const createResponse = await fetch(`/api/projects/${projectId}/elements`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: uploaded.url, name: uploaded.name ?? item.name }),
+      })
+
+      if (!createResponse.ok) {
+        const message = await createResponse.text()
+        throw new Error(message || 'Falha ao cadastrar elemento importado')
+      }
+
+      await createResponse.json()
+      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'elements'] })
+      toast({ title: 'Elemento importado', description: 'O arquivo do Google Drive foi adicionado ao projeto.' })
+      setIsDriveModalOpen(false)
+    } catch (error) {
+      console.error('[ProjectAssetsPanel] Drive import error (element):', error)
+      toast({
+        title: 'Erro ao importar do Drive',
+        description: error instanceof Error ? error.message : 'Não foi possível importar este arquivo.',
+        variant: 'destructive',
+      })
+    } finally {
+      setDriveImporting(false)
+    }
+  }
+
   const categorized = React.useMemo(() => {
     if (!elements) return new Map<string, ElementRecord[]>()
     const map = new Map<string, ElementRecord[]>()
@@ -297,7 +549,8 @@ function ElementSection({ projectId }: { projectId: number }) {
   }, [elements])
 
   return (
-    <section className="space-y-4">
+    <>
+      <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Elementos Gráficos</h2>
@@ -317,9 +570,53 @@ function ElementSection({ projectId }: { projectId: number }) {
             className="hidden"
             onChange={handleFileChange}
           />
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadElement.isPending}>
-            <Upload className="mr-2 h-4 w-4" /> {uploadElement.isPending ? 'Enviando...' : 'Adicionar elemento'}
-          </Button>
+          <Dialog open={isUploadDialogOpen} onOpenChange={setIsUploadDialogOpen}>
+            <DialogTrigger asChild>
+              <Button disabled={uploadElement.isPending || driveImporting}>
+                <Upload className="mr-2 h-4 w-4" /> {uploadElement.isPending ? 'Enviando...' : 'Adicionar elemento'}
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Adicionar elemento gráfico</DialogTitle>
+                <DialogDescription>
+                  Faça upload de uma imagem ou importe um arquivo existente do Google Drive.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-3">
+                <Button
+                  onClick={() => {
+                    setIsUploadDialogOpen(false)
+                    fileInputRef.current?.click()
+                  }}
+                  disabled={uploadElement.isPending}
+                >
+                  <Upload className="mr-2 h-4 w-4" /> {uploadElement.isPending ? 'Enviando...' : 'Do computador'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setIsUploadDialogOpen(false)
+                    setIsDriveModalOpen(true)
+                  }}
+                  disabled={!driveAvailable || driveImporting}
+                >
+                  {driveImporting ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <HardDrive className="mr-2 h-4 w-4" />
+                  )}
+                  {driveImporting ? 'Importando...' : 'Importar do Google Drive'}
+                </Button>
+                {driveStatus === 'loading' && (
+                  <p className="text-xs text-muted-foreground">Verificando integração do Google Drive...</p>
+                )}
+                {driveStatus === 'unavailable' && (
+                  <p className="text-xs text-destructive">{driveStatusMessage ?? 'Integração do Google Drive indisponível.'}</p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
 
@@ -406,7 +703,21 @@ function ElementSection({ projectId }: { projectId: number }) {
           Nenhum elemento cadastrado. Faça upload de ícones ou ilustrações.
         </Card>
       )}
-    </section>
+      </section>
+      <DesktopGoogleDriveModal
+        open={isDriveModalOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDriveImporting(false)
+          }
+          setIsDriveModalOpen(open)
+        }}
+        mode="images"
+        initialFolderId={driveFolderId ?? undefined}
+        initialFolderName={driveFolderName ?? undefined}
+        onSelect={handleDriveImport}
+      />
+    </>
   )
 }
 

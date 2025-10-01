@@ -57,6 +57,31 @@ export async function POST(
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    const body = (await req.json().catch(() => null)) as { url?: string; name?: string; category?: string | null } | null
+    const url = body?.url?.trim()
+    if (!url) {
+      return NextResponse.json({ error: 'URL inválida para o elemento' }, { status: 400 })
+    }
+
+    const name = body?.name?.trim() || 'Elemento'
+    const category = body?.category?.trim() || null
+
+    const element = await db.element.create({
+      data: {
+        name,
+        category,
+        fileUrl: url,
+        projectId: projectIdNum,
+        uploadedBy: userId,
+      },
+    })
+
+    return NextResponse.json(element, { status: 201 })
+  }
+
   const form = await req.formData()
   const file = form.get('file') as File | null
   if (!file) {

@@ -11,11 +11,13 @@ export interface TemplateResource {
   dimensions: string
   designData: DesignData
   dynamicFields: DynamicField[] | null
+  projectId: number
   updatedAt?: string
 }
 
 export interface TemplateEditorContextValue {
   templateId: number
+  projectId: number
   name: string
   setName: (name: string) => void
   type: string
@@ -249,6 +251,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   const value = React.useMemo<TemplateEditorContextValue>(
     () => ({
       templateId: template.id,
+      projectId: template.projectId,
       name,
       setName: (next) => {
         setName(next)
@@ -286,7 +289,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       zoomIn,
       zoomOut,
     }),
-    [template.id, template.type, template.dimensions, design, selectedLayerId, selectLayer, updateLayer, updateLayerPartial, updateLayerStyle, moveLayer, addLayer, duplicateLayer, removeLayer, toggleLayerVisibility, toggleLayerLock, reorderLayers, updateCanvas, dynamicFields, dirty, markSaved, zoom, setZoom, zoomIn, zoomOut, name],
+    [template.id, template.projectId, template.type, template.dimensions, design, selectedLayerId, selectLayer, updateLayer, updateLayerPartial, updateLayerStyle, moveLayer, addLayer, duplicateLayer, removeLayer, toggleLayerVisibility, toggleLayerLock, reorderLayers, updateCanvas, dynamicFields, dirty, markSaved, zoom, setZoom, zoomIn, zoomOut, name],
   )
 
   return <TemplateEditorContext.Provider value={value}>{children}</TemplateEditorContext.Provider>
@@ -342,10 +345,10 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         size: { width: 320, height: 320 },
         style: {
           gradientType: 'linear',
-          gradientAngle: 90,
+          gradientAngle: 180,
           gradientStops: [
-            { color: '#FF7A18', position: 0 },
-            { color: '#AF002D', position: 1 },
+            { color: '#000000', position: 0 },
+            { color: '#00000000', position: 1 },
           ],
         },
       }

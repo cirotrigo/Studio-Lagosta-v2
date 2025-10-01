@@ -27,6 +27,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
     dimensions: template.dimensions,
     designData: template.designData,
     dynamicFields: template.dynamicFields,
+    projectId: template.projectId,
     updatedAt: template.updatedAt,
   }
 
