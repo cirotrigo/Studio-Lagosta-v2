@@ -14,6 +14,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Card } from '@/components/ui/card'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
+import { useProject } from '@/hooks/use-project'
 
 interface GenerationResult {
   id: string
@@ -29,6 +30,8 @@ export default function StudioPage() {
 
   const projectId = Number(params?.id)
   const isValidProject = Number.isFinite(projectId) && projectId > 0
+
+  const { data: projectDetails } = useProject(isValidProject ? projectId : null)
 
   usePageConfig(
     'Studio de Geração',
@@ -159,11 +162,13 @@ export default function StudioPage() {
       )}
 
       {step === 'photo' && selectedTemplate && (
-        <PhotoSelector
-          onSelect={handleSelectPhoto}
-          onSkip={() => setStep('edit')}
-          selectedUrl={typeof imageField !== 'undefined' ? String(fieldValues[imageField.key] ?? '') : undefined}
-        />
+      <PhotoSelector
+        onSelect={handleSelectPhoto}
+        onSkip={() => setStep('edit')}
+        selectedUrl={typeof imageField !== 'undefined' ? String(fieldValues[imageField.key] ?? '') : undefined}
+        driveFolderId={projectDetails?.googleDriveFolderId ?? null}
+        driveFolderName={projectDetails?.googleDriveFolderName ?? null}
+      />
       )}
 
       {step === 'edit' && selectedTemplate && (
