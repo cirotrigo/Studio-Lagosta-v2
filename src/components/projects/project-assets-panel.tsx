@@ -11,7 +11,6 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-import { cn } from '@/lib/utils'
 import { Download, Trash2, Upload } from 'lucide-react'
 
 interface LogoRecord {

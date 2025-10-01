@@ -172,7 +172,7 @@ export class RenderEngine {
         if (!result.isValid && result.fallbackFont) {
           fontFamily = result.fallbackFont
         }
-      } catch (_) {
+      } catch {
         // ignore font checker failures
       }
     }
@@ -631,7 +631,7 @@ export class RenderEngine {
     try {
       const url = new URL(value)
       return !!url.protocol && !!url.host
-    } catch (_) {
+    } catch {
       return false
     }
   }

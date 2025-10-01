@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
@@ -107,10 +108,9 @@ export default function ProjectCreativesPage() {
     },
   })
 
-  const generations = data?.generations ?? []
-
   const filtered = React.useMemo(() => {
-    return generations.filter((generation) => {
+    const list = data?.generations ?? []
+    return list.filter((generation) => {
       const matchesStatus = statusFilter === 'all' || generation.status === statusFilter
       const matchesResult = !onlyWithResult || Boolean(generation.resultUrl)
       const query = searchTerm.trim().toLowerCase()
@@ -121,17 +121,19 @@ export default function ProjectCreativesPage() {
         generation.id.toLowerCase().includes(query)
       return matchesStatus && matchesResult && matchesSearch
     })
-  }, [generations, statusFilter, searchTerm, onlyWithResult])
+  }, [data?.generations, statusFilter, searchTerm, onlyWithResult])
 
   const toggleSelection = React.useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
-      next.has(id) ? next.delete(id) : next.add(id)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
       return next
     })
   }, [])
-
-  const clearSelection = React.useCallback(() => setSelectedIds(new Set()), [])
 
   const handleDownload = React.useCallback((generation: GenerationRecord) => {
     if (!generation.resultUrl) {
@@ -287,7 +289,13 @@ export default function ProjectCreativesPage() {
               >
                 <div className="aspect-video bg-muted flex items-center justify-center">
                   {generation.resultUrl ? (
-                    <img src={generation.resultUrl} alt={templateLabel} className="h-full w-full object-cover" />
+                    <Image
+                      src={generation.resultUrl}
+                      alt={templateLabel}
+                      fill
+                      sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
+                      className="object-cover"
+                    />
                   ) : (
                     <div className="text-xs text-muted-foreground">Sem preview disponível</div>
                   )}
@@ -406,7 +414,13 @@ export default function ProjectCreativesPage() {
             <DialogTitle>{preview?.templateName || 'Preview'}</DialogTitle>
           </DialogHeader>
           {preview?.url ? (
-            <img src={preview.url} alt={preview.templateName ?? ''} className="w-full rounded-md" />
+            <Image
+              src={preview.url}
+              alt={preview.templateName ?? 'Preview'}
+              width={1024}
+              height={1024}
+              className="h-auto w-full rounded-md"
+            />
           ) : (
             <div className="rounded-md border border-dashed border-border/50 p-12 text-center text-sm text-muted-foreground">
               Nenhum preview disponível para esta geração.

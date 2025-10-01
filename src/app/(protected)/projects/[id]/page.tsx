@@ -2,8 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Eye, Sparkles } from 'lucide-react'
+import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Sparkles } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -234,10 +235,12 @@ export default function ProjectDetailPage() {
                 <Card key={template.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                   <div className="aspect-[4/5] bg-muted relative group">
                     {template.thumbnailUrl ? (
-                      <img
+                      <Image
                         src={template.thumbnailUrl}
                         alt={template.name}
-                        className="w-full h-full object-cover"
+                        fill
+                        sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 100vw"
+                        className="object-cover"
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center">

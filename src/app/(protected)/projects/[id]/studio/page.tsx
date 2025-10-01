@@ -70,7 +70,7 @@ export default function StudioPage() {
     if (!dynamicFieldDefs.some((field) => field.fieldType === 'image')) {
       setStep('edit')
     }
-  }, [selectedTemplate?.id, dynamicFieldDefs])
+  }, [selectedTemplate, dynamicFieldDefs])
 
   const imageField = dynamicFieldDefs.find((field) => field.fieldType === 'image')
 
@@ -160,7 +160,6 @@ export default function StudioPage() {
 
       {step === 'photo' && selectedTemplate && (
         <PhotoSelector
-          projectId={projectId}
           onSelect={handleSelectPhoto}
           onSkip={() => setStep('edit')}
           selectedUrl={typeof imageField !== 'undefined' ? String(fieldValues[imageField.key] ?? '') : undefined}

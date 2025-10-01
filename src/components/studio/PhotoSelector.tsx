@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -18,7 +19,6 @@ interface PhotoRecord {
 }
 
 interface PhotoSelectorProps {
-  projectId: number
   onSelect: (url: string) => void
   onSkip?: () => void
   selectedUrl?: string | null
@@ -36,7 +36,7 @@ function convertGoogleDriveUrl(url: string): string {
   return url
 }
 
-export function PhotoSelector({ projectId, onSelect, onSkip, selectedUrl }: PhotoSelectorProps) {
+export function PhotoSelector({ onSelect, onSkip, selectedUrl }: PhotoSelectorProps) {
   const { toast } = useToast()
   const [uploading, setUploading] = React.useState(false)
   const [uploadedPhotos, setUploadedPhotos] = React.useState<PhotoRecord[]>([])
@@ -212,8 +212,14 @@ export function PhotoSelector({ projectId, onSelect, onSkip, selectedUrl }: Phot
                     isActive && 'border-primary shadow-[0_0_0_1px_var(--primary)]',
                   )}
                 >
-                  <div className="aspect-video bg-muted">
-                    <img src={photo.url} alt={photo.name} className="h-full w-full object-cover" />
+                  <div className="relative aspect-video bg-muted">
+                    <Image
+                      src={photo.url}
+                      alt={photo.name}
+                      fill
+                      sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw"
+                      className="object-cover"
+                    />
                   </div>
                   <div className="flex items-center justify-between gap-2 px-3 py-2 text-xs">
                     <span className="truncate font-medium">{photo.name}</span>

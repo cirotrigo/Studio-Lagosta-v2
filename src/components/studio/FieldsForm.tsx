@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -160,11 +161,13 @@ export function FieldsForm({ template, values, onChange }: FieldsFormProps) {
                     placeholder={field.placeholder || 'https://exemplo.com/imagem.png'}
                   />
                   {typeof value === 'string' && value && (
-                    <div className="overflow-hidden rounded-md border border-border/40">
-                      <img
+                    <div className="relative h-32 overflow-hidden rounded-md border border-border/40">
+                      <Image
                         src={value}
                         alt={field.label}
-                        className="h-32 w-full object-cover"
+                        fill
+                        sizes="200px"
+                        className="object-cover"
                       />
                     </div>
                   )}

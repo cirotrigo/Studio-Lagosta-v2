@@ -32,12 +32,12 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 
   return (
     <TemplateEditorProvider template={resource}>
-      <TemplateEditorContent initialTemplate={template} />
+      <TemplateEditorContent />
     </TemplateEditorProvider>
   )
 }
 
-function TemplateEditorContent({ initialTemplate }: { initialTemplate: TemplateDto }) {
+function TemplateEditorContent() {
   const { toast } = useToast()
   const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplate()
   const {

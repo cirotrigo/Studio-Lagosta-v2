@@ -456,6 +456,26 @@ time curl -X POST http://localhost:3000/api/projects/1/generations \
 - Feed (1080x1350): ~150-400 KB
 - Square (1080x1080): ~100-300 KB
 
+### Consistência Preview × Render (Fase 6)
+
+1. Gere um criativo no Studio e salve a imagem.
+2. Reproduza o mesmo cenário no editor e capture o preview.
+3. Compare pixel a pixel utilizando uma ferramenta (ex.: `pixelmatch`) ou inspeção visual.
+4. Registre o resultado no relatório (ideal: diferenças inexistentes ou <1%).
+
+### Teste de Carrossel (Fase 6)
+
+1. Utilize `/projects/[id]/studio` com um template FEED.
+2. Gere um carrossel de 3 slides com campos distintos.
+3. Verifique em `/projects/[id]/creativos` se todos os slides foram gerados, com timestamps e status `COMPLETED`.
+4. Faça download de todos os slides e valide o conteúdo.
+
+### Assets do Projeto (Fase 5)
+
+1. Envie um logo, elemento e fonte personalizados na aba **Assets** do projeto.
+2. Confirme que cada upload aparece imediatamente na listagem.
+3. Remova os itens e verifique se o blob correspondente deixa de existir (HTTP 404 ao acessar a URL antiga).
+
 ---
 
 ## 📝 Relatório de Teste
