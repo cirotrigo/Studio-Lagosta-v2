@@ -4,8 +4,9 @@ interface Params {
   id: string
 }
 
-export default function TemplateEditorPage({ params }: { params: Params }) {
-  const templateId = Number(params.id)
+export default async function TemplateEditorPage({ params }: { params: Promise<Params> }) {
+  const { id } = await params
+  const templateId = Number(id)
 
   return <TemplateEditorClient templateId={Number.isFinite(templateId) ? templateId : NaN} />
 }

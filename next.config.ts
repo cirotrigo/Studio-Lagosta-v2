@@ -18,6 +18,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'html.tailus.io',
       },
+      {
+        protocol: 'https',
+        hostname: 'blob.vercel-storage.com',
+      },
     ],
   },
   webpack: (config, { dev, isServer }) => {
