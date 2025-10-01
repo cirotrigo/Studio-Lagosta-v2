@@ -16,7 +16,7 @@ interface TokenResponse {
   tokenType: string | null
 }
 
-export default function GoogleDriveCallbackPage() {
+function GoogleDriveCallbackContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const code = searchParams.get('code')
@@ -156,5 +156,17 @@ function InfoField({ label, value }: { label: string; value: string | null }) {
       <p className="text-xs font-semibold uppercase text-muted-foreground">{label}</p>
       <p className="mt-1 break-all font-mono text-xs">{value ?? '—'}</p>
     </div>
+  )
+}
+
+export default function GoogleDriveCallbackPage() {
+  return (
+    <React.Suspense fallback={
+      <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-6">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    }>
+      <GoogleDriveCallbackContent />
+    </React.Suspense>
   )
 }
