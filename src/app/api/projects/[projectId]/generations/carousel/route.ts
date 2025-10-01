@@ -77,8 +77,10 @@ export async function POST(
     )
 
     // Renderizar cada slide
+    type GenerationWithTemplate = Awaited<ReturnType<typeof db.generation.update>>;
+
     const results = await Promise.allSettled(
-      generations.map(async (gen) => {
+      generations.map(async (gen): Promise<GenerationWithTemplate> => {
         try {
           const resultUrl = await renderGeneration(gen)
 
@@ -115,7 +117,7 @@ export async function POST(
 
     // Processar resultados
     const completed = results
-      .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+      .filter((r): r is PromiseFulfilledResult<GenerationWithTemplate> => r.status === 'fulfilled')
       .map((r) => r.value)
 
     const failed = results.filter((r) => r.status === 'rejected').length

@@ -54,21 +54,21 @@ export async function POST(request: Request) {
 
       const sub = (data && typeof data === 'object' && !Array.isArray(data) && (data as { data?: unknown }).data && typeof (data as { data?: unknown }).data === 'object') ? (data as { data?: unknown }).data as Record<string, unknown> : data as Record<string, unknown> | null
       if (!sub || typeof sub !== 'object') return null
-      const subAny = sub as any
       const status = String((sub as Record<string, unknown>)?.status || '').toLowerCase()
       if (status !== 'active') return null
       // Prefer plan from subscription_items when present
       let planId: unknown = (sub as Record<string, unknown>)?.plan_id || (sub as { plan?: { id?: unknown } })?.plan?.id || null
       if (!planId && Array.isArray((sub as { subscription_items?: unknown[] })?.subscription_items) && (sub as { subscription_items?: unknown[] }).subscription_items!.length > 0) {
         const firstItem = (sub as { subscription_items: Array<Record<string, unknown>> }).subscription_items[0]
-        planId = firstItem?.plan_id || (firstItem?.plan as { id?: unknown } | undefined)?.id || null
+        const planFromItem = firstItem?.plan_id || (firstItem?.plan as { id?: unknown } | undefined)?.id || null
+        planId = planFromItem
       }
       return planId ? String(planId) : null
     }
 
     for (let page = 0; page < max; page++) {
       const res = await clerk.users.getUserList({ limit: pageSize, offset: page * pageSize }) as unknown as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>
-      const users: Array<Record<string, any>> = (res as { data?: Array<Record<string, any>> })?.data || (res as Array<Record<string, any>>) || []
+      const users: Array<Record<string, unknown>> = (res as { data?: Array<Record<string, unknown>> })?.data || (res as Array<Record<string, unknown>>) || []
       if (!users.length) break
       pagesProcessed++
       dlog(`page ${page + 1}/${max}: fetched ${users.length} users`)
@@ -80,11 +80,14 @@ export async function POST(request: Request) {
         const batchPromises = batch.map(async (cu) => {
           totalProcessed++
           try {
-            const clerkId = cu.id
+            const clerkId = String(cu.id)
             dlog('processing user', { clerkId })
-            const primary = cu.emailAddresses?.find((e: { id?: string }) => e.id === cu.primaryEmailAddressId) || cu.emailAddresses?.[0]
-            const email = primary?.emailAddress || null
-            const name = [cu.firstName, cu.lastName].filter(Boolean).join(' ') || cu.firstName || null
+            const emailAddresses = (cu.emailAddresses as Array<{ id?: string; emailAddress?: string }> | undefined) || []
+            const primary = emailAddresses.find((e) => e.id === cu.primaryEmailAddressId) || emailAddresses[0]
+            const email = String(primary?.emailAddress || '')
+            const firstName = String(cu.firstName || '')
+            const lastName = String(cu.lastName || '')
+            const name = [firstName, lastName].filter(Boolean).join(' ') || firstName
 
             let dbUser = await db.user.findUnique({ where: { clerkId } })
             if (syncUsers) {

@@ -20,7 +20,7 @@ export async function GET(request: Request) {
 
     const andFilters: Prisma.UsageHistoryWhereInput[] = [];
     if (type !== "all") {
-      andFilters.push({ operationType: type as any });
+      andFilters.push({ operationType: type as Prisma.UsageHistoryWhereInput['operationType'] });
     }
 
     if (range !== "all") {
