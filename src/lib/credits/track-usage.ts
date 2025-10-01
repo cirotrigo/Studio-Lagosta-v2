@@ -4,6 +4,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils';
 
 type JsonValue = string | number | boolean | null | JsonObject | JsonArray
 interface JsonObject { [key: string]: JsonValue }
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface JsonArray extends Array<JsonValue> {}
 
 interface TrackUsageParams {

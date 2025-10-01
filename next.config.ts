@@ -20,12 +20,21 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  webpack: (config, { dev }) => {
+  webpack: (config, { dev, isServer }) => {
     // Configure path aliases
     config.resolve.alias = {
       ...config.resolve.alias,
       '@': path.resolve(__dirname, './src'),
     };
+
+    // Externalizar @napi-rs/canvas para evitar bundle no webpack
+    if (isServer) {
+      config.externals = config.externals || [];
+      if (Array.isArray(config.externals)) {
+        config.externals.push('@napi-rs/canvas');
+      }
+    }
+
     return config;
   },
 

@@ -9,25 +9,26 @@ export const runtime = 'nodejs'
 
 export async function GET(
   _req: Request,
-  { params }: { params: { projectId: string } },
+  { params }: { params: Promise<{ projectId: string }> },
 ) {
+  const { projectId } = await params
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const projectId = Number(params.projectId)
-  if (!projectId) {
+  const projectIdNum = Number(projectId)
+  if (!projectIdNum) {
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await db.project.findFirst({ where: { id: projectId, userId } })
+  const project = await db.project.findFirst({ where: { id: projectIdNum, userId } })
   if (!project) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
   const templates = await db.template.findMany({
-    where: { projectId },
+    where: { projectId: projectIdNum },
     orderBy: { updatedAt: 'desc' },
   })
 
@@ -36,19 +37,20 @@ export async function GET(
 
 export async function POST(
   req: Request,
-  { params }: { params: { projectId: string } },
+  { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const projectId = Number(params.projectId)
-  if (!projectId) {
+  const { projectId } = await params
+  const projectIdNum = Number(projectId)
+  if (!projectIdNum) {
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await db.project.findFirst({ where: { id: projectId, userId } })
+  const project = await db.project.findFirst({ where: { id: projectIdNum, userId } })
   if (!project) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
@@ -62,7 +64,7 @@ export async function POST(
         name: parsed.name,
         type: parsed.type,
         dimensions: parsed.dimensions,
-        projectId,
+        projectId: projectIdNum,
         createdBy: userId,
         designData: createBlankDesign(parsed.type) as unknown as Prisma.JsonValue,
         dynamicFields: [] as unknown as Prisma.JsonValue,

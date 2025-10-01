@@ -52,3 +52,20 @@ export const updateTemplateSchema = z.object({
   dynamicFields: z.array(z.record(z.string(), z.any())).optional(),
   thumbnailUrl: z.string().url().nullable().optional(),
 })
+
+export const createGenerationSchema = z.object({
+  templateId: z.number().int().positive(),
+  fieldValues: z.record(z.string(), z.any()),
+})
+
+export const createCarouselSchema = z.object({
+  templateId: z.number().int().positive(),
+  slides: z
+    .array(
+      z.object({
+        fieldValues: z.record(z.string(), z.any()),
+      }),
+    )
+    .min(2, 'Carrossel deve ter pelo menos 2 slides')
+    .max(10, 'Carrossel pode ter no máximo 10 slides'),
+})

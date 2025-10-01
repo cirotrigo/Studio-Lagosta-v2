@@ -8,14 +8,15 @@ export const runtime = 'nodejs'
 
 export async function GET(
   _req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
+  const { id } = await params
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const templateId = Number(params.id)
+  const templateId = Number(id)
   if (!templateId) {
     return NextResponse.json({ error: 'Template inválido' }, { status: 400 })
   }
@@ -33,14 +34,15 @@ export async function GET(
 
 export async function PUT(
   req: Request,
-  { params }: { params: { id: string } },
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const templateId = Number(params.id)
+  const { id } = await params
+  const templateId = Number(id)
   if (!templateId) {
     return NextResponse.json({ error: 'Template inválido' }, { status: 400 })
   }
