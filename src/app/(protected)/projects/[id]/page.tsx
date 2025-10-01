@@ -327,16 +327,25 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
-          <Card className="p-12 text-center">
-            <div className="flex flex-col items-center gap-4">
-              <div className="p-4 bg-muted rounded-full">
-                <ImageIcon className="w-8 h-8 text-muted-foreground" />
-              </div>
-              <div>
-                <h3 className="font-semibold text-lg mb-2">Em desenvolvimento</h3>
-                <p className="text-muted-foreground">
-                  A gestão de criativos estará disponível em breve
+          <Card className="p-6">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold">Painel de Criativos</h3>
+                <p className="text-sm text-muted-foreground">
+                  Visualize e baixe todos os criativos gerados para este projeto. Aplique filtros, organize em grid ou lista e baixe em lote.
                 </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" asChild>
+                  <Link href={`/projects/${projectId}/studio`}>
+                    <Sparkles className="mr-2 h-4 w-4" /> Gerar novo criativo
+                  </Link>
+                </Button>
+                <Button asChild>
+                  <Link href={`/projects/${projectId}/creativos`}>
+                    <ImageIcon className="mr-2 h-4 w-4" /> Abrir lista de criativos
+                  </Link>
+                </Button>
               </div>
             </div>
           </Card>
