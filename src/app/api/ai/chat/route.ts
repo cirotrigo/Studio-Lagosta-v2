@@ -5,10 +5,11 @@ import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
 import { createMistral } from '@ai-sdk/mistral'
 import { z } from 'zod'
-import { validateUserAuthentication } from '@/lib/auth-utils'
+import { validateUserAuthentication, getUserFromClerkId } from '@/lib/auth-utils'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { type FeatureKey } from '@/lib/credits/feature-config'
+import { getRAGContext } from '@/lib/knowledge/search'
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -116,6 +117,32 @@ export async function POST(req: Request) {
         const lines = attachments.map(a => `- ${a.name}: ${a.url}`).join('\n')
         const attachNote = `Anexos:\n${lines}`
         mergedMessages = [...(messages as ChatMessage[]), { role: 'user' as const, content: attachNote }]
+      }
+
+      // RAG: Inject context from knowledge base
+      const lastUserMessage = messages.filter(m => m.role === 'user').pop()
+      if (lastUserMessage) {
+        try {
+          const dbUser = await getUserFromClerkId(userId)
+          const ragContext = await getRAGContext(lastUserMessage.content, {
+            userId: dbUser.id,
+          })
+
+          if (ragContext.trim()) {
+            const contextMessage: ChatMessage = {
+              role: 'system',
+              content: `Use o seguinte contexto da base de conhecimento SOMENTE se for relevante para a pergunta do usuário. Se o contexto não for pertinente, ignore-o completamente e responda normalmente.
+
+<context>
+${ragContext}
+</context>`,
+            }
+            mergedMessages = [contextMessage, ...mergedMessages]
+          }
+        } catch (ragError) {
+          // Log RAG error but continue without context
+          console.warn('RAG context retrieval failed:', ragError)
+        }
       }
 
       // Credits: 1 credit per LLM request
