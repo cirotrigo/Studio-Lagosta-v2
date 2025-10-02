@@ -41,7 +41,9 @@ export default function AdminStoragePage() {
 
   const uniqueTypes = Array.from(new Set(items.map(i => i.contentType).filter(Boolean))) as string[]
   const uniqueUsers = Array.from(new Set(items.map(i => i.user?.id).filter(Boolean))) as string[]
-  const userOptions = uniqueUsers.map(id => items.find(i => i.user?.id === id)!.user)
+  const userOptions = uniqueUsers
+    .map((id) => items.find((i) => i.user?.id === id)?.user)
+    .filter((user): user is NonNullable<StorageItem['user']> => Boolean(user))
 
   const onDelete = async (id: string) => {
     if (!confirm('Excluir este objeto? Isso removerá o acesso público e o marcará como excluído.')) return
@@ -134,10 +136,13 @@ export default function AdminStoragePage() {
             header: "Enviado por",
             render: (item: unknown) => {
               const i = item as StorageItem;
+              const userName = i.user?.name || 'Desconhecido';
+              const userSecondary = i.user?.email || i.user?.clerkId || '—';
+
               return (
                 <div className="flex flex-col">
-                  <span className="text-foreground">{i.user.name || 'Desconhecido'}</span>
-                  <span className="text-xs text-muted-foreground">{i.user.email || i.user.clerkId}</span>
+                  <span className="text-foreground">{userName}</span>
+                  <span className="text-xs text-muted-foreground">{userSecondary}</span>
                 </div>
               );
             },

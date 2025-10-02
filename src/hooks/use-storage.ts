@@ -11,7 +11,7 @@ export interface StorageItem {
   url: string;
   pathname: string;
   createdAt: string;
-  user: { id: string; clerkId: string; email: string | null; name: string | null };
+  user: { id: string; clerkId: string; email: string | null; name: string | null } | null;
 }
 
 export interface StorageParams {
