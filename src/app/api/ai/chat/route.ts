@@ -10,6 +10,7 @@ import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { type FeatureKey } from '@/lib/credits/feature-config'
 import { getRAGContext } from '@/lib/knowledge/search'
+import { getMaxOutputTokens, type AIProvider } from '@/lib/ai/token-limits'
 
 const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
@@ -68,6 +69,7 @@ const BodySchema = z
     model: z.string().min(1),
     messages: z.array(MessageSchema).min(1),
     temperature: z.number().min(0).max(2).optional(),
+    maxTokens: z.number().min(100).max(32000).optional(),
     attachments: z.array(AttachmentSchema).optional(),
   })
   .strict()
@@ -91,7 +93,7 @@ export async function POST(req: Request) {
       if (!parsed.success) {
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
-      const { provider, model, messages, temperature = 0.4, attachments } = parsed.data
+      const { provider, model, messages, temperature = 0.4, maxTokens, attachments } = parsed.data
 
       if (!isAllowedModel(provider, model)) {
         return NextResponse.json({ error: 'Modelo não permitido para este provedor' }, { status: 400 })
@@ -123,10 +125,13 @@ export async function POST(req: Request) {
       const lastUserMessage = messages.filter(m => m.role === 'user').pop()
       if (lastUserMessage) {
         try {
+          console.log('[RAG] Attempting to get context for query:', lastUserMessage.content.substring(0, 100))
           const dbUser = await getUserFromClerkId(userId)
+          console.log('[RAG] DB User:', dbUser.id)
           const ragContext = await getRAGContext(lastUserMessage.content, {
             userId: dbUser.id,
           })
+          console.log('[RAG] Context retrieved, length:', ragContext.length)
 
           if (ragContext.trim()) {
             const contextMessage: ChatMessage = {
@@ -141,7 +146,7 @@ ${ragContext}
           }
         } catch (ragError) {
           // Log RAG error but continue without context
-          console.warn('RAG context retrieval failed:', ragError)
+          console.error('[RAG] Error retrieving context:', ragError)
         }
       }
 
@@ -165,14 +170,22 @@ ${ragContext}
       }
 
       try {
+        // Get provider-specific default max tokens (can be overridden by user)
+        const defaultMaxTokens = getMaxOutputTokens(provider as AIProvider)
+        const finalMaxTokens = maxTokens || defaultMaxTokens
+
+        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens)
         const result = await streamText({
           model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
           messages: mergedMessages,
           temperature,
+          maxTokens: finalMaxTokens,
         })
+        console.log('[CHAT] Stream text successful, returning response')
         return result.toAIStreamResponse()
       } catch (providerErr: unknown) {
         // Provider call failed after deduction — reimburse user
+        console.error('[CHAT] Provider error:', providerErr)
         await refundCreditsForFeature({
           clerkUserId: userId,
           feature,
@@ -188,7 +201,9 @@ ${ragContext}
       }
       throw e
     }
-  } catch {
+  } catch (error) {
+    // Log error for debugging
+    console.error('Error in chat API:', error)
     // Avoid leaking provider errors verbosely
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
   }

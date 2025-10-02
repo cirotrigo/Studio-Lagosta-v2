@@ -122,7 +122,11 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   }
 
   // Verify tenant ownership
-  if (entry.userId !== tenant.userId || entry.workspaceId !== tenant.workspaceId) {
+  // Note: userId and workspaceId can be null/undefined in schema
+  const userIdMatch = entry.userId === tenant.userId || (!entry.userId && !tenant.userId)
+  const workspaceIdMatch = entry.workspaceId === tenant.workspaceId || (!entry.workspaceId && !tenant.workspaceId)
+
+  if (!userIdMatch || !workspaceIdMatch) {
     throw new Error('Unauthorized access to entry')
   }
 
@@ -202,7 +206,11 @@ export async function updateEntry(
   }
 
   // Verify tenant ownership
-  if (existing.userId !== tenant.userId || existing.workspaceId !== tenant.workspaceId) {
+  // Note: userId and workspaceId can be null/undefined in schema
+  const userIdMatch = existing.userId === tenant.userId || (!existing.userId && !tenant.userId)
+  const workspaceIdMatch = existing.workspaceId === tenant.workspaceId || (!existing.workspaceId && !tenant.workspaceId)
+
+  if (!userIdMatch || !workspaceIdMatch) {
     throw new Error('Unauthorized access to entry')
   }
 
@@ -236,7 +244,11 @@ export async function deleteEntry(entryId: string, tenant: TenantKey) {
   }
 
   // Verify tenant ownership
-  if (entry.userId !== tenant.userId || entry.workspaceId !== tenant.workspaceId) {
+  // Note: userId and workspaceId can be null/undefined in schema
+  const userIdMatch = entry.userId === tenant.userId || (!entry.userId && !tenant.userId)
+  const workspaceIdMatch = entry.workspaceId === tenant.workspaceId || (!entry.workspaceId && !tenant.workspaceId)
+
+  if (!userIdMatch || !workspaceIdMatch) {
     throw new Error('Unauthorized access to entry')
   }
 
