@@ -18,9 +18,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, X, Upload } from 'lucide-react'
 
+const MAX_CONTENT_LENGTH = 50000
+
 const entrySchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').max(500),
-  content: z.string().min(1, 'Conteúdo é obrigatório'),
+  content: z.string().min(1, 'Conteúdo é obrigatório').max(MAX_CONTENT_LENGTH, `O conteúdo não pode exceder ${MAX_CONTENT_LENGTH.toLocaleString()} caracteres`),
   tags: z.string().optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).default('ACTIVE'),
 })
@@ -80,6 +82,10 @@ export function KnowledgeForm({
 
   const tagsValue = watch('tags')
   const statusValue = watch('status')
+  const contentValue = watch('content')
+
+  const contentLength = contentValue?.length || 0
+  const isContentOverLimit = contentLength > MAX_CONTENT_LENGTH
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -169,16 +175,31 @@ export function KnowledgeForm({
         </div>
       ) : (
         <div>
-          <Label htmlFor="content">Conteúdo</Label>
+          <div className="flex justify-between items-center mb-2">
+            <Label htmlFor="content">Conteúdo</Label>
+            <div className={`text-xs ${isContentOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>
+              {contentLength.toLocaleString()} / {MAX_CONTENT_LENGTH.toLocaleString()} caracteres
+              {isContentOverLimit && (
+                <span className="ml-2 font-medium">
+                  (excede o limite em {(contentLength - MAX_CONTENT_LENGTH).toLocaleString()})
+                </span>
+              )}
+            </div>
+          </div>
           <Textarea
             id="content"
             {...register('content')}
             rows={10}
             disabled={isLoading}
-            className="font-mono text-sm"
+            className={`font-mono text-sm ${isContentOverLimit ? 'border-destructive' : ''}`}
           />
           {errors.content && (
             <p className="text-sm text-destructive mt-1">{errors.content.message}</p>
+          )}
+          {isContentOverLimit && (
+            <p className="text-sm text-destructive mt-1">
+              O conteúdo excede o limite máximo. Considere dividir em múltiplas entradas.
+            </p>
           )}
         </div>
       )}
@@ -236,7 +257,7 @@ export function KnowledgeForm({
       </div>
 
       <div className="flex gap-2">
-        <Button type="submit" disabled={isLoading}>
+        <Button type="submit" disabled={isLoading || isContentOverLimit}>
           {isLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
           {mode === 'create' ? 'Criar e Indexar' : 'Salvar Alterações'}
         </Button>

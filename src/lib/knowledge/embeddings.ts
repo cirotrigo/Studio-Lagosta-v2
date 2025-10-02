@@ -1,15 +1,14 @@
 /**
- * Embeddings generation using OpenRouter via Vercel AI SDK
+ * Embeddings generation using OpenAI directly (OpenRouter doesn't support embeddings)
  * Uses text-embedding-3-small model for semantic search
  */
 
 import { embed, embedMany } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 
-// OpenRouter client configured like the chat route
-const openrouter = createOpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
+// Use OpenAI directly for embeddings (OpenRouter doesn't support this)
+const openai = createOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
 })
 
 /**
@@ -23,7 +22,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   const { embedding } = await embed({
-    model: openrouter.embedding('openai/text-embedding-3-small'),
+    model: openai.embedding('text-embedding-3-small'),
     value: text,
   })
 
@@ -47,7 +46,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   const { embeddings } = await embedMany({
-    model: openrouter.embedding('openai/text-embedding-3-small'),
+    model: openai.embedding('text-embedding-3-small'),
     values: validTexts,
   })
 

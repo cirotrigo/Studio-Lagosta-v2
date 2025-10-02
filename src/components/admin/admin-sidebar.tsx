@@ -11,6 +11,7 @@ import {
   SlidersHorizontal,
   Users,
   DollarSign,
+  BookOpen,
 } from "lucide-react";
 import {
   Sidebar,
@@ -36,6 +37,7 @@ const management: Item[] = [
   { title: "Usuários", href: "/admin/users", icon: Users },
   { title: "Créditos", href: "/admin/credits", icon: CreditCard },
   { title: "Armazenamento", href: "/admin/storage", icon: CreditCard },
+  { title: "Base de Conhecimento", href: "/admin/knowledge", icon: BookOpen },
 ];
 const reports: Item[] = [
   { title: "Histórico de Uso", href: "/admin/usage", icon: Activity },
