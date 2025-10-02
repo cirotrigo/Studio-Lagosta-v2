@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
-import { prisma } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, indexFile } from '@/lib/knowledge/indexer'
 
@@ -94,10 +94,10 @@ export async function GET(req: NextRequest) {
     }
 
     // Get total count
-    const total = await prisma.knowledgeBaseEntry.count({ where })
+    const total = await db.knowledgeBaseEntry.count({ where })
 
     // Get entries
-    const entries = await prisma.knowledgeBaseEntry.findMany({
+    const entries = await db.knowledgeBaseEntry.findMany({
       where,
       include: {
         _count: {

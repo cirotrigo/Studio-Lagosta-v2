@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
-import { prisma } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { updateEntry, deleteEntry } from '@/lib/knowledge/indexer'
 
@@ -59,7 +59,7 @@ export async function GET(
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
 
-    const entry = await prisma.knowledgeBaseEntry.findUnique({
+    const entry = await db.knowledgeBaseEntry.findUnique({
       where: { id },
       include: {
         chunks: {

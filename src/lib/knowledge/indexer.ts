@@ -3,17 +3,16 @@
  * Handles creating, updating, and deleting indexed entries
  */
 
-import { prisma } from '@/lib/db'
+import { db } from '@/lib/db'
 import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
-import type { EntryStatus } from '@prisma/client'
 
 export interface IndexEntryInput {
   title: string
   content: string
   tags?: string[]
-  status?: EntryStatus
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   tenant: TenantKey
 }
 
@@ -22,7 +21,7 @@ export interface IndexFileInput {
   filename: string
   fileContent: string
   tags?: string[]
-  status?: EntryStatus
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   tenant: TenantKey
 }
 
@@ -35,7 +34,7 @@ export async function indexEntry(input: IndexEntryInput) {
   const { title, content, tags = [], status = 'ACTIVE', tenant } = input
 
   // Create entry in database
-  const entry = await prisma.knowledgeBaseEntry.create({
+  const entry = await db.knowledgeBaseEntry.create({
     data: {
       title,
       content,
@@ -58,8 +57,8 @@ export async function indexEntry(input: IndexEntryInput) {
 
   // Create chunks in database
   const createdChunks = await Promise.all(
-    chunks.map((chunk, index) =>
-      prisma.knowledgeChunk.create({
+    chunks.map((chunk) =>
+      db.knowledgeChunk.create({
         data: {
           entryId: entry.id,
           ordinal: chunk.ordinal,
@@ -113,7 +112,7 @@ export async function indexFile(input: IndexFileInput) {
  */
 export async function reindexEntry(entryId: string, tenant: TenantKey) {
   // Get entry
-  const entry = await prisma.knowledgeBaseEntry.findUnique({
+  const entry = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
     include: { chunks: true },
   })
@@ -128,7 +127,7 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   }
 
   // Delete old chunks and vectors
-  await prisma.knowledgeChunk.deleteMany({
+  await db.knowledgeChunk.deleteMany({
     where: { entryId },
   })
 
@@ -146,8 +145,8 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
 
   // Create new chunks
   const createdChunks = await Promise.all(
-    chunks.map((chunk, index) =>
-      prisma.knowledgeChunk.create({
+    chunks.map((chunk) =>
+      db.knowledgeChunk.create({
         data: {
           entryId: entry.id,
           ordinal: chunk.ordinal,
@@ -189,12 +188,12 @@ export async function updateEntry(
     title?: string
     content?: string
     tags?: string[]
-    status?: EntryStatus
+    status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   },
   tenant: TenantKey
 ) {
   // Get existing entry
-  const existing = await prisma.knowledgeBaseEntry.findUnique({
+  const existing = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
   })
 
@@ -208,7 +207,7 @@ export async function updateEntry(
   }
 
   // Update entry
-  const entry = await prisma.knowledgeBaseEntry.update({
+  const entry = await db.knowledgeBaseEntry.update({
     where: { id: entryId },
     data: updates,
   })
@@ -228,7 +227,7 @@ export async function updateEntry(
  */
 export async function deleteEntry(entryId: string, tenant: TenantKey) {
   // Get entry to verify ownership
-  const entry = await prisma.knowledgeBaseEntry.findUnique({
+  const entry = await db.knowledgeBaseEntry.findUnique({
     where: { id: entryId },
   })
 
@@ -245,7 +244,7 @@ export async function deleteEntry(entryId: string, tenant: TenantKey) {
   await deleteVectorsByEntry(entryId, tenant)
 
   // Delete entry (chunks cascade delete via Prisma schema)
-  await prisma.knowledgeBaseEntry.delete({
+  await db.knowledgeBaseEntry.delete({
     where: { id: entryId },
   })
 

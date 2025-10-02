@@ -5,18 +5,28 @@
 
 import { Index } from '@upstash/vector'
 
-if (!process.env.UPSTASH_VECTOR_REST_URL) {
-  throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
-}
+// Singleton Upstash Vector index (lazy init to allow builds without env vars)
+let _vectorIndex: Index | null = null
 
-if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
-  throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
-}
+export const vectorIndex = new Proxy({} as Index, {
+  get(_target, prop) {
+    if (!_vectorIndex) {
+      if (!process.env.UPSTASH_VECTOR_REST_URL) {
+        throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
+      }
 
-// Singleton Upstash Vector index
-export const vectorIndex = new Index({
-  url: process.env.UPSTASH_VECTOR_REST_URL,
-  token: process.env.UPSTASH_VECTOR_REST_TOKEN,
+      if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
+        throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
+      }
+
+      _vectorIndex = new Index({
+        url: process.env.UPSTASH_VECTOR_REST_URL,
+        token: process.env.UPSTASH_VECTOR_REST_TOKEN,
+      })
+    }
+
+    return (_vectorIndex as any)[prop]
+  },
 })
 
 /**
@@ -58,11 +68,12 @@ export async function upsertVectors(
       entryId: chunk.entryId,
       ordinal: chunk.ordinal,
       status: chunk.status,
-      ...tenant,
-    } as VectorMetadata,
+      userId: tenant.userId || '',
+      workspaceId: tenant.workspaceId || '',
+    },
   }))
 
-  await vectorIndex.upsert(vectors)
+  await vectorIndex.upsert(vectors as any)
 }
 
 /**
@@ -140,7 +151,7 @@ export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey) {
 
   // Delete all matching vectors
   if (results.length > 0) {
-    const idsToDelete = results.map(r => r.id)
+    const idsToDelete = results.map(r => String(r.id))
     await vectorIndex.delete(idsToDelete)
   }
 }

@@ -5,8 +5,7 @@
 
 import { generateEmbedding } from './embeddings'
 import { queryVectors, type TenantKey } from './vector-client'
-import { prisma } from '@/lib/db'
-import type { EntryStatus } from '@prisma/client'
+import { db } from '@/lib/db'
 
 export interface SearchResult {
   entryId: string
@@ -33,7 +32,7 @@ export async function searchKnowledgeBase(
   tenant: TenantKey,
   options: {
     topK?: number
-    includeStatuses?: EntryStatus[]
+    includeStatuses?: ('ACTIVE' | 'DRAFT' | 'ARCHIVED')[]
     includeEntryMetadata?: boolean
     minScore?: number
   } = {}
@@ -66,8 +65,8 @@ export async function searchKnowledgeBase(
   }
 
   // Get chunk details from database
-  const chunkIds = filteredResults.map(r => r.id)
-  const chunks = await prisma.knowledgeChunk.findMany({
+  const chunkIds = filteredResults.map(r => String(r.id))
+  const chunks = await db.knowledgeChunk.findMany({
     where: {
       vectorId: { in: chunkIds },
     },
@@ -85,22 +84,24 @@ export async function searchKnowledgeBase(
   })
 
   // Map results
-  const results: SearchResult[] = filteredResults.map(vectorResult => {
-    const chunk = chunks.find(c => c.vectorId === vectorResult.id)
+  const results: SearchResult[] = filteredResults
+    .map(vectorResult => {
+      const chunk = chunks.find(c => c.vectorId === String(vectorResult.id))
 
-    if (!chunk) {
-      return null
-    }
+      if (!chunk) {
+        return null
+      }
 
-    return {
-      entryId: chunk.entryId,
-      chunkId: chunk.id,
-      content: chunk.content,
-      score: vectorResult.score,
-      ordinal: chunk.ordinal,
-      entry: includeEntryMetadata && 'entry' in chunk ? chunk.entry : undefined,
-    }
-  }).filter((r): r is SearchResult => r !== null)
+      return {
+        entryId: chunk.entryId,
+        chunkId: chunk.id,
+        content: chunk.content,
+        score: vectorResult.score,
+        ordinal: chunk.ordinal,
+        entry: includeEntryMetadata && 'entry' in chunk ? chunk.entry : undefined,
+      }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
 
   return results
 }
