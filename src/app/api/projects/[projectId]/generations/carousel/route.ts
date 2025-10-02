@@ -74,7 +74,7 @@ export async function POST(
             authorName: `Slide ${index + 1}/${slideCount}`,
           },
           include: {
-            template: true,
+            Template: true,
           },
         }),
       ),
@@ -98,7 +98,7 @@ export async function POST(
               completedAt: new Date(),
             },
             include: {
-              template: {
+              Template: {
                 select: {
                   id: true,
                   name: true,

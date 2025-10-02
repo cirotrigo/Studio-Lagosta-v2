@@ -23,10 +23,10 @@ export async function DELETE(
 
   const logo = await db.logo.findFirst({
     where: { id: logoIdNum },
-    include: { project: true },
+    include: { Project: true },
   })
 
-  if (!logo || logo.project.userId !== userId || logo.projectId !== projectIdNum) {
+  if (!logo || logo.Project.userId !== userId || logo.projectId !== projectIdNum) {
     return NextResponse.json({ error: 'Logo não encontrado' }, { status: 404 })
   }
 

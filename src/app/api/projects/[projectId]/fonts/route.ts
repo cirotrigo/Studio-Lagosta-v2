@@ -71,7 +71,13 @@ export async function POST(
 
   const token = process.env.BLOB_READ_WRITE_TOKEN
   if (!token) {
-    return NextResponse.json({ error: 'BLOB_READ_WRITE_TOKEN não configurado' }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: 'BLOB_READ_WRITE_TOKEN não configurado',
+        help: 'Configure o token do Vercel Blob no arquivo .env. Veja SETUP-BLOB.md para instruções detalhadas.'
+      },
+      { status: 500 }
+    )
   }
 
   const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')

@@ -23,10 +23,10 @@ export async function DELETE(
 
   const element = await db.element.findFirst({
     where: { id: elementIdNum },
-    include: { project: true },
+    include: { Project: true },
   })
 
-  if (!element || element.project.userId !== userId || element.projectId !== projectIdNum) {
+  if (!element || element.Project.userId !== userId || element.projectId !== projectIdNum) {
     return NextResponse.json({ error: 'Elemento não encontrado' }, { status: 404 })
   }
 

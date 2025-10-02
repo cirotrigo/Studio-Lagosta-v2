@@ -24,8 +24,8 @@ export async function GET(req: Request) {
       { contentType: { contains: q, mode: 'insensitive' } },
       { pathname: { contains: q, mode: 'insensitive' } },
       { url: { contains: q, mode: 'insensitive' } },
-      { user: { email: { contains: q, mode: 'insensitive' } } },
-      { user: { name: { contains: q, mode: 'insensitive' } } },
+      { User: { email: { contains: q, mode: 'insensitive' } } },
+      { User: { name: { contains: q, mode: 'insensitive' } } },
     ]
   }
   if (type) {
@@ -37,7 +37,7 @@ export async function GET(req: Request) {
 
   const items = await db.storageObject.findMany({
     where,
-    include: { user: { select: { id: true, clerkId: true, email: true, name: true } } },
+    include: { User: { select: { id: true, clerkId: true, email: true, name: true } } },
     orderBy: { createdAt: 'desc' },
     take: limit + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),

@@ -64,22 +64,31 @@ Isso significa que você precisa configurar o token do Vercel Blob.
    vercel env pull .env.local
    ```
 
-### Opção 3: Mock para Desenvolvimento (Temporário)
+### Opção 3: Usar o Blob do Vercel em Desenvolvimento
 
-Se você só quer testar o fluxo sem upload real:
+Para desenvolvimento local, a melhor opção é:
 
-1. **Instale o mock**
+1. **Crie uma conta gratuita no Vercel**
+   - Acesse https://vercel.com/signup
+   - O plano gratuito inclui 1GB de Blob storage
+
+2. **Crie um projeto vazio no Vercel (se ainda não tiver)**
    ```bash
-   npm install --save-dev @vercel/blob-mock
+   vercel login
+   vercel link
    ```
 
-2. **Configure no `.env.local`**
+3. **Crie o Blob Storage**
+   - Acesse https://vercel.com/dashboard
+   - Selecione seu projeto
+   - Vá em "Storage" → "Create" → "Blob"
+   - Copie o token gerado
+
+4. **Configure localmente**
+   - Cole o token no `.env`:
    ```env
-   # Use uma URL mock para desenvolvimento
-   BLOB_READ_WRITE_TOKEN=vercel_blob_mock_token_dev_only
+   BLOB_READ_WRITE_TOKEN=vercel_blob_rw_XXXXXXXXXXXXXXXX
    ```
-
-3. **Crie um mock no código** (não recomendado para produção)
 
 ## 📝 Variáveis de Ambiente Necessárias
 

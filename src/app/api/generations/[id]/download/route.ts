@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const generation = await db.generation.findFirst({
       where: { id },
       include: {
-        project: {
+        Project: {
           select: {
             userId: true,
           },
@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // Verificar ownership
-    if (generation.project.userId !== userId) {
+    if (generation.Project.userId !== userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

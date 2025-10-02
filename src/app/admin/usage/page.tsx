@@ -59,8 +59,8 @@ export default function UsagePage() {
     const headers = ["Data", "Usuário", "Email", "Operação", "Créditos"];
     const rows = usageHistory.map(record => [
       new Date(record.timestamp).toLocaleString(),
-      record.user.name || "Desconhecido",
-      record.user.email,
+      record.User.name || "Desconhecido",
+      record.User.email,
       record.operationType.replace(/_/g, " "),
       record.creditsUsed.toString(),
     ]);
@@ -249,9 +249,9 @@ export default function UsagePage() {
               return (
                 <div>
                   <p className="font-medium text-foreground">
-                    {item.user.name || "Sem nome"}
+                    {item.User.name || "Sem nome"}
                   </p>
-                  <p className="text-sm text-muted-foreground">{item.user.email}</p>
+                  <p className="text-sm text-muted-foreground">{item.User.email}</p>
                 </div>
               );
             },

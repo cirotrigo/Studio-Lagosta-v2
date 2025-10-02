@@ -23,10 +23,10 @@ export async function DELETE(
 
   const font = await db.customFont.findFirst({
     where: { id: fontIdNum },
-    include: { project: true },
+    include: { Project: true },
   })
 
-  if (!font || font.project.userId !== userId || font.projectId !== projectIdNum) {
+  if (!font || font.Project.userId !== userId || font.projectId !== projectIdNum) {
     return NextResponse.json({ error: 'Fonte não encontrada' }, { status: 404 })
   }
 

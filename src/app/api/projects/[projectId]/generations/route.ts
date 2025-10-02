@@ -42,7 +42,7 @@ export async function GET(
       db.generation.findMany({
         where: { projectId: projectIdNum },
         include: {
-          template: {
+          Template: {
             select: {
               id: true,
               name: true,
@@ -125,7 +125,7 @@ export async function POST(
         templateName: template.name,
       },
       include: {
-        template: true,
+        Template: true,
       },
     })
 
@@ -146,7 +146,7 @@ export async function POST(
           completedAt: new Date(),
         },
         include: {
-          template: {
+          Template: {
             select: {
               id: true,
               name: true,

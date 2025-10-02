@@ -11,11 +11,11 @@ export interface User {
   name: string;
   isActive?: boolean;
   createdAt: string;
-  creditBalance?: {
+  CreditBalance?: {
     creditsRemaining: number;
   };
   _count?: {
-    usageHistory: number;
+    UsageHistory: number;
   };
 }
 

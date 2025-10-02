@@ -1,9 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
   output   = "./generated/client"
@@ -14,84 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id                 String              @id @default(cuid())
-  clerkId            String              @unique
-  email              String?             @unique
-  name               String?
-  isActive           Boolean             @default(true)
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
-  creditBalance      CreditBalance?
-  usageHistory       UsageHistory[]
-  storageObjects     StorageObject[]
-  subscriptionEvents SubscriptionEvent[]
-
-  @@index([email])
-  @@index([name])
-  @@index([createdAt])
-  @@index([isActive])
-}
-
-// Workspace features and linkage to projects
-model Feature {
-  id          String   @id @default(cuid())
-  workspaceId String
-  name        String
-  description String?
-  tags        String[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([workspaceId])
-}
-
-model CreditBalance {
-  id               String   @id @default(cuid())
-  userId           String   @unique
-  clerkUserId      String   @unique
-  creditsRemaining Int      @default(100) // Cached from Clerk
-  lastSyncedAt     DateTime @default(now())
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-
-  user         User           @relation(fields: [userId], references: [id])
-  usageHistory UsageHistory[]
-
-  @@index([userId])
-  @@index([clerkUserId])
-  @@index([creditsRemaining])
-  @@index([lastSyncedAt])
-}
-
-// Track individual usage events
-model UsageHistory {
-  id              String        @id @default(cuid())
-  userId          String
-  creditBalanceId String
-  operationType   OperationType
-  creditsUsed     Int
-  details         Json?
-  timestamp       DateTime      @default(now())
-
-  user          User          @relation(fields: [userId], references: [id])
-  creditBalance CreditBalance @relation(fields: [creditBalanceId], references: [id])
-
-  @@index([userId])
-  @@index([creditBalanceId])
-  @@index([timestamp])
-  @@index([operationType])
-  @@index([userId, timestamp])
-  @@index([operationType, timestamp])
-}
-
-enum OperationType {
-  AI_TEXT_CHAT
-  AI_IMAGE_GENERATION
-}
-
-// Singleton row storing admin-configurable credit settings
 model AdminSettings {
   id           String   @id @default("singleton")
   featureCosts Json?
@@ -99,35 +15,149 @@ model AdminSettings {
   updatedAt    DateTime @updatedAt
 }
 
-// Subscription plans sourced from Clerk and configured credits
+model CreditBalance {
+  id               String         @id @default(cuid())
+  userId           String         @unique
+  clerkUserId      String         @unique
+  creditsRemaining Int            @default(100)
+  lastSyncedAt     DateTime       @default(now())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  User             User           @relation(fields: [userId], references: [id])
+  UsageHistory     UsageHistory[]
+
+  @@index([clerkUserId])
+  @@index([creditsRemaining])
+  @@index([lastSyncedAt])
+  @@index([userId])
+}
+
+model CustomFont {
+  id         Int      @id @default(autoincrement())
+  name       String
+  fontFamily String
+  fileUrl    String
+  projectId  Int
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  Project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+model Element {
+  id         Int      @id @default(autoincrement())
+  name       String
+  fileUrl    String
+  category   String?
+  projectId  Int
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  Project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([category])
+  @@index([projectId])
+}
+
+model Feature {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?
+  tags        String[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId])
+}
+
+model Generation {
+  id                   String           @id @default(cuid())
+  status               GenerationStatus @default(PROCESSING)
+  templateId           Int
+  fieldValues          Json
+  resultUrl            String?
+  projectId            Int
+  authorName           String?
+  templateName         String?
+  projectName          String?
+  createdBy            String
+  createdAt            DateTime         @default(now())
+  completedAt          DateTime?
+  googleDriveFileId    String?
+  googleDriveBackupUrl String?
+  Project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Template             Template         @relation(fields: [templateId], references: [id])
+
+  @@index([createdAt])
+  @@index([createdBy])
+  @@index([projectId])
+  @@index([status])
+  @@index([templateId])
+}
+
+model Logo {
+  id         Int      @id @default(autoincrement())
+  name       String
+  fileUrl    String
+  projectId  Int
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  Project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
 model Plan {
   id                String   @id @default(cuid())
-  clerkId           String?  @unique // Clerk plan ID (e.g., cplan_*)
+  clerkId           String?  @unique
   clerkName         String?
   name              String
   credits           Int
   active            Boolean  @default(true)
-  sortOrder         Int      @default(0)
-  // Pricing synced from Clerk (amounts in cents)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
   currency          String?
   priceMonthlyCents Int?
   priceYearlyCents  Int?
-  description       String?  @db.Text
-  features          Json?
   badge             String?
-  highlight         Boolean  @default(false)
-  ctaType           String?  @default("checkout")
   ctaLabel          String?
+  ctaType           String?  @default("checkout")
   ctaUrl            String?
+  description       String?
+  features          Json?
+  highlight         Boolean  @default(false)
   billingSource     String   @default("clerk")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  sortOrder         Int      @default(0)
 
   @@index([active])
-  @@index([sortOrder])
 }
 
-// File/object uploads tracked for admin management
+model Project {
+  id                     Int           @id @default(autoincrement())
+  name                   String
+  description            String?
+  status                 ProjectStatus @default(ACTIVE)
+  logoUrl                String?
+  googleDriveFolderId    String?
+  makeWebhookAnalyzeUrl  String?
+  makeWebhookCreativeUrl String?
+  userId                 String
+  workspaceId            Int?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  googleDriveFolderName  String?
+  CustomFont             CustomFont[]
+  Element                Element[]
+  Generation             Generation[]
+  Logo                   Logo[]
+  Template               Template[]
+
+  @@index([status])
+  @@index([userId])
+  @@index([workspaceId])
+}
+
 model StorageObject {
   id          String    @id @default(cuid())
   userId      String
@@ -141,18 +171,16 @@ model StorageObject {
   deletedAt   DateTime?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  User        User      @relation(fields: [userId], references: [id])
 
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([createdAt])
   @@index([clerkUserId])
   @@index([contentType])
+  @@index([createdAt])
   @@index([deletedAt])
   @@index([name])
+  @@index([userId])
 }
 
-// Track subscription lifecycle events for revenue analytics
 model SubscriptionEvent {
   id          String   @id @default(cuid())
   userId      String?
@@ -163,47 +191,10 @@ model SubscriptionEvent {
   occurredAt  DateTime @default(now())
   metadata    Json?
   createdAt   DateTime @default(now())
-
-  user User? @relation(fields: [userId], references: [id])
+  User        User?    @relation(fields: [userId], references: [id])
 
   @@index([clerkUserId, occurredAt])
   @@index([userId, occurredAt])
-}
-
-// -----------------------------------------------------------------------------
-// Studio Lagosta V2 — Templates & Generations domain
-
-model Project {
-  id                     Int           @id @default(autoincrement())
-  name                   String
-  description            String?       @db.Text
-  status                 ProjectStatus @default(ACTIVE)
-  logoUrl                String?
-  googleDriveFolderId    String?
-  googleDriveFolderName  String?
-  makeWebhookAnalyzeUrl  String?
-  makeWebhookCreativeUrl String?
-  userId                 String
-  workspaceId            Int?
-
-  templates   Template[]
-  generations Generation[]
-  logos       Logo[]
-  elements    Element[]
-  fonts       CustomFont[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([userId])
-  @@index([workspaceId])
-  @@index([status])
-}
-
-enum ProjectStatus {
-  ACTIVE
-  INACTIVE
-  ARCHIVED
 }
 
 model Template {
@@ -212,49 +203,56 @@ model Template {
   type          TemplateType
   dimensions    String
   designData    Json
-  dynamicFields Json         @default(dbgenerated("'[]'::jsonb"))
+  dynamicFields Json         @default("[]")
   thumbnailUrl  String?
   projectId     Int
-  project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  generations   Generation[]
   createdBy     String
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+  Generation    Generation[]
+  Project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
+  @@index([createdBy])
   @@index([projectId])
   @@index([type])
-  @@index([createdBy])
 }
 
-enum TemplateType {
-  STORY
-  FEED
-  SQUARE
+model UsageHistory {
+  id              String        @id @default(cuid())
+  userId          String
+  creditBalanceId String
+  operationType   OperationType
+  creditsUsed     Int
+  details         Json?
+  timestamp       DateTime      @default(now())
+  CreditBalance   CreditBalance @relation(fields: [creditBalanceId], references: [id])
+  User            User          @relation(fields: [userId], references: [id])
+
+  @@index([creditBalanceId])
+  @@index([operationType])
+  @@index([operationType, timestamp])
+  @@index([timestamp])
+  @@index([userId])
+  @@index([userId, timestamp])
 }
 
-model Generation {
-  id           String           @id @default(cuid())
-  status       GenerationStatus @default(PROCESSING)
-  templateId   Int
-  template     Template         @relation(fields: [templateId], references: [id], onDelete: Restrict)
-  fieldValues  Json
-  resultUrl    String?
-  googleDriveFileId  String?
-  googleDriveBackupUrl String?
-  projectId    Int
-  project      Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  authorName   String?
-  templateName String?
-  projectName  String?
-  createdBy    String
-  createdAt    DateTime         @default(now())
-  completedAt  DateTime?
+model User {
+  id                String              @id @default(cuid())
+  clerkId           String              @unique
+  email             String?             @unique
+  name              String?
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  CreditBalance     CreditBalance?
+  StorageObject     StorageObject[]
+  SubscriptionEvent SubscriptionEvent[]
+  UsageHistory      UsageHistory[]
 
-  @@index([projectId])
-  @@index([templateId])
-  @@index([status])
-  @@index([createdBy])
   @@index([createdAt])
+  @@index([email])
+  @@index([isActive])
+  @@index([name])
 }
 
 enum GenerationStatus {
@@ -263,41 +261,19 @@ enum GenerationStatus {
   FAILED
 }
 
-model Logo {
-  id         Int      @id @default(autoincrement())
-  name       String
-  fileUrl    String
-  projectId  Int
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploadedBy String
-  createdAt  DateTime @default(now())
-
-  @@index([projectId])
+enum OperationType {
+  AI_TEXT_CHAT
+  AI_IMAGE_GENERATION
 }
 
-model Element {
-  id         Int      @id @default(autoincrement())
-  name       String
-  fileUrl    String
-  category   String?
-  projectId  Int
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploadedBy String
-  createdAt  DateTime @default(now())
-
-  @@index([projectId])
-  @@index([category])
+enum ProjectStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
 }
 
-model CustomFont {
-  id         Int      @id @default(autoincrement())
-  name       String
-  fontFamily String
-  fileUrl    String
-  projectId  Int
-  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploadedBy String
-  createdAt  DateTime @default(now())
-
-  @@index([projectId])
+enum TemplateType {
+  STORY
+  FEED
+  SQUARE
 }

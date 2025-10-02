@@ -359,7 +359,7 @@ export default function UsersPage() {
                     <div className="flex items-center space-x-2">
                       <CreditCard className="h-4 w-4 text-muted-foreground" />
                       <span className="text-foreground">
-                        {user.creditBalance?.creditsRemaining || 0}
+                        {user.CreditBalance?.creditsRemaining || 0}
                       </span>
                     </div>
                   );
@@ -372,7 +372,7 @@ export default function UsersPage() {
                   const user = item as User;
                   return (
                     <span className="text-muted-foreground">
-                      {user._count?.usageHistory || 0} operações
+                      {user._count?.UsageHistory || 0} operações
                     </span>
                   );
                 },
@@ -425,7 +425,7 @@ export default function UsersPage() {
                           Editar Usuário
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => promptAndUpdateCredits(user.id, user.creditBalance?.creditsRemaining)}
+                          onClick={() => promptAndUpdateCredits(user.id, user.CreditBalance?.creditsRemaining)}
                         >
                           <CreditCard className="h-4 w-4 mr-2" />
                           Ajustar Créditos

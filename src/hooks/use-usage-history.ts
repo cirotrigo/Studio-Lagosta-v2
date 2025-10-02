@@ -5,7 +5,7 @@ import { api } from '@/lib/api-client';
 
 export interface UsageRecord {
   id: string;
-  user: {
+  User: {
     name: string;
     email: string;
   };

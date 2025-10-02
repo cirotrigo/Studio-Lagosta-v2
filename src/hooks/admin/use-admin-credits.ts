@@ -6,7 +6,7 @@ import { api } from "@/lib/api-client";
 
 export interface CreditBalance {
   id: string;
-  user: {
+  User: {
     id: string;
     name: string;
     email: string;
@@ -14,7 +14,7 @@ export interface CreditBalance {
   creditsRemaining: number;
   lastSyncedAt: string;
   _count?: {
-    usageHistory: number;
+    UsageHistory: number;
   };
 }
 

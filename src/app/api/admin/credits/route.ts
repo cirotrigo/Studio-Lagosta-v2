@@ -23,7 +23,7 @@ export async function GET(request: Request) {
     const whereClause: Prisma.CreditBalanceWhereInput = {}
 
     if (search) {
-      whereClause.user = {
+      whereClause.User = {
         is: {
           OR: [
             { name: { contains: search, mode: "insensitive" } },
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       db.creditBalance.findMany({
         where: whereClause,
         include: {
-          user: {
+          User: {
             select: {
               id: true,
               name: true,
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
             ? {
                 _count: {
                   select: {
-                    usageHistory: true
+                    UsageHistory: true
                   }
                 }
               }

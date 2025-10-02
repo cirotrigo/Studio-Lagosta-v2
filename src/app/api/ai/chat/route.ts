@@ -109,11 +109,13 @@ export async function POST(req: Request) {
       }
 
       // If there are attachments, append a user message listing them so the model can reference the files
-      let mergedMessages = messages
+      type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string }
+      // After zod validation, messages are guaranteed to have role and content
+      let mergedMessages: ChatMessage[] = messages as ChatMessage[]
       if (attachments && attachments.length > 0) {
         const lines = attachments.map(a => `- ${a.name}: ${a.url}`).join('\n')
         const attachNote = `Anexos:\n${lines}`
-        mergedMessages = [...messages, { role: 'user' as const, content: attachNote }]
+        mergedMessages = [...(messages as ChatMessage[]), { role: 'user' as const, content: attachNote }]
       }
 
       // Credits: 1 credit per LLM request

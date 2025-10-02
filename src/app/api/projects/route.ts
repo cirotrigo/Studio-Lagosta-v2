@@ -15,7 +15,7 @@ export async function GET() {
     where: { userId },
     include: {
       _count: {
-        select: { templates: true, generations: true },
+        select: { Template: true, Generation: true },
       },
     },
     orderBy: { updatedAt: 'desc' },

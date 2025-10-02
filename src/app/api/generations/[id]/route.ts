@@ -17,7 +17,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const generation = await db.generation.findFirst({
       where: { id },
       include: {
-        template: {
+        Template: {
           select: {
             id: true,
             name: true,
@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
             designData: true,
           },
         },
-        project: {
+        Project: {
           select: {
             id: true,
             name: true,
@@ -41,7 +41,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     }
 
     // Verificar ownership
-    if (generation.project.userId !== userId) {
+    if (generation.Project.userId !== userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
@@ -65,7 +65,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     const generation = await db.generation.findFirst({
       where: { id },
       include: {
-        project: {
+        Project: {
           select: {
             userId: true,
           },
@@ -78,7 +78,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     }
 
     // Verificar ownership
-    if (generation.project.userId !== userId) {
+    if (generation.Project.userId !== userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

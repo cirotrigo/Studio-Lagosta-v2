@@ -81,8 +81,8 @@ export async function PUT(
         email: data.email ?? existing.email,
       },
       include: {
-        creditBalance: { select: { creditsRemaining: true } },
-        _count: { select: { usageHistory: true } },
+        CreditBalance: { select: { creditsRemaining: true } },
+        _count: { select: { UsageHistory: true } },
       },
     });
 

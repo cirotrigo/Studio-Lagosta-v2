@@ -21,7 +21,9 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "deploy:check": "bash scripts/pre-deploy-check.sh",
+    "deploy:vercel": "npm run deploy:check && vercel --prod"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.16",

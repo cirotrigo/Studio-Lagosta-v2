@@ -20,7 +20,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const template = await db.template.findFirst({
       where: { id: templateId },
       include: {
-        project: {
+        Project: {
           select: {
             userId: true,
           },
@@ -33,7 +33,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // Verificar ownership
-    if (template.project.userId !== userId) {
+    if (template.Project.userId !== userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
     if (q) {
       andFilters.push({
-        user: {
+        User: {
           is: {
             OR: [
               { name: { contains: q, mode: 'insensitive' } },
@@ -60,7 +60,7 @@ export async function GET(request: Request) {
       db.usageHistory.findMany({
         where: whereClause,
         include: {
-          user: { select: { name: true, email: true } },
+          User: { select: { name: true, email: true } },
         },
         orderBy: { timestamp: "desc" },
         skip: (page - 1) * pageSize,

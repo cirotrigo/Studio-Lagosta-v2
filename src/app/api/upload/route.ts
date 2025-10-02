@@ -26,6 +26,13 @@ export async function POST(req: Request) {
     const key = `uploads/${userId}/${Date.now()}-${safeName}`
 
     const token = process.env.BLOB_READ_WRITE_TOKEN
+    if (!token) {
+      return NextResponse.json(
+        { error: 'BLOB_READ_WRITE_TOKEN não configurado. Veja SETUP-BLOB.md para instruções.' },
+        { status: 500 }
+      )
+    }
+
     const uploaded = await put(key, file, { access: 'public', token })
 
     // Persist record for admin management

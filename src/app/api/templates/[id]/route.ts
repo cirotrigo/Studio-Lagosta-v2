@@ -22,7 +22,7 @@ export async function GET(
   }
 
   const template = await db.template.findFirst({
-    where: { id: templateId, project: { userId } },
+    where: { id: templateId, Project: { userId } },
   })
 
   if (!template) {
@@ -49,10 +49,10 @@ export async function PUT(
 
   const existing = await db.template.findFirst({
     where: { id: templateId },
-    include: { project: true },
+    include: { Project: true },
   })
 
-  if (!existing || existing.project.userId !== userId) {
+  if (!existing || existing.Project.userId !== userId) {
     return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
   }
 

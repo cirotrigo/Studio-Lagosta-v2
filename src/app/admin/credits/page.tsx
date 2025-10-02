@@ -156,9 +156,9 @@ export default function CreditsPage() {
               return (
                 <div>
                   <p className="font-medium text-foreground">
-                    {b.user.name || "Sem nome"}
+                    {b.User.name || "Sem nome"}
                   </p>
-                  <p className="text-sm text-muted-foreground">{b.user.email}</p>
+                  <p className="text-sm text-muted-foreground">{b.User.email}</p>
                 </div>
               );
             },
@@ -189,7 +189,7 @@ export default function CreditsPage() {
               const b = balance as CreditBalance;
               return (
                 <span className="text-muted-foreground">
-                  {b._count?.usageHistory || 0} operações
+                  {b._count?.UsageHistory || 0} operações
                 </span>
               );
             },
@@ -255,7 +255,7 @@ export default function CreditsPage() {
                   <DialogHeader>
                     <DialogTitle className="text-foreground">Ajustar Créditos</DialogTitle>
                     <DialogDescription className="text-muted-foreground">
-                      Ajustar saldo de créditos para {b.user.name || b.user.email}
+                      Ajustar saldo de créditos para {b.User.name || b.User.email}
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4 py-4">

@@ -220,12 +220,11 @@ export function DesktopGoogleDriveModal({
                 }
 
                 return (
-                  <button
-                    type="button"
+                  <div
                     key={item.id}
                     onClick={() => setSelected(item)}
                     className={cn(
-                      'group flex flex-col items-start gap-3 rounded-lg border p-4 text-left transition hover:border-primary',
+                      'group flex cursor-pointer flex-col items-start gap-3 rounded-lg border p-4 text-left transition hover:border-primary',
                       isSelected ? 'border-primary ring-2 ring-primary/40' : 'border-border',
                     )}
                   >
@@ -263,7 +262,7 @@ export function DesktopGoogleDriveModal({
                         </Button>
                       )}
                     </div>
-                  </button>
+                  </div>
                 )
               })}
             </div>

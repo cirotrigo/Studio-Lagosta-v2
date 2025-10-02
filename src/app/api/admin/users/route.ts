@@ -43,7 +43,7 @@ export async function GET(request: Request) {
       db.user.findMany({
         where: whereClause,
         include: {
-          creditBalance: {
+          CreditBalance: {
             select: {
               creditsRemaining: true,
             },
@@ -51,7 +51,7 @@ export async function GET(request: Request) {
           ...(includeUsageCount ? {
             _count: {
               select: {
-                usageHistory: true,
+                UsageHistory: true,
               },
             },
           } : {}),
