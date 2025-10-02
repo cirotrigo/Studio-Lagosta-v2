@@ -277,3 +277,43 @@ enum TemplateType {
   FEED
   SQUARE
 }
+
+enum EntryStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+model KnowledgeBaseEntry {
+  id          String      @id @default(cuid())
+  title       String
+  content     String      @db.Text
+  tags        String[]
+  status      EntryStatus @default(ACTIVE)
+  userId      String?
+  workspaceId String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  chunks      KnowledgeChunk[]
+
+  @@index([userId])
+  @@index([workspaceId])
+  @@index([status])
+  @@map("knowledge_base_entries")
+}
+
+model KnowledgeChunk {
+  id        String              @id @default(cuid())
+  entryId   String
+  ordinal   Int
+  content   String              @db.Text
+  tokens    Int?
+  vectorId  String
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+  entry     KnowledgeBaseEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@unique([entryId, ordinal])
+  @@index([entryId])
+  @@map("knowledge_chunks")
+}
