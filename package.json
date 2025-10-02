@@ -22,6 +22,7 @@
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
     "db:studio": "prisma studio",
+    "db:backup": "bash scripts/backup-configs.sh",
     "deploy:check": "bash scripts/pre-deploy-check.sh",
     "deploy:vercel": "npm run deploy:check && vercel --prod"
   },
