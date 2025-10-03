@@ -59,6 +59,7 @@ export function KonvaEditorStage() {
     redo,
     canUndo,
     canRedo,
+    setStageInstance,
   } = useTemplateEditor()
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
@@ -70,12 +71,21 @@ export function KonvaEditorStage() {
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
+  const deferredLayers = React.useDeferredValue(design.layers)
 
   const updateCursor = React.useCallback((cursor: keyof typeof CURSORS) => {
     const container = stageRef.current?.container()
     if (!container) return
     container.style.cursor = CURSORS[cursor]
   }, [])
+
+  React.useEffect(() => {
+    if (stageRef.current) {
+      setStageInstance(stageRef.current)
+      updateCursor(spacePressedRef.current ? 'grab' : 'default')
+    }
+    return () => setStageInstance(null)
+  }, [setStageInstance, updateCursor])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -191,6 +201,17 @@ export function KonvaEditorStage() {
   const handleLayerDragEnd = React.useCallback(() => {
     setGuides([])
   }, [])
+
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => {
+      const stage = stageRef.current
+      if (stage) {
+        stage.position(stagePosition)
+        stage.batchDraw()
+      }
+    })
+    return () => cancelAnimationFrame(id)
+  }, [deferredLayers, stagePosition, zoom])
 
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -337,7 +358,7 @@ export function KonvaEditorStage() {
           </KonvaLayer>
 
           <KonvaLayer>
-            {design.layers.map((layer) => (
+            {deferredLayers.map((layer) => (
               <KonvaLayerFactory
                 key={layer.id}
                 layer={layer}
@@ -348,10 +369,7 @@ export function KonvaEditorStage() {
                 onDragEnd={handleLayerDragEnd}
               />
             ))}
-            <KonvaSelectionTransformer
-              selectedLayerIds={selectedLayerIds}
-              stageRef={stageRef}
-            />
+            <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />
           </KonvaLayer>
         </Stage>
       </div>

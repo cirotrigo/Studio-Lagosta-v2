@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import type { DesignData, DynamicField, Layer } from '@/types/template'
+import type Konva from 'konva'
 import { FONT_CONFIG } from '@/lib/font-config'
 
 export interface TemplateResource {
@@ -55,11 +56,28 @@ export interface TemplateEditorContextValue {
   redo: () => void
   canUndo: boolean
   canRedo: boolean
+  isExporting: boolean
+  exportHistory: ExportRecord[]
+  exportDesign: (format: 'png' | 'jpeg') => Promise<ExportRecord>
+  removeExport: (id: string) => void
+  clearExports: () => void
+  setStageInstance: (stage: Konva.Stage | null) => void
   loadTemplate: (payload: {
     designData: DesignData
     dynamicFields?: DynamicField[] | null
     name?: string
   }) => void
+}
+
+export interface ExportRecord {
+  id: string
+  format: 'png' | 'jpeg'
+  dataUrl: string
+  width: number
+  height: number
+  fileName: string
+  sizeBytes: number
+  createdAt: number
 }
 
 const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
@@ -93,15 +111,18 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
-  const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>(() => {
-    const firstId = template.designData.layers?.[0]?.id
-    return firstId ? [firstId] : []
-  })
-  const [dirty, setDirty] = React.useState(false)
-  const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM)
-  const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })
-  const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false })
-  const clipboardRef = React.useRef<Layer[] | null>(null)
+const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>(() => {
+  const firstId = template.designData.layers?.[0]?.id
+  return firstId ? [firstId] : []
+})
+const [dirty, setDirty] = React.useState(false)
+const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM)
+const [isExporting, setIsExporting] = React.useState(false)
+const [exportHistory, setExportHistory] = React.useState<ExportRecord[]>([])
+const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })
+const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false })
+const clipboardRef = React.useRef<Layer[] | null>(null)
+const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 
   // Sync when template prop changes (e.g., refetch)
   React.useEffect(() => {
@@ -117,6 +138,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     setZoomState(DEFAULT_ZOOM)
     historyRef.current = { past: [], future: [] }
     setHistoryMeta({ canUndo: false, canRedo: false })
+    setExportHistory([])
   }, [template.id, template.updatedAt, template.name, template.designData, template.dynamicFields])
 
   const updateHistoryMeta = React.useCallback(() => {
@@ -132,6 +154,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const zoomIn = React.useCallback(() => setZoomState((prev) => Math.min(prev + 0.1, 2)), [])
   const zoomOut = React.useCallback(() => setZoomState((prev) => Math.max(prev - 0.1, 0.25)), [])
+
+  const setStageInstance = React.useCallback((stage: Konva.Stage | null) => {
+    stageInstanceRef.current = stage
+  }, [])
 
   const applyDesign = React.useCallback(
     (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean }) => {
@@ -397,6 +423,45 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     })
   }, [updateHistoryMeta])
 
+  const exportDesign = React.useCallback(
+    async (format: 'png' | 'jpeg') => {
+      const stage = stageInstanceRef.current
+      if (!stage) {
+        throw new Error('Canvas não está pronto para exportação.')
+      }
+      setIsExporting(true)
+      try {
+        const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
+        const dataUrl = stage.toDataURL({ pixelRatio: 2, mimeType })
+        const base64 = dataUrl.split(',')[1] ?? ''
+        const sizeBytes = Math.round((base64.length * 3) / 4)
+        const record: ExportRecord = {
+          id: crypto.randomUUID(),
+          format,
+          dataUrl,
+          width: stage.width(),
+          height: stage.height(),
+          fileName: `template-${template.id}-${Date.now()}.${format === 'png' ? 'png' : 'jpg'}`,
+          sizeBytes,
+          createdAt: Date.now(),
+        }
+        setExportHistory((prev) => [record, ...prev].slice(0, 20))
+        return record
+      } finally {
+        setIsExporting(false)
+      }
+    },
+    [template.id],
+  )
+
+  const removeExport = React.useCallback((id: string) => {
+    setExportHistory((prev) => prev.filter((item) => item.id !== id))
+  }, [])
+
+  const clearExports = React.useCallback(() => {
+    setExportHistory([])
+  }, [])
+
   const loadTemplate = React.useCallback(
     ({ designData, dynamicFields: nextDynamicFields, name: nextName }: {
       designData: DesignData
@@ -493,6 +558,12 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       redo,
       canUndo: historyMeta.canUndo,
       canRedo: historyMeta.canRedo,
+      isExporting,
+      exportHistory,
+      exportDesign,
+      removeExport,
+      clearExports,
+      setStageInstance,
     }),
     [
       template.id,
@@ -532,6 +603,12 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       redo,
       historyMeta.canUndo,
       historyMeta.canRedo,
+      isExporting,
+      exportHistory,
+      exportDesign,
+      removeExport,
+      clearExports,
+      setStageInstance,
     ],
   )
 
