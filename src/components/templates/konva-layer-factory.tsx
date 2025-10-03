@@ -2,12 +2,13 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Text, Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path, Group, Layer as KonvaLayer } from 'react-konva'
+import { Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaImageCrop } from './konva-image-crop'
+import { KonvaEditableText } from './konva-editable-text'
 
 /**
  * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
@@ -180,27 +181,14 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   switch (layer.type) {
     case 'text':
       return (
-        <Text
-          {...commonProps}
-          ref={shapeRef as React.RefObject<Konva.Text>}
-          text={layer.content ?? ''}
-          width={Math.max(20, layer.size?.width ?? 0)}
-          height={Math.max(20, layer.size?.height ?? 0)}
-          fontSize={layer.style?.fontSize ?? 16}
-          fontFamily={layer.style?.fontFamily ?? 'Inter'}
-          fontStyle={layer.style?.fontStyle ?? 'normal'}
-          fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
-          fill={layer.style?.color ?? '#000000'}
-          align={layer.style?.textAlign ?? 'left'}
-          padding={6}
-          lineHeight={layer.style?.lineHeight ?? 1.2}
-          letterSpacing={layer.style?.letterSpacing ?? 0}
-          wrap="word"
-          ellipsis={false}
-          listening={commonProps.listening}
-          perfectDrawEnabled={false}
-          stroke={borderWidth > 0 ? borderColor : undefined}
-          strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+        <KonvaEditableText
+          layer={layer}
+          shapeRef={shapeRef as React.RefObject<Konva.Text>}
+          commonProps={commonProps}
+          borderColor={borderColor}
+          borderWidth={borderWidth}
+          onChange={onChange}
+          stageRef={stageRef}
         />
       )
 
