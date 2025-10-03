@@ -74,6 +74,8 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     redo,
     canUndo,
     canRedo,
+    exportDesign,
+    isExporting,
   } = useTemplateEditor()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -543,12 +545,22 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     })
   }, [pasteLayers, toast])
 
-  const handleExport = React.useCallback(() => {
-    toast({
-      title: 'Exportação iniciada',
-      description: 'Gerando arquivos de saída. Você será notificado quando estiver pronto.',
-    })
-  }, [toast])
+  const handleExport = React.useCallback(async () => {
+    try {
+      await exportDesign('jpeg')
+      toast({
+        title: 'Exportação concluída!',
+        description: 'O arquivo JPEG foi baixado com sucesso e está otimizado para Instagram.',
+      })
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast({
+        title: 'Erro ao exportar',
+        description: error instanceof Error ? error.message : 'Não foi possível exportar o design.',
+        variant: 'destructive',
+      })
+    }
+  }, [exportDesign, toast])
 
   const handleShare = React.useCallback(() => {
     toast({
@@ -570,8 +582,18 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
               <Save className="mr-2 h-4 w-4" />
               {saving ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Salvo'}
             </Button>
-            <Button size="sm" variant="outline" onClick={handleExport} className="shadow-sm">
-              <Download className="mr-2 h-4 w-4" /> Exportar
+            <Button size="sm" variant="outline" onClick={handleExport} disabled={isExporting} className="shadow-sm">
+              {isExporting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Exportando...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Exportar JPEG
+                </>
+              )}
             </Button>
             <Button size="sm" variant="ghost" onClick={handleShare} className="shadow-sm">
               <Share2 className="mr-2 h-4 w-4" /> Compartilhar

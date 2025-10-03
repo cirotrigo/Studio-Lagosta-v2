@@ -342,7 +342,7 @@ export function KonvaEditorStage() {
           onClick={handleStagePointerDown}
           onWheel={handleWheel}
         >
-          <KonvaLayer listening={false}>
+          <KonvaLayer name="background-layer" listening={false}>
             <Rect
               name="canvas-background"
               x={0}
@@ -356,7 +356,7 @@ export function KonvaEditorStage() {
             />
           </KonvaLayer>
 
-          <KonvaLayer listening={false}>
+          <KonvaLayer name="guides-layer" listening={false}>
             {guides.map((guide, index) => (
               <Line
                 key={`${guide.orientation}-${index}-${guide.position}`}
@@ -372,7 +372,7 @@ export function KonvaEditorStage() {
             ))}
           </KonvaLayer>
 
-          <KonvaLayer>
+          <KonvaLayer name="content-layer">
             {deferredLayers.map((layer) => (
               <KonvaLayerFactory
                 key={layer.id}

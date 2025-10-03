@@ -80,26 +80,40 @@ export function LayersDock() {
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="rounded-full border border-border/40 bg-background px-2 py-[2px] text-[10px] font-semibold uppercase text-muted-foreground transition hover:border-primary hover:text-primary"
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="cursor-pointer rounded-full border border-border/40 bg-background px-2 py-[2px] text-[10px] font-semibold uppercase text-muted-foreground transition hover:border-primary hover:text-primary"
                             onClick={(event) => {
                               event.stopPropagation()
                               toggleLayerVisibility(layer.id)
                             }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.stopPropagation()
+                                toggleLayerVisibility(layer.id)
+                              }
+                            }}
                           >
                             {layer.visible === false ? 'Mostrar' : 'Ocultar'}
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded-full border border-border/40 bg-background px-2 py-[2px] text-[10px] font-semibold uppercase text-muted-foreground transition hover:border-primary hover:text-primary"
+                          </div>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="cursor-pointer rounded-full border border-border/40 bg-background px-2 py-[2px] text-[10px] font-semibold uppercase text-muted-foreground transition hover:border-primary hover:text-primary"
                             onClick={(event) => {
                               event.stopPropagation()
                               toggleLayerLock(layer.id)
                             }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.stopPropagation()
+                                toggleLayerLock(layer.id)
+                              }
+                            }}
                           >
                             {layer.locked ? 'Desbloq.' : 'Bloq.'}
-                          </button>
+                          </div>
                         </div>
                       </button>
                     )

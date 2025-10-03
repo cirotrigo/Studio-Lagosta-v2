@@ -1,13 +1,15 @@
 'use client'
 
 import * as React from 'react'
-import { Folder, HardDrive, ImageIcon, Loader2, Search, RefreshCw, X, CheckCircle, ChevronLeft } from 'lucide-react'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import Image from 'next/image'
+import { Folder, HardDrive, ImageIcon, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage } from 'lucide-react'
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Card } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { useGoogleDriveItems } from '@/hooks/use-google-drive'
 import type { GoogleDriveItem, GoogleDriveBrowserMode } from '@/types/google-drive'
 import { cn } from '@/lib/utils'
@@ -43,7 +45,9 @@ export function DesktopGoogleDriveModal({
   const [searchTerm, setSearchTerm] = React.useState('')
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
   const [selected, setSelected] = React.useState<GoogleDriveItem | null>(null)
+  const scrollRef = React.useRef<HTMLDivElement>(null)
 
+  // Reset state when modal opens/closes
   React.useEffect(() => {
     if (!open) {
       setSearchTerm('')
@@ -64,10 +68,11 @@ export function DesktopGoogleDriveModal({
     setSelected(null)
   }, [open, initialFolderId, initialFolderName, rootLabel])
 
+  // Debounce search
   React.useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearch(searchTerm.trim())
-    }, 350)
+    }, 300)
 
     return () => clearTimeout(handler)
   }, [searchTerm])
@@ -92,19 +97,38 @@ export function DesktopGoogleDriveModal({
       : 'Erro ao carregar arquivos do Google Drive.'
     : null
 
-  const handleEnterFolder = (item: GoogleDriveItem) => {
+  // Navigation handlers
+  const handleEnterFolder = React.useCallback((item: GoogleDriveItem) => {
     if (item.kind !== 'folder') return
     setFolderStack((stack) => [...stack, { id: item.id, name: item.name }])
     setSelected(null)
-  }
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
 
-  const handleBack = () => {
-    if (folderStack.length <= 1) return
-    setFolderStack((stack) => stack.slice(0, -1))
+  const handleBreadcrumbClick = React.useCallback((index: number) => {
+    setFolderStack((stack) => stack.slice(0, index + 1))
     setSelected(null)
-  }
+    scrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [])
 
-  const handleConfirm = () => {
+  const handleItemClick = React.useCallback((item: GoogleDriveItem) => {
+    setSelected(item)
+  }, [])
+
+  const handleItemDoubleClick = React.useCallback((item: GoogleDriveItem) => {
+    if (item.kind === 'folder') {
+      handleEnterFolder(item)
+    } else {
+      // Double-click on image selects and confirms
+      setSelected(item)
+      setTimeout(() => {
+        onSelect(item)
+        onOpenChange(false)
+      }, 100)
+    }
+  }, [handleEnterFolder, onSelect, onOpenChange])
+
+  const handleConfirm = React.useCallback(() => {
     if (mode === 'folders') {
       if (selected) {
         onSelect(selected)
@@ -123,13 +147,38 @@ export function DesktopGoogleDriveModal({
       onSelect(selected)
       onOpenChange(false)
     }
-  }
+  }, [mode, selected, currentFolder, onSelect, onOpenChange])
 
-  const headerTitle = mode === 'folders' ? 'Selecionar Pasta' : 'Selecionar Imagem'
+  const clearSearch = React.useCallback(() => {
+    setSearchTerm('')
+    setDebouncedSearch('')
+  }, [])
+
+  // Keyboard shortcuts
+  React.useEffect(() => {
+    if (!open) return
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onOpenChange(false)
+      } else if (event.key === 'Enter' && selected) {
+        event.preventDefault()
+        handleConfirm()
+      } else if (event.key === 'Backspace' && !searchTerm && folderStack.length > 1) {
+        event.preventDefault()
+        handleBreadcrumbClick(folderStack.length - 2)
+      }
+    }
+
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [open, selected, searchTerm, folderStack.length, onOpenChange, handleConfirm, handleBreadcrumbClick])
+
+  const headerTitle = mode === 'folders' ? 'Selecionar Pasta' : 'Escolher Imagem do Google Drive'
   const description =
     mode === 'folders'
       ? 'Escolha a pasta que receberá os backups automáticos dos criativos.'
-      : 'Navegue pelas suas pastas para escolher uma imagem do Google Drive.'
+      : 'Selecione uma imagem da pasta configurada'
 
   const isLoading = driveQuery.isLoading
   const isFetchingMore = driveQuery.isFetchingNextPage
@@ -137,170 +186,386 @@ export function DesktopGoogleDriveModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl gap-4">
-        <DialogHeader className="space-y-1">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            {folderStack.length > 1 ? (
-              <Button variant="ghost" size="icon" onClick={handleBack} className="h-8 w-8" aria-label="Voltar">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            ) : (
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-                <HardDrive className="h-4 w-4" />
-              </span>
-            )}
-            <div className="flex flex-wrap items-center gap-1">
-              {folderStack.map((crumb, index) => (
-                <React.Fragment key={crumb.id}>
-                  {index > 0 && <span className="text-muted-foreground">/</span>}
-                  <span
-                    className={cn(
-                      'text-sm font-medium',
-                      index === folderStack.length - 1 ? 'text-foreground' : 'text-muted-foreground',
-                    )}
-                  >
-                    {crumb.name}
-                  </span>
-                </React.Fragment>
-              ))}
-            </div>
-          </div>
-          <DialogTitle className="text-xl font-semibold">{headerTitle}</DialogTitle>
-          <p className="text-sm text-muted-foreground">{description}</p>
-        </DialogHeader>
+      <DialogContent
+        className="max-w-[1000px] h-[700px] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80vh] sm:max-w-[95vw] sm:h-[85vh]"
+      >
+        <DialogTitle className="sr-only">{headerTitle}</DialogTitle>
+        <DialogDescription className="sr-only">{description}</DialogDescription>
 
-        <div className="flex items-center gap-2">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Buscar por nome"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              className="pl-10"
-            />
-          </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => driveQuery.refetch()}
-            disabled={driveQuery.isFetching}
-            aria-label="Atualizar"
-          >
-            {driveQuery.isFetching ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-        </div>
-
-        <ScrollArea className="max-h-[420px] min-h-[240px] border rounded-md">
-          {isLoading ? (
-            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 6 }).map((_, index) => (
-                <div key={index} className="animate-pulse rounded-lg border bg-muted/30 p-4" />
-              ))}
-            </div>
-          ) : queryError ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-destructive">
-              {queryError}
-              <Button variant="outline" size="sm" onClick={() => driveQuery.refetch()}>
-                Tentar novamente
-              </Button>
-            </div>
-          ) : emptyState ? (
-            <div className="flex h-48 flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
-              <X className="h-6 w-6" />
-              Nenhum item encontrado nesta pasta.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3 p-4 sm:grid-cols-2 lg:grid-cols-3">
-              {items.map((item) => {
-                const isFolder = item.kind === 'folder'
-                const isSelected = selected?.id === item.id
-
-                if (mode === 'folders' && !isFolder) {
-                  return null
-                }
-
-                return (
-                  <div
-                    key={item.id}
-                    onClick={() => setSelected(item)}
-                    className={cn(
-                      'group flex cursor-pointer flex-col items-start gap-3 rounded-lg border p-4 text-left transition hover:border-primary',
-                      isSelected ? 'border-primary ring-2 ring-primary/40' : 'border-border',
-                    )}
-                  >
-                    <div className="flex w-full items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-full bg-muted p-2">
-                          {isFolder ? <Folder className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
-                        </span>
-                        <div className="flex flex-col">
-                          <span className="font-medium leading-tight line-clamp-2">{item.name}</span>
-                          {item.modifiedTime && (
-                            <span className="text-xs text-muted-foreground">
-                              Atualizado em {new Date(item.modifiedTime).toLocaleDateString('pt-BR')}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {isSelected && <CheckCircle className="h-5 w-5 text-primary" />}
-                    </div>
-                    <div className="flex w-full items-center justify-between">
-                      <Badge variant="outline" className="text-xs">
-                        {isFolder ? 'Pasta' : 'Imagem'}
-                      </Badge>
-                      {isFolder && (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            handleEnterFolder(item)
-                          }}
-                        >
-                          Abrir
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-        </ScrollArea>
-
-        {driveQuery.hasNextPage && (
-          <Button variant="outline" onClick={() => driveQuery.fetchNextPage()} disabled={isFetchingMore}>
-            {isFetchingMore ? 'Carregando...' : 'Carregar mais'}
-          </Button>
-        )}
-
-        <div className="flex flex-col gap-2 rounded-md border bg-muted/40 p-4 text-sm">
+        {/* Header */}
+        <div className="flex flex-col gap-3 border-b border-border/40 bg-card/60 px-6 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Seleção atual</p>
-              <p className="text-muted-foreground">
-                {selected ? selected.name : mode === 'folders' ? currentFolder?.name ?? rootLabel : 'Nenhum item selecionado'}
-              </p>
+            <div className="space-y-1">
+              <h2 className="text-xl font-semibold">{headerTitle}</h2>
+              <p className="text-sm text-muted-foreground">{description}</p>
             </div>
-            {mode === 'folders' && (
-              <Badge variant="secondary">Backup</Badge>
-            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => onOpenChange(false)}
+              className="h-8 w-8"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Search Bar */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Buscar por nome"
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="pl-10 pr-8 h-10"
+              />
+              {searchTerm && (
+                <button
+                  onClick={clearSearch}
+                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => driveQuery.refetch()}
+              disabled={driveQuery.isFetching}
+              aria-label="Atualizar"
+              className="h-10 w-10"
+            >
+              {driveQuery.isFetching ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-sm overflow-x-auto pb-1 scrollbar-thin">
+            <HardDrive className="h-4 w-4 shrink-0 text-muted-foreground" />
+            {folderStack.map((crumb, index) => (
+              <React.Fragment key={crumb.id}>
+                {index > 0 && (
+                  <span className="text-muted-foreground shrink-0">/</span>
+                )}
+                <button
+                  onClick={() => handleBreadcrumbClick(index)}
+                  disabled={index === folderStack.length - 1}
+                  className={cn(
+                    'whitespace-nowrap rounded px-2 py-1 text-sm font-medium transition',
+                    index === folderStack.length - 1
+                      ? 'text-foreground bg-muted/40'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/30',
+                  )}
+                >
+                  {crumb.name}
+                </button>
+              </React.Fragment>
+            ))}
           </div>
         </div>
 
-        <div className="flex justify-between">
-          <Button variant="ghost" onClick={() => onOpenChange(false)}>
-            Cancelar
-          </Button>
-          <Button onClick={handleConfirm} disabled={mode !== 'folders' && !selected}>
-            {mode === 'folders' ? 'Selecionar pasta' : 'Selecionar imagem'}
-          </Button>
+        {/* Content Area */}
+        <div className="flex-1 overflow-hidden">
+          <ScrollArea className="h-full" ref={scrollRef}>
+            <div className="p-6">
+              {isLoading ? (
+                <LoadingGrid />
+              ) : queryError ? (
+                <ErrorState error={queryError} onRetry={() => driveQuery.refetch()} />
+              ) : emptyState ? (
+                <EmptyState searchTerm={debouncedSearch} />
+              ) : (
+                <ItemsGrid
+                  items={items}
+                  mode={mode}
+                  selected={selected}
+                  onItemClick={handleItemClick}
+                  onItemDoubleClick={handleItemDoubleClick}
+                />
+              )}
+
+              {driveQuery.hasNextPage && !isLoading && (
+                <div className="flex justify-center mt-6">
+                  <Button
+                    variant="outline"
+                    onClick={() => driveQuery.fetchNextPage()}
+                    disabled={isFetchingMore}
+                  >
+                    {isFetchingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      'Carregar mais'
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </ScrollArea>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-4 border-t border-border/40 bg-muted/20 px-6 py-4">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-muted-foreground">
+              Seleção atual:
+            </p>
+            <p className="text-sm font-semibold text-foreground truncate">
+              {selected ? selected.name : 'Nenhum item selecionado'}
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => onOpenChange(false)}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirm}
+              disabled={mode !== 'folders' && !selected}
+            >
+              {mode === 'folders' ? 'Selecionar' : 'Selecionar'}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
   )
 }
+
+// Loading Grid Component
+function LoadingGrid() {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {Array.from({ length: 8 }).map((_, index) => (
+        <div key={index} className="space-y-2">
+          <Skeleton className="aspect-square w-full rounded-lg" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Error State Component
+function ErrorState({ error, onRetry }: { error: string; onRetry: () => void }) {
+  return (
+    <div className="flex h-[400px] flex-col items-center justify-center gap-4 text-center">
+      <div className="rounded-full bg-destructive/10 p-4">
+        <AlertCircle className="h-12 w-12 text-destructive" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">Erro ao carregar itens</h3>
+        <p className="text-sm text-muted-foreground max-w-md">{error}</p>
+      </div>
+      <Button onClick={onRetry} variant="outline">
+        <RefreshCw className="mr-2 h-4 w-4" />
+        Tentar novamente
+      </Button>
+    </div>
+  )
+}
+
+// Empty State Component
+function EmptyState({ searchTerm }: { searchTerm: string }) {
+  return (
+    <div className="flex h-[400px] flex-col items-center justify-center gap-4 text-center">
+      <div className="rounded-full bg-muted p-4">
+        {searchTerm ? (
+          <Search className="h-12 w-12 text-muted-foreground" />
+        ) : (
+          <FolderOpen className="h-12 w-12 text-muted-foreground" />
+        )}
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-lg font-semibold">
+          {searchTerm ? 'Nenhum resultado encontrado' : 'Pasta vazia'}
+        </h3>
+        <p className="text-sm text-muted-foreground max-w-md">
+          {searchTerm
+            ? `Nenhum item corresponde à busca "${searchTerm}"`
+            : 'Esta pasta não contém arquivos ou subpastas'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+// Items Grid Component
+interface ItemsGridProps {
+  items: GoogleDriveItem[]
+  mode: GoogleDriveBrowserMode
+  selected: GoogleDriveItem | null
+  onItemClick: (item: GoogleDriveItem) => void
+  onItemDoubleClick: (item: GoogleDriveItem) => void
+}
+
+function ItemsGrid({ items, mode, selected, onItemClick, onItemDoubleClick }: ItemsGridProps) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+      {items.map((item) => {
+        const isFolder = item.kind === 'folder'
+
+        // Skip non-folders in folder selection mode
+        if (mode === 'folders' && !isFolder) {
+          return null
+        }
+
+        return (
+          <ItemCard
+            key={item.id}
+            item={item}
+            isSelected={selected?.id === item.id}
+            onClick={() => onItemClick(item)}
+            onDoubleClick={() => onItemDoubleClick(item)}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
+// Item Card Component
+interface ItemCardProps {
+  item: GoogleDriveItem
+  isSelected: boolean
+  onClick: () => void
+  onDoubleClick: () => void
+}
+
+function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
+  const isFolder = item.kind === 'folder'
+  const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
+  const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
+
+  // Generate thumbnail URLs with fallback chain
+  const thumbnailSources = React.useMemo(() => {
+    if (isFolder || !item.id) return []
+
+    const sources: string[] = []
+
+    // Primary: Use our proxy endpoint for authenticated access
+    sources.push(`/api/google-drive/thumbnail/${item.id}?size=400`)
+
+    // Fallback 1: If item has thumbnailLink from API
+    if (item.thumbnailLink) {
+      // Modify size parameter to 400
+      const modifiedLink = item.thumbnailLink.replace(/=s\d+/, '=s400')
+      sources.push(modifiedLink)
+    }
+
+    // Fallback 2: Full image via proxy
+    sources.push(`/api/google-drive/image/${item.id}`)
+
+    return sources
+  }, [item.id, item.thumbnailLink, isFolder])
+
+  React.useEffect(() => {
+    if (isFolder || thumbnailSources.length === 0) return
+
+    setImageState('loading')
+    setCurrentSrc(thumbnailSources[0])
+  }, [isFolder, thumbnailSources])
+
+  const handleImageError = React.useCallback(() => {
+    if (!currentSrc) return
+
+    const currentIndex = thumbnailSources.indexOf(currentSrc)
+    const nextIndex = currentIndex + 1
+
+    if (nextIndex < thumbnailSources.length) {
+      // Try next source
+      console.warn(`[ItemCard] Thumbnail failed for ${item.name}, trying fallback ${nextIndex + 1}`)
+      setCurrentSrc(thumbnailSources[nextIndex])
+    } else {
+      // No more fallbacks
+      console.error(`[ItemCard] All thumbnail sources failed for ${item.name}`)
+      setImageState('error')
+    }
+  }, [currentSrc, thumbnailSources, item.name])
+
+  const handleImageLoad = React.useCallback(() => {
+    setImageState('loaded')
+  }, [])
+
+  return (
+    <button
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      className={cn(
+        'group relative flex flex-col overflow-hidden rounded-lg border-2 text-left transition-all',
+        'hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
+        isSelected
+          ? 'border-primary shadow-[0_0_0_1px_var(--primary)]'
+          : 'border-border/40 hover:border-primary/40',
+      )}
+    >
+      {/* Thumbnail / Icon */}
+      <div className="relative aspect-square w-full bg-muted">
+        {isFolder ? (
+          <div className="flex h-full items-center justify-center">
+            <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
+          </div>
+        ) : currentSrc ? (
+          <>
+            {/* Loading skeleton */}
+            {imageState === 'loading' && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              </div>
+            )}
+
+            {/* Actual image */}
+            <Image
+              src={currentSrc}
+              alt={item.name}
+              fill
+              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+              className={cn(
+                'object-cover transition-opacity duration-200',
+                imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+              )}
+              onError={handleImageError}
+              onLoad={handleImageLoad}
+              unoptimized
+            />
+
+            {/* Error state */}
+            {imageState === 'error' && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
+                <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+                <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+          </div>
+        )}
+
+        {/* Selection indicator */}
+        {isSelected && (
+          <div className="absolute inset-0 bg-primary/10 ring-2 ring-inset ring-primary" />
+        )}
+      </div>
+
+      {/* File name */}
+      <div className="relative bg-gradient-to-t from-black/60 to-transparent p-2 -mt-12 pt-12">
+        <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
+          {item.name}
+        </p>
+      </div>
+    </button>
+  )
+}
+
+// Google Drive Folder Selector (existing component - unchanged)
 interface GoogleDriveFolderSelectorProps {
   projectId: number
   folderId: string | null

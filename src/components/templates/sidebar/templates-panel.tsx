@@ -124,11 +124,11 @@ export function TemplatesPanel() {
             Array.from({ length: 6 }).map((_, index) => (
               <div
                 key={`skeleton-${index}`}
-                className="rounded-lg border border-border/30 bg-muted/40 p-3"
+                className="rounded-md border border-border/30 bg-muted/40 p-2.5"
               >
-                <Skeleton className="mb-3 h-32 w-full" />
-                <Skeleton className="mb-2 h-4 w-2/3" />
-                <Skeleton className="h-4 w-1/3" />
+                <Skeleton className="mb-2 h-24 w-full" />
+                <Skeleton className="mb-1.5 h-3 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
               </div>
             ))}
 
@@ -143,6 +143,14 @@ export function TemplatesPanel() {
             const isApplying = applyingId === template.id
             const typeLabel = typeLabels[template.type] ?? template.type
 
+            // Calcular dimensões do thumbnail baseado no tipo
+            const aspectRatios: Record<string, string> = {
+              STORY: 'aspect-[9/16]', // 1080x1920
+              FEED: 'aspect-[4/5]',   // 1080x1350
+              SQUARE: 'aspect-square', // 1080x1080
+            }
+            const aspectRatio = aspectRatios[template.type] ?? 'aspect-[3/4]'
+
             return (
               <motion.div
                 key={template.id}
@@ -151,45 +159,43 @@ export function TemplatesPanel() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, ease: 'easeOut' }}
                 className={cn(
-                  'flex flex-col overflow-hidden rounded-lg border border-border/40 bg-card/70 shadow-sm transition hover:border-primary/40',
-                  isCurrent && 'border-primary/80',
+                  'flex flex-col overflow-hidden rounded-md border border-border/40 bg-card/70 shadow-sm transition hover:border-primary/40 hover:shadow-md',
+                  isCurrent && 'border-primary/80 ring-1 ring-primary/20',
                 )}
               >
-                <div className="relative aspect-[3/4] w-full bg-muted">
+                <div className={cn('relative w-full bg-muted', aspectRatio)}>
                   {template.thumbnailUrl ? (
                     <Image
                       src={template.thumbnailUrl}
                       alt={template.name}
                       fill
-                      sizes="200px"
+                      sizes="(max-width: 768px) 100vw, 160px"
                       unoptimized
                       className="object-cover"
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
-                      Sem thumbnail
+                    <div className="flex h-full items-center justify-center text-[11px] text-muted-foreground opacity-60">
+                      Sem preview
                     </div>
                   )}
                 </div>
-                <div className="flex flex-1 flex-col gap-3 p-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-sm font-semibold">{template.name}</h3>
-                      <Badge variant="secondary" className="shrink-0 text-[10px] uppercase">
-                        {typeLabel}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{template.dimensions}</p>
+                <div className="flex flex-1 flex-col gap-2 p-2.5">
+                  <div className="space-y-0.5">
+                    <h3 className="line-clamp-1 text-sm font-semibold leading-tight">{template.name}</h3>
+                    <p className="text-[11px] text-muted-foreground">
+                      {typeLabel} • {template.dimensions}
+                    </p>
                   </div>
-                  <div className="mt-auto flex items-center justify-end gap-2">
-                    {isCurrent && <Badge variant="outline">Atual</Badge>}
+                  <div className="mt-auto flex items-center justify-between gap-2">
+                    {isCurrent && <Badge variant="outline" className="text-[10px] px-1.5 py-0">Atual</Badge>}
                     <Button
                       size="sm"
                       onClick={() => handleApplyTemplate(template.id)}
                       disabled={isApplying}
+                      className="ml-auto h-8 text-xs px-3"
                     >
-                      {isApplying && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Usar template
+                      {isApplying && <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />}
+                      Usar
                     </Button>
                   </div>
                 </div>

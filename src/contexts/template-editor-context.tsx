@@ -58,6 +58,7 @@ export interface TemplateEditorContextValue {
   canRedo: boolean
   isExporting: boolean
   exportHistory: ExportRecord[]
+  generateThumbnail: (maxWidth?: number) => Promise<string | null>
   exportDesign: (format: 'png' | 'jpeg') => Promise<ExportRecord>
   removeExport: (id: string) => void
   clearExports: () => void
@@ -123,6 +124,12 @@ const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ 
 const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false })
 const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
+const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
+
+  // Keep ref in sync with state
+  React.useEffect(() => {
+    selectedLayerIdsRef.current = selectedLayerIds
+  }, [selectedLayerIds])
 
   // Sync when template prop changes (e.g., refetch)
   React.useEffect(() => {
@@ -423,6 +430,93 @@ const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
     })
   }, [updateHistoryMeta])
 
+  const generateThumbnail = React.useCallback(
+    async (maxWidth = 300): Promise<string | null> => {
+      const stage = stageInstanceRef.current
+      if (!stage) {
+        console.warn('[generateThumbnail] Stage não disponível')
+        return null
+      }
+
+      // Salvar estado atual
+      const previousSelection = [...selectedLayerIdsRef.current]
+      const previousZoom = zoom
+      const previousPosition = { x: stage.x(), y: stage.y() }
+
+      try {
+        // 1. Limpar seleção para ocultar transformers
+        setSelectedLayerIds([])
+
+        // 2. Aguardar próximo frame para React atualizar
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 3. Normalizar zoom para 100% (escala 1:1)
+        setZoomState(1)
+        stage.scale({ x: 1, y: 1 })
+        stage.position({ x: 0, y: 0 })
+
+        // 4. Aguardar frame para zoom ser aplicado
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 5. Ocultar camada de guides temporariamente
+        const guidesLayer = stage.findOne('.guides-layer')
+        const guidesWasVisible = guidesLayer?.visible() ?? false
+        if (guidesLayer) {
+          guidesLayer.visible(false)
+        }
+
+        // 6. Forçar redraw para garantir que guides estão ocultos
+        stage.batchDraw()
+
+        // 7. Aguardar mais um frame para garantir redraw completo
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 8. Calcular dimensões do thumbnail mantendo aspect ratio
+        const canvasWidth = design.canvas.width
+        const canvasHeight = design.canvas.height
+        const aspectRatio = canvasWidth / canvasHeight
+
+        let thumbWidth = maxWidth
+        let thumbHeight = Math.round(maxWidth / aspectRatio)
+
+        // Se altura calculada for muito grande, ajustar pela altura
+        if (thumbHeight > maxWidth * 2) {
+          thumbHeight = maxWidth * 2
+          thumbWidth = Math.round(thumbHeight * aspectRatio)
+        }
+
+        // 9. Gerar thumbnail em JPEG com qualidade 85%
+        const dataUrl = stage.toDataURL({
+          pixelRatio: thumbWidth / canvasWidth,
+          mimeType: 'image/jpeg',
+          quality: 0.85,
+          x: 0,
+          y: 0,
+          width: canvasWidth,
+          height: canvasHeight,
+        })
+
+        // 10. Restaurar visibilidade dos guides
+        if (guidesLayer) {
+          guidesLayer.visible(guidesWasVisible)
+        }
+
+        return dataUrl
+      } catch (error) {
+        console.error('[generateThumbnail] Erro ao gerar thumbnail:', error)
+        return null
+      } finally {
+        // Restaurar zoom, posição e seleção original
+        setZoomState(previousZoom)
+        stage.scale({ x: previousZoom, y: previousZoom })
+        stage.position(previousPosition)
+        stage.batchDraw()
+        setSelectedLayerIds(previousSelection)
+      }
+    },
+    [design.canvas.width, design.canvas.height, zoom],
+  )
+
   const exportDesign = React.useCallback(
     async (format: 'png' | 'jpeg') => {
       const stage = stageInstanceRef.current
@@ -430,28 +524,135 @@ const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
         throw new Error('Canvas não está pronto para exportação.')
       }
       setIsExporting(true)
+
+      // Salvar estado atual
+      const previousSelection = [...selectedLayerIdsRef.current]
+      const previousZoom = zoom
+      const previousPosition = { x: stage.x(), y: stage.y() }
+
       try {
-        const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
-        const dataUrl = stage.toDataURL({ pixelRatio: 2, mimeType })
-        const base64 = dataUrl.split(',')[1] ?? ''
-        const sizeBytes = Math.round((base64.length * 3) / 4)
+        // 1. Limpar seleção para ocultar transformers
+        setSelectedLayerIds([])
+
+        // 2. Aguardar próximo frame para React atualizar
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 3. Normalizar zoom para 100% (escala 1:1)
+        setZoomState(1)
+        stage.scale({ x: 1, y: 1 })
+        stage.position({ x: 0, y: 0 })
+
+        // 4. Aguardar frame para zoom ser aplicado
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 5. Ocultar camada de guides temporariamente
+        const guidesLayer = stage.findOne('.guides-layer')
+        const guidesWasVisible = guidesLayer?.visible() ?? false
+        if (guidesLayer) {
+          guidesLayer.visible(false)
+        }
+
+        // 6. Forçar redraw para garantir que guides estão ocultos
+        stage.batchDraw()
+
+        // 7. Aguardar mais um frame para garantir redraw completo
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+
+        // 8. Exportar com dimensões exatas do canvas em resolução nativa
+        const canvasWidth = design.canvas.width
+        const canvasHeight = design.canvas.height
+
+        // Para JPEG, tentar diferentes qualidades até atingir tamanho aceitável (8MB max)
+        const MAX_SIZE_MB = 8
+        const MAX_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024
+        let quality = 0.9 // Qualidade inicial 90%
+        let dataUrl = ''
+        let sizeBytes = 0
+
+        if (format === 'jpeg') {
+          // Tentar exportar com qualidade 90%
+          dataUrl = stage.toDataURL({
+            pixelRatio: 2,
+            mimeType: 'image/jpeg',
+            quality: quality,
+            x: 0,
+            y: 0,
+            width: canvasWidth,
+            height: canvasHeight,
+          })
+
+          const base64 = dataUrl.split(',')[1] ?? ''
+          sizeBytes = Math.round((base64.length * 3) / 4)
+
+          // Se arquivo for maior que 8MB, reduzir qualidade iterativamente
+          while (sizeBytes > MAX_SIZE_BYTES && quality > 0.5) {
+            quality -= 0.05
+            dataUrl = stage.toDataURL({
+              pixelRatio: 2,
+              mimeType: 'image/jpeg',
+              quality: quality,
+              x: 0,
+              y: 0,
+              width: canvasWidth,
+              height: canvasHeight,
+            })
+            const newBase64 = dataUrl.split(',')[1] ?? ''
+            sizeBytes = Math.round((newBase64.length * 3) / 4)
+          }
+        } else {
+          // PNG sem compressão
+          dataUrl = stage.toDataURL({
+            pixelRatio: 2,
+            mimeType: 'image/png',
+            x: 0,
+            y: 0,
+            width: canvasWidth,
+            height: canvasHeight,
+          })
+          const base64 = dataUrl.split(',')[1] ?? ''
+          sizeBytes = Math.round((base64.length * 3) / 4)
+        }
+
+        const timestamp = Date.now()
+        const fileName = format === 'jpeg'
+          ? `template-instagram-${timestamp}.jpg`
+          : `template-${template.id}-${timestamp}.png`
+
         const record: ExportRecord = {
           id: crypto.randomUUID(),
           format,
           dataUrl,
-          width: stage.width(),
-          height: stage.height(),
-          fileName: `template-${template.id}-${Date.now()}.${format === 'png' ? 'png' : 'jpg'}`,
+          width: canvasWidth,
+          height: canvasHeight,
+          fileName,
           sizeBytes,
-          createdAt: Date.now(),
+          createdAt: timestamp,
         }
         setExportHistory((prev) => [record, ...prev].slice(0, 20))
+
+        // 9. Restaurar visibilidade dos guides
+        if (guidesLayer) {
+          guidesLayer.visible(guidesWasVisible)
+        }
+
+        // 10. Download imediato do arquivo
+        const link = document.createElement('a')
+        link.href = dataUrl
+        link.download = fileName
+        link.click()
+
         return record
       } finally {
+        // 11. Restaurar zoom, posição e seleção original
+        setZoomState(previousZoom)
+        stage.scale({ x: previousZoom, y: previousZoom })
+        stage.position(previousPosition)
+        stage.batchDraw()
+        setSelectedLayerIds(previousSelection)
         setIsExporting(false)
       }
     },
-    [template.id],
+    [template.id, design.canvas.width, design.canvas.height, zoom],
   )
 
   const removeExport = React.useCallback((id: string) => {
@@ -560,6 +761,7 @@ const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
       canRedo: historyMeta.canRedo,
       isExporting,
       exportHistory,
+      generateThumbnail,
       exportDesign,
       removeExport,
       clearExports,
@@ -605,6 +807,7 @@ const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
       historyMeta.canRedo,
       isExporting,
       exportHistory,
+      generateThumbnail,
       exportDesign,
       removeExport,
       clearExports,

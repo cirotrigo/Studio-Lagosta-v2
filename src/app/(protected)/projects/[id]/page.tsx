@@ -6,6 +6,7 @@ import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Sparkles } from 'lucide-react'
 import { api } from '@/lib/api-client'
+import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -237,58 +238,84 @@ export default function ProjectDetailPage() {
           </div>
 
           {isLoading ? (
-            <div className="flex items-center justify-center h-64">
-              <p className="text-muted-foreground">Carregando templates...</p>
-            </div>
-          ) : templates && templates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {templates.map((template) => (
-                <Card key={template.id} className="overflow-hidden hover:shadow-lg transition-shadow">
-                  <div className="aspect-[4/5] bg-muted relative group">
-                    {template.thumbnailUrl ? (
-                      <Image
-                        src={template.thumbnailUrl}
-                        alt={template.name}
-                        fill
-                        sizes="(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 100vw"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <FileText className="w-12 h-12 text-muted-foreground" />
-                      </div>
-                    )}
-                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                      <Button
-                        size="icon"
-                        variant="secondary"
-                        asChild
-                      >
-                        <Link href={`/templates/${template.id}/editor`}>
-                          <Edit className="w-4 h-4" />
-                        </Link>
-                      </Button>
-                    </div>
-                  </div>
-                  <div className="p-4">
-                    <h3 className="font-semibold mb-1 truncate">{template.name}</h3>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {getTypeLabel(template.type)}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={() => handleDelete(template.id, template.name)}
-                        disabled={deleteMutation.isPending}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
-                    </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Card key={`skeleton-${index}`} className="overflow-hidden">
+                  <Skeleton className="aspect-[4/5] w-full" />
+                  <div className="p-3">
+                    <Skeleton className="h-4 w-3/4 mb-2" />
+                    <Skeleton className="h-3 w-1/2" />
                   </div>
                 </Card>
               ))}
+            </div>
+          ) : templates && templates.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+              {templates.map((template) => {
+                // Calcular aspect ratio baseado no tipo
+                const aspectRatios: Record<string, string> = {
+                  STORY: 'aspect-[9/16]',
+                  FEED: 'aspect-[4/5]',
+                  SQUARE: 'aspect-square',
+                }
+                const aspectRatio = aspectRatios[template.type] ?? 'aspect-[4/5]'
+
+                return (
+                  <Card
+                    key={template.id}
+                    className="group overflow-hidden transition-all hover:shadow-lg hover:scale-[1.02]"
+                  >
+                    <div className={cn('relative bg-muted group', aspectRatio)}>
+                      {template.thumbnailUrl ? (
+                        <Image
+                          src={template.thumbnailUrl}
+                          alt={template.name}
+                          fill
+                          sizes="(min-width: 1536px) 20vw, (min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                          className="object-cover"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                          <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
+                          <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
+                        </div>
+                      )}
+                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          asChild
+                          className="h-9 w-9"
+                        >
+                          <Link href={`/templates/${template.id}/editor`}>
+                            <Edit className="w-4 h-4" />
+                          </Link>
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="p-3">
+                      <h3 className="font-semibold text-sm leading-tight line-clamp-1 mb-1">
+                        {template.name}
+                      </h3>
+                      <div className="flex items-center justify-between text-xs">
+                        <span className="text-muted-foreground truncate">
+                          {getTypeLabel(template.type)} • {template.dimensions}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 shrink-0"
+                          onClick={() => handleDelete(template.id, template.name)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  </Card>
+                )
+              })}
             </div>
           ) : (
             <Card className="p-12 text-center">

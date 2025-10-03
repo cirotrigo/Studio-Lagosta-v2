@@ -52,6 +52,7 @@ function TemplateEditorContent() {
     dynamicFields,
     markSaved,
     dirty,
+    generateThumbnail,
   } = useTemplateEditor()
 
   usePageConfig(
@@ -72,13 +73,16 @@ function TemplateEditorContent() {
     })
 
     try {
+      // Gerar thumbnail do canvas atual
+      const thumbnailUrl = await generateThumbnail(300)
+
       const payload = {
         id: templateId,
         data: {
           name,
           designData: design,
           dynamicFields,
-          // thumbnailUrl será gerado automaticamente pelo hook
+          thumbnailUrl: thumbnailUrl || undefined,
         },
       }
       const saved = await updateTemplate(payload)
@@ -89,7 +93,7 @@ function TemplateEditorContent() {
 
       toast({
         title: 'Template salvo com sucesso!',
-        description: saved.thumbnailUrl
+        description: thumbnailUrl
           ? 'Thumbnail gerado e alterações aplicadas.'
           : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
@@ -105,7 +109,7 @@ function TemplateEditorContent() {
         variant: 'destructive',
       })
     }
-  }, [templateId, name, design, dynamicFields, updateTemplate, markSaved, toast])
+  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast])
 
   return (
     <div className="space-y-4">
