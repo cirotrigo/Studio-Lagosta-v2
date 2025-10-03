@@ -10,9 +10,9 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { EditorToolbar } from './editor-toolbar'
 import { EditorCanvas } from './editor-canvas'
-import { LayersPanel } from './layers-panel'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
+import { EditorSidebar } from './sidebar/editor-sidebar'
 import { Separator } from '@/components/ui/separator'
 
 interface TemplateEditorShellProps {
@@ -112,8 +112,8 @@ function TemplateEditorContent() {
 
       <EditorToolbar onSave={handleSave} saving={isSaving} />
 
-      <div className="grid gap-4 2xl:grid-cols-[400px_minmax(0,1fr)_340px] xl:grid-cols-[380px_minmax(0,1fr)_320px] lg:grid-cols-[360px_minmax(0,1fr)_300px]">
-        <LayersPanel />
+      <div className="grid gap-4 2xl:grid-cols-[360px_minmax(0,1fr)_340px] xl:grid-cols-[340px_minmax(0,1fr)_320px] lg:grid-cols-[320px_minmax(0,1fr)_300px]">
+        <EditorSidebar />
         <div className="flex min-h-[600px] flex-col gap-4">
           <EditorCanvas />
           <CanvasPreview />

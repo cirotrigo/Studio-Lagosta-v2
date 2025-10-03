@@ -527,6 +527,33 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         style: {
           objectFit: 'cover',
           border: { width: 0, color: '#000000', radius: 0 },
+          blur: 0,
+          brightness: 0,
+          contrast: 0,
+        },
+        fileUrl: '',
+      }
+    case 'shape':
+      return {
+        ...base,
+        type: 'shape',
+        size: { width: 240, height: 240 },
+        style: {
+          fill: '#2563eb',
+          strokeColor: '#1e3a8a',
+          strokeWidth: 2,
+          shapeType: 'rectangle',
+        },
+      }
+    case 'icon':
+      return {
+        ...base,
+        type: 'icon',
+        size: { width: 120, height: 120 },
+        style: {
+          fill: '#111111',
+          strokeWidth: 0,
+          iconId: 'star',
         },
         fileUrl: '',
       }

@@ -17,6 +17,8 @@ export type LayerType =
   | 'gradient2'
   | 'logo'
   | 'element'
+  | 'shape'
+  | 'icon'
 
 export interface Layer {
   id: string
@@ -57,6 +59,17 @@ export interface LayerStyle {
   filter?: string
   shadow?: ShadowStyle
   border?: BorderStyle
+  fill?: string
+  strokeColor?: string
+  strokeWidth?: number
+  shapeType?: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line'
+  iconId?: string
+  blur?: number
+  brightness?: number
+  contrast?: number
+  grayscale?: boolean
+  sepia?: boolean
+  invert?: boolean
   [key: string]: unknown
 }
 

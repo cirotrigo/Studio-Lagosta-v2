@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Text, Rect, Image as KonvaImage } from 'react-konva'
+import { Text, Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import type { Layer } from '@/types/template'
@@ -176,6 +176,27 @@ export function KonvaLayerFactory({ layer, isSelected, onSelect, onChange, onDra
     case 'gradient2':
       return <GradientNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} />
 
+    case 'shape':
+      return (
+        <ShapeNode
+          layer={layer}
+          commonProps={commonProps}
+          shapeRef={shapeRef}
+          borderColor={borderColor}
+          borderWidth={borderWidth}
+          borderRadius={borderRadius}
+        />
+      )
+
+    case 'icon':
+      return (
+        <IconNode
+          layer={layer}
+          commonProps={commonProps}
+          shapeRef={shapeRef}
+        />
+      )
+
     default:
       return null
   }
@@ -316,4 +337,161 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}
     />
   )
+}
+
+type ShapeNodeProps = {
+  layer: Layer
+  commonProps: CommonProps
+  shapeRef: React.MutableRefObject<Konva.Shape | null>
+  borderColor: string
+  borderWidth: number
+  borderRadius: number
+}
+
+function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius }: ShapeNodeProps) {
+  const shapeType = layer.style?.shapeType ?? 'rectangle'
+  const fill = layer.style?.fill ?? '#2563eb'
+  const stroke = layer.style?.strokeColor ?? (borderWidth > 0 ? borderColor : undefined)
+  const strokeWidth = layer.style?.strokeWidth ?? borderWidth ?? 0
+  const width = Math.max(10, layer.size?.width ?? 0)
+  const height = Math.max(10, layer.size?.height ?? 0)
+
+  switch (shapeType) {
+    case 'circle':
+      return (
+        <Circle
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Circle>}
+          radius={Math.min(width, height) / 2}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+    case 'triangle':
+      return (
+        <RegularPolygon
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.RegularPolygon>}
+          sides={3}
+          radius={Math.min(width, height) / 2}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+    case 'star':
+      return (
+        <Star
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Star>}
+          numPoints={5}
+          innerRadius={Math.min(width, height) / 4}
+          outerRadius={Math.min(width, height) / 2}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+    case 'arrow':
+      return (
+        <Line
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Line>}
+          points={[0, height / 2, width * 0.7, height / 2, width * 0.7, height * 0.2, width, height / 2, width * 0.7, height * 0.8, width * 0.7, height / 2]}
+          tension={0}
+          closed
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+    case 'line':
+      return (
+        <Line
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Line>}
+          points={[0, height / 2, width, height / 2]}
+          stroke={fill}
+          strokeWidth={layer.style?.strokeWidth ?? 4}
+          lineCap="round"
+          lineJoin="round"
+        />
+      )
+    case 'rounded-rectangle':
+      return (
+        <Rect
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Rect>}
+          width={width}
+          height={height}
+          cornerRadius={Math.min(borderRadius || 24, Math.min(width, height) / 2)}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+    case 'rectangle':
+    default:
+      return (
+        <Rect
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Rect>}
+          width={width}
+          height={height}
+          cornerRadius={borderRadius}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+        />
+      )
+  }
+}
+
+type IconNodeProps = {
+  layer: Layer
+  commonProps: CommonProps
+  shapeRef: React.MutableRefObject<Konva.Shape | null>
+}
+
+function IconNode({ layer, commonProps, shapeRef }: IconNodeProps) {
+  const iconPath = layer.style?.iconId ? ICON_PATHS[layer.style.iconId] : undefined
+  const fill = layer.style?.fill ?? '#111111'
+  const stroke = layer.style?.strokeColor
+  const strokeWidth = layer.style?.strokeWidth ?? 0
+
+  if (!iconPath) {
+    return (
+      <Rect
+        {...commonProps}
+        ref={shapeRef as React.RefObject<Konva.Rect>}
+        width={Math.max(10, layer.size?.width ?? 0)}
+        height={Math.max(10, layer.size?.height ?? 0)}
+        fill="#f5f5f5"
+        stroke="#d4d4d8"
+        dash={[4, 4]}
+      />
+    )
+  }
+
+  return (
+    <Path
+      {...commonProps}
+      ref={shapeRef as React.RefObject<Konva.Path>}
+      data={iconPath}
+      width={Math.max(10, layer.size?.width ?? 0)}
+      height={Math.max(10, layer.size?.height ?? 0)}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
+      listening={commonProps.listening}
+    />
+  )
+}
+
+const ICON_PATHS: Record<string, string> = {
+  star: 'M12 2l2.92 5.91 6.53.95-4.72 4.59 1.12 6.53L12 17.77l-5.85 3.21 1.12-6.53-4.72-4.59 6.53-.95L12 2z',
+  heart: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
+  check: 'M20 6L9 17l-5-5',
+  sun: 'M12 4V2m0 20v-2m8.66-6H22M2 12h1.34M17.66 6.34l1.41-1.41M4.93 19.07l1.41-1.41M6.34 6.34 4.93 4.93M19.07 19.07l-1.41-1.41M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12z',
 }
