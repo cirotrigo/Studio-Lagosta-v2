@@ -344,7 +344,7 @@ export function PropertiesPanel() {
                     max={100}
                     value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
                     onChange={(event) =>
-                      updateLayerStyle(selectedLayer.id, { opacity: Number(event.target.value) / 100 })
+                      editor.updateLayerStyle(selectedLayer.id, { opacity: Number(event.target.value) / 100 })
                     }
                   />
                 </div>

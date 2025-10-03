@@ -52,7 +52,7 @@
     "ai": "^3.3.35",
     "class-variance-authority": "0.7.1",
     "clsx": "^2.1.1",
-    "cropperjs": "^2.0.1",
+    "cropperjs": "^1.6.1",
     "fitty": "^2.3.7",
     "framer-motion": "12.23.12",
     "googleapis": "^161.0.0",
