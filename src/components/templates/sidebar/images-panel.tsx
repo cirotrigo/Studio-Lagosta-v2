@@ -100,20 +100,70 @@ export function ImagesPanel() {
   const canvasHeight = design.canvas.height
 
   const insertImageLayer = React.useCallback(
-    (url: string, name?: string) => {
+    async (url: string, name?: string) => {
       const base = createDefaultLayer('image')
-      addLayer({
-        ...base,
-        name: name ? `Imagem - ${name}` : 'Imagem',
-        fileUrl: url,
-        position: { x: 0, y: 0 },
-        size: { width: canvasWidth, height: canvasHeight },
-        style: {
-          ...base.style,
-          objectFit: 'cover' as const,
-        },
-      })
-      toast({ title: 'Imagem adicionada', description: 'A imagem foi posicionada para preencher o canvas.' })
+
+      // Carregar imagem para obter dimensões reais
+      const img = new window.Image()
+      img.crossOrigin = 'anonymous'
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve()
+          img.onerror = () => reject(new Error('Falha ao carregar imagem'))
+          img.src = url
+        })
+
+        const imgWidth = img.naturalWidth
+        const imgHeight = img.naturalHeight
+        const imgAspectRatio = imgWidth / imgHeight
+
+        // Calcular dimensões para cobrir o canvas mantendo proporção
+        let targetWidth = canvasWidth
+        let targetHeight = canvasWidth / imgAspectRatio
+
+        // Se altura for menor que canvas, ajustar pela altura
+        if (targetHeight < canvasHeight) {
+          targetHeight = canvasHeight
+          targetWidth = canvasHeight * imgAspectRatio
+        }
+
+        // Centralizar a imagem
+        const x = Math.round((canvasWidth - targetWidth) / 2)
+        const y = Math.round((canvasHeight - targetHeight) / 2)
+
+        addLayer({
+          ...base,
+          name: name ? `Imagem - ${name}` : 'Imagem',
+          fileUrl: url,
+          position: { x, y },
+          size: { width: Math.round(targetWidth), height: Math.round(targetHeight) },
+          style: {
+            ...base.style,
+            objectFit: 'cover' as const,
+          },
+        })
+        toast({ title: 'Imagem adicionada', description: 'A imagem foi posicionada para preencher o canvas sem distorção.' })
+      } catch (error) {
+        console.error('[ImagesPanel] Erro ao carregar dimensões da imagem', error)
+        // Fallback: usar dimensões padrão centralizadas
+        const fallbackSize = Math.min(canvasWidth * 0.8, canvasHeight * 0.8, 800)
+        addLayer({
+          ...base,
+          name: name ? `Imagem - ${name}` : 'Imagem',
+          fileUrl: url,
+          position: {
+            x: Math.round((canvasWidth - fallbackSize) / 2),
+            y: Math.round((canvasHeight - fallbackSize) / 2)
+          },
+          size: { width: Math.round(fallbackSize), height: Math.round(fallbackSize) },
+          style: {
+            ...base.style,
+            objectFit: 'contain' as const,
+          },
+        })
+        toast({ title: 'Imagem adicionada', description: 'A imagem foi adicionada ao canvas.' })
+      }
     },
     [addLayer, canvasHeight, canvasWidth, toast],
   )
@@ -192,7 +242,7 @@ export function ImagesPanel() {
         if (!uploaded.url) {
           throw new Error('Falha ao importar arquivo do Google Drive')
         }
-        insertImageLayer(uploaded.url, uploaded.name ?? item.name)
+        await insertImageLayer(uploaded.url, uploaded.name ?? item.name)
         setIsDriveModalOpen(false)
       } catch (error) {
         console.error('[ImagesPanel] Falha ao importar do Drive', error)

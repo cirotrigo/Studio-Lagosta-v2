@@ -14,12 +14,12 @@ import { KonvaSelectionTransformer } from './konva-transformer'
  *
  * Funcionalidades:
  * - Renderização de todas as camadas do design
- * - Sistema de zoom com mouse wheel (pointer-based, 25%-200%)
- * - Pan com spacebar + drag
+ * - Sistema de zoom simplificado (10%-500%, centralizado horizontalmente)
+ * - Scroll vertical nativo quando necessário
  * - Alignment guides automáticos (snap to outros layers e canvas)
  * - Seleção múltipla com Shift/Ctrl
  * - Integração com transformer para resize/rotate
- * - Atalhos de teclado (Ctrl+Z/Y, Ctrl+C/V)
+ * - Atalhos de teclado (Ctrl+Z/Y, Ctrl+C/V, Ctrl+0/+/-)
  *
  * @component
  */
@@ -38,26 +38,10 @@ type GuideLine = {
 }
 
 const GUIDE_THRESHOLD = 6
-const MIN_ZOOM = 0.25
-const MAX_ZOOM = 2
-const WHEEL_STEP = 0.05
+const MIN_ZOOM = 0.1
+const MAX_ZOOM = 5
+const ZOOM_SCALE_BY = 1.05 // 5% por scroll
 
-const CURSORS = {
-  default: 'default',
-  grab: 'grab',
-  grabbing: 'grabbing',
-} as const
-
-function getClientPosition(evt: MouseEvent | TouchEvent): { x: number; y: number } {
-  if ('touches' in evt && evt.touches.length > 0) {
-    return { x: evt.touches[0]!.clientX, y: evt.touches[0]!.clientY }
-  }
-  if ('changedTouches' in evt && evt.changedTouches.length > 0) {
-    return { x: evt.changedTouches[0]!.clientX, y: evt.changedTouches[0]!.clientY }
-  }
-  const mouseEvt = evt as MouseEvent
-  return { x: mouseEvt.clientX, y: mouseEvt.clientY }
-}
 
 export function KonvaEditorStage() {
   const {
@@ -79,42 +63,22 @@ export function KonvaEditorStage() {
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
-  const [stagePosition, setStagePosition] = React.useState({ x: 0, y: 0 })
-  const [isPanning, setIsPanning] = React.useState(false)
-  const spacePressedRef = React.useRef(false)
-  const panStateRef = React.useRef<{ stagePos: { x: number; y: number }; client: { x: number; y: number } } | null>(null)
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
   const deferredLayers = React.useDeferredValue(design.layers)
 
-  const updateCursor = React.useCallback((cursor: keyof typeof CURSORS) => {
-    const container = stageRef.current?.container()
-    if (!container) return
-    container.style.cursor = CURSORS[cursor]
-  }, [])
-
   React.useEffect(() => {
     if (stageRef.current) {
       setStageInstance(stageRef.current)
-      updateCursor(spacePressedRef.current ? 'grab' : 'default')
     }
     return () => setStageInstance(null)
-  }, [setStageInstance, updateCursor])
+  }, [setStageInstance])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = event.target.getStage()
       if (!stage) return
-
-      if (spacePressedRef.current) {
-        panStateRef.current = {
-          stagePos: stagePosition,
-          client: getClientPosition(event.evt),
-        }
-        updateCursor('grabbing')
-        return
-      }
 
       const target = event.target as Konva.Node
       const clickedOnEmpty = target === stage || target.hasName?.('canvas-background')
@@ -122,7 +86,7 @@ export function KonvaEditorStage() {
         clearLayerSelection()
       }
     },
-    [clearLayerSelection, stagePosition, updateCursor],
+    [clearLayerSelection],
   )
 
   const handleWheel = React.useCallback(
@@ -130,27 +94,79 @@ export function KonvaEditorStage() {
       event.evt.preventDefault()
       const stage = stageRef.current
       if (!stage) return
-      const pointer = stage.getPointerPosition()
-      if (!pointer) return
 
-      const direction = event.evt.deltaY > 0 ? -1 : 1
-      const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + direction * WHEEL_STEP))
-      if (nextZoom === zoom) return
+      const oldScale = stage.scaleX()
 
-      const mousePointTo = {
-        x: (pointer.x - stagePosition.x) / zoom,
-        y: (pointer.y - stagePosition.y) / zoom,
-      }
+      // Determinar direção do zoom
+      const direction = event.evt.deltaY > 0 ? 1 / ZOOM_SCALE_BY : ZOOM_SCALE_BY
 
-      const newPosition = {
-        x: pointer.x - mousePointTo.x * nextZoom,
-        y: pointer.y - mousePointTo.y * nextZoom,
-      }
+      // Calcular nova escala
+      const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldScale * direction))
 
-      setZoom(nextZoom)
-      setStagePosition(newPosition)
+      if (newScale === oldScale) return
+
+      // Calcular offset para manter zoom centralizado
+      // O zoom deve acontecer a partir do centro do canvas
+      const stageWidth = stage.width()
+      const stageHeight = stage.height()
+
+      const centerX = stageWidth / 2
+      const centerY = stageHeight / 2
+
+      // Calcular nova posição para centralizar o zoom
+      const newX = centerX - (centerX * newScale)
+      const newY = centerY - (centerY * newScale)
+
+      // Aplicar zoom
+      stage.scale({ x: newScale, y: newScale })
+      stage.position({ x: newX, y: newY })
+
+      stage.batchDraw()
+
+      // Atualizar estado React
+      setZoom(newScale)
     },
-    [setZoom, stagePosition.x, stagePosition.y, zoom],
+    [setZoom],
+  )
+
+
+  // Zoom animado para atalhos de teclado
+  const animateZoom = React.useCallback(
+    (newScale: number, duration = 300) => {
+      const stage = stageRef.current
+      if (!stage) return
+
+      const oldScale = stage.scaleX()
+
+      // Clampar escala aos limites
+      const clampedScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale))
+      if (clampedScale === oldScale) return
+
+      // Calcular offset para manter zoom centralizado
+      const stageWidth = stage.width()
+      const stageHeight = stage.height()
+
+      const centerX = stageWidth / 2
+      const centerY = stageHeight / 2
+
+      const newX = centerX - (centerX * clampedScale)
+      const newY = centerY - (centerY * clampedScale)
+
+      // Animar zoom usando Konva.Tween
+      new Konva.Tween({
+        node: stage,
+        duration: duration / 1000,
+        scaleX: clampedScale,
+        scaleY: clampedScale,
+        x: newX,
+        y: newY,
+        easing: Konva.Easings.EaseInOut,
+        onUpdate: () => {
+          setZoom(stage.scaleX())
+        },
+      }).play()
+    },
+    [setZoom],
   )
 
   const handleLayerChange = React.useCallback(
@@ -168,7 +184,6 @@ export function KonvaEditorStage() {
 
   const handleLayerSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>, layer: Layer) => {
-      if (spacePressedRef.current) return
       event.cancelBubble = true
       const additive = event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey
       selectLayer(layer.id, { additive, toggle: additive })
@@ -218,36 +233,40 @@ export function KonvaEditorStage() {
   }, [])
 
   React.useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      const stage = stageRef.current
-      if (stage) {
-        stage.position(stagePosition)
-        stage.batchDraw()
-      }
-    })
-    return () => cancelAnimationFrame(id)
-  }, [deferredLayers, stagePosition, zoom])
-
-  React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
         return
       }
 
-      if (event.key === ' ') {
-        if (!spacePressedRef.current) {
-          spacePressedRef.current = true
-          setIsPanning(true)
-          updateCursor('grab')
-          event.preventDefault()
-        }
-        return
-      }
-
       const key = event.key.toLowerCase()
       const isModifier = event.metaKey || event.ctrlKey
       if (!isModifier) return
+
+      // Atalhos de zoom (Ctrl/Cmd + +/- e Ctrl/Cmd + 0)
+      if (key === '+' || key === '=') {
+        event.preventDefault()
+        const stage = stageRef.current
+        if (!stage) return
+        const newZoom = stage.scaleX() * 1.2
+        animateZoom(newZoom, 200)
+        return
+      }
+
+      if (key === '-' || key === '_') {
+        event.preventDefault()
+        const stage = stageRef.current
+        if (!stage) return
+        const newZoom = stage.scaleX() / 1.2
+        animateZoom(newZoom, 200)
+        return
+      }
+
+      if (key === '0') {
+        event.preventDefault()
+        animateZoom(1, 300) // Reset para 100%
+        return
+      }
 
       if (key === 'c') {
         if (selectedLayerIds.length === 0) return
@@ -275,68 +294,34 @@ export function KonvaEditorStage() {
       }
     }
 
-    const handleKeyUp = (event: KeyboardEvent) => {
-      if (event.key === ' ') {
-        spacePressedRef.current = false
-        panStateRef.current = null
-        setIsPanning(false)
-        updateCursor('default')
-      }
-    }
-
-    const handlePointerMove = (event: PointerEvent) => {
-      if (!spacePressedRef.current || !panStateRef.current) return
-      event.preventDefault()
-      const { stagePos, client } = panStateRef.current
-      const dx = event.clientX - client.x
-      const dy = event.clientY - client.y
-      setStagePosition({ x: stagePos.x + dx, y: stagePos.y + dy })
-    }
-
-    const handlePointerUp = () => {
-      if (!panStateRef.current) return
-      panStateRef.current = null
-      if (spacePressedRef.current) {
-        updateCursor('grab')
-      } else {
-        setIsPanning(false)
-        updateCursor('default')
-      }
-    }
-
     window.addEventListener('keydown', handleKeyDown)
-    window.addEventListener('keyup', handleKeyUp)
-    window.addEventListener('pointermove', handlePointerMove, { passive: false })
-    window.addEventListener('pointerup', handlePointerUp)
-    window.addEventListener('pointercancel', handlePointerUp)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
-      window.removeEventListener('keyup', handleKeyUp)
-      window.removeEventListener('pointermove', handlePointerMove)
-      window.removeEventListener('pointerup', handlePointerUp)
-      window.removeEventListener('pointercancel', handlePointerUp)
     }
-  }, [canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo, updateCursor])
+  }, [animateZoom, canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo])
 
+  // Prevenir zoom acidental do browser com Ctrl+Wheel
   React.useEffect(() => {
-    if (!spacePressedRef.current) {
-      updateCursor('default')
+    const preventBrowserZoom = (event: WheelEvent) => {
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault()
+      }
     }
-  }, [updateCursor])
+
+    document.addEventListener('wheel', preventBrowserZoom, { passive: false })
+    return () => {
+      document.removeEventListener('wheel', preventBrowserZoom)
+    }
+  }, [])
 
   return (
-    <div className="flex h-full w-full flex-1 items-center justify-center overflow-auto rounded-lg border border-border/40 bg-muted/50 p-8">
-      <div className="relative flex h-full items-center justify-center" style={{ minWidth: canvasWidth * zoom + 40, minHeight: canvasHeight * zoom + 40 }}>
+    <div className="flex h-full w-full flex-1 items-center justify-center overflow-x-hidden overflow-y-auto rounded-lg border border-border/40 bg-muted/50 p-8">
+      <div className="relative flex items-center justify-center" style={{ minHeight: '100%', minWidth: '100%' }}>
         <Stage
           ref={stageRef}
           width={canvasWidth}
           height={canvasHeight}
-          scaleX={zoom}
-          scaleY={zoom}
-          x={stagePosition.x}
-          y={stagePosition.y}
           className="rounded-md shadow-lg"
-          style={{ width: canvasWidth * zoom, height: canvasHeight * zoom, backgroundColor: 'transparent' }}
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
           onClick={handleStagePointerDown}
@@ -377,7 +362,7 @@ export function KonvaEditorStage() {
               <KonvaLayerFactory
                 key={layer.id}
                 layer={layer}
-                disableInteractions={isPanning}
+                disableInteractions={false}
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}

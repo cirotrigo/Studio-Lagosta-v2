@@ -13,6 +13,7 @@ interface KonvaSelectionTransformerProps {
 export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaSelectionTransformerProps) {
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
   const { design } = useTemplateEditor()
+  const [isShiftPressed, setIsShiftPressed] = React.useState(false)
 
   React.useEffect(() => {
     const transformer = transformerRef.current
@@ -33,10 +34,52 @@ export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaS
     transformer.getLayer()?.batchDraw()
   }, [design.layers, selectedLayerIds, stageRef])
 
+  // Detectar Shift para preservar aspect ratio
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && !isShiftPressed) {
+        setIsShiftPressed(true)
+      }
+    }
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === 'Shift' && isShiftPressed) {
+        setIsShiftPressed(false)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [isShiftPressed])
+
+  // Atualizar keepRatio do transformer quando Shift mudar
+  React.useEffect(() => {
+    const transformer = transformerRef.current
+    if (!transformer) return
+
+    // Para imagens, sempre manter proporção por padrão
+    const nodes = transformer.nodes()
+    const hasImageNode = nodes.some((node) => {
+      const layerId = node.id()
+      const layer = design.layers.find((l) => l.id === layerId)
+      return layer && (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element')
+    })
+
+    // Imagens sempre mantêm proporção, outros elementos só com Shift
+    transformer.keepRatio(hasImageNode || isShiftPressed)
+    transformer.getLayer()?.batchDraw()
+  }, [isShiftPressed, design.layers, selectedLayerIds])
+
   return (
     <Transformer
       ref={transformerRef}
       rotateEnabled
+      keepRatio={false} // Será controlado dinamicamente via effect
       borderStroke="hsl(var(--primary))"
       borderStrokeWidth={2}
       anchorStroke="hsl(var(--primary))"
