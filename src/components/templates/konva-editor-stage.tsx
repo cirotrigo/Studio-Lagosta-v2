@@ -23,10 +23,26 @@ type GuideLine = {
 }
 
 const GUIDE_THRESHOLD = 6
-
 const MIN_ZOOM = 0.25
 const MAX_ZOOM = 2
 const WHEEL_STEP = 0.05
+
+const CURSORS = {
+  default: 'default',
+  grab: 'grab',
+  grabbing: 'grabbing',
+} as const
+
+function getClientPosition(evt: MouseEvent | TouchEvent): { x: number; y: number } {
+  if ('touches' in evt && evt.touches.length > 0) {
+    return { x: evt.touches[0]!.clientX, y: evt.touches[0]!.clientY }
+  }
+  if ('changedTouches' in evt && evt.changedTouches.length > 0) {
+    return { x: evt.changedTouches[0]!.clientX, y: evt.changedTouches[0]!.clientY }
+  }
+  const mouseEvt = evt as MouseEvent
+  return { x: mouseEvt.clientX, y: mouseEvt.clientY }
+}
 
 export function KonvaEditorStage() {
   const {
@@ -39,35 +55,77 @@ export function KonvaEditorStage() {
     setZoom,
     copySelectedLayers,
     pasteLayers,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useTemplateEditor()
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
+  const [stagePosition, setStagePosition] = React.useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = React.useState(false)
+  const spacePressedRef = React.useRef(false)
+  const panStateRef = React.useRef<{ stagePos: { x: number; y: number }; client: { x: number; y: number } } | null>(null)
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
+
+  const updateCursor = React.useCallback((cursor: keyof typeof CURSORS) => {
+    const container = stageRef.current?.container()
+    if (!container) return
+    container.style.cursor = CURSORS[cursor]
+  }, [])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = event.target.getStage()
       if (!stage) return
+
+      if (spacePressedRef.current) {
+        panStateRef.current = {
+          stagePos: stagePosition,
+          client: getClientPosition(event.evt),
+        }
+        updateCursor('grabbing')
+        return
+      }
+
       const target = event.target as Konva.Node
       const clickedOnEmpty = target === stage || target.hasName?.('canvas-background')
       if (clickedOnEmpty) {
         clearLayerSelection()
       }
     },
-    [clearLayerSelection],
+    [clearLayerSelection, stagePosition, updateCursor],
   )
 
   const handleWheel = React.useCallback(
     (event: KonvaEventObject<WheelEvent>) => {
       event.evt.preventDefault()
+      const stage = stageRef.current
+      if (!stage) return
+      const pointer = stage.getPointerPosition()
+      if (!pointer) return
+
       const direction = event.evt.deltaY > 0 ? -1 : 1
       const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom + direction * WHEEL_STEP))
+      if (nextZoom === zoom) return
+
+      const mousePointTo = {
+        x: (pointer.x - stagePosition.x) / zoom,
+        y: (pointer.y - stagePosition.y) / zoom,
+      }
+
+      const newPosition = {
+        x: pointer.x - mousePointTo.x * nextZoom,
+        y: pointer.y - mousePointTo.y * nextZoom,
+      }
+
       setZoom(nextZoom)
+      setStagePosition(newPosition)
     },
-    [setZoom, zoom],
+    [setZoom, stagePosition.x, stagePosition.y, zoom],
   )
 
   const handleLayerChange = React.useCallback(
@@ -85,6 +143,7 @@ export function KonvaEditorStage() {
 
   const handleLayerSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>, layer: Layer) => {
+      if (spacePressedRef.current) return
       event.cancelBubble = true
       const additive = event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey
       selectLayer(layer.id, { additive, toggle: additive })
@@ -140,6 +199,16 @@ export function KonvaEditorStage() {
         return
       }
 
+      if (event.key === ' ') {
+        if (!spacePressedRef.current) {
+          spacePressedRef.current = true
+          setIsPanning(true)
+          updateCursor('grab')
+          event.preventDefault()
+        }
+        return
+      }
+
       const key = event.key.toLowerCase()
       const isModifier = event.metaKey || event.ctrlKey
       if (!isModifier) return
@@ -154,11 +223,70 @@ export function KonvaEditorStage() {
         event.preventDefault()
         pasteLayers()
       }
+
+      if (key === 'z') {
+        event.preventDefault()
+        if (event.shiftKey) {
+          if (canRedo) redo()
+        } else if (canUndo) {
+          undo()
+        }
+      }
+
+      if (key === 'y') {
+        event.preventDefault()
+        if (canRedo) redo()
+      }
+    }
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key === ' ') {
+        spacePressedRef.current = false
+        panStateRef.current = null
+        setIsPanning(false)
+        updateCursor('default')
+      }
+    }
+
+    const handlePointerMove = (event: PointerEvent) => {
+      if (!spacePressedRef.current || !panStateRef.current) return
+      event.preventDefault()
+      const { stagePos, client } = panStateRef.current
+      const dx = event.clientX - client.x
+      const dy = event.clientY - client.y
+      setStagePosition({ x: stagePos.x + dx, y: stagePos.y + dy })
+    }
+
+    const handlePointerUp = () => {
+      if (!panStateRef.current) return
+      panStateRef.current = null
+      if (spacePressedRef.current) {
+        updateCursor('grab')
+      } else {
+        setIsPanning(false)
+        updateCursor('default')
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [copySelectedLayers, pasteLayers, selectedLayerIds.length])
+    window.addEventListener('keyup', handleKeyUp)
+    window.addEventListener('pointermove', handlePointerMove, { passive: false })
+    window.addEventListener('pointerup', handlePointerUp)
+    window.addEventListener('pointercancel', handlePointerUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      window.removeEventListener('pointermove', handlePointerMove)
+      window.removeEventListener('pointerup', handlePointerUp)
+      window.removeEventListener('pointercancel', handlePointerUp)
+    }
+  }, [canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo, updateCursor])
+
+  React.useEffect(() => {
+    if (!spacePressedRef.current) {
+      updateCursor('default')
+    }
+  }, [updateCursor])
 
   return (
     <div className="flex h-full w-full flex-1 items-center justify-center overflow-auto rounded-lg border border-border/40 bg-muted/50 p-8">
@@ -169,6 +297,8 @@ export function KonvaEditorStage() {
           height={canvasHeight}
           scaleX={zoom}
           scaleY={zoom}
+          x={stagePosition.x}
+          y={stagePosition.y}
           className="rounded-md shadow-lg"
           style={{ width: canvasWidth * zoom, height: canvasHeight * zoom, backgroundColor: 'transparent' }}
           onMouseDown={handleStagePointerDown}
@@ -211,7 +341,7 @@ export function KonvaEditorStage() {
               <KonvaLayerFactory
                 key={layer.id}
                 layer={layer}
-                isSelected={selectedLayerIds.includes(layer.id)}
+                disableInteractions={isPanning}
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}
@@ -247,7 +377,7 @@ function computeAlignmentGuides(
 
   lineGuideStops.vertical.forEach((lineGuide) => {
     itemEdges.vertical.forEach((itemEdge) => {
-      const diff = Math.abs(lineGuide - itemEdge.guide) 
+      const diff = Math.abs(lineGuide - itemEdge.guide)
       if (diff < minDiffV) {
         minDiffV = diff
         snapX = lineGuide - itemEdge.offset

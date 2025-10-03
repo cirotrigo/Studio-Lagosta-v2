@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Loader2, RefreshCw } from 'lucide-react'
+import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -143,8 +144,12 @@ export function TemplatesPanel() {
             const typeLabel = typeLabels[template.type] ?? template.type
 
             return (
-              <div
+              <motion.div
                 key={template.id}
+                layout
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
                 className={cn(
                   'flex flex-col overflow-hidden rounded-lg border border-border/40 bg-card/70 shadow-sm transition hover:border-primary/40',
                   isCurrent && 'border-primary/80',
@@ -188,7 +193,7 @@ export function TemplatesPanel() {
                     </Button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             )
           })}
         </div>

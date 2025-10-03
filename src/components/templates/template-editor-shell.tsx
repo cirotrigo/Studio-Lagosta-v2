@@ -13,6 +13,7 @@ import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
 import { EditorSidebar } from './sidebar/editor-sidebar'
+import { LayersDock } from './layers-dock'
 import { Separator } from '@/components/ui/separator'
 
 interface TemplateEditorShellProps {
@@ -112,11 +113,12 @@ function TemplateEditorContent() {
 
       <EditorToolbar onSave={handleSave} saving={isSaving} />
 
-      <div className="grid gap-4 2xl:grid-cols-[360px_minmax(0,1fr)_340px] xl:grid-cols-[340px_minmax(0,1fr)_320px] lg:grid-cols-[320px_minmax(0,1fr)_300px]">
+      <div className="grid gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_320px] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
         <EditorSidebar />
         <div className="flex min-h-[600px] flex-col gap-4">
           <EditorCanvas />
           <CanvasPreview />
+          <LayersDock />
         </div>
         <PropertiesPanel />
       </div>

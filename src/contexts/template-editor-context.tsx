@@ -51,6 +51,10 @@ export interface TemplateEditorContextValue {
   zoomOut: () => void
   copySelectedLayers: () => void
   pasteLayers: () => void
+  undo: () => void
+  redo: () => void
+  canUndo: boolean
+  canRedo: boolean
   loadTemplate: (payload: {
     designData: DesignData
     dynamicFields?: DynamicField[] | null
@@ -73,6 +77,13 @@ function normalizeLayerOrder(layers: Layer[]): Layer[] {
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 }
 
+function cloneDesign(design: DesignData): DesignData {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(design)
+  }
+  return JSON.parse(JSON.stringify(design)) as DesignData
+}
+
 export function TemplateEditorProvider({ template, children }: TemplateEditorProviderProps) {
   const [name, setName] = React.useState(template.name)
   const [design, setDesign] = React.useState<DesignData>(() => ({
@@ -88,6 +99,8 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   })
   const [dirty, setDirty] = React.useState(false)
   const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM)
+  const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })
+  const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false })
   const clipboardRef = React.useRef<Layer[] | null>(null)
 
   // Sync when template prop changes (e.g., refetch)
@@ -102,7 +115,16 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     setSelectedLayerIds(firstId ? [firstId] : [])
     setDirty(false)
     setZoomState(DEFAULT_ZOOM)
+    historyRef.current = { past: [], future: [] }
+    setHistoryMeta({ canUndo: false, canRedo: false })
   }, [template.id, template.updatedAt, template.name, template.designData, template.dynamicFields])
+
+  const updateHistoryMeta = React.useCallback(() => {
+    setHistoryMeta({
+      canUndo: historyRef.current.past.length > 0,
+      canRedo: historyRef.current.future.length > 0,
+    })
+  }, [])
 
   const setZoom = React.useCallback((value: number) => {
     setZoomState(Math.min(2, Math.max(0.25, Number.isFinite(value) ? value : DEFAULT_ZOOM)))
@@ -110,6 +132,24 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const zoomIn = React.useCallback(() => setZoomState((prev) => Math.min(prev + 0.1, 2)), [])
   const zoomOut = React.useCallback(() => setZoomState((prev) => Math.max(prev - 0.1, 0.25)), [])
+
+  const applyDesign = React.useCallback(
+    (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean }) => {
+      setDesign((prev) => {
+        const next = updater(prev)
+        if (next === prev) return prev
+        if (!options?.skipHistory) {
+          const snapshot = cloneDesign(prev)
+          historyRef.current.past = [...historyRef.current.past.slice(-49), snapshot]
+          historyRef.current.future = []
+          setDirty(true)
+        }
+        updateHistoryMeta()
+        return next
+      })
+    },
+    [updateHistoryMeta],
+  )
 
   const selectLayer = React.useCallback((id: string | null, options?: { additive?: boolean; toggle?: boolean }) => {
     if (!id) {
@@ -146,7 +186,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const updateLayer = React.useCallback(
     (id: string, updater: (layer: Layer) => Layer) => {
-      setDesign((prev) => {
+      applyDesign((prev) => {
         let changed = false
         const nextLayers = prev.layers.map((layer) => {
           if (layer.id !== id) return layer
@@ -155,11 +195,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
           return next
         })
         if (!changed) return prev
-        setDirty(true)
         return { ...prev, layers: normalizeLayerOrder(nextLayers) }
       })
     },
-    [],
+    [applyDesign],
   )
 
   const updateLayerPartial = React.useCallback(
@@ -191,14 +230,13 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const addLayer = React.useCallback(
     (layer: Layer) => {
-      setDesign((prev) => {
+      applyDesign((prev) => {
         const nextLayers = normalizeLayerOrder([...prev.layers, layer])
-        setDirty(true)
         return { ...prev, layers: nextLayers }
       })
       setSelectedLayerIds([layer.id])
     },
-    [],
+    [applyDesign],
   )
 
   const duplicateLayer = React.useCallback(
@@ -222,14 +260,13 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const removeLayer = React.useCallback(
     (id: string) => {
-      setDesign((prev) => {
+      applyDesign((prev) => {
         const nextLayers = prev.layers.filter((layer) => layer.id !== id)
-        setDirty(true)
         return { ...prev, layers: normalizeLayerOrder(nextLayers) }
       })
       setSelectedLayerIds((prev) => prev.filter((layerId) => layerId !== id))
     },
-    [],
+    [applyDesign],
   )
 
   const toggleLayerVisibility = React.useCallback(
@@ -248,7 +285,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
 
   const reorderLayers = React.useCallback(
     (idsInOrder: string[]) => {
-      setDesign((prev) => {
+      applyDesign((prev) => {
         const idToLayer = new Map(prev.layers.map((layer) => [layer.id, layer]))
         const nextLayers: Layer[] = []
         idsInOrder.forEach((layerId) => {
@@ -262,19 +299,15 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
           }
         })
         const normalized = normalizeLayerOrder(nextLayers)
-        setDirty(true)
         return { ...prev, layers: normalized }
       })
     },
-    [],
+    [applyDesign],
   )
 
   const updateCanvas = React.useCallback((canvas: Partial<DesignData['canvas']>) => {
-    setDesign((prev) => {
-      setDirty(true)
-      return { ...prev, canvas: { ...prev.canvas, ...canvas } }
-    })
-  }, [])
+    applyDesign((prev) => ({ ...prev, canvas: { ...prev.canvas, ...canvas } }))
+  }, [applyDesign])
 
   const copySelectedLayers = React.useCallback(() => {
     if (selectedLayerIds.length === 0) return
@@ -315,13 +348,54 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       }
     })
 
-    setDesign((prev) => {
+    applyDesign((prev) => {
       const nextLayers = normalizeLayerOrder([...prev.layers, ...clones])
-      setDirty(true)
       return { ...prev, layers: nextLayers }
     })
     setSelectedLayerIds(clones.map((layer) => layer.id))
-  }, [])
+  }, [applyDesign])
+
+  const undo = React.useCallback(() => {
+    setDesign((prev) => {
+      const past = historyRef.current.past
+      if (!past.length) return prev
+      const previous = past[past.length - 1]
+      historyRef.current.past = past.slice(0, -1)
+      historyRef.current.future = [cloneDesign(prev), ...historyRef.current.future].slice(0, 50)
+      setDirty(true)
+      updateHistoryMeta()
+      const nextDesign = cloneDesign(previous)
+      const existingIds = new Set(nextDesign.layers.map((layer) => layer.id))
+      setSelectedLayerIds((current) => {
+        const filtered = current.filter((id) => existingIds.has(id))
+        if (filtered.length > 0) return filtered
+        const first = nextDesign.layers[0]?.id
+        return first ? [first] : []
+      })
+      return nextDesign
+    })
+  }, [updateHistoryMeta])
+
+  const redo = React.useCallback(() => {
+    setDesign((prev) => {
+      const future = historyRef.current.future
+      if (!future.length) return prev
+      const nextState = future[0]
+      historyRef.current.future = future.slice(1)
+      historyRef.current.past = [...historyRef.current.past.slice(-49), cloneDesign(prev)]
+      setDirty(true)
+      updateHistoryMeta()
+      const nextDesign = cloneDesign(nextState)
+      const existingIds = new Set(nextDesign.layers.map((layer) => layer.id))
+      setSelectedLayerIds((current) => {
+        const filtered = current.filter((id) => existingIds.has(id))
+        if (filtered.length > 0) return filtered
+        const first = nextDesign.layers[0]?.id
+        return first ? [first] : []
+      })
+      return nextDesign
+    })
+  }, [updateHistoryMeta])
 
   const loadTemplate = React.useCallback(
     ({ designData, dynamicFields: nextDynamicFields, name: nextName }: {
@@ -329,17 +403,12 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       dynamicFields?: DynamicField[] | null
       name?: string
     }) => {
-      const clonedDesign: DesignData = (() => {
-        try {
-          return structuredClone(designData)
-        } catch {
-          return JSON.parse(JSON.stringify(designData)) as DesignData
-        }
-      })()
-
+      const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
-      setDesign(clonedDesign)
+      applyDesign(() => clonedDesign, { skipHistory: true })
+      historyRef.current = { past: [], future: [] }
+      updateHistoryMeta()
       if (Array.isArray(nextDynamicFields)) {
         setDynamicFieldsState([...nextDynamicFields])
       } else {
@@ -352,7 +421,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       }
       setDirty(true)
     },
-    [],
+    [applyDesign, updateHistoryMeta],
   )
 
   const markSaved = React.useCallback((nextTemplate?: Partial<TemplateResource>) => {
@@ -420,6 +489,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       copySelectedLayers,
       pasteLayers,
       loadTemplate,
+      undo,
+      redo,
+      canUndo: historyMeta.canUndo,
+      canRedo: historyMeta.canRedo,
     }),
     [
       template.id,
@@ -455,6 +528,10 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       copySelectedLayers,
       pasteLayers,
       loadTemplate,
+      undo,
+      redo,
+      historyMeta.canUndo,
+      historyMeta.canRedo,
     ],
   )
 

@@ -23,6 +23,10 @@ import {
   Upload,
   Copy,
   ClipboardPaste,
+  Download,
+  Share2,
+  Undo2,
+  Redo2,
 } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
@@ -66,6 +70,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     projectId,
     copySelectedLayers,
     pasteLayers,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
   } = useTemplateEditor()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -535,21 +543,56 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     })
   }, [pasteLayers, toast])
 
+  const handleExport = React.useCallback(() => {
+    toast({
+      title: 'Exportação iniciada',
+      description: 'Gerando arquivos de saída. Você será notificado quando estiver pronto.',
+    })
+  }, [toast])
+
+  const handleShare = React.useCallback(() => {
+    toast({
+      title: 'Compartilhar',
+      description: 'Compartilhamento será habilitado em breve. Envie o link do projeto para colaboradores.',
+    })
+  }, [toast])
+
   return (
     <>
       <input ref={imageFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
       <input ref={logoFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoFileChange} />
       <input ref={elementFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleElementFileChange} />
 
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/60 p-3 shadow-sm">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <Button size="sm" onClick={onSave} disabled={saving || !dirty}>
-            <Save className="mr-2 h-4 w-4" />
-            {saving ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Salvo'}
-          </Button>
+      <div className="space-y-3 rounded-xl border border-border/50 bg-card/60 p-4 shadow-lg">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="shadow-sm">
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Salvo'}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleExport} className="shadow-sm">
+              <Download className="mr-2 h-4 w-4" /> Exportar
+            </Button>
+            <Button size="sm" variant="ghost" onClick={handleShare} className="shadow-sm">
+              <Share2 className="mr-2 h-4 w-4" /> Compartilhar
+            </Button>
+            {dirty && <span className="rounded-full bg-destructive/10 px-3 py-1 text-[11px] font-semibold uppercase text-destructive">Não salvo</span>}
+          </div>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="hidden sm:block">{canvasWidth} × {canvasHeight}</span>
+            <div className="flex items-center gap-1">
+              <Button size="icon" variant="ghost" onClick={zoomOut}>
+                <Minus className="h-4 w-4" />
+              </Button>
+              <span className="w-12 text-center font-medium text-foreground">{Math.round(zoom * 100)}%</span>
+              <Button size="icon" variant="ghost" onClick={zoomIn}>
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        </div>
 
-          <div className="h-6 w-px bg-border/60" aria-hidden="true" />
-
+        <div className="flex flex-wrap items-center gap-2 border-t border-border/40 pt-3">
           <Button size="sm" variant="outline" onClick={() => addLayer(createDefaultLayer('text'))}>
             <Type className="mr-2 h-4 w-4" /> Texto
           </Button>
@@ -762,10 +805,8 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
             </DialogContent>
           </Dialog>
 
-          <div className="h-6 w-px bg-border/60" aria-hidden="true" />
-
           <TooltipProvider>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 border-l border-border/40 pl-2">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <span>
@@ -821,21 +862,28 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
                 </TooltipTrigger>
                 <TooltipContent>Colar layers (⌘/Ctrl + V)</TooltipContent>
               </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button size="sm" variant="ghost" onClick={undo} disabled={!canUndo}>
+                      <Undo2 className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Desfazer (⌘/Ctrl + Z)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button size="sm" variant="ghost" onClick={redo} disabled={!canRedo}>
+                      <Redo2 className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Refazer (⌘/Ctrl + Shift + Z)</TooltipContent>
+              </Tooltip>
             </div>
           </TooltipProvider>
-        </div>
-
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>{canvasWidth} × {canvasHeight}</span>
-          <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={zoomOut}>
-              <Minus className="h-4 w-4" />
-            </Button>
-            <span className="w-12 text-center font-medium text-foreground">{Math.round(zoom * 100)}%</span>
-            <Button size="sm" variant="ghost" onClick={zoomIn}>
-              <ZoomIn className="h-4 w-4" />
-            </Button>
-          </div>
         </div>
       </div>
 

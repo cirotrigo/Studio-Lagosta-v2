@@ -12,11 +12,11 @@ type KonvaFilter = (typeof Konva.Filters)[keyof typeof Konva.Filters]
 
 interface KonvaLayerFactoryProps {
   layer: Layer
-  isSelected: boolean
   onSelect: (event: KonvaEventObject<MouseEvent | TouchEvent>, layer: Layer) => void
   onChange: (updates: Partial<Layer>) => void
   onDragMove?: (event: KonvaEventObject<DragEvent>) => void
   onDragEnd?: () => void
+  disableInteractions?: boolean
 }
 
 interface CommonProps {
@@ -37,43 +37,49 @@ interface CommonProps {
   onTransformEnd: (event: KonvaEventObject<Event>) => void
 }
 
-export function KonvaLayerFactory({ layer, isSelected, onSelect, onChange, onDragMove, onDragEnd }: KonvaLayerFactoryProps) {
+export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false }: KonvaLayerFactoryProps) {
   const shapeRef = React.useRef<Konva.Shape | null>(null)
 
   const isVisible = layer.visible !== false
   const isLocked = !!layer.locked
   const opacity = isVisible ? layer.style?.opacity ?? 1 : 0.25
+  const interactionsDisabled = disableInteractions || !isVisible
 
   const handleSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (interactionsDisabled) return
       onSelect(event, layer)
     },
-    [layer, onSelect],
+    [interactionsDisabled, layer, onSelect],
   )
 
   const handleDragStart = React.useCallback(
     (event: KonvaEventObject<DragEvent>) => {
+      if (interactionsDisabled) return
       onSelect(event as unknown as KonvaEventObject<MouseEvent | TouchEvent>, layer)
     },
-    [layer, onSelect],
+    [interactionsDisabled, layer, onSelect],
   )
 
   const handleMouseDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent>) => {
+      if (interactionsDisabled) return
       onSelect(event as unknown as KonvaEventObject<MouseEvent | TouchEvent>, layer)
     },
-    [layer, onSelect],
+    [interactionsDisabled, layer, onSelect],
   )
 
   const handleTouchStart = React.useCallback(
     (event: KonvaEventObject<TouchEvent>) => {
+      if (interactionsDisabled) return
       onSelect(event as unknown as KonvaEventObject<MouseEvent | TouchEvent>, layer)
     },
-    [layer, onSelect],
+    [interactionsDisabled, layer, onSelect],
   )
 
   const handleDragEnd = React.useCallback<CommonProps['onDragEnd']>(
     (event) => {
+      if (interactionsDisabled) return
       const node = event.target
       onChange({
         position: {
@@ -83,18 +89,20 @@ export function KonvaLayerFactory({ layer, isSelected, onSelect, onChange, onDra
       })
       onDragEnd?.()
     },
-    [onChange, onDragEnd],
+    [interactionsDisabled, onChange, onDragEnd],
   )
 
   const handleDragMove = React.useCallback<CommonProps['onDragMove']>(
     (event) => {
+      if (interactionsDisabled) return
       onDragMove?.(event)
     },
-    [onDragMove],
+    [interactionsDisabled, onDragMove],
   )
 
   const handleTransformEnd = React.useCallback<CommonProps['onTransformEnd']>(
     () => {
+      if (interactionsDisabled) return
       const node = shapeRef.current
       if (!node) return
 
@@ -116,7 +124,7 @@ export function KonvaLayerFactory({ layer, isSelected, onSelect, onChange, onDra
         rotation: Math.round(node.rotation()),
       })
     },
-    [onChange],
+    [interactionsDisabled, onChange],
   )
 
   const borderColor = layer.style?.border?.color ?? '#000000'
@@ -129,8 +137,8 @@ export function KonvaLayerFactory({ layer, isSelected, onSelect, onChange, onDra
     y: layer.position?.y ?? 0,
     rotation: layer.rotation ?? 0,
     opacity,
-    draggable: !isLocked && isVisible,
-    listening: isVisible || isSelected,
+    draggable: !isLocked && isVisible && !interactionsDisabled,
+    listening: isVisible && !interactionsDisabled,
     onClick: handleSelect,
     onTap: handleSelect,
     onMouseDown: handleMouseDown,
