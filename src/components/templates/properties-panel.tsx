@@ -7,11 +7,24 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
-import { Switch } from '@/components/ui/switch'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import type { Layer, LayerStyle } from '@/types/template'
+import { ImageEditorModal } from './modals/image-editor-modal'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
+
+const IMAGE_FILTER_PRESETS: Array<{
+  id: string
+  label: string
+  style: Partial<Pick<LayerStyle, 'blur' | 'brightness' | 'contrast' | 'grayscale' | 'sepia' | 'invert'>>
+}> = [
+  { id: 'original', label: 'Original', style: { blur: 0, brightness: 0, contrast: 0, grayscale: false, sepia: false, invert: false } },
+  { id: 'warm', label: 'Quente', style: { brightness: 0.1, contrast: 0.1, sepia: true, grayscale: false, invert: false } },
+  { id: 'cool', label: 'Frio', style: { brightness: -0.1, contrast: 0.15, grayscale: false, sepia: false, invert: false } },
+  { id: 'dramatic', label: 'Dramático', style: { brightness: -0.2, contrast: 0.3, grayscale: false, sepia: false, invert: false } },
+  { id: 'mono', label: 'Monocromático', style: { grayscale: true, sepia: false, invert: false, brightness: 0, contrast: 0.1 } },
+]
 
 interface GradientPropertiesProps {
   layerId: string
@@ -19,7 +32,7 @@ interface GradientPropertiesProps {
 }
 
 function GradientProperties({ layerId, layerType }: GradientPropertiesProps) {
-  const { design, updateLayer, updateLayerStyle } = useTemplateEditor()
+  const { design, updateLayerStyle } = useTemplateEditor()
   const layer = React.useMemo(() => design.layers.find((item) => item.id === layerId) ?? null, [design.layers, layerId])
 
   if (!layer) return null
@@ -153,27 +166,24 @@ function GradientProperties({ layerId, layerType }: GradientPropertiesProps) {
 }
 
 export function PropertiesPanel() {
-  const {
-    design,
-    selectedLayerId,
-    updateLayer,
-    updateLayerStyle,
-    updateLayerPartial,
-    updateCanvas,
-  } = useTemplateEditor()
+  const editor = useTemplateEditor()
+  const { design, selectedLayerId } = editor
+  const updateLayerPartial = editor.updateLayerPartial
 
   const selectedLayer = React.useMemo(
     () => design.layers.find((layer) => layer.id === selectedLayerId) ?? null,
     [design.layers, selectedLayerId],
   )
 
+  const [imageEditorOpen, setImageEditorOpen] = React.useState(false)
+
   const handleCanvasBackground = (event: React.ChangeEvent<HTMLInputElement>) => {
-    updateCanvas({ backgroundColor: event.target.value })
+    editor.updateCanvas({ backgroundColor: event.target.value })
   }
 
   const updatePosition = (field: 'x' | 'y', value: number) => {
     if (!selectedLayer) return
-    updateLayer(selectedLayer.id, (layer) => ({
+    editor.updateLayer(selectedLayer.id, (layer) => ({
       ...layer,
       position: {
         x: field === 'x' ? value : layer.position?.x ?? 0,
@@ -184,7 +194,7 @@ export function PropertiesPanel() {
 
   const updateSize = (field: 'width' | 'height', value: number) => {
     if (!selectedLayer) return
-    updateLayer(selectedLayer.id, (layer) => ({
+    editor.updateLayer(selectedLayer.id, (layer) => ({
       ...layer,
       size: {
         width: field === 'width' ? Math.max(1, value) : layer.size?.width ?? 0,
@@ -193,10 +203,43 @@ export function PropertiesPanel() {
     }))
   }
 
-  const isDynamicToggleSupported = React.useMemo(() => {
-    if (!selectedLayer) return false
-    return ['text', 'image', 'logo', 'element'].includes(selectedLayer.type)
-  }, [selectedLayer])
+  const handleApplyImageEdit = React.useCallback(
+    ({ fileUrl, width, height }: { fileUrl: string; width: number; height: number }) => {
+      if (!selectedLayer) return
+      editor.updateLayer(selectedLayer.id, (layer) => ({
+        ...layer,
+        fileUrl,
+        size: {
+          width,
+          height,
+        },
+      }))
+    },
+    [editor, selectedLayer],
+  )
+
+  const setStyleValue = React.useCallback(
+    (layer: Layer, style: Partial<LayerStyle>) => {
+      editor.updateLayerStyle(layer.id, style)
+    },
+    [editor],
+  )
+
+  const resetImageFilters = React.useCallback(
+    (layer: Layer) => {
+      setStyleValue(layer, {
+        blur: 0,
+        brightness: 0,
+        contrast: 0,
+        grayscale: false,
+        sepia: false,
+        invert: false,
+      })
+    },
+    [setStyleValue],
+  )
+
+  const isImageLayer = selectedLayer && ['image', 'logo', 'element'].includes(selectedLayer.type)
 
   return (
     <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
@@ -238,7 +281,7 @@ export function PropertiesPanel() {
           )}
 
           {selectedLayer && (
-            <div className="space-y-4">
+            <React.Fragment>
               <div className="space-y-1">
                 <Label htmlFor="layer-name">Nome</Label>
                 <Input
@@ -247,30 +290,6 @@ export function PropertiesPanel() {
                   onChange={(event) => updateLayerPartial(selectedLayer.id, { name: event.target.value })}
                 />
               </div>
-
-              {isDynamicToggleSupported && selectedLayer && (
-                <div className="flex items-start justify-between gap-3 rounded-md border border-border/30 bg-muted/30 p-3">
-                  <div>
-                    <Label
-                      className="text-[11px] uppercase tracking-wide"
-                      htmlFor={`layer-dynamic-toggle-${selectedLayer.id}`}
-                    >
-                      Layer dinâmica
-                    </Label>
-                    <p className="text-xs text-muted-foreground">
-                      Permite alterar este elemento no Studio durante a personalização do template.
-                    </p>
-                  </div>
-                  <Switch
-                    id={`layer-dynamic-toggle-${selectedLayer.id}`}
-                    checked={Boolean(selectedLayer.isDynamic)}
-                    onCheckedChange={(checked) =>
-                      updateLayerPartial(selectedLayer.id, { isDynamic: checked })
-                    }
-                    aria-label="Marcar layer como dinâmica"
-                  />
-                </div>
-              )}
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>
@@ -317,129 +336,377 @@ export function PropertiesPanel() {
                     }
                   />
                 </div>
+                <div>
+                  <Label>Opacidade</Label>
+                  <input
+                    type="range"
+                    min={10}
+                    max={100}
+                    value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
+                    onChange={(event) =>
+                      updateLayerStyle(selectedLayer.id, { opacity: Number(event.target.value) / 100 })
+                    }
+                  />
+                </div>
               </div>
 
-          {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') && (
-            <GradientProperties layerId={selectedLayer.id} layerType={selectedLayer.type} />
-          )}
-
-          {selectedLayer.type === 'text' && (
-            <div className="space-y-4">
-                  <div className="space-y-1">
-                    <Label htmlFor="layer-content">Conteúdo</Label>
-                    <Textarea
-                      id="layer-content"
-                      rows={4}
-                      value={selectedLayer.content ?? ''}
-                      onChange={(event) =>
-                        updateLayerPartial(selectedLayer.id, { content: event.target.value })
-                      }
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label>Fonte</Label>
-                      <Select
-                        value={selectedLayer.style?.fontFamily ?? FONT_CONFIG.DEFAULT_FONT}
-                        onValueChange={(value) =>
-                          updateLayerStyle(selectedLayer.id, { fontFamily: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Fonte" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {FONT_OPTIONS.map((font) => (
-                            <SelectItem key={font.name} value={font.name}>
-                              {font.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Tamanho</Label>
-                      <Input
-                        type="number"
-                        min={8}
-                        value={selectedLayer.style?.fontSize ?? 16}
-                        onChange={(event) =>
-                          updateLayerStyle(selectedLayer.id, { fontSize: Number(event.target.value) })
-                        }
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Cor</Label>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          value={selectedLayer.style?.color ?? '#000000'}
-                          onChange={(event) =>
-                            updateLayerStyle(selectedLayer.id, { color: event.target.value })
-                          }
-                        />
-                        <input
-                          aria-label="Selecionar cor do texto"
-                          type="color"
-                          className="h-9 w-9 rounded-md border border-border/30"
-                          value={selectedLayer.style?.color ?? '#000000'}
-                          onChange={(event) =>
-                            updateLayerStyle(selectedLayer.id, { color: event.target.value })
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label>Altura de linha</Label>
-                      <Input
-                        type="number"
-                        step="0.1"
-                        value={selectedLayer.style?.lineHeight ?? 1.2}
-                        onChange={(event) =>
-                          updateLayerStyle(selectedLayer.id, { lineHeight: Number(event.target.value) })
-                        }
-                      />
-                    </div>
-                  </div>
-                </div>
+              {selectedLayer.type === 'text' && (
+                <TextControls layer={selectedLayer} setStyleValue={setStyleValue} updateLayerPartial={updateLayerPartial} />
               )}
 
-              {(selectedLayer.type === 'image' || selectedLayer.type === 'logo' || selectedLayer.type === 'element') && (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <Label htmlFor="layer-file-url">URL da imagem</Label>
-                    <Input
-                      id="layer-file-url"
-                      value={selectedLayer.fileUrl ?? ''}
-                      onChange={(event) =>
-                        updateLayerPartial(selectedLayer.id, { fileUrl: event.target.value })
-                      }
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <Label>Object Fit</Label>
-                    <Select
-                      value={selectedLayer.style?.objectFit ?? 'cover'}
-                      onValueChange={(value) =>
-                        updateLayerStyle(selectedLayer.id, { objectFit: value as 'cover' | 'contain' | 'fill' })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cover">Cover</SelectItem>
-                        <SelectItem value="contain">Contain</SelectItem>
-                        <SelectItem value="fill">Fill</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+              {isImageLayer && (
+                <ImageControls
+                  layer={selectedLayer}
+                  setStyleValue={setStyleValue}
+                  updateLayerPartial={updateLayerPartial}
+                  resetFilters={() => resetImageFilters(selectedLayer)}
+                  onEdit={() => setImageEditorOpen(true)}
+                />
               )}
-            </div>
+
+              {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') && (
+                <GradientProperties layerId={selectedLayer.id} layerType={selectedLayer.type} />
+              )}
+
+              {selectedLayer.type === 'shape' && (
+                <ShapeControls layer={selectedLayer} setStyleValue={setStyleValue} />
+              )}
+
+              {selectedLayer.type === 'icon' && (
+                <IconControls layer={selectedLayer} setStyleValue={setStyleValue} />
+              )}
+            </React.Fragment>
           )}
         </div>
       </ScrollArea>
+
+      {isImageLayer && (
+        <ImageEditorModal
+          open={imageEditorOpen}
+          onOpenChange={setImageEditorOpen}
+          layer={selectedLayer}
+          onApply={handleApplyImageEdit}
+        />
+      )}
     </div>
+  )
+}
+
+interface TextControlsProps {
+  layer: Layer
+  setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
+  updateLayerPartial: (id: string, partial: Partial<Layer>) => void
+}
+
+function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControlsProps) {
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1">
+        <Label htmlFor="layer-content">Conteúdo</Label>
+        <Textarea
+          id="layer-content"
+          rows={4}
+          value={layer.content ?? ''}
+          onChange={(event) => updateLayerPartial(layer.id, { content: event.target.value })}
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Fonte</Label>
+          <Select
+            value={layer.style?.fontFamily ?? FONT_CONFIG.DEFAULT_FONT}
+            onValueChange={(value) => setStyleValue(layer, { fontFamily: value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Fonte" />
+            </SelectTrigger>
+            <SelectContent>
+              {FONT_OPTIONS.map((font) => (
+                <SelectItem key={font.name} value={font.name}>
+                  {font.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1">
+          <Label>Tamanho</Label>
+          <Input
+            type="number"
+            min={8}
+            value={layer.style?.fontSize ?? 16}
+            onChange={(event) => setStyleValue(layer, { fontSize: Number(event.target.value) })}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>Cor</Label>
+          <div className="flex items-center gap-2">
+            <Input
+              value={layer.style?.color ?? '#000000'}
+              onChange={(event) => setStyleValue(layer, { color: event.target.value })}
+            />
+            <input
+              aria-label="Selecionar cor do texto"
+              type="color"
+              className="h-9 w-9 rounded-md border border-border/30"
+              value={layer.style?.color ?? '#000000'}
+              onChange={(event) => setStyleValue(layer, { color: event.target.value })}
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label>Altura de linha</Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={layer.style?.lineHeight ?? 1.2}
+            onChange={(event) => setStyleValue(layer, { lineHeight: Number(event.target.value) })}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface ImageControlsProps {
+  layer: Layer
+  setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
+  updateLayerPartial: (id: string, partial: Partial<Layer>) => void
+  resetFilters: () => void
+  onEdit: () => void
+}
+
+function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters, onEdit }: ImageControlsProps) {
+  return (
+    <div className="space-y-4 text-xs">
+      <div className="space-y-1">
+        <Label htmlFor="layer-file-url">URL da imagem</Label>
+        <Input
+          id="layer-file-url"
+          value={layer.fileUrl ?? ''}
+          onChange={(event) => updateLayerPartial(layer.id, { fileUrl: event.target.value })}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label>Object Fit</Label>
+        <Select
+          value={layer.style?.objectFit ?? 'cover'}
+          onValueChange={(value) =>
+            setStyleValue(layer, { objectFit: value as 'cover' | 'contain' | 'fill' })
+          }
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cover">Cover</SelectItem>
+            <SelectItem value="contain">Contain</SelectItem>
+            <SelectItem value="fill">Fill</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="rounded-md border border-border/30 bg-muted/30 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold uppercase text-muted-foreground">Filtros</span>
+          <Button variant="ghost" size="sm" onClick={resetFilters}>
+            Resetar
+          </Button>
+        </div>
+        <div className="mt-3 space-y-3">
+          <FilterSlider
+            label="Desfoque"
+            min={0}
+            max={15}
+            step={0.5}
+            value={layer.style?.blur ?? 0}
+            onChange={(value) => setStyleValue(layer, { blur: value })}
+          />
+          <FilterSlider
+            label="Brilho"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={layer.style?.brightness ?? 0}
+            onChange={(value) => setStyleValue(layer, { brightness: value })}
+          />
+          <FilterSlider
+            label="Contraste"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={layer.style?.contrast ?? 0}
+            onChange={(value) => setStyleValue(layer, { contrast: value })}
+          />
+          <div className="flex flex-wrap gap-2">
+            <ToggleChip
+              label="P&B"
+              active={Boolean(layer.style?.grayscale)}
+              onToggle={(active) => setStyleValue(layer, { grayscale: active })}
+            />
+            <ToggleChip
+              label="Sépia"
+              active={Boolean(layer.style?.sepia)}
+              onToggle={(active) => setStyleValue(layer, { sepia: active })}
+            />
+            <ToggleChip
+              label="Inverter"
+              active={Boolean(layer.style?.invert)}
+              onToggle={(active) => setStyleValue(layer, { invert: active })}
+            />
+          </div>
+        </div>
+        <div className="mt-4 space-y-2">
+          <p className="text-[11px] font-semibold uppercase text-muted-foreground">Presets</p>
+          <div className="flex flex-wrap gap-2">
+            {IMAGE_FILTER_PRESETS.map((preset) => (
+              <Button
+                key={preset.id}
+                variant="outline"
+                size="sm"
+                onClick={() => setStyleValue(layer, preset.style)}
+              >
+                {preset.label}
+              </Button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <Button variant="outline" size="sm" onClick={onEdit}>
+        Abrir editor de imagem
+      </Button>
+    </div>
+  )
+}
+
+interface ShapeControlsProps {
+  layer: Layer
+  setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
+}
+
+function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="space-y-1">
+        <Label>Preenchimento</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            value={layer.style?.fill ?? '#2563eb'}
+            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+          />
+          <input
+            type="color"
+            className="h-9 w-9 rounded-md border border-border/30"
+            value={layer.style?.fill ?? '#2563eb'}
+            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+          />
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <Label>Cor da borda</Label>
+          <Input
+            value={layer.style?.strokeColor ?? '#1e3a8a'}
+            onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label>Espessura</Label>
+          <Input
+            type="number"
+            min={0}
+            value={layer.style?.strokeWidth ?? 0}
+            onChange={(event) => setStyleValue(layer, { strokeWidth: Number(event.target.value) })}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+interface IconControlsProps {
+  layer: Layer
+  setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
+}
+
+function IconControls({ layer, setStyleValue }: IconControlsProps) {
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="space-y-1">
+        <Label>Cor do ícone</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            value={layer.style?.fill ?? '#111111'}
+            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+          />
+          <input
+            type="color"
+            className="h-9 w-9 rounded-md border border-border/30"
+            value={layer.style?.fill ?? '#111111'}
+            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+          />
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label>Espessura do traço</Label>
+        <Input
+          type="number"
+          min={0}
+          value={layer.style?.strokeWidth ?? 0}
+          onChange={(event) => setStyleValue(layer, { strokeWidth: Number(event.target.value) })}
+        />
+      </div>
+    </div>
+  )
+}
+
+interface FilterSliderProps {
+  label: string
+  min: number
+  max: number
+  step: number
+  value: number
+  onChange: (value: number) => void
+}
+
+function FilterSlider({ label, min, max, step, value, onChange }: FilterSliderProps) {
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase text-muted-foreground">{label}</span>
+        <span className="text-[11px] text-muted-foreground">{value.toFixed(2)}</span>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+    </div>
+  )
+}
+
+interface ToggleChipProps {
+  label: string
+  active: boolean
+  onToggle: (active: boolean) => void
+}
+
+function ToggleChip({ label, active, onToggle }: ToggleChipProps) {
+  return (
+    <button
+      type="button"
+      onClick={() => onToggle(!active)}
+      className={
+        'rounded-full border px-3 py-1 text-[11px] font-semibold uppercase transition ' +
+        (active ? 'border-primary bg-primary/10 text-primary' : 'border-border/50 bg-muted/40 text-muted-foreground')
+      }
+    >
+      {label}
+    </button>
   )
 }
