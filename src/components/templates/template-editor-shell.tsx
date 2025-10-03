@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
 import type { TemplateDto } from '@/hooks/use-template'
-import { useUpdateTemplate } from '@/hooks/use-template'
+import { useUpdateTemplateWithThumbnail } from '@/hooks/use-template'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
@@ -41,7 +41,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 
 function TemplateEditorContent() {
   const { toast } = useToast()
-  const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplate()
+  const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplateWithThumbnail()
   const {
     templateId,
     name,
@@ -65,6 +65,12 @@ function TemplateEditorContent() {
   )
 
   const handleSave = React.useCallback(async () => {
+    // Mostrar feedback de que está gerando thumbnail
+    const loadingToast = toast({
+      title: 'Salvando template...',
+      description: 'Gerando thumbnail e salvando alterações.',
+    })
+
     try {
       const payload = {
         id: templateId,
@@ -72,16 +78,27 @@ function TemplateEditorContent() {
           name,
           designData: design,
           dynamicFields,
+          // thumbnailUrl será gerado automaticamente pelo hook
         },
       }
       const saved = await updateTemplate(payload)
       markSaved(saved)
+
+      // Remover toast de loading
+      loadingToast.dismiss?.()
+
       toast({
-        title: 'Template salvo',
-        description: 'As alterações foram aplicadas com sucesso.',
+        title: 'Template salvo com sucesso!',
+        description: saved.thumbnailUrl
+          ? 'Thumbnail gerado e alterações aplicadas.'
+          : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
     } catch (error) {
       console.error('[TemplateEditor] Falha ao salvar template', error)
+
+      // Remover toast de loading
+      loadingToast.dismiss?.()
+
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar o template. Tente novamente.',

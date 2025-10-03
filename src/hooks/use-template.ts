@@ -47,3 +47,44 @@ export function useUpdateTemplate() {
     },
   })
 }
+
+/**
+ * Hook para atualizar template com geração automática de thumbnail
+ */
+export function useUpdateTemplateWithThumbnail() {
+  const queryClient = useQueryClient()
+
+  return useMutation<TemplateDto, unknown, UpdateTemplateInput>({
+    mutationFn: async ({ id, data }) => {
+      let thumbnailUrl = data.thumbnailUrl
+
+      // Gerar thumbnail automaticamente se designData foi modificado e não tem thumbnail
+      if (data.designData && !thumbnailUrl) {
+        try {
+          const thumbnailResponse = await api.post<{ thumbnailUrl: string }>(
+            '/api/templates/generate-thumbnail',
+            {
+              designData: data.designData,
+              width: 400,
+              height: 300,
+            },
+          )
+          thumbnailUrl = thumbnailResponse.thumbnailUrl
+        } catch (error) {
+          console.warn('Failed to generate thumbnail:', error)
+          // Continuar salvando mesmo se thumbnail falhar
+        }
+      }
+
+      // Atualizar template com thumbnail
+      return api.put(`/api/templates/${id}`, {
+        ...data,
+        thumbnailUrl,
+      })
+    },
+    onSuccess: (template) => {
+      queryClient.setQueryData(['template', template.id], template)
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
+    },
+  })
+}
