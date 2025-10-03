@@ -8,13 +8,14 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { EditorToolbar } from './editor-toolbar'
+import { Button } from '@/components/ui/button'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type, Square, Upload, Layers2 } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
 import { EditorSidebar } from './sidebar/editor-sidebar'
-import { LayersDock } from './layers-dock'
-import { Separator } from '@/components/ui/separator'
+import { TextToolsPanel } from './panels/text-panel'
+import { ImagesPanelContent } from './panels/images-panel'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -39,6 +40,8 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
+type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'uploads' | 'layers' | null
+
 function TemplateEditorContent() {
   const { toast } = useToast()
   const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplateWithThumbnail()
@@ -53,7 +56,11 @@ function TemplateEditorContent() {
     markSaved,
     dirty,
     generateThumbnail,
+    exportDesign,
+    isExporting,
   } = useTemplateEditor()
+
+  const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -111,46 +118,169 @@ function TemplateEditorContent() {
     }
   }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast])
 
+  const handleExport = React.useCallback(async () => {
+    try {
+      await exportDesign('jpeg')
+      toast({
+        title: 'Exportação concluída!',
+        description: 'O arquivo JPEG foi baixado com sucesso.',
+      })
+    } catch (error) {
+      console.error('Export failed:', error)
+      toast({
+        title: 'Erro ao exportar',
+        description: error instanceof Error ? error.message : 'Não foi possível exportar o design.',
+        variant: 'destructive',
+      })
+    }
+  }, [exportDesign, toast])
+
+  const togglePanel = React.useCallback((panel: SidePanel) => {
+    setActivePanel((current) => (current === panel ? null : panel))
+  }, [])
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
-        <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap items-center gap-3">
-            <Input
-              className="max-w-sm"
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Nome do template"
-            />
-            <Badge variant="secondary">{type}</Badge>
-            <Badge variant="outline">{dimensions}</Badge>
-            {dirty && <Badge variant="destructive">Alterações não salvas</Badge>}
+    <div className="polotno-editor flex h-[calc(100vh-4rem)] flex-col overflow-hidden bg-background">
+      {/* Top Toolbar - Polotno Style */}
+      <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-4 shadow-sm">
+        {/* Left: Logo + Template Name */}
+        <div className="flex items-center gap-3">
+          <FileText className="h-5 w-5 text-primary" />
+          <Input
+            className="h-8 w-64 border-0 bg-transparent text-sm font-medium focus-visible:ring-0"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Nome do template"
+          />
+          {dirty && <span className="text-xs text-orange-500">● Não salvo</span>}
+        </div>
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty}>
+            {isSaving ? 'Salvando...' : 'Salvar'}
+          </Button>
+          <Button size="sm" onClick={handleExport} disabled={isExporting}>
+            <Download className="mr-2 h-4 w-4" />
+            Download
+          </Button>
+          <Button size="sm" variant="outline">
+            <Maximize2 className="mr-2 h-4 w-4" />
+            Resize
+          </Button>
+        </div>
+      </header>
+
+      {/* Main Area: Vertical Toolbar + Side Panel + Canvas */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Vertical Icon Toolbar - Always Visible */}
+        <aside className="flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card">
+          <ToolbarButton
+            icon={<FileText className="h-5 w-5" />}
+            label="Templates"
+            active={activePanel === 'templates'}
+            onClick={() => togglePanel('templates')}
+          />
+          <ToolbarButton
+            icon={<Type className="h-5 w-5" />}
+            label="Texto"
+            active={activePanel === 'text'}
+            onClick={() => togglePanel('text')}
+          />
+          <ToolbarButton
+            icon={<ImageIcon className="h-5 w-5" />}
+            label="Imagens"
+            active={activePanel === 'images'}
+            onClick={() => togglePanel('images')}
+          />
+          <ToolbarButton
+            icon={<Square className="h-5 w-5" />}
+            label="Elementos"
+            active={activePanel === 'elements'}
+            onClick={() => togglePanel('elements')}
+          />
+          <ToolbarButton
+            icon={<Upload className="h-5 w-5" />}
+            label="Uploads"
+            active={activePanel === 'uploads'}
+            onClick={() => togglePanel('uploads')}
+          />
+          <div className="flex-1" />
+          <ToolbarButton
+            icon={<Layers2 className="h-5 w-5" />}
+            label="Layers"
+            active={activePanel === 'layers'}
+            onClick={() => togglePanel('layers')}
+          />
+        </aside>
+
+        {/* Expandable Side Panel */}
+        {activePanel && (
+          <aside className="flex w-80 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg">
+            <div className="border-b border-border/40 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                {activePanel === 'templates' && 'Templates'}
+                {activePanel === 'text' && 'Adicionar Texto'}
+                {activePanel === 'images' && 'Imagens'}
+                {activePanel === 'elements' && 'Elementos'}
+                {activePanel === 'uploads' && 'Seus Uploads'}
+                {activePanel === 'layers' && 'Camadas'}
+              </h2>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4">
+              {activePanel === 'templates' && <EditorSidebar />}
+              {activePanel === 'text' && <TextToolsPanel />}
+              {activePanel === 'images' && <ImagesPanelContent />}
+              {activePanel === 'elements' && <div className="text-sm text-muted-foreground">Painel de elementos em desenvolvimento...</div>}
+              {activePanel === 'uploads' && <div className="text-sm text-muted-foreground">Painel de uploads em desenvolvimento...</div>}
+              {activePanel === 'layers' && <PropertiesPanel />}
+            </div>
+          </aside>
+        )}
+
+        {/* Canvas Area */}
+        <main className="flex flex-1 flex-col overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <EditorCanvas />
           </div>
-          <p className="text-xs text-muted-foreground">
-            Ajuste o layout, propriedades e hierarquia das camadas. Utilize o preview para garantir consistência com a renderização final.
-          </p>
-        </div>
-      </div>
 
-      <EditorToolbar onSave={handleSave} saving={isSaving} />
-
-      <div className="grid gap-4 2xl:grid-cols-[320px_minmax(0,1fr)_340px] xl:grid-cols-[300px_minmax(0,1fr)_320px] lg:grid-cols-[280px_minmax(0,1fr)_300px]">
-        <EditorSidebar />
-        <div className="flex min-h-[600px] flex-col gap-4">
-          <EditorCanvas />
-          <CanvasPreview />
-          <LayersDock />
-        </div>
-        <PropertiesPanel />
-      </div>
-
-      <Separator />
-      <div className="rounded-lg border border-border/40 bg-muted/30 p-4 text-xs text-muted-foreground">
-        <p>
-          <strong>Dica:</strong> salve as alterações com frequência. O preview utiliza o mesmo motor de renderização do backend
-          garantindo consistência entre o que você vê e o que será gerado.
-        </p>
+          {/* Bottom Pages Bar - Polotno Style */}
+          <div className="flex h-24 flex-shrink-0 items-center gap-2 border-t border-border/40 bg-card px-4">
+            <div className="flex flex-1 items-center gap-2 overflow-x-auto">
+              <div className="flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-primary bg-primary/10">
+                <span className="text-xs font-semibold">1</span>
+              </div>
+              <button className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded border border-dashed border-border/60 hover:border-primary hover:bg-muted/50">
+                <span className="text-2xl text-muted-foreground">+</span>
+              </button>
+            </div>
+            <CanvasPreview />
+          </div>
+        </main>
       </div>
     </div>
+  )
+}
+
+interface ToolbarButtonProps {
+  icon: React.ReactNode
+  label: string
+  active: boolean
+  onClick: () => void
+}
+
+function ToolbarButton({ icon, label, active, onClick }: ToolbarButtonProps) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative flex h-16 w-full flex-col items-center justify-center gap-1 border-b border-border/40 transition-colors ${
+        active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+      }`}
+      title={label}
+    >
+      {icon}
+      <span className="text-[10px] font-medium">{label}</span>
+      {active && <div className="absolute left-0 top-0 h-full w-1 bg-primary" />}
+    </button>
   )
 }

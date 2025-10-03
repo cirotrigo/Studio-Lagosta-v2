@@ -34,7 +34,7 @@ export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaS
     transformer.getLayer()?.batchDraw()
   }, [design.layers, selectedLayerIds, stageRef])
 
-  // Detectar Shift para preservar aspect ratio
+  // Detectar Shift para preservar aspect ratio em elementos não-imagem
   React.useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Shift' && !isShiftPressed) {
@@ -57,12 +57,12 @@ export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaS
     }
   }, [isShiftPressed])
 
-  // Atualizar keepRatio do transformer quando Shift mudar
+  // Atualizar keepRatio do transformer (Konva best practice: images always keep ratio)
   React.useEffect(() => {
     const transformer = transformerRef.current
     if (!transformer) return
 
-    // Para imagens, sempre manter proporção por padrão
+    // Check if any selected node is an image type
     const nodes = transformer.nodes()
     const hasImageNode = nodes.some((node) => {
       const layerId = node.id()
@@ -70,7 +70,8 @@ export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaS
       return layer && (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element')
     })
 
-    // Imagens sempre mantêm proporção, outros elementos só com Shift
+    // Images ALWAYS keep aspect ratio (Konva best practice)
+    // Other elements only when Shift is pressed
     transformer.keepRatio(hasImageNode || isShiftPressed)
     transformer.getLayer()?.batchDraw()
   }, [isShiftPressed, design.layers, selectedLayerIds])

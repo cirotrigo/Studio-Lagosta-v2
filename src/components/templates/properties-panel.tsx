@@ -7,6 +7,8 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Settings, Layers } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
@@ -242,7 +244,76 @@ export function PropertiesPanel() {
   const isImageLayer = selectedLayer && ['image', 'logo', 'element'].includes(selectedLayer.type)
 
   return (
-    <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
+    <Tabs defaultValue="properties" className="flex h-full flex-col overflow-hidden">
+      <div className="flex-shrink-0 border-b border-border/40 bg-muted/20 p-3">
+        <TabsList className="grid h-9 w-full grid-cols-2">
+          <TabsTrigger value="properties" className="text-xs">
+            <Settings className="mr-2 h-3.5 w-3.5" />
+            Propriedades
+          </TabsTrigger>
+          <TabsTrigger value="layers" className="text-xs">
+            <Layers className="mr-2 h-3.5 w-3.5" />
+            Camadas
+          </TabsTrigger>
+        </TabsList>
+      </div>
+
+      <TabsContent value="properties" className="flex-1 overflow-hidden p-4 data-[state=inactive]:hidden">
+        <PropertiesContent
+          design={design}
+          selectedLayer={selectedLayer}
+          isImageLayer={isImageLayer}
+          editor={editor}
+          updateLayerPartial={updateLayerPartial}
+          setStyleValue={setStyleValue}
+          resetImageFilters={resetImageFilters}
+          handleCanvasBackground={handleCanvasBackground}
+          updatePosition={updatePosition}
+          updateSize={updateSize}
+          handleApplyImageEdit={handleApplyImageEdit}
+          imageEditorOpen={imageEditorOpen}
+          setImageEditorOpen={setImageEditorOpen}
+        />
+      </TabsContent>
+
+      <TabsContent value="layers" className="flex-1 overflow-hidden p-4 data-[state=inactive]:hidden">
+        <LayersContent />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+function PropertiesContent({
+  design,
+  selectedLayer,
+  isImageLayer,
+  editor,
+  updateLayerPartial,
+  setStyleValue,
+  resetImageFilters,
+  handleCanvasBackground,
+  updatePosition,
+  updateSize,
+  handleApplyImageEdit,
+  imageEditorOpen,
+  setImageEditorOpen,
+}: {
+  design: any
+  selectedLayer: Layer | null
+  isImageLayer: boolean
+  editor: any
+  updateLayerPartial: any
+  setStyleValue: any
+  resetImageFilters: any
+  handleCanvasBackground: any
+  updatePosition: any
+  updateSize: any
+  handleApplyImageEdit: any
+  imageEditorOpen: boolean
+  setImageEditorOpen: (open: boolean) => void
+}) {
+  return (
+    <div className="flex h-full flex-col gap-3">
       <div>
         <h3 className="text-sm font-semibold">Propriedades</h3>
         <p className="text-xs text-muted-foreground">Ajuste o canvas e os elementos selecionados</p>
@@ -388,6 +459,52 @@ export function PropertiesPanel() {
           onApply={handleApplyImageEdit}
         />
       )}
+    </div>
+  )
+}
+
+function LayersContent() {
+  const { design, selectedLayerIds, selectLayer, toggleLayerVisibility, toggleLayerLock } = useTemplateEditor()
+
+  const orderedLayers = React.useMemo(() => [...design.layers].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [design.layers])
+
+  return (
+    <div className="flex h-full flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">Camadas</h3>
+        <p className="text-xs text-muted-foreground">
+          {design.layers.length} {design.layers.length === 1 ? 'camada' : 'camadas'}
+        </p>
+      </div>
+      <ScrollArea className="flex-1">
+        <div className="space-y-1">
+          {orderedLayers.length === 0 ? (
+            <div className="rounded-md border border-dashed border-border/40 p-4 text-center text-xs text-muted-foreground">
+              Nenhuma camada adicionada ainda.
+            </div>
+          ) : (
+            orderedLayers.map((layer) => {
+              const isSelected = selectedLayerIds.includes(layer.id)
+              return (
+                <button
+                  key={layer.id}
+                  onClick={() => selectLayer(layer.id)}
+                  className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-xs transition ${
+                    isSelected
+                      ? 'bg-primary/10 text-primary ring-1 ring-primary/30'
+                      : 'hover:bg-muted/50'
+                  }`}
+                >
+                  <div className="flex-1 truncate font-medium">{layer.name || 'Sem nome'}</div>
+                  <div className="flex-shrink-0 rounded bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">
+                    {layer.type}
+                  </div>
+                </button>
+              )
+            })
+          )}
+        </div>
+      </ScrollArea>
     </div>
   )
 }

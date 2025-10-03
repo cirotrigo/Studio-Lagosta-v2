@@ -20,30 +20,32 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
   const [activeSecondaryTab, setActiveSecondaryTab] = React.useState('shapes')
 
   return (
-    <div className={cn('flex h-full w-full max-w-[360px] flex-col', className)}>
+    <div className={cn('flex h-full w-full flex-col overflow-hidden', className)}>
       <Tabs
         value={activePrimaryTab}
         onValueChange={setActivePrimaryTab}
-        className="flex h-full flex-col"
+        className="flex h-full flex-col overflow-hidden"
       >
-        <TabsList className="grid h-10 grid-cols-5 rounded-lg bg-muted/60">
-          <TabsTrigger value="templates" className="text-[11px] font-semibold uppercase">
-            Templates
-          </TabsTrigger>
-          <TabsTrigger value="text" className="text-[11px] font-semibold uppercase">
-            Texto
-          </TabsTrigger>
-          <TabsTrigger value="images" className="text-[11px] font-semibold uppercase">
-            Imagens
-          </TabsTrigger>
-          <TabsTrigger value="assets" className="text-[11px] font-semibold uppercase">
-            Assets
-          </TabsTrigger>
-          <TabsTrigger value="backgrounds" className="text-[11px] font-semibold uppercase">
-            Fundos
-          </TabsTrigger>
-        </TabsList>
-        <div className="mt-3 flex-1 overflow-hidden">
+        <div className="flex-shrink-0 border-b border-border/40 bg-muted/20 p-3">
+          <TabsList className="grid h-9 grid-cols-5 rounded-md bg-muted/60">
+            <TabsTrigger value="templates" className="text-[10px] font-semibold uppercase">
+              Templates
+            </TabsTrigger>
+            <TabsTrigger value="text" className="text-[10px] font-semibold uppercase">
+              Texto
+            </TabsTrigger>
+            <TabsTrigger value="images" className="text-[10px] font-semibold uppercase">
+              Imagens
+            </TabsTrigger>
+            <TabsTrigger value="assets" className="text-[10px] font-semibold uppercase">
+              Assets
+            </TabsTrigger>
+            <TabsTrigger value="backgrounds" className="text-[10px] font-semibold uppercase">
+              Fundos
+            </TabsTrigger>
+          </TabsList>
+        </div>
+        <div className="flex-1 overflow-hidden p-3">
           <TabsContent value="templates" className="h-full data-[state=inactive]:hidden">
             <TemplatesPanel />
           </TabsContent>

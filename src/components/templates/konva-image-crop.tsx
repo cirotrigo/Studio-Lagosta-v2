@@ -22,24 +22,31 @@ interface KonvaImageCropProps {
  * - Grid de terços (rule of thirds)
  * - Atalhos de teclado (Enter/Escape)
  * - Crop limitado aos limites da imagem
+ * - Usa propriedades nativas de crop do Konva (cropX, cropY, cropWidth, cropHeight)
  */
 export function KonvaImageCrop({ imageNode, onConfirm, onCancel, stageRef }: KonvaImageCropProps) {
   const cropRectRef = React.useRef<Konva.Rect | null>(null)
   const transformerRef = React.useRef<Konva.Transformer | null>(null)
   const cropGroupRef = React.useRef<Konva.Group | null>(null)
 
-  // Dimensões da imagem
+  // Dimensões da imagem EXIBIDA (pode ter scale aplicado)
   const imageWidth = imageNode.width()
   const imageHeight = imageNode.height()
   const imageX = imageNode.x()
   const imageY = imageNode.y()
+  const imageScaleX = imageNode.scaleX()
+  const imageScaleY = imageNode.scaleY()
 
-  // Estado do crop (área selecionada)
+  // Dimensões reais exibidas considerando scale
+  const displayWidth = imageWidth * imageScaleX
+  const displayHeight = imageHeight * imageScaleY
+
+  // Estado do crop (área selecionada no espaço de exibição)
   const [cropArea, setCropArea] = React.useState({
-    x: imageX + Math.max(50, imageWidth * 0.1),
-    y: imageY + Math.max(50, imageHeight * 0.1),
-    width: Math.max(100, imageWidth * 0.8),
-    height: Math.max(100, imageHeight * 0.8),
+    x: imageX + Math.max(50, displayWidth * 0.1),
+    y: imageY + Math.max(50, displayHeight * 0.1),
+    width: Math.max(100, displayWidth * 0.8),
+    height: Math.max(100, displayHeight * 0.8),
   })
 
   // Atualizar área de crop quando rect muda
@@ -68,15 +75,15 @@ export function KonvaImageCrop({ imageNode, onConfirm, onCancel, stageRef }: Kon
     const rect = cropRectRef.current
     if (!rect) return
 
-    // Limitar crop aos limites da imagem
+    // Limitar crop aos limites da imagem (considerando scale)
     const box = rect.getClientRect({ skipTransform: true })
     let newX = rect.x()
     let newY = rect.y()
 
     if (box.x < imageX) newX = imageX
     if (box.y < imageY) newY = imageY
-    if (box.x + box.width > imageX + imageWidth) newX = imageX + imageWidth - box.width
-    if (box.y + box.height > imageY + imageHeight) newY = imageY + imageHeight - box.height
+    if (box.x + box.width > imageX + displayWidth) newX = imageX + displayWidth - box.width
+    if (box.y + box.height > imageY + displayHeight) newY = imageY + displayHeight - box.height
 
     rect.position({ x: newX, y: newY })
 
@@ -86,43 +93,46 @@ export function KonvaImageCrop({ imageNode, onConfirm, onCancel, stageRef }: Kon
       width: box.width,
       height: box.height,
     })
-  }, [imageHeight, imageWidth, imageX, imageY])
+  }, [displayHeight, displayWidth, imageX, imageY])
 
-  // Confirmar crop
+  // Confirmar crop usando propriedades nativas do Konva
   const handleConfirm = React.useCallback(() => {
     const stage = stageRef.current
     if (!stage) return
 
-    // Criar canvas temporário para área cropada
-    const canvas = document.createElement('canvas')
-    canvas.width = cropArea.width
-    canvas.height = cropArea.height
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-
     const image = imageNode.image() as HTMLImageElement | HTMLCanvasElement
     if (!image) return
 
-    // Calcular coordenadas relativas à imagem original
-    const relX = cropArea.x - imageX
-    const relY = cropArea.y - imageY
+    // Converter coordenadas do espaço de exibição para coordenadas da imagem original
+    // Crop coordinates are relative to original image size (Konva best practice)
+    const cropX = (cropArea.x - imageX) / imageScaleX
+    const cropY = (cropArea.y - imageY) / imageScaleY
+    const cropWidth = cropArea.width / imageScaleX
+    const cropHeight = cropArea.height / imageScaleY
 
-    // Desenhar área cropada
+    // Criar canvas para área cropada
+    const canvas = document.createElement('canvas')
+    canvas.width = cropWidth
+    canvas.height = cropHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+
+    // Desenhar área cropada da imagem original
     ctx.drawImage(
       image,
-      relX,
-      relY,
-      cropArea.width,
-      cropArea.height,
+      cropX,
+      cropY,
+      cropWidth,
+      cropHeight,
       0,
       0,
-      cropArea.width,
-      cropArea.height
+      cropWidth,
+      cropHeight
     )
 
     const dataUrl = canvas.toDataURL('image/png')
     onConfirm(dataUrl)
-  }, [cropArea, imageNode, imageX, imageY, onConfirm, stageRef])
+  }, [cropArea, imageNode, imageX, imageY, imageScaleX, imageScaleY, onConfirm, stageRef])
 
   // Atalhos de teclado
   React.useEffect(() => {
@@ -265,9 +275,9 @@ export function KonvaImageCrop({ imageNode, onConfirm, onCancel, stageRef }: Kon
             return oldBox
           }
 
-          // Limitar aos limites da imagem
-          const maxX = imageX + imageWidth
-          const maxY = imageY + imageHeight
+          // Limitar aos limites da imagem (considerando scale)
+          const maxX = imageX + displayWidth
+          const maxY = imageY + displayHeight
 
           if (newBox.x < imageX || newBox.y < imageY || newBox.x + newBox.width > maxX || newBox.y + newBox.height > maxY) {
             return oldBox

@@ -132,8 +132,13 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       const scaleX = node.scaleX()
       const scaleY = node.scaleY()
 
+      // Reset scale to 1 to prevent distortion (Konva best practice)
       node.scaleX(1)
       node.scaleY(1)
+
+      // Calculate new dimensions from scale
+      const newWidth = Math.max(5, Math.round(node.width() * scaleX))
+      const newHeight = Math.max(5, Math.round(node.height() * scaleY))
 
       onChange({
         position: {
@@ -141,8 +146,8 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
           y: Math.round(node.y()),
         },
         size: {
-          width: Math.max(5, Math.round(node.width() * scaleX)),
-          height: Math.max(5, Math.round(node.height() * scaleY)),
+          width: newWidth,
+          height: newHeight,
         },
         rotation: Math.round(node.rotation()),
       })
@@ -263,6 +268,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     return list
   }, [layer.style])
 
+  // Cache only when filters are applied (Konva performance best practice)
   React.useEffect(() => {
     if (!imageRef.current) return
     if (filters.length === 0) {

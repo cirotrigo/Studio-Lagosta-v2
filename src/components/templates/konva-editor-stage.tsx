@@ -63,6 +63,7 @@ export function KonvaEditorStage() {
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
+  const [showGrid, setShowGrid] = React.useState(false)
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
@@ -315,18 +316,19 @@ export function KonvaEditorStage() {
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-1 items-center justify-center overflow-x-hidden overflow-y-auto rounded-lg border border-border/40 bg-muted/50 p-8">
+    <div className="flex h-full w-full flex-1 items-center justify-center overflow-x-hidden overflow-y-auto bg-[#f5f5f5] p-8 dark:bg-[#1a1a1a]">
       <div className="relative flex items-center justify-center" style={{ minHeight: '100%', minWidth: '100%' }}>
         <Stage
           ref={stageRef}
           width={canvasWidth}
           height={canvasHeight}
-          className="rounded-md shadow-lg"
+          className="rounded-md shadow-2xl ring-1 ring-border/20"
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
           onClick={handleStagePointerDown}
           onWheel={handleWheel}
         >
+          {/* Background layer - non-interactive (listening: false for performance) */}
           <KonvaLayer name="background-layer" listening={false}>
             <Rect
               name="canvas-background"
@@ -338,9 +340,33 @@ export function KonvaEditorStage() {
               cornerRadius={8}
               shadowBlur={12}
               shadowOpacity={0.1}
+              listening={false}
             />
           </KonvaLayer>
 
+          {/* Grid layer - non-interactive (listening: false for performance) */}
+          {showGrid && (
+            <KonvaLayer name="grid-layer" listening={false}>
+              {Array.from({ length: Math.ceil(canvasWidth / 20) }).map((_, i) => (
+                <Line
+                  key={`v-${i}`}
+                  points={[i * 20, 0, i * 20, canvasHeight]}
+                  stroke="rgba(0,0,0,0.05)"
+                  strokeWidth={1}
+                />
+              ))}
+              {Array.from({ length: Math.ceil(canvasHeight / 20) }).map((_, i) => (
+                <Line
+                  key={`h-${i}`}
+                  points={[0, i * 20, canvasWidth, i * 20]}
+                  stroke="rgba(0,0,0,0.05)"
+                  strokeWidth={1}
+                />
+              ))}
+            </KonvaLayer>
+          )}
+
+          {/* Alignment guides layer - non-interactive (listening: false for performance) */}
           <KonvaLayer name="guides-layer" listening={false}>
             {guides.map((guide, index) => (
               <Line
@@ -353,6 +379,7 @@ export function KonvaEditorStage() {
                 stroke="#6366F1"
                 strokeWidth={1}
                 dash={[4, 4]}
+                listening={false}
               />
             ))}
           </KonvaLayer>
