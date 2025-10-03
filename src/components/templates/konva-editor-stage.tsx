@@ -382,6 +382,7 @@ export function KonvaEditorStage() {
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}
                 onDragEnd={handleLayerDragEnd}
+                stageRef={stageRef}
               />
             ))}
             <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />

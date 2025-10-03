@@ -2,11 +2,12 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Text, Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path } from 'react-konva'
+import { Text, Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path, Group, Layer as KonvaLayer } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
+import { KonvaImageCrop } from './konva-image-crop'
 
 /**
  * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
@@ -38,6 +39,7 @@ interface KonvaLayerFactoryProps {
   onDragMove?: (event: KonvaEventObject<DragEvent>) => void
   onDragEnd?: () => void
   disableInteractions?: boolean
+  stageRef?: React.RefObject<Konva.Stage | null>
 }
 
 interface CommonProps {
@@ -58,7 +60,7 @@ interface CommonProps {
   onTransformEnd: (event: KonvaEventObject<Event>) => void
 }
 
-export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false }: KonvaLayerFactoryProps) {
+export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, stageRef }: KonvaLayerFactoryProps) {
   const shapeRef = React.useRef<Konva.Shape | null>(null)
 
   const isVisible = layer.visible !== false
@@ -200,7 +202,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     case 'image':
     case 'logo':
     case 'element':
-      return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} />
+      return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
 
     case 'gradient':
     case 'gradient2':
@@ -239,11 +241,14 @@ type ImageNodeProps = {
   borderColor: string
   borderWidth: number
   borderRadius: number
+  onChange: (updates: Partial<Layer>) => void
+  stageRef?: React.RefObject<Konva.Stage | null>
 }
 
-function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius }: ImageNodeProps) {
+function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, stageRef }: ImageNodeProps) {
   const [image] = useImage(layer.fileUrl ?? '', layer.fileUrl?.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
+  const [isCropMode, setIsCropMode] = React.useState(false)
 
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
 
@@ -271,6 +276,27 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
 
+  // Handler para duplo clique - ativar modo crop
+  const handleDblClick = React.useCallback(() => {
+    if (image && !commonProps.listening) return
+    setIsCropMode(true)
+  }, [image, commonProps.listening])
+
+  const handleCropConfirm = React.useCallback(
+    (croppedDataUrl: string) => {
+      // Atualizar a imagem com a versão cropada
+      onChange({
+        fileUrl: croppedDataUrl,
+      })
+      setIsCropMode(false)
+    },
+    [onChange]
+  )
+
+  const handleCropCancel = React.useCallback(() => {
+    setIsCropMode(false)
+  }, [])
+
   if (!image) {
     return (
       <Rect
@@ -287,20 +313,32 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }
 
   return (
-    <KonvaImage
-      {...commonProps}
-      ref={imageRef}
-      image={image}
-      width={width}
-      height={height}
-      filters={filters.length ? filters : undefined}
-      blurRadius={layer.style?.blur ?? 0}
-      brightness={layer.style?.brightness ?? 0}
-      contrast={layer.style?.contrast ?? 0}
-      cornerRadius={borderRadius}
-      stroke={borderWidth > 0 ? borderColor : undefined}
-      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
-    />
+    <>
+      <KonvaImage
+        {...commonProps}
+        ref={imageRef}
+        image={image}
+        width={width}
+        height={height}
+        filters={filters.length ? filters : undefined}
+        blurRadius={layer.style?.blur ?? 0}
+        brightness={layer.style?.brightness ?? 0}
+        contrast={layer.style?.contrast ?? 0}
+        cornerRadius={borderRadius}
+        stroke={borderWidth > 0 ? borderColor : undefined}
+        strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+        onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
+      />
+      {isCropMode && imageRef.current && stageRef && (
+        <KonvaImageCrop
+          imageNode={imageRef.current}
+          onConfirm={handleCropConfirm}
+          onCancel={handleCropCancel}
+          stageRef={stageRef}
+        />
+      )}
+    </>
   )
 }
 
