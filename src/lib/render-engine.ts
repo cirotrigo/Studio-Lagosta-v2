@@ -636,3 +636,56 @@ export class RenderEngine {
     }
   }
 }
+
+/**
+ * Gera um thumbnail de um design
+ * @param design - Design data para renderizar
+ * @param fieldValues - Valores dos campos dinâmicos
+ * @param options - Opções de thumbnail (width, height)
+ * @returns Buffer PNG do thumbnail
+ */
+export async function generateThumbnail(
+  design: DesignData,
+  fieldValues: FieldValues = {},
+  options: { width?: number; height?: number } = {},
+): Promise<Buffer> {
+  const { createCanvas, loadImage } = await import('@napi-rs/canvas')
+
+  const thumbnailWidth = options.width ?? 400
+  const thumbnailHeight = options.height ?? 300
+
+  // Calcular scale factor para manter aspect ratio
+  const scaleX = thumbnailWidth / design.canvas.width
+  const scaleY = thumbnailHeight / design.canvas.height
+  const scaleFactor = Math.min(scaleX, scaleY)
+
+  const finalWidth = Math.round(design.canvas.width * scaleFactor)
+  const finalHeight = Math.round(design.canvas.height * scaleFactor)
+
+  const canvas = createCanvas(finalWidth, finalHeight)
+  const ctx = canvas.getContext('2d')
+
+  // Image loader para thumbnails
+  const imageLoader: ImageLoader = async (url: string) => {
+    try {
+      const img = await loadImage(url)
+      return img as unknown as CanvasImageSource
+    } catch (error) {
+      console.error('Failed to load image for thumbnail:', url, error)
+      // Retornar imagem placeholder vazia
+      const placeholderCanvas = createCanvas(100, 100)
+      const placeholderCtx = placeholderCanvas.getContext('2d')
+      placeholderCtx.fillStyle = '#f5f5f5'
+      placeholderCtx.fillRect(0, 0, 100, 100)
+      return placeholderCanvas as unknown as CanvasImageSource
+    }
+  }
+
+  await RenderEngine.renderDesign(ctx as unknown as CanvasRenderingContext2D, design, fieldValues, {
+    scaleFactor,
+    imageLoader,
+    imageCache: new Map(),
+  })
+
+  return canvas.toBuffer('image/png')
+}

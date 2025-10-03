@@ -9,6 +9,21 @@ import type { Layer } from '@/types/template'
 import { KonvaLayerFactory } from './konva-layer-factory'
 import { KonvaSelectionTransformer } from './konva-transformer'
 
+/**
+ * KonvaEditorStage - Componente principal do canvas Konva.js
+ *
+ * Funcionalidades:
+ * - Renderização de todas as camadas do design
+ * - Sistema de zoom com mouse wheel (pointer-based, 25%-200%)
+ * - Pan com spacebar + drag
+ * - Alignment guides automáticos (snap to outros layers e canvas)
+ * - Seleção múltipla com Shift/Ctrl
+ * - Integração com transformer para resize/rotate
+ * - Atalhos de teclado (Ctrl+Z/Y, Ctrl+C/V)
+ *
+ * @component
+ */
+
 interface RectInfo {
   id: string
   x: number

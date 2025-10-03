@@ -8,6 +8,27 @@ import useImage from 'use-image'
 import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 
+/**
+ * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
+ *
+ * Tipos suportados:
+ * - text: Texto com formatação completa (fonte, cor, alinhamento)
+ * - image/logo/element: Imagens com filtros Konva (blur, brightness, contrast, grayscale, sepia, invert)
+ * - gradient/gradient2: Gradientes lineares e radiais
+ * - shape: Formas geométricas (rectangle, circle, triangle, star, arrow, line)
+ * - icon: Ícones SVG usando Path
+ *
+ * Funcionalidades:
+ * - Drag & drop
+ * - Transform (resize, rotate) via Transformer
+ * - Filtros de imagem em tempo real
+ * - Border/stroke customizável
+ * - Opacity e visibility
+ * - Lock para prevenir edições
+ *
+ * @component
+ */
+
 type KonvaFilter = (typeof Konva.Filters)[keyof typeof Konva.Filters]
 
 interface KonvaLayerFactoryProps {

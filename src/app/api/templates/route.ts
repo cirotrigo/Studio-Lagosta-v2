@@ -24,6 +24,18 @@ function parseLimit(value: string | null): number | undefined {
   return Math.min(Math.max(Math.floor(parsed), 1), 100)
 }
 
+/**
+ * GET /api/templates
+ * Lista templates do usuário ou templates públicos
+ *
+ * Query params:
+ * - projectId: filtrar por projeto
+ * - category: filtrar por categoria
+ * - search: busca por nome ou dimensões
+ * - includeDesign: incluir designData na resposta
+ * - limit: limite de resultados (1-100)
+ * - publicOnly: buscar apenas templates públicos
+ */
 export async function GET(req: Request) {
   const { userId } = await auth()
   if (!userId) {
@@ -34,10 +46,11 @@ export async function GET(req: Request) {
   const searchParams = url.searchParams
 
   const projectIdParam = searchParams.get('projectId')
-  const categoryParam = normalizeCategory(searchParams.get('category'))
+  const categoryParam = searchParams.get('category')
   const searchParam = searchParams.get('search')?.trim() ?? ''
   const includeDesign = searchParams.get('includeDesign') === 'true'
   const limit = parseLimit(searchParams.get('limit'))
+  const publicOnly = searchParams.get('publicOnly') === 'true'
 
   let projectId: number | undefined
   if (projectIdParam) {
@@ -53,24 +66,23 @@ export async function GET(req: Request) {
     projectId = parsed
   }
 
-  const where: Prisma.TemplateWhereInput = {
-    Project: { userId },
-  }
+  const where: Prisma.TemplateWhereInput = publicOnly
+    ? { isPublic: true }
+    : { Project: { userId } }
 
   if (typeof projectId === 'number') {
     where.projectId = projectId
   }
 
-  if (categoryParam) {
-    if (Object.values(TemplateType).includes(categoryParam as TemplateType)) {
-      where.type = categoryParam as TemplateType
-    }
+  if (categoryParam && categoryParam !== 'all') {
+    where.category = categoryParam
   }
 
   if (searchParam) {
     where.OR = [
       { name: { contains: searchParam, mode: 'insensitive' } },
       { dimensions: { contains: searchParam, mode: 'insensitive' } },
+      { tags: { has: searchParam } },
     ]
   }
 
@@ -82,6 +94,10 @@ export async function GET(req: Request) {
         type: true,
         dimensions: true,
         thumbnailUrl: true,
+        category: true,
+        tags: true,
+        isPublic: true,
+        isPremium: true,
         projectId: true,
         updatedAt: true,
         createdAt: true,
@@ -95,4 +111,52 @@ export async function GET(req: Request) {
   })
 
   return NextResponse.json(templates)
+}
+
+/**
+ * POST /api/templates
+ * Cria um novo template
+ */
+export async function POST(req: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  try {
+    const body = await req.json()
+    const { name, type, dimensions, designData, dynamicFields, thumbnailUrl, category, tags, isPublic, isPremium, projectId } = body
+
+    if (!name || !type || !dimensions || !designData || !projectId) {
+      return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 })
+    }
+
+    // Verificar se o projeto pertence ao usuário
+    const project = await db.project.findFirst({ where: { id: projectId, userId } })
+    if (!project) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
+
+    const template = await db.template.create({
+      data: {
+        name,
+        type,
+        dimensions,
+        designData,
+        dynamicFields: dynamicFields ?? [],
+        thumbnailUrl,
+        category,
+        tags: tags ?? [],
+        isPublic: isPublic ?? false,
+        isPremium: isPremium ?? false,
+        projectId,
+        createdBy: userId,
+      },
+    })
+
+    return NextResponse.json(template, { status: 201 })
+  } catch (error) {
+    console.error('Error creating template:', error)
+    return NextResponse.json({ error: 'Erro ao criar template' }, { status: 500 })
+  }
 }

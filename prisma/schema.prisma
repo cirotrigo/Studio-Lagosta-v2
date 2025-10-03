@@ -205,6 +205,10 @@ model Template {
   designData    Json
   dynamicFields Json         @default("[]")
   thumbnailUrl  String?
+  category      String?
+  tags          String[]     @default([])
+  isPublic      Boolean      @default(false)
+  isPremium     Boolean      @default(false)
   projectId     Int
   createdBy     String
   createdAt     DateTime     @default(now())
@@ -215,6 +219,8 @@ model Template {
   @@index([createdBy])
   @@index([projectId])
   @@index([type])
+  @@index([category])
+  @@index([isPublic])
 }
 
 model UsageHistory {
