@@ -40,6 +40,7 @@ const nextConfig: NextConfig = {
       config.externals = config.externals || [];
       if (Array.isArray(config.externals)) {
         config.externals.push('@napi-rs/canvas');
+        config.externals.push('canvas');
       }
     }
 

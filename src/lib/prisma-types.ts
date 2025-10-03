@@ -1,1 +1,1 @@
-export { OperationType, Prisma } from '../../prisma/generated/client'
+export { OperationType, Prisma, TemplateType } from '../../prisma/generated/client'

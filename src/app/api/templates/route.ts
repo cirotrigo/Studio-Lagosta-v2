@@ -1,0 +1,98 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
+import { db } from '@/lib/db'
+import type { Prisma } from '@/lib/prisma-types'
+import { TemplateType } from '@/lib/prisma-types'
+
+export const runtime = 'nodejs'
+
+const CATEGORY_ALL = 'all'
+
+function normalizeCategory(category: string | null): string | null {
+  if (!category) return null
+  const trimmed = category.trim().toUpperCase()
+  if (!trimmed || trimmed === CATEGORY_ALL.toUpperCase()) {
+    return null
+  }
+  return trimmed
+}
+
+function parseLimit(value: string | null): number | undefined {
+  if (!value) return undefined
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return undefined
+  return Math.min(Math.max(Math.floor(parsed), 1), 100)
+}
+
+export async function GET(req: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  const url = new URL(req.url)
+  const searchParams = url.searchParams
+
+  const projectIdParam = searchParams.get('projectId')
+  const categoryParam = normalizeCategory(searchParams.get('category'))
+  const searchParam = searchParams.get('search')?.trim() ?? ''
+  const includeDesign = searchParams.get('includeDesign') === 'true'
+  const limit = parseLimit(searchParams.get('limit'))
+
+  let projectId: number | undefined
+  if (projectIdParam) {
+    const parsed = Number(projectIdParam)
+    if (!Number.isFinite(parsed)) {
+      return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
+    }
+
+    const project = await db.project.findFirst({ where: { id: parsed, userId } })
+    if (!project) {
+      return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
+    projectId = parsed
+  }
+
+  const where: Prisma.TemplateWhereInput = {
+    Project: { userId },
+  }
+
+  if (typeof projectId === 'number') {
+    where.projectId = projectId
+  }
+
+  if (categoryParam) {
+    if (Object.values(TemplateType).includes(categoryParam as TemplateType)) {
+      where.type = categoryParam as TemplateType
+    }
+  }
+
+  if (searchParam) {
+    where.OR = [
+      { name: { contains: searchParam, mode: 'insensitive' } },
+      { dimensions: { contains: searchParam, mode: 'insensitive' } },
+    ]
+  }
+
+  const select = includeDesign
+    ? undefined
+    : {
+        id: true,
+        name: true,
+        type: true,
+        dimensions: true,
+        thumbnailUrl: true,
+        projectId: true,
+        updatedAt: true,
+        createdAt: true,
+      }
+
+  const templates = await db.template.findMany({
+    where,
+    orderBy: { updatedAt: 'desc' },
+    ...(limit ? { take: limit } : {}),
+    ...(select ? { select } : {}),
+  })
+
+  return NextResponse.json(templates)
+}

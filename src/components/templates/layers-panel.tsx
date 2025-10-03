@@ -27,7 +27,14 @@ function layerTypeLabel(type: string) {
 }
 
 export function LayersPanel() {
-  const { design, selectedLayerId, selectLayer, toggleLayerVisibility, toggleLayerLock, reorderLayers } = useTemplateEditor()
+  const {
+    design,
+    selectedLayerIds,
+    selectLayer,
+    toggleLayerVisibility,
+    toggleLayerLock,
+    reorderLayers,
+  } = useTemplateEditor()
 
   const orderedLayers = React.useMemo(() => [...design.layers].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [design.layers])
 
@@ -55,17 +62,25 @@ export function LayersPanel() {
       <ScrollArea className="flex-1">
         <div className="space-y-2 pr-2">
           {orderedLayers.map((layer) => {
-            const isSelected = layer.id === selectedLayerId
+            const isSelected = selectedLayerIds.includes(layer.id)
             return (
               <div
                 key={layer.id}
                 role="button"
                 tabIndex={0}
-                onClick={() => selectLayer(layer.id)}
+                onClick={(event) =>
+                  selectLayer(layer.id, {
+                    additive: event.shiftKey || event.metaKey || event.ctrlKey,
+                    toggle: event.shiftKey || event.metaKey || event.ctrlKey,
+                  })
+                }
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' || event.key === ' ') {
                     event.preventDefault()
-                    selectLayer(layer.id)
+                    selectLayer(layer.id, {
+                      additive: event.shiftKey || event.metaKey || event.ctrlKey,
+                      toggle: event.shiftKey || event.metaKey || event.ctrlKey,
+                    })
                   }
                 }}
                 className={cn(

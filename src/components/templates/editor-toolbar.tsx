@@ -21,6 +21,8 @@ import {
   BadgeCheck,
   Shapes,
   Upload,
+  Copy,
+  ClipboardPaste,
 } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
@@ -55,12 +57,15 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     duplicateLayer,
     removeLayer,
     selectedLayerId,
+    selectedLayerIds,
     design,
     zoom,
     zoomIn,
     zoomOut,
     dirty,
     projectId,
+    copySelectedLayers,
+    pasteLayers,
   } = useTemplateEditor()
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -513,6 +518,23 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     if (selectedLayerId) removeLayer(selectedLayerId)
   }, [removeLayer, selectedLayerId])
 
+  const handleCopy = React.useCallback(() => {
+    if (selectedLayerIds.length === 0) return
+    copySelectedLayers()
+    toast({
+      title: 'Layers copiadas',
+      description: `${selectedLayerIds.length} camada(s) adicionadas à área de transferência.`,
+    })
+  }, [copySelectedLayers, selectedLayerIds.length, toast])
+
+  const handlePaste = React.useCallback(() => {
+    pasteLayers()
+    toast({
+      title: 'Layers coladas',
+      description: 'As camadas copiadas foram inseridas no canvas.',
+    })
+  }, [pasteLayers, toast])
+
   return (
     <>
       <input ref={imageFileInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFileChange} />
@@ -773,6 +795,31 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
                   </span>
                 </TooltipTrigger>
                 <TooltipContent>Remover layer</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleCopy}
+                      disabled={selectedLayerIds.length === 0}
+                    >
+                      <Copy className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Copiar layers (⌘/Ctrl + C)</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button size="sm" variant="ghost" onClick={handlePaste}>
+                      <ClipboardPaste className="h-4 w-4" />
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>Colar layers (⌘/Ctrl + V)</TooltipContent>
               </Tooltip>
             </div>
           </TooltipProvider>

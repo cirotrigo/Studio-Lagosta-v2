@@ -24,8 +24,12 @@ export interface TemplateEditorContextValue {
   dimensions: string
   design: DesignData
   setDesign: React.Dispatch<React.SetStateAction<DesignData>>
+  selectedLayerIds: string[]
   selectedLayerId: string | null
-  selectLayer: (id: string | null) => void
+  selectLayer: (id: string | null, options?: { additive?: boolean; toggle?: boolean }) => void
+  selectLayers: (ids: string[]) => void
+  toggleLayerSelection: (id: string) => void
+  clearLayerSelection: () => void
   updateLayer: (id: string, updater: (layer: Layer) => Layer) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
@@ -45,6 +49,13 @@ export interface TemplateEditorContextValue {
   setZoom: (value: number) => void
   zoomIn: () => void
   zoomOut: () => void
+  copySelectedLayers: () => void
+  pasteLayers: () => void
+  loadTemplate: (payload: {
+    designData: DesignData
+    dynamicFields?: DynamicField[] | null
+    name?: string
+  }) => void
 }
 
 const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
@@ -71,11 +82,13 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
-  const [selectedLayerId, setSelectedLayerId] = React.useState<string | null>(
-    template.designData.layers?.[0]?.id ?? null,
-  )
+  const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>(() => {
+    const firstId = template.designData.layers?.[0]?.id
+    return firstId ? [firstId] : []
+  })
   const [dirty, setDirty] = React.useState(false)
   const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM)
+  const clipboardRef = React.useRef<Layer[] | null>(null)
 
   // Sync when template prop changes (e.g., refetch)
   React.useEffect(() => {
@@ -85,7 +98,8 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       layers: normalizeLayerOrder(template.designData.layers ?? []),
     })
     setDynamicFieldsState(Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [])
-    setSelectedLayerId(template.designData.layers?.[0]?.id ?? null)
+    const firstId = template.designData.layers?.[0]?.id
+    setSelectedLayerIds(firstId ? [firstId] : [])
     setDirty(false)
     setZoomState(DEFAULT_ZOOM)
   }, [template.id, template.updatedAt, template.name, template.designData, template.dynamicFields])
@@ -97,8 +111,37 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   const zoomIn = React.useCallback(() => setZoomState((prev) => Math.min(prev + 0.1, 2)), [])
   const zoomOut = React.useCallback(() => setZoomState((prev) => Math.max(prev - 0.1, 0.25)), [])
 
-  const selectLayer = React.useCallback((id: string | null) => {
-    setSelectedLayerId(id)
+  const selectLayer = React.useCallback((id: string | null, options?: { additive?: boolean; toggle?: boolean }) => {
+    if (!id) {
+      setSelectedLayerIds([])
+      return
+    }
+    setSelectedLayerIds((prev) => {
+      if (options?.additive) {
+        const exists = prev.includes(id)
+        if (exists) {
+          if (options?.toggle) {
+            return prev.filter((layerId) => layerId !== id)
+          }
+          return prev
+        }
+        return [...prev, id]
+      }
+      return [id]
+    })
+  }, [])
+
+  const selectLayers = React.useCallback((ids: string[]) => {
+    const unique = Array.from(new Set(ids.filter(Boolean))) as string[]
+    setSelectedLayerIds(unique)
+  }, [])
+
+  const toggleLayerSelection = React.useCallback((id: string) => {
+    setSelectedLayerIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+  }, [])
+
+  const clearLayerSelection = React.useCallback(() => {
+    setSelectedLayerIds([])
   }, [])
 
   const updateLayer = React.useCallback(
@@ -153,7 +196,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
         setDirty(true)
         return { ...prev, layers: nextLayers }
       })
-      setSelectedLayerId(layer.id)
+      setSelectedLayerIds([layer.id])
     },
     [],
   )
@@ -184,7 +227,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
         setDirty(true)
         return { ...prev, layers: normalizeLayerOrder(nextLayers) }
       })
-      setSelectedLayerId((current) => (current === id ? null : current))
+      setSelectedLayerIds((prev) => prev.filter((layerId) => layerId !== id))
     },
     [],
   )
@@ -233,6 +276,85 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     })
   }, [])
 
+  const copySelectedLayers = React.useCallback(() => {
+    if (selectedLayerIds.length === 0) return
+    const selection = design.layers.filter((layer) => selectedLayerIds.includes(layer.id))
+    if (selection.length === 0) return
+    clipboardRef.current = selection.map((layer) => {
+      try {
+        return structuredClone(layer)
+      } catch {
+        return JSON.parse(JSON.stringify(layer)) as Layer
+      }
+    })
+  }, [design.layers, selectedLayerIds])
+
+  const pasteLayers = React.useCallback(() => {
+    const clipboard = clipboardRef.current
+    if (!clipboard || clipboard.length === 0) return
+
+    const clones = clipboard.map((layer, index) => {
+      const cloned = (() => {
+        try {
+          return structuredClone(layer)
+        } catch {
+          return JSON.parse(JSON.stringify(layer)) as Layer
+        }
+      })()
+      const newId = crypto.randomUUID()
+      return {
+        ...cloned,
+        id: newId,
+        name: `${cloned.name ?? cloned.type} Copy`,
+        locked: false,
+        order: 0,
+        position: {
+          x: Math.round((cloned.position?.x ?? 0) + 24 + index * 12),
+          y: Math.round((cloned.position?.y ?? 0) + 24 + index * 12),
+        },
+      }
+    })
+
+    setDesign((prev) => {
+      const nextLayers = normalizeLayerOrder([...prev.layers, ...clones])
+      setDirty(true)
+      return { ...prev, layers: nextLayers }
+    })
+    setSelectedLayerIds(clones.map((layer) => layer.id))
+  }, [])
+
+  const loadTemplate = React.useCallback(
+    ({ designData, dynamicFields: nextDynamicFields, name: nextName }: {
+      designData: DesignData
+      dynamicFields?: DynamicField[] | null
+      name?: string
+    }) => {
+      const clonedDesign: DesignData = (() => {
+        try {
+          return structuredClone(designData)
+        } catch {
+          return JSON.parse(JSON.stringify(designData)) as DesignData
+        }
+      })()
+
+      clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
+
+      setDesign(clonedDesign)
+      if (Array.isArray(nextDynamicFields)) {
+        setDynamicFieldsState([...nextDynamicFields])
+      } else {
+        setDynamicFieldsState([])
+      }
+      const firstLayerId = clonedDesign.layers[0]?.id
+      setSelectedLayerIds(firstLayerId ? [firstLayerId] : [])
+      if (nextName) {
+        setName(nextName)
+      }
+      setDirty(true)
+    },
+    [],
+  )
+
   const markSaved = React.useCallback((nextTemplate?: Partial<TemplateResource>) => {
     if (nextTemplate?.designData) {
       setDesign({
@@ -249,6 +371,8 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     setDirty(false)
   }, [])
 
+  const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] ?? null
+
   const value = React.useMemo<TemplateEditorContextValue>(
     () => ({
       templateId: template.id,
@@ -262,8 +386,12 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       dimensions: template.dimensions,
       design,
       setDesign,
+      selectedLayerIds,
       selectedLayerId,
       selectLayer,
+      selectLayers,
+      toggleLayerSelection,
+      clearLayerSelection,
       updateLayer,
       updateLayerPartial,
       updateLayerStyle,
@@ -289,8 +417,45 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
       setZoom,
       zoomIn,
       zoomOut,
+      copySelectedLayers,
+      pasteLayers,
+      loadTemplate,
     }),
-    [template.id, template.projectId, template.type, template.dimensions, design, selectedLayerId, selectLayer, updateLayer, updateLayerPartial, updateLayerStyle, moveLayer, addLayer, duplicateLayer, removeLayer, toggleLayerVisibility, toggleLayerLock, reorderLayers, updateCanvas, dynamicFields, dirty, markSaved, zoom, setZoom, zoomIn, zoomOut, name],
+    [
+      template.id,
+      template.projectId,
+      template.type,
+      template.dimensions,
+      design,
+      selectedLayerIds,
+      selectedLayerId,
+      selectLayer,
+      selectLayers,
+      toggleLayerSelection,
+      clearLayerSelection,
+      updateLayer,
+      updateLayerPartial,
+      updateLayerStyle,
+      moveLayer,
+      addLayer,
+      duplicateLayer,
+      removeLayer,
+      toggleLayerVisibility,
+      toggleLayerLock,
+      reorderLayers,
+      updateCanvas,
+      dynamicFields,
+      dirty,
+      markSaved,
+      zoom,
+      setZoom,
+      zoomIn,
+      zoomOut,
+      name,
+      copySelectedLayers,
+      pasteLayers,
+      loadTemplate,
+    ],
   )
 
   return <TemplateEditorContext.Provider value={value}>{children}</TemplateEditorContext.Provider>
