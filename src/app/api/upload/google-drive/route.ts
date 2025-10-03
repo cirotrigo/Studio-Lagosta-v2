@@ -107,6 +107,10 @@ export async function POST(req: Request) {
     })
   } catch (error) {
     console.error('[UploadFromDrive] Failed to import file from Drive:', error)
-    return NextResponse.json({ error: 'Falha ao importar arquivo do Google Drive' }, { status: 500 })
+    const message =
+      (error as { message?: string })?.message ||
+      (error as { response?: { data?: { error?: { message?: string } } } }).response?.data?.error?.message ||
+      'Falha ao importar arquivo do Google Drive'
+    return NextResponse.json({ error: message ?? 'Falha ao importar arquivo do Google Drive' }, { status: 500 })
   }
 }

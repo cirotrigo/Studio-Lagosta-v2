@@ -49,7 +49,7 @@ export interface TemplateEditorContextValue {
 
 const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
 
-const DEFAULT_ZOOM = 1
+const DEFAULT_ZOOM = 0.3
 
 interface TemplateEditorProviderProps {
   template: TemplateResource
@@ -87,6 +87,7 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
     setDynamicFieldsState(Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [])
     setSelectedLayerId(template.designData.layers?.[0]?.id ?? null)
     setDirty(false)
+    setZoomState(DEFAULT_ZOOM)
   }, [template.id, template.updatedAt, template.name, template.designData, template.dynamicFields])
 
   const setZoom = React.useCallback((value: number) => {

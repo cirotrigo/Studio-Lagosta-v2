@@ -47,7 +47,7 @@ export function LayersPanel() {
   )
 
   return (
-    <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
+    <div className="flex h-full min-h-[400px] min-w-[360px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
       <div>
         <h3 className="text-sm font-semibold">Layers</h3>
         <p className="text-xs text-muted-foreground">Organize as camadas do template</p>

@@ -18,7 +18,7 @@ export function TemplateEditorClient({ templateId }: TemplateEditorClientProps) 
       <div className="space-y-4">
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-12 w-full" />
-        <div className="grid gap-4 2xl:grid-cols-[280px_minmax(0,1fr)_320px] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+        <div className="grid gap-4 2xl:grid-cols-[400px_minmax(0,1fr)_340px] xl:grid-cols-[380px_minmax(0,1fr)_320px] lg:grid-cols-[360px_minmax(0,1fr)_300px]">
           <Skeleton className="h-[480px] w-full" />
           <Skeleton className="h-[480px] w-full" />
           <Skeleton className="h-[480px] w-full" />

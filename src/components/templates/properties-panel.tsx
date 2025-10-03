@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import { Switch } from '@/components/ui/switch'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 
@@ -192,6 +193,11 @@ export function PropertiesPanel() {
     }))
   }
 
+  const isDynamicToggleSupported = React.useMemo(() => {
+    if (!selectedLayer) return false
+    return ['text', 'image', 'logo', 'element'].includes(selectedLayer.type)
+  }, [selectedLayer])
+
   return (
     <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
       <div>
@@ -241,6 +247,30 @@ export function PropertiesPanel() {
                   onChange={(event) => updateLayerPartial(selectedLayer.id, { name: event.target.value })}
                 />
               </div>
+
+              {isDynamicToggleSupported && selectedLayer && (
+                <div className="flex items-start justify-between gap-3 rounded-md border border-border/30 bg-muted/30 p-3">
+                  <div>
+                    <Label
+                      className="text-[11px] uppercase tracking-wide"
+                      htmlFor={`layer-dynamic-toggle-${selectedLayer.id}`}
+                    >
+                      Layer dinâmica
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Permite alterar este elemento no Studio durante a personalização do template.
+                    </p>
+                  </div>
+                  <Switch
+                    id={`layer-dynamic-toggle-${selectedLayer.id}`}
+                    checked={Boolean(selectedLayer.isDynamic)}
+                    onCheckedChange={(checked) =>
+                      updateLayerPartial(selectedLayer.id, { isDynamic: checked })
+                    }
+                    aria-label="Marcar layer como dinâmica"
+                  />
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3 text-xs">
                 <div>

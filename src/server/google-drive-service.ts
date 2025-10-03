@@ -149,6 +149,8 @@ export class GoogleDriveService {
           pageToken,
           fields:
             'nextPageToken, files(id, name, mimeType, size, modifiedTime, iconLink, thumbnailLink, webViewLink, webContentLink)',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
         },
         { timeout: LIST_TIMEOUT },
       ),
@@ -222,6 +224,7 @@ export class GoogleDriveService {
         {
           fileId,
           fields: 'name, mimeType',
+          supportsAllDrives: true,
         },
         { timeout: 15_000 },
       ),
@@ -232,6 +235,8 @@ export class GoogleDriveService {
         {
           fileId,
           alt: 'media',
+          supportsAllDrives: true,
+          acknowledgeAbuse: false,
         },
         { responseType: 'stream', timeout: LIST_TIMEOUT },
       ),
