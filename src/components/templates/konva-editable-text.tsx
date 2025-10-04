@@ -54,6 +54,7 @@ export function KonvaEditableText({
   stageRef,
 }: KonvaEditableTextProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
+  const cleanupRef = React.useRef<(() => void) | null>(null)
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -96,53 +97,46 @@ export function KonvaEditableText({
   }, [shapeRef, layer.style, onChange])
 
   const handleDblClick = React.useCallback(() => {
-    if (!shapeRef.current || !stageRef?.current) return
-
     const textNode = shapeRef.current
-    const stage = stageRef.current
+    if (!textNode) return
 
-    // Ocultar o texto do canvas
-    textNode.hide()
-    stage.batchDraw()
+    const stage = stageRef?.current ?? textNode.getStage()
+    if (!stage) return
 
-    // Obter posição absoluta do texto no canvas
-    const textPosition = textNode.absolutePosition()
-    const stageBox = stage.container().getBoundingClientRect()
+    // Evitar múltiplos textareas simultâneos
+    if (textareaRef.current) {
+      textareaRef.current.focus()
+      return
+    }
 
-    // Calcular a escala do stage
-    const scale = stage.scaleX()
+    const fontSize = layer.style?.fontSize ?? textNode.fontSize()
+    const fontFamily = layer.style?.fontFamily ?? textNode.fontFamily()
+    const textAlign = layer.style?.textAlign ?? textNode.align() ?? 'left'
+    const lineHeight = layer.style?.lineHeight ?? textNode.lineHeight() ?? 1.2
+    const fontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
+    const fontStyle = layer.style?.fontStyle ?? (textNode.fontStyle().includes('italic') ? 'italic' : 'normal')
+    const letterSpacing = layer.style?.letterSpacing ?? 0
+    const textColor = layer.style?.color ?? (typeof textNode.fill() === 'string' ? (textNode.fill() as string) : '#000000')
 
-    // Criar textarea para edição
     const textarea = document.createElement('textarea')
-    document.body.appendChild(textarea)
-
-    // Estilizar textarea para corresponder ao texto
-    const fontSize = layer.style?.fontSize ?? 16
-    const fontFamily = layer.style?.fontFamily ?? 'Inter'
-    const textAlign = layer.style?.textAlign ?? 'left'
-    const lineHeight = layer.style?.lineHeight ?? 1.2
-    const fontWeight = layer.style?.fontWeight ?? 'normal'
-    const fontStyle = layer.style?.fontStyle ?? 'normal'
-
-    textarea.value = layer.content ?? ''
+    textarea.setAttribute('spellcheck', 'false')
+    textarea.value = layer.content ?? textNode.text() ?? ''
     textarea.style.position = 'absolute'
-    // Usar posição absoluta do texto no viewport
-    textarea.style.top = `${stageBox.top + textPosition.y * scale}px`
-    textarea.style.left = `${stageBox.left + textPosition.x * scale}px`
-    textarea.style.width = `${Math.max(textNode.width() * scale, 100)}px`
-    textarea.style.minHeight = `${textNode.height() * scale}px`
-    textarea.style.fontSize = `${fontSize * scale}px`
+    textarea.style.margin = '0px'
+    textarea.style.borderStyle = 'solid'
+    textarea.style.borderColor = '#4F46E5'
+    textarea.style.borderWidth = '2px'
+    textarea.style.borderRadius = '4px'
+    textarea.style.background = 'rgba(0, 0, 0, 0.85)'
+    textarea.style.color = textColor
     textarea.style.fontFamily = fontFamily
-    textarea.style.color = '#FFFFFF'
-    textarea.style.textAlign = textAlign
     textarea.style.lineHeight = String(lineHeight)
     textarea.style.fontWeight = String(fontWeight)
     textarea.style.fontStyle = fontStyle
-    textarea.style.border = '2px solid #4F46E5'
-    textarea.style.padding = `${6 * scale}px`
-    textarea.style.margin = '0px'
+    textarea.style.letterSpacing = `${letterSpacing}px`
+    textarea.style.textAlign = textAlign
+    textarea.style.whiteSpace = 'pre-wrap'
     textarea.style.overflow = 'hidden'
-    textarea.style.background = 'rgba(0, 0, 0, 0.85)'
     textarea.style.outline = 'none'
     textarea.style.resize = 'none'
     textarea.style.transformOrigin = 'left top'
@@ -150,95 +144,143 @@ export function KonvaEditableText({
     textarea.style.zIndex = '10000'
     textarea.style.backdropFilter = 'blur(8px)'
     textarea.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.4)'
-    textarea.style.borderRadius = '4px'
 
-    // Auto-focus e selecionar todo o texto
-    setTimeout(() => {
-      textarea.focus()
-      textarea.select()
-    }, 10)
+    document.body.appendChild(textarea)
 
-    // Armazenar referência
+    const applyTextareaGeometry = () => {
+      const updatedStageBox = stage.container().getBoundingClientRect()
+      const currentStagePosition = stage.position()
+      const currentScaleX = stage.scaleX()
+      const currentScaleY = stage.scaleY()
+      const currentAbsolutePosition = textNode.absolutePosition()
+      const currentAbsoluteScale = textNode.getAbsoluteScale()
+      const padding = textNode.padding()
+      const paddingX = padding * currentAbsoluteScale.x
+      const paddingY = padding * currentAbsoluteScale.y
+
+      const left = updatedStageBox.left + currentStagePosition.x + currentAbsolutePosition.x * currentScaleX
+      const top = updatedStageBox.top + currentStagePosition.y + currentAbsolutePosition.y * currentScaleY
+      const width = Math.max((textNode.width() - padding * 2) * currentAbsoluteScale.x, 100)
+      const height = Math.max((textNode.height() - padding * 2) * currentAbsoluteScale.y + 4 * currentAbsoluteScale.y, fontSize * currentAbsoluteScale.y)
+
+      textarea.style.left = `${left}px`
+      textarea.style.top = `${top}px`
+      textarea.style.width = `${width}px`
+      textarea.style.minHeight = `${height}px`
+      textarea.style.fontSize = `${fontSize * currentAbsoluteScale.y}px`
+      textarea.style.padding = `${paddingY}px ${paddingX}px`
+      const borderScale = Math.max(currentAbsoluteScale.x, currentAbsoluteScale.y)
+      textarea.style.borderWidth = `${Math.max(1, 2 * borderScale)}px`
+    }
+
+    // Ocultar o texto original enquanto edita
+    textNode.hide()
+    stage.batchDraw()
+
+    applyTextareaGeometry()
+
+    // Guardar referência para gerenciar ciclo de vida
     textareaRef.current = textarea
 
-    // Auto-resize do textarea conforme o usuário digita
-    const autoResize = () => {
+    const originalValue = textarea.value
+    let isFinishing = false
+
+    function finishEditing(commit: boolean) {
+      if (isFinishing) return
+      isFinishing = true
+
+      const value = textarea.value
+
+      const teardown = cleanupRef.current
+      if (teardown) {
+        teardown()
+        cleanupRef.current = null
+      }
+
+      if (commit && value !== originalValue) {
+        onChange({
+          content: value,
+        })
+      }
+    }
+
+    function handleInput() {
+      applyTextareaGeometry()
       textarea.style.height = 'auto'
       textarea.style.height = `${textarea.scrollHeight}px`
     }
 
-    textarea.addEventListener('input', autoResize)
-    autoResize()
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault()
+        finishEditing(true)
+      }
 
-    // Handler para finalizar edição
-    const handleFinishEdit = () => {
-      // Verificar se textarea ainda está no DOM
-      if (!textarea.parentNode) return
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        textarea.value = originalValue
+        finishEditing(false)
+      }
+    }
 
-      const newText = textarea.value
+    function handleBlur() {
+      finishEditing(true)
+    }
 
-      // Remover textarea primeiro
-      try {
-        if (textarea.parentNode) {
-          textarea.parentNode.removeChild(textarea)
-        }
-      } catch (e) {
-        // Ignorar erro se já foi removido
+    function handlePointerDown(event: Event) {
+      if (event.target === textarea) return
+      finishEditing(true)
+    }
+
+    function handleResize() {
+      applyTextareaGeometry()
+    }
+
+    const cleanupListeners = () => {
+      textarea.removeEventListener('input', handleInput)
+      textarea.removeEventListener('keydown', handleKeyDown)
+      textarea.removeEventListener('blur', handleBlur)
+      window.removeEventListener('pointerdown', handlePointerDown, true)
+      window.removeEventListener('touchstart', handlePointerDown, true)
+      window.removeEventListener('resize', handleResize)
+    }
+
+    cleanupRef.current = () => {
+      cleanupListeners()
+      if (textarea.parentNode) {
+        textarea.parentNode.removeChild(textarea)
       }
       textareaRef.current = null
-
-      // Atualizar o conteúdo do layer
-      onChange({
-        content: newText,
-      })
-
-      // Mostrar o texto novamente
       textNode.show()
-      stage.batchDraw()
-    }
-
-    // Eventos para finalizar edição
-    let isFinishing = false
-
-    const safeFinishEdit = () => {
-      if (isFinishing) return
-      isFinishing = true
-      handleFinishEdit()
-    }
-
-    textarea.addEventListener('blur', safeFinishEdit)
-
-    textarea.addEventListener('keydown', (e) => {
-      // Escape para cancelar
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        if (isFinishing) return
-        isFinishing = true
-
-        try {
-          if (textarea.parentNode) {
-            textarea.parentNode.removeChild(textarea)
-          }
-        } catch (err) {
-          // Ignorar
-        }
-        textareaRef.current = null
-        textNode.show()
+      if (!stage.isDestroyed?.()) {
         stage.batchDraw()
       }
-      // Enter sem Shift para finalizar (Shift+Enter adiciona nova linha)
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        safeFinishEdit()
-      }
-    })
+    }
+
+    textarea.addEventListener('input', handleInput)
+    textarea.addEventListener('keydown', handleKeyDown)
+    textarea.addEventListener('blur', handleBlur)
+    window.addEventListener('pointerdown', handlePointerDown, true)
+    window.addEventListener('touchstart', handlePointerDown, true)
+    window.addEventListener('resize', handleResize)
+
+    // Ajustar altura inicial e foco
+    handleInput()
+    setTimeout(() => {
+      textarea.focus()
+      textarea.select()
+    }, 0)
   }, [layer, onChange, shapeRef, stageRef])
 
   // Cleanup ao desmontar
   React.useEffect(() => {
     return () => {
-      if (textareaRef.current && textareaRef.current.parentNode) {
+      if (cleanupRef.current) {
+        cleanupRef.current()
+        cleanupRef.current = null
+      } else if (textareaRef.current && textareaRef.current.parentNode) {
         document.body.removeChild(textareaRef.current)
+        textareaRef.current = null
       }
     }
   }, [])
