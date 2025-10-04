@@ -8,6 +8,13 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
 import { KonvaLayerFactory } from './konva-layer-factory'
 import { KonvaSelectionTransformer } from './konva-transformer'
+import {
+  computeAlignmentGuides,
+  type RectInfo,
+  type GuideLine,
+  type SnapConfig,
+  DEFAULT_SNAP_CONFIG,
+} from '@/lib/konva-smart-guides'
 
 /**
  * KonvaEditorStage - Componente principal do canvas Konva.js
@@ -16,28 +23,14 @@ import { KonvaSelectionTransformer } from './konva-transformer'
  * - Renderização de todas as camadas do design
  * - Sistema de zoom simplificado (10%-500%, centralizado horizontalmente)
  * - Scroll vertical nativo quando necessário
- * - Alignment guides automáticos (snap to outros layers e canvas)
+ * - Smart Guides (alignment guides automáticos inspirados em Figma/Canva)
  * - Seleção múltipla com Shift/Ctrl
  * - Integração com transformer para resize/rotate
- * - Atalhos de teclado (Ctrl+Z/Y, Ctrl+C/V, Ctrl+0/+/-)
+ * - Atalhos de teclado (Ctrl+Z/Y, Ctrl+C/V, Ctrl+0/+/-, Alt para desabilitar snap)
  *
  * @component
  */
 
-interface RectInfo {
-  id: string
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
-type GuideLine = {
-  orientation: 'horizontal' | 'vertical'
-  position: number
-}
-
-const GUIDE_THRESHOLD = 6
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 5
 const ZOOM_SCALE_BY = 1.05 // 5% por scroll
@@ -64,6 +57,21 @@ export function KonvaEditorStage() {
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
   const [showGrid, setShowGrid] = React.useState(false)
+  const [snapConfig, setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
+  const [snappingEnabled, setSnappingEnabled] = React.useState(true)
+  const [showTestGuide, setShowTestGuide] = React.useState(false)
+  const [showMarginGuides, setShowMarginGuides] = React.useState(false)
+
+  // Debug: verificar configuração inicial
+  React.useEffect(() => {
+    console.log('🔧 Smart Guides Config:', snapConfig)
+    console.log('✅ Snapping Enabled:', snappingEnabled)
+  }, [snapConfig, snappingEnabled])
+
+  // Debug: monitorar mudanças nas guias
+  React.useEffect(() => {
+    console.log('📏 Guides atualizadas:', guides.length, guides)
+  }, [guides])
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
@@ -213,12 +221,32 @@ export function KonvaEditorStage() {
           height: Math.max(1, item.size?.height ?? 0),
         }))
 
+      // Se as guias de margem estiverem ativas, adicionar retângulos invisíveis nas margens
+      if (showMarginGuides) {
+        const MARGIN = 70
+        // Adicionar guias de margem como se fossem objetos invisíveis
+        otherRects.push(
+          { id: 'margin-left', x: MARGIN, y: 0, width: 0, height: canvasHeight },
+          { id: 'margin-right', x: canvasWidth - MARGIN, y: 0, width: 0, height: canvasHeight },
+          { id: 'margin-top', x: 0, y: MARGIN, width: canvasWidth, height: 0 },
+          { id: 'margin-bottom', x: 0, y: canvasHeight - MARGIN, width: canvasWidth, height: 0 },
+        )
+      }
+
+      // Usar a biblioteca otimizada de smart guides com configuração ativa
+      const activeConfig = { ...snapConfig, enabled: snappingEnabled }
       const { guides: nextGuides, position } = computeAlignmentGuides(
         movingRect,
         otherRects,
         canvasWidth,
         canvasHeight,
+        activeConfig,
       )
+
+      // Debug: verificar se guias estão sendo computadas
+      if (nextGuides.length > 0) {
+        console.log('🎯 Smart Guides detectadas:', nextGuides)
+      }
 
       if (position.x !== movingRect.x || position.y !== movingRect.y) {
         node.position(position)
@@ -226,13 +254,14 @@ export function KonvaEditorStage() {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides],
   )
 
   const handleLayerDragEnd = React.useCallback(() => {
     setGuides([])
   }, [])
 
+  // Atalhos de teclado para zoom, copy/paste, undo/redo
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -242,6 +271,28 @@ export function KonvaEditorStage() {
 
       const key = event.key.toLowerCase()
       const isModifier = event.metaKey || event.ctrlKey
+
+      // Desabilitar snap temporariamente com Alt
+      if (key === 'alt') {
+        setSnappingEnabled(false)
+        setGuides([])
+        return
+      }
+
+      // Toggle guia de teste com 'g'
+      if (key === 'g' && !isModifier) {
+        setShowTestGuide(prev => !prev)
+        console.log('🧪 Test guide toggled:', !showTestGuide)
+        return
+      }
+
+      // Toggle guias de margem com 'r'
+      if (key === 'r' && !isModifier) {
+        setShowMarginGuides(prev => !prev)
+        console.log('📐 Margin guides toggled:', !showMarginGuides)
+        return
+      }
+
       if (!isModifier) return
 
       // Atalhos de zoom (Ctrl/Cmd + +/- e Ctrl/Cmd + 0)
@@ -295,9 +346,18 @@ export function KonvaEditorStage() {
       }
     }
 
+    const handleKeyUp = (event: KeyboardEvent) => {
+      // Reativar snap quando soltar Alt
+      if (event.key === 'Alt') {
+        setSnappingEnabled(true)
+      }
+    }
+
     window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
     }
   }, [animateZoom, canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo])
 
@@ -366,24 +426,6 @@ export function KonvaEditorStage() {
             </KonvaLayer>
           )}
 
-          {/* Alignment guides layer - non-interactive (listening: false for performance) */}
-          <KonvaLayer name="guides-layer" listening={false}>
-            {guides.map((guide, index) => (
-              <Line
-                key={`${guide.orientation}-${index}-${guide.position}`}
-                points={
-                  guide.orientation === 'vertical'
-                    ? [guide.position, 0, guide.position, canvasHeight]
-                    : [0, guide.position, canvasWidth, guide.position]
-                }
-                stroke="#6366F1"
-                strokeWidth={1}
-                dash={[4, 4]}
-                listening={false}
-              />
-            ))}
-          </KonvaLayer>
-
           <KonvaLayer name="content-layer">
             {deferredLayers.map((layer) => (
               <KonvaLayerFactory
@@ -399,97 +441,104 @@ export function KonvaEditorStage() {
             ))}
             <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />
           </KonvaLayer>
+
+          {/* Smart Guides layer - DEVE estar por último para aparecer na frente */}
+          <KonvaLayer name="guides-layer" listening={false}>
+            {guides.length > 0 && console.log('🎨 Renderizando', guides.length, 'guias')}
+
+            {/* Guias de margem (padding 70px) - Ativado com tecla 'R' */}
+            {showMarginGuides && (
+              <>
+                {/* Borda esquerda - 70px */}
+                <Line
+                  points={[70, 0, 70, canvasHeight]}
+                  stroke="#3B82F6"
+                  strokeWidth={1.5}
+                  dash={[6, 4]}
+                  opacity={0.7}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda direita - 70px */}
+                <Line
+                  points={[canvasWidth - 70, 0, canvasWidth - 70, canvasHeight]}
+                  stroke="#3B82F6"
+                  strokeWidth={1.5}
+                  dash={[6, 4]}
+                  opacity={0.7}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda superior - 70px */}
+                <Line
+                  points={[0, 70, canvasWidth, 70]}
+                  stroke="#3B82F6"
+                  strokeWidth={1.5}
+                  dash={[6, 4]}
+                  opacity={0.7}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda inferior - 70px */}
+                <Line
+                  points={[0, canvasHeight - 70, canvasWidth, canvasHeight - 70]}
+                  stroke="#3B82F6"
+                  strokeWidth={1.5}
+                  dash={[6, 4]}
+                  opacity={0.7}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+              </>
+            )}
+
+            {/* Guia de teste - para verificar se a renderização funciona */}
+            {showTestGuide && (
+              <>
+                <Line
+                  points={[canvasWidth / 2, 0, canvasWidth / 2, canvasHeight]}
+                  stroke="#00FF00"
+                  strokeWidth={3}
+                  dash={[10, 10]}
+                  opacity={1}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                <Line
+                  points={[0, canvasHeight / 2, canvasWidth, canvasHeight / 2]}
+                  stroke="#00FF00"
+                  strokeWidth={3}
+                  dash={[10, 10]}
+                  opacity={1}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+              </>
+            )}
+
+            {guides.map((guide, index) => {
+              const points = guide.orientation === 'vertical'
+                ? [guide.position, 0, guide.position, canvasHeight]
+                : [0, guide.position, canvasWidth, guide.position]
+
+              console.log(`📍 Guia ${index}:`, guide.orientation, 'pos:', guide.position, 'points:', points)
+
+              return (
+                <Line
+                  key={`${guide.orientation}-${index}-${guide.position}`}
+                  points={points}
+                  stroke={snapConfig.guideColor}
+                  strokeWidth={2}
+                  dash={snapConfig.guideDash}
+                  opacity={1}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+              )
+            })}
+          </KonvaLayer>
         </Stage>
       </div>
     </div>
   )
-}
-
-function computeAlignmentGuides(
-  moving: RectInfo,
-  others: RectInfo[],
-  stageWidth: number,
-  stageHeight: number,
-): { guides: GuideLine[]; position: { x: number; y: number } } {
-  const lineGuideStops = getLineGuideStops(stageWidth, stageHeight, others)
-  const itemEdges = getObjectSnappingEdges(moving)
-
-  let snapX = moving.x
-  let snapY = moving.y
-  let vGuide: GuideLine | null = null
-  let hGuide: GuideLine | null = null
-  let minDiffV = GUIDE_THRESHOLD
-  let minDiffH = GUIDE_THRESHOLD
-
-  lineGuideStops.vertical.forEach((lineGuide) => {
-    itemEdges.vertical.forEach((itemEdge) => {
-      const diff = Math.abs(lineGuide - itemEdge.guide)
-      if (diff < minDiffV) {
-        minDiffV = diff
-        snapX = lineGuide - itemEdge.offset
-        vGuide = { orientation: 'vertical', position: lineGuide }
-      }
-    })
-  })
-
-  lineGuideStops.horizontal.forEach((lineGuide) => {
-    itemEdges.horizontal.forEach((itemEdge) => {
-      const diff = Math.abs(lineGuide - itemEdge.guide)
-      if (diff < minDiffH) {
-        minDiffH = diff
-        snapY = lineGuide - itemEdge.offset
-        hGuide = { orientation: 'horizontal', position: lineGuide }
-      }
-    })
-  })
-
-  const guides: GuideLine[] = []
-  if (vGuide && minDiffV < GUIDE_THRESHOLD) {
-    guides.push(vGuide)
-  } else {
-    snapX = moving.x
-  }
-
-  if (hGuide && minDiffH < GUIDE_THRESHOLD) {
-    guides.push(hGuide)
-  } else {
-    snapY = moving.y
-  }
-
-  return {
-    guides,
-    position: {
-      x: snapX,
-      y: snapY,
-    },
-  }
-}
-
-function getLineGuideStops(stageWidth: number, stageHeight: number, rects: RectInfo[]) {
-  const vertical: number[] = [0, stageWidth / 2, stageWidth]
-  const horizontal: number[] = [0, stageHeight / 2, stageHeight]
-
-  rects.forEach((rect) => {
-    vertical.push(rect.x, rect.x + rect.width / 2, rect.x + rect.width)
-    horizontal.push(rect.y, rect.y + rect.height / 2, rect.y + rect.height)
-  })
-
-  return { vertical, horizontal }
-}
-
-function getObjectSnappingEdges(rect: RectInfo) {
-  const { x, y, width, height } = rect
-
-  return {
-    vertical: [
-      { guide: x, offset: 0 },
-      { guide: x + width / 2, offset: width / 2 },
-      { guide: x + width, offset: width },
-    ],
-    horizontal: [
-      { guide: y, offset: 0 },
-      { guide: y + height / 2, offset: height / 2 },
-      { guide: y + height, offset: height },
-    ],
-  }
 }
