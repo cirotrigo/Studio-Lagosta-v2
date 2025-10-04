@@ -445,6 +445,9 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       const previousZoom = zoom
       const previousPosition = { x: stage.x(), y: stage.y() }
 
+      // Estado das camadas invisíveis (precisa ser definido aqui para estar disponível no finally/catch)
+      const invisibleLayersState: Array<{ node: any; originalOpacity: number; originalVisible: boolean }> = []
+
       try {
         // 1. Limpar seleção para ocultar transformers
         setSelectedLayerIds([])
@@ -467,13 +470,38 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           guidesLayer.visible(false)
         }
 
-        // 6. Forçar redraw para garantir que guides estão ocultos
+        // 6. Ocultar completamente camadas invisíveis (visible: false)
+        const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+
+        if (contentLayer) {
+          const children = (contentLayer as Konva.Layer).getChildren()
+
+          children.forEach((node: any) => {
+            const layerId = node.id()
+            const layer = design.layers.find((l) => l.id === layerId)
+
+            // Se a camada está marcada como invisível, ocultar completamente para thumbnail
+            if (layer && layer.visible === false) {
+              // Salvar estado original
+              invisibleLayersState.push({
+                node,
+                originalOpacity: node.opacity(),
+                originalVisible: node.visible(),
+              })
+
+              // Ocultar node do Konva
+              node.visible(false)
+            }
+          })
+        }
+
+        // 7. Forçar redraw para aplicar mudanças
         stage.batchDraw()
 
-        // 7. Aguardar mais um frame para garantir redraw completo
+        // 8. Aguardar frame para garantir que mudanças foram aplicadas
         await new Promise((resolve) => requestAnimationFrame(resolve))
 
-        // 8. Calcular dimensões do thumbnail mantendo aspect ratio
+        // 9. Calcular dimensões do thumbnail mantendo aspect ratio
         const canvasWidth = design.canvas.width
         const canvasHeight = design.canvas.height
         const aspectRatio = canvasWidth / canvasHeight
@@ -487,7 +515,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           thumbWidth = Math.round(thumbHeight * aspectRatio)
         }
 
-        // 9. Gerar thumbnail em JPEG com qualidade 85%
+        // 10. Gerar thumbnail em JPEG com qualidade 85%
         const dataUrl = stage.toDataURL({
           pixelRatio: thumbWidth / canvasWidth,
           mimeType: 'image/jpeg',
@@ -498,7 +526,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           height: canvasHeight,
         })
 
-        // 10. Restaurar visibilidade dos guides
+        // 11. Restaurar visibilidade dos guides
         if (guidesLayer) {
           guidesLayer.visible(guidesWasVisible)
         }
@@ -508,6 +536,12 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         console.error('[generateThumbnail] Erro ao gerar thumbnail:', error)
         return null
       } finally {
+        // Restaurar estado das camadas invisíveis PRIMEIRO
+        invisibleLayersState.forEach(({ node, originalOpacity, originalVisible }) => {
+          node.opacity(originalOpacity)
+          node.visible(originalVisible)
+        })
+
         // Restaurar zoom, posição e seleção original
         setZoomState(previousZoom)
         stage.scale({ x: previousZoom, y: previousZoom })
@@ -516,7 +550,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         setSelectedLayerIds(previousSelection)
       }
     },
-    [design.canvas.width, design.canvas.height, zoom],
+    [design.canvas.width, design.canvas.height, zoom, design.layers],
   )
 
   const exportDesign = React.useCallback(
@@ -532,6 +566,9 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       const previousZoom = zoom
       const previousPosition = { x: stage.x(), y: stage.y() }
 
+      // Estado das camadas invisíveis (precisa ser definido aqui para estar disponível no finally)
+      const invisibleLayersState: Array<{ node: any; originalOpacity: number; originalVisible: boolean }> = []
+
       try {
         // 1. Limpar seleção para ocultar transformers
         setSelectedLayerIds([])
@@ -554,10 +591,35 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           guidesLayer.visible(false)
         }
 
-        // 6. Forçar redraw para garantir que guides estão ocultos
+        // 6. Ocultar completamente camadas invisíveis (visible: false)
+        const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+
+        if (contentLayer) {
+          const children = (contentLayer as Konva.Layer).getChildren()
+
+          children.forEach((node: any) => {
+            const layerId = node.id()
+            const layer = design.layers.find((l) => l.id === layerId)
+
+            // Se a camada está marcada como invisível, ocultar completamente para exportação
+            if (layer && layer.visible === false) {
+              // Salvar estado original
+              invisibleLayersState.push({
+                node,
+                originalOpacity: node.opacity(),
+                originalVisible: node.visible(),
+              })
+
+              // Ocultar node do Konva
+              node.visible(false)
+            }
+          })
+        }
+
+        // 7. Forçar redraw para aplicar mudanças
         stage.batchDraw()
 
-        // 7. Aguardar mais um frame para garantir redraw completo
+        // 8. Aguardar frame para garantir que mudanças foram aplicadas
         await new Promise((resolve) => requestAnimationFrame(resolve))
 
         // 8. Exportar com dimensões exatas do canvas em resolução nativa
@@ -645,7 +707,13 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
 
         return record
       } finally {
-        // 11. Restaurar zoom, posição e seleção original
+        // 11. Restaurar estado das camadas invisíveis PRIMEIRO
+        invisibleLayersState.forEach(({ node, originalOpacity, originalVisible }) => {
+          node.opacity(originalOpacity)
+          node.visible(originalVisible)
+        })
+
+        // 12. Restaurar zoom, posição e seleção original
         setZoomState(previousZoom)
         stage.scale({ x: previousZoom, y: previousZoom })
         stage.position(previousPosition)
@@ -654,7 +722,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         setIsExporting(false)
       }
     },
-    [template.id, design.canvas.width, design.canvas.height, zoom],
+    [template.id, design.canvas.width, design.canvas.height, zoom, design.layers],
   )
 
   const removeExport = React.useCallback((id: string) => {

@@ -16,6 +16,7 @@ import { CanvasPreview } from './canvas-preview'
 import { EditorSidebar } from './sidebar/editor-sidebar'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
+import { LayersPanelAdvanced } from './layers-panel-advanced'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -216,7 +217,9 @@ function TemplateEditorContent() {
 
         {/* Expandable Side Panel */}
         {activePanel && (
-          <aside className="flex w-80 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg">
+          <aside className={`flex flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg ${
+            activePanel === 'layers' ? 'w-[420px]' : 'w-80'
+          }`}>
             <div className="border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {activePanel === 'templates' && 'Templates'}
@@ -227,13 +230,13 @@ function TemplateEditorContent() {
                 {activePanel === 'layers' && 'Camadas'}
               </h2>
             </div>
-            <div className="flex-1 overflow-y-auto p-4">
+            <div className={`flex-1 overflow-hidden ${activePanel === 'layers' ? '' : 'overflow-y-auto p-4'}`}>
               {activePanel === 'templates' && <EditorSidebar />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'elements' && <div className="text-sm text-muted-foreground">Painel de elementos em desenvolvimento...</div>}
               {activePanel === 'uploads' && <div className="text-sm text-muted-foreground">Painel de uploads em desenvolvimento...</div>}
-              {activePanel === 'layers' && <PropertiesPanel />}
+              {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>
           </aside>
         )}
