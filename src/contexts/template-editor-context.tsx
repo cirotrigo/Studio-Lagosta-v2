@@ -68,6 +68,7 @@ export interface TemplateEditorContextValue {
     dynamicFields?: DynamicField[] | null
     name?: string
   }) => void
+  forceUpdate?: () => void
 }
 
 export interface ExportRecord {
@@ -125,6 +126,7 @@ const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo
 const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
+const [updateCounter, setUpdateCounter] = React.useState(0)
 
   // Keep ref in sync with state
   React.useEffect(() => {
@@ -706,6 +708,10 @@ const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
     setDirty(false)
   }, [])
 
+  const forceUpdate = React.useCallback(() => {
+    setUpdateCounter((prev) => prev + 1)
+  }, [])
+
   const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] ?? null
 
   const value = React.useMemo<TemplateEditorContextValue>(
@@ -766,6 +772,7 @@ const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
       removeExport,
       clearExports,
       setStageInstance,
+      forceUpdate,
     }),
     [
       template.id,
@@ -812,6 +819,8 @@ const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
       removeExport,
       clearExports,
       setStageInstance,
+      forceUpdate,
+      updateCounter,
     ],
   )
 

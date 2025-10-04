@@ -9,7 +9,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type, Square, Upload, Layers2 } from 'lucide-react'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2 } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -182,7 +182,7 @@ function TemplateEditorContent() {
             onClick={() => togglePanel('templates')}
           />
           <ToolbarButton
-            icon={<Type className="h-5 w-5" />}
+            icon={<TypeIcon className="h-5 w-5" />}
             label="Texto"
             active={activePanel === 'text'}
             onClick={() => togglePanel('text')}
@@ -220,7 +220,7 @@ function TemplateEditorContent() {
             <div className="border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {activePanel === 'templates' && 'Templates'}
-                {activePanel === 'text' && 'Adicionar Texto'}
+                {activePanel === 'text' && 'Texto & Fontes'}
                 {activePanel === 'images' && 'Imagens'}
                 {activePanel === 'elements' && 'Elementos'}
                 {activePanel === 'uploads' && 'Seus Uploads'}

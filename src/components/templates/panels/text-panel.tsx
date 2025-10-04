@@ -2,7 +2,10 @@
 
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
+import { FontsPanel } from '../sidebar/fonts-panel'
+import { Type, Sparkles } from 'lucide-react'
 
 export function TextToolsPanel() {
   const { addLayer } = useTemplateEditor()
@@ -29,9 +32,19 @@ export function TextToolsPanel() {
   }, [addLayer])
 
   return (
-    <div className="space-y-4">
-      <div className="space-y-2">
-        <h3 className="text-xs font-semibold uppercase text-muted-foreground">Presets de Texto</h3>
+    <Tabs defaultValue="presets" className="w-full">
+      <TabsList className="grid w-full grid-cols-2">
+        <TabsTrigger value="presets" className="gap-2">
+          <Type className="h-4 w-4" />
+          Presets
+        </TabsTrigger>
+        <TabsTrigger value="fonts" className="gap-2">
+          <Sparkles className="h-4 w-4" />
+          Minhas Fontes
+        </TabsTrigger>
+      </TabsList>
+
+      <TabsContent value="presets" className="mt-4 space-y-2">
         <div className="space-y-2">
           <Button
             variant="outline"
@@ -64,7 +77,11 @@ export function TextToolsPanel() {
             </div>
           </Button>
         </div>
-      </div>
-    </div>
+      </TabsContent>
+
+      <TabsContent value="fonts" className="mt-4">
+        <FontsPanel />
+      </TabsContent>
+    </Tabs>
   )
 }

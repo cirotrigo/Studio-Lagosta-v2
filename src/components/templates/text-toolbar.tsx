@@ -22,6 +22,8 @@ import {
   Type,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { getFontManager } from '@/lib/font-manager'
+import { useTemplateEditor } from '@/contexts/template-editor-context'
 
 /**
  * TextToolbar - Toolbar de propriedades de texto para Konva.js
@@ -46,7 +48,7 @@ interface TextToolbarProps {
   onUpdateLayer: (id: string, updates: Partial<Layer>) => void
 }
 
-const FONT_FAMILIES = [
+const SYSTEM_FONTS = [
   'Inter',
   'Roboto',
   'Open Sans',
@@ -65,11 +67,24 @@ const FONT_FAMILIES = [
 ]
 
 export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) {
+  const { setStageInstance } = useTemplateEditor()
+  const fontManager = React.useMemo(() => getFontManager(), [])
+  const [availableFonts, setAvailableFonts] = React.useState<{
+    system: string[]
+    custom: string[]
+    all: string[]
+  }>(() => fontManager.getAvailableFonts())
   // Estado local para inputs controlados
   const [fontSize, setFontSize] = React.useState(selectedLayer.style?.fontSize ?? 16)
   const [letterSpacing, setLetterSpacing] = React.useState(selectedLayer.style?.letterSpacing ?? 0)
   const [lineHeight, setLineHeight] = React.useState(selectedLayer.style?.lineHeight ?? 1.2)
   const [strokeWidth, setStrokeWidth] = React.useState(selectedLayer.style?.border?.width ?? 0)
+
+  // Atualizar lista de fontes quando houver mudanças (via forceUpdate do context)
+  React.useEffect(() => {
+    const fonts = fontManager.getAvailableFonts()
+    setAvailableFonts(fonts)
+  }, [fontManager])
 
   // Sincronizar estado local quando layer mudar
   React.useEffect(() => {
@@ -91,10 +106,32 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
   const isBold = fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700'
   const isItalic = fontStyle === 'italic'
 
-  const handleFontFamilyChange = (value: string) => {
+  const handleFontFamilyChange = async (value: string) => {
+    // Se for fonte customizada, garantir que está carregada
+    if (fontManager.isCustomFont(value)) {
+      try {
+        await fontManager.loadFont(value)
+        console.log(`✅ Fonte "${value}" carregada e pronta para uso no Konva`)
+      } catch (error) {
+        console.error(`❌ Erro ao carregar fonte "${value}":`, error)
+      }
+    }
+
+    // Aplicar fonte no layer
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, fontFamily: value },
     })
+
+    // ⚠️ CRÍTICO: Forçar redesenho do Konva após mudança de fonte
+    // Aguardar um pouco para garantir que a fonte foi aplicada
+    setTimeout(() => {
+      if (setStageInstance) {
+        const stage = (setStageInstance as any).current
+        if (stage && typeof stage.batchDraw === 'function') {
+          stage.batchDraw()
+        }
+      }
+    }, 100)
   }
 
   const handleFontSizeChange = (value: number) => {
@@ -207,12 +244,30 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
             <SelectTrigger className="h-8 w-[140px] text-xs">
               <SelectValue />
             </SelectTrigger>
-            <SelectContent>
-              {FONT_FAMILIES.map((font) => (
+            <SelectContent className="max-h-[400px]">
+              {/* Fontes do Sistema */}
+              <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
+                Sistema
+              </div>
+              {SYSTEM_FONTS.map((font) => (
                 <SelectItem key={font} value={font} className="text-xs">
                   <span style={{ fontFamily: font }}>{font}</span>
                 </SelectItem>
               ))}
+
+              {/* Fontes Customizadas */}
+              {availableFonts.custom.length > 0 && (
+                <>
+                  <div className="mt-2 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
+                    ✨ Minhas Fontes
+                  </div>
+                  {availableFonts.custom.map((font) => (
+                    <SelectItem key={font} value={font} className="text-xs">
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
 
