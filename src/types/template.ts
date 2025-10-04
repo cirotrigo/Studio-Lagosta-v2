@@ -38,6 +38,13 @@ export interface Layer {
   elementId?: number
   fileUrl?: string
   parentId?: string | null
+  metadata?: {
+    presetId?: string
+    presetName?: string
+    elementId?: string
+    elementLabel?: string
+    [key: string]: unknown
+  }
   [key: string]: unknown
 }
 
