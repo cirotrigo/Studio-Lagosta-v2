@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Konva from 'konva'
 import { Text } from 'react-konva'
+import { Html } from 'react-konva-utils'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
 
@@ -44,6 +45,22 @@ interface KonvaEditableTextProps {
   stageRef?: React.RefObject<Konva.Stage | null>
 }
 
+interface TextEditingState {
+  value: string
+  initialValue: string
+  width: number
+  height: number
+  padding: number
+  fontSize: number
+  fontFamily: string
+  fontStyle: string
+  fontWeight: string | number
+  letterSpacing: number
+  lineHeight: number
+  textAlign: 'left' | 'center' | 'right' | 'justify'
+  color: string
+}
+
 export function KonvaEditableText({
   layer,
   shapeRef,
@@ -54,7 +71,7 @@ export function KonvaEditableText({
   stageRef,
 }: KonvaEditableTextProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
-  const cleanupRef = React.useRef<(() => void) | null>(null)
+  const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -97,120 +114,107 @@ export function KonvaEditableText({
   }, [shapeRef, layer.style, onChange])
 
   const handleDblClick = React.useCallback(() => {
+    if (editingState) return
+
     const textNode = shapeRef.current
     if (!textNode) return
 
     const stage = stageRef?.current ?? textNode.getStage()
     if (!stage) return
 
-    // Evitar múltiplos textareas simultâneos
-    if (textareaRef.current) {
-      textareaRef.current.focus()
-      return
-    }
+    const currentValue = layer.content ?? textNode.text() ?? ''
+    const padding = textNode.padding()
+    const measured = textNode.measureSize(currentValue || ' ')
 
     const fontSize = layer.style?.fontSize ?? textNode.fontSize()
     const fontFamily = layer.style?.fontFamily ?? textNode.fontFamily()
-    const textAlign = layer.style?.textAlign ?? textNode.align() ?? 'left'
+    const textAlign = (layer.style?.textAlign ?? textNode.align() ?? 'left') as 'left' | 'center' | 'right' | 'justify'
     const lineHeight = layer.style?.lineHeight ?? textNode.lineHeight() ?? 1.2
-    const fontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
     const fontStyle = layer.style?.fontStyle ?? (textNode.fontStyle().includes('italic') ? 'italic' : 'normal')
-    const letterSpacing = layer.style?.letterSpacing ?? 0
-    const textColor = layer.style?.color ?? (typeof textNode.fill() === 'string' ? (textNode.fill() as string) : '#000000')
+    const fontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
+    const letterSpacing = layer.style?.letterSpacing ?? textNode.letterSpacing()
+    const fill = textNode.fill()
+    const color = layer.style?.color ?? (typeof fill === 'string' ? fill : '#000000')
 
-    const textarea = document.createElement('textarea')
-    textarea.setAttribute('spellcheck', 'false')
-    textarea.value = layer.content ?? textNode.text() ?? ''
-    textarea.style.position = 'absolute'
-    textarea.style.margin = '0px'
-    textarea.style.borderStyle = 'solid'
-    textarea.style.borderColor = '#4F46E5'
-    textarea.style.borderWidth = '2px'
-    textarea.style.borderRadius = '4px'
-    textarea.style.background = 'rgba(0, 0, 0, 0.85)'
-    textarea.style.color = textColor
-    textarea.style.fontFamily = fontFamily
-    textarea.style.lineHeight = String(lineHeight)
-    textarea.style.fontWeight = String(fontWeight)
-    textarea.style.fontStyle = fontStyle
-    textarea.style.letterSpacing = `${letterSpacing}px`
-    textarea.style.textAlign = textAlign
-    textarea.style.whiteSpace = 'pre-wrap'
-    textarea.style.overflow = 'hidden'
-    textarea.style.outline = 'none'
-    textarea.style.resize = 'none'
-    textarea.style.transformOrigin = 'left top'
-    textarea.style.transform = `rotate(${textNode.rotation()}deg)`
-    textarea.style.zIndex = '10000'
-    textarea.style.backdropFilter = 'blur(8px)'
-    textarea.style.boxShadow = '0 8px 24px rgba(0, 0, 0, 0.4)'
+    const width = Math.max(textNode.width(), measured.width + padding * 2, 4)
+    const height = Math.max(textNode.height(), measured.height + padding * 2, fontSize + padding * 2)
 
-    document.body.appendChild(textarea)
+    setEditingState({
+      value: currentValue,
+      initialValue: currentValue,
+      width,
+      height,
+      padding,
+      fontSize,
+      fontFamily,
+      fontStyle,
+      fontWeight,
+      letterSpacing,
+      lineHeight,
+      textAlign,
+      color,
+    })
 
-    const applyTextareaGeometry = () => {
-      const updatedStageBox = stage.container().getBoundingClientRect()
-      const currentStagePosition = stage.position()
-      const currentScaleX = stage.scaleX()
-      const currentScaleY = stage.scaleY()
-      const currentAbsolutePosition = textNode.absolutePosition()
-      const currentAbsoluteScale = textNode.getAbsoluteScale()
-      const padding = textNode.padding()
-      const paddingX = padding * currentAbsoluteScale.x
-      const paddingY = padding * currentAbsoluteScale.y
-
-      const left = updatedStageBox.left + currentStagePosition.x + currentAbsolutePosition.x * currentScaleX
-      const top = updatedStageBox.top + currentStagePosition.y + currentAbsolutePosition.y * currentScaleY
-      const width = Math.max((textNode.width() - padding * 2) * currentAbsoluteScale.x, 100)
-      const height = Math.max((textNode.height() - padding * 2) * currentAbsoluteScale.y + 4 * currentAbsoluteScale.y, fontSize * currentAbsoluteScale.y)
-
-      textarea.style.left = `${left}px`
-      textarea.style.top = `${top}px`
-      textarea.style.width = `${width}px`
-      textarea.style.minHeight = `${height}px`
-      textarea.style.fontSize = `${fontSize * currentAbsoluteScale.y}px`
-      textarea.style.padding = `${paddingY}px ${paddingX}px`
-      const borderScale = Math.max(currentAbsoluteScale.x, currentAbsoluteScale.y)
-      textarea.style.borderWidth = `${Math.max(1, 2 * borderScale)}px`
+    if (typeof stage.batchDraw === 'function') {
+      stage.batchDraw()
     }
+  }, [editingState, layer, shapeRef, stageRef])
 
-    // Ocultar o texto original enquanto edita
-    textNode.hide()
-    stage.batchDraw()
+  const finishEditing = React.useCallback(
+    (commit: boolean) => {
+      setEditingState((prev) => {
+        if (!prev) return null
 
-    applyTextareaGeometry()
+        if (commit && prev.value !== prev.initialValue) {
+          onChange({
+            content: prev.value,
+          })
+        }
 
-    // Guardar referência para gerenciar ciclo de vida
-    textareaRef.current = textarea
+        return null
+      })
 
-    const originalValue = textarea.value
-    let isFinishing = false
-
-    function finishEditing(commit: boolean) {
-      if (isFinishing) return
-      isFinishing = true
-
-      const value = textarea.value
-
-      const teardown = cleanupRef.current
-      if (teardown) {
-        teardown()
-        cleanupRef.current = null
+      const stage = stageRef?.current ?? shapeRef.current?.getStage()
+      if (stage && typeof stage.batchDraw === 'function') {
+        stage.batchDraw()
       }
+    },
+    [onChange, shapeRef, stageRef],
+  )
 
-      if (commit && value !== originalValue) {
-        onChange({
-          content: value,
-        })
-      }
-    }
+  const handleEditorChange = React.useCallback(
+    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+      const nextValue = event.target.value
 
-    function handleInput() {
-      applyTextareaGeometry()
-      textarea.style.height = 'auto'
-      textarea.style.height = `${textarea.scrollHeight}px`
-    }
+      setEditingState((prev) => {
+        if (!prev) return prev
 
-    function handleKeyDown(event: KeyboardEvent) {
+        const textNode = shapeRef.current
+        if (!textNode) {
+          return {
+            ...prev,
+            value: nextValue,
+          }
+        }
+
+        const padding = textNode.padding()
+        const measured = textNode.measureSize(nextValue || ' ')
+        const width = Math.max(textNode.width(), measured.width + padding * 2, 4)
+        const height = Math.max(textNode.height(), measured.height + padding * 2, prev.fontSize + padding * 2)
+
+        return {
+          ...prev,
+          value: nextValue,
+          width,
+          height,
+        }
+      })
+    },
+    [shapeRef],
+  )
+
+  const handleEditorKeyDown = React.useCallback(
+    (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
         finishEditing(true)
@@ -218,97 +222,223 @@ export function KonvaEditableText({
 
       if (event.key === 'Escape') {
         event.preventDefault()
-        textarea.value = originalValue
         finishEditing(false)
       }
-    }
+    },
+    [finishEditing],
+  )
 
-    function handleBlur() {
+  const handleEditorBlur = React.useCallback(() => {
+    finishEditing(true)
+  }, [finishEditing])
+
+  const isEditing = editingState !== null
+
+  React.useEffect(() => {
+    if (!isEditing) return
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    textarea.focus()
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+  }, [isEditing])
+
+  React.useLayoutEffect(() => {
+    if (!isEditing || !editingState) return
+    const textarea = textareaRef.current
+    if (!textarea) return
+
+    textarea.style.height = 'auto'
+    const baseHeight = Math.max(editingState.height, textarea.scrollHeight)
+    textarea.style.height = `${baseHeight}px`
+  }, [isEditing, editingState])
+
+  React.useEffect(() => {
+    if (!isEditing) return
+
+    const handlePointerDown = (event: Event) => {
+      const textarea = textareaRef.current
+      if (!textarea) return
+      if (event.target instanceof Node && textarea.contains(event.target)) {
+        return
+      }
       finishEditing(true)
     }
 
-    function handlePointerDown(event: Event) {
-      if (event.target === textarea) return
-      finishEditing(true)
-    }
+    const timer = window.setTimeout(() => {
+      window.addEventListener('pointerdown', handlePointerDown, true)
+      window.addEventListener('touchstart', handlePointerDown, true)
+    }, 0)
 
-    function handleResize() {
-      applyTextareaGeometry()
-    }
-
-    const cleanupListeners = () => {
-      textarea.removeEventListener('input', handleInput)
-      textarea.removeEventListener('keydown', handleKeyDown)
-      textarea.removeEventListener('blur', handleBlur)
+    return () => {
+      window.clearTimeout(timer)
       window.removeEventListener('pointerdown', handlePointerDown, true)
       window.removeEventListener('touchstart', handlePointerDown, true)
-      window.removeEventListener('resize', handleResize)
     }
+  }, [isEditing, finishEditing])
 
-    cleanupRef.current = () => {
-      cleanupListeners()
-      if (textarea.parentNode) {
-        textarea.parentNode.removeChild(textarea)
-      }
-      textareaRef.current = null
-      textNode.show()
-      if (!stage.isDestroyed?.()) {
-        stage.batchDraw()
-      }
-    }
-
-    textarea.addEventListener('input', handleInput)
-    textarea.addEventListener('keydown', handleKeyDown)
-    textarea.addEventListener('blur', handleBlur)
-    window.addEventListener('pointerdown', handlePointerDown, true)
-    window.addEventListener('touchstart', handlePointerDown, true)
-    window.addEventListener('resize', handleResize)
-
-    // Ajustar altura inicial e foco
-    handleInput()
-    setTimeout(() => {
-      textarea.focus()
-      textarea.select()
-    }, 0)
-  }, [layer, onChange, shapeRef, stageRef])
-
-  // Cleanup ao desmontar
   React.useEffect(() => {
-    return () => {
-      if (cleanupRef.current) {
-        cleanupRef.current()
-        cleanupRef.current = null
-      } else if (textareaRef.current && textareaRef.current.parentNode) {
-        document.body.removeChild(textareaRef.current)
-        textareaRef.current = null
+    if (!editingState) return
+
+    const textNode = shapeRef.current
+    if (!textNode) return
+
+    const nextFontSize = layer.style?.fontSize ?? textNode.fontSize()
+    const nextFontFamily = layer.style?.fontFamily ?? textNode.fontFamily()
+    const nextFontStyle = layer.style?.fontStyle ?? (textNode.fontStyle().includes('italic') ? 'italic' : 'normal')
+    const nextFontWeight = layer.style?.fontWeight ?? (textNode.fontStyle().includes('bold') ? '700' : '400')
+    const nextLetterSpacing = layer.style?.letterSpacing ?? textNode.letterSpacing()
+    const nextLineHeight = layer.style?.lineHeight ?? textNode.lineHeight() ?? 1.2
+    const nextTextAlign = (layer.style?.textAlign ?? textNode.align() ?? 'left') as 'left' | 'center' | 'right' | 'justify'
+    const fill = textNode.fill()
+    const nextColor = layer.style?.color ?? (typeof fill === 'string' ? fill : editingState.color)
+    const nextPadding = textNode.padding()
+
+    if (
+      nextFontSize === editingState.fontSize &&
+      nextFontFamily === editingState.fontFamily &&
+      nextFontStyle === editingState.fontStyle &&
+      String(nextFontWeight) === String(editingState.fontWeight) &&
+      nextLetterSpacing === editingState.letterSpacing &&
+      nextLineHeight === editingState.lineHeight &&
+      nextTextAlign === editingState.textAlign &&
+      nextColor === editingState.color &&
+      nextPadding === editingState.padding
+    ) {
+      return
+    }
+
+    const measured = textNode.measureSize(editingState.value || ' ')
+    const width = Math.max(textNode.width(), measured.width + nextPadding * 2, 4)
+    const height = Math.max(textNode.height(), measured.height + nextPadding * 2, nextFontSize + nextPadding * 2)
+
+    setEditingState((prev) => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        fontSize: nextFontSize,
+        fontFamily: nextFontFamily,
+        fontStyle: nextFontStyle,
+        fontWeight: nextFontWeight,
+        letterSpacing: nextLetterSpacing,
+        lineHeight: nextLineHeight,
+        textAlign: nextTextAlign,
+        color: nextColor,
+        padding: nextPadding,
+        width,
+        height,
+      }
+    })
+  }, [
+    editingState,
+    layer.style?.fontSize,
+    layer.style?.fontFamily,
+    layer.style?.fontStyle,
+    layer.style?.fontWeight,
+    layer.style?.letterSpacing,
+    layer.style?.lineHeight,
+    layer.style?.textAlign,
+    layer.style?.color,
+    shapeRef,
+  ])
+
+  const htmlGroupProps = React.useMemo(() => {
+    const node = shapeRef.current
+    if (node) {
+      return {
+        x: node.x(),
+        y: node.y(),
+        rotation: node.rotation(),
+        scaleX: node.scaleX(),
+        scaleY: node.scaleY(),
+        offsetX: node.offsetX(),
+        offsetY: node.offsetY(),
+        listening: false,
       }
     }
-  }, [])
+
+    return {
+      x: layer.position?.x ?? 0,
+      y: layer.position?.y ?? 0,
+      rotation: layer.rotation ?? 0,
+      scaleX: 1,
+      scaleY: 1,
+      offsetX: 0,
+      offsetY: 0,
+      listening: false,
+    }
+  }, [layer.position?.x, layer.position?.y, layer.rotation, isEditing, shapeRef])
 
   return (
-    <Text
-      {...commonProps}
-      ref={shapeRef as React.RefObject<Konva.Text>}
-      text={layer.content ?? ''}
-      // Não definir width/height fixos - deixar auto-dimensionar baseado no conteúdo
-      // width e height serão calculados automaticamente pelo Konva
-      fontSize={layer.style?.fontSize ?? 16}
-      fontFamily={layer.style?.fontFamily ?? 'Inter'}
-      fontStyle={layer.style?.fontStyle ?? 'normal'}
-      fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
-      fill={layer.style?.color ?? '#000000'}
-      align={layer.style?.textAlign ?? 'left'}
-      padding={6}
-      lineHeight={layer.style?.lineHeight ?? 1.2}
-      letterSpacing={layer.style?.letterSpacing ?? 0}
-      wrap="none"
-      ellipsis={false}
-      listening={commonProps.listening}
-      perfectDrawEnabled={false}
-      stroke={borderWidth > 0 ? borderColor : undefined}
-      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
-      onDblClick={handleDblClick}
-      onDblTap={handleDblClick}
-    />
+    <>
+      <Text
+        {...commonProps}
+        ref={shapeRef as React.RefObject<Konva.Text>}
+        text={layer.content ?? ''}
+        fontSize={layer.style?.fontSize ?? 16}
+        fontFamily={layer.style?.fontFamily ?? 'Inter'}
+        fontStyle={layer.style?.fontStyle ?? 'normal'}
+        fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
+        fill={layer.style?.color ?? '#000000'}
+        align={layer.style?.textAlign ?? 'left'}
+        padding={6}
+        lineHeight={layer.style?.lineHeight ?? 1.2}
+        letterSpacing={layer.style?.letterSpacing ?? 0}
+        wrap="none"
+        ellipsis={false}
+        listening={commonProps.listening && !isEditing}
+        draggable={commonProps.draggable && !isEditing}
+        visible={!isEditing}
+        perfectDrawEnabled={false}
+        stroke={borderWidth > 0 ? borderColor : undefined}
+        strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+        onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
+      />
+
+      {isEditing && editingState && (
+        <Html
+          groupProps={htmlGroupProps}
+          divProps={{
+            style: {
+              pointerEvents: 'auto',
+            },
+          }}
+        >
+          <textarea
+            ref={textareaRef}
+            value={editingState.value}
+            spellCheck={false}
+            onChange={handleEditorChange}
+            onKeyDown={handleEditorKeyDown}
+            onBlur={handleEditorBlur}
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${editingState.width}px`,
+              minHeight: `${editingState.height}px`,
+              padding: `${editingState.padding}px`,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              color: editingState.color,
+              fontFamily: editingState.fontFamily,
+              fontSize: `${editingState.fontSize}px`,
+              fontStyle: editingState.fontStyle,
+              fontWeight: String(editingState.fontWeight),
+              letterSpacing: `${editingState.letterSpacing}px`,
+              lineHeight: String(editingState.lineHeight),
+              textAlign: editingState.textAlign,
+              whiteSpace: 'pre-wrap',
+              overflow: 'hidden',
+              resize: 'none',
+              caretColor: editingState.color,
+              transformOrigin: 'top left',
+            }}
+          />
+        </Html>
+      )}
+    </>
   )
 }
