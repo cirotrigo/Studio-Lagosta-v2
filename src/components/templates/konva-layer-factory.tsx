@@ -134,6 +134,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       const scaleY = node.scaleY()
 
       // Reset scale to 1 to prevent distortion (Konva best practice)
+      // Para textos, o scale já foi resetado no evento 'transform'
       node.scaleX(1)
       node.scaleY(1)
 

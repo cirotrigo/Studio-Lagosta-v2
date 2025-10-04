@@ -20,6 +20,7 @@ import {
   AlignCenter,
   AlignRight,
   Type,
+  Sparkles,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -46,6 +47,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 interface TextToolbarProps {
   selectedLayer: Layer
   onUpdateLayer: (id: string, updates: Partial<Layer>) => void
+  onEffectsClick?: () => void
 }
 
 const SYSTEM_FONTS = [
@@ -66,7 +68,7 @@ const SYSTEM_FONTS = [
   'Rubik',
 ]
 
-export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) {
+export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: TextToolbarProps) {
   const { setStageInstance } = useTemplateEditor()
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [availableFonts, setAvailableFonts] = React.useState<{
@@ -404,7 +406,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
         </div>
 
         {/* Opacidade */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
           <Label className="text-xs text-muted-foreground whitespace-nowrap">Opacidade:</Label>
           <Slider
             value={[opacity]}
@@ -417,6 +419,20 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           />
           <span className="text-xs text-muted-foreground w-8">{Math.round(opacity * 100)}%</span>
         </div>
+
+        {/* Effects Button */}
+        {onEffectsClick && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 gap-1"
+            onClick={onEffectsClick}
+            title="Efeitos de texto"
+          >
+            <Sparkles className="h-4 w-4" />
+            <span className="text-xs">Effects</span>
+          </Button>
+        )}
       </div>
     </div>
   )

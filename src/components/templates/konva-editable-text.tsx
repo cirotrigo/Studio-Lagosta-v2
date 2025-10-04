@@ -55,6 +55,46 @@ export function KonvaEditableText({
 }: KonvaEditableTextProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
 
+  // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
+  React.useEffect(() => {
+    const textNode = shapeRef.current
+    if (!textNode) return
+
+    const handleTransform = () => {
+      // Pegar escalas atuais
+      const scaleX = textNode.scaleX()
+      const scaleY = textNode.scaleY()
+
+      // Usar a menor escala para manter proporção
+      const scale = Math.min(scaleX, scaleY)
+
+      // Ajustar fontSize baseado no scale
+      const currentFontSize = textNode.fontSize()
+      const newFontSize = Math.max(8, Math.round(currentFontSize * scale))
+
+      // Aplicar novo fontSize e resetar scales
+      textNode.setAttrs({
+        fontSize: newFontSize,
+        scaleX: 1,
+        scaleY: 1,
+      })
+
+      // Atualizar layer com novo fontSize
+      onChange({
+        style: {
+          ...layer.style,
+          fontSize: newFontSize,
+        },
+      })
+    }
+
+    textNode.on('transform', handleTransform)
+
+    return () => {
+      textNode.off('transform', handleTransform)
+    }
+  }, [shapeRef, layer.style, onChange])
+
   const handleDblClick = React.useCallback(() => {
     if (!shapeRef.current || !stageRef?.current) return
 
@@ -208,8 +248,8 @@ export function KonvaEditableText({
       {...commonProps}
       ref={shapeRef as React.RefObject<Konva.Text>}
       text={layer.content ?? ''}
-      width={Math.max(20, layer.size?.width ?? 0)}
-      height={Math.max(20, layer.size?.height ?? 0)}
+      // Não definir width/height fixos - deixar auto-dimensionar baseado no conteúdo
+      // width e height serão calculados automaticamente pelo Konva
       fontSize={layer.style?.fontSize ?? 16}
       fontFamily={layer.style?.fontFamily ?? 'Inter'}
       fontStyle={layer.style?.fontStyle ?? 'normal'}
@@ -219,7 +259,7 @@ export function KonvaEditableText({
       padding={6}
       lineHeight={layer.style?.lineHeight ?? 1.2}
       letterSpacing={layer.style?.letterSpacing ?? 0}
-      wrap="word"
+      wrap="none"
       ellipsis={false}
       listening={commonProps.listening}
       perfectDrawEnabled={false}
