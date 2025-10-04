@@ -463,7 +463,7 @@ export function getFontManager(): FontManager {
       removeFont: () => {},
       clearAllCustomFonts: () => {},
       addGoogleFont: async () => {},
-    } as FontManager
+    } as unknown as FontManager
   }
 
   if (!fontManagerInstance) {

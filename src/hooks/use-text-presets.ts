@@ -188,7 +188,7 @@ export function useTextPresets() {
               fontSize: element.fontSize,
               fontFamily: element.fontFamily,
               fontWeight: element.fontWeight || 'normal',
-              fontStyle: element.fontStyle || 'normal',
+              fontStyle: element.fontStyle === 'italic' ? 'italic' : 'normal',
               color: element.fill,
               textAlign: element.align,
               lineHeight: element.lineHeight,

@@ -63,6 +63,7 @@ interface CommonProps {
 
 export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, stageRef }: KonvaLayerFactoryProps) {
   const shapeRef = React.useRef<Konva.Shape | null>(null)
+  const dragStateRef = React.useRef<{ startX: number; startY: number; hasMoved: boolean } | null>(null)
 
   const isVisible = layer.visible !== false
   const isLocked = !!layer.locked
@@ -80,6 +81,12 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const handleDragStart = React.useCallback(
     (event: KonvaEventObject<DragEvent>) => {
       if (interactionsDisabled) return
+      const node = event.target
+      dragStateRef.current = {
+        startX: node.x(),
+        startY: node.y(),
+        hasMoved: false,
+      }
       onSelect(event as unknown as KonvaEventObject<MouseEvent | TouchEvent>, layer)
     },
     [interactionsDisabled, layer, onSelect],
@@ -105,6 +112,17 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     (event) => {
       if (interactionsDisabled) return
       const node = event.target
+      const state = dragStateRef.current
+
+      if (!state || !state.hasMoved) {
+        if (state) {
+          node.position({ x: state.startX, y: state.startY })
+        }
+        dragStateRef.current = null
+        onDragEnd?.()
+        return
+      }
+
       onChange({
         position: {
           x: Math.round(node.x()),
@@ -112,6 +130,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
         },
       })
       onDragEnd?.()
+      dragStateRef.current = null
     },
     [interactionsDisabled, onChange, onDragEnd],
   )
@@ -119,6 +138,30 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
   const handleDragMove = React.useCallback<CommonProps['onDragMove']>(
     (event) => {
       if (interactionsDisabled) return
+      const node = event.target
+      const state = dragStateRef.current
+
+      if (!state) {
+        dragStateRef.current = {
+          startX: node.x(),
+          startY: node.y(),
+          hasMoved: false,
+        }
+        return
+      }
+
+      const deltaX = Math.abs(node.x() - state.startX)
+      const deltaY = Math.abs(node.y() - state.startY)
+      const hasMoved = deltaX > 1 || deltaY > 1
+
+      if (hasMoved && !state.hasMoved) {
+        state.hasMoved = true
+      }
+
+      if (!state.hasMoved) {
+        return
+      }
+
       onDragMove?.(event)
     },
     [interactionsDisabled, onDragMove],
