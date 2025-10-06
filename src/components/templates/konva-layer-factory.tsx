@@ -7,7 +7,6 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
-import { KonvaImageCrop } from './konva-image-crop'
 import { KonvaEditableText } from './konva-editable-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 
@@ -287,13 +286,24 @@ type ImageNodeProps = {
   stageRef?: React.RefObject<Konva.Stage | null>
 }
 
-function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, stageRef }: ImageNodeProps) {
-  // IMPORTANTE: Sempre usar originalFileUrl (se existir) para manter qualidade
-  // fileUrl pode ser uma versão cropada, mas originalFileUrl é sempre a imagem completa
-  const imageUrl = layer.originalFileUrl || layer.fileUrl || ''
+function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: ImageNodeProps) {
+  const imageUrl = layer.fileUrl || ''
   const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
-  const [isCropMode, setIsCropMode] = React.useState(false)
+
+  // Estado local para dimensões durante transform
+  const [size, setSize] = React.useState({
+    width: layer.size?.width ?? 0,
+    height: layer.size?.height ?? 0
+  })
+
+  // Sincronizar com layer.size quando mudar externamente
+  React.useEffect(() => {
+    setSize({
+      width: layer.size?.width ?? 0,
+      height: layer.size?.height ?? 0,
+    })
+  }, [layer.size?.width, layer.size?.height])
 
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
 
@@ -319,90 +329,56 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     imageRef.current.getLayer()?.batchDraw()
   }, [filters, image])
 
-  const width = Math.max(20, layer.size?.width ?? 0)
-  const height = Math.max(20, layer.size?.height ?? 0)
+  const width = Math.max(20, size.width)
+  const height = Math.max(20, size.height)
 
-  // Calcular crop: usar crop manual (cropData) ou crop automático (objectFit: cover)
-  const cropData = React.useMemo(() => {
+  // Calcular crop automático baseado em objectFit: cover
+  // Usa a função getCrop do exemplo oficial do Konva
+  // SEMPRE usa center-middle para manter a imagem centralizada
+  const crop = React.useMemo(() => {
     if (!image) return undefined
 
-    // Prioridade 1: Crop manual personalizado
-    if (layer.cropData) {
-      return {
-        x: layer.cropData.x,
-        y: layer.cropData.y,
-        width: layer.cropData.width,
-        height: layer.cropData.height,
-      }
-    }
-
-    // Prioridade 2: Crop automático quando objectFit === 'cover'
     if (layer.style?.objectFit === 'cover') {
-      const crop = calculateImageCrop(
+      return calculateImageCrop(
         { width: image.width, height: image.height },
         { width, height },
-        layer.style?.cropPosition || 'center-middle'
+        'center-middle'
       )
-
-      return {
-        x: crop.cropX,
-        y: crop.cropY,
-        width: crop.cropWidth,
-        height: crop.cropHeight,
-      }
     }
 
     return undefined
-  }, [image, width, height, layer.style?.objectFit, layer.style?.cropPosition, layer.cropData])
+  }, [image, width, height, layer.style?.objectFit])
 
-  // Handler para duplo clique - ativar modo crop
-  const handleDblClick = React.useCallback(() => {
-    if (image && !commonProps.listening) return
-    setIsCropMode(true)
-  }, [image, commonProps.listening])
+  // Handler para transform - resetar scale e atualizar dimensões
+  // Baseado no exemplo oficial: https://konvajs.org/docs/sandbox/Scale_Image_To_Fit.html
+  const handleTransform = React.useCallback(() => {
+    const node = imageRef.current
+    if (!node) return
 
-  const handleCropConfirm = React.useCallback(
-    (result: {
-      cropData: { x: number; y: number; width: number; height: number }
-      displaySize: { width: number; height: number }
-    }) => {
-      // Salvar coordenadas de crop (não-destrutivo, apenas visual)
-      // A imagem original é preservada completamente
-      const imageElement = imageRef.current?.image() as HTMLImageElement | HTMLCanvasElement
-      if (!imageElement) return
+    const scaleX = node.scaleX()
+    const scaleY = node.scaleY()
 
-      // Resetar scale para 1 antes de salvar (pode ter mudado durante crop mode)
-      if (imageRef.current) {
-        imageRef.current.scaleX(1)
-        imageRef.current.scaleY(1)
-      }
+    // Resetar scale para 1
+    node.scaleX(1)
+    node.scaleY(1)
 
-      // Preservar a URL da imagem original (se ainda não existir)
-      const originalFileUrl = layer.originalFileUrl || layer.fileUrl
+    // Calcular novas dimensões
+    const newWidth = Math.max(5, node.width() * scaleX)
+    const newHeight = Math.max(5, node.height() * scaleY)
 
-      // CRÍTICO: NÃO alterar size do layer
-      // Manter size original evita upscaling e perda de qualidade
-      // O crop do Konva funciona como uma "janela" - mostra apenas parte da imagem
-      // sem alterar dimensões, preservando qualidade 100%
-      onChange({
-        style: {
-          ...layer.style,
-          // Desabilitar crop automático ao aplicar crop manual
-          objectFit: 'fill',
-        },
-        // Preservar URL da imagem original
-        originalFileUrl,
-        // Armazenar dados de crop personalizado (apenas visual)
-        cropData: result.cropData,
-      })
-      setIsCropMode(false)
-    },
-    [onChange, layer.style, layer.fileUrl, layer.originalFileUrl, layer.position, layer.size, layer.rotation]
-  )
-
-  const handleCropCancel = React.useCallback(() => {
-    setIsCropMode(false)
+    // Atualizar estado local (re-render e recalcula crop)
+    setSize({ width: newWidth, height: newHeight })
   }, [])
+
+  // Handler para transformEnd - persistir dimensões no layer
+  const handleTransformEnd = React.useCallback(() => {
+    onChange({
+      size: {
+        width: size.width,
+        height: size.height,
+      },
+    })
+  }, [onChange, size])
 
   if (!image) {
     return (
@@ -420,33 +396,26 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }
 
   return (
-    <>
-      <KonvaImage
-        {...commonProps}
-        ref={imageRef}
-        image={image}
-        width={width}
-        height={height}
-        crop={isCropMode ? undefined : cropData}
-        filters={filters.length ? filters : undefined}
-        blurRadius={layer.style?.blur ?? 0}
-        brightness={layer.style?.brightness ?? 0}
-        contrast={layer.style?.contrast ?? 0}
-        cornerRadius={borderRadius}
-        stroke={borderWidth > 0 ? borderColor : undefined}
-        strokeWidth={borderWidth > 0 ? borderWidth : undefined}
-        onDblClick={handleDblClick}
-        onDblTap={handleDblClick}
-      />
-      {isCropMode && imageRef.current && stageRef && (
-        <KonvaImageCrop
-          imageNode={imageRef.current}
-          onConfirm={handleCropConfirm}
-          onCancel={handleCropCancel}
-          stageRef={stageRef}
-        />
-      )}
-    </>
+    <KonvaImage
+      {...commonProps}
+      ref={imageRef}
+      image={image}
+      width={width}
+      height={height}
+      cropX={crop?.cropX}
+      cropY={crop?.cropY}
+      cropWidth={crop?.cropWidth}
+      cropHeight={crop?.cropHeight}
+      filters={filters.length ? filters : undefined}
+      blurRadius={layer.style?.blur ?? 0}
+      brightness={layer.style?.brightness ?? 0}
+      contrast={layer.style?.contrast ?? 0}
+      cornerRadius={borderRadius}
+      stroke={borderWidth > 0 ? borderColor : undefined}
+      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+      onTransform={handleTransform}
+      onTransformEnd={handleTransformEnd}
+    />
   )
 }
 

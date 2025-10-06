@@ -37,8 +37,6 @@ export interface Layer {
   logoId?: number
   elementId?: number
   fileUrl?: string
-  originalFileUrl?: string
-  cropData?: { x: number; y: number; width: number; height: number }
   parentId?: string | null
   metadata?: {
     presetId?: string
