@@ -2,7 +2,6 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -15,7 +14,6 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-import { usePageConfig } from '@/hooks/use-page-config'
 import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -62,28 +60,11 @@ const STATUS_OPTIONS = [
 ]
 
 type ViewMode = 'grid' | 'list'
-
 type PreviewState = { id: string; url: string; templateName?: string | null } | null
 
-export default function ProjectCreativesPage() {
-  const params = useParams()
-  const router = useRouter()
+export function CreativesGallery({ projectId }: { projectId: number }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
-
-  const projectId = Number(params?.id)
-  const isValidProject = Number.isFinite(projectId) && projectId > 0
-
-  usePageConfig(
-    'Galeria de Criativos',
-    'Visualize e baixe todos os criativos exportados através do editor Konva.',
-    [
-      { label: 'Dashboard', href: '/dashboard' },
-      { label: 'Projetos', href: '/projects' },
-      isValidProject ? { label: `Projeto ${projectId}`, href: `/projects/${projectId}` } : undefined,
-      { label: 'Criativos' },
-    ].filter(Boolean) as { label: string; href?: string }[],
-  )
 
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
@@ -94,7 +75,7 @@ export default function ProjectCreativesPage() {
 
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
     queryKey: ['generations', projectId],
-    enabled: isValidProject,
+    enabled: !!projectId,
     queryFn: () => api.get(`/api/projects/${projectId}/generations?page=1&pageSize=100`),
     staleTime: 10_000,
   })
@@ -152,7 +133,6 @@ export default function ProjectCreativesPage() {
     selectedIds.forEach((id) => {
       const generation = filtered.find((item) => item.id === id)
       if (generation?.resultUrl) {
-        // Download direto - créditos já foram cobrados no export
         window.open(generation.resultUrl, '_blank', 'noopener,noreferrer')
         opened += 1
       }
@@ -172,31 +152,11 @@ export default function ProjectCreativesPage() {
     })
   }, [deleteMutation])
 
-  if (!isValidProject) {
-    return (
-      <Card className="m-8 p-6 text-sm text-muted-foreground">
-        Projeto inválido. Verifique a URL ou selecione o projeto novamente.
-      </Card>
-    )
-  }
-
   const isEmpty = !isLoading && filtered.length === 0
 
   return (
-    <div className="container mx-auto flex flex-col gap-6 py-8">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-bold">Galeria de Criativos</h1>
-          <p className="text-sm text-muted-foreground">Filtre e baixe os criativos exportados através do editor de templates Konva.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" onClick={() => router.push(`/projects/${projectId}`)}>
-            Voltar ao projeto
-          </Button>
-        </div>
-      </div>
-
-      <Card className="flex flex-wrap items-center gap-3 p-4">
+    <>
+      <Card className="flex flex-wrap items-center gap-3 p-4 mb-6">
         <div className="flex flex-1 items-center gap-2">
           <div className="relative w-full max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -270,9 +230,6 @@ export default function ProjectCreativesPage() {
                 Exporte um template através do editor Konva para vê-lo listado aqui.
               </p>
             </div>
-            <Button onClick={() => router.push(`/projects/${projectId}`)}>
-              Voltar ao projeto
-            </Button>
           </div>
         </Card>
       ) : viewMode === 'grid' ? (
@@ -288,7 +245,7 @@ export default function ProjectCreativesPage() {
                   selected && 'border-primary shadow-[0_0_0_1px_var(--primary)]',
                 )}
               >
-                <div className="aspect-video bg-muted flex items-center justify-center">
+                <div className="aspect-video bg-muted flex items-center justify-center relative">
                   {generation.resultUrl ? (
                     <Image
                       src={generation.resultUrl}
@@ -448,6 +405,6 @@ export default function ProjectCreativesPage() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   )
 }

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Sparkles } from 'lucide-react'
+import { Plus, FileText, Image as ImageIcon, Trash2, Edit } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -32,6 +32,7 @@ import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
+import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -156,7 +157,6 @@ export default function ProjectDetailPage() {
       <Tabs defaultValue="templates" className="w-full">
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="studio">Studio</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
@@ -338,64 +338,18 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="studio" className="mt-6">
-          <div className="flex flex-col items-center justify-center gap-6 py-16">
-            <div className="flex flex-col items-center gap-4">
-              <div className="p-4 bg-primary/10 rounded-full">
-                <Sparkles className="w-12 h-12 text-primary" />
-              </div>
-              <div className="text-center max-w-md">
-                <h3 className="font-semibold text-xl mb-2">Studio de Geração</h3>
-                <p className="text-muted-foreground mb-6">
-                  Crie criativos incríveis aplicando conteúdo dinâmico aos seus templates.
-                  Selecione fotos, personalize textos e gere suas artes prontas para publicação.
-                </p>
-                <Button asChild size="lg">
-                  <Link href={`/projects/${projectId}/studio`}>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Abrir Studio
-                  </Link>
-                </Button>
-              </div>
-            </div>
-
-            {templates && templates.length > 0 && (
-              <Card className="p-4 max-w-md w-full">
-                <p className="text-sm text-muted-foreground text-center">
-                  ✨ Você tem {templates.length} {templates.length === 1 ? 'template disponível' : 'templates disponíveis'} para usar
-                </p>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
-
         <TabsContent value="assets" className="mt-6">
           <ProjectAssetsPanel projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
-          <Card className="p-6">
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold">Painel de Criativos</h3>
-                <p className="text-sm text-muted-foreground">
-                  Visualize e baixe todos os criativos gerados para este projeto. Aplique filtros, organize em grid ou lista e baixe em lote.
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <Button variant="outline" asChild>
-                  <Link href={`/projects/${projectId}/studio`}>
-                    <Sparkles className="mr-2 h-4 w-4" /> Gerar novo criativo
-                  </Link>
-                </Button>
-                <Button asChild>
-                  <Link href={`/projects/${projectId}/creativos`}>
-                    <ImageIcon className="mr-2 h-4 w-4" /> Abrir lista de criativos
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </Card>
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold mb-2">Galeria de Criativos</h2>
+            <p className="text-sm text-muted-foreground">
+              Visualize e baixe todos os criativos exportados neste projeto. Os criativos são salvos automaticamente quando você faz export no editor Konva.
+            </p>
+          </div>
+          <CreativesGallery projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">

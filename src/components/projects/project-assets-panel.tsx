@@ -11,7 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
-import { Download, Trash2, Upload, HardDrive, Loader2 } from 'lucide-react'
+import { Download, Trash2, Upload, HardDrive, Loader2, Plus } from 'lucide-react'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
@@ -42,6 +42,15 @@ interface FontRecord {
   name: string
   fontFamily: string
   fileUrl: string
+  projectId: number
+  uploadedBy: string
+  createdAt: string
+}
+
+interface ColorRecord {
+  id: number
+  name: string
+  hexCode: string
   projectId: number
   uploadedBy: string
   createdAt: string
@@ -114,6 +123,7 @@ export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
         driveFolderId={driveFolderId}
         driveFolderName={driveFolderName}
       />
+      <ColorSection projectId={projectId} />
       <FontSection projectId={projectId} />
     </div>
   )
@@ -897,6 +907,178 @@ function FontSection({ projectId }: { projectId: number }) {
       ) : (
         <Card className="p-6 text-center text-sm text-muted-foreground">
           Nenhuma fonte cadastrada. Envie fontes customizadas para ampliar suas opções no editor.
+        </Card>
+      )}
+    </section>
+  )
+}
+
+function ColorSection({ projectId }: { projectId: number }) {
+  const { toast } = useToast()
+  const queryClient = useQueryClient()
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
+  const [colorName, setColorName] = React.useState('')
+  const [colorHex, setColorHex] = React.useState('#000000')
+
+  const { data: colors, isLoading } = useQuery<ColorRecord[]>({
+    queryKey: ['project-assets', projectId, 'colors'],
+    queryFn: () => fetch(`/api/projects/${projectId}/colors`).then((res) => {
+      if (!res.ok) throw new Error('Falha ao carregar cores')
+      return res.json()
+    }),
+  })
+
+  const createColor = useMutation({
+    mutationFn: async (data: { name: string; hexCode: string }) => {
+      const response = await fetch(`/api/projects/${projectId}/colors`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Falha ao cadastrar cor')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'colors'] })
+      toast({ title: 'Cor cadastrada', description: 'A cor foi adicionada ao projeto.' })
+      setIsDialogOpen(false)
+      setColorName('')
+      setColorHex('#000000')
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Erro ao cadastrar cor',
+        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const deleteColor = useMutation({
+    mutationFn: async (colorId: number) => {
+      const response = await fetch(`/api/projects/${projectId}/colors/${colorId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Falha ao remover cor')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'colors'] })
+      toast({ title: 'Cor removida', description: 'A cor foi deletada.' })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Erro ao remover cor',
+        description: error instanceof Error ? error.message : 'Não foi possível remover a cor.',
+        variant: 'destructive',
+      })
+    },
+  })
+
+  const handleSubmit = (event: React.FormEvent) => {
+    event.preventDefault()
+    createColor.mutate({ name: colorName, hexCode: colorHex })
+  }
+
+  return (
+    <section>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h3 className="text-lg font-semibold">Cores da Marca</h3>
+          <p className="text-sm text-muted-foreground">
+            Cadastre as cores oficiais da marca para usar nos templates.
+          </p>
+        </div>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button size="sm">
+              <Plus className="mr-2 h-4 w-4" />
+              Nova Cor
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Cadastrar Nova Cor</DialogTitle>
+              <DialogDescription>
+                Adicione uma cor da identidade visual do projeto.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="colorName">Nome da Cor</Label>
+                <Input
+                  id="colorName"
+                  value={colorName}
+                  onChange={(e) => setColorName(e.target.value)}
+                  placeholder="Ex: Azul Principal"
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="colorHex">Código Hexadecimal</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="colorHex"
+                    type="color"
+                    value={colorHex}
+                    onChange={(e) => setColorHex(e.target.value)}
+                    className="w-20 h-10"
+                  />
+                  <Input
+                    value={colorHex}
+                    onChange={(e) => setColorHex(e.target.value)}
+                    placeholder="#000000"
+                    pattern="^#[0-9A-Fa-f]{6}$"
+                    required
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button type="submit" disabled={createColor.isPending}>
+                  {createColor.isPending ? 'Cadastrando...' : 'Cadastrar cor'}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <Card key={idx} className="p-4">
+              <Skeleton className="mb-3 h-12 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+            </Card>
+          ))}
+        </div>
+      ) : colors && colors.length > 0 ? (
+        <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-4">
+          {colors.map((color) => (
+            <Card key={color.id} className="border border-border/40 bg-card/70 p-4">
+              <div className="mb-3 h-16 w-full rounded border" style={{ backgroundColor: color.hexCode }} />
+              <div className="space-y-1">
+                <p className="font-medium text-sm">{color.name}</p>
+                <p className="text-xs text-muted-foreground font-mono">{color.hexCode}</p>
+                <p className="text-xs text-muted-foreground">{formatDateRelative(color.createdAt)}</p>
+              </div>
+              <div className="mt-3 flex justify-end">
+                <Button size="icon" variant="ghost" onClick={() => deleteColor.mutate(color.id)}>
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card className="p-6 text-center text-sm text-muted-foreground">
+          Nenhuma cor cadastrada. Adicione as cores da marca para usar nos templates.
         </Card>
       )}
     </section>

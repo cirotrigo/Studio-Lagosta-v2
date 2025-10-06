@@ -561,29 +561,9 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       }
       setIsExporting(true)
 
-      // Validar e deduzir créditos antes de exportar
-      try {
-        console.log('[EXPORT] Validating credits before export...')
-        const response = await fetch('/api/templates/export', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId: template.id, format }),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          if (response.status === 402) {
-            throw new Error(`Créditos insuficientes para exportar. Necessário: ${errorData.required}, Disponível: ${errorData.available}`)
-          }
-          throw new Error(errorData.error || 'Erro ao validar créditos')
-        }
-
-        const data = await response.json()
-        console.log('[EXPORT] Credits deducted. Remaining:', data.creditsRemaining)
-      } catch (error) {
-        setIsExporting(false)
-        throw error
-      }
+      // Placeholder - validação será feita após o export
+      let exportDataUrl = ''
+      let exportFileName = ''
 
       // Salvar estado atual
       const previousSelection = [...selectedLayerIdsRef.current]
@@ -706,6 +686,10 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           ? `template-instagram-${timestamp}.jpg`
           : `template-${template.id}-${timestamp}.png`
 
+        // Salvar dataURL e fileName para enviar à API
+        exportDataUrl = dataUrl
+        exportFileName = fileName
+
         const record: ExportRecord = {
           id: crypto.randomUUID(),
           format,
@@ -723,7 +707,35 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           guidesLayer.visible(guidesWasVisible)
         }
 
-        // 10. Download imediato do arquivo
+        // 10. Enviar para API para salvar no banco e deduzir créditos
+        console.log('[EXPORT] Sending to API for saving...')
+        try {
+          const response = await fetch(`/api/templates/${template.id}/export`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              format,
+              dataUrl: exportDataUrl,
+              fileName: exportFileName
+            }),
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json()
+            if (response.status === 402) {
+              throw new Error(`Créditos insuficientes para exportar. Necessário: ${errorData.required}, Disponível: ${errorData.available}`)
+            }
+            throw new Error(errorData.error || 'Erro ao salvar exportação')
+          }
+
+          const data = await response.json()
+          console.log('[EXPORT] Saved successfully. Remaining credits:', data.creditsRemaining)
+        } catch (error) {
+          console.error('[EXPORT] Failed to save:', error)
+          // Continuar com o download mesmo se falhar o salvamento
+        }
+
+        // 11. Download imediato do arquivo
         const link = document.createElement('a')
         link.href = dataUrl
         link.download = fileName
