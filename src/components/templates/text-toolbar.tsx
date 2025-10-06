@@ -106,6 +106,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
   const fontStyle = selectedLayer.style?.fontStyle ?? 'normal'
   const fontWeight = selectedLayer.style?.fontWeight
   const textAlign = selectedLayer.style?.textAlign ?? 'left'
+  const textTransform = selectedLayer.style?.textTransform ?? 'none'
   const color = selectedLayer.style?.color ?? '#000000'
   const strokeColor = selectedLayer.style?.border?.color ?? '#000000'
   const opacity = selectedLayer.style?.opacity ?? 1
@@ -113,6 +114,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
   // Verificar se está bold ou italic
   const isBold = fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700'
   const isItalic = fontStyle === 'italic'
+  const isUppercase = textTransform === 'uppercase'
 
   const handleFontFamilyChange = async (value: string) => {
     // Se for fonte customizada, garantir que está carregada
@@ -243,6 +245,15 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     })
   }
 
+  const toggleUppercase = () => {
+    onUpdateLayer(selectedLayer.id, {
+      style: {
+        ...selectedLayer.style,
+        textTransform: isUppercase ? 'none' : 'uppercase',
+      },
+    })
+  }
+
   return (
     <div className="flex-shrink-0 border-b border-border/40 bg-card shadow-sm">
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
@@ -343,6 +354,19 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
             title="Alinhar à direita"
           >
             <AlignRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Uppercase Toggle */}
+        <div className="flex items-center gap-1 pr-2 border-r border-border/40">
+          <Button
+            variant={isUppercase ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 px-2 font-semibold"
+            onClick={toggleUppercase}
+            title={isUppercase ? 'Desativar maiúsculas (Aa)' : 'Ativar maiúsculas (AA)'}
+          >
+            <span className="text-xs">{isUppercase ? 'AA' : 'Aa'}</span>
           </Button>
         </div>
 

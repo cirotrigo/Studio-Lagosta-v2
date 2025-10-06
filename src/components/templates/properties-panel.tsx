@@ -576,6 +576,38 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
           />
         </div>
       </div>
+
+      {/* Text Transform Controls */}
+      <div className="space-y-2">
+        <Label className="text-xs">Transformação de Texto</Label>
+        <div className="grid grid-cols-4 gap-1 rounded-md border border-border/30 bg-muted/30 p-1">
+          {[
+            { value: 'none', label: 'Aa', title: 'Normal' },
+            { value: 'uppercase', label: 'AA', title: 'MAIÚSCULAS' },
+            { value: 'lowercase', label: 'aa', title: 'minúsculas' },
+            { value: 'capitalize', label: 'Aa', title: 'Capitalizar' },
+          ].map((transform) => {
+            const isActive = (layer.style?.textTransform ?? 'none') === transform.value
+            return (
+              <button
+                key={transform.value}
+                type="button"
+                title={transform.title}
+                className={`
+                  rounded px-2 py-1.5 text-xs font-semibold transition-colors
+                  ${isActive
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'bg-card hover:bg-accent hover:text-accent-foreground'
+                  }
+                `}
+                onClick={() => setStyleValue(layer, { textTransform: transform.value as any })}
+              >
+                {transform.label}
+              </button>
+            )
+          })}
+        </div>
+      </div>
     </div>
   )
 }

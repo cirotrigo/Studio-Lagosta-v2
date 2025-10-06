@@ -342,6 +342,22 @@ export function KonvaEditableText({
     shapeRef,
   ])
 
+  // Apply text transform based on style
+  const applyTextTransform = React.useCallback((text: string, transform?: string) => {
+    if (!transform || transform === 'none') return text
+
+    switch (transform) {
+      case 'uppercase':
+        return text.toUpperCase()
+      case 'lowercase':
+        return text.toLowerCase()
+      case 'capitalize':
+        return text.replace(/\b\w/g, (char) => char.toUpperCase())
+      default:
+        return text
+    }
+  }, [])
+
   const htmlGroupProps = React.useMemo(() => {
     const node = shapeRef.current
     if (node) {
@@ -369,12 +385,16 @@ export function KonvaEditableText({
     }
   }, [layer.position?.x, layer.position?.y, layer.rotation, isEditing, shapeRef])
 
+  const displayText = React.useMemo(() => {
+    return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
+  }, [layer.content, layer.style?.textTransform, applyTextTransform])
+
   return (
     <>
       <Text
         {...commonProps}
         ref={shapeRef as React.RefObject<Konva.Text>}
-        text={layer.content ?? ''}
+        text={displayText}
         fontSize={layer.style?.fontSize ?? 16}
         fontFamily={layer.style?.fontFamily ?? 'Inter'}
         fontStyle={layer.style?.fontStyle ?? 'normal'}
@@ -430,6 +450,7 @@ export function KonvaEditableText({
               letterSpacing: `${editingState.letterSpacing}px`,
               lineHeight: String(editingState.lineHeight),
               textAlign: editingState.textAlign,
+              textTransform: layer.style?.textTransform ?? 'none',
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
               resize: 'none',
