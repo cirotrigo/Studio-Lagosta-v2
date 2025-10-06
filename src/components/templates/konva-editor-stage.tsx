@@ -138,6 +138,10 @@ export function KonvaEditorStage() {
 
       const oldScale = stage.scaleX()
 
+      // Pegar posição do ponteiro do mouse relativa ao stage
+      const pointer = stage.getPointerPosition()
+      if (!pointer) return
+
       // Determinar direção do zoom
       const direction = event.evt.deltaY > 0 ? 1 / ZOOM_SCALE_BY : ZOOM_SCALE_BY
 
@@ -146,21 +150,24 @@ export function KonvaEditorStage() {
 
       if (newScale === oldScale) return
 
-      // Calcular offset para manter zoom centralizado
-      // O zoom deve acontecer a partir do centro do canvas
-      const stageWidth = stage.width()
-      const stageHeight = stage.height()
+      // Pegar posição atual do stage
+      const oldPos = stage.position()
 
-      const centerX = stageWidth / 2
-      const centerY = stageHeight / 2
+      // Calcular o ponto do mouse relativo ao stage (não escalado)
+      const mousePointTo = {
+        x: (pointer.x - oldPos.x) / oldScale,
+        y: (pointer.y - oldPos.y) / oldScale,
+      }
 
-      // Calcular nova posição para centralizar o zoom
-      const newX = centerX - (centerX * newScale)
-      const newY = centerY - (centerY * newScale)
+      // Calcular nova posição do stage para manter o ponteiro no mesmo lugar
+      const newPos = {
+        x: pointer.x - mousePointTo.x * newScale,
+        y: pointer.y - mousePointTo.y * newScale,
+      }
 
-      // Aplicar zoom
+      // Aplicar zoom e posição
       stage.scale({ x: newScale, y: newScale })
-      stage.position({ x: newX, y: newY })
+      stage.position(newPos)
 
       stage.batchDraw()
 
