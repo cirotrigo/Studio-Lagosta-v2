@@ -91,8 +91,8 @@ export const DEFAULT_SNAP_CONFIG: SnapConfig = {
   guideColor: '#FF00FF', // Magenta (padrão de editores profissionais)
   guideDash: [4, 6],
   showDimensions: false,
-  guideWidth: 1,
-  guideOpacity: 0.8,
+  guideWidth: 3, // Aumentado de 1 para 3 para melhor visibilidade
+  guideOpacity: 0.9, // Aumentado de 0.8 para 0.9 para melhor visibilidade
 }
 
 // ===========================

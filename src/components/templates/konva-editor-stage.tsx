@@ -61,6 +61,7 @@ export function KonvaEditorStage() {
   const [snappingEnabled, setSnappingEnabled] = React.useState(true)
   const [showTestGuide, setShowTestGuide] = React.useState(false)
   const [showMarginGuides, setShowMarginGuides] = React.useState(false)
+  const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
   const [fontsReady, setFontsReady] = React.useState(false)
 
   // Debug: verificar configuração inicial
@@ -332,6 +333,13 @@ export function KonvaEditorStage() {
         return
       }
 
+      // Toggle canvas bounds com 'c'
+      if (key === 'c' && !isModifier) {
+        setShowCanvasBounds(prev => !prev)
+        console.log('🟡 Canvas bounds toggled:', !showCanvasBounds)
+        return
+      }
+
       if (!isModifier) return
 
       // Atalhos de zoom (Ctrl/Cmd + +/- e Ctrl/Cmd + 0)
@@ -398,7 +406,7 @@ export function KonvaEditorStage() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [animateZoom, canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo])
+  }, [animateZoom, canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo, showTestGuide, showMarginGuides, showCanvasBounds])
 
   // Prevenir zoom acidental do browser com Ctrl+Wheel
   React.useEffect(() => {
@@ -492,9 +500,9 @@ export function KonvaEditorStage() {
                 <Line
                   points={[70, 0, 70, canvasHeight]}
                   stroke="#3B82F6"
-                  strokeWidth={1.5}
+                  strokeWidth={3}
                   dash={[6, 4]}
-                  opacity={0.7}
+                  opacity={0.8}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
@@ -502,9 +510,9 @@ export function KonvaEditorStage() {
                 <Line
                   points={[canvasWidth - 70, 0, canvasWidth - 70, canvasHeight]}
                   stroke="#3B82F6"
-                  strokeWidth={1.5}
+                  strokeWidth={3}
                   dash={[6, 4]}
-                  opacity={0.7}
+                  opacity={0.8}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
@@ -512,9 +520,9 @@ export function KonvaEditorStage() {
                 <Line
                   points={[0, 70, canvasWidth, 70]}
                   stroke="#3B82F6"
-                  strokeWidth={1.5}
+                  strokeWidth={3}
                   dash={[6, 4]}
-                  opacity={0.7}
+                  opacity={0.8}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
@@ -522,9 +530,9 @@ export function KonvaEditorStage() {
                 <Line
                   points={[0, canvasHeight - 70, canvasWidth, canvasHeight - 70]}
                   stroke="#3B82F6"
-                  strokeWidth={1.5}
+                  strokeWidth={3}
                   dash={[6, 4]}
-                  opacity={0.7}
+                  opacity={0.8}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
@@ -567,14 +575,52 @@ export function KonvaEditorStage() {
                   key={`${guide.orientation}-${index}-${guide.position}`}
                   points={points}
                   stroke={snapConfig.guideColor}
-                  strokeWidth={2}
+                  strokeWidth={snapConfig.guideWidth}
                   dash={snapConfig.guideDash}
-                  opacity={1}
+                  opacity={snapConfig.guideOpacity}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
               )
             })}
+
+            {/* Canvas Bounds Guide Lines (Amarelas) - Toggle com tecla C */}
+            {showCanvasBounds && (
+              <>
+                {/* Borda Esquerda */}
+                <Line
+                  points={[0, 0, 0, canvasHeight]}
+                  stroke="#FFD700"
+                  strokeWidth={3}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda Direita */}
+                <Line
+                  points={[canvasWidth, 0, canvasWidth, canvasHeight]}
+                  stroke="#FFD700"
+                  strokeWidth={3}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda Superior */}
+                <Line
+                  points={[0, 0, canvasWidth, 0]}
+                  stroke="#FFD700"
+                  strokeWidth={3}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+                {/* Borda Inferior */}
+                <Line
+                  points={[0, canvasHeight, canvasWidth, canvasHeight]}
+                  stroke="#FFD700"
+                  strokeWidth={3}
+                  listening={false}
+                  perfectDrawEnabled={false}
+                />
+              </>
+            )}
           </KonvaLayer>
         </Stage>
       </div>
