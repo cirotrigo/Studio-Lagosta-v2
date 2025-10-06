@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
+import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
 import type { TemplateDto } from '@/hooks/use-template'
 import { useUpdateTemplateWithThumbnail } from '@/hooks/use-template'
 import { useToast } from '@/hooks/use-toast'
@@ -9,7 +10,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings } from 'lucide-react'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -22,6 +23,8 @@ import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
 import { getFontManager } from '@/lib/font-manager'
+import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
+import { PageSyncWrapper } from './page-sync-wrapper'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -108,9 +111,13 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   }
 
   return (
-    <TemplateEditorProvider template={resource}>
-      <TemplateEditorContent />
-    </TemplateEditorProvider>
+    <MultiPageProvider templateId={template.id}>
+      <TemplateEditorProvider template={resource}>
+        <PageSyncWrapper>
+          <TemplateEditorContent />
+        </PageSyncWrapper>
+      </TemplateEditorProvider>
+    </MultiPageProvider>
   )
 }
 
@@ -347,18 +354,298 @@ function TemplateEditorContent() {
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}
-          <div className="flex h-24 flex-shrink-0 items-center gap-2 border-t border-border/40 bg-card px-4">
-            <div className="flex flex-1 items-center gap-2 overflow-x-auto">
-              <div className="flex h-16 w-16 flex-shrink-0 cursor-pointer items-center justify-center rounded border-2 border-primary bg-primary/10">
-                <span className="text-xs font-semibold">1</span>
-              </div>
-              <button className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded border border-dashed border-border/60 hover:border-primary hover:bg-muted/50">
-                <span className="text-2xl text-muted-foreground">+</span>
-              </button>
-            </div>
-            <CanvasPreview />
-          </div>
+          <PagesBar />
         </main>
+      </div>
+    </div>
+  )
+}
+
+// Componente de barra de páginas
+function PagesBar() {
+  const { toast } = useToast()
+  const { templateId, design } = useTemplateEditor()
+  const { pages, currentPageId, setCurrentPageId } = useMultiPage()
+  const createPageMutation = useCreatePage()
+  const duplicatePageMutation = useDuplicatePage()
+  const deletePageMutation = useDeletePage()
+
+  // Ordenar páginas por order
+  const sortedPages = React.useMemo(() => {
+    return [...pages].sort((a, b) => a.order - b.order)
+  }, [pages])
+
+  const handleAddPage = React.useCallback(async () => {
+    try {
+      console.log('[PagesBar] Criando nova página...', {
+        templateId,
+        pagesCount: pages.length,
+        canvasWidth: design.canvas.width,
+        canvasHeight: design.canvas.height,
+      })
+
+      const pageData = {
+        name: `Página ${pages.length + 1}`,
+        width: design.canvas.width || 1080,
+        height: design.canvas.height || 1920,
+        layers: [],
+        background: design.canvas.backgroundColor || '#ffffff',
+        order: pages.length,
+      }
+
+      console.log('[PagesBar] Dados da página:', pageData)
+
+      const newPage = await createPageMutation.mutateAsync({
+        templateId,
+        data: pageData,
+      })
+
+      console.log('[PagesBar] Página criada com sucesso:', newPage)
+
+      // Selecionar nova página
+      if (newPage && typeof newPage === 'object' && 'id' in newPage) {
+        setCurrentPageId(newPage.id as string)
+      }
+
+      toast({
+        title: 'Página criada!',
+        description: 'Nova página adicionada ao template.',
+      })
+    } catch (error) {
+      console.error('[PagesBar] Erro ao criar página:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+      toast({
+        title: 'Erro ao criar página',
+        description: errorMessage,
+        variant: 'destructive',
+      })
+    }
+  }, [templateId, pages.length, design, createPageMutation, setCurrentPageId, toast])
+
+  const handleDuplicatePage = React.useCallback(
+    async (pageId: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+      try {
+        await duplicatePageMutation.mutateAsync({ templateId, pageId })
+        toast({
+          title: 'Página duplicada!',
+          description: 'A página foi duplicada com sucesso.',
+        })
+      } catch (error) {
+        console.error('Error duplicating page:', error)
+        toast({
+          title: 'Erro ao duplicar',
+          description: 'Não foi possível duplicar a página.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [templateId, duplicatePageMutation, toast]
+  )
+
+  const handleDeletePage = React.useCallback(
+    async (pageId: string, e: React.MouseEvent) => {
+      e.stopPropagation()
+
+      if (pages.length <= 1) {
+        toast({
+          title: 'Ação não permitida',
+          description: 'Não é possível deletar a última página.',
+          variant: 'destructive',
+        })
+        return
+      }
+
+      try {
+        await deletePageMutation.mutateAsync({ templateId, pageId })
+
+        // Se deletou a página atual, navegar para a primeira
+        if (pageId === currentPageId && sortedPages.length > 0) {
+          const nextPage = sortedPages[0].id === pageId ? sortedPages[1] : sortedPages[0]
+          if (nextPage) {
+            setCurrentPageId(nextPage.id)
+          }
+        }
+
+        toast({
+          title: 'Página deletada!',
+          description: 'A página foi removida com sucesso.',
+        })
+      } catch (error) {
+        console.error('Error deleting page:', error)
+        toast({
+          title: 'Erro ao deletar',
+          description: 'Não foi possível deletar a página.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [templateId, pages.length, currentPageId, sortedPages, deletePageMutation, setCurrentPageId, toast]
+  )
+
+  // Atalhos de teclado para navegação
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ctrl+PageUp - Página anterior
+      if (e.ctrlKey && e.key === 'PageUp') {
+        e.preventDefault()
+        const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+        if (currentIndex > 0) {
+          setCurrentPageId(sortedPages[currentIndex - 1].id)
+        }
+      }
+
+      // Ctrl+PageDown - Próxima página
+      if (e.ctrlKey && e.key === 'PageDown') {
+        e.preventDefault()
+        const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+        if (currentIndex < sortedPages.length - 1) {
+          setCurrentPageId(sortedPages[currentIndex + 1].id)
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [sortedPages, currentPageId, setCurrentPageId])
+
+  return (
+    <div className="flex h-32 flex-shrink-0 flex-col border-t border-border/40 bg-card">
+      {/* Controles de navegação e ações */}
+      <div className="flex items-center justify-between border-b border-border/40 px-4 py-2">
+        <div className="flex items-center gap-2">
+          {/* Navegação anterior/próxima */}
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+              if (currentIndex > 0) {
+                setCurrentPageId(sortedPages[currentIndex - 1].id)
+              }
+            }}
+            disabled={sortedPages.findIndex((p) => p.id === currentPageId) === 0}
+            className="h-8 w-8 p-0"
+            title="Página anterior (Ctrl+PageUp)"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <span className="text-xs text-muted-foreground">
+            {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
+          </span>
+
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+              if (currentIndex < sortedPages.length - 1) {
+                setCurrentPageId(sortedPages[currentIndex + 1].id)
+              }
+            }}
+            disabled={sortedPages.findIndex((p) => p.id === currentPageId) === sortedPages.length - 1}
+            className="h-8 w-8 p-0"
+            title="Próxima página (Ctrl+PageDown)"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Ações da página atual */}
+        <div className="flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (currentPageId) {
+                handleDuplicatePage(currentPageId, e)
+              }
+            }}
+            className="h-8"
+            title="Duplicar página"
+          >
+            <Copy className="mr-2 h-3.5 w-3.5" />
+            Duplicar
+          </Button>
+
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(e) => {
+              e.stopPropagation()
+              if (currentPageId) {
+                handleDeletePage(currentPageId, e)
+              }
+            }}
+            disabled={pages.length <= 1}
+            className="h-8"
+            title="Deletar página"
+          >
+            <Trash2 className="mr-2 h-3.5 w-3.5" />
+            Deletar
+          </Button>
+
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleAddPage}
+            className="h-8"
+            title="Adicionar nova página"
+          >
+            <Plus className="mr-2 h-3.5 w-3.5" />
+            Nova Página
+          </Button>
+        </div>
+      </div>
+
+      {/* Miniaturas das páginas */}
+      <div className="flex flex-1 items-center gap-3 overflow-x-auto px-4 py-2">
+        {sortedPages.map((page, index) => (
+          <div
+            key={page.id}
+            onClick={() => setCurrentPageId(page.id)}
+            className={`group relative flex flex-shrink-0 cursor-pointer flex-col items-center gap-1 transition-all ${
+              currentPageId === page.id ? 'scale-105' : 'hover:scale-102'
+            }`}
+          >
+            {/* Miniatura */}
+            <div
+              className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
+                currentPageId === page.id
+                  ? 'border-primary shadow-md'
+                  : 'border-border/60 hover:border-primary/60'
+              }`}
+            >
+              {page.thumbnail ? (
+                <img src={page.thumbnail} alt={page.name} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-muted/50">
+                  <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
+                </div>
+              )}
+            </div>
+
+            {/* Label */}
+            <span
+              className={`text-[10px] transition-colors ${
+                currentPageId === page.id ? 'font-semibold text-primary' : 'text-muted-foreground'
+              }`}
+            >
+              Pág. {index + 1}
+            </span>
+          </div>
+        ))}
+
+        {/* Botão para adicionar página */}
+        <button
+          onClick={handleAddPage}
+          className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
+          title="Adicionar nova página"
+        >
+          <Plus className="h-5 w-5 text-muted-foreground" />
+        </button>
       </div>
     </div>
   )

@@ -141,3 +141,23 @@ export interface DynamicField {
 }
 
 export type FieldValues = Record<string, unknown>
+
+// Multi-page support interfaces
+export interface Page {
+  id: string
+  name: string
+  width: number
+  height: number
+  layers: Layer[]
+  background?: string
+  order: number
+  thumbnail?: string
+  createdAt?: Date
+  updatedAt?: Date
+}
+
+export interface MultiPageDesignData {
+  pages: Page[]
+  currentPageId: string
+  templateId?: number
+}
