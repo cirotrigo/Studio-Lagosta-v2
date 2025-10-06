@@ -25,6 +25,12 @@ import {
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
 
 /**
  * TextToolbar - Toolbar de propriedades de texto para Konva.js
@@ -172,19 +178,19 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     })
   }
 
-  const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleColorChange = (value: string) => {
     onUpdateLayer(selectedLayer.id, {
-      style: { ...selectedLayer.style, color: e.target.value },
+      style: { ...selectedLayer.style, color: value },
     })
   }
 
-  const handleStrokeColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleStrokeColorChange = (value: string) => {
     onUpdateLayer(selectedLayer.id, {
       style: {
         ...selectedLayer.style,
         border: {
           ...selectedLayer.style?.border,
-          color: e.target.value,
+          color: value,
           width: selectedLayer.style?.border?.width ?? 0,
           radius: selectedLayer.style?.border?.radius ?? 0,
         },
@@ -344,23 +350,41 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         <div className="flex items-center gap-2 pr-2 border-r border-border/40">
           <div className="flex items-center gap-1">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Cor:</Label>
-            <Input
-              type="color"
-              value={color}
-              onChange={handleColorChange}
-              className="h-8 w-12 p-1 cursor-pointer"
-              title="Cor do texto"
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="h-8 w-12 rounded border border-border cursor-pointer hover:border-primary transition"
+                  style={{ backgroundColor: color }}
+                  title="Cor do texto"
+                />
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <ColorPicker
+                  label="Cor do Texto"
+                  value={color}
+                  onChange={handleColorChange}
+                />
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="flex items-center gap-1">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Contorno:</Label>
-            <Input
-              type="color"
-              value={strokeColor}
-              onChange={handleStrokeColorChange}
-              className="h-8 w-12 p-1 cursor-pointer"
-              title="Cor do contorno"
-            />
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  className="h-8 w-12 rounded border border-border cursor-pointer hover:border-primary transition"
+                  style={{ backgroundColor: strokeColor }}
+                  title="Cor do contorno"
+                />
+              </PopoverTrigger>
+              <PopoverContent className="w-80">
+                <ColorPicker
+                  label="Cor do Contorno"
+                  value={strokeColor}
+                  onChange={handleStrokeColorChange}
+                />
+              </PopoverContent>
+            </Popover>
             <Input
               type="number"
               min={0}

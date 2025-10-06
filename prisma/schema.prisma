@@ -108,6 +108,18 @@ model Logo {
   @@index([projectId])
 }
 
+model BrandColor {
+  id         Int      @id @default(autoincrement())
+  name       String
+  hexCode    String
+  projectId  Int
+  uploadedBy String
+  createdAt  DateTime @default(now())
+  Project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
 model Plan {
   id                String   @id @default(cuid())
   clerkId           String?  @unique
@@ -147,6 +159,7 @@ model Project {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   googleDriveFolderName  String?
+  BrandColor             BrandColor[]
   CustomFont             CustomFont[]
   Element                Element[]
   Generation             Generation[]

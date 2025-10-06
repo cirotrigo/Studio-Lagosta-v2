@@ -13,6 +13,7 @@ import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
 import { ImageEditorModal } from './modals/image-editor-modal'
+import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
 
@@ -556,22 +557,11 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
             onChange={(event) => setStyleValue(layer, { fontSize: Number(event.target.value) })}
           />
         </div>
-        <div className="space-y-1">
-          <Label>Cor</Label>
-          <div className="flex items-center gap-2">
-            <Input
-              value={layer.style?.color ?? '#000000'}
-              onChange={(event) => setStyleValue(layer, { color: event.target.value })}
-            />
-            <input
-              aria-label="Selecionar cor do texto"
-              type="color"
-              className="h-9 w-9 rounded-md border border-border/30"
-              value={layer.style?.color ?? '#000000'}
-              onChange={(event) => setStyleValue(layer, { color: event.target.value })}
-            />
-          </div>
-        </div>
+        <ColorPicker
+          label="Cor do Texto"
+          value={layer.style?.color ?? '#000000'}
+          onChange={(color) => setStyleValue(layer, { color })}
+        />
         <div className="space-y-1">
           <Label>Altura de linha</Label>
           <Input
