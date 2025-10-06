@@ -142,7 +142,8 @@ export default function ProjectCreativesPage() {
       toast({ title: 'Preview indisponível', description: 'Este criativo ainda não possui arquivo gerado.', variant: 'destructive' })
       return
     }
-    window.open(generation.resultUrl, '_blank', 'noopener,noreferrer')
+    // Use API endpoint to track credits
+    window.open(`/api/generations/${generation.id}/download`, '_blank', 'noopener,noreferrer')
   }, [toast])
 
   const handleBulkDownload = React.useCallback(() => {
@@ -151,7 +152,8 @@ export default function ProjectCreativesPage() {
     selectedIds.forEach((id) => {
       const generation = filtered.find((item) => item.id === id)
       if (generation?.resultUrl) {
-        window.open(generation.resultUrl, '_blank', 'noopener,noreferrer')
+        // Use API endpoint to track credits
+        window.open(`/api/generations/${generation.id}/download`, '_blank', 'noopener,noreferrer')
         opened += 1
       }
     })

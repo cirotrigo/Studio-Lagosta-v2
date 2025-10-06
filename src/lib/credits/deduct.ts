@@ -43,9 +43,13 @@ export async function deductCreditsForFeature({
   quantity = 1,
 }: DeductParams): Promise<{ creditsRemaining: number }> {
   try {
+    console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity })
     const user = await getUserFromClerkId(clerkUserId)
+    console.log('[DEDUCT] User found:', user.id)
     const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
+    console.log('[DEDUCT] Credits to use:', creditsToUse)
     const op = toPrismaOperationType(feature)
+    console.log('[DEDUCT] Operation type:', op)
 
     const result = await db.$transaction(async (tx) => {
       try {

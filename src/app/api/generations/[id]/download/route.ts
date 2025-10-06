@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { InsufficientCreditsError } from '@/lib/credits/errors'
 
 export const runtime = 'nodejs'
 
@@ -40,6 +42,30 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         { error: 'Criativo ainda não está pronto' },
         { status: 400 },
       )
+    }
+
+    // Deduzir créditos pelo download
+    console.log('[DOWNLOAD] Attempting to deduct credits for user:', userId)
+    try {
+      const result = await deductCreditsForFeature({
+        clerkUserId: userId,
+        feature: 'creative_download',
+        details: {
+          generationId: generation.id,
+          templateName: generation.templateName,
+          projectName: generation.projectName,
+        },
+      })
+      console.log('[DOWNLOAD] Credits deducted successfully. Remaining:', result.creditsRemaining)
+    } catch (error) {
+      console.error('[DOWNLOAD] Error deducting credits:', error)
+      if (error instanceof InsufficientCreditsError) {
+        return NextResponse.json(
+          { error: 'Créditos insuficientes para fazer download' },
+          { status: 402 },
+        )
+      }
+      throw error
     }
 
     // Redirecionar para URL da imagem

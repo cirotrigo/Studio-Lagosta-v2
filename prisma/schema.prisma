@@ -283,6 +283,7 @@ enum GenerationStatus {
 enum OperationType {
   AI_TEXT_CHAT
   AI_IMAGE_GENERATION
+  CREATIVE_DOWNLOAD
 }
 
 enum ProjectStatus {

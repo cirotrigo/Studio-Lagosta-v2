@@ -561,6 +561,30 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       }
       setIsExporting(true)
 
+      // Validar e deduzir créditos antes de exportar
+      try {
+        console.log('[EXPORT] Validating credits before export...')
+        const response = await fetch('/api/templates/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: template.id, format }),
+        })
+
+        if (!response.ok) {
+          const errorData = await response.json()
+          if (response.status === 402) {
+            throw new Error(`Créditos insuficientes para exportar. Necessário: ${errorData.required}, Disponível: ${errorData.available}`)
+          }
+          throw new Error(errorData.error || 'Erro ao validar créditos')
+        }
+
+        const data = await response.json()
+        console.log('[EXPORT] Credits deducted. Remaining:', data.creditsRemaining)
+      } catch (error) {
+        setIsExporting(false)
+        throw error
+      }
+
       // Salvar estado atual
       const previousSelection = [...selectedLayerIdsRef.current]
       const previousZoom = zoom
