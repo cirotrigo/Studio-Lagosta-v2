@@ -146,60 +146,28 @@ interface PresetCardProps {
 
 function PresetCard({ preset, onApply, onRemove, isApplying, disabled, isCustom }: PresetCardProps) {
   return (
-    <div
+    <button
+      onClick={() => onApply(preset.id)}
+      disabled={disabled || isApplying}
       className={cn(
-        'group relative rounded-lg border border-border/40 bg-card p-4 shadow-sm transition-all',
-        'hover:border-primary/40 hover:shadow-md',
+        'group relative w-full rounded-lg border border-border/40 bg-card transition-all',
+        'hover:border-primary hover:shadow-sm',
         disabled && 'opacity-50 pointer-events-none',
       )}
     >
-      {/* Header com ícone e badge */}
-      <div className="mb-3 flex items-start justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10 text-2xl">
-            {preset.icon}
-          </div>
-
-          <div className="flex-1">
-            <div className="flex items-center gap-2">
-              <h4 className="font-semibold text-sm">{preset.name}</h4>
-              {isCustom && (
-                <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                  Custom
-                </Badge>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground mt-0.5">{preset.description}</p>
-          </div>
-        </div>
-
-        {/* Botão remover (apenas custom) */}
-        {isCustom && onRemove && (
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
-            onClick={onRemove}
-            title="Remover preset"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
-      </div>
-
-      {/* Preview dos elementos */}
-      <div className="mb-3 space-y-1.5 rounded-md bg-muted/30 p-3">
+      {/* Preview minimalista dos elementos */}
+      <div className="space-y-1 p-4 min-h-[80px] flex flex-col justify-center">
         {preset.elements.map((element, idx) => (
           <div
             key={element.id}
-            className="truncate text-xs"
+            className="truncate"
             style={{
               fontFamily: element.fontFamily,
               fontWeight: element.fontWeight,
-              fontSize: `${Math.min(element.fontSize / 4, 14)}px`,
+              fontSize: `${Math.min(element.fontSize / 5, 12)}px`,
               color: element.fill,
               textAlign: element.align,
-              opacity: 0.7,
+              opacity: 0.8,
             }}
           >
             {element.text}
@@ -207,35 +175,28 @@ function PresetCard({ preset, onApply, onRemove, isApplying, disabled, isCustom 
         ))}
       </div>
 
-      {/* Info badges */}
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0">
-          {preset.elements.length} elementos
-        </Badge>
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
-          {preset.category}
-        </Badge>
-        <Badge variant="outline" className="text-[10px] px-1.5 py-0 capitalize">
-          {preset.alignment}
-        </Badge>
-      </div>
+      {/* Botão remover (apenas custom) */}
+      {isCustom && onRemove && (
+        <Button
+          size="icon"
+          variant="ghost"
+          className="absolute right-1 top-1 h-6 w-6 opacity-0 transition-opacity group-hover:opacity-100"
+          onClick={(e) => {
+            e.stopPropagation()
+            onRemove()
+          }}
+          title="Remover preset"
+        >
+          <Trash2 className="h-3 w-3" />
+        </Button>
+      )}
 
-      {/* Botão Aplicar */}
-      <Button
-        size="sm"
-        className="w-full"
-        onClick={() => onApply(preset.id)}
-        disabled={disabled || isApplying}
-      >
-        {isApplying ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Aplicando...
-          </>
-        ) : (
-          'Aplicar Preset'
-        )}
-      </Button>
-    </div>
+      {/* Loading overlay */}
+      {isApplying && (
+        <div className="absolute inset-0 bg-background/80 rounded-lg flex items-center justify-center">
+          <Loader2 className="h-4 w-4 animate-spin text-primary" />
+        </div>
+      )}
+    </button>
   )
 }

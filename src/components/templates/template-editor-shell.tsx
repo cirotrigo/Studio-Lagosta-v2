@@ -9,13 +9,15 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2 } from 'lucide-react'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
 import { EditorSidebar } from './sidebar/editor-sidebar'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
+import { ElementsPanelContent } from './panels/elements-panel'
+import { LogoPanelContent } from './panels/logo-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 
 interface TemplateEditorShellProps {
@@ -41,7 +43,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'uploads' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'layers' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -201,10 +203,10 @@ function TemplateEditorContent() {
             onClick={() => togglePanel('elements')}
           />
           <ToolbarButton
-            icon={<Upload className="h-5 w-5" />}
-            label="Uploads"
-            active={activePanel === 'uploads'}
-            onClick={() => togglePanel('uploads')}
+            icon={<Award className="h-5 w-5" />}
+            label="Logo"
+            active={activePanel === 'logo'}
+            onClick={() => togglePanel('logo')}
           />
           <div className="flex-1" />
           <ToolbarButton
@@ -226,7 +228,7 @@ function TemplateEditorContent() {
                 {activePanel === 'text' && 'Texto & Fontes'}
                 {activePanel === 'images' && 'Imagens'}
                 {activePanel === 'elements' && 'Elementos'}
-                {activePanel === 'uploads' && 'Seus Uploads'}
+                {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'layers' && 'Camadas'}
               </h2>
             </div>
@@ -234,8 +236,8 @@ function TemplateEditorContent() {
               {activePanel === 'templates' && <EditorSidebar />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
-              {activePanel === 'elements' && <div className="text-sm text-muted-foreground">Painel de elementos em desenvolvimento...</div>}
-              {activePanel === 'uploads' && <div className="text-sm text-muted-foreground">Painel de uploads em desenvolvimento...</div>}
+              {activePanel === 'elements' && <ElementsPanelContent />}
+              {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>
           </aside>

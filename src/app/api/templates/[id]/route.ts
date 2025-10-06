@@ -83,3 +83,39 @@ export async function PUT(
     return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
   }
 }
+
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  const { id } = await params
+  const templateId = Number(id)
+  if (!templateId) {
+    return NextResponse.json({ error: 'Template inválido' }, { status: 400 })
+  }
+
+  const existing = await db.template.findFirst({
+    where: { id: templateId },
+    include: { Project: true },
+  })
+
+  if (!existing || existing.Project.userId !== userId) {
+    return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+  }
+
+  try {
+    await db.template.delete({
+      where: { id: templateId },
+    })
+
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Failed to delete template', error)
+    return NextResponse.json({ error: 'Erro ao deletar template' }, { status: 500 })
+  }
+}
