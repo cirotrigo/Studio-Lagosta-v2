@@ -24,6 +24,7 @@ If you're new to this project, start here:
 - **[Konva Editor](./konva-editor.md)** - Complete visual editor with Konva.js for creating social media designs
 - **[Custom Fonts System](./custom-fonts.md)** - Upload, manage, and use custom fonts in the Konva editor
 - **[Text Editing Toolbar](./text-editing-toolbar.md)** - Text formatting toolbar with real-time updates
+- **[PhotoSwipe Lightbox](./photoswipe-lightbox.md)** - Interactive image gallery with zoom and navigation
 
 ### Development Guides
 - **[Frontend](./frontend.md)** - React components, Next.js patterns, and client-side development

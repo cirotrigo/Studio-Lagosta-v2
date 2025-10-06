@@ -14,6 +14,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { usePhotoSwipe } from '@/hooks/use-photoswipe'
+import { GalleryItem } from './gallery-item'
 import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -106,6 +108,13 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     })
   }, [data?.generations, statusFilter, searchTerm, onlyWithResult])
 
+  // PhotoSwipe integration - re-init quando os dados mudarem
+  usePhotoSwipe({
+    gallerySelector: '#creatives-gallery',
+    childSelector: 'a',
+    dependencies: [filtered.length, isLoading],
+  })
+
   const toggleSelection = React.useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -118,28 +127,72 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     })
   }, [])
 
-  const handleDownload = React.useCallback((generation: GenerationRecord) => {
+  const handleDownload = React.useCallback(async (generation: GenerationRecord) => {
     if (!generation.resultUrl) {
       toast({ title: 'Preview indisponível', description: 'Este criativo ainda não possui arquivo gerado.', variant: 'destructive' })
       return
     }
-    // Download direto - créditos já foram cobrados no export
-    window.open(generation.resultUrl, '_blank', 'noopener,noreferrer')
+
+    try {
+      // Fetch da imagem como blob
+      const response = await fetch(generation.resultUrl)
+      const blob = await response.blob()
+
+      // Criar URL temporária do blob
+      const blobUrl = URL.createObjectURL(blob)
+
+      // Criar link temporário e forçar download
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = `criativo-${generation.id}.png`
+      document.body.appendChild(link)
+      link.click()
+
+      // Limpar
+      document.body.removeChild(link)
+      URL.revokeObjectURL(blobUrl)
+    } catch {
+      toast({ title: 'Erro ao baixar', description: 'Não foi possível baixar o criativo.', variant: 'destructive' })
+    }
   }, [toast])
 
-  const handleBulkDownload = React.useCallback(() => {
+  const handleBulkDownload = React.useCallback(async () => {
     if (selectedIds.size === 0) return
-    let opened = 0
-    selectedIds.forEach((id) => {
-      const generation = filtered.find((item) => item.id === id)
-      if (generation?.resultUrl) {
-        window.open(generation.resultUrl, '_blank', 'noopener,noreferrer')
-        opened += 1
-      }
-    })
-    if (opened === 0) {
+
+    const generationsToDownload = filtered.filter(
+      (item) => selectedIds.has(item.id) && item.resultUrl
+    )
+
+    if (generationsToDownload.length === 0) {
       toast({ title: 'Nenhum arquivo disponível', description: 'Selecione criativos concluídos para baixar.', variant: 'destructive' })
+      return
     }
+
+    // Download sequencial com delay
+    for (const generation of generationsToDownload) {
+      if (!generation.resultUrl) continue
+
+      try {
+        const response = await fetch(generation.resultUrl)
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = `criativo-${generation.id}.png`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(blobUrl)
+
+        // Pequeno delay entre downloads
+        await new Promise(resolve => setTimeout(resolve, 300))
+      } catch {
+        console.error(`Erro ao baixar criativo ${generation.id}`)
+      }
+    }
+
+    toast({ title: 'Downloads iniciados', description: `${generationsToDownload.length} arquivo(s) sendo baixado(s).` })
   }, [filtered, selectedIds, toast])
 
   const handleDelete = React.useCallback((generation: GenerationRecord) => {
@@ -205,13 +258,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       </Card>
 
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <Card key={idx} className="p-4">
-              <Skeleton className="mb-4 h-40 w-full" />
-              <Skeleton className="mb-2 h-6 w-1/2" />
-              <Skeleton className="h-4 w-1/3" />
-            </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          {Array.from({ length: 10 }).map((_, idx) => (
+            <div key={idx} className="rounded-xl overflow-hidden border border-border/50 bg-card">
+              <Skeleton className="w-full aspect-[9/16]" />
+            </div>
           ))}
         </div>
       ) : isError ? (
@@ -233,71 +284,74 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           </div>
         </Card>
       ) : viewMode === 'grid' ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((generation) => {
+        <div
+          id="creatives-gallery"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 auto-rows-[200px] gap-4"
+          style={{ gridAutoFlow: 'dense' }}
+        >
+          {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
             const templateLabel = generation.template?.name || generation.templateName || 'Template'
+            const dimensions = generation.template?.dimensions || '1080x1080'
+
+            // Parsear dimensões do template (ex: "1080x1920")
+            const [widthStr, heightStr] = dimensions.split('x')
+            const width = parseInt(widthStr, 10) || 1080
+            const height = parseInt(heightStr, 10) || 1080
+
+            // Determinar tipo baseado nas dimensões reais
+            let templateType: 'STORY' | 'FEED' | 'SQUARE' = 'SQUARE'
+            const aspectRatio = width / height
+
+            if (aspectRatio < 0.7) {
+              // Vertical - Story (9:16 = 0.5625)
+              templateType = 'STORY'
+            } else if (aspectRatio < 0.95) {
+              // Retrato - Feed (4:5 = 0.8)
+              templateType = 'FEED'
+            } else {
+              // Quadrado ou próximo (1:1)
+              templateType = 'SQUARE'
+            }
+
+            // Debug: ver o tipo real
+            if (index === 0) {
+              console.log('Template dimensions:', { dimensions, width, height, aspectRatio, templateType })
+            }
+
+            if (!generation.resultUrl) {
+              return (
+                <Card key={generation.id} className="aspect-square p-4 flex items-center justify-center">
+                  <div className="text-xs text-muted-foreground">Sem preview</div>
+                </Card>
+              )
+            }
+
             return (
-              <Card
+              <GalleryItem
                 key={generation.id}
-                className={cn(
-                  'flex h-full flex-col overflow-hidden border border-border/50 bg-card/70 transition hover:border-primary/40',
-                  selected && 'border-primary shadow-[0_0_0_1px_var(--primary)]',
-                )}
-              >
-                <div className="aspect-video bg-muted flex items-center justify-center relative">
-                  {generation.resultUrl ? (
-                    <Image
-                      src={generation.resultUrl}
-                      alt={templateLabel}
-                      fill
-                      sizes="(min-width: 1280px) 33vw, (min-width: 768px) 50vw, 100vw"
-                      className="object-cover"
-                    />
-                  ) : (
-                    <div className="text-xs text-muted-foreground">Sem preview disponível</div>
-                  )}
-                </div>
-                <div className="flex flex-1 flex-col gap-3 p-4">
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <h3 className="truncate text-sm font-semibold">
-                        {templateLabel}
-                      </h3>
-                      <Badge variant="outline">{generation.status}</Badge>
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      {new Intl.DateTimeFormat('pt-BR', {
-                        dateStyle: 'medium',
-                        timeStyle: 'short',
-                      }).format(new Date(generation.createdAt))}
-                    </p>
-                  </div>
-                  <div className="mt-auto flex flex-wrap items-center gap-2">
-                    <Button size="sm" variant="outline" onClick={() => toggleSelection(generation.id)}>
-                      {selected ? 'Selecionado' : 'Selecionar'}
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => setPreview(generation.resultUrl ? { id: generation.id, url: generation.resultUrl, templateName: templateLabel } : null)} disabled={!generation.resultUrl}>
-                      <Eye className="mr-1 h-4 w-4" /> Visualizar
-                    </Button>
-                    <Button size="sm" variant="outline" onClick={() => handleDownload(generation)} disabled={!generation.resultUrl}>
-                      <Download className="mr-1 h-4 w-4" /> Baixar
-                    </Button>
-                    {generation.googleDriveBackupUrl && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')}
-                      >
-                        <HardDrive className="mr-1 h-4 w-4" /> Drive
-                      </Button>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => handleDelete(generation)}>
-                      <Trash2 className="h-4 w-4 text-red-500" />
-                    </Button>
-                  </div>
-                </div>
-              </Card>
+                id={generation.id}
+                imageUrl={generation.resultUrl}
+                title={templateLabel}
+                date={new Intl.DateTimeFormat('pt-BR', {
+                  dateStyle: 'short',
+                  timeStyle: 'short',
+                }).format(new Date(generation.createdAt))}
+                templateType={templateType}
+                selected={selected}
+                hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
+                onToggleSelect={() => toggleSelection(generation.id)}
+                onDownload={() => handleDownload(generation)}
+                onDelete={() => handleDelete(generation)}
+                onDriveOpen={
+                  generation.googleDriveBackupUrl
+                    ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')
+                    : undefined
+                }
+                index={index}
+                pswpWidth={width}
+                pswpHeight={height}
+              />
             )
           })}
         </div>
