@@ -9,6 +9,7 @@ import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaImageCrop } from './konva-image-crop'
 import { KonvaEditableText } from './konva-editable-text'
+import { calculateImageCrop } from '@/lib/image-crop-utils'
 
 /**
  * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
@@ -185,6 +186,10 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       const newWidth = Math.max(5, Math.round(node.width() * scaleX))
       const newHeight = Math.max(5, Math.round(node.height() * scaleY))
 
+      // Para imagens com objectFit: cover, o crop será recalculado automaticamente
+      // pelo useMemo no ImageNode quando size mudar
+      // Não precisamos calcular aqui pois o cropData é derivado de width/height
+
       onChange({
         position: {
           x: Math.round(node.x()),
@@ -283,7 +288,10 @@ type ImageNodeProps = {
 }
 
 function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange, stageRef }: ImageNodeProps) {
-  const [image] = useImage(layer.fileUrl ?? '', layer.fileUrl?.startsWith('http') ? 'anonymous' : undefined)
+  // IMPORTANTE: Sempre usar originalFileUrl (se existir) para manter qualidade
+  // fileUrl pode ser uma versão cropada, mas originalFileUrl é sempre a imagem completa
+  const imageUrl = layer.originalFileUrl || layer.fileUrl || ''
+  const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
   const [isCropMode, setIsCropMode] = React.useState(false)
 
@@ -314,6 +322,39 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
 
+  // Calcular crop: usar crop manual (cropData) ou crop automático (objectFit: cover)
+  const cropData = React.useMemo(() => {
+    if (!image) return undefined
+
+    // Prioridade 1: Crop manual personalizado
+    if (layer.cropData) {
+      return {
+        x: layer.cropData.x,
+        y: layer.cropData.y,
+        width: layer.cropData.width,
+        height: layer.cropData.height,
+      }
+    }
+
+    // Prioridade 2: Crop automático quando objectFit === 'cover'
+    if (layer.style?.objectFit === 'cover') {
+      const crop = calculateImageCrop(
+        { width: image.width, height: image.height },
+        { width, height },
+        layer.style?.cropPosition || 'center-middle'
+      )
+
+      return {
+        x: crop.cropX,
+        y: crop.cropY,
+        width: crop.cropWidth,
+        height: crop.cropHeight,
+      }
+    }
+
+    return undefined
+  }, [image, width, height, layer.style?.objectFit, layer.style?.cropPosition, layer.cropData])
+
   // Handler para duplo clique - ativar modo crop
   const handleDblClick = React.useCallback(() => {
     if (image && !commonProps.listening) return
@@ -321,14 +362,42 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   }, [image, commonProps.listening])
 
   const handleCropConfirm = React.useCallback(
-    (croppedDataUrl: string) => {
-      // Atualizar a imagem com a versão cropada
+    (result: {
+      cropData: { x: number; y: number; width: number; height: number }
+      displaySize: { width: number; height: number }
+    }) => {
+      // Salvar coordenadas de crop (não-destrutivo, apenas visual)
+      // A imagem original é preservada completamente
+      const imageElement = imageRef.current?.image() as HTMLImageElement | HTMLCanvasElement
+      if (!imageElement) return
+
+      // Resetar scale para 1 antes de salvar (pode ter mudado durante crop mode)
+      if (imageRef.current) {
+        imageRef.current.scaleX(1)
+        imageRef.current.scaleY(1)
+      }
+
+      // Preservar a URL da imagem original (se ainda não existir)
+      const originalFileUrl = layer.originalFileUrl || layer.fileUrl
+
+      // CRÍTICO: NÃO alterar size do layer
+      // Manter size original evita upscaling e perda de qualidade
+      // O crop do Konva funciona como uma "janela" - mostra apenas parte da imagem
+      // sem alterar dimensões, preservando qualidade 100%
       onChange({
-        fileUrl: croppedDataUrl,
+        style: {
+          ...layer.style,
+          // Desabilitar crop automático ao aplicar crop manual
+          objectFit: 'fill',
+        },
+        // Preservar URL da imagem original
+        originalFileUrl,
+        // Armazenar dados de crop personalizado (apenas visual)
+        cropData: result.cropData,
       })
       setIsCropMode(false)
     },
-    [onChange]
+    [onChange, layer.style, layer.fileUrl, layer.originalFileUrl, layer.position, layer.size, layer.rotation]
   )
 
   const handleCropCancel = React.useCallback(() => {
@@ -358,6 +427,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
         image={image}
         width={width}
         height={height}
+        crop={isCropMode ? undefined : cropData}
         filters={filters.length ? filters : undefined}
         blurRadius={layer.style?.blur ?? 0}
         brightness={layer.style?.brightness ?? 0}

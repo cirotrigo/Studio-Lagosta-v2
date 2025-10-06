@@ -624,6 +624,48 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
         </Select>
       </div>
 
+      {/* Controle de posição do crop (somente para objectFit: cover) */}
+      {layer.style?.objectFit === 'cover' && (
+        <div className="space-y-2">
+          <Label className="text-xs">Posição do Crop</Label>
+          <div className="grid grid-cols-3 gap-1 rounded-md border border-border/30 bg-muted/30 p-2">
+            {[
+              { value: 'left-top', label: 'TL', title: 'Topo Esquerda' },
+              { value: 'center-top', label: 'TC', title: 'Topo Centro' },
+              { value: 'right-top', label: 'TR', title: 'Topo Direita' },
+              { value: 'left-middle', label: 'ML', title: 'Meio Esquerda' },
+              { value: 'center-middle', label: 'MC', title: 'Centro' },
+              { value: 'right-middle', label: 'MR', title: 'Meio Direita' },
+              { value: 'left-bottom', label: 'BL', title: 'Base Esquerda' },
+              { value: 'center-bottom', label: 'BC', title: 'Base Centro' },
+              { value: 'right-bottom', label: 'BR', title: 'Base Direita' },
+            ].map((pos) => {
+              const isActive = (layer.style?.cropPosition ?? 'center-middle') === pos.value
+              return (
+                <button
+                  key={pos.value}
+                  type="button"
+                  title={pos.title}
+                  className={`
+                    rounded px-2 py-1.5 text-[10px] font-semibold transition-colors
+                    ${isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : 'bg-card hover:bg-accent hover:text-accent-foreground'
+                    }
+                  `}
+                  onClick={() => setStyleValue(layer, { cropPosition: pos.value as any })}
+                >
+                  {pos.label}
+                </button>
+              )
+            })}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Define qual parte da imagem será visível quando redimensionada
+          </p>
+        </div>
+      )}
+
       <div className="rounded-md border border-border/30 bg-muted/30 p-3">
         <div className="flex items-center justify-between">
           <span className="text-[11px] font-semibold uppercase text-muted-foreground">Filtros</span>
