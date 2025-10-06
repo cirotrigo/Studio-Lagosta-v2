@@ -15,6 +15,7 @@ import { Download, Trash2, Upload, HardDrive, Loader2, Plus } from 'lucide-react
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
+import { FONT_CONFIG } from '@/lib/font-config'
 
 type DriveStatus = 'loading' | 'available' | 'unavailable'
 

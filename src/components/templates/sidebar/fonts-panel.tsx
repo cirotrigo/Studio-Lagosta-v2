@@ -26,15 +26,41 @@ export function FontsPanel() {
   const [customFonts, setCustomFonts] = React.useState<CustomFont[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const { forceUpdate } = useTemplateEditor()
+  const { forceUpdate, projectId } = useTemplateEditor()
 
   const fontManager = React.useMemo(() => getFontManager(), [])
 
-  // Carregar fontes customizadas ao montar
+  // Carregar fontes do banco de dados e mesclar com localStorage
   React.useEffect(() => {
-    const fonts = fontManager.getCustomFonts()
-    setCustomFonts(fonts)
-  }, [fontManager])
+    async function loadFonts() {
+      try {
+        // 1. Carregar fontes do localStorage
+        const localFonts = fontManager.getCustomFonts()
+        console.log(`📦 ${localFonts.length} fontes no localStorage`)
+
+        // 2. Buscar fontes do banco de dados
+        if (projectId) {
+          const response = await fetch(`/api/projects/${projectId}/fonts`)
+          if (response.ok) {
+            const dbFonts = await response.json()
+            console.log(`📦 ${dbFonts.length} fontes no banco de dados`)
+
+            // 3. Carregar fontes do banco no font-manager
+            await fontManager.loadDatabaseFonts(dbFonts)
+          }
+        }
+
+        // 4. Atualizar lista completa (localStorage + database)
+        const allFonts = fontManager.getCustomFonts()
+        setCustomFonts(allFonts)
+        console.log(`✅ Total de ${allFonts.length} fontes disponíveis`)
+      } catch (err) {
+        console.error('❌ Erro ao carregar fontes:', err)
+      }
+    }
+
+    loadFonts()
+  }, [fontManager, projectId])
 
   /**
    * Handler de upload de fontes
@@ -55,8 +81,41 @@ export function FontsPanel() {
       for (const file of Array.from(files)) {
         try {
           console.log(`📤 Uploading font: ${file.name}`)
+
+          // 1. Upload para font-manager (localStorage)
           const fontName = await fontManager.uploadFont(file)
           results.success.push(fontName)
+
+          // 2. Salvar também no banco de dados (se tiver projectId)
+          if (projectId) {
+            try {
+              const formData = new FormData()
+              formData.append('file', file)
+              formData.append('fontFamily', fontName)
+              formData.append('name', fontName)
+
+              const response = await fetch(`/api/projects/${projectId}/fonts`, {
+                method: 'POST',
+                body: formData,
+              })
+
+              if (response.ok) {
+                const savedFont = await response.json()
+                console.log(`✅ Fonte "${fontName}" salva no banco (ID: ${savedFont.id})`)
+
+                // Atualizar fonte no manager com o ID do banco
+                const currentFont = fontManager.getCustomFonts().find(f => f.family === fontName)
+                if (currentFont) {
+                  currentFont.databaseId = savedFont.id
+                }
+              } else {
+                console.warn(`⚠️ Fonte "${fontName}" carregada no editor, mas não foi salva no banco`)
+              }
+            } catch (dbError) {
+              console.error(`⚠️ Erro ao salvar fonte "${fontName}" no banco:`, dbError)
+              // Continuar mesmo se falhar o salvamento no banco
+            }
+          }
         } catch (err) {
           const errorMessage = err instanceof Error ? err.message : 'Erro desconhecido'
           results.failed.push({ name: file.name, error: errorMessage })
@@ -89,17 +148,39 @@ export function FontsPanel() {
         fileInputRef.current.value = ''
       }
     },
-    [fontManager, forceUpdate],
+    [fontManager, forceUpdate, projectId],
   )
 
   /**
    * Remover fonte customizada
    */
   const handleRemoveFont = React.useCallback(
-    (fontName: string) => {
+    async (fontName: string) => {
       if (!confirm(`Deseja remover a fonte "${fontName}"?`)) return
 
+      // Verificar se tem ID do banco antes de remover
+      const font = fontManager.getCustomFonts().find(f => f.family === fontName)
+      const databaseId = font?.databaseId
+
+      // Remover do font-manager (localStorage)
       fontManager.removeFont(fontName)
+
+      // Se tiver ID do banco, deletar também do banco
+      if (databaseId && projectId) {
+        try {
+          const response = await fetch(`/api/projects/${projectId}/fonts/${databaseId}`, {
+            method: 'DELETE',
+          })
+
+          if (response.ok) {
+            console.log(`🗑️ Fonte "${fontName}" removida do banco`)
+          } else {
+            console.warn(`⚠️ Fonte "${fontName}" removida do editor, mas não do banco`)
+          }
+        } catch (dbError) {
+          console.error(`⚠️ Erro ao remover fonte "${fontName}" do banco:`, dbError)
+        }
+      }
 
       // Atualizar lista
       const updatedFonts = fontManager.getCustomFonts()
@@ -110,7 +191,7 @@ export function FontsPanel() {
 
       console.log(`🗑️ Fonte "${fontName}" removida`)
     },
-    [fontManager, forceUpdate],
+    [fontManager, forceUpdate, projectId],
   )
 
   /**

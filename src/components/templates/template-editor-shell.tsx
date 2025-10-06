@@ -21,12 +21,16 @@ import { LogoPanelContent } from './panels/logo-panel'
 import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
+import { getFontManager } from '@/lib/font-manager'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
 }
 
 export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
+  const [fontsLoaded, setFontsLoaded] = React.useState(false)
+  const fontManager = React.useMemo(() => getFontManager(), [])
+
   const resource: TemplateResource = {
     id: template.id,
     name: template.name,
@@ -36,6 +40,71 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
     dynamicFields: template.dynamicFields,
     projectId: template.projectId,
     updatedAt: template.updatedAt,
+  }
+
+  // Carregar todas as fontes customizadas ANTES de renderizar o editor
+  React.useEffect(() => {
+    async function preloadFonts() {
+      try {
+        console.log('🔤 [TemplateEditorShell] Pré-carregando fontes do projeto...')
+
+        // 1. Carregar fontes do localStorage
+        const localFonts = fontManager.getCustomFonts()
+        console.log(`📦 ${localFonts.length} fontes no localStorage`)
+
+        // 2. Buscar e carregar fontes do banco de dados
+        if (template.projectId) {
+          const response = await fetch(`/api/projects/${template.projectId}/fonts`)
+          if (response.ok) {
+            const dbFonts = await response.json()
+            console.log(`📦 ${dbFonts.length} fontes no banco de dados`)
+
+            // Carregar fontes do banco no font-manager
+            await fontManager.loadDatabaseFonts(dbFonts)
+          }
+        }
+
+        // 3. Verificar todas as fontes usadas no template e garantir que estão carregadas
+        const allFonts = fontManager.getCustomFonts()
+        console.log(`✅ Total de ${allFonts.length} fontes disponíveis`)
+
+        // 4. Para cada fonte, forçar document.fonts.load() para garantir disponibilidade no Konva
+        for (const font of allFonts) {
+          if (typeof document !== 'undefined' && 'fonts' in document) {
+            try {
+              await document.fonts.load(`16px '${font.family}'`)
+              console.log(`✅ Fonte "${font.family}" pronta para uso no Konva`)
+            } catch (error) {
+              console.warn(`⚠️ Erro ao pré-carregar fonte "${font.family}":`, error)
+            }
+          }
+        }
+
+        // 5. Aguardar um frame adicional para garantir que tudo foi processado
+        await new Promise(resolve => requestAnimationFrame(resolve))
+
+        console.log('✅ [TemplateEditorShell] Todas as fontes pré-carregadas!')
+        setFontsLoaded(true)
+      } catch (error) {
+        console.error('❌ [TemplateEditorShell] Erro ao pré-carregar fontes:', error)
+        // Continuar mesmo se houver erro
+        setFontsLoaded(true)
+      }
+    }
+
+    preloadFonts()
+  }, [fontManager, template.projectId])
+
+  // Mostrar loading enquanto fontes carregam
+  if (!fontsLoaded) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center bg-background">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent motion-reduce:animate-[spin_1.5s_linear_infinite]" />
+          <p className="text-sm text-muted-foreground">Carregando fontes customizadas...</p>
+        </div>
+      </div>
+    )
   }
 
   return (

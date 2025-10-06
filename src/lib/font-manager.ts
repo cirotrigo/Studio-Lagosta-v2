@@ -17,7 +17,8 @@ export interface CustomFont {
   extension: string
   loaded: boolean
   base64?: string
-  source: 'upload' | 'google'
+  source: 'upload' | 'google' | 'database'
+  databaseId?: number // ID do CustomFont no banco de dados
 }
 
 export class FontManager {
@@ -162,12 +163,14 @@ export class FontManager {
 
     if (hasFontsLoadSupport) {
       try {
+        // Aguardar fontes usando Font Loading API
         await document.fonts.load(`${fontStyle} ${fontWeight} 16px '${fontName}'`)
+
+        // Aguardar mais um frame para garantir que o browser processou
+        await this.delay(100)
 
         // Verificar se realmente carregou
         if (document.fonts.check(`16px '${fontName}'`)) {
-          // Pequeno delay de segurança
-          await this.delay(60)
           console.log(`✅ Fonte "${fontName}" carregada via Font Loading API!`)
           return
         }
@@ -446,6 +449,65 @@ export class FontManager {
 
     console.log(`✅ Google Font "${fontName}" adicionada`)
   }
+
+  /**
+   * Carregar fonte do banco de dados (Vercel Blob URL)
+   */
+  async loadDatabaseFont(font: {
+    id: number
+    name: string
+    fontFamily: string
+    fileUrl: string
+  }): Promise<void> {
+    // Evitar duplicatas
+    if (this.loadedFonts.has(font.fontFamily)) {
+      console.log(`⚠️ Fonte "${font.fontFamily}" já carregada, ignorando`)
+      return
+    }
+
+    // Extrair extensão do URL
+    const urlPath = font.fileUrl.split('?')[0] // Remove query params
+    const extension = urlPath.substring(urlPath.lastIndexOf('.')).toLowerCase()
+
+    // Adicionar @font-face
+    this.addFontFace(font.fontFamily, font.fileUrl)
+
+    // Carregar fonte
+    await this.loadFont(font.fontFamily)
+
+    // Salvar no Map
+    this.loadedFonts.set(font.fontFamily, {
+      name: font.name,
+      family: font.fontFamily,
+      url: font.fileUrl,
+      extension: extension || '.ttf',
+      loaded: true,
+      source: 'database',
+      databaseId: font.id,
+    })
+
+    console.log(`✅ Fonte do banco "${font.fontFamily}" carregada`)
+  }
+
+  /**
+   * Carregar múltiplas fontes do banco de dados
+   */
+  async loadDatabaseFonts(fonts: Array<{
+    id: number
+    name: string
+    fontFamily: string
+    fileUrl: string
+  }>): Promise<void> {
+    console.log(`📦 Carregando ${fonts.length} fontes do banco de dados...`)
+
+    for (const font of fonts) {
+      try {
+        await this.loadDatabaseFont(font)
+      } catch (error) {
+        console.error(`❌ Erro ao carregar fonte "${font.name}" do banco:`, error)
+      }
+    }
+  }
 }
 
 // Instância global (singleton)
@@ -463,6 +525,8 @@ export function getFontManager(): FontManager {
       removeFont: () => {},
       clearAllCustomFonts: () => {},
       addGoogleFont: async () => {},
+      loadDatabaseFont: async () => {},
+      loadDatabaseFonts: async () => {},
     } as unknown as FontManager
   }
 

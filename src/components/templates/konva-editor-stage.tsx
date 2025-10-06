@@ -61,6 +61,7 @@ export function KonvaEditorStage() {
   const [snappingEnabled, setSnappingEnabled] = React.useState(true)
   const [showTestGuide, setShowTestGuide] = React.useState(false)
   const [showMarginGuides, setShowMarginGuides] = React.useState(false)
+  const [fontsReady, setFontsReady] = React.useState(false)
 
   // Debug: verificar configuração inicial
   React.useEffect(() => {
@@ -72,6 +73,37 @@ export function KonvaEditorStage() {
   React.useEffect(() => {
     console.log('📏 Guides atualizadas:', guides.length, guides)
   }, [guides])
+
+  // Aguardar fontes estarem prontas e forçar re-render do Konva
+  React.useEffect(() => {
+    async function waitForFonts() {
+      if (typeof document !== 'undefined' && 'fonts' in document) {
+        try {
+          // Aguardar todas as fontes carregarem
+          await document.fonts.ready
+          console.log('✅ [KonvaEditorStage] document.fonts.ready - Todas as fontes estão prontas!')
+
+          // Aguardar um frame adicional
+          await new Promise(resolve => requestAnimationFrame(resolve))
+
+          setFontsReady(true)
+
+          // Forçar redraw do stage se já existir
+          if (stageRef.current) {
+            stageRef.current.batchDraw()
+            console.log('🎨 [KonvaEditorStage] Stage re-renderizado com fontes prontas')
+          }
+        } catch (error) {
+          console.warn('⚠️ [KonvaEditorStage] Erro ao aguardar fontes:', error)
+          setFontsReady(true) // Continuar mesmo com erro
+        }
+      } else {
+        setFontsReady(true)
+      }
+    }
+
+    waitForFonts()
+  }, [])
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
