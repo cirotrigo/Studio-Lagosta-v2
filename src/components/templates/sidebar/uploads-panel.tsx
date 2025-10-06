@@ -16,7 +16,9 @@ interface LocalUpload {
 }
 
 export function UploadsPanel() {
-  const { addLayer } = useTemplateEditor()
+  const { addLayer, design } = useTemplateEditor()
+  const canvasWidth = design.canvas.width
+  const canvasHeight = design.canvas.height
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
   const [uploads, setUploads] = React.useState<LocalUpload[]>([])
 
@@ -45,64 +47,19 @@ export function UploadsPanel() {
         createdAt: Date.now(),
       })
 
-      // Carregar imagem para obter dimensões reais
-      const img = new window.Image()
-      try {
-        await new Promise<void>((resolve, reject) => {
-          img.onload = () => resolve()
-          img.onerror = () => reject(new Error('Falha ao carregar imagem'))
-          img.src = url
-        })
-
-        const imgWidth = img.naturalWidth
-        const imgHeight = img.naturalHeight
-        const imgAspectRatio = imgWidth / imgHeight
-
-        // Calcular dimensões mantendo aspect ratio (max 600px)
-        const maxSize = 600
-        let targetWidth = imgWidth
-        let targetHeight = imgHeight
-
-        if (targetWidth > maxSize || targetHeight > maxSize) {
-          if (imgAspectRatio > 1) {
-            // Landscape
-            targetWidth = maxSize
-            targetHeight = maxSize / imgAspectRatio
-          } else {
-            // Portrait
-            targetHeight = maxSize
-            targetWidth = maxSize * imgAspectRatio
-          }
-        }
-
-        const base = createDefaultLayer('image')
-        addLayer({
-          ...base,
-          name: `Upload - ${file.name}`,
-          fileUrl: url,
-          size: {
-            width: Math.round(targetWidth),
-            height: Math.round(targetHeight),
-          },
-          style: {
-            ...base.style,
-            objectFit: 'contain',
-          },
-        })
-      } catch (error) {
-        console.error('[UploadsPanel] Erro ao carregar imagem', error)
-        // Fallback: usar dimensões padrão
-        const base = createDefaultLayer('image')
-        addLayer({
-          ...base,
-          name: `Upload - ${file.name}`,
-          fileUrl: url,
-          style: {
-            ...base.style,
-            objectFit: 'contain',
-          },
-        })
-      }
+      // Imagem sempre tem exatamente o tamanho do canvas
+      const base = createDefaultLayer('image')
+      addLayer({
+        ...base,
+        name: `Upload - ${file.name}`,
+        fileUrl: url,
+        position: { x: 0, y: 0 },
+        size: { width: canvasWidth, height: canvasHeight },
+        style: {
+          ...base.style,
+          objectFit: 'cover' as const,
+        },
+      })
     }
 
     setUploads((prev) => [...nextUploads, ...prev])
@@ -120,66 +77,21 @@ export function UploadsPanel() {
     })
   }, [revokeObjectUrls])
 
-  const handleReuseUpload = React.useCallback(async (upload: LocalUpload) => {
-    // Carregar imagem para obter dimensões reais
-    const img = new window.Image()
-    try {
-      await new Promise<void>((resolve, reject) => {
-        img.onload = () => resolve()
-        img.onerror = () => reject(new Error('Falha ao carregar imagem'))
-        img.src = upload.url
-      })
-
-      const imgWidth = img.naturalWidth
-      const imgHeight = img.naturalHeight
-      const imgAspectRatio = imgWidth / imgHeight
-
-      // Calcular dimensões mantendo aspect ratio (max 600px)
-      const maxSize = 600
-      let targetWidth = imgWidth
-      let targetHeight = imgHeight
-
-      if (targetWidth > maxSize || targetHeight > maxSize) {
-        if (imgAspectRatio > 1) {
-          // Landscape
-          targetWidth = maxSize
-          targetHeight = maxSize / imgAspectRatio
-        } else {
-          // Portrait
-          targetHeight = maxSize
-          targetWidth = maxSize * imgAspectRatio
-        }
-      }
-
-      const base = createDefaultLayer('image')
-      addLayer({
-        ...base,
-        name: `Upload - ${upload.name}`,
-        fileUrl: upload.url,
-        size: {
-          width: Math.round(targetWidth),
-          height: Math.round(targetHeight),
-        },
-        style: {
-          ...base.style,
-          objectFit: 'contain',
-        },
-      })
-    } catch (error) {
-      console.error('[UploadsPanel] Erro ao carregar imagem', error)
-      // Fallback: usar dimensões padrão
-      const base = createDefaultLayer('image')
-      addLayer({
-        ...base,
-        name: `Upload - ${upload.name}`,
-        fileUrl: upload.url,
-        style: {
-          ...base.style,
-          objectFit: 'contain',
-        },
-      })
-    }
-  }, [addLayer])
+  const handleReuseUpload = React.useCallback((upload: LocalUpload) => {
+    // Imagem sempre tem exatamente o tamanho do canvas
+    const base = createDefaultLayer('image')
+    addLayer({
+      ...base,
+      name: `Upload - ${upload.name}`,
+      fileUrl: upload.url,
+      position: { x: 0, y: 0 },
+      size: { width: canvasWidth, height: canvasHeight },
+      style: {
+        ...base.style,
+        objectFit: 'cover' as const,
+      },
+    })
+  }, [addLayer, canvasWidth, canvasHeight])
 
   return (
     <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">

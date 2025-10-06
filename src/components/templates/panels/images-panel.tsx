@@ -34,80 +34,28 @@ export function ImagesPanelContent() {
   const driveFolderId = project?.googleDriveFolderId ?? null
   const driveFolderName = project?.googleDriveFolderName ?? null
 
-  // Insert image layer with aspect ratio preservation (Konva best practice)
+  // Insert image layer with exact canvas size
   const insertImageLayer = React.useCallback(
     (url: string, name?: string) => {
-      // Load image to get actual dimensions
-      const img = new Image()
-      img.crossOrigin = 'anonymous'
-
-      img.onload = () => {
-        const imgWidth = img.width
-        const imgHeight = img.height
-
-        // Calculate scale to fit within canvas while maintaining aspect ratio
-        // Konva best practice: always preserve aspect ratio for images
-        // Max 80% of canvas size for better UX
-        const maxWidth = canvasWidth * 0.8
-        const maxHeight = canvasHeight * 0.8
-
-        let finalWidth = imgWidth
-        let finalHeight = imgHeight
-
-        // Scale down if image is larger than canvas (preserving aspect ratio)
-        if (imgWidth > maxWidth || imgHeight > maxHeight) {
-          const scaleX = maxWidth / imgWidth
-          const scaleY = maxHeight / imgHeight
-          const scale = Math.min(scaleX, scaleY) // Use minimum to preserve aspect ratio
-
-          finalWidth = Math.round(imgWidth * scale)
-          finalHeight = Math.round(imgHeight * scale)
-        }
-
-        // Center on canvas
-        const x = Math.round((canvasWidth - finalWidth) / 2)
-        const y = Math.round((canvasHeight - finalHeight) / 2)
-
-        const base = createDefaultLayer('image')
-        const layer = {
-          ...base,
-          name: name ? `Imagem - ${name}` : 'Imagem',
-          fileUrl: url,
-          position: { x, y },
-          size: { width: finalWidth, height: finalHeight },
-          style: {
-            ...base.style,
-          },
-        }
-
-        addLayer(layer)
-        toast({
-          title: 'Imagem adicionada',
-          description: 'A imagem foi centralizada no canvas.'
-        })
+      // Imagem sempre tem exatamente o tamanho do canvas
+      const base = createDefaultLayer('image')
+      const layer = {
+        ...base,
+        name: name ? `Imagem - ${name}` : 'Imagem',
+        fileUrl: url,
+        position: { x: 0, y: 0 },
+        size: { width: canvasWidth, height: canvasHeight },
+        style: {
+          ...base.style,
+          objectFit: 'cover' as const,
+        },
       }
 
-      img.onerror = () => {
-        // Fallback: use canvas dimensions if image fails to load
-        const base = createDefaultLayer('image')
-        const layer = {
-          ...base,
-          name: name ? `Imagem - ${name}` : 'Imagem',
-          fileUrl: url,
-          position: { x: 0, y: 0 },
-          size: { width: canvasWidth, height: canvasHeight },
-          style: {
-            ...base.style,
-          },
-        }
-        addLayer(layer)
-        toast({
-          title: 'Imagem adicionada',
-          description: 'A imagem foi posicionada no canvas.'
-        })
-      }
-
-      img.src = url
+      addLayer(layer)
+      toast({
+        title: 'Imagem adicionada',
+        description: 'A imagem foi ajustada ao tamanho do canvas.'
+      })
     },
     [addLayer, canvasWidth, canvasHeight, toast],
   )
