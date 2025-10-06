@@ -63,6 +63,7 @@ function TemplateEditorContent() {
     generateThumbnail,
     exportDesign,
     isExporting,
+    projectId,
   } = useTemplateEditor()
 
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
@@ -72,7 +73,8 @@ function TemplateEditorContent() {
     'Monte e ajuste o layout visual do template com preview em tempo real.',
     [
       { label: 'Dashboard', href: '/dashboard' },
-      { label: 'Templates', href: '/dashboard?tab=templates' },
+      { label: 'Projetos', href: '/projects' },
+      { label: `Projeto`, href: `/projects/${projectId}` },
       { label: name || 'Editor' },
     ],
   )
