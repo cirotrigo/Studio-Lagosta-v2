@@ -82,8 +82,10 @@ export interface LayerStyle {
 }
 
 export interface GradientStop {
+  id: string
   color: string
   position: number
+  opacity: number
 }
 
 export interface ShadowStyle {

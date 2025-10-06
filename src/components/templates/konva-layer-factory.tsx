@@ -11,6 +11,42 @@ import { KonvaEditableText } from './konva-editable-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 
 /**
+ * Converte ângulo CSS para pontos de início e fim do gradiente Konva
+ */
+function calculateGradientFromAngle(
+  angleInDegrees: number,
+  width: number,
+  height: number
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  // Converte ângulo CSS (180 = topo) para ângulo matemático (0 = direita)
+  const angle = ((180 - angleInDegrees) / 180) * Math.PI
+
+  // Calcula comprimento para alcançar os cantos
+  const length = Math.abs(width * Math.sin(angle)) + Math.abs(height * Math.cos(angle))
+
+  // Calcula pontos x,y centralizados na forma
+  const halfx = (Math.sin(angle) * length) / 2.0
+  const halfy = (Math.cos(angle) * length) / 2.0
+  const cx = width / 2.0
+  const cy = height / 2.0
+
+  return {
+    start: { x: cx - halfx, y: cy - halfy },
+    end: { x: cx + halfx, y: cy + halfy },
+  }
+}
+
+/**
+ * Converte hex para rgba
+ */
+function hexToRgba(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
+/**
  * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
  *
  * Tipos suportados:
@@ -461,10 +497,17 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
     const stops = Array.isArray(gradientStops) && gradientStops.length > 0
       ? gradientStops
       : [
-          { position: 0, color: '#000000' },
-          { position: 1, color: '#ffffff' },
+          { id: '1', position: 0, color: '#000000', opacity: 1 },
+          { id: '2', position: 1, color: '#ffffff', opacity: 1 },
         ]
-    return stops.flatMap((stop) => [stop.position ?? 0, stop.color ?? '#000000'])
+
+    // Ordena as paradas por posição e converte para formato Konva com suporte a opacity
+    return stops
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .flatMap((stop) => [
+        stop.position ?? 0,
+        hexToRgba(stop.color ?? '#000000', stop.opacity ?? 1)
+      ])
   }, [gradientStops])
 
   const width = Math.max(20, layer.size?.width ?? 0)
@@ -478,9 +521,9 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
         width={width}
         height={height}
         cornerRadius={borderRadius}
-        fillRadialGradientStartPoint={{ x: width / 2, y: height / 2 }}
+        fillRadialGradientStartPoint={{ x: 0, y: 0 }}
         fillRadialGradientStartRadius={0}
-        fillRadialGradientEndPoint={{ x: width / 2, y: height / 2 }}
+        fillRadialGradientEndPoint={{ x: 0, y: 0 }}
         fillRadialGradientEndRadius={Math.max(width, height) / 2}
         fillRadialGradientColorStops={colorStops}
         stroke={borderWidth > 0 ? borderColor : undefined}
@@ -489,6 +532,9 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
     )
   }
 
+  // Usa a função calculateGradientFromAngle para calcular corretamente os pontos
+  const gradientPoints = calculateGradientFromAngle(angle, width, height)
+
   return (
     <Rect
       {...commonProps}
@@ -496,11 +542,8 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
       width={width}
       height={height}
       cornerRadius={borderRadius}
-      fillLinearGradientStartPoint={{ x: 0, y: 0 }}
-      fillLinearGradientEndPoint={{
-        x: Math.cos((angle * Math.PI) / 180) * width,
-        y: Math.sin((angle * Math.PI) / 180) * height,
-      }}
+      fillLinearGradientStartPoint={gradientPoints.start}
+      fillLinearGradientEndPoint={gradientPoints.end}
       fillLinearGradientColorStops={colorStops}
       stroke={borderWidth > 0 ? borderColor : undefined}
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}

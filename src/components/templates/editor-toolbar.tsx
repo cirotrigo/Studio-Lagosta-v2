@@ -162,8 +162,8 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         gradientType: 'linear' as const,
         gradientAngle: 180,
         gradientStops: [
-          { color: '#000000', position: 0 },
-          { color: '#00000000', position: 1 },
+          { id: '1', color: '#000000', position: 0, opacity: 1 },
+          { id: '2', color: '#000000', position: 1, opacity: 0 },
         ],
       },
     }

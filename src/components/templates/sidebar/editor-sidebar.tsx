@@ -10,6 +10,7 @@ import { ShapesPanel } from './shapes-panel'
 import { IconsPanel } from './icons-panel'
 import { UploadsPanel } from './uploads-panel'
 import { BackgroundsPanel } from './backgrounds-panel'
+import { GradientsPanel } from './gradients-panel'
 
 interface EditorSidebarProps {
   className?: string
@@ -27,7 +28,7 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
         className="flex h-full flex-col overflow-hidden"
       >
         <div className="flex-shrink-0 border-b border-border/40 bg-muted/20 p-3">
-          <TabsList className="grid h-9 grid-cols-5 rounded-md bg-muted/60">
+          <TabsList className="grid h-9 grid-cols-6 rounded-md bg-muted/60">
             <TabsTrigger value="templates" className="text-[10px] font-semibold uppercase">
               Templates
             </TabsTrigger>
@@ -36,6 +37,9 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
             </TabsTrigger>
             <TabsTrigger value="images" className="text-[10px] font-semibold uppercase">
               Imagens
+            </TabsTrigger>
+            <TabsTrigger value="gradients" className="text-[10px] font-semibold uppercase">
+              Gradientes
             </TabsTrigger>
             <TabsTrigger value="assets" className="text-[10px] font-semibold uppercase">
               Assets
@@ -54,6 +58,9 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
           </TabsContent>
           <TabsContent value="images" className="h-full data-[state=inactive]:hidden">
             <ImagesPanel />
+          </TabsContent>
+          <TabsContent value="gradients" className="h-full data-[state=inactive]:hidden">
+            <GradientsPanel />
           </TabsContent>
           <TabsContent value="assets" className="h-full data-[state=inactive]:hidden">
             <AssetsSwitch value={activeSecondaryTab} onChange={setActiveSecondaryTab} />

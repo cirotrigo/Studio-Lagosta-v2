@@ -41,8 +41,8 @@ function GradientProperties({ layerId, layerType }: GradientPropertiesProps) {
   if (!layer) return null
 
   const stops = layer.style?.gradientStops ?? [
-    { color: '#000000', position: 0 },
-    { color: '#00000000', position: 1 },
+    { id: '1', color: '#000000', position: 0, opacity: 1 },
+    { id: '2', color: '#000000', position: 1, opacity: 0 },
   ]
 
   const handleGradientTypeChange = (value: 'linear' | 'radial') => {
@@ -66,7 +66,7 @@ function GradientProperties({ layerId, layerType }: GradientPropertiesProps) {
   const addStop = () => {
     const last = stops[stops.length - 1]
     const nextPosition = Math.min(1, (last?.position ?? 1) + 0.1)
-    const nextStops = [...stops, { color: '#FFFFFF', position: nextPosition }]
+    const nextStops = [...stops, { id: Date.now().toString(), color: '#FFFFFF', position: nextPosition, opacity: 1 }]
     updateLayerStyle(layerId, { gradientStops: nextStops })
   }
 
@@ -259,26 +259,30 @@ export function PropertiesPanel() {
         </TabsList>
       </div>
 
-      <TabsContent value="properties" className="flex-1 overflow-hidden p-4 data-[state=inactive]:hidden">
-        <PropertiesContent
-          design={design}
-          selectedLayer={selectedLayer}
-          isImageLayer={isImageLayer}
-          editor={editor}
-          updateLayerPartial={updateLayerPartial}
-          setStyleValue={setStyleValue}
-          resetImageFilters={resetImageFilters}
-          handleCanvasBackground={handleCanvasBackground}
-          updatePosition={updatePosition}
-          updateSize={updateSize}
-          handleApplyImageEdit={handleApplyImageEdit}
-          imageEditorOpen={imageEditorOpen}
-          setImageEditorOpen={setImageEditorOpen}
-        />
+      <TabsContent value="properties" className="flex-1 overflow-hidden data-[state=inactive]:hidden">
+        <ScrollArea className="h-full px-4 py-4">
+          <PropertiesContent
+            design={design}
+            selectedLayer={selectedLayer}
+            isImageLayer={isImageLayer}
+            editor={editor}
+            updateLayerPartial={updateLayerPartial}
+            setStyleValue={setStyleValue}
+            resetImageFilters={resetImageFilters}
+            handleCanvasBackground={handleCanvasBackground}
+            updatePosition={updatePosition}
+            updateSize={updateSize}
+            handleApplyImageEdit={handleApplyImageEdit}
+            imageEditorOpen={imageEditorOpen}
+            setImageEditorOpen={setImageEditorOpen}
+          />
+        </ScrollArea>
       </TabsContent>
 
-      <TabsContent value="layers" className="flex-1 overflow-hidden p-4 data-[state=inactive]:hidden">
-        <LayersContent />
+      <TabsContent value="layers" className="flex-1 overflow-hidden data-[state=inactive]:hidden">
+        <ScrollArea className="h-full px-4 py-4">
+          <LayersContent />
+        </ScrollArea>
       </TabsContent>
     </Tabs>
   )
@@ -314,7 +318,7 @@ function PropertiesContent({
   setImageEditorOpen: (open: boolean) => void
 }) {
   return (
-    <div className="flex h-full flex-col gap-3">
+    <div className="flex flex-col gap-3">
       <div>
         <h3 className="text-sm font-semibold">Propriedades</h3>
         <p className="text-xs text-muted-foreground">Ajuste o canvas e os elementos selecionados</p>

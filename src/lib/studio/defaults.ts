@@ -32,8 +32,8 @@ export function getDefaultLayersForType(kind: TemplateKind): Layer[] {
       gradientType: 'linear',
       gradientAngle: 90,
       gradientStops: [
-        { color: '#F5F5F5', position: 0 },
-        { color: '#FFFFFF', position: 1 },
+        { id: '1', color: '#F5F5F5', position: 0, opacity: 1 },
+        { id: '2', color: '#FFFFFF', position: 1, opacity: 1 },
       ],
     },
   }

@@ -9,7 +9,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette } from 'lucide-react'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -20,6 +20,7 @@ import { ElementsPanelContent } from './panels/elements-panel'
 import { LogoPanelContent } from './panels/logo-panel'
 import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
+import { GradientsPanel } from './sidebar/gradients-panel'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -44,7 +45,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -215,12 +216,24 @@ function TemplateEditorContent() {
             active={activePanel === 'colors'}
             onClick={() => togglePanel('colors')}
           />
+          <ToolbarButton
+            icon={<Sparkles className="h-5 w-5" />}
+            label="Gradientes"
+            active={activePanel === 'gradients'}
+            onClick={() => togglePanel('gradients')}
+          />
           <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
             label="Templates"
             active={activePanel === 'templates'}
             onClick={() => togglePanel('templates')}
+          />
+          <ToolbarButton
+            icon={<Settings className="h-5 w-5" />}
+            label="Propriedades"
+            active={activePanel === 'properties'}
+            onClick={() => togglePanel('properties')}
           />
         </aside>
 
@@ -237,16 +250,20 @@ function TemplateEditorContent() {
                 {activePanel === 'elements' && 'Elementos'}
                 {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'colors' && 'Cores da Marca'}
+                {activePanel === 'gradients' && 'Gradientes'}
+                {activePanel === 'properties' && 'Propriedades'}
                 {activePanel === 'layers' && 'Camadas'}
               </h2>
             </div>
-            <div className={`flex-1 overflow-hidden ${activePanel === 'layers' ? '' : 'overflow-y-auto p-4'}`}>
+            <div className={`flex-1 overflow-hidden ${activePanel === 'layers' || activePanel === 'properties' ? '' : 'overflow-y-auto p-4'}`}>
               {activePanel === 'templates' && <EditorSidebar />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'elements' && <ElementsPanelContent />}
               {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'colors' && <ColorsPanelContent />}
+              {activePanel === 'gradients' && <GradientsPanel />}
+              {activePanel === 'properties' && <PropertiesPanel />}
               {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>
           </aside>
