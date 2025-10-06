@@ -21,6 +21,12 @@ This file is a navigation hub for agents working in this repository. It avoids d
 - Credits System: [docs/credits.md](docs/credits.md), [src/lib/credits/feature-config.ts](src/lib/credits/feature-config.ts), [src/lib/credits/deduct.ts](src/lib/credits/deduct.ts)
 - Admin QA Guide: [docs/testing/admin-qa-guide.md](docs/testing/admin-qa-guide.md)
 
+## Studio Lagosta Specific
+- Projects & Templates: [docs/projects-templates.md](docs/projects-templates.md)
+- Konva Editor: [docs/konva-editor.md](docs/konva-editor.md)
+- Custom Fonts System: [docs/custom-fonts.md](docs/custom-fonts.md)
+- Text Editing Toolbar: [docs/text-editing-toolbar.md](docs/text-editing-toolbar.md)
+
 ## Common Tasks → Guides
 - Plan a feature: [agents/architecture-planning.md](agents/architecture-planning.md)
 - Build frontend UI: [agents/frontend-development.md](agents/frontend-development.md)

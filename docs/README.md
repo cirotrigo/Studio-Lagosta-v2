@@ -19,6 +19,12 @@ If you're new to this project, start here:
 - **[Authentication](./authentication.md)** - Clerk integration, security patterns, and user management
 - **[Page Metadata System](./page-metadata-system.md)** - Centralized page headers and breadcrumbs management
 
+### Studio Lagosta Features
+- **[Projects & Templates](./projects-templates.md)** - Project management, template system, assets, and generations
+- **[Konva Editor](./konva-editor.md)** - Complete visual editor with Konva.js for creating social media designs
+- **[Custom Fonts System](./custom-fonts.md)** - Upload, manage, and use custom fonts in the Konva editor
+- **[Text Editing Toolbar](./text-editing-toolbar.md)** - Text formatting toolbar with real-time updates
+
 ### Development Guides
 - **[Frontend](./frontend.md)** - React components, Next.js patterns, and client-side development
 - **[Backend](./backend.md)** - API routes, server-side logic, and data processing
@@ -78,6 +84,15 @@ This SaaS template is built with modern technologies:
 - Usage analytics
 - Billing integration ready
 - Operation-based credit deduction
+
+### 🎨 Studio Lagosta - Visual Design Platform
+- **Konva.js Editor**: Professional-grade visual editor for social media designs
+- **Project Management**: Organize templates, assets, and generated creatives
+- **Custom Fonts**: Upload and use your own fonts with cross-device persistence
+- **Smart Guides**: Figma-like alignment guides with snap-to functionality
+- **Asset Management**: Upload and manage images, logos, and fonts
+- **Export System**: Export designs with automatic credit deduction
+- **Templates**: Reusable designs for Stories, Feed posts, and Square posts
 
 ### 🎨 Modern UI/UX
 - Glass morphism design
