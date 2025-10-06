@@ -291,20 +291,6 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
 
-  // Estado local para dimensões durante transform
-  const [size, setSize] = React.useState({
-    width: layer.size?.width ?? 0,
-    height: layer.size?.height ?? 0
-  })
-
-  // Sincronizar com layer.size quando mudar externamente
-  React.useEffect(() => {
-    setSize({
-      width: layer.size?.width ?? 0,
-      height: layer.size?.height ?? 0,
-    })
-  }, [layer.size?.width, layer.size?.height])
-
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
 
   const filters = React.useMemo<KonvaFilter[]>(() => {
@@ -327,10 +313,10 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
     imageRef.current.cache()
     imageRef.current.getLayer()?.batchDraw()
-  }, [filters, image])
+  }, [filters, image, layer.size?.width, layer.size?.height])
 
-  const width = Math.max(20, size.width)
-  const height = Math.max(20, size.height)
+  const width = Math.max(20, layer.size?.width ?? 0)
+  const height = Math.max(20, layer.size?.height ?? 0)
 
   // Calcular crop automático baseado em objectFit: cover
   // Usa a função getCrop do exemplo oficial do Konva
@@ -349,36 +335,74 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     return undefined
   }, [image, width, height, layer.style?.objectFit])
 
-  // Handler para transform - resetar scale e atualizar dimensões
-  // Baseado no exemplo oficial: https://konvajs.org/docs/sandbox/Scale_Image_To_Fit.html
+  // Limpar cache durante transform para evitar conflito (Konva issue #835)
   const handleTransform = React.useCallback(() => {
     const node = imageRef.current
     if (!node) return
 
+    // Limpar cache durante transform
+    if (filters.length > 0) {
+      node.clearCache()
+    }
+  }, [filters.length])
+
+  // Handler customizado - recalcular crop manualmente
+  const handleTransformEnd = React.useCallback(() => {
+    const node = imageRef.current
+    if (!node || !image) return
+
     const scaleX = node.scaleX()
     const scaleY = node.scaleY()
-
-    // Resetar scale para 1
-    node.scaleX(1)
-    node.scaleY(1)
 
     // Calcular novas dimensões
     const newWidth = Math.max(5, node.width() * scaleX)
     const newHeight = Math.max(5, node.height() * scaleY)
 
-    // Atualizar estado local (re-render e recalcula crop)
-    setSize({ width: newWidth, height: newHeight })
-  }, [])
+    // Resetar scale
+    node.scaleX(1)
+    node.scaleY(1)
 
-  // Handler para transformEnd - persistir dimensões no layer
-  const handleTransformEnd = React.useCallback(() => {
+    // Aplicar novas dimensões no node
+    node.width(newWidth)
+    node.height(newHeight)
+
+    // ✅ CRITICAL: Recalcular e aplicar crop IMEDIATAMENTE no node
+    if (layer.style?.objectFit === 'cover') {
+      const newCrop = calculateImageCrop(
+        { width: image.width, height: image.height },
+        { width: newWidth, height: newHeight },
+        'center-middle'
+      )
+
+      if (newCrop) {
+        node.cropX(newCrop.cropX)
+        node.cropY(newCrop.cropY)
+        node.cropWidth(newCrop.cropWidth)
+        node.cropHeight(newCrop.cropHeight)
+      }
+    }
+
+    // ✅ Reaplicar cache após transform
+    if (filters.length > 0) {
+      node.cache()
+    }
+
+    // Forçar re-draw
+    node.getLayer()?.batchDraw()
+
+    // Persistir mudanças
     onChange({
-      size: {
-        width: size.width,
-        height: size.height,
+      position: {
+        x: Math.round(node.x()),
+        y: Math.round(node.y()),
       },
+      size: {
+        width: Math.round(newWidth),
+        height: Math.round(newHeight),
+      },
+      rotation: Math.round(node.rotation()),
     })
-  }, [onChange, size])
+  }, [onChange, image, layer.style?.objectFit, filters.length])
 
   if (!image) {
     return (
@@ -395,17 +419,17 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     )
   }
 
+  // Separar onTransformEnd do commonProps para usar nosso handler customizado
+  const { onTransformEnd: _, ...imageProps } = commonProps
+
   return (
     <KonvaImage
-      {...commonProps}
+      {...imageProps}
       ref={imageRef}
       image={image}
       width={width}
       height={height}
-      cropX={crop?.cropX}
-      cropY={crop?.cropY}
-      cropWidth={crop?.cropWidth}
-      cropHeight={crop?.cropHeight}
+      {...crop}
       filters={filters.length ? filters : undefined}
       blurRadius={layer.style?.blur ?? 0}
       brightness={layer.style?.brightness ?? 0}
