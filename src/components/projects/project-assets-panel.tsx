@@ -25,6 +25,7 @@ interface LogoRecord {
   fileUrl: string
   projectId: number
   uploadedBy: string
+  isProjectLogo: boolean
   createdAt: string
 }
 
@@ -188,6 +189,33 @@ function LogoSection({
     },
   })
 
+  const updateLogoStatus = useMutation({
+    mutationFn: async ({ logoId, isProjectLogo }: { logoId: number; isProjectLogo: boolean }) => {
+      const response = await fetch(`/api/projects/${projectId}/logos/${logoId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isProjectLogo }),
+      })
+      if (!response.ok) {
+        const message = await response.text()
+        throw new Error(message || 'Falha ao atualizar logo')
+      }
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'logos'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      toast({ title: 'Logo atualizado', description: 'Status do logo atualizado com sucesso.' })
+    },
+    onError: (error: unknown) => {
+      toast({
+        title: 'Erro ao atualizar logo',
+        description: error instanceof Error ? error.message : 'Não foi possível atualizar o logo.',
+        variant: 'destructive',
+      })
+    },
+  })
+
   const deleteLogo = useMutation({
     mutationFn: async (logoId: number) => {
       const response = await fetch(`/api/projects/${projectId}/logos/${logoId}`, {
@@ -201,6 +229,7 @@ function LogoSection({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'logos'] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
       toast({ title: 'Logo removido', description: 'O logo foi deletado.' })
     },
     onError: (error: unknown) => {
@@ -362,22 +391,35 @@ function LogoSection({
                   className="object-contain"
                 />
               </div>
-              <div className="flex items-center justify-between gap-2 p-4">
-                <div>
-                  <p className="font-medium text-sm truncate" title={logo.name}>{logo.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatDateRelative(logo.createdAt)}</p>
+              <div className="p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="font-medium text-sm truncate" title={logo.name}>{logo.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatDateRelative(logo.createdAt)}</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button size="icon" variant="outline" onClick={() => window.open(logo.fileUrl, '_blank', 'noopener,noreferrer')}>
+                      <Download className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => deleteLogo.mutate(logo.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-500" />
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Button size="icon" variant="outline" onClick={() => window.open(logo.fileUrl, '_blank', 'noopener,noreferrer')}>
-                    <Download className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => deleteLogo.mutate(logo.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
+                <div className="flex items-center gap-2 text-xs">
+                  <Switch
+                    id={`logo-${logo.id}`}
+                    checked={logo.isProjectLogo}
+                    onCheckedChange={(checked) => updateLogoStatus.mutate({ logoId: logo.id, isProjectLogo: checked })}
+                    disabled={updateLogoStatus.isPending}
+                  />
+                  <label htmlFor={`logo-${logo.id}`} className="text-muted-foreground cursor-pointer">
+                    Logo principal do projeto
+                  </label>
                 </div>
               </div>
             </Card>

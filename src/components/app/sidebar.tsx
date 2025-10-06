@@ -11,6 +11,7 @@ import {
   Settings,
   Bot,
   FolderOpen,
+  BookOpen,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,7 @@ type SidebarProps = {
 export const navigationItems = [
   { name: "Painel", href: "/dashboard", icon: Home },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
+  { name: "Base de Conhecimento", href: "/knowledge-base", icon: BookOpen },
   { name: "Chat com IA", href: "/ai-chat", icon: Bot },
   { name: "Cobrança", href: "/billing", icon: CreditCard },
 ];

@@ -97,15 +97,17 @@ model Generation {
 }
 
 model Logo {
-  id         Int      @id @default(autoincrement())
-  name       String
-  fileUrl    String
-  projectId  Int
-  uploadedBy String
-  createdAt  DateTime @default(now())
-  Project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id             Int      @id @default(autoincrement())
+  name           String
+  fileUrl        String
+  projectId      Int
+  uploadedBy     String
+  isProjectLogo  Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+  @@index([projectId, isProjectLogo])
 }
 
 model BrandColor {

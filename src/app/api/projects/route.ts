@@ -17,6 +17,10 @@ export async function GET() {
       _count: {
         select: { Template: true, Generation: true },
       },
+      Logo: {
+        where: { isProjectLogo: true },
+        take: 1,
+      },
     },
     orderBy: { updatedAt: 'desc' },
   })

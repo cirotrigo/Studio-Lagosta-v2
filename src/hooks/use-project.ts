@@ -13,6 +13,19 @@ export interface ProjectResponse {
   updatedAt: string
 }
 
+export interface ProjectWithLogoResponse extends ProjectResponse {
+  Logo?: Array<{
+    id: number
+    name: string
+    fileUrl: string
+    isProjectLogo: boolean
+  }>
+  _count?: {
+    Template: number
+    Generation: number
+  }
+}
+
 export interface UpdateProjectSettingsInput {
   googleDriveFolderId: string | null
   googleDriveFolderName: string | null
@@ -28,6 +41,14 @@ export function useProject(projectId: number | null) {
       }
       return api.get<ProjectResponse>(`/api/projects/${projectId}`)
     },
+  })
+}
+
+export function useProjects() {
+  return useQuery<ProjectWithLogoResponse[]>({
+    queryKey: ['projects'],
+    queryFn: () => api.get<ProjectWithLogoResponse[]>('/api/projects'),
+    staleTime: 5 * 60_000, // 5 minutes
   })
 }
 
