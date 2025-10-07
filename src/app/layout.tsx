@@ -20,7 +20,15 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = siteMetadata;
+export const metadata: Metadata = {
+  ...siteMetadata,
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 5, // Permitir zoom para acessibilidade
+    userScalable: true,
+  },
+};
 
 export default function RootLayout({
   children,

@@ -9,6 +9,7 @@ import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaEditableText } from './konva-editable-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 
 /**
  * Converte ângulo CSS para pontos de início e fim do gradiente Konva
@@ -171,8 +172,10 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     [interactionsDisabled, onChange, onDragEnd],
   )
 
-  const handleDragMove = React.useCallback<CommonProps['onDragMove']>(
-    (event) => {
+  // OTIMIZAÇÃO MOBILE: Throttle de drag para melhor performance
+  const handleDragMoveThrottled = React.useMemo(() => {
+    const performanceConfig = getPerformanceConfig()
+    const dragMove = (event: KonvaEventObject<DragEvent>) => {
       if (interactionsDisabled) return
       const node = event.target
       const state = dragStateRef.current
@@ -199,8 +202,14 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
       }
 
       onDragMove?.(event)
-    },
-    [interactionsDisabled, onDragMove],
+    }
+
+    return throttle(dragMove, performanceConfig.dragThrottleMs)
+  }, [interactionsDisabled, onDragMove])
+
+  const handleDragMove: CommonProps['onDragMove'] = React.useCallback(
+    (event) => handleDragMoveThrottled(event),
+    [handleDragMoveThrottled],
   )
 
   const handleTransformEnd = React.useCallback<CommonProps['onTransformEnd']>(
