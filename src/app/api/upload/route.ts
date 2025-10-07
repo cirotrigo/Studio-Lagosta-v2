@@ -1,68 +1,39 @@
-import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
-import { getUserFromClerkId } from '@/lib/auth-utils'
-import { db } from '@/lib/db'
 
-export const runtime = 'nodejs'
+export async function POST(request: Request) {
+  const { userId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
-export async function POST(req: Request) {
   try {
-    const { userId } = await auth()
-    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    const formData = await request.formData()
+    const file = formData.get('file') as File
 
-    const form = await req.formData()
-    const file = form.get('file') as File | null
-    if (!file) return NextResponse.json({ error: 'Nenhum arquivo' }, { status: 400 })
-
-    const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')
-    const maxBytes = Math.max(1, maxMb) * 1024 * 1024 // default 25MB (configurable)
-    if (file.size > maxBytes) {
-      return NextResponse.json({ error: `Arquivo muito grande (máx ${maxMb}MB)` }, { status: 413 })
+    if (!file) {
+      return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    const ext = file.name?.split('.').pop()?.toLowerCase() || 'bin'
-    const safeName = file.name?.replace(/[^a-z0-9._-]/gi, '_') || `upload.${ext}`
-    const key = `uploads/${userId}/${Date.now()}-${safeName}`
-
-    const token = process.env.BLOB_READ_WRITE_TOKEN
-    if (!token) {
-      return NextResponse.json(
-        { error: 'BLOB_READ_WRITE_TOKEN não configurado. Veja SETUP-BLOB.md para instruções.' },
-        { status: 500 }
-      )
+    // Verificar se é uma imagem
+    if (!file.type.startsWith('image/')) {
+      return NextResponse.json({ error: 'File must be an image' }, { status: 400 })
     }
 
-    const uploaded = await put(key, file, { access: 'public', token })
-
-    // Persist record for admin management
-    try {
-      const user = await getUserFromClerkId(userId)
-      await db.storageObject.create({
-        data: {
-          userId: user.id,
-          clerkUserId: userId,
-          provider: 'vercel_blob',
-          url: uploaded.url,
-          pathname: uploaded.pathname,
-          name: file.name || safeName,
-          contentType: file.type || null,
-          size: file.size,
-        },
-      })
-    } catch (e) {
-      console.error('Failed to persist StorageObject:', e)
-    }
-
-    return NextResponse.json({
-      url: uploaded.url,
-      pathname: uploaded.pathname,
+    // Upload para Vercel Blob
+    const fileName = `upload-${Date.now()}-${file.name}`
+    const blob = await put(fileName, file, {
+      access: 'public',
       contentType: file.type,
-      size: file.size,
-      name: file.name,
     })
-  } catch (err) {
-    console.error('Upload failed:', err)
-    return NextResponse.json({ error: 'Falha no upload' }, { status: 500 })
+
+    return NextResponse.json({ url: blob.url })
+  } catch (error) {
+    console.error('Upload error:', error)
+    return NextResponse.json(
+      { error: 'Failed to upload file' },
+      { status: 500 }
+    )
   }
 }

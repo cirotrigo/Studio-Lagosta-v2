@@ -23,7 +23,9 @@ export async function POST(request: Request) {
 
   try {
     // 1. Validar input
-    const body = generateImageSchema.parse(await request.json())
+    const rawBody = await request.json()
+    console.log('[AI Generate] Raw body received:', rawBody)
+    const body = generateImageSchema.parse(rawBody)
 
     // 2. Verificar ownership do projeto
     const project = await db.project.findFirst({
@@ -36,21 +38,63 @@ export async function POST(request: Request) {
     // 3. Validar créditos
     await validateCreditsForFeature(userId, 'ai_image_generation')
 
-    // 4. Criar prediction no Replicate
+    // 4. Upload de imagens de referência para Vercel Blob (se houver)
+    let publicReferenceUrls: string[] = []
+    if (body.referenceImages && body.referenceImages.length > 0) {
+      console.log('[AI Generate] Uploading reference images to Vercel Blob...')
+
+      // Obter cookie de autenticação do request original
+      const cookie = request.headers.get('cookie')
+
+      publicReferenceUrls = await Promise.all(
+        body.referenceImages.map(async (url, index) => {
+          // Fazer fetch da imagem do Google Drive com autenticação
+          const response = await fetch(url, {
+            headers: cookie ? { cookie } : {}
+          })
+          if (!response.ok) {
+            console.error(`[AI Generate] Failed to fetch reference image ${index + 1}:`, response.status, response.statusText)
+            throw new Error(`Failed to fetch reference image ${index + 1}`)
+          }
+          const imageBuffer = await response.arrayBuffer()
+
+          // Upload para Vercel Blob
+          const fileName = `ref-${Date.now()}-${index}.jpg`
+          const blob = await put(fileName, imageBuffer, {
+            access: 'public',
+            contentType: response.headers.get('content-type') || 'image/jpeg',
+          })
+
+          console.log('[AI Generate] Reference image uploaded:', blob.url)
+          return blob.url
+        })
+      )
+    }
+
+    // 5. Criar prediction no Replicate
+    console.log('[AI Generate] Creating prediction with:', {
+      prompt: body.prompt,
+      aspectRatio: body.aspectRatio,
+      referenceImagesCount: publicReferenceUrls.length,
+      referenceImages: publicReferenceUrls
+    })
+
     const prediction = await createReplicatePrediction({
       prompt: body.prompt,
       aspectRatio: body.aspectRatio,
-      referenceImages: body.referenceImages,
+      referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
     })
 
-    // 5. Aguardar conclusão (polling com timeout de 60 segundos)
+    console.log('[AI Generate] Prediction created:', prediction.id)
+
+    // 6. Aguardar conclusão (polling com timeout de 60 segundos)
     const result = await waitForPrediction(prediction.id)
 
     if (result.status === 'failed') {
       throw new Error(result.error || 'Failed to generate image')
     }
 
-    // 6. Upload para Vercel Blob
+    // 7. Upload para Vercel Blob
     const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
     if (!imageUrl) {
       throw new Error('No image URL in response')
@@ -59,10 +103,10 @@ export async function POST(request: Request) {
     const fileName = `ai-generated-${Date.now()}.png`
     const blobUrl = await uploadToVercelBlob(imageUrl, fileName)
 
-    // 7. Calcular dimensões baseado no aspect ratio
+    // 8. Calcular dimensões baseado no aspect ratio
     const dimensions = calculateDimensions(body.aspectRatio)
 
-    // 8. Salvar no banco de dados
+    // 9. Salvar no banco de dados
     const aiImage = await db.aIGeneratedImage.create({
       data: {
         projectId: body.projectId,
@@ -81,7 +125,7 @@ export async function POST(request: Request) {
       },
     })
 
-    // 9. Deduzir créditos após sucesso
+    // 10. Deduzir créditos após sucesso
     await deductCreditsForFeature({
       clerkUserId: userId,
       feature: 'ai_image_generation',

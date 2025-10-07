@@ -125,7 +125,9 @@ export function DesktopGoogleDriveModal({
 
   const handleItemClick = React.useCallback((item: GoogleDriveItem) => {
     if (multiSelect && mode === 'images') {
-      // Multi-select mode: toggle selection
+      // Multi-select mode: toggle selection (only for files, not folders)
+      if (item.kind === 'folder') return
+
       setMultiSelected(prev => {
         const isSelected = prev.some(img => img.id === item.id)
 

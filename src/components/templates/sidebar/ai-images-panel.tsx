@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X } from 'lucide-react'
+import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X, Upload } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -148,7 +148,10 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
   const [prompt, setPrompt] = React.useState('')
   const [aspectRatio, setAspectRatio] = React.useState('1:1')
   const [referenceImages, setReferenceImages] = React.useState<GoogleDriveItem[]>([])
+  const [localFiles, setLocalFiles] = React.useState<File[]>([])
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
+  const [isDragging, setIsDragging] = React.useState(false)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const generateMutation = useMutation({
     mutationFn: async (data: { prompt: string; aspectRatio: string; referenceImages: string[] }) => {
@@ -193,7 +196,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     },
   })
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) {
       toast({ variant: 'destructive', description: 'Digite um prompt' })
       return
@@ -204,18 +207,90 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return
     }
 
-    // Converter GoogleDriveItem para URLs das imagens
-    const imageUrls = referenceImages.map(img => `/api/google-drive/image/${img.id}`)
+    try {
+      // 1. Upload de arquivos locais para Vercel Blob (se houver)
+      const localFileUrls: string[] = []
+      if (localFiles.length > 0) {
+        for (const file of localFiles) {
+          const formData = new FormData()
+          formData.append('file', file)
 
-    generateMutation.mutate({
-      prompt: prompt.trim(),
-      aspectRatio,
-      referenceImages: imageUrls
-    })
+          const uploadResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!uploadResponse.ok) {
+            throw new Error('Falha ao fazer upload da imagem local')
+          }
+
+          const { url } = await uploadResponse.json()
+          localFileUrls.push(url)
+        }
+      }
+
+      // 2. Converter GoogleDriveItem para URLs completas
+      const baseUrl = window.location.origin
+      const driveImageUrls = referenceImages.map(img => `${baseUrl}/api/google-drive/image/${img.id}`)
+
+      // 3. Combinar todas as URLs
+      const allImageUrls = [...driveImageUrls, ...localFileUrls]
+
+      generateMutation.mutate({
+        prompt: prompt.trim(),
+        aspectRatio,
+        referenceImages: allImageUrls
+      })
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        description: error instanceof Error ? error.message : 'Erro ao processar imagens'
+      })
+    }
   }
 
   const handleRemoveReferenceImage = (id: string) => {
     setReferenceImages(prev => prev.filter(img => img.id !== id))
+  }
+
+  const handleRemoveLocalFile = (index: number) => {
+    setLocalFiles(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleFileSelect = (files: FileList | null) => {
+    if (!files) return
+
+    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'))
+    const totalImages = referenceImages.length + localFiles.length + imageFiles.length
+
+    if (totalImages > 3) {
+      toast({
+        variant: 'destructive',
+        description: 'Máximo de 3 imagens no total'
+      })
+      return
+    }
+
+    setLocalFiles(prev => [...prev, ...imageFiles].slice(0, 3 - referenceImages.length))
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    handleFileSelect(e.dataTransfer.files)
   }
 
   const cost = getCost('image_generation')
@@ -254,8 +329,10 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       <div className="space-y-2">
         <label className="text-sm font-medium">Imagens de Referência (opcional)</label>
         <div className="space-y-2">
-          {referenceImages.length > 0 && (
+          {/* Preview das imagens selecionadas */}
+          {(referenceImages.length > 0 || localFiles.length > 0) && (
             <div className="grid grid-cols-3 gap-2">
+              {/* Imagens do Google Drive */}
               {referenceImages.map((img, index) => (
                 <div key={`ref-${img.id}-${index}`} className="relative group">
                   <img
@@ -271,13 +348,62 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
                   </button>
                 </div>
               ))}
+
+              {/* Arquivos locais */}
+              {localFiles.map((file, index) => (
+                <div key={`local-${index}`} className="relative group">
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="w-full h-20 object-cover rounded border"
+                  />
+                  <button
+                    onClick={() => handleRemoveLocalFile(index)}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
+
+          {/* Área de drag & drop */}
+          <div
+            className={cn(
+              "border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors",
+              isDragging ? "border-primary bg-primary/5" : "border-border hover:border-primary/50",
+              generateMutation.isPending && "opacity-50 cursor-not-allowed"
+            )}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => !generateMutation.isPending && fileInputRef.current?.click()}
+          >
+            <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+            <p className="text-sm text-muted-foreground">
+              Arraste imagens aqui ou clique para selecionar
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {referenceImages.length + localFiles.length}/3 imagens
+            </p>
+          </div>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFileSelect(e.target.files)}
+            disabled={generateMutation.isPending}
+          />
+
           <Button
             variant="outline"
             size="sm"
             className="w-full"
-            disabled={generateMutation.isPending}
+            disabled={generateMutation.isPending || referenceImages.length + localFiles.length >= 3}
             onClick={() => setIsDriveModalOpen(true)}
           >
             <HardDrive className="mr-2 h-4 w-4" />
