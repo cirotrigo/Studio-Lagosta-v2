@@ -17,7 +17,12 @@ export async function GET(request: Request) {
       )
     }
 
-    const menu = await getMenuByLocation(location.toUpperCase())
+    const upperLocation = location.toUpperCase()
+    console.log('[Menu API] Fetching menu for location:', upperLocation)
+
+    const menu = await getMenuByLocation(upperLocation)
+
+    console.log('[Menu API] Menu found:', menu ? `Yes (${menu.items?.length || 0} items)` : 'No')
 
     return NextResponse.json({ menu })
   } catch (error) {

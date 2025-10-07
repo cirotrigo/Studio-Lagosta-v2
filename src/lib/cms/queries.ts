@@ -226,7 +226,9 @@ export async function getMenuBySlug(slug: string) {
  * Get a menu by location
  */
 export async function getMenuByLocation(location: string) {
-  return await db.cMSMenu.findFirst({
+  console.log('[getMenuByLocation] Searching for location:', location)
+
+  const menu = await db.cMSMenu.findFirst({
     where: { location, isActive: true },
     include: {
       items: {
@@ -241,6 +243,10 @@ export async function getMenuByLocation(location: string) {
       },
     },
   })
+
+  console.log('[getMenuByLocation] Result:', menu ? `Found menu "${menu.name}" with ${menu.items?.length || 0} items` : 'Not found')
+
+  return menu
 }
 
 /**

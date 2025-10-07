@@ -13,8 +13,13 @@ export function PublicHeader() {
   const [isScrolled, setIsScrolled] = React.useState(false)
 
   // Fetch menu from CMS
-  const { data: menuData } = useMenuByLocation('header')
+  const { data: menuData, isLoading, error } = useMenuByLocation('header')
   const menuItems = menuData?.menu?.items || []
+
+  // Debug logs
+  React.useEffect(() => {
+    console.log('Menu Debug:', { menuData, isLoading, error, menuItems })
+  }, [menuData, isLoading, error, menuItems])
 
   React.useEffect(() => {
     const handleScroll = () => {
@@ -48,26 +53,63 @@ export function PublicHeader() {
               </button>
             </div>
 
-            <div
-              data-state={menuState && 'active'}
-              className="group-data-[state=active]:flex w-full flex-wrap justify-end gap-6 space-y-6 rounded-xl border bg-background/70 p-6 backdrop-blur-md lg:w-auto lg:space-y-0 lg:border-none lg:bg-transparent lg:p-0 lg:backdrop-blur-none lg:flex lg:justify-between">
-              <div className="flex w-full flex-col space-y-4 lg:w-auto lg:flex-row lg:items-center lg:space-x-6 lg:space-y-0">
+            {/* Menu items centralized on desktop */}
+            <div className="absolute inset-0 m-auto hidden size-fit lg:block">
+              <ul className="flex gap-8 text-sm">
                 {menuItems.map((item) => (
-                  <Link
-                    key={item.id}
-                    href={item.url}
-                    target={item.target || '_self'}
-                    className="block text-foreground/80 hover:text-foreground lg:px-3">
-                    {item.label}
-                  </Link>
+                  <li key={item.id}>
+                    <Link
+                      href={item.url}
+                      target={item.target || '_self'}
+                      className="text-muted-foreground hover:text-accent-foreground block duration-150">
+                      <span>{item.label}</span>
+                    </Link>
+                  </li>
                 ))}
+              </ul>
+            </div>
+
+            {/* Auth buttons and mobile menu */}
+            <div className="bg-background group-data-[state=active]:block lg:group-data-[state=active]:flex mb-6 hidden w-full flex-wrap items-center justify-end space-y-8 rounded-3xl border p-6 shadow-2xl shadow-zinc-300/20 md:flex-nowrap lg:m-0 lg:flex lg:w-fit lg:gap-6 lg:space-y-0 lg:border-transparent lg:bg-transparent lg:p-0 lg:shadow-none dark:shadow-none dark:lg:bg-transparent">
+              <div className="lg:hidden">
+                <ul className="space-y-6 text-base">
+                  {menuItems.map((item) => (
+                    <li key={item.id}>
+                      <Link
+                        href={item.url}
+                        target={item.target || '_self'}
+                        className="text-muted-foreground hover:text-accent-foreground block duration-150">
+                        <span>{item.label}</span>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <div className="flex w-full flex-col space-y-4 lg:w-auto lg:flex-row lg:items-center lg:space-x-3 lg:space-y-0">
-                <Button asChild variant="ghost">
-                  <Link href="/sign-in">Login</Link>
+              <div className="flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
+                <Button
+                  asChild
+                  variant="outline"
+                  size="sm"
+                  className={cn(isScrolled && 'lg:hidden')}>
+                  <Link href="/sign-in">
+                    <span>Entrar</span>
+                  </Link>
                 </Button>
-                <Button asChild>
-                  <Link href="/sign-up">Começar Grátis</Link>
+                <Button
+                  asChild
+                  size="sm"
+                  className={cn(isScrolled && 'lg:hidden')}>
+                  <Link href="/sign-up">
+                    <span>Cadastre-se</span>
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  size="sm"
+                  className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
+                  <Link href="/sign-up">
+                    <span>Comece Agora</span>
+                  </Link>
                 </Button>
               </div>
             </div>

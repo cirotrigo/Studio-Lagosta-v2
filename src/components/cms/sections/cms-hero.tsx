@@ -246,18 +246,18 @@ export function CMSHero({ content }: CMSHeroProps) {
                       <Image
                         src={demoImage.light}
                         alt={demoImage.alt || 'Demo'}
-                        width={1200}
-                        height={675}
-                        className="rounded-[1.5rem] shadow-2xl dark:hidden"
+                        width={2700}
+                        height={1440}
+                        className="z-2 border-border/25 aspect-15/8 relative rounded-2xl border dark:hidden"
                         priority
                       />
                       {demoImage.dark && (
                         <Image
                           src={demoImage.dark}
                           alt={demoImage.alt || 'Demo'}
-                          width={1200}
-                          height={675}
-                          className="rounded-[1.5rem] shadow-2xl hidden dark:block"
+                          width={2700}
+                          height={1440}
+                          className="bg-background aspect-15/8 relative hidden rounded-2xl dark:block"
                           priority
                         />
                       )}
