@@ -10,7 +10,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2 } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -22,6 +22,7 @@ import { LogoPanelContent } from './panels/logo-panel'
 import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
+import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -121,7 +122,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -300,6 +301,12 @@ function TemplateEditorContent() {
             active={activePanel === 'gradients'}
             onClick={() => togglePanel('gradients')}
           />
+          <ToolbarButton
+            icon={<Wand2 className="h-5 w-5" />}
+            label="IA ✨"
+            active={activePanel === 'ai-images'}
+            onClick={() => togglePanel('ai-images')}
+          />
           <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
@@ -329,6 +336,7 @@ function TemplateEditorContent() {
                 {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
+                {activePanel === 'ai-images' && 'Imagens IA ✨'}
                 {activePanel === 'properties' && 'Propriedades'}
                 {activePanel === 'layers' && 'Camadas'}
               </h2>
@@ -341,6 +349,7 @@ function TemplateEditorContent() {
               {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
+              {activePanel === 'ai-images' && <AIImagesPanel />}
               {activePanel === 'properties' && <PropertiesPanel />}
               {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>

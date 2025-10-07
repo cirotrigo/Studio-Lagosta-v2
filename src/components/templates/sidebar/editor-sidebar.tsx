@@ -11,6 +11,7 @@ import { IconsPanel } from './icons-panel'
 import { UploadsPanel } from './uploads-panel'
 import { BackgroundsPanel } from './backgrounds-panel'
 import { GradientsPanel } from './gradients-panel'
+import { AIImagesPanel } from './ai-images-panel'
 
 interface EditorSidebarProps {
   className?: string
@@ -28,7 +29,7 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
         className="flex h-full flex-col overflow-hidden"
       >
         <div className="flex-shrink-0 border-b border-border/40 bg-muted/20 p-3">
-          <TabsList className="grid h-9 grid-cols-6 rounded-md bg-muted/60">
+          <TabsList className="grid h-9 grid-cols-7 rounded-md bg-muted/60">
             <TabsTrigger value="templates" className="text-[10px] font-semibold uppercase">
               Templates
             </TabsTrigger>
@@ -46,6 +47,9 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
             </TabsTrigger>
             <TabsTrigger value="backgrounds" className="text-[10px] font-semibold uppercase">
               Fundos
+            </TabsTrigger>
+            <TabsTrigger value="ai-images" className="text-[10px] font-semibold uppercase">
+              IA ✨
             </TabsTrigger>
           </TabsList>
         </div>
@@ -72,6 +76,9 @@ export function EditorSidebar({ className }: EditorSidebarProps) {
           </TabsContent>
           <TabsContent value="backgrounds" className="h-full data-[state=inactive]:hidden">
             <BackgroundsPanel />
+          </TabsContent>
+          <TabsContent value="ai-images" className="h-full data-[state=inactive]:hidden">
+            <AIImagesPanel />
           </TabsContent>
         </div>
       </Tabs>

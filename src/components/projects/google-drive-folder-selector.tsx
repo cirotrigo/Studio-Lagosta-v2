@@ -28,6 +28,10 @@ interface DesktopGoogleDriveModalProps {
   initialFolderName?: string | null
   onOpenChange: (open: boolean) => void
   onSelect: (item: GoogleDriveItem | { id: string; name: string; kind: 'folder' }) => void
+  multiSelect?: boolean
+  maxSelection?: number
+  selectedItems?: GoogleDriveItem[]
+  onMultiSelectConfirm?: (items: GoogleDriveItem[]) => void
 }
 
 export function DesktopGoogleDriveModal({
@@ -37,6 +41,10 @@ export function DesktopGoogleDriveModal({
   initialFolderName,
   onOpenChange,
   onSelect,
+  multiSelect = false,
+  maxSelection = 3,
+  selectedItems = [],
+  onMultiSelectConfirm,
 }: DesktopGoogleDriveModalProps) {
   const rootLabel = 'Meu Drive'
   const [folderStack, setFolderStack] = React.useState<FolderBreadcrumb[]>([
@@ -45,7 +53,9 @@ export function DesktopGoogleDriveModal({
   const [searchTerm, setSearchTerm] = React.useState('')
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
   const [selected, setSelected] = React.useState<GoogleDriveItem | null>(null)
+  const [multiSelected, setMultiSelected] = React.useState<GoogleDriveItem[]>([])
   const scrollRef = React.useRef<HTMLDivElement>(null)
+  const { toast } = useToast()
 
   // Reset state when modal opens/closes
   React.useEffect(() => {
@@ -53,6 +63,7 @@ export function DesktopGoogleDriveModal({
       setSearchTerm('')
       setDebouncedSearch('')
       setSelected(null)
+      setMultiSelected([])
       setFolderStack([{ id: 'root', name: rootLabel }])
       return
     }
@@ -66,7 +77,8 @@ export function DesktopGoogleDriveModal({
       setFolderStack([{ id: 'root', name: rootLabel }])
     }
     setSelected(null)
-  }, [open, initialFolderId, initialFolderName, rootLabel])
+    setMultiSelected(multiSelect ? selectedItems : [])
+  }, [open, initialFolderId, initialFolderName, rootLabel, multiSelect, selectedItems])
 
   // Debounce search
   React.useEffect(() => {
@@ -112,21 +124,45 @@ export function DesktopGoogleDriveModal({
   }, [])
 
   const handleItemClick = React.useCallback((item: GoogleDriveItem) => {
-    setSelected(item)
-  }, [])
+    if (multiSelect && mode === 'images') {
+      // Multi-select mode: toggle selection
+      setMultiSelected(prev => {
+        const isSelected = prev.some(img => img.id === item.id)
+
+        if (isSelected) {
+          // Remove from selection
+          return prev.filter(img => img.id !== item.id)
+        } else {
+          // Add to selection
+          if (prev.length >= maxSelection) {
+            toast({
+              variant: 'destructive',
+              description: `Máximo de ${maxSelection} imagens selecionadas`,
+            })
+            return prev
+          }
+          return [...prev, item]
+        }
+      })
+    } else {
+      // Single select mode
+      setSelected(item)
+    }
+  }, [multiSelect, mode, maxSelection, toast])
 
   const handleItemDoubleClick = React.useCallback((item: GoogleDriveItem) => {
     if (item.kind === 'folder') {
       handleEnterFolder(item)
-    } else {
-      // Double-click on image selects and confirms
+    } else if (!multiSelect) {
+      // Double-click on image selects and confirms (only in single-select mode)
       setSelected(item)
       setTimeout(() => {
         onSelect(item)
         onOpenChange(false)
       }, 100)
     }
-  }, [handleEnterFolder, onSelect, onOpenChange])
+    // In multi-select mode, double-click does nothing special
+  }, [handleEnterFolder, onSelect, onOpenChange, multiSelect])
 
   const handleConfirm = React.useCallback(() => {
     if (mode === 'folders') {
@@ -143,11 +179,20 @@ export function DesktopGoogleDriveModal({
       return
     }
 
-    if (selected) {
-      onSelect(selected)
-      onOpenChange(false)
+    if (multiSelect) {
+      // Multi-select mode: confirm all selected items
+      if (onMultiSelectConfirm) {
+        onMultiSelectConfirm(multiSelected)
+        onOpenChange(false)
+      }
+    } else {
+      // Single-select mode
+      if (selected) {
+        onSelect(selected)
+        onOpenChange(false)
+      }
     }
-  }, [mode, selected, currentFolder, onSelect, onOpenChange])
+  }, [mode, selected, currentFolder, onSelect, onOpenChange, multiSelect, multiSelected, onMultiSelectConfirm])
 
   const clearSearch = React.useCallback(() => {
     setSearchTerm('')
@@ -284,6 +329,8 @@ export function DesktopGoogleDriveModal({
                   items={items}
                   mode={mode}
                   selected={selected}
+                  multiSelected={multiSelected}
+                  multiSelect={multiSelect}
                   onItemClick={handleItemClick}
                   onItemDoubleClick={handleItemDoubleClick}
                 />
@@ -314,12 +361,25 @@ export function DesktopGoogleDriveModal({
         {/* Footer */}
         <div className="flex items-center justify-between gap-4 border-t border-border/40 bg-muted/20 px-6 py-4">
           <div className="flex-1">
-            <p className="text-sm font-medium text-muted-foreground">
-              Seleção atual:
-            </p>
-            <p className="text-sm font-semibold text-foreground truncate">
-              {selected ? selected.name : 'Nenhum item selecionado'}
-            </p>
+            {multiSelect ? (
+              <>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Imagens selecionadas:
+                </p>
+                <p className="text-sm font-semibold text-foreground">
+                  {multiSelected.length} / {maxSelection} {multiSelected.length === 1 ? 'imagem' : 'imagens'}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-medium text-muted-foreground">
+                  Seleção atual:
+                </p>
+                <p className="text-sm font-semibold text-foreground truncate">
+                  {selected ? selected.name : 'Nenhum item selecionado'}
+                </p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" onClick={() => onOpenChange(false)}>
@@ -327,9 +387,9 @@ export function DesktopGoogleDriveModal({
             </Button>
             <Button
               onClick={handleConfirm}
-              disabled={mode !== 'folders' && !selected}
+              disabled={multiSelect ? multiSelected.length === 0 : (mode !== 'folders' && !selected)}
             >
-              {mode === 'folders' ? 'Selecionar' : 'Selecionar'}
+              {multiSelect ? 'Confirmar Seleção' : (mode === 'folders' ? 'Selecionar' : 'Selecionar')}
             </Button>
           </div>
         </div>
@@ -401,11 +461,13 @@ interface ItemsGridProps {
   items: GoogleDriveItem[]
   mode: GoogleDriveBrowserMode
   selected: GoogleDriveItem | null
+  multiSelected: GoogleDriveItem[]
+  multiSelect: boolean
   onItemClick: (item: GoogleDriveItem) => void
   onItemDoubleClick: (item: GoogleDriveItem) => void
 }
 
-function ItemsGrid({ items, mode, selected, onItemClick, onItemDoubleClick }: ItemsGridProps) {
+function ItemsGrid({ items, mode, selected, multiSelected, multiSelect, onItemClick, onItemDoubleClick }: ItemsGridProps) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {items.map((item) => {
@@ -416,11 +478,15 @@ function ItemsGrid({ items, mode, selected, onItemClick, onItemDoubleClick }: It
           return null
         }
 
+        const isSelected = multiSelect
+          ? multiSelected.some(img => img.id === item.id)
+          : selected?.id === item.id
+
         return (
           <ItemCard
             key={item.id}
             item={item}
-            isSelected={selected?.id === item.id}
+            isSelected={isSelected}
             onClick={() => onItemClick(item)}
             onDoubleClick={() => onItemDoubleClick(item)}
           />

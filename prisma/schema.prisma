@@ -148,18 +148,18 @@ model Plan {
 }
 
 model Project {
-  id                     Int           @id @default(autoincrement())
+  id                     Int                @id @default(autoincrement())
   name                   String
   description            String?
-  status                 ProjectStatus @default(ACTIVE)
+  status                 ProjectStatus      @default(ACTIVE)
   logoUrl                String?
   googleDriveFolderId    String?
   makeWebhookAnalyzeUrl  String?
   makeWebhookCreativeUrl String?
   userId                 String
   workspaceId            Int?
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
   googleDriveFolderName  String?
   BrandColor             BrandColor[]
   CustomFont             CustomFont[]
@@ -167,6 +167,7 @@ model Project {
   Generation             Generation[]
   Logo                   Logo[]
   Template               Template[]
+  AIGeneratedImage       AIGeneratedImage[]
 
   @@index([status])
   @@index([userId])
@@ -323,6 +324,39 @@ enum EntryStatus {
   ACTIVE
   DRAFT
   ARCHIVED
+}
+
+enum AIImageMode {
+  GENERATE
+  EDIT
+  OUTPAINT
+}
+
+model AIGeneratedImage {
+  id            String      @id @default(cuid())
+  projectId     Int
+  name          String
+  prompt        String      @db.Text
+  mode          AIImageMode
+  fileUrl       String
+  thumbnailUrl  String?
+  width         Int
+  height        Int
+  aspectRatio   String
+  provider      String      @default("replicate")
+  model         String
+  predictionId  String?
+  sourceImageId String?
+  createdBy     String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  Project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdBy])
+  @@index([mode])
+  @@index([createdAt])
 }
 
 model KnowledgeBaseEntry {
