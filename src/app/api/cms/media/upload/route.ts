@@ -43,8 +43,8 @@ export async function POST(request: Request) {
     })
 
     // Get image dimensions if it's an image
-    let width: number | null = null
-    let height: number | null = null
+    const width: number | null = null
+    const height: number | null = null
 
     if (file.type.startsWith('image/')) {
       // For images, we can try to get dimensions from the file
