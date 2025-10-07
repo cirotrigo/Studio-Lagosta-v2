@@ -169,6 +169,31 @@ export function KonvaEditorStage() {
     return () => setStageInstance(null)
   }, [setStageInstance])
 
+  // Sincronizar estado zoom com Konva stage.scale()
+  React.useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+
+    const currentScale = stage.scaleX()
+
+    // Se o zoom mudou externamente (pelos botões), aplicar no stage
+    if (Math.abs(currentScale - zoom) > 0.001) {
+      // Calcular offset para manter zoom centralizado
+      const stageWidth = stage.width()
+      const stageHeight = stage.height()
+
+      const centerX = stageWidth / 2
+      const centerY = stageHeight / 2
+
+      const newX = centerX - (centerX * zoom)
+      const newY = centerY - (centerY * zoom)
+
+      stage.scale({ x: zoom, y: zoom })
+      stage.position({ x: newX, y: newY })
+      stage.batchDraw()
+    }
+  }, [zoom])
+
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
       const stage = event.target.getStage()

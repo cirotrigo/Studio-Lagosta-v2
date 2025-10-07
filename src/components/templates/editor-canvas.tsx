@@ -8,6 +8,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
+import { ZoomControls } from './zoom-controls'
 
 const KonvaEditorStage = dynamic(
   () => import('./konva-editor-stage').then((mod) => mod.KonvaEditorStage),
@@ -40,6 +41,8 @@ export function EditorCanvas() {
     moveSelectedBackward,
     alignSelectedToCanvasCenterH,
     alignSelectedToCanvasCenterV,
+    zoom,
+    setZoom,
   } = useTemplateEditor()
   const [isEffectsPanelOpen, setIsEffectsPanelOpen] = React.useState(false)
   const [selectedTextNode, setSelectedTextNode] = React.useState<Konva.Text | Konva.TextPath | null>(null)
@@ -175,7 +178,7 @@ export function EditorCanvas() {
       </div>
 
       {/* Canvas Konva + Effects Panel */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden relative">
         {/* Canvas Konva */}
         <div className="flex-1 overflow-hidden">
           <KonvaEditorStage />
@@ -190,6 +193,15 @@ export function EditorCanvas() {
             onEffectChange={handleEffectChange}
           />
         )}
+
+        {/* Zoom Controls - centralizado acima da barra de páginas */}
+        <ZoomControls
+          zoom={zoom}
+          onZoomChange={setZoom}
+          minZoom={0.1}
+          maxZoom={5}
+          className="bottom-36"
+        />
       </div>
     </div>
   )
