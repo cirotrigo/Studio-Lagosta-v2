@@ -392,3 +392,141 @@ model KnowledgeChunk {
   @@index([entryId])
   @@map("knowledge_chunks")
 }
+
+// =============================================================================
+// CMS Models - Content Management System
+// =============================================================================
+
+enum CMSPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CMSSectionType {
+  HERO
+  BENTO_GRID
+  FAQ
+  AI_STARTER
+  PRICING
+  CTA
+  CUSTOM
+}
+
+model CMSPage {
+  id          String        @id @default(cuid())
+  title       String
+  slug        String        @unique
+  path        String        @unique
+  description String?       @db.Text
+  status      CMSPageStatus @default(DRAFT)
+  isHome      Boolean       @default(false)
+  metaTitle   String?
+  metaDesc    String?       @db.Text
+  ogImage     String?
+  publishedAt DateTime?
+  createdBy   String
+  updatedBy   String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  sections    CMSSection[]
+
+  @@index([slug])
+  @@index([path])
+  @@index([status])
+  @@index([isHome])
+  @@index([publishedAt])
+}
+
+model CMSSection {
+  id         String         @id @default(cuid())
+  pageId     String
+  type       CMSSectionType
+  name       String
+  content    Json
+  order      Int            @default(0)
+  isVisible  Boolean        @default(true)
+  cssClasses String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+  page       CMSPage        @relation(fields: [pageId], references: [id], onDelete: Cascade)
+
+  @@index([pageId])
+  @@index([type])
+  @@index([order])
+}
+
+model CMSMenu {
+  id        String        @id @default(cuid())
+  name      String
+  slug      String        @unique
+  location  String
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  items     CMSMenuItem[]
+
+  @@index([slug])
+  @@index([location])
+}
+
+model CMSMenuItem {
+  id        String        @id @default(cuid())
+  menuId    String
+  label     String
+  url       String
+  target    String?       @default("_self")
+  icon      String?
+  order     Int           @default(0)
+  parentId  String?
+  isVisible Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  menu      CMSMenu       @relation(fields: [menuId], references: [id], onDelete: Cascade)
+  parent    CMSMenuItem?  @relation("MenuItemChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children  CMSMenuItem[] @relation("MenuItemChildren")
+
+  @@index([menuId])
+  @@index([parentId])
+  @@index([order])
+}
+
+model CMSComponent {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?  @db.Text
+  type        String
+  content     Json
+  thumbnail   String?
+  isGlobal    Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([slug])
+  @@index([type])
+  @@index([isGlobal])
+}
+
+model CMSMedia {
+  id          String   @id @default(cuid())
+  name        String
+  filename    String
+  url         String
+  thumbnailUrl String?
+  mimeType    String
+  size        Int
+  width       Int?
+  height      Int?
+  alt         String?
+  caption     String?  @db.Text
+  folder      String?
+  uploadedBy  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([folder])
+  @@index([mimeType])
+  @@index([uploadedBy])
+}
