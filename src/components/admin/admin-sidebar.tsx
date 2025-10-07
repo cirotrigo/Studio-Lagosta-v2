@@ -15,6 +15,7 @@ import {
   FileText,
   Menu,
   Image,
+  Package,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,6 +40,7 @@ const overview: Item[] = [
 const content: Item[] = [
   { title: "Páginas", href: "/admin/content/pages", icon: FileText },
   { title: "Menus", href: "/admin/content/menus", icon: Menu },
+  { title: "Componentes", href: "/admin/content/components", icon: Package },
   { title: "Mídias", href: "/admin/content/media", icon: Image },
 ];
 const management: Item[] = [
