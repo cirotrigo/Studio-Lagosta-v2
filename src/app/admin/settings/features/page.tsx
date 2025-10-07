@@ -21,7 +21,7 @@ export default function FeatureCostsPage() {
     if (settings?.featureCosts) {
       setFeatureCosts(settings.featureCosts)
     }
-  }, [settings])
+  }, [settings?.featureCosts])
 
   React.useEffect(() => {
     if (error) {

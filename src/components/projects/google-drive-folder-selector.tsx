@@ -78,7 +78,8 @@ export function DesktopGoogleDriveModal({
     }
     setSelected(null)
     setMultiSelected(multiSelect ? selectedItems : [])
-  }, [open, initialFolderId, initialFolderName, rootLabel, multiSelect, selectedItems])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialFolderId, initialFolderName, multiSelect])
 
   // Debounce search
   React.useEffect(() => {
