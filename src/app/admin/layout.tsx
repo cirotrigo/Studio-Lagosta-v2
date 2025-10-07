@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server"
 import { isAdmin } from "@/lib/admin-utils"
 import { AdminSidebar } from "@/components/admin/admin-sidebar"
 import { AdminTopbar } from "@/components/admin/admin-topbar"
+import { AdminBreadcrumbs } from "@/components/admin/admin-breadcrumbs"
+import { GlobalSearch } from "@/components/admin/global-search"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -14,10 +16,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex min-h-svh flex-col">
             <AdminTopbar />
             <main className="flex-1 overflow-y-auto p-6">
-              <div className="container mx-auto max-w-7xl">{children}</div>
+              <div className="container mx-auto max-w-7xl">
+                <AdminBreadcrumbs />
+                {children}
+              </div>
             </main>
           </div>
         </SidebarInset>
+        <GlobalSearch />
       </SidebarProvider>
     )
   }
@@ -34,10 +40,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <div className="flex min-h-svh flex-col">
           <AdminTopbar />
           <main className="flex-1 overflow-y-auto p-6">
-            <div className="container mx-auto max-w-7xl">{children}</div>
+            <div className="container mx-auto max-w-7xl">
+              <AdminBreadcrumbs />
+              {children}
+            </div>
           </main>
         </div>
       </SidebarInset>
+      <GlobalSearch />
     </SidebarProvider>
   )
 }

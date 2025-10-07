@@ -1,6 +1,7 @@
 'use client'
 
 import type { CMSSection } from '@/hooks/admin/use-admin-cms'
+import { ResponsivePreview } from './responsive-preview'
 
 type SectionPreviewProps = {
   section: CMSSection
@@ -27,9 +28,11 @@ export function SectionPreview({ section }: SectionPreviewProps) {
   }
 
   return (
-    <div className="min-h-[400px] rounded-lg border bg-background p-8">
-      {renderPreview()}
-    </div>
+    <ResponsivePreview>
+      <div className="min-h-[400px] p-8">
+        {renderPreview()}
+      </div>
+    </ResponsivePreview>
   )
 }
 
