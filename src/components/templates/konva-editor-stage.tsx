@@ -15,6 +15,7 @@ import {
   type SnapConfig,
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
+import { useIsMobile } from '@/hooks/use-device-detection'
 
 /**
  * KonvaEditorStage - Componente principal do canvas Konva.js
@@ -67,11 +68,15 @@ export function KonvaEditorStage() {
     moveSelectedBackward,
   } = useTemplateEditor()
 
+  // OTIMIZAÇÃO MOBILE: Detectar dispositivo para desabilitar features pesadas
+  const isMobile = useIsMobile()
+
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
   const [showGrid, setShowGrid] = React.useState(false)
   const [snapConfig, setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
-  const [snappingEnabled, setSnappingEnabled] = React.useState(true)
+  // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
+  const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
   const [showTestGuide, setShowTestGuide] = React.useState(false)
   const [showMarginGuides, setShowMarginGuides] = React.useState(false)
   const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
@@ -86,6 +91,10 @@ export function KonvaEditorStage() {
     height: number
   }>({ visible: false, x: 0, y: 0, width: 0, height: 0 })
   const selectionStartRef = React.useRef<{ x: number; y: number } | null>(null)
+
+  // Multi-touch pinch-to-zoom state
+  const lastCenterRef = React.useRef<{ x: number; y: number } | null>(null)
+  const lastDistRef = React.useRef(0)
 
   // Debug: verificar configuração inicial
   React.useEffect(() => {
@@ -624,6 +633,80 @@ export function KonvaEditorStage() {
     moveSelectedBackward,
   ])
 
+  // OTIMIZAÇÃO MOBILE: Pinch-to-zoom multi-touch
+  const handleTouchMove = React.useCallback((e: KonvaEventObject<TouchEvent>) => {
+    e.evt.preventDefault()
+    const stage = stageRef.current
+    if (!stage) return
+
+    const touch1 = e.evt.touches[0]
+    const touch2 = e.evt.touches[1]
+
+    if (touch1 && touch2) {
+      // Multi-touch detectado: pinch to zoom
+      // Parar drag se estiver acontecendo
+      if (stage.isDragging()) {
+        stage.stopDrag()
+      }
+
+      const p1 = { x: touch1.clientX, y: touch1.clientY }
+      const p2 = { x: touch2.clientX, y: touch2.clientY }
+
+      const newCenter = {
+        x: (p1.x + p2.x) / 2,
+        y: (p1.y + p2.y) / 2,
+      }
+
+      const dist = Math.sqrt(
+        Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2)
+      )
+
+      if (!lastCenterRef.current) {
+        lastCenterRef.current = newCenter
+        lastDistRef.current = dist
+        return
+      }
+
+      // Calcular novo zoom baseado na distância entre os dedos
+      const pointTo = {
+        x: (newCenter.x - stage.x()) / stage.scaleX(),
+        y: (newCenter.y - stage.y()) / stage.scaleY(),
+      }
+
+      const scale = (stage.scaleX() * dist) / lastDistRef.current
+      const clampedScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, scale))
+
+      setZoom(clampedScale)
+
+      // Ajustar posição para manter o ponto focal
+      const dx = newCenter.x - lastCenterRef.current.x
+      const dy = newCenter.y - lastCenterRef.current.y
+
+      const newPos = {
+        x: newCenter.x - pointTo.x * clampedScale + dx,
+        y: newCenter.y - pointTo.y * clampedScale + dy,
+      }
+
+      stage.position(newPos)
+      stage.batchDraw()
+
+      lastDistRef.current = dist
+      lastCenterRef.current = newCenter
+    }
+  }, [setZoom])
+
+  const handleTouchEnd = React.useCallback(() => {
+    lastCenterRef.current = null
+    lastDistRef.current = 0
+  }, [])
+
+  // Habilitar multi-touch para Konva
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      Konva.hitOnDragEnabled = true
+    }
+  }, [])
+
   // Prevenir zoom acidental do browser com Ctrl+Wheel
   React.useEffect(() => {
     const preventBrowserZoom = (event: WheelEvent) => {
@@ -649,9 +732,19 @@ export function KonvaEditorStage() {
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
           onMouseMove={handleStagePointerMove}
-          onTouchMove={handleStagePointerMove}
+          onTouchMove={(e) => {
+            // Multi-touch tem prioridade
+            if (e.evt.touches && e.evt.touches.length > 1) {
+              handleTouchMove(e)
+            } else {
+              handleStagePointerMove(e)
+            }
+          }}
           onMouseUp={handleStagePointerUp}
-          onTouchEnd={handleStagePointerUp}
+          onTouchEnd={(e) => {
+            handleTouchEnd()
+            handleStagePointerUp(e)
+          }}
           onWheel={handleWheel}
         >
           {/* Background layer - non-interactive (listening: false for performance) */}
