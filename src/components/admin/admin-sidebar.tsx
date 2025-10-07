@@ -12,6 +12,9 @@ import {
   Users,
   DollarSign,
   BookOpen,
+  FileText,
+  Menu,
+  Image,
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,6 +35,11 @@ type Item = { title: string; href: string; icon: ElementType };
 
 const overview: Item[] = [
   { title: "Painel", href: "/admin", icon: LayoutDashboard },
+];
+const content: Item[] = [
+  { title: "Páginas", href: "/admin/content/pages", icon: FileText },
+  { title: "Menus", href: "/admin/content/menus", icon: Menu },
+  { title: "Mídias", href: "/admin/content/media", icon: Image },
 ];
 const management: Item[] = [
   { title: "Usuários", href: "/admin/users", icon: Users },
@@ -93,6 +101,13 @@ export function AdminSidebar() {
         </SidebarGroup>
 
         <SidebarSeparator />
+
+        <SidebarGroup>
+          <SidebarGroupLabel>Conteúdo</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <NavList items={content} pathname={pathname} />
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         <SidebarGroup>
           <SidebarGroupLabel>Gerenciamento</SidebarGroupLabel>

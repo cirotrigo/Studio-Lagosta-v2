@@ -1,5 +1,7 @@
 import { db } from '@/lib/db'
-import type { CMSPageStatus, CMSSectionType, Prisma } from '@prisma/client'
+
+type CMSPageStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+type CMSSectionType = 'HERO' | 'BENTO_GRID' | 'FAQ' | 'AI_STARTER' | 'PRICING' | 'CTA' | 'CUSTOM'
 
 // =============================================================================
 // PAGE MUTATIONS
@@ -154,7 +156,7 @@ export async function duplicatePage(id: string, createdBy: string) {
         pageId: newPage.id,
         type: section.type,
         name: section.name,
-        content: section.content as Prisma.JsonObject,
+        content: section.content as any,
         order: section.order,
         isVisible: section.isVisible,
         cssClasses: section.cssClasses,
@@ -195,7 +197,7 @@ export async function createSection(data: CreateSectionInput) {
   return await db.cMSSection.create({
     data: {
       ...data,
-      content: data.content as Prisma.JsonObject,
+      content: data.content as any,
     },
     include: {
       page: true,
@@ -211,7 +213,7 @@ export async function updateSection(id: string, data: UpdateSectionInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as Prisma.JsonObject) : undefined,
+      content: data.content ? (data.content as any) : undefined,
     },
     include: {
       page: true,
@@ -275,7 +277,7 @@ export async function duplicateSection(id: string) {
       pageId: original.pageId,
       type: original.type,
       name: `${original.name} (Copy)`,
-      content: original.content as Prisma.JsonObject,
+      content: original.content as any,
       order: (maxOrder?.order ?? 0) + 1,
       isVisible: original.isVisible,
       cssClasses: original.cssClasses,
@@ -438,7 +440,7 @@ export async function createComponent(data: CreateComponentInput) {
   return await db.cMSComponent.create({
     data: {
       ...data,
-      content: data.content as Prisma.JsonObject,
+      content: data.content as any,
     },
   })
 }
@@ -451,7 +453,7 @@ export async function updateComponent(id: string, data: UpdateComponentInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as Prisma.JsonObject) : undefined,
+      content: data.content ? (data.content as any) : undefined,
     },
   })
 }

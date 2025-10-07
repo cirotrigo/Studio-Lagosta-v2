@@ -17,10 +17,10 @@ const createSectionSchema = z.object({
 const reorderSectionsSchema = z.object({
   sections: z.array(
     z.object({
-      id: z.string(),
-      order: z.number(),
+      id: z.string().min(1),
+      order: z.number().int(),
     })
-  ),
+  ).min(1),
 })
 
 /**
@@ -69,7 +69,15 @@ export async function POST(request: Request) {
     const body = await request.json()
     const validatedData = createSectionSchema.parse(body)
 
-    const section = await createSection(validatedData)
+    const section = await createSection({
+      pageId: validatedData.pageId,
+      type: validatedData.type,
+      name: validatedData.name,
+      content: validatedData.content,
+      order: validatedData.order,
+      isVisible: validatedData.isVisible,
+      cssClasses: validatedData.cssClasses,
+    })
 
     return NextResponse.json({ section }, { status: 201 })
   } catch (error) {
@@ -102,7 +110,9 @@ export async function PATCH(request: Request) {
     const body = await request.json()
     const validatedData = reorderSectionsSchema.parse(body)
 
-    await reorderSections(validatedData.sections)
+    await reorderSections(
+      validatedData.sections as Array<{ id: string; order: number }>
+    )
 
     return NextResponse.json({ success: true })
   } catch (error) {

@@ -62,7 +62,15 @@ export async function POST(request: Request) {
     const validatedData = createPageSchema.parse(body)
 
     const page = await createPage({
-      ...validatedData,
+      title: validatedData.title,
+      slug: validatedData.slug,
+      path: validatedData.path,
+      description: validatedData.description,
+      status: validatedData.status,
+      isHome: validatedData.isHome,
+      metaTitle: validatedData.metaTitle,
+      metaDesc: validatedData.metaDesc,
+      ogImage: validatedData.ogImage,
       createdBy: userId,
     })
 

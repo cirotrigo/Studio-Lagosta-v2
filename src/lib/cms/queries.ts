@@ -1,5 +1,4 @@
 import { db } from '@/lib/db'
-import type { CMSPageStatus, CMSSectionType } from '@prisma/client'
 
 // =============================================================================
 // PAGE QUERIES
@@ -98,7 +97,7 @@ export async function getPublishedPages() {
 /**
  * Get pages by status
  */
-export async function getPagesByStatus(status: CMSPageStatus) {
+export async function getPagesByStatus(status: 'DRAFT' | 'PUBLISHED' | 'ARCHIVED') {
   return await db.cMSPage.findMany({
     where: { status },
     include: {
@@ -137,7 +136,7 @@ export async function getSectionById(id: string) {
 /**
  * Get sections by type
  */
-export async function getSectionsByType(type: CMSSectionType) {
+export async function getSectionsByType(type: 'HERO' | 'BENTO_GRID' | 'FAQ' | 'AI_STARTER' | 'PRICING' | 'CTA' | 'CUSTOM') {
   return await db.cMSSection.findMany({
     where: { type },
     include: { page: true },
