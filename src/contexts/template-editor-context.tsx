@@ -69,6 +69,22 @@ export interface TemplateEditorContextValue {
     name?: string
   }) => void
   forceUpdate?: () => void
+  // Alignment & Organization
+  alignSelectedLeft: () => void
+  alignSelectedCenterH: () => void
+  alignSelectedRight: () => void
+  alignSelectedTop: () => void
+  alignSelectedMiddleV: () => void
+  alignSelectedBottom: () => void
+  distributeSelectedH: () => void
+  distributeSelectedV: () => void
+  bringSelectedToFront: () => void
+  sendSelectedToBack: () => void
+  moveSelectedForward: () => void
+  moveSelectedBackward: () => void
+  // Canvas Alignment
+  alignSelectedToCanvasCenterH: () => void
+  alignSelectedToCanvasCenterV: () => void
 }
 
 export interface ExportRecord {
@@ -816,6 +832,364 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
     setUpdateCounter((prev) => prev + 1)
   }, [])
 
+  // Alignment & Organization Methods
+  const alignSelectedLeft = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    // Import alignment functions dynamically
+    import('@/lib/konva-alignment').then(({ alignLeft }) => {
+      alignLeft(nodes, contentLayer)
+      // Update layer positions in state
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const alignSelectedCenterH = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    import('@/lib/konva-alignment').then(({ alignCenterH }) => {
+      alignCenterH(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const alignSelectedRight = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    import('@/lib/konva-alignment').then(({ alignRight }) => {
+      alignRight(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const alignSelectedTop = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    import('@/lib/konva-alignment').then(({ alignTop }) => {
+      alignTop(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const alignSelectedMiddleV = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    import('@/lib/konva-alignment').then(({ alignMiddleV }) => {
+      alignMiddleV(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const alignSelectedBottom = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 2) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 2) return
+
+    import('@/lib/konva-alignment').then(({ alignBottom }) => {
+      alignBottom(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const distributeSelectedH = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 3) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 3) return
+
+    import('@/lib/konva-alignment').then(({ distributeHorizontal }) => {
+      distributeHorizontal(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const distributeSelectedV = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length < 3) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length < 3) return
+
+    import('@/lib/konva-alignment').then(({ distributeVertical }) => {
+      distributeVertical(nodes, contentLayer)
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, updateLayer])
+
+  const bringSelectedToFront = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    import('@/lib/konva-alignment').then(({ bringToFront }) => {
+      const newLayers = bringToFront(nodes, design.layers)
+      applyDesign(() => ({ ...design, layers: normalizeLayerOrder(newLayers) }))
+    })
+  }, [selectedLayerIds, design, applyDesign])
+
+  const sendSelectedToBack = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    import('@/lib/konva-alignment').then(({ sendToBack }) => {
+      const newLayers = sendToBack(nodes, design.layers)
+      applyDesign(() => ({ ...design, layers: normalizeLayerOrder(newLayers) }))
+    })
+  }, [selectedLayerIds, design, applyDesign])
+
+  const moveSelectedForward = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    import('@/lib/konva-alignment').then(({ moveForward }) => {
+      const newLayers = moveForward(nodes, design.layers)
+      applyDesign(() => ({ ...design, layers: normalizeLayerOrder(newLayers) }))
+    })
+  }, [selectedLayerIds, design, applyDesign])
+
+  const moveSelectedBackward = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    import('@/lib/konva-alignment').then(({ moveBackward }) => {
+      const newLayers = moveBackward(nodes, design.layers)
+      applyDesign(() => ({ ...design, layers: normalizeLayerOrder(newLayers) }))
+    })
+  }, [selectedLayerIds, design, applyDesign])
+
+  // Canvas Alignment Methods
+  const alignSelectedToCanvasCenterH = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length === 0) return
+
+    import('@/lib/konva-alignment').then(({ alignToCanvasCenterH }) => {
+      alignToCanvasCenterH(nodes, contentLayer, design.canvas.width)
+      // Update layer positions in state
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, design.canvas.width, updateLayer])
+
+  const alignSelectedToCanvasCenterV = React.useCallback(() => {
+    const stage = stageInstanceRef.current
+    if (!stage || selectedLayerIds.length === 0) return
+
+    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+    if (!contentLayer) return
+
+    const nodes = selectedLayerIds
+      .map((id) => {
+        const node = stage.findOne(`#${id}`)
+        const layer = design.layers.find((l) => l.id === id)
+        return node && layer ? { node, layer } : null
+      })
+      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+
+    if (nodes.length === 0) return
+
+    import('@/lib/konva-alignment').then(({ alignToCanvasCenterV }) => {
+      alignToCanvasCenterV(nodes, contentLayer, design.canvas.height)
+      // Update layer positions in state
+      nodes.forEach(({ node, layer }) => {
+        updateLayer(layer.id, (l) => ({
+          ...l,
+          position: { x: node.x(), y: node.y() },
+        }))
+      })
+    })
+  }, [selectedLayerIds, design.layers, design.canvas.height, updateLayer])
+
   const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] ?? null
 
   const value = React.useMemo<TemplateEditorContextValue>(
@@ -877,6 +1251,20 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       clearExports,
       setStageInstance,
       forceUpdate,
+      alignSelectedLeft,
+      alignSelectedCenterH,
+      alignSelectedRight,
+      alignSelectedTop,
+      alignSelectedMiddleV,
+      alignSelectedBottom,
+      distributeSelectedH,
+      distributeSelectedV,
+      bringSelectedToFront,
+      sendSelectedToBack,
+      moveSelectedForward,
+      moveSelectedBackward,
+      alignSelectedToCanvasCenterH,
+      alignSelectedToCanvasCenterV,
     }),
     [
       template.id,
@@ -925,6 +1313,20 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       setStageInstance,
       forceUpdate,
       updateCounter,
+      alignSelectedLeft,
+      alignSelectedCenterH,
+      alignSelectedRight,
+      alignSelectedTop,
+      alignSelectedMiddleV,
+      alignSelectedBottom,
+      distributeSelectedH,
+      distributeSelectedV,
+      bringSelectedToFront,
+      sendSelectedToBack,
+      moveSelectedForward,
+      moveSelectedBackward,
+      alignSelectedToCanvasCenterH,
+      alignSelectedToCanvasCenterV,
     ],
   )
 

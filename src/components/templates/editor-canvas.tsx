@@ -7,6 +7,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
+import { AlignmentToolbar } from './alignment-toolbar'
 
 const KonvaEditorStage = dynamic(
   () => import('./konva-editor-stage').then((mod) => mod.KonvaEditorStage),
@@ -21,7 +22,25 @@ const KonvaEditorStage = dynamic(
 )
 
 export function EditorCanvas() {
-  const { selectedLayerIds, design, updateLayer } = useTemplateEditor()
+  const {
+    selectedLayerIds,
+    design,
+    updateLayer,
+    alignSelectedLeft,
+    alignSelectedCenterH,
+    alignSelectedRight,
+    alignSelectedTop,
+    alignSelectedMiddleV,
+    alignSelectedBottom,
+    distributeSelectedH,
+    distributeSelectedV,
+    bringSelectedToFront,
+    sendSelectedToBack,
+    moveSelectedForward,
+    moveSelectedBackward,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
+  } = useTemplateEditor()
   const [isEffectsPanelOpen, setIsEffectsPanelOpen] = React.useState(false)
   const [selectedTextNode, setSelectedTextNode] = React.useState<Konva.Text | Konva.TextPath | null>(null)
   const [currentLayer, setCurrentLayer] = React.useState<Konva.Layer | null>(null)
@@ -133,6 +152,27 @@ export function EditorCanvas() {
           onEffectsClick={handleEffectsClick}
         />
       )}
+
+      {/* Alignment Toolbar - sempre visível no topo do canvas */}
+      <div className="flex items-center justify-center border-b border-border/40 bg-background/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <AlignmentToolbar
+          selectedCount={selectedLayerIds.length}
+          onAlignLeft={alignSelectedLeft}
+          onAlignCenterH={alignSelectedCenterH}
+          onAlignRight={alignSelectedRight}
+          onAlignTop={alignSelectedTop}
+          onAlignMiddleV={alignSelectedMiddleV}
+          onAlignBottom={alignSelectedBottom}
+          onDistributeH={distributeSelectedH}
+          onDistributeV={distributeSelectedV}
+          onBringToFront={bringSelectedToFront}
+          onSendToBack={sendSelectedToBack}
+          onMoveForward={moveSelectedForward}
+          onMoveBackward={moveSelectedBackward}
+          onAlignToCanvasCenterH={alignSelectedToCanvasCenterH}
+          onAlignToCanvasCenterV={alignSelectedToCanvasCenterV}
+        />
+      </div>
 
       {/* Canvas Konva + Effects Panel */}
       <div className="flex-1 flex overflow-hidden">

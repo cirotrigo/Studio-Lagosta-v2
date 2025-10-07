@@ -8,7 +8,22 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Settings, Layers } from 'lucide-react'
+import {
+  Settings,
+  Layers,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignHorizontalDistributeCenter,
+  AlignVerticalDistributeCenter,
+  BringToFront,
+  SendToBack,
+  ArrowUp,
+  ArrowDown,
+} from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
@@ -351,9 +366,16 @@ function PropertiesContent({
       <ScrollArea className="flex-1 pr-2">
         <div className="space-y-4">
           {!selectedLayer && (
-            <div className="rounded-md border border-dashed border-border/40 p-4 text-center text-xs text-muted-foreground">
-              Selecione uma layer para editar suas propriedades.
-            </div>
+            <>
+              <div className="rounded-md border border-dashed border-border/40 p-4 text-center text-xs text-muted-foreground">
+                Selecione uma layer para editar suas propriedades.
+              </div>
+
+              {/* Show alignment controls even when no single layer is selected, for multi-selection */}
+              {editor.selectedLayerIds.length > 0 && (
+                <AlignmentControls selectedCount={editor.selectedLayerIds.length} />
+              )}
+            </>
           )}
 
           {selectedLayer && (
@@ -425,6 +447,9 @@ function PropertiesContent({
                   />
                 </div>
               </div>
+
+              {/* Alignment Controls - Show when at least 1 element is selected */}
+              <AlignmentControls selectedCount={editor.selectedLayerIds.length} />
 
               {selectedLayer.type === 'text' && (
                 <TextControls layer={selectedLayer} setStyleValue={setStyleValue} updateLayerPartial={updateLayerPartial} />
@@ -893,5 +918,238 @@ function ToggleChip({ label, active, onToggle }: ToggleChipProps) {
     >
       {label}
     </button>
+  )
+}
+
+interface AlignmentControlsProps {
+  selectedCount: number
+}
+
+function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
+  const {
+    alignSelectedLeft,
+    alignSelectedCenterH,
+    alignSelectedRight,
+    alignSelectedTop,
+    alignSelectedMiddleV,
+    alignSelectedBottom,
+    distributeSelectedH,
+    distributeSelectedV,
+    bringSelectedToFront,
+    sendSelectedToBack,
+    moveSelectedForward,
+    moveSelectedBackward,
+    alignSelectedToCanvasCenterH,
+    alignSelectedToCanvasCenterV,
+  } = useTemplateEditor()
+
+  const alignDisabled = selectedCount < 2
+  const distributeDisabled = selectedCount < 3
+  const orderDisabled = selectedCount === 0
+  const canvasAlignDisabled = selectedCount === 0
+
+  return (
+    <div className="space-y-4 rounded-md border border-border/30 bg-muted/30 p-3 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="font-semibold">Alinhamento e Organização</span>
+        <span className="text-[10px] text-muted-foreground">
+          {selectedCount} {selectedCount === 1 ? 'selecionado' : 'selecionados'}
+        </span>
+      </div>
+
+      {/* Horizontal Alignment */}
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Alinhamento Horizontal</Label>
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedLeft}
+            className="h-9 w-full"
+            title="Alinhar à esquerda (Shift+Ctrl+L)"
+          >
+            <AlignLeft className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedCenterH}
+            className="h-9 w-full"
+            title="Centralizar horizontalmente (Shift+Ctrl+C)"
+          >
+            <AlignCenter className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedRight}
+            className="h-9 w-full"
+            title="Alinhar à direita (Shift+Ctrl+R)"
+          >
+            <AlignRight className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Vertical Alignment */}
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Alinhamento Vertical</Label>
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedTop}
+            className="h-9 w-full"
+            title="Alinhar ao topo (Shift+Ctrl+T)"
+          >
+            <AlignVerticalJustifyStart className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedMiddleV}
+            className="h-9 w-full"
+            title="Centralizar verticalmente (Shift+Ctrl+M)"
+          >
+            <AlignVerticalJustifyCenter className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={alignDisabled}
+            onClick={alignSelectedBottom}
+            className="h-9 w-full"
+            title="Alinhar ao fundo (Shift+Ctrl+B)"
+          >
+            <AlignVerticalJustifyEnd className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      {/* Distribution */}
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Distribuição (mín. 3 elementos)</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={distributeDisabled}
+            onClick={distributeSelectedH}
+            className="h-9 w-full gap-2"
+            title="Distribuir horizontalmente (Shift+Ctrl+H)"
+          >
+            <AlignHorizontalDistributeCenter className="h-4 w-4" />
+            <span className="text-[10px]">Horizontal</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={distributeDisabled}
+            onClick={distributeSelectedV}
+            className="h-9 w-full gap-2"
+            title="Distribuir verticalmente (Shift+Ctrl+V)"
+          >
+            <AlignVerticalDistributeCenter className="h-4 w-4" />
+            <span className="text-[10px]">Vertical</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Canvas Alignment */}
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Alinhamento ao Canvas</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={canvasAlignDisabled}
+            onClick={alignSelectedToCanvasCenterH}
+            className="h-9 w-full gap-2"
+            title="Centralizar no canvas horizontalmente (Shift+Alt+C)"
+          >
+            <AlignCenter className="h-4 w-4" />
+            <span className="text-[10px]">Centro H</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={canvasAlignDisabled}
+            onClick={alignSelectedToCanvasCenterV}
+            className="h-9 w-full gap-2"
+            title="Centralizar no canvas verticalmente (Shift+Alt+M)"
+          >
+            <AlignVerticalJustifyCenter className="h-4 w-4" />
+            <span className="text-[10px]">Centro V</span>
+          </Button>
+        </div>
+      </div>
+
+      {/* Layer Ordering */}
+      <div className="space-y-2">
+        <Label className="text-[11px] uppercase tracking-wide">Organização de Camadas</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={orderDisabled}
+            onClick={bringSelectedToFront}
+            className="h-9 w-full gap-2"
+            title="Trazer para frente (Ctrl+])"
+          >
+            <BringToFront className="h-4 w-4" />
+            <span className="text-[10px]">Frente</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={orderDisabled}
+            onClick={sendSelectedToBack}
+            className="h-9 w-full gap-2"
+            title="Enviar para trás (Ctrl+[)"
+          >
+            <SendToBack className="h-4 w-4" />
+            <span className="text-[10px]">Trás</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={orderDisabled}
+            onClick={moveSelectedForward}
+            className="h-9 w-full gap-2"
+            title="Mover para frente (Ctrl+Shift+])"
+          >
+            <ArrowUp className="h-4 w-4" />
+            <span className="text-[10px]">Avançar</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={orderDisabled}
+            onClick={moveSelectedBackward}
+            className="h-9 w-full gap-2"
+            title="Mover para trás (Ctrl+Shift+[)"
+          >
+            <ArrowDown className="h-4 w-4" />
+            <span className="text-[10px]">Retroceder</span>
+          </Button>
+        </div>
+      </div>
+
+      {alignDisabled && (
+        <p className="text-[10px] text-muted-foreground">
+          ℹ️ Selecione 2 ou mais elementos para usar alinhamento
+        </p>
+      )}
+      {!alignDisabled && distributeDisabled && (
+        <p className="text-[10px] text-muted-foreground">
+          ℹ️ Selecione 3 ou mais elementos para usar distribuição
+        </p>
+      )}
+    </div>
   )
 }

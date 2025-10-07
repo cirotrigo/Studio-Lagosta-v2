@@ -41,6 +41,7 @@ export function KonvaEditorStage() {
     design,
     selectedLayerIds,
     selectLayer,
+    selectLayers,
     clearLayerSelection,
     updateLayer,
     zoom,
@@ -52,6 +53,18 @@ export function KonvaEditorStage() {
     canUndo,
     canRedo,
     setStageInstance,
+    alignSelectedLeft,
+    alignSelectedCenterH,
+    alignSelectedRight,
+    alignSelectedTop,
+    alignSelectedMiddleV,
+    alignSelectedBottom,
+    distributeSelectedH,
+    distributeSelectedV,
+    bringSelectedToFront,
+    sendSelectedToBack,
+    moveSelectedForward,
+    moveSelectedBackward,
   } = useTemplateEditor()
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
@@ -63,6 +76,16 @@ export function KonvaEditorStage() {
   const [showMarginGuides, setShowMarginGuides] = React.useState(false)
   const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
   const [fontsReady, setFontsReady] = React.useState(false)
+
+  // Drag-to-select state
+  const [selectionRect, setSelectionRect] = React.useState<{
+    visible: boolean
+    x: number
+    y: number
+    width: number
+    height: number
+  }>({ visible: false, x: 0, y: 0, width: 0, height: 0 })
+  const selectionStartRef = React.useRef<{ x: number; y: number } | null>(null)
 
   // Debug: verificar configuração inicial
   React.useEffect(() => {
@@ -124,11 +147,92 @@ export function KonvaEditorStage() {
 
       const target = event.target as Konva.Node
       const clickedOnEmpty = target === stage || target.hasName?.('canvas-background')
+
       if (clickedOnEmpty) {
-        clearLayerSelection()
+        // Start drag-to-select
+        const pointerPos = stage.getPointerPosition()
+        if (!pointerPos) return
+
+        selectionStartRef.current = { x: pointerPos.x, y: pointerPos.y }
+        setSelectionRect({
+          visible: true,
+          x: pointerPos.x,
+          y: pointerPos.y,
+          width: 0,
+          height: 0,
+        })
       }
     },
-    [clearLayerSelection],
+    [],
+  )
+
+  const handleStagePointerMove = React.useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (!selectionStartRef.current) return
+
+      const stage = event.target.getStage()
+      if (!stage) return
+
+      const pointerPos = stage.getPointerPosition()
+      if (!pointerPos) return
+
+      const x1 = selectionStartRef.current.x
+      const y1 = selectionStartRef.current.y
+      const x2 = pointerPos.x
+      const y2 = pointerPos.y
+
+      setSelectionRect({
+        visible: true,
+        x: Math.min(x1, x2),
+        y: Math.min(y1, y2),
+        width: Math.abs(x2 - x1),
+        height: Math.abs(y2 - y1),
+      })
+    },
+    [],
+  )
+
+  const handleStagePointerUp = React.useCallback(
+    (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      if (!selectionStartRef.current) return
+
+      const stage = event.target.getStage()
+      if (!stage) return
+
+      // Get final selection rectangle
+      const box = {
+        x: selectionRect.x,
+        y: selectionRect.y,
+        width: selectionRect.width,
+        height: selectionRect.height,
+      }
+
+      // Find all shapes that intersect with selection rectangle
+      const selectedIds: string[] = []
+
+      design.layers.forEach((layer) => {
+        const node = stage.findOne(`#${layer.id}`)
+        if (node) {
+          const nodeBox = node.getClientRect()
+          const hasIntersection = Konva.Util.haveIntersection(box, nodeBox)
+          if (hasIntersection) {
+            selectedIds.push(layer.id)
+          }
+        }
+      })
+
+      // Apply selection
+      if (selectedIds.length > 0) {
+        selectLayers(selectedIds)
+      } else {
+        clearLayerSelection()
+      }
+
+      // Reset selection rectangle
+      selectionStartRef.current = null
+      setSelectionRect({ visible: false, x: 0, y: 0, width: 0, height: 0 })
+    },
+    [selectionRect, design.layers, selectLayers, clearLayerSelection],
   )
 
   const handleWheel = React.useCallback(
@@ -391,6 +495,74 @@ export function KonvaEditorStage() {
         event.preventDefault()
         if (canRedo) redo()
       }
+
+      // Alignment shortcuts (Shift+Ctrl+...)
+      if (event.shiftKey) {
+        if (key === 'l') {
+          event.preventDefault()
+          alignSelectedLeft()
+          return
+        }
+        if (key === 'c') {
+          event.preventDefault()
+          alignSelectedCenterH()
+          return
+        }
+        if (key === 'r') {
+          event.preventDefault()
+          alignSelectedRight()
+          return
+        }
+        if (key === 't') {
+          event.preventDefault()
+          alignSelectedTop()
+          return
+        }
+        if (key === 'm') {
+          event.preventDefault()
+          alignSelectedMiddleV()
+          return
+        }
+        if (key === 'b') {
+          event.preventDefault()
+          alignSelectedBottom()
+          return
+        }
+        if (key === 'h') {
+          event.preventDefault()
+          distributeSelectedH()
+          return
+        }
+        if (key === 'v') {
+          event.preventDefault()
+          distributeSelectedV()
+          return
+        }
+
+        // Layer ordering with Shift
+        if (key === ']') {
+          event.preventDefault()
+          moveSelectedForward()
+          return
+        }
+        if (key === '[') {
+          event.preventDefault()
+          moveSelectedBackward()
+          return
+        }
+      }
+
+      // Layer ordering without Shift (Ctrl+] and Ctrl+[)
+      if (key === ']') {
+        event.preventDefault()
+        bringSelectedToFront()
+        return
+      }
+      if (key === '[') {
+        event.preventDefault()
+        sendSelectedToBack()
+        return
+      }
     }
 
     const handleKeyUp = (event: KeyboardEvent) => {
@@ -406,7 +578,31 @@ export function KonvaEditorStage() {
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
     }
-  }, [animateZoom, canRedo, canUndo, copySelectedLayers, pasteLayers, redo, selectedLayerIds.length, undo, showTestGuide, showMarginGuides, showCanvasBounds])
+  }, [
+    animateZoom,
+    canRedo,
+    canUndo,
+    copySelectedLayers,
+    pasteLayers,
+    redo,
+    selectedLayerIds.length,
+    undo,
+    showTestGuide,
+    showMarginGuides,
+    showCanvasBounds,
+    alignSelectedLeft,
+    alignSelectedCenterH,
+    alignSelectedRight,
+    alignSelectedTop,
+    alignSelectedMiddleV,
+    alignSelectedBottom,
+    distributeSelectedH,
+    distributeSelectedV,
+    bringSelectedToFront,
+    sendSelectedToBack,
+    moveSelectedForward,
+    moveSelectedBackward,
+  ])
 
   // Prevenir zoom acidental do browser com Ctrl+Wheel
   React.useEffect(() => {
@@ -432,7 +628,10 @@ export function KonvaEditorStage() {
           className="rounded-md shadow-2xl ring-1 ring-border/20"
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
-          onClick={handleStagePointerDown}
+          onMouseMove={handleStagePointerMove}
+          onTouchMove={handleStagePointerMove}
+          onMouseUp={handleStagePointerUp}
+          onTouchEnd={handleStagePointerUp}
           onWheel={handleWheel}
         >
           {/* Background layer - non-interactive (listening: false for performance) */}
@@ -492,6 +691,21 @@ export function KonvaEditorStage() {
           {/* Smart Guides layer - DEVE estar por último para aparecer na frente */}
           <KonvaLayer name="guides-layer" listening={false}>
             {guides.length > 0 && console.log('🎨 Renderizando', guides.length, 'guias')}
+
+            {/* Drag-to-select rectangle */}
+            {selectionRect.visible && (
+              <Rect
+                x={selectionRect.x}
+                y={selectionRect.y}
+                width={selectionRect.width}
+                height={selectionRect.height}
+                fill="rgba(59, 130, 246, 0.2)"
+                stroke="hsl(var(--primary))"
+                strokeWidth={1}
+                dash={[4, 4]}
+                listening={false}
+              />
+            )}
 
             {/* Guias de margem (padding 70px) - Ativado com tecla 'R' */}
             {showMarginGuides && (
