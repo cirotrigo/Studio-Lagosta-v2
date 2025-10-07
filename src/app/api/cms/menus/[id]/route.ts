@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import { getMenuItems } from '@/lib/cms/queries'
+import { getMenuById, getMenuItems } from '@/lib/cms/queries'
 import { updateMenu, deleteMenu } from '@/lib/cms/mutations'
 import { z } from 'zod'
 
@@ -26,13 +26,17 @@ export async function GET(
     }
 
     const { id } = await params
-    const items = await getMenuItems(id)
+    const menu = await getMenuById(id)
 
-    return NextResponse.json({ items })
+    if (!menu) {
+      return NextResponse.json({ error: 'Menu not found' }, { status: 404 })
+    }
+
+    return NextResponse.json({ menu })
   } catch (error) {
-    console.error('Error fetching menu items:', error)
+    console.error('Error fetching menu:', error)
     return NextResponse.json(
-      { error: 'Failed to fetch menu items' },
+      { error: 'Failed to fetch menu' },
       { status: 500 }
     )
   }

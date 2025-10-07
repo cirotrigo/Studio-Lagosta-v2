@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -41,6 +42,7 @@ type ComponentGridProps = {
 }
 
 export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
+  const router = useRouter()
   const [deleteId, setDeleteId] = useState<string | null>(null)
   const { toast } = useToast()
   const deleteMutation = useDeleteComponent()
@@ -64,6 +66,18 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
     }
   }
 
+  const handleEdit = (id: string) => {
+    router.push(`/admin/content/components/${id}`)
+  }
+
+  const handleView = (component: CMSComponent) => {
+    // TODO: Implement component preview
+    toast({
+      title: 'Em breve',
+      description: 'Funcionalidade de visualização em desenvolvimento.',
+    })
+  }
+
   const handleDuplicate = (component: CMSComponent) => {
     // TODO: Implement duplicate
     toast({
@@ -80,6 +94,8 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
             <ComponentCard
               key={component.id}
               component={component}
+              onEdit={handleEdit}
+              onView={handleView}
               onDelete={setDeleteId}
               onDuplicate={handleDuplicate}
             />
@@ -119,6 +135,8 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
           <ComponentListItem
             key={component.id}
             component={component}
+            onEdit={handleEdit}
+            onView={handleView}
             onDelete={setDeleteId}
             onDuplicate={handleDuplicate}
           />
@@ -152,11 +170,13 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
 
 type ComponentItemProps = {
   component: CMSComponent
+  onEdit: (id: string) => void
+  onView: (component: CMSComponent) => void
   onDelete: (id: string) => void
   onDuplicate: (component: CMSComponent) => void
 }
 
-function ComponentCard({ component, onDelete, onDuplicate }: ComponentItemProps) {
+function ComponentCard({ component, onEdit, onView, onDelete, onDuplicate }: ComponentItemProps) {
   return (
     <div className="group relative overflow-hidden rounded-lg border bg-card transition-all hover:shadow-md">
       {/* Preview */}
@@ -212,11 +232,11 @@ function ComponentCard({ component, onDelete, onDuplicate }: ComponentItemProps)
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onView(component)}>
               <Eye className="mr-2 h-4 w-4" />
               Visualizar
             </DropdownMenuItem>
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onEdit(component.id)}>
               <Edit className="mr-2 h-4 w-4" />
               Editar
             </DropdownMenuItem>
@@ -241,6 +261,8 @@ function ComponentCard({ component, onDelete, onDuplicate }: ComponentItemProps)
 
 function ComponentListItem({
   component,
+  onEdit,
+  onView,
   onDelete,
   onDuplicate,
 }: ComponentItemProps) {
@@ -298,11 +320,11 @@ function ComponentListItem({
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onView(component)}>
             <Eye className="mr-2 h-4 w-4" />
             Visualizar
           </DropdownMenuItem>
-          <DropdownMenuItem>
+          <DropdownMenuItem onClick={() => onEdit(component.id)}>
             <Edit className="mr-2 h-4 w-4" />
             Editar
           </DropdownMenuItem>

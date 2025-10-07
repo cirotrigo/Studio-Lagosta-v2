@@ -182,6 +182,26 @@ export async function getAllMenus() {
 }
 
 /**
+ * Get a menu by ID with items
+ */
+export async function getMenuById(id: string) {
+  return await db.cMSMenu.findUnique({
+    where: { id },
+    include: {
+      items: {
+        where: { parentId: null },
+        include: {
+          children: {
+            orderBy: { order: 'asc' },
+          },
+        },
+        orderBy: { order: 'asc' },
+      },
+    },
+  })
+}
+
+/**
  * Get a menu by slug with items
  */
 export async function getMenuBySlug(slug: string) {

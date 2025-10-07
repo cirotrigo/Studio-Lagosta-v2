@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { getMenuByLocation } from '@/lib/cms/queries'
+import { api } from '@/lib/api-client'
 
 type CMSMenuItem = {
   id: string
@@ -27,10 +27,7 @@ type CMSMenu = {
 export function useMenuByLocation(location: string) {
   return useQuery<{ menu: CMSMenu | null }>({
     queryKey: ['public', 'menu', location],
-    queryFn: async () => {
-      const menu = await getMenuByLocation(location)
-      return { menu }
-    },
+    queryFn: () => api.get(`/api/public/menu?location=${location.toUpperCase()}`),
     staleTime: 5 * 60_000, // 5 minutes
     gcTime: 10 * 60_000, // 10 minutes
   })
