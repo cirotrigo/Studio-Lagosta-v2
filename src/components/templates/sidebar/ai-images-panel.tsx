@@ -14,6 +14,7 @@ import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-edito
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
 import { useProject } from '@/hooks/use-project'
+import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { cn } from '@/lib/utils'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
@@ -58,6 +59,13 @@ export function AIImagesPanel() {
       img.prompt.toLowerCase().includes(query)
     )
   }, [aiImages, search])
+
+  // Inicializar PhotoSwipe
+  usePhotoSwipe({
+    gallerySelector: '#ai-images-gallery',
+    childSelector: 'a',
+    dependencies: [filteredImages.length, isLoading]
+  })
 
   // Handler para adicionar imagem ao canvas
   const handleAddToCanvas = (image: AIImageRecord) => {
@@ -120,7 +128,7 @@ export function AIImagesPanel() {
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-2 gap-3 pb-4">
+              <div id="ai-images-gallery" className="grid grid-cols-2 gap-3 pb-4">
                 {filteredImages.map((image) => (
                   <ImageCard
                     key={image.id}
@@ -462,30 +470,55 @@ function ImageCard({
   onAddToCanvas: () => void
 }) {
   return (
-    <Card className="group relative overflow-hidden cursor-pointer" onClick={onAddToCanvas}>
-      <div className="aspect-square relative">
-        <Image
-          src={image.thumbnailUrl || image.fileUrl}
-          alt={image.name}
-          fill
-          className="object-cover"
-        />
+    <Card className="group relative overflow-hidden">
+      {/* Link para PhotoSwipe */}
+      <a
+        href={image.fileUrl}
+        data-pswp-width={image.width}
+        data-pswp-height={image.height}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block cursor-zoom-in"
+      >
+        <div className="aspect-square relative">
+          <Image
+            src={image.thumbnailUrl || image.fileUrl}
+            alt={image.name}
+            fill
+            className="object-cover"
+          />
 
-        {/* Overlay no hover */}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-          <Button
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              onAddToCanvas()
-            }}
-            className="gap-2"
-          >
-            <Plus className="h-4 w-4" />
-            Adicionar
-          </Button>
+          {/* Overlay no hover */}
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+            <div className="flex gap-2 pointer-events-auto">
+              <Button
+                size="icon"
+                variant="secondary"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onAddToCanvas()
+                }}
+                className="h-8 w-8"
+                title="Adicionar ao canvas"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="secondary"
+                onClick={(e) => {
+                  // Deixar o PhotoSwipe abrir
+                }}
+                className="h-8 w-8"
+                title="Ver em tela cheia"
+              >
+                <Expand className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      </a>
 
       <div className="p-2">
         <p className="text-xs font-medium truncate">{image.name}</p>

@@ -26,6 +26,7 @@ This file is a navigation hub for agents working in this repository. It avoids d
 - Konva Editor: [docs/konva-editor.md](docs/konva-editor.md)
 - Custom Fonts System: [docs/custom-fonts.md](docs/custom-fonts.md)
 - Text Editing Toolbar: [docs/text-editing-toolbar.md](docs/text-editing-toolbar.md)
+- AI Image Generation: [docs/ai-image-generation.md](docs/ai-image-generation.md)
 
 ## Common Tasks → Guides
 - Plan a feature: [agents/architecture-planning.md](agents/architecture-planning.md)
