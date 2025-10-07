@@ -20,7 +20,7 @@ type CMSSectionRendererProps = {
   section: CMSSection
 }
 
-export function CMSSectionRenderer({ section }: CMSSectionRendererProps) {
+export async function CMSSectionRenderer({ section }: CMSSectionRendererProps) {
   if (!section.isVisible) return null
 
   const className = section.cssClasses || ''

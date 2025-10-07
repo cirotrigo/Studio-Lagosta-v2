@@ -56,6 +56,15 @@ const config: Config = {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
   			sm: 'calc(var(--radius) - 4px)'
+  		},
+  		keyframes: {
+  			'border-beam': {
+  				'0%, 100%': { 'background-position': '0% 50%' },
+  				'50%': { 'background-position': '100% 50%' }
+  			}
+  		},
+  		animation: {
+  			'border-beam': 'border-beam 3s ease infinite'
   		}
   	}
   },

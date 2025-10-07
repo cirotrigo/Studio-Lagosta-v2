@@ -1,0 +1,57 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1200" height="630" fill="url(#ogBg)"/>
+
+  <!-- Grid Pattern -->
+  <defs>
+    <pattern id="ogGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+    </pattern>
+    <linearGradient id="ogBg" x1="0" y1="0" x2="1200" y2="630">
+      <stop offset="0" stop-color="#1e1b4b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="ogTextGradient" x1="0" y1="0" x2="1200" y2="0">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="0.5" stop-color="#a855f7"/>
+      <stop offset="1" stop-color="#6366f1"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#ogGrid)"/>
+
+  <!-- Logo -->
+  <rect x="80" y="80" width="80" height="80" rx="16" fill="url(#ogTextGradient)"/>
+  <path d="M100 155C100 155 110 145 120 145C130 145 140 155 140 155M107 125C107 125 112 120 120 120C128 120 133 125 133 125"
+        stroke="white" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="112" cy="132" r="2.5" fill="white"/>
+  <circle cx="128" cy="132" r="2.5" fill="white"/>
+
+  <!-- Text -->
+  <text x="200" y="135" font-family="system-ui, -apple-system, sans-serif" font-size="64" font-weight="bold" fill="white">
+    Studio Lagosta
+  </text>
+
+  <text x="80" y="315" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="600" fill="url(#ogTextGradient)">
+    Template SaaS Completo
+  </text>
+
+  <text x="80" y="380" font-family="system-ui, -apple-system, sans-serif" font-size="32" fill="rgba(255,255,255,0.7)">
+    Next.js • TypeScript • Clerk • Prisma • Stripe
+  </text>
+
+  <!-- Features -->
+  <rect x="80" y="440" width="320" height="60" rx="12" fill="rgba(139,92,246,0.1)" stroke="url(#ogTextGradient)" stroke-width="2"/>
+  <text x="100" y="477" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="white">
+    ✓ Autenticação Completa
+  </text>
+
+  <rect x="440" y="440" width="320" height="60" rx="12" fill="rgba(139,92,246,0.1)" stroke="url(#ogTextGradient)" stroke-width="2"/>
+  <text x="460" y="477" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="white">
+    ✓ Sistema de Créditos
+  </text>
+
+  <rect x="800" y="440" width="320" height="60" rx="12" fill="rgba(139,92,246,0.1)" stroke="url(#ogTextGradient)" stroke-width="2"/>
+  <text x="820" y="477" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="white">
+    ✓ Pagamentos Stripe
+  </text>
+</svg>

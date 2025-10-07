@@ -43,18 +43,30 @@ export function CMSBentoGrid({ content }: CMSBentoGridProps) {
           return (
             <div
               key={index}
-              className="group relative overflow-hidden rounded-lg border bg-background p-6 hover:shadow-lg transition-shadow"
+              className="group/feature relative overflow-hidden rounded-lg border hover:shadow-lg transition-all duration-300"
               style={feature.gridArea ? { gridArea: feature.gridArea } : undefined}
             >
-              {IconComponent && (
-                <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <IconComponent className="h-5 w-5 text-primary" />
-                </div>
-              )}
-              <h3 className="mb-2 font-semibold">{feature.title}</h3>
-              <p className="text-sm text-muted-foreground">
-                {feature.description}
-              </p>
+              {/* Animated gradient border on hover */}
+              <div
+                className="absolute -inset-[2px] rounded-lg opacity-0 blur-md transition-opacity duration-500 group-hover/feature:opacity-100"
+                style={{
+                  background: 'linear-gradient(90deg, hsl(var(--primary)), #a855f7, hsl(var(--primary)))',
+                  backgroundSize: '200% 200%',
+                  animation: 'border-beam 3s ease infinite'
+                }}
+              />
+
+              <div className="relative bg-background rounded-lg p-6">
+                {IconComponent && (
+                  <div className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 transition-transform duration-300 group-hover/feature:scale-110">
+                    <IconComponent className="h-5 w-5 text-primary" />
+                  </div>
+                )}
+                <h3 className="mb-2 font-semibold">{feature.title}</h3>
+                <p className="text-sm text-muted-foreground">
+                  {feature.description}
+                </p>
+              </div>
             </div>
           )
         })}

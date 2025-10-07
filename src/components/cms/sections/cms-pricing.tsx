@@ -1,8 +1,5 @@
-'use client'
-
 import { Pricing } from '@/components/marketing/pricing'
 import { getActivePlansSorted } from '@/lib/queries/plans'
-import { use } from 'react'
 
 type PricingContent = {
   title?: string
@@ -56,12 +53,11 @@ function normalizeFeatures(features: unknown): {
   return normalized.length > 0 ? normalized : null
 }
 
-export function CMSPricing({ content }: CMSPricingProps) {
+export async function CMSPricing({ content }: CMSPricingProps) {
   const { title, subtitle } = content
 
-  // Fetch plans from database
-  const plansPromise = getActivePlansSorted()
-  const plans = use(plansPromise)
+  // Fetch plans from database (server component)
+  const plans = await getActivePlansSorted()
 
   return (
     <section id="pricing" className="container mx-auto px-4 py-24">

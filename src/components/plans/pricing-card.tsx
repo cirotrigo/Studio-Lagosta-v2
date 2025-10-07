@@ -26,7 +26,17 @@ export function PricingCard({ tier, billingPeriod, renderAction }: PricingCardPr
   const isFeatured = Boolean(tier.highlight)
 
   return (
-    <div className="relative h-full rounded-3xl border-[0.75px] border-border p-2 md:rounded-3xl md:p-2">
+    <div className="relative h-full rounded-3xl border-[0.75px] border-border p-2 md:rounded-3xl md:p-2 group/card">
+      {/* Animated gradient border on hover */}
+      <div
+        className="absolute -inset-[2px] rounded-3xl opacity-0 blur-md transition-opacity duration-500 group-hover/card:opacity-100"
+        style={{
+          background: 'linear-gradient(90deg, hsl(var(--primary)), #a855f7, hsl(var(--primary)))',
+          backgroundSize: '200% 200%',
+          animation: 'border-beam 3s ease infinite'
+        }}
+      />
+
       <div
         className={cn(
           'relative group backdrop-blur-sm h-full',
@@ -36,7 +46,7 @@ export function PricingCard({ tier, billingPeriod, renderAction }: PricingCardPr
             ? 'bg-gradient-to-b from-zinc-100/90 via-white to-transparent dark:from-zinc-300/20 dark:via-zinc-900/60'
             : 'bg-white dark:bg-zinc-800/50',
           'border',
-        
+
         )}
       >
         {(tier.badge || isFeatured) && (
