@@ -294,6 +294,15 @@ export async function getAllMedia() {
 }
 
 /**
+ * Get a single media file by ID
+ */
+export async function getMediaById(id: string) {
+  return await db.cMSMedia.findUnique({
+    where: { id },
+  })
+}
+
+/**
  * Get media by folder
  */
 export async function getMediaByFolder(folder: string) {
