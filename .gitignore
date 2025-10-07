@@ -42,3 +42,9 @@ prisma/generated/
 
 # clerk configuration (can include secrets)
 /.clerk/
+
+# Replicate test app (contains sensitive tokens in history)
+my-replicate-app/
+
+# Internal prompts and docs (may contain sensitive info)
+prompts/
