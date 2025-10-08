@@ -549,14 +549,14 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     try {
       await exportDesign('jpeg')
       toast({
-        title: 'Exportação concluída!',
-        description: 'O arquivo JPEG foi baixado com sucesso e está otimizado para Instagram.',
+        title: 'Criativo salvo com sucesso!',
+        description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
     } catch (error) {
       console.error('Export failed:', error)
       toast({
-        title: 'Erro ao exportar',
-        description: error instanceof Error ? error.message : 'Não foi possível exportar o design.',
+        title: 'Erro ao salvar criativo',
+        description: error instanceof Error ? error.message : 'Não foi possível salvar o criativo.',
         variant: 'destructive',
       })
     }
@@ -580,18 +580,18 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
           <div className="flex flex-wrap items-center gap-2">
             <Button size="sm" onClick={onSave} disabled={saving || !dirty} className="shadow-sm">
               <Save className="mr-2 h-4 w-4" />
-              {saving ? 'Salvando…' : dirty ? 'Salvar alterações' : 'Salvo'}
+              {saving ? 'Salvando…' : dirty ? 'Salvar Template' : 'Salvo'}
             </Button>
             <Button size="sm" variant="outline" onClick={handleExport} disabled={isExporting} className="shadow-sm">
               {isExporting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Exportando...
+                  Salvando...
                 </>
               ) : (
                 <>
-                  <Download className="mr-2 h-4 w-4" />
-                  Exportar JPEG
+                  <Save className="mr-2 h-4 w-4" />
+                  Salvar Criativo
                 </>
               )}
             </Button>

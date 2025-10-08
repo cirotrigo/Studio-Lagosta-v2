@@ -11,7 +11,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp } from 'lucide-react'
+import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -24,6 +24,7 @@ import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
+import { CreativesPanel } from './panels/creatives-panel'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -123,7 +124,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | 'creatives' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -212,14 +213,14 @@ function TemplateEditorContent() {
     try {
       await exportDesign('jpeg')
       toast({
-        title: 'Exportação concluída!',
-        description: 'O arquivo JPEG foi baixado com sucesso.',
+        title: 'Criativo salvo com sucesso!',
+        description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
     } catch (error) {
       console.error('Export failed:', error)
       toast({
-        title: 'Erro ao exportar',
-        description: error instanceof Error ? error.message : 'Não foi possível exportar o design.',
+        title: 'Erro ao salvar criativo',
+        description: error instanceof Error ? error.message : 'Não foi possível salvar o criativo.',
         variant: 'destructive',
       })
     }
@@ -264,11 +265,12 @@ function TemplateEditorContent() {
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
           <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty}>
-            {isSaving ? 'Salvando...' : 'Salvar'}
+            <Save className="mr-2 h-4 w-4" />
+            {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
           </Button>
           <Button size="sm" onClick={handleExport} disabled={isExporting}>
-            <Download className="mr-2 h-4 w-4" />
-            Download
+            <Save className="mr-2 h-4 w-4" />
+            {isExporting ? 'Salvando...' : 'Salvar Criativo'}
           </Button>
           <Button size="sm" variant="outline" onClick={toggleFullscreen}>
             <Maximize2 className="mr-2 h-4 w-4" />
@@ -329,6 +331,12 @@ function TemplateEditorContent() {
             active={activePanel === 'ai-images'}
             onClick={() => togglePanel('ai-images')}
           />
+          <ToolbarButton
+            icon={<FileImage className="h-5 w-5" />}
+            label="Criativos"
+            active={activePanel === 'creatives'}
+            onClick={() => togglePanel('creatives')}
+          />
           <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
@@ -359,6 +367,7 @@ function TemplateEditorContent() {
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
+                {activePanel === 'creatives' && 'Criativos'}
                 {activePanel === 'properties' && 'Propriedades'}
                 {activePanel === 'layers' && 'Camadas'}
               </h2>
@@ -372,6 +381,7 @@ function TemplateEditorContent() {
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
+              {activePanel === 'creatives' && <CreativesPanel templateId={templateId} />}
               {activePanel === 'properties' && <PropertiesPanel />}
               {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>

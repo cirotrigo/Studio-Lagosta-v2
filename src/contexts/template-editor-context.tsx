@@ -4,6 +4,7 @@ import * as React from 'react'
 import type { DesignData, DynamicField, Layer } from '@/types/template'
 import type Konva from 'konva'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { useQueryClient } from '@tanstack/react-query'
 
 export interface TemplateResource {
   id: number
@@ -121,6 +122,7 @@ function cloneDesign(design: DesignData): DesignData {
 }
 
 export function TemplateEditorProvider({ template, children }: TemplateEditorProviderProps) {
+  const queryClient = useQueryClient()
   const [name, setName] = React.useState(template.name)
   const [design, setDesign] = React.useState<DesignData>(() => ({
     canvas: { ...template.designData.canvas },
@@ -746,16 +748,13 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
 
           const data = await response.json()
           console.log('[EXPORT] Saved successfully. Remaining credits:', data.creditsRemaining)
+
+          // Invalidar cache dos criativos para atualizar a lista automaticamente
+          queryClient.invalidateQueries({ queryKey: ['template-creatives', template.id] })
         } catch (error) {
           console.error('[EXPORT] Failed to save:', error)
-          // Continuar com o download mesmo se falhar o salvamento
+          throw error // Re-lançar o erro para ser capturado pelo caller
         }
-
-        // 11. Download imediato do arquivo
-        const link = document.createElement('a')
-        link.href = dataUrl
-        link.download = fileName
-        link.click()
 
         return record
       } finally {
