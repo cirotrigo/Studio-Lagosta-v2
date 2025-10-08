@@ -46,10 +46,10 @@ export interface Layer {
     [key: string]: unknown
   }
   effects?: {
-    blur?: { enabled: boolean; intensity: number }
-    stroke?: { enabled: boolean; color: string; width: number }
-    shadow?: { enabled: boolean; color: string; blur: number; offsetX: number; offsetY: number; opacity: number }
-    background?: { enabled: boolean; color: string; padding: number }
+    blur?: { enabled: boolean; blurRadius: number }
+    stroke?: { enabled: boolean; strokeColor: string; strokeWidth: number }
+    shadow?: { enabled: boolean; shadowColor: string; shadowBlur: number; shadowOffsetX: number; shadowOffsetY: number; shadowOpacity: number }
+    background?: { enabled: boolean; backgroundColor: string; padding: number }
     curved?: { enabled: boolean; curvature: number }
   }
   [key: string]: unknown

@@ -24,6 +24,21 @@ const KonvaEditorStage = dynamic(
 )
 
 export function EditorCanvas() {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+
+  // Debug: verificar dimensões do container
+  React.useEffect(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect()
+      console.log('📐 [EditorCanvas] Dimensões do container:', {
+        width: rect.width,
+        height: rect.height,
+        top: rect.top,
+        bottom: rect.bottom
+      })
+    }
+  }, [])
+
   const {
     selectedLayerIds,
     design,
@@ -195,7 +210,7 @@ export function EditorCanvas() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div ref={containerRef} className="flex flex-col h-full w-full">
       {/*
         Toolbar Container - Espaço reservado para evitar layout shift
         IMPORTANTE: Sempre manter altura fixa (min-h-[52px]) mesmo quando toolbar não está visível
@@ -247,9 +262,9 @@ export function EditorCanvas() {
       </div>
 
       {/* Canvas Konva + Effects Panel */}
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="flex-1 flex relative overflow-hidden">
         {/* Canvas Konva */}
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 h-full w-full">
           <KonvaEditorStage />
         </div>
 

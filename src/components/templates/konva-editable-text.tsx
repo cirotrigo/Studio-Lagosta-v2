@@ -420,6 +420,14 @@ export function KonvaEditableText({
     return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
   }, [layer.content, layer.style?.textTransform, applyTextTransform])
 
+  // Prepare blur filter
+  const filters = React.useMemo(() => {
+    if (layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0) {
+      return [Konva.Filters.Blur]
+    }
+    return undefined
+  }, [layer.effects?.blur])
+
   return (
     <>
       <Text
@@ -441,8 +449,15 @@ export function KonvaEditableText({
         draggable={commonProps.draggable && !isEditing}
         visible={!isEditing}
         perfectDrawEnabled={false}
-        stroke={borderWidth > 0 ? borderColor : undefined}
-        strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+        stroke={layer.effects?.stroke?.enabled ? layer.effects.stroke.strokeColor : (borderWidth > 0 ? borderColor : undefined)}
+        strokeWidth={layer.effects?.stroke?.enabled ? layer.effects.stroke.strokeWidth : (borderWidth > 0 ? borderWidth : undefined)}
+        shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
+        shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
+        shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
+        shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
+        shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
+        filters={filters}
+        blurRadius={layer.effects?.blur?.enabled ? layer.effects.blur.blurRadius : 0}
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
       />

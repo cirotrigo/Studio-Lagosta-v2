@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import * as ReactDOM from 'react-dom'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
 import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
 import type { TemplateDto } from '@/hooks/use-template'
@@ -10,7 +11,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2 } from 'lucide-react'
+import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -144,6 +145,8 @@ function TemplateEditorContent() {
   } = useTemplateEditor()
 
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
+  const [isFullscreen, setIsFullscreen] = React.useState(false)
+  const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -223,10 +226,17 @@ function TemplateEditorContent() {
     setActivePanel((current) => (current === panel ? null : panel))
   }, [])
 
-  return (
-    <div className="polotno-editor flex h-[calc(100vh-4rem)] flex-col overflow-hidden bg-background">
+  const toggleFullscreen = React.useCallback(() => {
+    setIsFullscreen((prev) => !prev)
+    if (!isFullscreen) {
+      setActivePanel(null) // Fechar painel lateral ao entrar em fullscreen
+    }
+  }, [isFullscreen])
+
+  const editorContent = (
+    <div className={`polotno-editor flex bg-background flex-col ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)] overflow-hidden'}`}>
       {/* Top Toolbar - Polotno Style */}
-      <header className="flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-4 shadow-sm">
+      <header className={`flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-4 shadow-sm ${isFullscreen ? 'hidden' : ''}`}>
         {/* Left: Logo + Template Name */}
         <div className="flex items-center gap-3">
           <FileText className="h-5 w-5 text-primary" />
@@ -248,9 +258,9 @@ function TemplateEditorContent() {
             <Download className="mr-2 h-4 w-4" />
             Download
           </Button>
-          <Button size="sm" variant="outline">
+          <Button size="sm" variant="outline" onClick={toggleFullscreen}>
             <Maximize2 className="mr-2 h-4 w-4" />
-            Resize
+            Tela Cheia
           </Button>
         </div>
       </header>
@@ -258,7 +268,7 @@ function TemplateEditorContent() {
       {/* Main Area: Vertical Toolbar + Side Panel + Canvas */}
       <div className="flex flex-1 overflow-hidden">
         {/* Vertical Icon Toolbar - Always Visible */}
-        <aside className="flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card">
+        <aside className={`flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card ${isFullscreen ? 'hidden' : ''}`}>
           <ToolbarButton
             icon={<Layers2 className="h-5 w-5" />}
             label="Layers"
@@ -323,7 +333,7 @@ function TemplateEditorContent() {
         </aside>
 
         {/* Expandable Side Panel */}
-        {activePanel && (
+        {activePanel && !isFullscreen && (
           <aside className={`flex flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg ${
             activePanel === 'layers' ? 'w-[420px]' : 'w-80'
           }`}>
@@ -357,21 +367,51 @@ function TemplateEditorContent() {
         )}
 
         {/* Canvas Area */}
-        <main className="flex flex-1 flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden">
+        <main className="flex flex-1 flex-col relative h-full">
+          {/* Fullscreen Exit Button */}
+          {isFullscreen && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={toggleFullscreen}
+              className="absolute top-4 right-4 z-50 shadow-lg"
+            >
+              <Minimize2 className="mr-2 h-4 w-4" />
+              Sair da Tela Cheia
+            </Button>
+          )}
+
+          <div className="flex-1 h-full overflow-hidden">
             <EditorCanvas />
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}
-          <PagesBar />
+          <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setIsPagesBarCollapsed(!isPagesBarCollapsed)} />
         </main>
       </div>
     </div>
   )
+
+  // Em fullscreen, renderizar em portal para escapar do container do layout
+  if (isFullscreen && typeof document !== 'undefined') {
+    return ReactDOM.createPortal(
+      <div className="fixed inset-0 z-[9999]">
+        {editorContent}
+      </div>,
+      document.body
+    )
+  }
+
+  return editorContent
 }
 
 // Componente de barra de páginas
-function PagesBar() {
+interface PagesBarProps {
+  isCollapsed: boolean
+  onToggleCollapse: () => void
+}
+
+function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   const { toast } = useToast()
   const { templateId, design } = useTemplateEditor()
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
@@ -519,143 +559,176 @@ function PagesBar() {
   }, [sortedPages, currentPageId, setCurrentPageId])
 
   return (
-    <div className="flex h-32 flex-shrink-0 flex-col border-t border-border/40 bg-card">
-      {/* Controles de navegação e ações */}
-      <div className="flex items-center justify-between border-b border-border/40 px-4 py-2">
-        <div className="flex items-center gap-2">
-          {/* Navegação anterior/próxima */}
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => {
-              const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
-              if (currentIndex > 0) {
-                setCurrentPageId(sortedPages[currentIndex - 1].id)
-              }
-            }}
-            disabled={sortedPages.findIndex((p) => p.id === currentPageId) === 0}
-            className="h-8 w-8 p-0"
-            title="Página anterior (Ctrl+PageUp)"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
+    <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${
+      isCollapsed ? 'h-10' : 'h-32'
+    }`}>
+      {/* Estado colapsado - apenas contador e botão de expandir */}
+      {isCollapsed ? (
+        <div className="flex h-10 items-center justify-between px-4">
           <span className="text-xs text-muted-foreground">
-            {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
+            Página {sortedPages.findIndex((p) => p.id === currentPageId) + 1} de {sortedPages.length}
           </span>
-
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => {
-              const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
-              if (currentIndex < sortedPages.length - 1) {
-                setCurrentPageId(sortedPages[currentIndex + 1].id)
-              }
-            }}
-            disabled={sortedPages.findIndex((p) => p.id === currentPageId) === sortedPages.length - 1}
-            className="h-8 w-8 p-0"
-            title="Próxima página (Ctrl+PageDown)"
+            onClick={onToggleCollapse}
+            className="h-7 w-7 p-0"
+            title="Expandir barra de páginas"
           >
-            <ChevronRight className="h-4 w-4" />
+            <ChevronUp className="h-4 w-4" />
           </Button>
         </div>
+      ) : (
+        <>
+          {/* Controles de navegação e ações */}
+          <div className="flex items-center justify-between border-b border-border/40 px-4 py-2">
+            <div className="flex items-center gap-2">
+              {/* Navegação anterior/próxima */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+                  if (currentIndex > 0) {
+                    setCurrentPageId(sortedPages[currentIndex - 1].id)
+                  }
+                }}
+                disabled={sortedPages.findIndex((p) => p.id === currentPageId) === 0}
+                className="h-8 w-8 p-0"
+                title="Página anterior (Ctrl+PageUp)"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
 
-        {/* Ações da página atual */}
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation()
-              if (currentPageId) {
-                handleDuplicatePage(currentPageId, e)
-              }
-            }}
-            className="h-8"
-            title="Duplicar página"
-          >
-            <Copy className="mr-2 h-3.5 w-3.5" />
-            Duplicar
-          </Button>
+              <span className="text-xs text-muted-foreground">
+                {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
+              </span>
 
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={(e) => {
-              e.stopPropagation()
-              if (currentPageId) {
-                handleDeletePage(currentPageId, e)
-              }
-            }}
-            disabled={pages.length <= 1}
-            className="h-8"
-            title="Deletar página"
-          >
-            <Trash2 className="mr-2 h-3.5 w-3.5" />
-            Deletar
-          </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
+                  if (currentIndex < sortedPages.length - 1) {
+                    setCurrentPageId(sortedPages[currentIndex + 1].id)
+                  }
+                }}
+                disabled={sortedPages.findIndex((p) => p.id === currentPageId) === sortedPages.length - 1}
+                className="h-8 w-8 p-0"
+                title="Próxima página (Ctrl+PageDown)"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
 
-          <Button
-            size="sm"
-            variant="default"
-            onClick={handleAddPage}
-            className="h-8"
-            title="Adicionar nova página"
-          >
-            <Plus className="mr-2 h-3.5 w-3.5" />
-            Nova Página
-          </Button>
-        </div>
-      </div>
-
-      {/* Miniaturas das páginas */}
-      <div className="flex flex-1 items-center gap-3 overflow-x-auto px-4 py-2">
-        {sortedPages.map((page, index) => (
-          <div
-            key={page.id}
-            onClick={() => setCurrentPageId(page.id)}
-            className={`group relative flex flex-shrink-0 cursor-pointer flex-col items-center gap-1 transition-all ${
-              currentPageId === page.id ? 'scale-105' : 'hover:scale-102'
-            }`}
-          >
-            {/* Miniatura */}
-            <div
-              className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
-                currentPageId === page.id
-                  ? 'border-primary shadow-md'
-                  : 'border-border/60 hover:border-primary/60'
-              }`}
-            >
-              {page.thumbnail ? (
-                <img src={page.thumbnail} alt={page.name} className="h-full w-full object-cover" />
-              ) : (
-                <div className="flex h-full w-full items-center justify-center bg-muted/50">
-                  <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
-                </div>
-              )}
+              {/* Botão de colapsar */}
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onToggleCollapse}
+                className="ml-2 h-8 w-8 p-0"
+                title="Ocultar barra de páginas"
+              >
+                <ChevronDown className="h-4 w-4" />
+              </Button>
             </div>
 
-            {/* Label */}
-            <span
-              className={`text-[10px] transition-colors ${
-                currentPageId === page.id ? 'font-semibold text-primary' : 'text-muted-foreground'
-              }`}
-            >
-              Pág. {index + 1}
-            </span>
-          </div>
-        ))}
+            {/* Ações da página atual */}
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (currentPageId) {
+                    handleDuplicatePage(currentPageId, e)
+                  }
+                }}
+                className="h-8"
+                title="Duplicar página"
+              >
+                <Copy className="mr-2 h-3.5 w-3.5" />
+                Duplicar
+              </Button>
 
-        {/* Botão para adicionar página */}
-        <button
-          onClick={handleAddPage}
-          className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
-          title="Adicionar nova página"
-        >
-          <Plus className="h-5 w-5 text-muted-foreground" />
-        </button>
-      </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  if (currentPageId) {
+                    handleDeletePage(currentPageId, e)
+                  }
+                }}
+                disabled={pages.length <= 1}
+                className="h-8"
+                title="Deletar página"
+              >
+                <Trash2 className="mr-2 h-3.5 w-3.5" />
+                Deletar
+              </Button>
+
+              <Button
+                size="sm"
+                variant="default"
+                onClick={handleAddPage}
+                className="h-8"
+                title="Adicionar nova página"
+              >
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Nova Página
+              </Button>
+            </div>
+          </div>
+
+          {/* Miniaturas das páginas */}
+          <div className="flex flex-1 items-center gap-3 overflow-x-auto px-4 py-2">
+            {sortedPages.map((page, index) => (
+              <div
+                key={page.id}
+                onClick={() => setCurrentPageId(page.id)}
+                className={`group relative flex flex-shrink-0 cursor-pointer flex-col items-center gap-1 transition-all ${
+                  currentPageId === page.id ? 'scale-105' : 'hover:scale-102'
+                }`}
+              >
+                {/* Miniatura */}
+                <div
+                  className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
+                    currentPageId === page.id
+                      ? 'border-primary shadow-md'
+                      : 'border-border/60 hover:border-primary/60'
+                  }`}
+                >
+                  {page.thumbnail ? (
+                    <img src={page.thumbnail} alt={page.name} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center bg-muted/50">
+                      <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Label */}
+                <span
+                  className={`text-[10px] transition-colors ${
+                    currentPageId === page.id ? 'font-semibold text-primary' : 'text-muted-foreground'
+                  }`}
+                >
+                  Pág. {index + 1}
+                </span>
+              </div>
+            ))}
+
+            {/* Botão para adicionar página */}
+            <button
+              onClick={handleAddPage}
+              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
+              title="Adicionar nova página"
+            >
+              <Plus className="h-5 w-5 text-muted-foreground" />
+            </button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

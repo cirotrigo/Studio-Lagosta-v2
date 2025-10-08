@@ -747,8 +747,8 @@ export function KonvaEditorStage() {
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-1 items-center justify-center overflow-x-hidden overflow-y-auto bg-[#f5f5f5] p-8 dark:bg-[#1a1a1a]">
-      <div className="relative flex items-center justify-center" style={{ minHeight: '100%', minWidth: '100%' }}>
+    <div className="flex h-full w-full flex-1 items-center justify-center overflow-auto bg-[#f5f5f5] p-4 dark:bg-[#1a1a1a]">
+      <div className="relative flex items-center justify-center">
         <Stage
           ref={stageRef}
           width={canvasWidth}
