@@ -96,16 +96,16 @@ export function KonvaEditorStage() {
   const lastCenterRef = React.useRef<{ x: number; y: number } | null>(null)
   const lastDistRef = React.useRef(0)
 
-  // Debug: verificar configuração inicial
-  React.useEffect(() => {
-    console.log('🔧 Smart Guides Config:', snapConfig)
-    console.log('✅ Snapping Enabled:', snappingEnabled)
-  }, [snapConfig, snappingEnabled])
+  // Debug: verificar configuração inicial (desabilitado)
+  // React.useEffect(() => {
+  //   console.log('🔧 Smart Guides Config:', snapConfig)
+  //   console.log('✅ Snapping Enabled:', snappingEnabled)
+  // }, [snapConfig, snappingEnabled])
 
-  // Debug: monitorar mudanças nas guias
-  React.useEffect(() => {
-    console.log('📏 Guides atualizadas:', guides.length, guides)
-  }, [guides])
+  // Debug: monitorar mudanças nas guias (desabilitado)
+  // React.useEffect(() => {
+  //   console.log('📏 Guides atualizadas:', guides.length, guides)
+  // }, [guides])
 
   // OTIMIZAÇÃO MOBILE: Ajustar pixel ratio em dispositivos retina
   React.useEffect(() => {
@@ -179,6 +179,7 @@ export function KonvaEditorStage() {
     if (!stage) return
 
     const currentScale = stage.scaleX()
+    const currentPos = stage.position()
 
     // Se o zoom mudou externamente (pelos botões), aplicar no stage
     if (Math.abs(currentScale - zoom) > 0.001) {
@@ -197,9 +198,14 @@ export function KonvaEditorStage() {
       const newX = centerX
       const newY = 0
 
-      stage.scale({ x: zoom, y: zoom })
-      stage.position({ x: newX, y: newY })
-      stage.batchDraw()
+      // Só atualizar se a posição realmente mudou (evitar re-renders desnecessários)
+      const positionChanged = Math.abs(currentPos.x - newX) > 0.1 || Math.abs(currentPos.y - newY) > 0.1
+
+      if (positionChanged) {
+        stage.scale({ x: zoom, y: zoom })
+        stage.position({ x: newX, y: newY })
+        stage.batchDraw()
+      }
     }
   }, [zoom, canvasWidth, canvasHeight])
 
@@ -418,10 +424,10 @@ export function KonvaEditorStage() {
         activeConfig,
       )
 
-      // Debug: verificar se guias estão sendo computadas
-      if (nextGuides.length > 0) {
-        console.log('🎯 Smart Guides detectadas:', nextGuides)
-      }
+      // Debug: verificar se guias estão sendo computadas (desabilitado)
+      // if (nextGuides.length > 0) {
+      //   console.log('🎯 Smart Guides detectadas:', nextGuides)
+      // }
 
       if (position.x !== movingRect.x || position.y !== movingRect.y) {
         node.position(position)
@@ -808,7 +814,7 @@ export function KonvaEditorStage() {
 
           {/* Smart Guides layer - DEVE estar por último para aparecer na frente */}
           <KonvaLayer name="guides-layer" listening={false}>
-            {guides.length > 0 && console.log('🎨 Renderizando', guides.length, 'guias')}
+            {/* {guides.length > 0 && console.log('🎨 Renderizando', guides.length, 'guias')} */}
 
             {/* Drag-to-select rectangle */}
             {selectionRect.visible && (
@@ -900,7 +906,7 @@ export function KonvaEditorStage() {
                 ? [guide.position, 0, guide.position, canvasHeight]
                 : [0, guide.position, canvasWidth, guide.position]
 
-              console.log(`📍 Guia ${index}:`, guide.orientation, 'pos:', guide.position, 'points:', points)
+              // console.log(`📍 Guia ${index}:`, guide.orientation, 'pos:', guide.position, 'points:', points)
 
               return (
                 <Line

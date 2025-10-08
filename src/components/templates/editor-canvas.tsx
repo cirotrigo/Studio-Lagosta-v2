@@ -26,18 +26,18 @@ const KonvaEditorStage = dynamic(
 export function EditorCanvas() {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
-  // Debug: verificar dimensões do container
-  React.useEffect(() => {
-    if (containerRef.current) {
-      const rect = containerRef.current.getBoundingClientRect()
-      console.log('📐 [EditorCanvas] Dimensões do container:', {
-        width: rect.width,
-        height: rect.height,
-        top: rect.top,
-        bottom: rect.bottom
-      })
-    }
-  }, [])
+  // Debug: verificar dimensões do container (desabilitado para reduzir logs)
+  // React.useEffect(() => {
+  //   if (containerRef.current) {
+  //     const rect = containerRef.current.getBoundingClientRect()
+  //     console.log('📐 [EditorCanvas] Dimensões do container:', {
+  //       width: rect.width,
+  //       height: rect.height,
+  //       top: rect.top,
+  //       bottom: rect.bottom
+  //     })
+  //   }
+  // }, [])
 
   const {
     selectedLayerIds,
@@ -76,6 +76,9 @@ export function EditorCanvas() {
 
   const isTextSelected = selectedLayer?.type === 'text'
   const isImageSelected = selectedLayer?.type === 'image'
+  const isLogoSelected = selectedLayer?.type === 'logo'
+  // Mostrar toolbar de imagem para imagem OU logo
+  const showImageToolbar = isImageSelected || isLogoSelected
 
   // Atualizar node selecionado quando layer muda
   React.useEffect(() => {
@@ -101,11 +104,8 @@ export function EditorCanvas() {
         return
       }
 
-      console.log('[EditorCanvas] Stage encontrado:', stage)
-
       // Encontrar layer - procurar em todos os children do stage
       const children = stage.children || []
-      console.log('[EditorCanvas] Stage children:', children.length)
 
       // Procurar o node em todos os layers
       let foundNode: Konva.Text | Konva.TextPath | null = null
@@ -114,12 +114,10 @@ export function EditorCanvas() {
       for (const child of children) {
         if (child instanceof Konva.Layer) {
           const nodes = child.find(`#${selectedLayer.id}`)
-          console.log('[EditorCanvas] Buscando em layer, ID:', selectedLayer.id, 'Encontrou:', nodes.length)
 
           if (nodes.length > 0) {
             foundNode = nodes[0] as Konva.Text | Konva.TextPath
             foundLayer = child
-            console.log('[EditorCanvas] Node encontrado:', foundNode.getClassName())
             break
           }
         }
@@ -129,7 +127,6 @@ export function EditorCanvas() {
         setSelectedTextNode(foundNode)
         setCurrentLayer(foundLayer)
       } else {
-        console.warn('[EditorCanvas] Nenhum node encontrado com ID:', selectedLayer.id)
         setSelectedTextNode(null)
         setCurrentLayer(null)
       }
@@ -223,31 +220,34 @@ export function EditorCanvas() {
     <div ref={containerRef} className="flex flex-col h-full w-full">
       {/*
         Toolbar Container - Espaço reservado para evitar layout shift
-        IMPORTANTE: Sempre manter altura fixa (min-h-[52px]) mesmo quando toolbar não está visível
-        para prevenir que elementos do canvas "pulem" ao alternar entre seleções.
-        52px = altura do toolbar (py-2 = 0.5rem * 2 = 16px + conteúdo ~36px)
+        IMPORTANTE: Sempre manter altura e estrutura EXATAS para prevenir reflow
+        Usar position absolute para sobrepor toolbars e evitar mudanças de layout
       */}
-      <div className="flex-shrink-0 min-h-[52px]">
-        {/* Text Toolbar - mostrar apenas quando um texto estiver selecionado */}
-        {isTextSelected && selectedLayer && (
-          <TextToolbar
-            selectedLayer={selectedLayer}
-            onUpdateLayer={(id, updates) => {
-              updateLayer(id, (layer) => ({ ...layer, ...updates }))
-            }}
-            onEffectsClick={handleEffectsClick}
-          />
-        )}
+      <div className="flex-shrink-0 h-[52px] relative">
+        {/* Text Toolbar - position absolute para não afetar layout */}
+        <div className={`absolute inset-0 transition-opacity duration-150 ${isTextSelected && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          {isTextSelected && selectedLayer && (
+            <TextToolbar
+              selectedLayer={selectedLayer}
+              onUpdateLayer={(id, updates) => {
+                updateLayer(id, (layer) => ({ ...layer, ...updates }))
+              }}
+              onEffectsClick={handleEffectsClick}
+            />
+          )}
+        </div>
 
-        {/* Image Toolbar - mostrar apenas quando uma imagem estiver selecionada */}
-        {isImageSelected && selectedLayer && (
-          <ImageToolbar
-            selectedLayer={selectedLayer}
-            onUpdateLayer={(id, updates) => {
-              updateLayer(id, (layer) => ({ ...layer, ...updates }))
-            }}
-          />
-        )}
+        {/* Image Toolbar - position absolute para não afetar layout */}
+        <div className={`absolute inset-0 transition-opacity duration-150 ${showImageToolbar && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+          {showImageToolbar && selectedLayer && (
+            <ImageToolbar
+              selectedLayer={selectedLayer}
+              onUpdateLayer={(id, updates) => {
+                updateLayer(id, (layer) => ({ ...layer, ...updates }))
+              }}
+            />
+          )}
+        </div>
       </div>
 
       {/* Alignment Toolbar - sempre visível no topo do canvas */}
@@ -288,13 +288,12 @@ export function EditorCanvas() {
           />
         )}
 
-        {/* Zoom Controls - centralizado acima da barra de páginas */}
+        {/* Zoom Controls - centralizado horizontalmente no rodapé */}
         <ZoomControls
           zoom={zoom}
           onZoomChange={setZoom}
           minZoom={0.1}
           maxZoom={5}
-          className="bottom-36"
         />
       </div>
     </div>

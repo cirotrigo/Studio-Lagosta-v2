@@ -31,9 +31,9 @@ export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps
 
   return (
     <div className="flex-shrink-0 border-b border-border/40 bg-card shadow-sm">
-      <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
+      <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         {/* Opacidade */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Label className="text-xs text-muted-foreground whitespace-nowrap">Opacidade:</Label>
           <Slider
             value={[opacity]}
