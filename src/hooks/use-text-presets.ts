@@ -29,7 +29,7 @@ export interface ApplyPresetOptions {
 }
 
 export function useTextPresets() {
-  const { addLayer, design } = useTemplateEditor()
+  const { addLayer, design, projectId } = useTemplateEditor()
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [customPresets, setCustomPresets] = React.useState<Record<string, TextPreset>>({})
   const [isApplying, setIsApplying] = React.useState(false)
@@ -304,5 +304,8 @@ export function useTextPresets() {
 
     // Estado
     isApplying,
+
+    // Projeto
+    projectId,
   }
 }

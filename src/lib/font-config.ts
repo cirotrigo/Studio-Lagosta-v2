@@ -4,14 +4,11 @@
 export const FONT_CONFIG = {
   /**
    * Fontes seguras (sempre disponíveis)
+   * Mantendo apenas Montserrat como fonte nativa
    */
   SAFE_FONTS: [
     'Montserrat',
-    'Arial',
-    'Helvetica',
     'sans-serif',
-    'serif',
-    'monospace',
   ] as const,
 
   /**
@@ -94,14 +91,10 @@ export const FONT_CONFIG = {
 
   /**
    * Lista de fontes disponíveis (para UI)
+   * Mantendo apenas Montserrat
    */
   AVAILABLE_FONTS: [
     { name: 'Montserrat', label: 'Montserrat', category: 'sans-serif' },
-    { name: 'Arial', label: 'Arial', category: 'sans-serif' },
-    { name: 'Helvetica', label: 'Helvetica', category: 'sans-serif' },
-    { name: 'Verdana', label: 'Verdana', category: 'sans-serif' },
-    { name: 'Times New Roman', label: 'Times New Roman', category: 'serif' },
-    { name: 'Georgia', label: 'Georgia', category: 'serif' },
   ] as const,
 
   /**

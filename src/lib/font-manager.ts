@@ -19,6 +19,7 @@ export interface CustomFont {
   base64?: string
   source: 'upload' | 'google' | 'database'
   databaseId?: number // ID do CustomFont no banco de dados
+  projectId?: number // ID do projeto ao qual a fonte pertence
 }
 
 export class FontManager {
@@ -94,7 +95,7 @@ export class FontManager {
   /**
    * Upload e processamento de arquivo de fonte
    */
-  async uploadFont(file: File): Promise<string> {
+  async uploadFont(file: File, projectId?: number): Promise<string> {
     // Validar extensão
     const validExtensions = ['.ttf', '.otf', '.woff', '.woff2']
     const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
@@ -106,9 +107,12 @@ export class FontManager {
     // Extrair nome da fonte do arquivo (remover extensão e substituir - _ por espaços)
     const fontName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
 
+    // Criar chave única por projeto
+    const fontKey = projectId ? `${projectId}-${fontName}` : fontName
+
     // Verificar se já existe
-    if (this.loadedFonts.has(fontName)) {
-      throw new Error(`Fonte "${fontName}" já foi importada.`)
+    if (this.loadedFonts.has(fontKey)) {
+      throw new Error(`Fonte "${fontName}" já foi importada neste projeto.`)
     }
 
     // Criar URL do arquivo
@@ -133,14 +137,15 @@ export class FontManager {
       loaded: true,
       base64,
       source: 'upload',
+      projectId,
     }
 
-    this.loadedFonts.set(fontName, customFont)
+    this.loadedFonts.set(fontKey, customFont)
 
     // Persistir no localStorage
     this.saveToLocalStorage()
 
-    console.log(`✅ Fonte "${fontName}" carregada e salva com sucesso!`)
+    console.log(`✅ Fonte "${fontName}" carregada e salva com sucesso para projeto ${projectId || 'global'}!`)
     return fontName
   }
 
@@ -252,30 +257,20 @@ export class FontManager {
   /**
    * Obter lista de fontes disponíveis
    */
-  getAvailableFonts(): {
+  getAvailableFonts(projectId?: number): {
     system: string[]
     custom: string[]
     all: string[]
   } {
+    // Apenas família Montserrat nas fontes nativas
     const systemFonts = [
-      'Inter',
-      'Roboto',
-      'Open Sans',
-      'Lato',
       'Montserrat',
-      'Poppins',
-      'Raleway',
-      'Nunito',
-      'Playfair Display',
-      'Merriweather',
-      'PT Serif',
-      'Source Sans Pro',
-      'Ubuntu',
-      'Work Sans',
-      'Rubik',
     ]
 
-    const customFonts = Array.from(this.loadedFonts.keys())
+    // Filtrar fontes customizadas por projeto
+    const customFonts = Array.from(this.loadedFonts.values())
+      .filter(font => !projectId || font.projectId === projectId)
+      .map(font => font.family)
 
     return {
       system: systemFonts,
@@ -287,22 +282,31 @@ export class FontManager {
   /**
    * Obter todas as fontes customizadas
    */
-  getCustomFonts(): CustomFont[] {
-    return Array.from(this.loadedFonts.values())
+  getCustomFonts(projectId?: number): CustomFont[] {
+    const fonts = Array.from(this.loadedFonts.values())
+
+    if (!projectId) {
+      return fonts
+    }
+
+    // Filtrar apenas fontes do projeto específico
+    return fonts.filter(font => font.projectId === projectId)
   }
 
   /**
    * Verificar se uma fonte é customizada
    */
-  isCustomFont(fontName: string): boolean {
-    return this.loadedFonts.has(fontName)
+  isCustomFont(fontName: string, projectId?: number): boolean {
+    const fontKey = projectId ? `${projectId}-${fontName}` : fontName
+    return this.loadedFonts.has(fontKey)
   }
 
   /**
    * Remover fonte
    */
-  removeFont(fontName: string): void {
-    const font = this.loadedFonts.get(fontName)
+  removeFont(fontName: string, projectId?: number): void {
+    const fontKey = projectId ? `${projectId}-${fontName}` : fontName
+    const font = this.loadedFonts.get(fontKey)
     if (!font) return
 
     // Revogar URL do blob
@@ -310,12 +314,12 @@ export class FontManager {
       URL.revokeObjectURL(font.url)
     }
 
-    this.loadedFonts.delete(fontName)
+    this.loadedFonts.delete(fontKey)
 
     // Atualizar localStorage
     this.saveToLocalStorage()
 
-    console.log(`🗑️ Fonte "${fontName}" removida`)
+    console.log(`🗑️ Fonte "${fontName}" removida do projeto ${projectId || 'global'}`)
   }
 
   /**
@@ -331,6 +335,7 @@ export class FontManager {
         extension: font.extension,
         base64: font.base64,
         source: font.source,
+        projectId: font.projectId,
       }))
 
       localStorage.setItem('custom-fonts', JSON.stringify(fontsData))
@@ -356,6 +361,7 @@ export class FontManager {
         extension: string
         base64?: string
         source: 'upload' | 'google'
+        projectId?: number
       }>
 
       console.log(`📦 Carregando ${fontsData.length} fontes do localStorage...`)
@@ -373,8 +379,11 @@ export class FontManager {
         // Carregar fonte
         await this.loadFont(fontData.family)
 
+        // Criar chave única por projeto
+        const fontKey = fontData.projectId ? `${fontData.projectId}-${fontData.name}` : fontData.name
+
         // Salvar no Map
-        this.loadedFonts.set(fontData.name, {
+        this.loadedFonts.set(fontKey, {
           name: fontData.name,
           family: fontData.family,
           url,
@@ -382,9 +391,10 @@ export class FontManager {
           loaded: true,
           base64: fontData.base64,
           source: fontData.source,
+          projectId: fontData.projectId,
         })
 
-        console.log(`✅ Fonte "${fontData.name}" restaurada do localStorage`)
+        console.log(`✅ Fonte "${fontData.name}" restaurada do localStorage (projeto: ${fontData.projectId || 'global'})`)
       }
     } catch (error) {
       console.error('[FontManager] Erro ao carregar do localStorage:', error)
@@ -458,10 +468,14 @@ export class FontManager {
     name: string
     fontFamily: string
     fileUrl: string
+    projectId: number
   }): Promise<void> {
+    // Criar chave única por projeto
+    const fontKey = `${font.projectId}-${font.fontFamily}`
+
     // Evitar duplicatas
-    if (this.loadedFonts.has(font.fontFamily)) {
-      console.log(`⚠️ Fonte "${font.fontFamily}" já carregada, ignorando`)
+    if (this.loadedFonts.has(fontKey)) {
+      console.log(`⚠️ Fonte "${font.fontFamily}" já carregada para projeto ${font.projectId}, ignorando`)
       return
     }
 
@@ -476,7 +490,7 @@ export class FontManager {
     await this.loadFont(font.fontFamily)
 
     // Salvar no Map
-    this.loadedFonts.set(font.fontFamily, {
+    this.loadedFonts.set(fontKey, {
       name: font.name,
       family: font.fontFamily,
       url: font.fileUrl,
@@ -484,9 +498,10 @@ export class FontManager {
       loaded: true,
       source: 'database',
       databaseId: font.id,
+      projectId: font.projectId,
     })
 
-    console.log(`✅ Fonte do banco "${font.fontFamily}" carregada`)
+    console.log(`✅ Fonte do banco "${font.fontFamily}" carregada para projeto ${font.projectId}`)
   }
 
   /**
@@ -497,6 +512,7 @@ export class FontManager {
     name: string
     fontFamily: string
     fileUrl: string
+    projectId: number
   }>): Promise<void> {
     console.log(`📦 Carregando ${fonts.length} fontes do banco de dados...`)
 

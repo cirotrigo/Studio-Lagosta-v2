@@ -13,9 +13,12 @@ import { cn } from '@/lib/utils'
  *
  * Funcionalidades:
  * - Upload de múltiplas fontes (.ttf, .otf, .woff, .woff2)
+ * - Drag and drop para upload de fontes
  * - Preview visual de cada fonte
  * - Remover fontes individuais
  * - Persistência automática via localStorage
+ * - Isolamento por projeto (fontes não aparecem em outros projetos)
+ * - Sincronização com banco de dados (Vercel Blob)
  * - Notificação de status de carregamento
  *
  * @component
@@ -23,9 +26,11 @@ import { cn } from '@/lib/utils'
 
 export function FontsPanel() {
   const fileInputRef = React.useRef<HTMLInputElement | null>(null)
+  const dropZoneRef = React.useRef<HTMLDivElement | null>(null)
   const [customFonts, setCustomFonts] = React.useState<CustomFont[]>([])
   const [isLoading, setIsLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
+  const [isDragging, setIsDragging] = React.useState(false)
   const { forceUpdate, projectId } = useTemplateEditor()
 
   const fontManager = React.useMemo(() => getFontManager(), [])
@@ -34,9 +39,9 @@ export function FontsPanel() {
   React.useEffect(() => {
     async function loadFonts() {
       try {
-        // 1. Carregar fontes do localStorage
-        const localFonts = fontManager.getCustomFonts()
-        console.log(`📦 ${localFonts.length} fontes no localStorage`)
+        // 1. Carregar fontes do localStorage (filtradas por projeto)
+        const localFonts = fontManager.getCustomFonts(projectId)
+        console.log(`📦 ${localFonts.length} fontes no localStorage para projeto ${projectId}`)
 
         // 2. Buscar fontes do banco de dados
         if (projectId) {
@@ -50,10 +55,10 @@ export function FontsPanel() {
           }
         }
 
-        // 4. Atualizar lista completa (localStorage + database)
-        const allFonts = fontManager.getCustomFonts()
+        // 4. Atualizar lista completa (localStorage + database) filtrada por projeto
+        const allFonts = fontManager.getCustomFonts(projectId)
         setCustomFonts(allFonts)
-        console.log(`✅ Total de ${allFonts.length} fontes disponíveis`)
+        console.log(`✅ Total de ${allFonts.length} fontes disponíveis para projeto ${projectId}`)
       } catch (err) {
         console.error('❌ Erro ao carregar fontes:', err)
       }
@@ -63,12 +68,12 @@ export function FontsPanel() {
   }, [fontManager, projectId])
 
   /**
-   * Handler de upload de fontes
+   * Processar arquivos de fontes
    */
-  const handleUpload = React.useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const files = event.target.files
-      if (!files || files.length === 0) return
+  const processFiles = React.useCallback(
+    async (files: FileList | File[]) => {
+      const fileArray = Array.from(files)
+      if (fileArray.length === 0) return
 
       setIsLoading(true)
       setError(null)
@@ -78,12 +83,12 @@ export function FontsPanel() {
         failed: [],
       }
 
-      for (const file of Array.from(files)) {
+      for (const file of fileArray) {
         try {
           console.log(`📤 Uploading font: ${file.name}`)
 
-          // 1. Upload para font-manager (localStorage)
-          const fontName = await fontManager.uploadFont(file)
+          // 1. Upload para font-manager (localStorage) com projectId
+          const fontName = await fontManager.uploadFont(file, projectId)
           results.success.push(fontName)
 
           // 2. Salvar também no banco de dados (se tiver projectId)
@@ -104,7 +109,7 @@ export function FontsPanel() {
                 console.log(`✅ Fonte "${fontName}" salva no banco (ID: ${savedFont.id})`)
 
                 // Atualizar fonte no manager com o ID do banco
-                const currentFont = fontManager.getCustomFonts().find(f => f.family === fontName)
+                const currentFont = fontManager.getCustomFonts(projectId).find(f => f.family === fontName)
                 if (currentFont) {
                   currentFont.databaseId = savedFont.id
                 }
@@ -123,8 +128,8 @@ export function FontsPanel() {
         }
       }
 
-      // Atualizar lista de fontes
-      const updatedFonts = fontManager.getCustomFonts()
+      // Atualizar lista de fontes (filtrada por projeto)
+      const updatedFonts = fontManager.getCustomFonts(projectId)
       setCustomFonts(updatedFonts)
 
       // Forçar atualização do editor para atualizar dropdown
@@ -142,13 +147,71 @@ export function FontsPanel() {
       }
 
       setIsLoading(false)
+    },
+    [fontManager, forceUpdate, projectId],
+  )
+
+  /**
+   * Handler de upload via input
+   */
+  const handleUpload = React.useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const files = event.target.files
+      if (!files || files.length === 0) return
+
+      await processFiles(files)
 
       // Limpar input
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
     },
-    [fontManager, forceUpdate, projectId],
+    [processFiles],
+  )
+
+  /**
+   * Drag and Drop handlers
+   */
+  const handleDragEnter = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }, [])
+
+  const handleDragLeave = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    // Só remove o estado de dragging se sair do elemento principal
+    if (e.currentTarget === e.target) {
+      setIsDragging(false)
+    }
+  }, [])
+
+  const handleDragOver = React.useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }, [])
+
+  const handleDrop = React.useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsDragging(false)
+
+      const files = Array.from(e.dataTransfer.files).filter((file) => {
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase()
+        return ['.ttf', '.otf', '.woff', '.woff2'].includes(ext)
+      })
+
+      if (files.length === 0) {
+        setError('Nenhum arquivo de fonte válido encontrado. Use .ttf, .otf, .woff ou .woff2')
+        return
+      }
+
+      await processFiles(files)
+    },
+    [processFiles],
   )
 
   /**
@@ -159,11 +222,11 @@ export function FontsPanel() {
       if (!confirm(`Deseja remover a fonte "${fontName}"?`)) return
 
       // Verificar se tem ID do banco antes de remover
-      const font = fontManager.getCustomFonts().find(f => f.family === fontName)
+      const font = fontManager.getCustomFonts(projectId).find(f => f.family === fontName)
       const databaseId = font?.databaseId
 
-      // Remover do font-manager (localStorage)
-      fontManager.removeFont(fontName)
+      // Remover do font-manager (localStorage) com projectId
+      fontManager.removeFont(fontName, projectId)
 
       // Se tiver ID do banco, deletar também do banco
       if (databaseId && projectId) {
@@ -182,14 +245,14 @@ export function FontsPanel() {
         }
       }
 
-      // Atualizar lista
-      const updatedFonts = fontManager.getCustomFonts()
+      // Atualizar lista (filtrada por projeto)
+      const updatedFonts = fontManager.getCustomFonts(projectId)
       setCustomFonts(updatedFonts)
 
       // Forçar atualização do editor
       forceUpdate?.()
 
-      console.log(`🗑️ Fonte "${fontName}" removida`)
+      console.log(`🗑️ Fonte "${fontName}" removida do projeto ${projectId}`)
     },
     [fontManager, forceUpdate, projectId],
   )
@@ -208,7 +271,34 @@ export function FontsPanel() {
   }
 
   return (
-    <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
+    <div
+      ref={dropZoneRef}
+      className={cn(
+        "flex h-full min-h-[400px] flex-col gap-3 rounded-lg border bg-card/60 p-4 shadow-sm transition-all",
+        isDragging
+          ? "border-primary border-2 bg-primary/5 ring-2 ring-primary/20"
+          : "border-border/40"
+      )}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {/* Drag Overlay */}
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-primary/10 backdrop-blur-sm">
+          <div className="text-center">
+            <Upload className="mx-auto h-12 w-12 text-primary animate-bounce" />
+            <p className="mt-3 text-sm font-medium text-primary">
+              Solte os arquivos aqui
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Formatos aceitos: .ttf, .otf, .woff, .woff2
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -258,7 +348,7 @@ export function FontsPanel() {
                 Nenhuma fonte customizada importada ainda.
               </p>
               <p className="mt-1 text-[10px] text-muted-foreground/70">
-                Clique em "Importar Fontes" para começar.
+                Clique em "Importar Fontes" ou arraste arquivos aqui.
               </p>
             </div>
           ) : (

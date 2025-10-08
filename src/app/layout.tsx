@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -10,14 +10,13 @@ import {
 import { siteMetadata } from "@/lib/brand-config";
 import { AnalyticsPixels } from "@/components/analytics/pixels";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Família Montserrat completa com todos os pesos
+const montserrat = Montserrat({
+  variable: "--font-montserrat",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  style: ["normal", "italic"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -39,7 +38,8 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="pt-br" suppressHydrationWarning>
         <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased  text-foreground`}
+          className={`${montserrat.variable} antialiased text-foreground`}
+          style={{ fontFamily: 'var(--font-montserrat), sans-serif' }}
         >
           <AnalyticsPixels />
           <QueryProvider>

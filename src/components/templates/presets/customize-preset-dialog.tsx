@@ -49,7 +49,7 @@ interface CustomizePresetDialogProps {
 }
 
 export function CustomizePresetDialog({ open, onOpenChange, presetId }: CustomizePresetDialogProps) {
-  const { getPresetById, applyPreset, saveCustomPreset } = useTextPresets()
+  const { getPresetById, applyPreset, saveCustomPreset, projectId } = useTextPresets()
   const { toast } = useToast()
   const fontManager = React.useMemo(() => getFontManager(), [])
 
@@ -188,7 +188,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
 
   if (!customizedPreset) return null
 
-  const availableFonts = fontManager.getAvailableFonts()
+  const availableFonts = fontManager.getAvailableFonts(projectId)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

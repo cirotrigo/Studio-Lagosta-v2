@@ -75,13 +75,13 @@ const SYSTEM_FONTS = [
 ]
 
 export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: TextToolbarProps) {
-  const { setStageInstance } = useTemplateEditor()
+  const { setStageInstance, projectId } = useTemplateEditor()
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [availableFonts, setAvailableFonts] = React.useState<{
     system: string[]
     custom: string[]
     all: string[]
-  }>(() => fontManager.getAvailableFonts())
+  }>(() => fontManager.getAvailableFonts(projectId))
   // Estado local para inputs controlados
   const [fontSize, setFontSize] = React.useState(selectedLayer.style?.fontSize ?? 16)
   const [letterSpacing, setLetterSpacing] = React.useState(selectedLayer.style?.letterSpacing ?? 0)
@@ -90,9 +90,9 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
 
   // Atualizar lista de fontes quando houver mudanças (via forceUpdate do context)
   React.useEffect(() => {
-    const fonts = fontManager.getAvailableFonts()
+    const fonts = fontManager.getAvailableFonts(projectId)
     setAvailableFonts(fonts)
-  }, [fontManager])
+  }, [fontManager, projectId])
 
   // Sincronizar estado local quando layer mudar
   React.useEffect(() => {

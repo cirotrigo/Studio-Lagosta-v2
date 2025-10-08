@@ -50,11 +50,11 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   React.useEffect(() => {
     async function preloadFonts() {
       try {
-        console.log('🔤 [TemplateEditorShell] Pré-carregando fontes do projeto...')
+        console.log(`🔤 [TemplateEditorShell] Pré-carregando fontes do projeto ${template.projectId}...`)
 
-        // 1. Carregar fontes do localStorage
-        const localFonts = fontManager.getCustomFonts()
-        console.log(`📦 ${localFonts.length} fontes no localStorage`)
+        // 1. Carregar fontes do localStorage (filtradas por projeto)
+        const localFonts = fontManager.getCustomFonts(template.projectId)
+        console.log(`📦 ${localFonts.length} fontes no localStorage para projeto ${template.projectId}`)
 
         // 2. Buscar e carregar fontes do banco de dados
         if (template.projectId) {
@@ -68,9 +68,9 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
           }
         }
 
-        // 3. Verificar todas as fontes usadas no template e garantir que estão carregadas
-        const allFonts = fontManager.getCustomFonts()
-        console.log(`✅ Total de ${allFonts.length} fontes disponíveis`)
+        // 3. Verificar todas as fontes usadas no template e garantir que estão carregadas (filtradas por projeto)
+        const allFonts = fontManager.getCustomFonts(template.projectId)
+        console.log(`✅ Total de ${allFonts.length} fontes disponíveis para projeto ${template.projectId}`)
 
         // 4. Para cada fonte, forçar document.fonts.load() para garantir disponibilidade no Konva
         for (const font of allFonts) {

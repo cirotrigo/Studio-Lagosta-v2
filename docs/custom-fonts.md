@@ -109,8 +109,62 @@ interface CustomFont {
   base64?: string       // Base64 para localStorage
   source: 'upload' | 'google' | 'database'
   databaseId?: number   // ID no banco de dados
+  projectId?: number    // ID do projeto (para isolamento)
 }
 ```
+
+## 🔒 Isolamento por Projeto
+
+**Problema resolvido:** Fontes customizadas agora são isoladas por projeto, evitando que fontes de um projeto apareçam em outros.
+
+### Como funciona
+
+1. **Chave Única:** Cada fonte é armazenada com uma chave única que combina `projectId` + `fontName`
+   ```typescript
+   // Exemplo: projeto 123 com fonte "Roboto"
+   const fontKey = `123-Roboto`
+   ```
+
+2. **Filtragem Automática:** Ao buscar fontes, o sistema filtra automaticamente por projeto
+   ```typescript
+   // Retorna apenas fontes do projeto 123
+   const fonts = fontManager.getCustomFonts(123)
+   ```
+
+3. **Persistência Isolada:** localStorage armazena `projectId` em cada fonte
+   ```json
+   {
+     "name": "Roboto",
+     "family": "Roboto",
+     "projectId": 123,
+     ...
+   }
+   ```
+
+4. **Sincronização com Banco:** Fontes do banco de dados já possuem `projectId` na tabela `CustomFont`
+
+### Fontes Nativas
+
+Apenas a **família Montserrat completa** está disponível como fonte nativa do sistema, incluindo:
+
+**Pesos disponíveis:**
+- Thin (100)
+- Extra Light (200)
+- Light (300)
+- Regular (400)
+- Medium (500)
+- Semi Bold (600)
+- Bold (700)
+- Extra Bold (800)
+- Black (900)
+
+**Estilos:**
+- Normal
+- Italic (para todos os pesos)
+
+A fonte Montserrat é carregada via Google Fonts no `layout.tsx` com todos os pesos e estilos, garantindo disponibilidade imediata em todo o editor Konva.
+
+**Outras fontes** devem ser importadas como fontes customizadas específicas de cada projeto.
 
 ## 🔧 FontManager Class
 
@@ -124,24 +178,25 @@ const fontManager = getFontManager()
 
 #### Upload de Fonte
 ```typescript
-async uploadFont(file: File): Promise<string>
+async uploadFont(file: File, projectId?: number): Promise<string>
 ```
 **Processo:**
 1. Valida extensão (.ttf, .otf, .woff, .woff2)
 2. Extrai nome da fonte do arquivo
-3. Verifica duplicatas
-4. Cria Blob URL com `URL.createObjectURL()`
-5. Converte para base64 para persistência
-6. Adiciona `@font-face` ao stylesheet
-7. Aguarda fonte carregar via `loadFont()`
-8. Salva em Map interno e localStorage
-9. Retorna nome da fonte
+3. Cria chave única por projeto (`${projectId}-${fontName}`)
+4. Verifica duplicatas (por projeto)
+5. Cria Blob URL com `URL.createObjectURL()`
+6. Converte para base64 para persistência
+7. Adiciona `@font-face` ao stylesheet
+8. Aguarda fonte carregar via `loadFont()`
+9. Salva em Map interno e localStorage com projectId
+10. Retorna nome da fonte
 
 **Exemplo:**
 ```typescript
 const fontManager = getFontManager()
-const fontName = await fontManager.uploadFont(fileInput.files[0])
-console.log(`Fonte "${fontName}" carregada!`)
+const fontName = await fontManager.uploadFont(fileInput.files[0], projectId)
+console.log(`Fonte "${fontName}" carregada no projeto ${projectId}!`)
 ```
 
 #### Carregar Fonte (Font Loading API)
@@ -168,36 +223,41 @@ async loadDatabaseFont(font: {
   name: string
   fontFamily: string
   fileUrl: string
+  projectId: number
 }): Promise<void>
 ```
 **Processo:**
-1. Verifica duplicatas (evita recarregar)
-2. Extrai extensão do URL
-3. Adiciona `@font-face` com URL do Vercel Blob
-4. Aguarda carregamento via `loadFont()`
-5. Salva no Map com `source: 'database'` e `databaseId`
+1. Cria chave única por projeto (`${projectId}-${fontFamily}`)
+2. Verifica duplicatas (evita recarregar)
+3. Extrai extensão do URL
+4. Adiciona `@font-face` com URL do Vercel Blob
+5. Aguarda carregamento via `loadFont()`
+6. Salva no Map com `source: 'database'`, `databaseId` e `projectId`
 
 #### Obter Fontes Disponíveis
 ```typescript
-getAvailableFonts(): {
+getAvailableFonts(projectId?: number): {
   system: string[]
   custom: string[]
   all: string[]
 }
 ```
 **Retorna:**
-- `system`: 15 fontes Google Fonts padrão
-- `custom`: Fontes customizadas do usuário
+- `system`: Apenas família Montserrat (fonte nativa)
+- `custom`: Fontes customizadas do projeto específico
 - `all`: Todas as fontes juntas
+
+**Nota:** Ao passar `projectId`, retorna apenas fontes daquele projeto. Sem `projectId`, retorna todas as fontes.
 
 #### Remover Fonte
 ```typescript
-removeFont(fontName: string): void
+removeFont(fontName: string, projectId?: number): void
 ```
 **Processo:**
-1. Revoga Blob URL (`URL.revokeObjectURL()`)
-2. Remove do Map interno
-3. Atualiza localStorage
+1. Cria chave única por projeto (`${projectId}-${fontName}`)
+2. Revoga Blob URL (`URL.revokeObjectURL()`)
+3. Remove do Map interno
+4. Atualiza localStorage
 
 ## 📁 Arquivos Principais
 
