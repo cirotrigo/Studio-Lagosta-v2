@@ -6,6 +6,7 @@ import Konva from 'konva'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
+import { ImageToolbar } from './image-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
 import { ZoomControls } from './zoom-controls'
@@ -59,6 +60,7 @@ export function EditorCanvas() {
   }, [selectedLayerIds, design.layers])
 
   const isTextSelected = selectedLayer?.type === 'text'
+  const isImageSelected = selectedLayer?.type === 'image'
 
   // Atualizar node selecionado quando layer muda
   React.useEffect(() => {
@@ -183,16 +185,34 @@ export function EditorCanvas() {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Text Toolbar - mostrar apenas quando um texto estiver selecionado */}
-      {isTextSelected && selectedLayer && (
-        <TextToolbar
-          selectedLayer={selectedLayer}
-          onUpdateLayer={(id, updates) => {
-            updateLayer(id, (layer) => ({ ...layer, ...updates }))
-          }}
-          onEffectsClick={handleEffectsClick}
-        />
-      )}
+      {/*
+        Toolbar Container - Espaço reservado para evitar layout shift
+        IMPORTANTE: Sempre manter altura fixa (min-h-[52px]) mesmo quando toolbar não está visível
+        para prevenir que elementos do canvas "pulem" ao alternar entre seleções.
+        52px = altura do toolbar (py-2 = 0.5rem * 2 = 16px + conteúdo ~36px)
+      */}
+      <div className="flex-shrink-0 min-h-[52px]">
+        {/* Text Toolbar - mostrar apenas quando um texto estiver selecionado */}
+        {isTextSelected && selectedLayer && (
+          <TextToolbar
+            selectedLayer={selectedLayer}
+            onUpdateLayer={(id, updates) => {
+              updateLayer(id, (layer) => ({ ...layer, ...updates }))
+            }}
+            onEffectsClick={handleEffectsClick}
+          />
+        )}
+
+        {/* Image Toolbar - mostrar apenas quando uma imagem estiver selecionada */}
+        {isImageSelected && selectedLayer && (
+          <ImageToolbar
+            selectedLayer={selectedLayer}
+            onUpdateLayer={(id, updates) => {
+              updateLayer(id, (layer) => ({ ...layer, ...updates }))
+            }}
+          />
+        )}
+      </div>
 
       {/* Alignment Toolbar - sempre visível no topo do canvas */}
       <div className="flex items-center justify-center border-b border-border/40 bg-background/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
