@@ -27,6 +27,8 @@ export function EditorCanvas() {
     selectedLayerIds,
     design,
     updateLayer,
+    duplicateLayer,
+    removeLayer,
     alignSelectedLeft,
     alignSelectedCenterH,
     alignSelectedRight,
@@ -125,6 +127,42 @@ export function EditorCanvas() {
       setIsEffectsPanelOpen(false)
     }
   }, [isTextSelected])
+
+  // Atalhos de teclado globais
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignorar se estiver digitando em um input, textarea ou contenteditable
+      const target = e.target as HTMLElement
+      if (
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.isContentEditable
+      ) {
+        return
+      }
+
+      // Cmd+J (Mac) ou Ctrl+J (Windows) - Duplicar layer
+      if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+        e.preventDefault()
+        if (selectedLayerIds.length === 1) {
+          duplicateLayer(selectedLayerIds[0])
+          console.log('🔄 Layer duplicado via Cmd+J')
+        }
+      }
+
+      // Delete ou Backspace - Deletar layer
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        if (selectedLayerIds.length > 0) {
+          selectedLayerIds.forEach((id) => removeLayer(id))
+          console.log('🗑️ Layer(s) deletado(s) via Delete/Backspace')
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectedLayerIds, duplicateLayer, removeLayer])
 
   const handleEffectsClick = () => {
     console.log('[EditorCanvas] Effects button clicked. Current state:', isEffectsPanelOpen)
