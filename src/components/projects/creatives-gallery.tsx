@@ -94,7 +94,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   })
 
   const bulkDeleteMutation = useMutation({
-    mutationFn: (ids: string[]) => api.post('/api/generations/bulk-delete', { ids }),
+    mutationFn: (ids: string[]) => api.post<{ deletedCount: number }>('/api/generations/bulk-delete', { ids }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
       setSelectedIds(new Set())

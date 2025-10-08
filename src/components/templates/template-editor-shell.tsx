@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import * as ReactDOM from 'react-dom'
+import { createPortal } from 'react-dom'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
 import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
 import type { TemplateDto } from '@/hooks/use-template'
@@ -233,8 +233,17 @@ function TemplateEditorContent() {
     }
   }, [isFullscreen])
 
+  // Efeito para esconder body scroll quando em fullscreen
+  React.useEffect(() => {
+    if (isFullscreen) {
+      document.body.style.overflow = 'hidden'
+    } else {
+      document.body.style.overflow = ''
+    }
+  }, [isFullscreen])
+
   const editorContent = (
-    <div className={`polotno-editor flex bg-background flex-col ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)] overflow-hidden'}`}>
+    <div className={`polotno-editor flex overflow-hidden bg-background ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)]'} flex-col`}>
       {/* Top Toolbar - Polotno Style */}
       <header className={`flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-4 shadow-sm ${isFullscreen ? 'hidden' : ''}`}>
         {/* Left: Logo + Template Name */}
@@ -268,7 +277,7 @@ function TemplateEditorContent() {
       {/* Main Area: Vertical Toolbar + Side Panel + Canvas */}
       <div className="flex flex-1 overflow-hidden">
         {/* Vertical Icon Toolbar - Always Visible */}
-        <aside className={`flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card ${isFullscreen ? 'hidden' : ''}`}>
+        <aside className="flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card">
           <ToolbarButton
             icon={<Layers2 className="h-5 w-5" />}
             label="Layers"
@@ -333,7 +342,7 @@ function TemplateEditorContent() {
         </aside>
 
         {/* Expandable Side Panel */}
-        {activePanel && !isFullscreen && (
+        {activePanel && (
           <aside className={`flex flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg ${
             activePanel === 'layers' ? 'w-[420px]' : 'w-80'
           }`}>
@@ -392,10 +401,10 @@ function TemplateEditorContent() {
     </div>
   )
 
-  // Em fullscreen, renderizar em portal para escapar do container do layout
-  if (isFullscreen && typeof document !== 'undefined') {
-    return ReactDOM.createPortal(
-      <div className="fixed inset-0 z-[9999]">
+  // Se estiver em fullscreen, renderizar em portal direto no body
+  if (isFullscreen && typeof window !== 'undefined') {
+    return createPortal(
+      <div className="fixed inset-0 z-[9999] bg-background">
         {editorContent}
       </div>,
       document.body

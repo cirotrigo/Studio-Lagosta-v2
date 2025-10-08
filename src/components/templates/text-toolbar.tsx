@@ -267,9 +267,9 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
 
   return (
     <div className="flex-shrink-0 border-b border-border/40 bg-card shadow-sm">
-      <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
+      <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         {/* Fonte e Tamanho */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Select value={fontDisplayName} onValueChange={handleFontFamilyChange}>
             <SelectTrigger className="h-8 w-[180px] text-xs">
               <SelectValue />
@@ -320,7 +320,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Estilo */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button
             variant={isBold ? 'default' : 'outline'}
             size="sm"
@@ -342,7 +342,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Alinhamento */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button
             variant={textAlign === 'left' ? 'default' : 'outline'}
             size="sm"
@@ -373,7 +373,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Uppercase Toggle */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button
             variant={isUppercase ? 'default' : 'outline'}
             size="sm"
@@ -386,7 +386,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Cores */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <div className="flex items-center gap-1">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Cor:</Label>
             <Popover>
@@ -438,7 +438,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Espaçamento */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <div className="flex items-center gap-1">
             <Label className="text-xs text-muted-foreground whitespace-nowrap">Altura:</Label>
             <Input
@@ -469,7 +469,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         </div>
 
         {/* Opacidade */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40">
+        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Label className="text-xs text-muted-foreground whitespace-nowrap">Opacidade:</Label>
           <Slider
             value={[opacity]}
@@ -485,16 +485,18 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
 
         {/* Effects Button */}
         {onEffectsClick && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 gap-1"
-            onClick={onEffectsClick}
-            title="Efeitos de texto"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span className="text-xs">Effects</span>
-          </Button>
+          <div className="flex-shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1"
+              onClick={onEffectsClick}
+              title="Efeitos de texto"
+            >
+              <Sparkles className="h-4 w-4" />
+              <span className="text-xs">Effects</span>
+            </Button>
+          </div>
         )}
       </div>
     </div>
