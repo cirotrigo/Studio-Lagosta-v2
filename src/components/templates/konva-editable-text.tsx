@@ -72,6 +72,7 @@ export function KonvaEditableText({
 }: KonvaEditableTextProps) {
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
+  const isComposingRef = React.useRef(false)
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -232,6 +233,14 @@ export function KonvaEditableText({
     finishEditing(true)
   }, [finishEditing])
 
+  const handleCompositionStart = React.useCallback(() => {
+    isComposingRef.current = true
+  }, [])
+
+  const handleCompositionEnd = React.useCallback(() => {
+    isComposingRef.current = false
+  }, [])
+
   const isEditing = editingState !== null
 
   React.useEffect(() => {
@@ -239,9 +248,14 @@ export function KonvaEditableText({
     const textarea = textareaRef.current
     if (!textarea) return
 
+    // Sincronizar valor do textarea com o estado quando não está compondo
+    if (!isComposingRef.current) {
+      textarea.value = editingState?.value ?? ''
+    }
+
     textarea.focus()
     textarea.setSelectionRange(textarea.value.length, textarea.value.length)
-  }, [isEditing])
+  }, [isEditing, editingState?.value])
 
   React.useLayoutEffect(() => {
     if (!isEditing || !editingState) return
@@ -427,9 +441,11 @@ export function KonvaEditableText({
         >
           <textarea
             ref={textareaRef}
-            value={editingState.value}
+            defaultValue={editingState.value}
             spellCheck={false}
             onChange={handleEditorChange}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             onKeyDown={handleEditorKeyDown}
             onBlur={handleEditorBlur}
             style={{
@@ -450,7 +466,7 @@ export function KonvaEditableText({
               letterSpacing: `${editingState.letterSpacing}px`,
               lineHeight: String(editingState.lineHeight),
               textAlign: editingState.textAlign,
-              textTransform: layer.style?.textTransform ?? 'none',
+              textTransform: 'none',
               whiteSpace: 'pre-wrap',
               overflow: 'hidden',
               resize: 'none',
