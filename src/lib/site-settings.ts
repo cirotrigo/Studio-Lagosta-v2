@@ -22,6 +22,10 @@ export type SiteSettings = {
   gtmId: string | null
   gaId: string | null
   facebookPixelId: string | null
+  isActive: boolean
+  updatedBy: string
+  createdAt: Date
+  updatedAt: Date
 }
 
 /**
@@ -59,6 +63,10 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       gtmId: null,
       gaId: null,
       facebookPixelId: null,
+      isActive: true,
+      updatedBy: 'system',
+      createdAt: new Date(),
+      updatedAt: new Date(),
     }
   }
 

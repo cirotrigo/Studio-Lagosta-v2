@@ -283,6 +283,22 @@ ADMIN_EMAILS=seu@email.com
 npx tsx prisma/seed-site-settings.ts
 ```
 
+### Erro ao salvar configurações
+
+**Problema:** Erro ao clicar em "Salvar Configurações"
+
+**Solução:**
+1. Verifique se todos os campos obrigatórios estão preenchidos:
+   - Nome do Site
+   - Nome Curto
+   - Descrição
+2. Verifique os logs do console (F12 → Console)
+3. Se o erro persistir, rode o seed novamente:
+```bash
+npx tsx prisma/seed-site-settings.ts
+```
+4. Limpe o cache do React Query (recarregue a página)
+
 ### Mudanças não aplicam
 
 **Problema:** Salvei mas site não mudou

@@ -6,7 +6,7 @@ type SettingsResponse = {
   settings: SiteSettings | null
 }
 
-type UpdateSettingsData = Partial<Omit<SiteSettings, 'id' | 'createdAt' | 'updatedAt'>> & { id?: string }
+type UpdateSettingsData = Partial<Omit<SiteSettings, 'createdAt' | 'updatedAt' | 'isActive' | 'updatedBy'>> & { id?: string }
 
 /**
  * Get site settings
