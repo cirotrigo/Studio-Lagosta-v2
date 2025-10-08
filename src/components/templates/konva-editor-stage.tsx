@@ -77,9 +77,9 @@ export function KonvaEditorStage() {
   const [snapConfig, setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
   // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
   const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
-  const [showTestGuide, setShowTestGuide] = React.useState(false)
-  const [showMarginGuides, setShowMarginGuides] = React.useState(false)
-  const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
+  const [showTestGuide, setShowTestGuide] = React.useState(true)
+  const [showMarginGuides, setShowMarginGuides] = React.useState(true)
+  const [showCanvasBounds, setShowCanvasBounds] = React.useState(true)
   const [fontsReady, setFontsReady] = React.useState(false)
 
   // Drag-to-select state
