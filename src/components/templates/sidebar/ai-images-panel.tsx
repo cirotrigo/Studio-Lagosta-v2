@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X, Upload } from 'lucide-react'
+import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X, Upload, Trash2, Copy, Check } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -36,7 +36,7 @@ export function AIImagesPanel() {
   const { addLayer, projectId, design } = useTemplateEditor()
   const { toast } = useToast()
 
-  const [mode, setMode] = React.useState<'generate' | 'library'>('generate')
+  const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
   const [search, setSearch] = React.useState('')
 
   // Buscar imagens IA do projeto
@@ -83,13 +83,16 @@ export function AIImagesPanel() {
     <div className="flex h-full flex-col gap-3">
       {/* Header com tabs */}
       <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)} className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="generate" className="gap-2">
             <Sparkles className="h-3.5 w-3.5" />
             Gerar
           </TabsTrigger>
           <TabsTrigger value="library" className="gap-2">
             Biblioteca ({aiImages.length})
+          </TabsTrigger>
+          <TabsTrigger value="prompts" className="gap-2">
+            Prompts
           </TabsTrigger>
         </TabsList>
 
@@ -133,12 +136,17 @@ export function AIImagesPanel() {
                   <ImageCard
                     key={image.id}
                     image={image}
+                    projectId={projectId}
                     onAddToCanvas={() => handleAddToCanvas(image)}
                   />
                 ))}
               </div>
             )}
           </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="prompts" className="mt-4 space-y-4">
+          <PromptsLibrary projectId={projectId} />
         </TabsContent>
       </Tabs>
     </div>
@@ -464,11 +472,45 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
 // Card individual de imagem
 function ImageCard({
   image,
+  projectId,
   onAddToCanvas
 }: {
   image: AIImageRecord
+  projectId: number | null | undefined
   onAddToCanvas: () => void
 }) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/projects/${projectId}/ai-images/${image.id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) throw new Error('Falha ao deletar imagem')
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-images', projectId] })
+      toast({ description: 'Imagem deletada com sucesso' })
+    },
+    onError: () => {
+      toast({
+        description: 'Erro ao deletar imagem',
+        variant: 'destructive'
+      })
+    }
+  })
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (confirm(`Deletar "${image.name}"?`)) {
+      deleteMutation.mutate()
+    }
+  }
+
   return (
     <Card className="group relative overflow-hidden">
       {/* Link para PhotoSwipe */}
@@ -515,6 +557,16 @@ function ImageCard({
               >
                 <Expand className="h-4 w-4" />
               </Button>
+              <Button
+                size="icon"
+                variant="destructive"
+                onClick={handleDelete}
+                disabled={deleteMutation.isPending}
+                className="h-8 w-8"
+                title="Deletar imagem"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
         </div>
@@ -538,5 +590,192 @@ function ImageCard({
         </div>
       </div>
     </Card>
+  )
+}
+
+
+// Biblioteca de Prompts
+interface PromptRecord {
+  id: string
+  title: string
+  prompt: string
+  category?: string
+  createdAt: string
+}
+
+function PromptsLibrary({ projectId }: { projectId: number | null | undefined }) {
+  const queryClient = useQueryClient()
+  const { toast } = useToast()
+  const [newPromptTitle, setNewPromptTitle] = React.useState("")
+  const [newPromptText, setNewPromptText] = React.useState("")
+  const [copiedId, setCopiedId] = React.useState<string | null>(null)
+
+  // Buscar prompts do projeto
+  const { data: prompts = [], isLoading } = useQuery<PromptRecord[]>({
+    queryKey: ["prompts", projectId],
+    queryFn: async () => {
+      const response = await fetch(`/api/projects/${projectId}/prompts`)
+      if (!response.ok) throw new Error("Falha ao carregar prompts")
+      return response.json()
+    },
+    enabled: projectId !== null && projectId !== undefined,
+  })
+
+  // Criar prompt
+  const createMutation = useMutation({
+    mutationFn: async (data: { title: string; prompt: string }) => {
+      const response = await fetch(`/api/projects/${projectId}/prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      })
+      if (!response.ok) throw new Error("Falha ao criar prompt")
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompts", projectId] })
+      setNewPromptTitle("")
+      setNewPromptText("")
+      toast({ description: "Prompt salvo com sucesso" })
+    },
+    onError: () => {
+      toast({ description: "Erro ao salvar prompt", variant: "destructive" })
+    }
+  })
+
+  // Deletar prompt
+  const deleteMutation = useMutation({
+    mutationFn: async (promptId: string) => {
+      const response = await fetch(`/api/projects/${projectId}/prompts/${promptId}`, {
+        method: "DELETE",
+      })
+      if (!response.ok) throw new Error("Falha ao deletar prompt")
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["prompts", projectId] })
+      toast({ description: "Prompt deletado com sucesso" })
+    },
+    onError: () => {
+      toast({ description: "Erro ao deletar prompt", variant: "destructive" })
+    }
+  })
+
+  const handleCreate = () => {
+    if (!newPromptTitle.trim() || !newPromptText.trim()) {
+      toast({ description: "Preencha título e prompt", variant: "destructive" })
+      return
+    }
+    createMutation.mutate({ title: newPromptTitle, prompt: newPromptText })
+  }
+
+  const handleCopy = async (prompt: PromptRecord) => {
+    try {
+      await navigator.clipboard.writeText(prompt.prompt)
+      setCopiedId(prompt.id)
+      toast({ description: "Prompt copiado!" })
+      setTimeout(() => setCopiedId(null), 2000)
+    } catch (error) {
+      toast({ description: "Erro ao copiar", variant: "destructive" })
+    }
+  }
+
+  const handleDelete = (prompt: PromptRecord) => {
+    if (confirm(`Deletar "${prompt.title}"?`)) {
+      deleteMutation.mutate(prompt.id)
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Formulário de criação */}
+      <Card className="p-4 space-y-3">
+        <h3 className="text-sm font-semibold">Novo Prompt</h3>
+        <Input
+          placeholder="Título do prompt..."
+          value={newPromptTitle}
+          onChange={(e) => setNewPromptTitle(e.target.value)}
+        />
+        <Textarea
+          placeholder="Digite o prompt aqui..."
+          value={newPromptText}
+          onChange={(e) => setNewPromptText(e.target.value)}
+          rows={4}
+        />
+        <Button
+          onClick={handleCreate}
+          disabled={createMutation.isPending || !newPromptTitle.trim() || !newPromptText.trim()}
+          className="w-full"
+        >
+          {createMutation.isPending ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Salvando...
+            </>
+          ) : (
+            <>
+              <Plus className="mr-2 h-4 w-4" />
+              Salvar Prompt
+            </>
+          )}
+        </Button>
+      </Card>
+
+      {/* Lista de prompts */}
+      <ScrollArea className="h-[calc(100vh-500px)]">
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin" />
+          </div>
+        ) : prompts.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <p className="text-sm text-muted-foreground">
+              Nenhum prompt salvo ainda
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Crie seu primeiro prompt acima
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3 pb-4">
+            {prompts.map((prompt) => (
+              <Card key={prompt.id} className="p-3 space-y-2">
+                <div className="flex items-start justify-between gap-2">
+                  <h4 className="text-sm font-semibold flex-1">{prompt.title}</h4>
+                  <div className="flex gap-1">
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleCopy(prompt)}
+                      title="Copiar prompt"
+                    >
+                      {copiedId === prompt.id ? (
+                        <Check className="h-3.5 w-3.5 text-green-500" />
+                      ) : (
+                        <Copy className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="h-7 w-7"
+                      onClick={() => handleDelete(prompt)}
+                      disabled={deleteMutation.isPending}
+                      title="Deletar prompt"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground line-clamp-3">
+                  {prompt.prompt}
+                </p>
+              </Card>
+            ))}
+          </div>
+        )}
+      </ScrollArea>
+    </div>
   )
 }

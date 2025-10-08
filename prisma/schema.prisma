@@ -168,6 +168,7 @@ model Project {
   Logo                   Logo[]
   Template               Template[]
   AIGeneratedImage       AIGeneratedImage[]
+  PromptLibrary          PromptLibrary[]
 
   @@index([status])
   @@index([userId])
@@ -593,4 +594,19 @@ model FeatureGridItem {
 
   @@index([order])
   @@index([isActive])
+}
+
+model PromptLibrary {
+  id        String   @id @default(cuid())
+  title     String
+  prompt    String   @db.Text
+  category  String?
+  projectId Int
+  createdBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([createdBy])
 }
