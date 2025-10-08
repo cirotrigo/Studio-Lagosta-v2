@@ -108,4 +108,27 @@ export const FONT_CONFIG = {
     { value: '700', label: 'Bold' },
     { value: '800', label: 'Extra Bold' },
   ] as const,
+
+  /**
+   * Mapeamento de variações de Montserrat para família + peso
+   */
+  MONTSERRAT_VARIANTS: {
+    'Montserrat Thin': { family: 'Montserrat', weight: '100' },
+    'Montserrat Light': { family: 'Montserrat', weight: '300' },
+    'Montserrat Regular': { family: 'Montserrat', weight: '400' },
+    'Montserrat SemiBold': { family: 'Montserrat', weight: '600' },
+    'Montserrat Bold': { family: 'Montserrat', weight: '700' },
+    'Montserrat Black': { family: 'Montserrat', weight: '900' },
+  } as const,
+
+  /**
+   * Converte nome de variante para CSS font-family e font-weight
+   */
+  parseFontVariant(fontName: string): { family: string; weight: string } {
+    if (fontName in this.MONTSERRAT_VARIANTS) {
+      return this.MONTSERRAT_VARIANTS[fontName as keyof typeof this.MONTSERRAT_VARIANTS]
+    }
+    // Retornar fonte como está se não for uma variante conhecida
+    return { family: fontName, weight: 'normal' }
+  },
 }

@@ -262,9 +262,14 @@ export class FontManager {
     custom: string[]
     all: string[]
   } {
-    // Apenas família Montserrat nas fontes nativas
+    // Família Montserrat com variações de peso
     const systemFonts = [
-      'Montserrat',
+      'Montserrat Thin',        // 100
+      'Montserrat Light',       // 300
+      'Montserrat Regular',     // 400
+      'Montserrat SemiBold',    // 600
+      'Montserrat Bold',        // 700
+      'Montserrat Black',       // 900
     ]
 
     // Filtrar fontes customizadas por projeto

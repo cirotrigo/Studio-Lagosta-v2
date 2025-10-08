@@ -56,24 +56,6 @@ interface TextToolbarProps {
   onEffectsClick?: () => void
 }
 
-const SYSTEM_FONTS = [
-  'Inter',
-  'Roboto',
-  'Open Sans',
-  'Lato',
-  'Montserrat',
-  'Poppins',
-  'Raleway',
-  'Nunito',
-  'Playfair Display',
-  'Merriweather',
-  'PT Serif',
-  'Source Sans Pro',
-  'Ubuntu',
-  'Work Sans',
-  'Rubik',
-]
-
 export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: TextToolbarProps) {
   const { setStageInstance, projectId } = useTemplateEditor()
   const fontManager = React.useMemo(() => getFontManager(), [])
@@ -111,26 +93,55 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
   const strokeColor = selectedLayer.style?.border?.color ?? '#000000'
   const opacity = selectedLayer.style?.opacity ?? 1
 
+  // Converter família + peso para nome da variante (para display no select)
+  const getFontDisplayName = () => {
+    if (fontFamily === 'Montserrat' && fontWeight) {
+      const weightStr = String(fontWeight)
+      const variant = Object.entries(FONT_CONFIG.MONTSERRAT_VARIANTS).find(
+        ([_, config]) => config.family === fontFamily && config.weight === weightStr
+      )
+      if (variant) {
+        return variant[0] // Retorna o nome da variante (ex: "Montserrat Bold")
+      }
+    }
+    return fontFamily
+  }
+
+  const fontDisplayName = getFontDisplayName()
+
   // Verificar se está bold ou italic
   const isBold = fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700'
   const isItalic = fontStyle === 'italic'
   const isUppercase = textTransform === 'uppercase'
 
   const handleFontFamilyChange = async (value: string) => {
+    // Parsear variante de Montserrat (ex: "Montserrat Bold" -> family: "Montserrat", weight: "700")
+    const { family, weight } = FONT_CONFIG.parseFontVariant(value)
+
     // Se for fonte customizada, garantir que está carregada
-    if (fontManager.isCustomFont(value)) {
+    if (fontManager.isCustomFont(value, projectId)) {
       try {
-        await fontManager.loadFont(value)
+        await fontManager.loadFont(family)
         console.log(`✅ Fonte "${value}" carregada e pronta para uso no Konva`)
       } catch (error) {
         console.error(`❌ Erro ao carregar fonte "${value}":`, error)
       }
     }
 
-    // Aplicar fonte no layer
-    onUpdateLayer(selectedLayer.id, {
-      style: { ...selectedLayer.style, fontFamily: value },
-    })
+    // Aplicar fonte e peso no layer
+    const updates: any = {
+      style: {
+        ...selectedLayer.style,
+        fontFamily: family,
+      },
+    }
+
+    // Se a variante tiver peso específico, aplicar também
+    if (weight !== 'normal') {
+      updates.style.fontWeight = weight
+    }
+
+    onUpdateLayer(selectedLayer.id, updates)
 
     // ⚠️ CRÍTICO: Forçar redesenho do Konva após mudança de fonte
     // Aguardar um pouco para garantir que a fonte foi aplicada
@@ -259,20 +270,24 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto">
         {/* Fonte e Tamanho */}
         <div className="flex items-center gap-2 pr-2 border-r border-border/40">
-          <Select value={fontFamily} onValueChange={handleFontFamilyChange}>
-            <SelectTrigger className="h-8 w-[140px] text-xs">
+          <Select value={fontDisplayName} onValueChange={handleFontFamilyChange}>
+            <SelectTrigger className="h-8 w-[180px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="max-h-[400px]">
               {/* Fontes do Sistema */}
-              <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                Sistema
-              </div>
-              {SYSTEM_FONTS.map((font) => (
-                <SelectItem key={font} value={font} className="text-xs">
-                  <span style={{ fontFamily: font }}>{font}</span>
-                </SelectItem>
-              ))}
+              {availableFonts.system.length > 0 && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
+                    Sistema
+                  </div>
+                  {availableFonts.system.map((font) => (
+                    <SelectItem key={font} value={font} className="text-xs">
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
 
               {/* Fontes Customizadas */}
               {availableFonts.custom.length > 0 && (

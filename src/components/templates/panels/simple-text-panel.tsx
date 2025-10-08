@@ -53,7 +53,7 @@ export function SimpleTextPanel() {
           ...base.style,
           fontSize,
           fontWeight,
-          fontFamily: 'Inter',
+          fontFamily: 'Montserrat',
           color: '#FFFFFF',
           align: 'center' as const,
         },

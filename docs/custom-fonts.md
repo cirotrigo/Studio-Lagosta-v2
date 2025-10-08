@@ -145,24 +145,36 @@ interface CustomFont {
 
 ### Fontes Nativas
 
-Apenas a **família Montserrat completa** está disponível como fonte nativa do sistema, incluindo:
+Apenas a **família Montserrat** está disponível como fonte nativa do sistema. No seletor de fontes, as seguintes variações aparecem como opções separadas:
 
-**Pesos disponíveis:**
-- Thin (100)
-- Extra Light (200)
-- Light (300)
-- Regular (400)
-- Medium (500)
-- Semi Bold (600)
-- Bold (700)
-- Extra Bold (800)
-- Black (900)
+**Variações disponíveis no seletor:**
+- **Montserrat Thin** (peso 100)
+- **Montserrat Light** (peso 300)
+- **Montserrat Regular** (peso 400) - Padrão
+- **Montserrat SemiBold** (peso 600)
+- **Montserrat Bold** (peso 700)
+- **Montserrat Black** (peso 900)
 
-**Estilos:**
-- Normal
-- Italic (para todos os pesos)
+**Como funciona:**
+Ao selecionar uma variação (ex: "Montserrat Bold"), o sistema automaticamente:
+1. Define `fontFamily: "Montserrat"`
+2. Define `fontWeight: "700"`
+3. Renderiza o texto com a combinação correta
 
-A fonte Montserrat é carregada via Google Fonts no `layout.tsx` com todos os pesos e estilos, garantindo disponibilidade imediata em todo o editor Konva.
+**Todos os pesos carregados:**
+A fonte Montserrat é carregada via Google Fonts no `layout.tsx` com **todos os 9 pesos** (100-900) e ambos os estilos (normal + italic), garantindo disponibilidade imediata.
+
+**Mapeamento técnico:**
+```typescript
+FONT_CONFIG.MONTSERRAT_VARIANTS = {
+  'Montserrat Thin': { family: 'Montserrat', weight: '100' },
+  'Montserrat Light': { family: 'Montserrat', weight: '300' },
+  'Montserrat Regular': { family: 'Montserrat', weight: '400' },
+  'Montserrat SemiBold': { family: 'Montserrat', weight: '600' },
+  'Montserrat Bold': { family: 'Montserrat', weight: '700' },
+  'Montserrat Black': { family: 'Montserrat', weight: '900' },
+}
+```
 
 **Outras fontes** devem ser importadas como fontes customizadas específicas de cada projeto.
 
