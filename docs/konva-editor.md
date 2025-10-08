@@ -230,10 +230,17 @@ const { copySelectedLayers, pasteLayers } = useTemplateEditor()
 ```typescript
 const { zoom, setZoom, zoomIn, zoomOut } = useTemplateEditor()
 
-// Zoom via scroll do mouse
-// Atalhos: Ctrl+Plus/Minus, Ctrl+0 (reset)
+// Zoom APENAS via botões e atalhos (Ctrl/Cmd +/-, Ctrl/Cmd 0)
+// Scroll do mouse = scroll vertical nativo (sem zoom)
+// Canvas sempre centralizado horizontalmente
 // Range: 10% - 500%
 ```
+
+**Comportamento:**
+- **Scroll do mouse**: Rola verticalmente (sem zoom)
+- **Botões de zoom**: Controles no rodapé (ZoomControls component)
+- **Atalhos de teclado**: Ctrl/Cmd + Plus (zoom in), Ctrl/Cmd + Minus (zoom out), Ctrl/Cmd + 0 (reset para 100%)
+- **Centralização**: Canvas sempre centralizado horizontalmente, scroll vertical disponível quando necessário
 
 ## 🎨 Smart Guides
 
@@ -424,10 +431,10 @@ await exportDesign('jpeg') // ou 'png'
 - **Ctrl+V**: Colar layers
 
 ### Zoom
-- **Ctrl+Plus**: Zoom in
-- **Ctrl+Minus**: Zoom out
-- **Ctrl+0**: Reset zoom (100%)
-- **Scroll do mouse**: Zoom smooth
+- **Ctrl/Cmd+Plus**: Zoom in
+- **Ctrl/Cmd+Minus**: Zoom out
+- **Ctrl/Cmd+0**: Reset zoom (100%)
+- **Scroll do mouse**: Scroll vertical (zoom desabilitado)
 
 ### Ferramentas
 - **Alt** (segurar): Desabilita snap temporariamente

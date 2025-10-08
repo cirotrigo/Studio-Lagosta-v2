@@ -173,6 +173,7 @@ export function KonvaEditorStage() {
   }, [setStageInstance])
 
   // Sincronizar estado zoom com Konva stage.scale()
+  // SEMPRE mantém o canvas centralizado horizontalmente
   React.useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
@@ -181,21 +182,26 @@ export function KonvaEditorStage() {
 
     // Se o zoom mudou externamente (pelos botões), aplicar no stage
     if (Math.abs(currentScale - zoom) > 0.001) {
-      // Calcular offset para manter zoom centralizado
+      // Obter dimensões do stage (container)
       const stageWidth = stage.width()
       const stageHeight = stage.height()
 
-      const centerX = stageWidth / 2
-      const centerY = stageHeight / 2
+      // Dimensões do canvas escalado
+      const scaledCanvasWidth = canvasWidth * zoom
+      const scaledCanvasHeight = canvasHeight * zoom
 
-      const newX = centerX - (centerX * zoom)
-      const newY = centerY - (centerY * zoom)
+      // Centralizar horizontalmente SEMPRE
+      const centerX = (stageWidth - scaledCanvasWidth) / 2
+
+      // Posição Y = 0 (topo, permitindo scroll vertical)
+      const newX = centerX
+      const newY = 0
 
       stage.scale({ x: zoom, y: zoom })
       stage.position({ x: newX, y: newY })
       stage.batchDraw()
     }
-  }, [zoom])
+  }, [zoom, canvasWidth, canvasHeight])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -292,55 +298,20 @@ export function KonvaEditorStage() {
     [selectionRect, design.layers, selectLayers, clearLayerSelection],
   )
 
+  // Scroll do mouse DESABILITADO - apenas scroll vertical nativo
+  // Zoom funciona apenas via botões e atalhos (Cmd/Ctrl +/-)
   const handleWheel = React.useCallback(
     (event: KonvaEventObject<WheelEvent>) => {
-      event.evt.preventDefault()
-      const stage = stageRef.current
-      if (!stage) return
-
-      const oldScale = stage.scaleX()
-
-      // Pegar posição do ponteiro do mouse relativa ao stage
-      const pointer = stage.getPointerPosition()
-      if (!pointer) return
-
-      // Determinar direção do zoom
-      const direction = event.evt.deltaY > 0 ? 1 / ZOOM_SCALE_BY : ZOOM_SCALE_BY
-
-      // Calcular nova escala
-      const newScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, oldScale * direction))
-
-      if (newScale === oldScale) return
-
-      // Pegar posição atual do stage
-      const oldPos = stage.position()
-
-      // Calcular o ponto do mouse relativo ao stage (não escalado)
-      const mousePointTo = {
-        x: (pointer.x - oldPos.x) / oldScale,
-        y: (pointer.y - oldPos.y) / oldScale,
-      }
-
-      // Calcular nova posição do stage para manter o ponteiro no mesmo lugar
-      const newPos = {
-        x: pointer.x - mousePointTo.x * newScale,
-        y: pointer.y - mousePointTo.y * newScale,
-      }
-
-      // Aplicar zoom e posição
-      stage.scale({ x: newScale, y: newScale })
-      stage.position(newPos)
-
-      stage.batchDraw()
-
-      // Atualizar estado React
-      setZoom(newScale)
+      // NÃO prevenir default - permitir scroll vertical nativo
+      // NÃO fazer zoom com scroll do mouse
+      return
     },
-    [setZoom],
+    [],
   )
 
 
   // Zoom animado para atalhos de teclado
+  // SEMPRE mantém canvas centralizado horizontalmente
   const animateZoom = React.useCallback(
     (newScale: number, duration = 300) => {
       const stage = stageRef.current
@@ -352,15 +323,18 @@ export function KonvaEditorStage() {
       const clampedScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale))
       if (clampedScale === oldScale) return
 
-      // Calcular offset para manter zoom centralizado
+      // Obter dimensões do stage (container)
       const stageWidth = stage.width()
-      const stageHeight = stage.height()
 
-      const centerX = stageWidth / 2
-      const centerY = stageHeight / 2
+      // Dimensões do canvas escalado
+      const scaledCanvasWidth = canvasWidth * clampedScale
 
-      const newX = centerX - (centerX * clampedScale)
-      const newY = centerY - (centerY * clampedScale)
+      // Centralizar horizontalmente SEMPRE
+      const centerX = (stageWidth - scaledCanvasWidth) / 2
+
+      // Posição Y = 0 (topo, permitindo scroll vertical)
+      const newX = centerX
+      const newY = 0
 
       // Animar zoom usando Konva.Tween
       new Konva.Tween({
@@ -376,7 +350,7 @@ export function KonvaEditorStage() {
         },
       }).play()
     },
-    [setZoom],
+    [setZoom, canvasWidth],
   )
 
   const handleLayerChange = React.useCallback(
@@ -750,30 +724,34 @@ export function KonvaEditorStage() {
   }, [])
 
   return (
-    <div className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a]" style={{ padding: '2rem' }}>
-      <Stage
-        ref={stageRef}
-        width={canvasWidth}
-        height={canvasHeight}
-        className="rounded-md shadow-2xl ring-1 ring-border/20"
-        onMouseDown={handleStagePointerDown}
-        onTouchStart={handleStagePointerDown}
-        onMouseMove={handleStagePointerMove}
-        onTouchMove={(e) => {
-          // Multi-touch tem prioridade
-          if (e.evt.touches && e.evt.touches.length > 1) {
-            handleTouchMove(e)
-          } else {
-            handleStagePointerMove(e)
-          }
-        }}
-        onMouseUp={handleStagePointerUp}
-        onTouchEnd={(e) => {
-          handleTouchEnd()
-          handleStagePointerUp(e)
-        }}
-        onWheel={handleWheel}
-      >
+    <div
+      className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-hidden"
+      style={{ padding: '2rem' }}
+    >
+      <div className="flex justify-center min-h-full">
+        <Stage
+          ref={stageRef}
+          width={canvasWidth}
+          height={canvasHeight}
+          className="rounded-md shadow-2xl ring-1 ring-border/20"
+          onMouseDown={handleStagePointerDown}
+          onTouchStart={handleStagePointerDown}
+          onMouseMove={handleStagePointerMove}
+          onTouchMove={(e) => {
+            // Multi-touch tem prioridade
+            if (e.evt.touches && e.evt.touches.length > 1) {
+              handleTouchMove(e)
+            } else {
+              handleStagePointerMove(e)
+            }
+          }}
+          onMouseUp={handleStagePointerUp}
+          onTouchEnd={(e) => {
+            handleTouchEnd()
+            handleStagePointerUp(e)
+          }}
+          onWheel={handleWheel}
+        >
           {/* Background layer - non-interactive (listening: false for performance) */}
           <KonvaLayer name="background-layer" listening={false}>
             <Rect
@@ -977,6 +955,7 @@ export function KonvaEditorStage() {
             )}
           </KonvaLayer>
         </Stage>
+      </div>
     </div>
   )
 }
