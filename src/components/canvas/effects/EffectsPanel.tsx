@@ -121,7 +121,7 @@ export function EffectsPanel({
   if (!selectedNode) {
     return (
       <div className="w-80 h-full bg-background border-l flex flex-col">
-        <div className="flex items-center justify-between p-4 border-b">
+        <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
           <h2 className="text-lg font-semibold">Effects</h2>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -139,7 +139,7 @@ export function EffectsPanel({
   return (
     <div className="w-80 h-full bg-background border-l flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b flex-shrink-0">
         <h2 className="text-lg font-semibold">Effects</h2>
         <Button variant="ghost" size="icon" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -147,7 +147,7 @@ export function EffectsPanel({
       </div>
 
       {/* Effects Controls */}
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 h-0">
         <div className="p-4 space-y-4">
           {/* Blur Effect */}
           <BlurControl
