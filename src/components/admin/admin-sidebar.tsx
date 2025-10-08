@@ -16,6 +16,7 @@ import {
   Menu,
   Image,
   Package,
+  Settings,
 } from "lucide-react";
 import {
   Sidebar,
@@ -53,6 +54,7 @@ const reports: Item[] = [
   { title: "Histórico de Uso", href: "/admin/usage", icon: Activity },
 ];
 const settings: Item[] = [
+  { title: "Configurações do Site", href: "/admin/site-settings", icon: Settings },
   { title: "Custos por Funcionalidade", href: "/admin/settings/features", icon: SlidersHorizontal },
   { title: "Planos de Assinatura", href: "/admin/settings/plans", icon: DollarSign },
 ];

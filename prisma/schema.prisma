@@ -530,3 +530,49 @@ model CMSMedia {
   @@index([mimeType])
   @@index([uploadedBy])
 }
+
+model SiteSettings {
+  id          String   @id @default(cuid())
+
+  // Brand
+  siteName    String   @default("Studio Lagosta")
+  shortName   String   @default("Studio Lagosta")
+  description String   @db.Text
+
+  // Logo
+  logoLight   String   @default("/logo-light.svg")
+  logoDark    String   @default("/logo-dark.svg")
+
+  // Icons
+  favicon     String   @default("/favicon.ico")
+  appleIcon   String?
+
+  // SEO
+  metaTitle   String?
+  metaDesc    String?  @db.Text
+  ogImage     String?
+  keywords    String[] @default([])
+
+  // Contact
+  supportEmail String?
+
+  // Social
+  twitter     String?
+  facebook    String?
+  instagram   String?
+  linkedin    String?
+  github      String?
+
+  // Analytics
+  gtmId       String?
+  gaId        String?
+  facebookPixelId String?
+
+  // General
+  isActive    Boolean  @default(true)
+  updatedBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive])
+}

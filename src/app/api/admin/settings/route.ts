@@ -1,75 +1,137 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { isAdmin } from '@/lib/admin-utils'
-import { FEATURE_CREDIT_COSTS, FeatureKey } from '@/lib/credits/feature-config'
-import { getEffectiveFeatureCosts, getEffectivePlanCredits, upsertAdminSettings } from '@/lib/credits/settings'
 import { db } from '@/lib/db'
+import { isAdmin } from '@/lib/admin-utils'
 
+/**
+ * GET /api/admin/settings
+ * Get site settings
+ */
 export async function GET() {
-  const { userId } = await auth()
-  if (!userId || !(await isAdmin(userId))) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
+  try {
+    const { userId } = await auth()
 
-  const featureCosts = await getEffectiveFeatureCosts()
-  const planCredits = await getEffectivePlanCredits()
-  // Compose billingPlans view from Plan rows for backward compatibility with current UI
-  const plans = await db.plan.findMany({ orderBy: { createdAt: 'asc' } })
-  const billingPlans: Record<string, { name: string; credits: number }> = {}
-  for (const p of plans) billingPlans[p.clerkId] = { name: p.name, credits: p.credits }
-  return NextResponse.json({ featureCosts, planCredits, billingPlans })
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const settings = await db.siteSettings.findFirst({
+      where: { isActive: true },
+      orderBy: { updatedAt: 'desc' },
+    })
+
+    return NextResponse.json({ settings })
+  } catch (error) {
+    console.error('Error fetching settings:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+  }
 }
 
-export async function PUT(req: Request) {
-  const { userId } = await auth()
-  if (!userId || !(await isAdmin(userId))) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
-
+/**
+ * POST /api/admin/settings
+ * Create or update site settings
+ */
+export async function POST(request: Request) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const incoming = body as {
-      featureCosts?: Partial<Record<string, number>>
-      billingPlans?: Record<string, { name: string; credits: number }>
+    const { userId } = await auth()
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const cleanFeatureCosts: Partial<Record<FeatureKey, number>> = {}
-    if (incoming.featureCosts) {
-      for (const key of Object.keys(FEATURE_CREDIT_COSTS) as FeatureKey[]) {
-        const v = incoming.featureCosts[key]
-        if (typeof v === 'number' && Number.isFinite(v) && v >= 0) cleanFeatureCosts[key] = Math.floor(v)
-      }
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // Persist featureCosts in AdminSettings
-    await upsertAdminSettings({ featureCosts: cleanFeatureCosts })
+    const body = await request.json()
+    console.log('[POST /api/admin/settings] Received body:', JSON.stringify(body, null, 2))
 
-    // Upsert Plans in DB
-    if (incoming.billingPlans && typeof incoming.billingPlans === 'object') {
-      const incomingIds = Object.keys(incoming.billingPlans)
-      // Upsert by clerkId (unique)
-      for (const [clerkId, cfg] of Object.entries(incoming.billingPlans)) {
-        const name = (cfg?.name || '').trim()
-        const credits = Math.max(0, Math.floor(Number(cfg?.credits ?? 0)))
-        await db.plan.upsert({
-          where: { clerkId },
-          update: { name, credits, active: true },
-          create: { clerkId, name, credits, active: true },
-        })
-      }
-      // Inactivate any plan whose clerkId is not in incoming (do not delete)
-      await db.plan.updateMany({ where: { clerkId: { notIn: incomingIds } }, data: { active: false } })
+    // Validate required fields
+    if (!body.siteName || !body.shortName || !body.description) {
+      return NextResponse.json(
+        { error: 'Missing required fields: siteName, shortName, description' },
+        { status: 400 }
+      )
     }
 
-    // Return updated snapshot
-    const featureCosts = await getEffectiveFeatureCosts()
-    const planCredits = await getEffectivePlanCredits()
-    const plans = await db.plan.findMany({ orderBy: { createdAt: 'asc' } })
-    const billingPlans: Record<string, { name: string; credits: number }> = {}
-    for (const p of plans) billingPlans[p.clerkId] = { name: p.name, credits: p.credits }
-    return NextResponse.json({ featureCosts, planCredits, billingPlans })
-  } catch (e) {
-    console.error('PUT /api/admin/settings error', e)
-    return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
+    // Deactivate all existing settings
+    await db.siteSettings.updateMany({
+      where: { isActive: true },
+      data: { isActive: false },
+    })
+
+    // Create new settings
+    const settings = await db.siteSettings.create({
+      data: {
+        ...body,
+        updatedBy: userId,
+        isActive: true,
+      },
+    })
+
+    console.log('[POST /api/admin/settings] Settings created:', settings.id)
+    return NextResponse.json({ settings })
+  } catch (error: any) {
+    console.error('[POST /api/admin/settings] Error:', error)
+    return NextResponse.json(
+      { error: error?.message || 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * PUT /api/admin/settings
+ * Update existing settings
+ */
+export async function PUT(request: Request) {
+  try {
+    const { userId } = await auth()
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!(await isAdmin(userId))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const body = await request.json()
+    console.log('[PUT /api/admin/settings] Received body:', JSON.stringify(body, null, 2))
+
+    const { id, ...data } = body
+
+    if (!id) {
+      return NextResponse.json({ error: 'Settings ID is required' }, { status: 400 })
+    }
+
+    // Validate required fields
+    if (!data.siteName || !data.shortName || !data.description) {
+      return NextResponse.json(
+        { error: 'Missing required fields: siteName, shortName, description' },
+        { status: 400 }
+      )
+    }
+
+    const settings = await db.siteSettings.update({
+      where: { id },
+      data: {
+        ...data,
+        updatedBy: userId,
+      },
+    })
+
+    console.log('[PUT /api/admin/settings] Settings updated:', settings.id)
+    return NextResponse.json({ settings })
+  } catch (error: any) {
+    console.error('[PUT /api/admin/settings] Error:', error)
+    return NextResponse.json(
+      { error: error?.message || 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
