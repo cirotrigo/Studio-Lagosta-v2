@@ -93,6 +93,25 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     },
   })
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: (ids: string[]) => api.post('/api/generations/bulk-delete', { ids }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+      setSelectedIds(new Set())
+      toast({
+        title: 'Criativos removidos',
+        description: `${data.deletedCount} criativo(s) deletado(s) com sucesso.`
+      })
+    },
+    onError: () => {
+      toast({
+        title: 'Erro ao deletar',
+        description: 'Não foi possível deletar os criativos selecionados.',
+        variant: 'destructive'
+      })
+    },
+  })
+
   const filtered = React.useMemo(() => {
     const list = data?.generations ?? []
     return list.filter((generation) => {
@@ -205,6 +224,16 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     })
   }, [deleteMutation])
 
+  const handleBulkDelete = React.useCallback(() => {
+    if (selectedIds.size === 0) return
+
+    if (!confirm(`Deseja realmente remover ${selectedIds.size} criativo(s) selecionado(s)?`)) {
+      return
+    }
+
+    bulkDeleteMutation.mutate(Array.from(selectedIds))
+  }, [selectedIds, bulkDeleteMutation])
+
   const isEmpty = !isLoading && filtered.length === 0
 
   return (
@@ -250,6 +279,13 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             onClick={handleBulkDownload}
           >
             <Download className="mr-2 h-4 w-4" /> Baixar selecionados ({selectedIds.size})
+          </Button>
+          <Button
+            variant="outline"
+            disabled={selectedIds.size === 0}
+            onClick={handleBulkDelete}
+          >
+            <Trash2 className="mr-2 h-4 w-4 text-red-500" /> Excluir selecionados ({selectedIds.size})
           </Button>
           <Button variant="ghost" size="icon" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4" />

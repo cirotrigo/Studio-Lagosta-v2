@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Image as ImageIcon, Trash2, Edit } from 'lucide-react'
+import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Copy } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -107,6 +107,17 @@ export default function ProjectDetailPage() {
     },
   })
 
+  const duplicateMutation = useMutation({
+    mutationFn: (id: number) => api.post(`/api/templates/${id}/duplicate`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
+      toast.success('Template duplicado com sucesso!')
+    },
+    onError: () => {
+      toast.error('Erro ao duplicar template')
+    },
+  })
+
   const {
     register,
     handleSubmit,
@@ -137,6 +148,12 @@ export default function ProjectDetailPage() {
   const handleDelete = (id: number, name: string) => {
     if (confirm(`Tem certeza que deseja deletar o template "${name}"?`)) {
       deleteMutation.mutate(id)
+    }
+  }
+
+  const handleDuplicate = (id: number, name: string) => {
+    if (confirm(`Duplicar o template "${name}"?`)) {
+      duplicateMutation.mutate(id)
     }
   }
 
@@ -291,6 +308,15 @@ export default function ProjectDetailPage() {
                           <Link href={`/templates/${template.id}/editor`}>
                             <Edit className="w-4 h-4" />
                           </Link>
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="secondary"
+                          className="h-9 w-9"
+                          onClick={() => handleDuplicate(template.id, template.name)}
+                          disabled={duplicateMutation.isPending}
+                        >
+                          <Copy className="w-4 h-4" />
                         </Button>
                       </div>
                     </div>
