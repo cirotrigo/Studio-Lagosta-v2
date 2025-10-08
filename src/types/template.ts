@@ -45,6 +45,13 @@ export interface Layer {
     elementLabel?: string
     [key: string]: unknown
   }
+  effects?: {
+    blur?: { enabled: boolean; intensity: number }
+    stroke?: { enabled: boolean; color: string; width: number }
+    shadow?: { enabled: boolean; color: string; blur: number; offsetX: number; offsetY: number; opacity: number }
+    background?: { enabled: boolean; color: string; padding: number }
+    curved?: { enabled: boolean; curvature: number }
+  }
   [key: string]: unknown
 }
 

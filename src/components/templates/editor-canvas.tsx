@@ -181,6 +181,17 @@ export function EditorCanvas() {
     if (currentLayer) {
       currentLayer.batchDraw()
     }
+
+    // Salvar efeitos no estado do layer
+    if (selectedLayer) {
+      const effects = node.getAttr('effects')
+      if (effects) {
+        updateLayer(selectedLayer.id, (layer) => ({
+          ...layer,
+          effects: effects
+        }))
+      }
+    }
   }
 
   return (
