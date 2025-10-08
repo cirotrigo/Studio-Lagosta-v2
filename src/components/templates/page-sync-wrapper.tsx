@@ -31,6 +31,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       isSyncingRef.current = true
 
       // Carregar design da nova página
+      // IMPORTANTE: Não passar 'name' aqui para evitar sobrescrever o nome do template!
+      // O nome do template deve permanecer constante, independente da página selecionada
       loadTemplate({
         designData: {
           canvas: {
@@ -40,7 +42,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
           },
           layers: (currentPage.layers as Layer[]) || [],
         },
-        name: currentPage.name,
+        // name: currentPage.name, // ❌ NÃO PASSAR - isso sobrescreve o nome do template
       })
 
       lastPageIdRef.current = currentPageId

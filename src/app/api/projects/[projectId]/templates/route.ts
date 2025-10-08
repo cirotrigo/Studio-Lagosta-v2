@@ -30,6 +30,11 @@ export async function GET(
   const templates = await db.template.findMany({
     where: { projectId: projectIdNum },
     orderBy: { updatedAt: 'desc' },
+    include: {
+      _count: {
+        select: { Page: true },
+      },
+    },
   })
 
   return NextResponse.json(templates)

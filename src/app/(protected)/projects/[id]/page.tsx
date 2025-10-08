@@ -52,6 +52,9 @@ interface Template {
   dimensions: string
   thumbnailUrl: string | null
   createdAt: string
+  _count?: {
+    Page: number
+  }
 }
 
 const TEMPLATE_TYPES = [
@@ -324,7 +327,7 @@ export default function ProjectDetailPage() {
                       <h3 className="font-semibold text-sm leading-tight line-clamp-1 mb-1">
                         {template.name}
                       </h3>
-                      <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center justify-between text-xs mb-1">
                         <span className="text-muted-foreground truncate">
                           {getTypeLabel(template.type)} • {template.dimensions}
                         </span>
@@ -338,6 +341,11 @@ export default function ProjectDetailPage() {
                           <Trash2 className="w-3.5 h-3.5 text-red-500" />
                         </Button>
                       </div>
+                      {template._count && template._count.Page > 0 && (
+                        <div className="text-xs text-muted-foreground">
+                          {template._count.Page} {template._count.Page === 1 ? 'página' : 'páginas'}
+                        </div>
+                      )}
                     </div>
                   </Card>
                 )
