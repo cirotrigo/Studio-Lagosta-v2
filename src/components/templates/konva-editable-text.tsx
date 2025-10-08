@@ -6,7 +6,6 @@ import { Text } from 'react-konva'
 import { Html } from 'react-konva-utils'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
-import { EffectsManager } from '@/lib/konva/effects'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -75,21 +74,19 @@ export function KonvaEditableText({
   const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
   const isComposingRef = React.useRef(false)
 
-  // Apply saved effects when layer loads or changes
+  // Cache blur effect when enabled
   React.useEffect(() => {
     const textNode = shapeRef.current
-    if (!textNode || !layer.effects) return
+    if (!textNode) return
 
-    const konvaLayer = textNode.getLayer()
-    if (!konvaLayer) return
-
-    try {
-      EffectsManager.applyEffects(textNode, layer.effects, konvaLayer)
-      konvaLayer.batchDraw()
-    } catch (error) {
-      console.error('[KonvaEditableText] Error applying effects:', error)
+    if (layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0) {
+      textNode.cache()
+    } else {
+      textNode.clearCache()
     }
-  }, [layer.effects, shapeRef])
+
+    textNode.getLayer()?.batchDraw()
+  }, [layer.effects?.blur, shapeRef])
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
