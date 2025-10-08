@@ -42,6 +42,7 @@ const content: Item[] = [
   { title: "Páginas", href: "/admin/content/pages", icon: FileText },
   { title: "Menus", href: "/admin/content/menus", icon: Menu },
   { title: "Componentes", href: "/admin/content/components", icon: Package },
+  { title: "Grid de Recursos", href: "/admin/content/feature-grid", icon: LayoutDashboard },
   { title: "Mídias", href: "/admin/content/media", icon: Image },
 ];
 const management: Item[] = [

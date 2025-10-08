@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { LucideIcon } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -8,10 +9,10 @@ import { GlowingEffect } from '@/components/ui/glowing-effect'
 type Feature = {
   id: string
   icon: string
-  iconColor?: string
+  iconColor?: string | null
   title: string
   description: string
-  gridArea?: string
+  gridArea?: string | null
 }
 
 type BentoGridContent = {
@@ -25,7 +26,52 @@ type CMSBentoGridProps = {
 }
 
 export function CMSBentoGrid({ content }: CMSBentoGridProps) {
-  const { title, subtitle, items } = content
+  const { title, subtitle } = content
+  const [items, setItems] = useState<Feature[]>(content.items || [])
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    // Buscar itens do banco de dados
+    fetch('/api/feature-grid')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.items && data.items.length > 0) {
+          setItems(data.items)
+        } else if (content.items) {
+          // Fallback para items do content se não houver no banco
+          setItems(content.items)
+        }
+        setIsLoading(false)
+      })
+      .catch((error) => {
+        console.error('Error fetching feature grid items:', error)
+        // Fallback para items do content em caso de erro
+        if (content.items) {
+          setItems(content.items)
+        }
+        setIsLoading(false)
+      })
+  }, [content.items])
+
+  if (isLoading) {
+    return (
+      <section id="features" className="container mx-auto px-4 py-24">
+        {(title || subtitle) && (
+          <div className="mx-auto max-w-2xl text-center mb-16">
+            {title && (
+              <h2 className="text-3xl md:text-4xl font-semibold tracking-tight">
+                {title}
+              </h2>
+            )}
+            {subtitle && (
+              <p className="mt-3 text-muted-foreground">{subtitle}</p>
+            )}
+          </div>
+        )}
+        <div className="text-center text-muted-foreground">Carregando recursos...</div>
+      </section>
+    )
+  }
 
   return (
     <section id="features" className="container mx-auto px-4 py-24">

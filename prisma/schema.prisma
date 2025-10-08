@@ -576,3 +576,21 @@ model SiteSettings {
 
   @@index([isActive])
 }
+
+model FeatureGridItem {
+  id          String   @id @default(cuid())
+  icon        String                // Nome do ícone Lucide (ex: "Sparkles")
+  iconColor   String?               // Classe Tailwind (ex: "text-sky-500")
+  title       String
+  description String   @db.Text
+  gridArea    String?               // CSS grid-area (ex: "md:[grid-area:1/1/2/2]")
+  order       Int      @default(0)  // Ordem de exibição
+  isActive    Boolean  @default(true)
+  createdBy   String
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([order])
+  @@index([isActive])
+}

@@ -18,6 +18,7 @@ If you're new to this project, start here:
 - **[Database](./database.md)** - Schema design, Prisma operations, and data management
 - **[Authentication](./authentication.md)** - Clerk integration, security patterns, and user management
 - **[Page Metadata System](./page-metadata-system.md)** - Centralized page headers and breadcrumbs management
+- **[Painel Admin Completo](./PAINEL-ADMIN-COMPLETO.md)** - 📊 Documentação completa do painel administrativo
 
 ### Studio Lagosta Features
 - **[Projects & Templates](./projects-templates.md)** - Project management, template system, assets, and generations

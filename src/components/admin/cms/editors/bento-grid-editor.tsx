@@ -1,8 +1,11 @@
 'use client'
 
+import Link from 'next/link'
+import { ExternalLink } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
+import { Button } from '@/components/ui/button'
 
 type BentoGridEditorProps = {
   content: Record<string, unknown>
@@ -35,11 +38,20 @@ export function BentoGridEditor({ content, onChange }: BentoGridEditorProps) {
         />
       </div>
 
-      <div className="rounded-lg border p-4 bg-muted/50">
-        <p className="text-sm text-muted-foreground">
-          Os cards da grade são gerenciados através de um editor JSON avançado.
-          Configure os recursos, ícones e layouts no modo avançado.
+      <div className="rounded-lg border p-4 bg-muted/50 space-y-3">
+        <p className="text-sm font-medium">
+          Gerenciamento de Cards
         </p>
+        <p className="text-sm text-muted-foreground">
+          Os cards do Grid de Recursos são gerenciados em uma seção dedicada do painel admin.
+          Clique no botão abaixo para gerenciar os itens do grid.
+        </p>
+        <Button asChild variant="outline" size="sm">
+          <Link href="/admin/content/feature-grid" target="_blank">
+            <ExternalLink className="mr-2 h-4 w-4" />
+            Gerenciar Grid de Recursos
+          </Link>
+        </Button>
       </div>
     </div>
   )

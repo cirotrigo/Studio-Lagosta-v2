@@ -19,6 +19,7 @@ This file is a navigation hub for agents working in this repository. It avoids d
 - Authentication: [docs/authentication.md](docs/authentication.md)
 - Database & Prisma: [docs/database.md](docs/database.md)
 - Credits System: [docs/credits.md](docs/credits.md), [src/lib/credits/feature-config.ts](src/lib/credits/feature-config.ts), [src/lib/credits/deduct.ts](src/lib/credits/deduct.ts)
+- **Admin Panel (Complete):** [docs/PAINEL-ADMIN-COMPLETO.md](docs/PAINEL-ADMIN-COMPLETO.md) - 📊 Documentação completa do painel administrativo
 - Admin QA Guide: [docs/testing/admin-qa-guide.md](docs/testing/admin-qa-guide.md)
 
 ## Studio Lagosta Specific
