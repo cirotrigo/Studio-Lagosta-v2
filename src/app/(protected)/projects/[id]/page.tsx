@@ -108,13 +108,13 @@ export default function ProjectDetailPage() {
   })
 
   const duplicateMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/api/templates/${id}/duplicate`),
+    mutationFn: (id: number) => api.post(`/api/templates/${id}/duplicate`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
       toast.success('Template duplicado com sucesso!')
     },
-    onError: () => {
-      toast.error('Erro ao duplicar template')
+    onError: (error: any) => {
+      toast.error(error?.message || 'Erro ao duplicar template')
     },
   })
 

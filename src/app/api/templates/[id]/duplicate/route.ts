@@ -8,28 +8,33 @@ export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { userId } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-  }
-
-  const { id } = await params
-  const templateId = Number(id)
-  if (!templateId) {
-    return NextResponse.json({ error: 'Template inválido' }, { status: 400 })
-  }
-
-  // Buscar template original com verificação de ownership
-  const original = await db.template.findFirst({
-    where: { id: templateId },
-    include: { Project: true },
-  })
-
-  if (!original || original.Project.userId !== userId) {
-    return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
-  }
-
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+
+    const { id } = await params
+    const templateId = Number(id)
+
+    if (!templateId || isNaN(templateId)) {
+      return NextResponse.json({ error: 'Template inválido' }, { status: 400 })
+    }
+
+    // Buscar template original com verificação de ownership
+    const original = await db.template.findFirst({
+      where: { id: templateId },
+      include: { Project: true },
+    })
+
+    if (!original) {
+      return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+    }
+
+    if (original.Project.userId !== userId) {
+      return NextResponse.json({ error: 'Não autorizado para duplicar este template' }, { status: 403 })
+    }
+
     // Criar cópia do template
     const duplicate = await db.template.create({
       data: {
@@ -39,13 +44,21 @@ export async function POST(
         designData: original.designData,
         dynamicFields: original.dynamicFields,
         thumbnailUrl: original.thumbnailUrl,
+        category: original.category,
+        tags: original.tags,
+        isPublic: original.isPublic,
+        isPremium: original.isPremium,
         projectId: original.projectId,
+        createdBy: userId,
       },
     })
 
     return NextResponse.json(duplicate)
   } catch (error) {
-    console.error('Failed to duplicate template', error)
-    return NextResponse.json({ error: 'Erro ao duplicar template' }, { status: 500 })
+    console.error('Failed to duplicate template:', error)
+    return NextResponse.json({
+      error: 'Erro ao duplicar template',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
