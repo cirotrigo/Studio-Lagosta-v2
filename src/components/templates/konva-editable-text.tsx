@@ -417,6 +417,12 @@ export function KonvaEditableText({
     return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
   }, [layer.content, layer.style?.textTransform, applyTextTransform])
 
+  // Log effects for debugging
+  React.useEffect(() => {
+    console.log('[KonvaEditableText] Layer effects:', layer.effects)
+    console.log('[KonvaEditableText] Layer ID:', layer.id)
+  }, [layer.effects, layer.id])
+
   // Prepare blur filter
   const filters = React.useMemo(() => {
     if (layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0) {

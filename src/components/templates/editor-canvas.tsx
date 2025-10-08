@@ -189,6 +189,8 @@ export function EditorCanvas() {
   }
 
   const handleEffectChange = (node: Konva.Text | Konva.TextPath) => {
+    console.log('[EditorCanvas] handleEffectChange called')
+
     // Atualizar referência do node
     setSelectedTextNode(node)
 
@@ -200,12 +202,20 @@ export function EditorCanvas() {
     // Salvar efeitos no estado do layer
     if (selectedLayer) {
       const effects = node.getAttr('effects')
+      console.log('[EditorCanvas] Effects from node:', effects)
+      console.log('[EditorCanvas] Selected layer ID:', selectedLayer.id)
+
       if (effects) {
+        console.log('[EditorCanvas] Updating layer with effects:', effects)
         updateLayer(selectedLayer.id, (layer) => ({
           ...layer,
           effects: effects
         }))
+      } else {
+        console.warn('[EditorCanvas] No effects found on node')
       }
+    } else {
+      console.warn('[EditorCanvas] No selected layer')
     }
   }
 

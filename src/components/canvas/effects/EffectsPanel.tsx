@@ -72,12 +72,20 @@ export function EffectsPanel({
   // Apply effect changes to the node
   const applyEffect = React.useCallback(
     (newConfig: TextEffectsConfig) => {
-      if (!selectedNode || !layer) return
+      console.log('[EffectsPanel] applyEffect called with config:', newConfig)
+
+      if (!selectedNode || !layer) {
+        console.warn('[EffectsPanel] No selectedNode or layer')
+        return
+      }
 
       const updatedNode = EffectsManager.applyEffects(selectedNode, newConfig, layer)
+      console.log('[EffectsPanel] Effects applied to node, calling onEffectChange')
 
       if (onEffectChange && updatedNode) {
         onEffectChange(updatedNode)
+      } else {
+        console.warn('[EffectsPanel] No onEffectChange handler or updatedNode')
       }
     },
     [selectedNode, layer, onEffectChange]

@@ -8,7 +8,7 @@ export const canvasConfigSchema = z.object({
 
 export const layerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['text', 'image', 'gradient', 'gradient2', 'logo', 'element']),
+  type: z.enum(['text', 'image', 'gradient', 'gradient2', 'logo', 'element', 'shape', 'icon']),
   name: z.string().min(1),
   visible: z.boolean().default(true),
   locked: z.boolean().default(false),
@@ -24,6 +24,8 @@ export const layerSchema = z.object({
   elementId: z.number().optional(),
   fileUrl: z.string().url().optional(),
   parentId: z.string().nullable().optional(),
+  effects: z.record(z.string(), z.any()).optional(),
+  metadata: z.record(z.string(), z.any()).optional(),
 })
 
 export const designDataSchema = z.object({

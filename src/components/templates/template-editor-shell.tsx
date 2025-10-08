@@ -179,6 +179,9 @@ function TemplateEditorContent() {
           thumbnailUrl: thumbnailUrl || undefined,
         },
       }
+
+      console.log('[TemplateEditor] Salvando template com design:', JSON.stringify(design, null, 2))
+
       const saved = await updateTemplate(payload)
       markSaved(saved)
 

@@ -162,6 +162,9 @@ export function KonvaEditorStage() {
   const canvasHeight = design.canvas.height
   const deferredLayers = React.useDeferredValue(design.layers)
 
+  // Container ref para calcular tamanho disponível
+  const containerRef = React.useRef<HTMLDivElement>(null)
+
   React.useEffect(() => {
     if (stageRef.current) {
       setStageInstance(stageRef.current)
@@ -747,31 +750,30 @@ export function KonvaEditorStage() {
   }, [])
 
   return (
-    <div className="flex h-full w-full flex-1 items-center justify-center overflow-auto bg-[#f5f5f5] p-4 dark:bg-[#1a1a1a]">
-      <div className="relative flex items-center justify-center">
-        <Stage
-          ref={stageRef}
-          width={canvasWidth}
-          height={canvasHeight}
-          className="rounded-md shadow-2xl ring-1 ring-border/20"
-          onMouseDown={handleStagePointerDown}
-          onTouchStart={handleStagePointerDown}
-          onMouseMove={handleStagePointerMove}
-          onTouchMove={(e) => {
-            // Multi-touch tem prioridade
-            if (e.evt.touches && e.evt.touches.length > 1) {
-              handleTouchMove(e)
-            } else {
-              handleStagePointerMove(e)
-            }
-          }}
-          onMouseUp={handleStagePointerUp}
-          onTouchEnd={(e) => {
-            handleTouchEnd()
-            handleStagePointerUp(e)
-          }}
-          onWheel={handleWheel}
-        >
+    <div className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a]" style={{ padding: '2rem' }}>
+      <Stage
+        ref={stageRef}
+        width={canvasWidth}
+        height={canvasHeight}
+        className="rounded-md shadow-2xl ring-1 ring-border/20"
+        onMouseDown={handleStagePointerDown}
+        onTouchStart={handleStagePointerDown}
+        onMouseMove={handleStagePointerMove}
+        onTouchMove={(e) => {
+          // Multi-touch tem prioridade
+          if (e.evt.touches && e.evt.touches.length > 1) {
+            handleTouchMove(e)
+          } else {
+            handleStagePointerMove(e)
+          }
+        }}
+        onMouseUp={handleStagePointerUp}
+        onTouchEnd={(e) => {
+          handleTouchEnd()
+          handleStagePointerUp(e)
+        }}
+        onWheel={handleWheel}
+      >
           {/* Background layer - non-interactive (listening: false for performance) */}
           <KonvaLayer name="background-layer" listening={false}>
             <Rect
@@ -975,7 +977,6 @@ export function KonvaEditorStage() {
             )}
           </KonvaLayer>
         </Stage>
-      </div>
     </div>
   )
 }
