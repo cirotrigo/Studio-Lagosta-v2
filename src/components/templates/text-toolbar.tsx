@@ -57,7 +57,8 @@ interface TextToolbarProps {
 }
 
 export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: TextToolbarProps) {
-  const { setStageInstance, projectId } = useTemplateEditor()
+  const templateEditor = useTemplateEditor()
+  const { projectId } = templateEditor
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [availableFonts, setAvailableFonts] = React.useState<{
     system: string[]
@@ -142,17 +143,6 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     }
 
     onUpdateLayer(selectedLayer.id, updates)
-
-    // ⚠️ CRÍTICO: Forçar redesenho do Konva após mudança de fonte
-    // Aguardar um pouco para garantir que a fonte foi aplicada
-    setTimeout(() => {
-      if (setStageInstance) {
-        const stage = (setStageInstance as any).current
-        if (stage && typeof stage.batchDraw === 'function') {
-          stage.batchDraw()
-        }
-      }
-    }, 100)
   }
 
   const handleFontSizeChange = (value: number) => {

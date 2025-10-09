@@ -74,19 +74,25 @@ export function KonvaEditableText({
   const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
   const isComposingRef = React.useRef(false)
 
-  // Cache blur effect when enabled
+  // Cache for high quality rendering (especially for ornate/decorative fonts)
   React.useEffect(() => {
     const textNode = shapeRef.current
     if (!textNode) return
 
-    if (layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0) {
-      textNode.cache()
+    // Usar cache com pixelRatio maior para melhorar qualidade de fontes ornamentadas
+    // Cache é especialmente importante para fontes com serifs, swashes e detalhes finos
+    const hasBlur = layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0
+    const shouldCache = hasBlur || (layer.style?.fontSize && layer.style.fontSize > 30)
+
+    if (shouldCache) {
+      // pixelRatio = 2 para alta qualidade (retina display)
+      textNode.cache({ pixelRatio: 2 })
     } else {
       textNode.clearCache()
     }
 
     textNode.getLayer()?.batchDraw()
-  }, [layer.effects?.blur, shapeRef])
+  }, [layer.effects?.blur, layer.style?.fontSize, shapeRef])
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -94,31 +100,78 @@ export function KonvaEditableText({
     if (!textNode) return
 
     const handleTransform = () => {
-      // Pegar escalas atuais
-      const scaleX = textNode.scaleX()
-      const scaleY = textNode.scaleY()
+      const transformer = textNode.getStage()?.findOne('Transformer') as Konva.Transformer | null
+      if (!transformer) return
 
-      // Usar a menor escala para manter proporção
-      const scale = Math.min(scaleX, scaleY)
+      // Detectar qual âncora está sendo arrastada
+      const activeAnchor = transformer.getActiveAnchor()
 
-      // Ajustar fontSize baseado no scale
-      const currentFontSize = textNode.fontSize()
-      const newFontSize = Math.max(8, Math.round(currentFontSize * scale))
+      // Âncoras dos cantos (diagonais): ajustam fontSize proporcionalmente
+      const cornerAnchors = ['top-left', 'top-right', 'bottom-left', 'bottom-right']
+      // Âncoras das laterais: ajustam apenas width/height, mantendo fontSize fixo
+      const sideAnchors = ['middle-left', 'middle-right', 'top-center', 'bottom-center']
 
-      // Aplicar novo fontSize e resetar scales
-      textNode.setAttrs({
-        fontSize: newFontSize,
-        scaleX: 1,
-        scaleY: 1,
-      })
+      if (cornerAnchors.includes(activeAnchor)) {
+        // NÓS DOS CANTOS: Ajustar fontSize proporcionalmente
+        const scaleX = textNode.scaleX()
+        const scaleY = textNode.scaleY()
+        const scale = Math.min(scaleX, scaleY)
 
-      // Atualizar layer com novo fontSize
-      onChange({
-        style: {
-          ...layer.style,
+        const currentFontSize = textNode.fontSize()
+        const newFontSize = Math.max(8, Math.round(currentFontSize * scale))
+
+        // Calcular novas dimensões aplicando scale
+        const currentWidth = textNode.width()
+        const currentHeight = textNode.height()
+        const newWidth = Math.max(20, Math.round(currentWidth * scaleX))
+        const newHeight = Math.max(20, Math.round(currentHeight * scaleY))
+
+        textNode.setAttrs({
           fontSize: newFontSize,
-        },
-      })
+          width: newWidth,
+          height: newHeight,
+          scaleX: 1,
+          scaleY: 1,
+        })
+
+        onChange({
+          size: {
+            width: newWidth,
+            height: newHeight,
+          },
+          style: {
+            ...layer.style,
+            fontSize: newFontSize,
+          },
+        })
+      } else if (sideAnchors.includes(activeAnchor)) {
+        // NÓS DAS LATERAIS: Ajustar apenas dimensões da caixa, manter fontSize fixo
+        const scaleX = textNode.scaleX()
+        const scaleY = textNode.scaleY()
+
+        const currentWidth = textNode.width()
+        const currentHeight = textNode.height()
+
+        // Aplicar scale às dimensões
+        const newWidth = Math.max(20, Math.round(currentWidth * scaleX))
+        const newHeight = Math.max(20, Math.round(currentHeight * scaleY))
+
+        // Resetar scale mas manter as novas dimensões
+        textNode.setAttrs({
+          width: newWidth,
+          height: newHeight,
+          scaleX: 1,
+          scaleY: 1,
+        })
+
+        // Não alterar fontSize, apenas size
+        onChange({
+          size: {
+            width: newWidth,
+            height: newHeight,
+          },
+        })
+      }
     }
 
     textNode.on('transform', handleTransform)
@@ -126,7 +179,7 @@ export function KonvaEditableText({
     return () => {
       textNode.off('transform', handleTransform)
     }
-  }, [shapeRef, layer.style, onChange])
+  }, [shapeRef, layer.style, layer.size, onChange])
 
   const handleDblClick = React.useCallback(() => {
     if (editingState) return
@@ -200,6 +253,10 @@ export function KonvaEditableText({
   const handleEditorChange = React.useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
       const nextValue = event.target.value
+      const textarea = event.target
+
+      // Salvar posição do cursor ANTES de atualizar o estado
+      cursorPositionRef.current = textarea.selectionStart
 
       setEditingState((prev) => {
         if (!prev) return prev
@@ -256,11 +313,15 @@ export function KonvaEditableText({
   }, [])
 
   const isEditing = editingState !== null
+  const cursorPositionRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     if (!isEditing) return
     const textarea = textareaRef.current
     if (!textarea) return
+
+    // Salvar posição do cursor antes de atualizar o valor
+    const savedCursorPosition = cursorPositionRef.current ?? textarea.selectionStart
 
     // Sincronizar valor do textarea com o estado quando não está compondo
     if (!isComposingRef.current) {
@@ -268,7 +329,19 @@ export function KonvaEditableText({
     }
 
     textarea.focus()
-    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+
+    // Restaurar posição do cursor após atualização
+    // Se temos uma posição salva, usar ela; caso contrário, usar o final
+    if (cursorPositionRef.current !== null) {
+      const position = Math.min(cursorPositionRef.current, textarea.value.length)
+      textarea.setSelectionRange(position, position)
+      cursorPositionRef.current = null
+    } else if (savedCursorPosition !== null) {
+      const position = Math.min(savedCursorPosition, textarea.value.length)
+      textarea.setSelectionRange(position, position)
+    } else {
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+    }
   }, [isEditing, editingState?.value])
 
   React.useLayoutEffect(() => {
@@ -431,12 +504,42 @@ export function KonvaEditableText({
     return undefined
   }, [layer.effects?.blur])
 
+  // Force update of the layer when style properties change
+  // This ensures all changes are reflected immediately without breaking transformer
+  React.useEffect(() => {
+    const textNode = shapeRef.current
+    if (!textNode) return
+
+    // Force layer redraw to apply changes
+    const layer = textNode.getLayer()
+    if (layer) {
+      layer.batchDraw()
+    }
+  }, [
+    layer.style?.fontSize,
+    layer.style?.fontFamily,
+    layer.style?.fontStyle,
+    layer.style?.fontWeight,
+    layer.style?.color,
+    layer.style?.textAlign,
+    layer.style?.lineHeight,
+    layer.style?.letterSpacing,
+    layer.style?.opacity,
+    layer.style?.border?.color,
+    layer.style?.border?.width,
+    layer.style?.textTransform,
+    layer.content,
+  ])
+
   return (
     <>
       <Text
+        key={layer.id}
         {...commonProps}
         ref={shapeRef as React.RefObject<Konva.Text>}
         text={displayText}
+        width={layer.size?.width ?? 240}
+        height={layer.size?.height ?? 120}
         fontSize={layer.style?.fontSize ?? 16}
         fontFamily={layer.style?.fontFamily ?? 'Inter'}
         fontStyle={layer.style?.fontStyle ?? 'normal'}
@@ -446,14 +549,15 @@ export function KonvaEditableText({
         padding={6}
         lineHeight={layer.style?.lineHeight ?? 1.2}
         letterSpacing={layer.style?.letterSpacing ?? 0}
-        wrap="none"
+        wrap="word"
         ellipsis={false}
         listening={commonProps.listening && !isEditing}
         draggable={commonProps.draggable && !isEditing}
         visible={!isEditing}
-        perfectDrawEnabled={false}
-        stroke={layer.effects?.stroke?.enabled ? layer.effects.stroke.strokeColor : (borderWidth > 0 ? borderColor : undefined)}
-        strokeWidth={layer.effects?.stroke?.enabled ? layer.effects.stroke.strokeWidth : (borderWidth > 0 ? borderWidth : undefined)}
+        perfectDrawEnabled={true}
+        imageSmoothingEnabled={true}
+        stroke={layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined}
+        strokeWidth={layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.width : undefined}
         shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
         shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
         shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
