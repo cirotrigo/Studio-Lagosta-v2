@@ -71,6 +71,17 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
   const [lineHeight, setLineHeight] = React.useState(selectedLayer.style?.lineHeight ?? 1.2)
   const [strokeWidth, setStrokeWidth] = React.useState(selectedLayer.style?.border?.width ?? 0)
 
+  // ⚡ CALLBACK PARA FORÇAR REDESENHO IMEDIATO
+  const forceRedraw = React.useCallback(() => {
+    // Usar setTimeout com delay 0 para garantir que a mudança foi aplicada ao DOM
+    setTimeout(() => {
+      // Forçar re-render via window.requestAnimationFrame
+      window.requestAnimationFrame(() => {
+        // A atualização será feita pelo useLayoutEffect do KonvaEditableText
+      })
+    }, 0)
+  }, [])
+
   // Atualizar lista de fontes quando houver mudanças (via forceUpdate do context)
   React.useEffect(() => {
     const fonts = fontManager.getAvailableFonts(projectId)
@@ -143,6 +154,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     }
 
     onUpdateLayer(selectedLayer.id, updates)
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleFontSizeChange = (value: number) => {
@@ -152,6 +164,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, fontSize: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleFontSizeCommit = (value: number) => {
@@ -159,6 +172,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, fontSize: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const toggleBold = () => {
@@ -171,6 +185,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         fontWeight: isBold ? 'normal' : 'bold',
       },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const toggleItalic = () => {
@@ -179,18 +194,21 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, fontStyle: newStyle },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleAlignChange = (align: 'left' | 'center' | 'right') => {
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, textAlign: align },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleColorChange = (value: string) => {
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, color: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleStrokeColorChange = (value: string) => {
@@ -205,6 +223,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         },
       },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleStrokeWidthChange = (value: number) => {
@@ -223,6 +242,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         },
       },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleLineHeightChange = (value: number) => {
@@ -233,6 +253,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, lineHeight: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleLetterSpacingChange = (value: number) => {
@@ -243,6 +264,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, letterSpacing: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const handleOpacityChange = (values: number[]) => {
@@ -250,6 +272,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, opacity: value },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   const toggleUppercase = () => {
@@ -259,6 +282,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         textTransform: isUppercase ? 'none' : 'uppercase',
       },
     })
+    forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
   return (

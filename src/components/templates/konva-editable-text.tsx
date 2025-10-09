@@ -251,6 +251,19 @@ export function KonvaEditableText({
         if (!prev) return null
 
         if (commit && prev.value !== prev.initialValue) {
+          // ⚡ ATUALIZAR NODE DIRETAMENTE para visualização imediata
+          const textNode = shapeRef.current
+          if (textNode) {
+            textNode.text(prev.value)
+            // Limpar e recriar cache para fontes de alta qualidade
+            if (textNode.isCached()) {
+              textNode.clearCache()
+              textNode.cache({
+                pixelRatio: Math.max(2, window.devicePixelRatio || 2),
+                imageSmoothingEnabled: true,
+              })
+            }
+          }
           onChange({
             content: prev.value,
           })
@@ -258,6 +271,13 @@ export function KonvaEditableText({
 
         return null
       })
+
+      // ⚡ FORÇAR REDESENHO IMEDIATO
+      const textNode = shapeRef.current
+      if (textNode) {
+        const konvaLayer = textNode.getLayer()
+        if (konvaLayer) konvaLayer.batchDraw()
+      }
 
       const stage = stageRef?.current ?? shapeRef.current?.getStage()
       if (stage && typeof stage.batchDraw === 'function') {
@@ -518,7 +538,8 @@ export function KonvaEditableText({
 
   // Force update of the layer when style properties change
   // This ensures all changes are reflected immediately without breaking transformer
-  React.useEffect(() => {
+  // ⚡ USAR useLayoutEffect para atualização síncrona (antes do paint)
+  React.useLayoutEffect(() => {
     const textNode = shapeRef.current
     if (!textNode) return
 
@@ -529,6 +550,15 @@ export function KonvaEditableText({
     // IMPORTANTE: Forçar atualização do transformer quando propriedades mudam
     if (transformer && transformer.nodes().includes(textNode)) {
       transformer.forceUpdate()
+    }
+
+    // ⚡ LIMPAR E RECRIAR CACHE para alta qualidade
+    if (textNode.isCached()) {
+      textNode.clearCache()
+      textNode.cache({
+        pixelRatio: Math.max(2, window.devicePixelRatio || 2),
+        imageSmoothingEnabled: true,
+      })
     }
 
     // Force layer redraw to apply changes immediately

@@ -571,9 +571,13 @@ interface TemplateEditorContextValue {
 
 ## 📚 Referências
 
-- [Konva.js Documentation](https://konvajs.org/)
-- [React Konva](https://konvajs.org/docs/react/)
-- [Custom Fonts in Konva](https://konvajs.org/docs/sandbox/Custom_Font.html)
+### Documentação do Projeto
 - [Sistema de Projetos](./projects-templates.md)
 - [Sistema de Fontes Customizadas](./custom-fonts.md)
 - [Toolbar de Texto](./text-editing-toolbar.md)
+- [Correções de Visualização em Tempo Real](./konva-text-realtime-fixes.md) - **Importante para performance**
+
+### Documentação Externa
+- [Konva.js Documentation](https://konvajs.org/)
+- [React Konva](https://konvajs.org/docs/react/)
+- [Custom Fonts in Konva](https://konvajs.org/docs/sandbox/Custom_Font.html)
