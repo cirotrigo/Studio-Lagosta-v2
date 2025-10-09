@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Settings, Save, Loader2, Globe, Image, Mail, Share2, BarChart3 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Settings, Save, Loader2, Globe, Image as ImageIcon, Mail, Share2, BarChart3, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -9,14 +9,27 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
-import { useSiteSettings, useUpdateSiteSettings } from '@/hooks/admin/use-site-settings'
+import { useSiteSettings, useUpdateSiteSettings, useUploadFile } from '@/hooks/admin/use-site-settings'
 
 export default function SiteSettingsPage() {
   const { toast } = useToast()
   const { data, isLoading } = useSiteSettings()
   const updateMutation = useUpdateSiteSettings()
+  const uploadFile = useUploadFile()
 
   const settings = data?.settings
+
+  // Refs para inputs de arquivo
+  const logoLightInputRef = useRef<HTMLInputElement>(null)
+  const logoDarkInputRef = useRef<HTMLInputElement>(null)
+  const faviconInputRef = useRef<HTMLInputElement>(null)
+  const appleIconInputRef = useRef<HTMLInputElement>(null)
+
+  // Estados de upload
+  const [uploadingLogoLight, setUploadingLogoLight] = useState(false)
+  const [uploadingLogoDark, setUploadingLogoDark] = useState(false)
+  const [uploadingFavicon, setUploadingFavicon] = useState(false)
+  const [uploadingAppleIcon, setUploadingAppleIcon] = useState(false)
 
   // Form state
   const [formData, setFormData] = useState({
@@ -71,6 +84,31 @@ export default function SiteSettingsPage() {
       })
     }
   }, [settings])
+
+  // Função para fazer upload de arquivo
+  const handleFileUpload = async (
+    file: File,
+    field: 'logoLight' | 'logoDark' | 'favicon' | 'appleIcon',
+    setUploading: (uploading: boolean) => void
+  ) => {
+    try {
+      setUploading(true)
+      const url = await uploadFile.mutateAsync(file)
+      setFormData({ ...formData, [field]: url })
+      toast({
+        title: 'Upload concluído',
+        description: 'Arquivo enviado com sucesso',
+      })
+    } catch (error) {
+      toast({
+        title: 'Erro no upload',
+        description: error instanceof Error ? error.message : 'Falha ao enviar arquivo',
+        variant: 'destructive',
+      })
+    } finally {
+      setUploading(false)
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -177,7 +215,7 @@ export default function SiteSettingsPage() {
               Marca
             </TabsTrigger>
             <TabsTrigger value="logos">
-              <Image className="mr-2 h-4 w-4" />
+              <ImageIcon className="mr-2 h-4 w-4" />
               Logos
             </TabsTrigger>
             <TabsTrigger value="seo">
@@ -253,59 +291,231 @@ export default function SiteSettingsPage() {
               <CardHeader>
                 <CardTitle>Logos e Ícones</CardTitle>
                 <CardDescription>
-                  Caminhos para os arquivos de logo e favicon
+                  Faça upload das logos e ícones do site
                 </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="logoLight">Logo Clara (Dark Mode)</Label>
-                  <Input
-                    id="logoLight"
-                    value={formData.logoLight}
-                    onChange={(e) => setFormData({ ...formData, logoLight: e.target.value })}
-                    placeholder="/logo-light.svg"
-                  />
+              <CardContent className="space-y-6">
+                {/* Logo Light */}
+                <div className="space-y-3">
+                  <Label htmlFor="logoLight">Logo Clara (Tema Escuro)</Label>
+                  <div className="flex items-center gap-4">
+                    {formData.logoLight && (
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-gray-900 p-2">
+                        <img
+                          src={formData.logoLight}
+                          alt="Logo Light"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="logoLight"
+                        value={formData.logoLight}
+                        onChange={(e) => setFormData({ ...formData, logoLight: e.target.value })}
+                        placeholder="/logo-light.svg"
+                      />
+                      <input
+                        ref={logoLightInputRef}
+                        type="file"
+                        accept="image/svg+xml,image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'logoLight', setUploadingLogoLight)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoLightInputRef.current?.click()}
+                        disabled={uploadingLogoLight}
+                      >
+                        {uploadingLogoLight ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Logo que aparece em fundo escuro
+                    Tamanho recomendado: 36×36px (SVG ou PNG). Aparece em fundo escuro.
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="logoDark">Logo Escura (Light Mode)</Label>
-                  <Input
-                    id="logoDark"
-                    value={formData.logoDark}
-                    onChange={(e) => setFormData({ ...formData, logoDark: e.target.value })}
-                    placeholder="/logo-dark.svg"
-                  />
+                {/* Logo Dark */}
+                <div className="space-y-3">
+                  <Label htmlFor="logoDark">Logo Escura (Tema Claro)</Label>
+                  <div className="flex items-center gap-4">
+                    {formData.logoDark && (
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
+                        <img
+                          src={formData.logoDark}
+                          alt="Logo Dark"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="logoDark"
+                        value={formData.logoDark}
+                        onChange={(e) => setFormData({ ...formData, logoDark: e.target.value })}
+                        placeholder="/logo-dark.svg"
+                      />
+                      <input
+                        ref={logoDarkInputRef}
+                        type="file"
+                        accept="image/svg+xml,image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'logoDark', setUploadingLogoDark)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoDarkInputRef.current?.click()}
+                        disabled={uploadingLogoDark}
+                      >
+                        {uploadingLogoDark ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Logo que aparece em fundo claro
+                    Tamanho recomendado: 36×36px (SVG ou PNG). Aparece em fundo claro.
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                {/* Favicon */}
+                <div className="space-y-3">
                   <Label htmlFor="favicon">Favicon</Label>
-                  <Input
-                    id="favicon"
-                    value={formData.favicon}
-                    onChange={(e) => setFormData({ ...formData, favicon: e.target.value })}
-                    placeholder="/favicon.ico"
-                  />
+                  <div className="flex items-center gap-4">
+                    {formData.favicon && (
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
+                        <img
+                          src={formData.favicon}
+                          alt="Favicon"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="favicon"
+                        value={formData.favicon}
+                        onChange={(e) => setFormData({ ...formData, favicon: e.target.value })}
+                        placeholder="/favicon.ico"
+                      />
+                      <input
+                        ref={faviconInputRef}
+                        type="file"
+                        accept="image/x-icon,image/png"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'favicon', setUploadingFavicon)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => faviconInputRef.current?.click()}
+                        disabled={uploadingFavicon}
+                      >
+                        {uploadingFavicon ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Ícone que aparece na aba do navegador
+                    Tamanho recomendado: 32×32px (ICO ou PNG). Ícone da aba do navegador.
                   </p>
                 </div>
 
-                <div className="space-y-2">
+                {/* Apple Touch Icon */}
+                <div className="space-y-3">
                   <Label htmlFor="appleIcon">Apple Touch Icon (opcional)</Label>
-                  <Input
-                    id="appleIcon"
-                    value={formData.appleIcon}
-                    onChange={(e) => setFormData({ ...formData, appleIcon: e.target.value })}
-                    placeholder="/apple-touch-icon.png"
-                  />
+                  <div className="flex items-center gap-4">
+                    {formData.appleIcon && (
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
+                        <img
+                          src={formData.appleIcon}
+                          alt="Apple Icon"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="appleIcon"
+                        value={formData.appleIcon}
+                        onChange={(e) => setFormData({ ...formData, appleIcon: e.target.value })}
+                        placeholder="/apple-touch-icon.png"
+                      />
+                      <input
+                        ref={appleIconInputRef}
+                        type="file"
+                        accept="image/png"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'appleIcon', setUploadingAppleIcon)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => appleIconInputRef.current?.click()}
+                        disabled={uploadingAppleIcon}
+                      >
+                        {uploadingAppleIcon ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                   <p className="text-sm text-muted-foreground">
-                    Ícone para dispositivos iOS (180x180px)
+                    Tamanho recomendado: 180×180px (PNG). Para dispositivos iOS.
                   </p>
                 </div>
               </CardContent>

@@ -11,7 +11,7 @@ export interface AdminSettings {
 export function useAdminSettings() {
   return useQuery<AdminSettings>({
     queryKey: ['admin-settings'],
-    queryFn: () => api.get('/api/admin/settings'),
+    queryFn: () => api.get('/api/admin/feature-costs'),
     staleTime: 5 * 60_000, // 5 minutes
     gcTime: 10 * 60_000, // 10 minutes
   });
@@ -22,7 +22,7 @@ export function useUpdateAdminSettings() {
 
   return useMutation({
     mutationFn: (settings: AdminSettings) =>
-      api.put('/api/admin/settings', settings),
+      api.put('/api/admin/feature-costs', settings),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin-settings'] });
       queryClient.invalidateQueries({ queryKey: ['credit-settings'] });
