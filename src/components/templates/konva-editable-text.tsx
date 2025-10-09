@@ -79,20 +79,30 @@ export function KonvaEditableText({
     const textNode = shapeRef.current
     if (!textNode) return
 
-    // Usar cache com pixelRatio maior para melhorar qualidade de fontes ornamentadas
-    // Cache é especialmente importante para fontes com serifs, swashes e detalhes finos
+    // SEMPRE usar cache com pixelRatio alto para melhor qualidade de fontes
+    // Especialmente importante para fontes ornamentadas/decorativas (Amithen, etc)
     const hasBlur = layer.effects?.blur?.enabled && layer.effects.blur.blurRadius > 0
-    const shouldCache = hasBlur || (layer.style?.fontSize && layer.style.fontSize > 30)
+    const hasEffects = hasBlur || (layer.effects?.shadow?.enabled && layer.effects.shadow.shadowBlur > 0)
+
+    // Cache é obrigatório para blur e recomendado para fontes grandes/decorativas
+    const shouldCache = hasEffects || (layer.style?.fontSize && layer.style.fontSize > 24)
 
     if (shouldCache) {
-      // pixelRatio = 2 para alta qualidade (retina display)
-      textNode.cache({ pixelRatio: 2 })
+      // Limpar cache anterior para evitar problemas
+      textNode.clearCache()
+
+      // pixelRatio = 2 ou devicePixelRatio (para telas retina/4K)
+      const pixelRatio = Math.max(2, window.devicePixelRatio || 2)
+      textNode.cache({
+        pixelRatio,
+        imageSmoothingEnabled: true,
+      })
     } else {
       textNode.clearCache()
     }
 
     textNode.getLayer()?.batchDraw()
-  }, [layer.effects?.blur, layer.style?.fontSize, shapeRef])
+  }, [layer.effects?.blur, layer.effects?.shadow, layer.style?.fontSize, layer.style?.fontFamily, shapeRef])
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -115,7 +125,8 @@ export function KonvaEditableText({
         // NÓS DOS CANTOS: Ajustar fontSize proporcionalmente
         const scaleX = textNode.scaleX()
         const scaleY = textNode.scaleY()
-        const scale = Math.min(scaleX, scaleY)
+        // Usar a média das escalas para manter proporção
+        const scale = Math.max(scaleX, scaleY)
 
         const currentFontSize = textNode.fontSize()
         const newFontSize = Math.max(8, Math.round(currentFontSize * scale))
@@ -126,6 +137,7 @@ export function KonvaEditableText({
         const newWidth = Math.max(20, Math.round(currentWidth * scaleX))
         const newHeight = Math.max(20, Math.round(currentHeight * scaleY))
 
+        // IMPORTANTE: Resetar scale SEMPRE para evitar acúmulo
         textNode.setAttrs({
           fontSize: newFontSize,
           width: newWidth,
@@ -133,6 +145,11 @@ export function KonvaEditableText({
           scaleX: 1,
           scaleY: 1,
         })
+
+        // Atualizar cache com novo fontSize
+        textNode.clearCache()
+        const pixelRatio = Math.max(2, window.devicePixelRatio || 2)
+        textNode.cache({ pixelRatio, imageSmoothingEnabled: true })
 
         onChange({
           size: {
@@ -156,7 +173,7 @@ export function KonvaEditableText({
         const newWidth = Math.max(20, Math.round(currentWidth * scaleX))
         const newHeight = Math.max(20, Math.round(currentHeight * scaleY))
 
-        // Resetar scale mas manter as novas dimensões
+        // IMPORTANTE: Resetar scale mas manter as novas dimensões
         textNode.setAttrs({
           width: newWidth,
           height: newHeight,
@@ -164,7 +181,7 @@ export function KonvaEditableText({
           scaleY: 1,
         })
 
-        // Não alterar fontSize, apenas size
+        // fontSize NÃO é alterado aqui, apenas size
         onChange({
           size: {
             width: newWidth,
@@ -252,11 +269,11 @@ export function KonvaEditableText({
 
   const handleEditorChange = React.useCallback(
     (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const nextValue = event.target.value
       const textarea = event.target
+      const nextValue = textarea.value
 
-      // Salvar posição do cursor ANTES de atualizar o estado
-      cursorPositionRef.current = textarea.selectionStart
+      // CRÍTICO: Salvar posição do cursor ANTES de qualquer atualização
+      const cursorPosition = textarea.selectionStart
 
       setEditingState((prev) => {
         if (!prev) return prev
@@ -281,6 +298,14 @@ export function KonvaEditableText({
           height,
         }
       })
+
+      // CRÍTICO: Restaurar posição do cursor após atualização
+      // Usar setTimeout para garantir que o DOM foi atualizado
+      setTimeout(() => {
+        if (textarea && document.activeElement === textarea) {
+          textarea.setSelectionRange(cursorPosition, cursorPosition)
+        }
+      }, 0)
     },
     [shapeRef],
   )
@@ -313,36 +338,23 @@ export function KonvaEditableText({
   }, [])
 
   const isEditing = editingState !== null
-  const cursorPositionRef = React.useRef<number | null>(null)
 
+  // Effect para focus inicial no textarea ao entrar em modo de edição
   React.useEffect(() => {
     if (!isEditing) return
     const textarea = textareaRef.current
     if (!textarea) return
 
-    // Salvar posição do cursor antes de atualizar o valor
-    const savedCursorPosition = cursorPositionRef.current ?? textarea.selectionStart
-
     // Sincronizar valor do textarea com o estado quando não está compondo
-    if (!isComposingRef.current) {
-      textarea.value = editingState?.value ?? ''
+    if (!isComposingRef.current && editingState) {
+      textarea.value = editingState.value
     }
 
+    // Focus e posicionar cursor no final na primeira vez
     textarea.focus()
-
-    // Restaurar posição do cursor após atualização
-    // Se temos uma posição salva, usar ela; caso contrário, usar o final
-    if (cursorPositionRef.current !== null) {
-      const position = Math.min(cursorPositionRef.current, textarea.value.length)
-      textarea.setSelectionRange(position, position)
-      cursorPositionRef.current = null
-    } else if (savedCursorPosition !== null) {
-      const position = Math.min(savedCursorPosition, textarea.value.length)
-      textarea.setSelectionRange(position, position)
-    } else {
-      textarea.setSelectionRange(textarea.value.length, textarea.value.length)
-    }
-  }, [isEditing, editingState?.value])
+    const position = textarea.value.length
+    textarea.setSelectionRange(position, position)
+  }, [isEditing])
 
   React.useLayoutEffect(() => {
     if (!isEditing || !editingState) return
@@ -510,10 +522,19 @@ export function KonvaEditableText({
     const textNode = shapeRef.current
     if (!textNode) return
 
-    // Force layer redraw to apply changes
-    const layer = textNode.getLayer()
-    if (layer) {
-      layer.batchDraw()
+    // Obter referências ao stage e transformer
+    const stage = textNode.getStage()
+    const transformer = stage?.findOne('Transformer') as Konva.Transformer | null
+
+    // IMPORTANTE: Forçar atualização do transformer quando propriedades mudam
+    if (transformer && transformer.nodes().includes(textNode)) {
+      transformer.forceUpdate()
+    }
+
+    // Force layer redraw to apply changes immediately
+    const konvaLayer = textNode.getLayer()
+    if (konvaLayer) {
+      konvaLayer.batchDraw()
     }
   }, [
     layer.style?.fontSize,
@@ -529,6 +550,8 @@ export function KonvaEditableText({
     layer.style?.border?.width,
     layer.style?.textTransform,
     layer.content,
+    layer.size?.width,
+    layer.size?.height,
   ])
 
   return (

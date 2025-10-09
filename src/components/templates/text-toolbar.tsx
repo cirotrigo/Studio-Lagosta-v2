@@ -147,9 +147,15 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
 
   const handleFontSizeChange = (value: number) => {
     setFontSize(value)
+
+    // Atualizar em tempo real para feedback visual imediato
+    onUpdateLayer(selectedLayer.id, {
+      style: { ...selectedLayer.style, fontSize: value },
+    })
   }
 
   const handleFontSizeCommit = (value: number) => {
+    // Apenas garantir que o valor final está salvo
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, fontSize: value },
     })

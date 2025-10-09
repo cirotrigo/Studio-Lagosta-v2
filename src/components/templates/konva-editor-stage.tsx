@@ -3,6 +3,11 @@
 import * as React from 'react'
 import Konva from 'konva'
 import { Stage, Layer as KonvaLayer, Rect, Line } from 'react-konva'
+
+// IMPORTANTE: Ativar fix de renderização para melhor qualidade de fontes
+// Especialmente importante para fontes ornamentadas/decorativas
+// @ts-ignore - Propriedade interna do Konva não documentada nos tipos
+Konva._fixTextRendering = true
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
@@ -740,6 +745,7 @@ export function KonvaEditorStage() {
           width={canvasWidth}
           height={canvasHeight}
           className="rounded-md shadow-2xl ring-1 ring-border/20"
+          pixelRatio={window.devicePixelRatio || 2}
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
           onMouseMove={handleStagePointerMove}
