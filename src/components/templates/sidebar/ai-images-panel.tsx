@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X, Upload, Trash2, Copy, Check } from 'lucide-react'
+import { Sparkles, Loader2, Plus, Search, Wand2, Expand, HardDrive, X, Upload, Trash2, Copy, Check, BookmarkPlus } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -18,6 +18,23 @@ import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { cn } from '@/lib/utils'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { usePrompts } from '@/hooks/use-prompts'
+import type { Prompt } from '@/types/prompt'
 
 interface AIImageRecord {
   id: string
@@ -167,7 +184,11 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
   const [localFiles, setLocalFiles] = React.useState<File[]>([])
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [selectedPromptId, setSelectedPromptId] = React.useState<string>('')
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  // Buscar prompts globais do usuário
+  const { data: prompts = [] } = usePrompts()
 
   const generateMutation = useMutation({
     mutationFn: async (data: { prompt: string; aspectRatio: string; referenceImages: string[] }) => {
@@ -309,12 +330,64 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     handleFileSelect(e.dataTransfer.files)
   }
 
+  const handlePromptSelect = (promptId: string) => {
+    if (promptId === 'none') {
+      setSelectedPromptId('')
+      return
+    }
+
+    const selectedPrompt = prompts.find(p => p.id === promptId)
+    if (selectedPrompt) {
+      setPrompt(selectedPrompt.content)
+      setSelectedPromptId(promptId)
+    }
+  }
+
+  const handleSaveAsPrompt = () => {
+    if (!prompt.trim()) {
+      toast({ variant: 'destructive', description: 'Digite um prompt primeiro' })
+      return
+    }
+    // Abrir página de prompts em nova aba com o conteúdo pré-preenchido
+    const url = `/prompts?content=${encodeURIComponent(prompt)}`
+    window.open(url, '_blank')
+  }
+
   const cost = getCost('image_generation')
 
   return (
     <Card className="p-4 space-y-4">
       <div className="space-y-2">
-        <label className="text-sm font-medium">Prompt</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Prompt</label>
+          <div className="flex gap-2">
+            {prompts.length > 0 && (
+              <Select value={selectedPromptId || 'none'} onValueChange={handlePromptSelect}>
+                <SelectTrigger className="h-7 w-[140px] text-xs">
+                  <SelectValue placeholder="Usar salvo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {prompts.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.title}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSaveAsPrompt}
+              disabled={!prompt.trim()}
+              className="h-7 gap-1 text-xs"
+              title="Salvar como prompt"
+            >
+              <BookmarkPlus className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </div>
         <Textarea
           placeholder="Descreva a imagem que deseja gerar..."
           value={prompt}
@@ -594,188 +667,244 @@ function ImageCard({
 }
 
 
-// Biblioteca de Prompts
-interface PromptRecord {
-  id: string
-  title: string
-  prompt: string
-  category?: string
-  createdAt: string
-}
-
+// Biblioteca de Prompts Globais
 function PromptsLibrary({ projectId }: { projectId: number | null | undefined }) {
-  const queryClient = useQueryClient()
   const { toast } = useToast()
-  const [newPromptTitle, setNewPromptTitle] = React.useState("")
-  const [newPromptText, setNewPromptText] = React.useState("")
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
+  const [selectedPrompt, setSelectedPrompt] = React.useState<Prompt | null>(null)
+  const [searchQuery, setSearchQuery] = React.useState('')
 
-  // Buscar prompts do projeto
-  const { data: prompts = [], isLoading } = useQuery<PromptRecord[]>({
-    queryKey: ["prompts", projectId],
-    queryFn: async () => {
-      const response = await fetch(`/api/projects/${projectId}/prompts`)
-      if (!response.ok) throw new Error("Falha ao carregar prompts")
-      return response.json()
-    },
-    enabled: projectId !== null && projectId !== undefined,
-  })
+  // Buscar prompts globais do usuário
+  const { data: prompts = [], isLoading } = usePrompts()
 
-  // Criar prompt
-  const createMutation = useMutation({
-    mutationFn: async (data: { title: string; prompt: string }) => {
-      const response = await fetch(`/api/projects/${projectId}/prompts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      })
-      if (!response.ok) throw new Error("Falha ao criar prompt")
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts", projectId] })
-      setNewPromptTitle("")
-      setNewPromptText("")
-      toast({ description: "Prompt salvo com sucesso" })
-    },
-    onError: () => {
-      toast({ description: "Erro ao salvar prompt", variant: "destructive" })
-    }
-  })
+  // Filtrar prompts por busca
+  const filteredPrompts = React.useMemo(() => {
+    if (!searchQuery) return prompts
+    const query = searchQuery.toLowerCase()
+    return prompts.filter(
+      p => p.title.toLowerCase().includes(query) ||
+           p.content.toLowerCase().includes(query) ||
+           p.tags.some(tag => tag.toLowerCase().includes(query))
+    )
+  }, [prompts, searchQuery])
 
-  // Deletar prompt
-  const deleteMutation = useMutation({
-    mutationFn: async (promptId: string) => {
-      const response = await fetch(`/api/projects/${projectId}/prompts/${promptId}`, {
-        method: "DELETE",
-      })
-      if (!response.ok) throw new Error("Falha ao deletar prompt")
-      return response.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["prompts", projectId] })
-      toast({ description: "Prompt deletado com sucesso" })
-    },
-    onError: () => {
-      toast({ description: "Erro ao deletar prompt", variant: "destructive" })
-    }
-  })
-
-  const handleCreate = () => {
-    if (!newPromptTitle.trim() || !newPromptText.trim()) {
-      toast({ description: "Preencha título e prompt", variant: "destructive" })
-      return
-    }
-    createMutation.mutate({ title: newPromptTitle, prompt: newPromptText })
-  }
-
-  const handleCopy = async (prompt: PromptRecord) => {
+  const handleCopy = async (promptContent: string, promptId: string) => {
     try {
-      await navigator.clipboard.writeText(prompt.prompt)
-      setCopiedId(prompt.id)
-      toast({ description: "Prompt copiado!" })
+      await navigator.clipboard.writeText(promptContent)
+      setCopiedId(promptId)
+      toast({ description: "Prompt copiado para a área de transferência!" })
       setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
       toast({ description: "Erro ao copiar", variant: "destructive" })
     }
   }
 
-  const handleDelete = (prompt: PromptRecord) => {
-    if (confirm(`Deletar "${prompt.title}"?`)) {
-      deleteMutation.mutate(prompt.id)
-    }
+  const handleViewPrompt = (prompt: Prompt) => {
+    setSelectedPrompt(prompt)
+  }
+
+  const handleCloseDialog = () => {
+    setSelectedPrompt(null)
   }
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Formulário de criação */}
-      <Card className="p-4 space-y-3">
-        <h3 className="text-sm font-semibold">Novo Prompt</h3>
-        <Input
-          placeholder="Título do prompt..."
-          value={newPromptTitle}
-          onChange={(e) => setNewPromptTitle(e.target.value)}
-        />
-        <Textarea
-          placeholder="Digite o prompt aqui..."
-          value={newPromptText}
-          onChange={(e) => setNewPromptText(e.target.value)}
-          rows={4}
-        />
-        <Button
-          onClick={handleCreate}
-          disabled={createMutation.isPending || !newPromptTitle.trim() || !newPromptText.trim()}
-          className="w-full"
-        >
-          {createMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Salvando...
-            </>
-          ) : (
-            <>
-              <Plus className="mr-2 h-4 w-4" />
-              Salvar Prompt
-            </>
-          )}
-        </Button>
-      </Card>
+      {/* Header com busca */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold">Prompts Salvos</h3>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => window.open('/prompts', '_blank')}
+            className="h-7 text-xs"
+          >
+            <Plus className="mr-1 h-3 w-3" />
+            Gerenciar
+          </Button>
+        </div>
+
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Buscar prompts..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-8 h-8 text-xs"
+          />
+        </div>
+      </div>
 
       {/* Lista de prompts */}
-      <ScrollArea className="h-[calc(100vh-500px)]">
+      <ScrollArea className="h-[calc(100vh-350px)]">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-6 w-6 animate-spin" />
           </div>
-        ) : prompts.length === 0 ? (
+        ) : filteredPrompts.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
             <p className="text-sm text-muted-foreground">
-              Nenhum prompt salvo ainda
+              {searchQuery ? 'Nenhum prompt encontrado' : 'Nenhum prompt salvo ainda'}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Crie seu primeiro prompt acima
+              {searchQuery
+                ? 'Tente outro termo de busca'
+                : 'Crie prompts na página de Prompts'}
             </p>
+            {!searchQuery && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open('/prompts', '_blank')}
+                className="mt-3"
+              >
+                <Plus className="mr-2 h-4 w-4" />
+                Criar Prompt
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="space-y-3 pb-4">
-            {prompts.map((prompt) => (
-              <Card key={prompt.id} className="p-3 space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-sm font-semibold flex-1">{prompt.title}</h4>
-                  <div className="flex gap-1">
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => handleCopy(prompt)}
-                      title="Copiar prompt"
-                    >
-                      {copiedId === prompt.id ? (
-                        <Check className="h-3.5 w-3.5 text-green-500" />
-                      ) : (
-                        <Copy className="h-3.5 w-3.5" />
-                      )}
-                    </Button>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-7 w-7"
-                      onClick={() => handleDelete(prompt)}
-                      disabled={deleteMutation.isPending}
-                      title="Deletar prompt"
-                    >
-                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
-                    </Button>
+          <div className="space-y-2 pb-4">
+            {filteredPrompts.map((prompt) => {
+              const isCopied = copiedId === prompt.id
+
+              return (
+                <Card
+                  key={prompt.id}
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => handleViewPrompt(prompt)}
+                >
+                  <div className="p-3 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <h4 className="text-sm font-semibold break-words">{prompt.title}</h4>
+                        {prompt.category && (
+                          <span className="text-xs text-muted-foreground">
+                            {prompt.category}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCopy(prompt.content, prompt.id)
+                          }}
+                          title="Copiar prompt"
+                        >
+                          {isCopied ? (
+                            <Check className="h-3.5 w-3.5 text-green-500" />
+                          ) : (
+                            <Copy className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleViewPrompt(prompt)
+                          }}
+                          title="Visualizar prompt completo"
+                        >
+                          <Expand className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground break-words line-clamp-3 leading-relaxed">
+                      {prompt.content}
+                    </p>
+
+                    {prompt.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {prompt.tags.slice(0, 3).map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-secondary text-secondary-foreground"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                        {prompt.tags.length > 3 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] bg-secondary text-secondary-foreground">
+                            +{prompt.tags.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
-                </div>
-                <p className="text-xs text-muted-foreground line-clamp-3">
-                  {prompt.prompt}
-                </p>
-              </Card>
-            ))}
+                </Card>
+              )
+            })}
           </div>
         )}
       </ScrollArea>
+
+      {/* Dialog de visualização */}
+      <Dialog open={selectedPrompt !== null} onOpenChange={handleCloseDialog}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden">
+          <DialogHeader>
+            <DialogTitle className="flex items-start gap-3 pr-8">
+              <span className="break-words flex-1">{selectedPrompt?.title}</span>
+              {selectedPrompt?.category && (
+                <Badge variant="outline" className="shrink-0">{selectedPrompt.category}</Badge>
+              )}
+            </DialogTitle>
+            <DialogDescription>
+              Visualize e copie o conteúdo completo do prompt
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            <div className="relative rounded-lg border bg-muted/30 max-h-[50vh] overflow-y-auto">
+              <div className="p-6 pr-24">
+                <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  {selectedPrompt?.content}
+                </p>
+              </div>
+
+              <div className="sticky top-2 right-2 float-right mr-2">
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => selectedPrompt && handleCopy(selectedPrompt.content, selectedPrompt.id)}
+                  className="gap-2 shadow-lg"
+                >
+                  {selectedPrompt && copiedId === selectedPrompt.id ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Copiado
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4" />
+                      Copiar
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+
+            {selectedPrompt?.tags && selectedPrompt.tags.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">Tags</h4>
+                <div className="flex flex-wrap gap-2">
+                  {selectedPrompt.tags.map((tag) => (
+                    <Badge key={tag} variant="secondary" className="text-xs">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
