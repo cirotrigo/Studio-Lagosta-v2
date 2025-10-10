@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useToast } from '@/hooks/use-toast'
 import { useSiteSettings, useUpdateSiteSettings, useUploadFile } from '@/hooks/admin/use-admin-site-settings'
-import { Loader2, Upload, Image as ImageIcon, Save, ArrowLeft } from 'lucide-react'
+import { Loader2, Save, ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 
 export default function SiteSettingsPage() {
@@ -87,7 +87,7 @@ export default function SiteSettingsPage() {
         title: 'Configurações salvas',
         description: 'As configurações do site foram atualizadas com sucesso',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar as configurações',

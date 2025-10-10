@@ -36,10 +36,10 @@ export default function NewKnowledgeEntryPage() {
         description: 'A entrada foi indexada com sucesso',
       })
       router.push('/admin/knowledge')
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao criar',
-        description: error.message || 'Não foi possível criar a entrada',
+        description: error instanceof Error ? error.message : 'Não foi possível criar a entrada',
         variant: 'destructive',
       })
     }
@@ -59,10 +59,10 @@ export default function NewKnowledgeEntryPage() {
         description: 'O arquivo foi processado e indexado',
       })
       router.push('/admin/knowledge')
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao enviar',
-        description: error.message || 'Não foi possível processar o arquivo',
+        description: error instanceof Error ? error.message : 'Não foi possível processar o arquivo',
         variant: 'destructive',
       })
     }

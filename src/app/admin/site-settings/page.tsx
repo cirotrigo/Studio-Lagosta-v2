@@ -168,11 +168,11 @@ export default function SiteSettingsPage() {
         title: 'Configurações salvas',
         description: 'As configurações do site foram atualizadas com sucesso.',
       })
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error saving settings:', error)
       toast({
         title: 'Erro ao salvar',
-        description: error?.message || 'Não foi possível salvar as configurações.',
+        description: error instanceof Error ? error.message : 'Não foi possível salvar as configurações.',
         variant: 'destructive',
       })
     }

@@ -26,7 +26,7 @@ export function useSiteConfig() {
       try {
         const settings = await api.get<SiteConfig>('/api/site-config')
         return settings
-      } catch (error) {
+      } catch (_error) {
         // Fallback para configurações padrão
         return {
           name: 'Studio Lagosta',

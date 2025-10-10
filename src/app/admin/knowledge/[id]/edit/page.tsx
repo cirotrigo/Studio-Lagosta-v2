@@ -43,7 +43,7 @@ export default function EditKnowledgeEntryPage({ params }: PageProps) {
         description: 'As alterações foram salvas com sucesso',
       })
       router.push(`/admin/knowledge/${id}`)
-    } catch (error: any) {
+    } catch (error) {
       toast({
         title: 'Erro ao atualizar',
         description: error.message || 'Não foi possível atualizar a entrada',

@@ -12,8 +12,8 @@ export async function GET() {
         'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },
     })
-  } catch (error) {
-    console.error('Error fetching site config:', error)
+  } catch (_error) {
+    console.error('Error fetching site config:', _error)
 
     // Retornar configurações padrão em caso de erro
     return NextResponse.json({

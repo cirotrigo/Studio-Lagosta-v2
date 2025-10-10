@@ -231,7 +231,7 @@ export async function fetchCommercePlans(): Promise<ClerkPlanNormalized[]> {
         return normalized
       }
       errors.push({ url, message: 'No plans found in response' })
-    } catch (error: any) {
+    } catch (error) {
       errors.push({ url, message: String(error?.message || error) })
     }
   }

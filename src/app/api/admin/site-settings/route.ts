@@ -31,8 +31,8 @@ export async function GET() {
     }
 
     return NextResponse.json(settings)
-  } catch (error) {
-    console.error('Error fetching site settings:', error)
+  } catch (_error) {
+    console.error('Error fetching site settings:', _error)
     return NextResponse.json(
       { error: 'Failed to fetch site settings' },
       { status: 500 }
@@ -75,8 +75,8 @@ export async function PATCH(request: Request) {
     }
 
     return NextResponse.json(settings)
-  } catch (error) {
-    console.error('Error updating site settings:', error)
+  } catch (_error) {
+    console.error('Error updating site settings:', _error)
     return NextResponse.json(
       { error: 'Failed to update site settings' },
       { status: 500 }

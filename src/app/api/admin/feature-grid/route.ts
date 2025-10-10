@@ -15,7 +15,7 @@ const createFeatureSchema = z.object({
 })
 
 // GET - Listar todos os itens do grid
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const { userId } = await auth()
 
@@ -32,8 +32,8 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.json({ items })
-  } catch (error) {
-    console.error('[FEATURE_GRID_GET]', error)
+  } catch (_error) {
+    console.error('[FEATURE_GRID_GET]', _error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

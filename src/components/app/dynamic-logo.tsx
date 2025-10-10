@@ -19,8 +19,9 @@ export function DynamicLogo({ useFull = false, className }: DynamicLogoProps) {
 
   // Para logo completa
   if (useFull) {
-    const logoFullLight = (config as any).logoFullLight || config.logo?.light
-    const logoFullDark = (config as any).logoFullDark || config.logo?.dark
+    const configWithFull = config as typeof config & { logoFullLight?: string; logoFullDark?: string }
+    const logoFullLight = configWithFull.logoFullLight || config.logo?.light
+    const logoFullDark = configWithFull.logoFullDark || config.logo?.dark
     const fullLogoClasses = className || 'h-12'
 
     return (

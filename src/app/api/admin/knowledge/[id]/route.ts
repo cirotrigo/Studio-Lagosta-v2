@@ -121,7 +121,7 @@ export async function PUT(
     })
 
     return NextResponse.json(entry)
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating knowledge entry:', error)
 
     if (error.message === 'Entry not found') {
@@ -164,7 +164,7 @@ export async function DELETE(
     })
 
     return NextResponse.json({ success: true })
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting knowledge entry:', error)
 
     if (error.message === 'Entry not found') {

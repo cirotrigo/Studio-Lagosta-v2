@@ -139,7 +139,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(aiImage)
 
-  } catch (error: any) {
+  } catch (error) {
     console.error('Generate image error:', error)
 
     // Erro de créditos

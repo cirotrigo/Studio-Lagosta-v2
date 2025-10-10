@@ -25,8 +25,8 @@ export async function GET() {
     })
 
     return NextResponse.json({ settings })
-  } catch (error) {
-    console.error('Error fetching settings:', error)
+  } catch (_error) {
+    console.error('Error fetching settings:', _error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -75,10 +75,10 @@ export async function POST(request: Request) {
 
     console.log('[POST /api/admin/settings] Settings created:', settings.id)
     return NextResponse.json({ settings })
-  } catch (error: any) {
+  } catch (error) {
     console.error('[POST /api/admin/settings] Error:', error)
     return NextResponse.json(
-      { error: error?.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     )
   }
@@ -127,10 +127,10 @@ export async function PUT(request: Request) {
 
     console.log('[PUT /api/admin/settings] Settings updated:', settings.id)
     return NextResponse.json({ settings })
-  } catch (error: any) {
+  } catch (error) {
     console.error('[PUT /api/admin/settings] Error:', error)
     return NextResponse.json(
-      { error: error?.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     )
   }

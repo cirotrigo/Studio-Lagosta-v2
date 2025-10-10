@@ -26,7 +26,7 @@ export default function AdminKnowledgePage() {
     page,
     limit: 20,
     search: search || undefined,
-    status: status as any,
+    status: status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | null,
   })
 
   const deleteMutation = useDeleteKnowledgeEntry()
@@ -38,7 +38,7 @@ export default function AdminKnowledgePage() {
         title: 'Entrada excluída',
         description: 'A entrada foi removida com sucesso',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao excluir',
         description: 'Não foi possível excluir a entrada',

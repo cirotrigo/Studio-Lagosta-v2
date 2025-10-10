@@ -89,7 +89,7 @@ export default function AdminComponentsPage() {
           </Select>
 
           {/* Scope Filter */}
-          <Select value={scopeFilter} onValueChange={(v: any) => setScopeFilter(v)}>
+          <Select value={scopeFilter} onValueChange={(v: 'all' | 'global' | 'custom') => setScopeFilter(v)}>
             <SelectTrigger className="w-[180px]">
               <SelectValue placeholder="Escopo" />
             </SelectTrigger>

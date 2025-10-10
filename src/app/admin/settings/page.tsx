@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SlidersHorizontal, DollarSign, ArrowRight, Image } from "lucide-react";
+import { SlidersHorizontal, DollarSign, ArrowRight, Image as ImageIcon } from "lucide-react";
 
 export default function AdminSettingsPage() {
   return (
@@ -17,7 +17,7 @@ export default function AdminSettingsPage() {
         <Card className="p-6 hover:shadow-lg transition-shadow">
           <div className="flex items-center gap-3 mb-4">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-              <Image className="h-5 w-5 text-primary" />
+              <ImageIcon className="h-5 w-5 text-primary" />
             </div>
             <h2 className="text-xl font-semibold text-foreground">Configurações do Site</h2>
           </div>

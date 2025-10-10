@@ -1,7 +1,7 @@
 'use client'
 
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Save, Loader2 } from 'lucide-react'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAdminMenu } from '@/hooks/admin/use-admin-menus'
 import { MenuEditor } from '@/components/admin/cms/menu-editor'

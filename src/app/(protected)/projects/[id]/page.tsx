@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Image as ImageIcon, Trash2, Edit, Copy } from 'lucide-react'
+import { Plus, FileText, Trash2, Edit, Copy } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -116,8 +116,8 @@ export default function ProjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
       toast.success('Template duplicado com sucesso!')
     },
-    onError: (error: any) => {
-      toast.error(error?.message || 'Erro ao duplicar template')
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Erro ao duplicar template')
     },
   })
 

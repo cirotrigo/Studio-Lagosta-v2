@@ -197,7 +197,7 @@ export async function POST(req: NextRequest) {
 
       return NextResponse.json(result, { status: 201 })
     }
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error creating knowledge entry:', error)
 
     if (error.message?.includes('Unsupported file type')) {

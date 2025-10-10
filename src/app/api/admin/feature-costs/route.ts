@@ -23,8 +23,8 @@ export async function GET() {
     const planCredits = await getEffectivePlanCredits()
 
     return NextResponse.json({ featureCosts, planCredits })
-  } catch (error) {
-    console.error('Error fetching admin settings:', error)
+  } catch (_error) {
+    console.error('Error fetching admin settings:', _error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
@@ -58,10 +58,10 @@ export async function PUT(request: Request) {
 
     console.log('[PUT /api/admin/feature-costs] Settings updated')
     return NextResponse.json({ featureCosts, planCredits })
-  } catch (error: any) {
+  } catch (error) {
     console.error('[PUT /api/admin/feature-costs] Error:', error)
     return NextResponse.json(
-      { error: error?.message || 'Internal server error' },
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     )
   }

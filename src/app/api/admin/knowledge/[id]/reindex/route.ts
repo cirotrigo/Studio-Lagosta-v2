@@ -53,7 +53,7 @@ export async function POST(
     })
 
     return NextResponse.json(result)
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error reindexing knowledge entry:', error)
 
     if (error.message === 'Entry not found') {

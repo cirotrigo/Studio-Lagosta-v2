@@ -40,7 +40,7 @@ export default function ComponentEditPage() {
       let parsedContent
       try {
         parsedContent = JSON.parse(contentJson)
-      } catch (e) {
+      } catch (_e) {
         toast({
           title: 'Erro no JSON',
           description: 'O conteúdo JSON é inválido. Verifique a sintaxe.',
@@ -59,7 +59,7 @@ export default function ComponentEditPage() {
         title: 'Componente atualizado',
         description: 'As alterações foram salvas com sucesso.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar as alterações.',
