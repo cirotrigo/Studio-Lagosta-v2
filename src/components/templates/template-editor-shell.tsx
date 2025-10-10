@@ -26,6 +26,7 @@ import { GradientsPanel } from './sidebar/gradients-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
+import { VideoExportButton } from './video-export-button'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -273,6 +274,7 @@ function TemplateEditorContent() {
             <Save className="mr-2 h-4 w-4" />
             {isExporting ? 'Salvando...' : 'Salvar Criativo'}
           </Button>
+          <VideoExportButton />
           <Button size="sm" variant="outline" onClick={toggleFullscreen}>
             <Maximize2 className="mr-2 h-4 w-4" />
             Tela Cheia

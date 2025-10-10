@@ -5,12 +5,13 @@ import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
 
-export type OperationType = 
+export type OperationType =
   | "generate_content"
   | "analyze_data"
   | "export_report"
   | "ai_chat"
-  | "image_generation";
+  | "image_generation"
+  | "video_export";
 
 // Default UI credit costs (fallbacks). Dynamic values come from /api/credits/settings.
 const DEFAULT_UI_CREDIT_COSTS: Record<OperationType, number> = {
@@ -19,6 +20,7 @@ const DEFAULT_UI_CREDIT_COSTS: Record<OperationType, number> = {
   export_report: 2,
   ai_chat: 1,
   image_generation: 5,
+  video_export: 10,
 };
 
 export interface CreditData {
@@ -95,6 +97,7 @@ export function useCredits(): {
     // Align known features to UI operations
     if (typeof fc['ai_text_chat'] === 'number') base.ai_chat = Math.max(0, Math.floor(fc['ai_text_chat']));
     if (typeof fc['ai_image_generation'] === 'number') base.image_generation = Math.max(0, Math.floor(fc['ai_image_generation']));
+    if (typeof fc['video_export'] === 'number') base.video_export = Math.max(0, Math.floor(fc['video_export']));
     return base;
   };
 

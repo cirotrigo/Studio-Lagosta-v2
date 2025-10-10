@@ -5,6 +5,7 @@ export const FEATURE_CREDIT_COSTS = {
   ai_text_chat: 1,
   ai_image_generation: 5,
   creative_download: 2,
+  video_export: 10,
 } as const
 
 // Feature keys are derived from the config above to ensure type-safety across the codebase
@@ -15,6 +16,7 @@ const FEATURE_TO_OPERATION: Record<FeatureKey, OperationType> = {
   ai_text_chat: OperationType.AI_TEXT_CHAT,
   ai_image_generation: OperationType.AI_IMAGE_GENERATION,
   creative_download: OperationType.CREATIVE_DOWNLOAD,
+  video_export: OperationType.VIDEO_EXPORT,
 }
 
 export function toPrismaOperationType(feature: FeatureKey): OperationType {
