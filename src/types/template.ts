@@ -19,6 +19,7 @@ export type LayerType =
   | 'element'
   | 'shape'
   | 'icon'
+  | 'video'
 
 export interface Layer {
   id: string
@@ -51,6 +52,16 @@ export interface Layer {
     shadow?: { enabled: boolean; shadowColor: string; shadowBlur: number; shadowOffsetX: number; shadowOffsetY: number; shadowOpacity: number }
     background?: { enabled: boolean; backgroundColor: string; padding: number }
     curved?: { enabled: boolean; curvature: number }
+  }
+  videoMetadata?: {
+    duration?: number
+    posterUrl?: string
+    autoplay?: boolean
+    loop?: boolean
+    muted?: boolean
+    currentTime?: number
+    playbackRate?: number
+    objectFit?: 'cover' | 'contain' | 'fill'
   }
   [key: string]: unknown
 }
@@ -135,7 +146,7 @@ export type TextMode =
 
 export interface DynamicField {
   layerId: string
-  fieldType: 'text' | 'image' | 'color' | 'fontSize'
+  fieldType: 'text' | 'image' | 'video' | 'color' | 'fontSize'
   label: string
   placeholder?: string
   defaultValue?: unknown

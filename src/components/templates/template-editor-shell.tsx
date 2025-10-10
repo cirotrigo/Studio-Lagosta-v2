@@ -11,7 +11,7 @@ import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage } from 'lucide-react'
+import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { CanvasPreview } from './canvas-preview'
@@ -24,6 +24,7 @@ import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
+import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
@@ -124,7 +125,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | 'creatives' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | 'creatives' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -302,6 +303,12 @@ function TemplateEditorContent() {
             onClick={() => togglePanel('images')}
           />
           <ToolbarButton
+            icon={<Film className="h-5 w-5" />}
+            label="Vídeos"
+            active={activePanel === 'videos'}
+            onClick={() => togglePanel('videos')}
+          />
+          <ToolbarButton
             icon={<Square className="h-5 w-5" />}
             label="Elementos"
             active={activePanel === 'elements'}
@@ -362,6 +369,7 @@ function TemplateEditorContent() {
                 {activePanel === 'templates' && 'Templates'}
                 {activePanel === 'text' && 'Texto & Fontes'}
                 {activePanel === 'images' && 'Imagens'}
+                {activePanel === 'videos' && 'Vídeos'}
                 {activePanel === 'elements' && 'Elementos'}
                 {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'colors' && 'Cores da Marca'}
@@ -376,6 +384,7 @@ function TemplateEditorContent() {
               {activePanel === 'templates' && <EditorSidebar />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
+              {activePanel === 'videos' && <VideosPanel />}
               {activePanel === 'elements' && <ElementsPanelContent />}
               {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'colors' && <ColorsPanelContent />}

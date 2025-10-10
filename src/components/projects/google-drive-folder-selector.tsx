@@ -125,7 +125,7 @@ export function DesktopGoogleDriveModal({
   }, [])
 
   const handleItemClick = React.useCallback((item: GoogleDriveItem) => {
-    if (multiSelect && mode === 'images') {
+    if (multiSelect && (mode === 'images' || mode === 'videos')) {
       // Multi-select mode: toggle selection (only for files, not folders)
       if (item.kind === 'folder') return
 
@@ -138,9 +138,10 @@ export function DesktopGoogleDriveModal({
         } else {
           // Add to selection
           if (prev.length >= maxSelection) {
+            const itemType = mode === 'videos' ? 'vídeos' : 'imagens'
             toast({
               variant: 'destructive',
-              description: `Máximo de ${maxSelection} imagens selecionadas`,
+              description: `Máximo de ${maxSelection} ${itemType} selecionados`,
             })
             return prev
           }
@@ -222,10 +223,15 @@ export function DesktopGoogleDriveModal({
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [open, selected, searchTerm, folderStack.length, onOpenChange, handleConfirm, handleBreadcrumbClick])
 
-  const headerTitle = mode === 'folders' ? 'Selecionar Pasta' : 'Escolher Imagem do Google Drive'
+  const headerTitle =
+    mode === 'folders' ? 'Selecionar Pasta' :
+    mode === 'videos' ? 'Escolher Vídeo do Google Drive' :
+    'Escolher Imagem do Google Drive'
   const description =
     mode === 'folders'
       ? 'Escolha a pasta que receberá os backups automáticos dos criativos.'
+      : mode === 'videos'
+      ? 'Selecione um vídeo da pasta configurada'
       : 'Selecione uma imagem da pasta configurada'
 
   const isLoading = driveQuery.isLoading
@@ -367,10 +373,10 @@ export function DesktopGoogleDriveModal({
             {multiSelect ? (
               <>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Imagens selecionadas:
+                  {mode === 'videos' ? 'Vídeos selecionados:' : 'Imagens selecionadas:'}
                 </p>
                 <p className="text-sm font-semibold text-foreground">
-                  {multiSelected.length} / {maxSelection} {multiSelected.length === 1 ? 'imagem' : 'imagens'}
+                  {multiSelected.length} / {maxSelection} {multiSelected.length === 1 ? (mode === 'videos' ? 'vídeo' : 'imagem') : (mode === 'videos' ? 'vídeos' : 'imagens')}
                 </p>
               </>
             ) : (

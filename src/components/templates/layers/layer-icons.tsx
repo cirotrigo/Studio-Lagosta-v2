@@ -5,6 +5,7 @@ import {
   Sparkles,
   Shapes,
   Star,
+  Film,
   LucideIcon,
 } from 'lucide-react'
 import type { LayerType } from '@/types/template'
@@ -18,6 +19,7 @@ const LAYER_ICONS: Record<LayerType, LucideIcon> = {
   element: Shapes,
   shape: Shapes,
   icon: Star,
+  video: Film,
 }
 
 export function getLayerIcon(type: LayerType): LucideIcon {
@@ -34,6 +36,7 @@ export function getLayerTypeName(type: LayerType): string {
     element: 'Elemento',
     shape: 'Forma',
     icon: 'Ícone',
+    video: 'Vídeo',
   }
   return names[type] || type
 }

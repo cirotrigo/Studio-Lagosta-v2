@@ -13,6 +13,7 @@ import type {
 const ARTES_FOLDER_NAME = 'ARTES LAGOSTA'
 const MIME_TYPE_FOLDER = 'application/vnd.google-apps.folder'
 const MIME_TYPE_IMAGE_PREFIX = 'image/'
+const MIME_TYPE_VIDEO_PREFIX = 'video/'
 const LIST_TIMEOUT = 30_000
 const UPLOAD_TIMEOUT = 60_000
 const CACHE_TTL_MS = 10 * 60 * 1000
@@ -134,6 +135,8 @@ export class GoogleDriveService {
       queryParts.push(`mimeType = '${MIME_TYPE_FOLDER}'`)
     } else if (mode === 'images') {
       queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}')`)
+    } else if (mode === 'videos') {
+      queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}')`)
     }
 
     if (search && search.trim().length > 0) {

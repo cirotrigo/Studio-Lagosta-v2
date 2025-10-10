@@ -1428,6 +1428,26 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         },
         fileUrl: '',
       }
+    case 'video':
+      return {
+        ...base,
+        type: 'video',
+        name: 'Vídeo de Fundo',
+        size: {
+          width: 1080,
+          height: 1920,
+        },
+        position: { x: 0, y: 0 },
+        fileUrl: '',
+        videoMetadata: {
+          autoplay: true,
+          loop: true,
+          muted: true,
+          objectFit: 'cover',
+          playbackRate: 1,
+          currentTime: 0,
+        },
+      }
     default:
       return base
   }

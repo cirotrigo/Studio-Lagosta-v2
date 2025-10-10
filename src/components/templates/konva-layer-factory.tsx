@@ -290,6 +290,9 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     case 'element':
       return <ImageNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} stageRef={stageRef} />
 
+    case 'video':
+      return <VideoNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} onChange={onChange} />
+
     case 'gradient':
     case 'gradient2':
       return <GradientNode layer={layer} commonProps={commonProps} shapeRef={shapeRef} borderColor={borderColor} borderWidth={borderWidth} borderRadius={borderRadius} />
@@ -318,6 +321,181 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
     default:
       return null
   }
+}
+
+type VideoNodeProps = {
+  layer: Layer
+  commonProps: CommonProps
+  shapeRef: React.MutableRefObject<Konva.Shape | null>
+  borderColor: string
+  borderWidth: number
+  borderRadius: number
+  onChange: (updates: Partial<Layer>) => void
+}
+
+function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: VideoNodeProps) {
+  const videoUrl = layer.fileUrl || ''
+  const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  const imageRef = React.useRef<Konva.Image>(null)
+  const animationRef = React.useRef<Konva.Animation | null>(null)
+
+  React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
+
+  const width = Math.max(20, layer.size?.width ?? 0)
+  const height = Math.max(20, layer.size?.height ?? 0)
+
+  // Criar e configurar elemento de vídeo
+  React.useEffect(() => {
+    if (!videoUrl) return
+
+    const video = document.createElement('video')
+    video.src = videoUrl
+    video.crossOrigin = videoUrl.startsWith('http') ? 'anonymous' : undefined
+    video.loop = layer.videoMetadata?.loop ?? true
+    video.muted = layer.videoMetadata?.muted ?? true
+    video.playsInline = true
+    video.playbackRate = layer.videoMetadata?.playbackRate ?? 1
+
+    // Carregar vídeo
+    video.load()
+
+    // Iniciar reprodução quando pronto
+    video.addEventListener('loadeddata', () => {
+      if (layer.videoMetadata?.autoplay !== false) {
+        video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
+      }
+    })
+
+    videoRef.current = video
+
+    return () => {
+      video.pause()
+      video.src = ''
+      videoRef.current = null
+    }
+  }, [videoUrl, layer.videoMetadata?.loop, layer.videoMetadata?.muted, layer.videoMetadata?.autoplay, layer.videoMetadata?.playbackRate])
+
+  // Configurar animação para atualizar frames
+  React.useEffect(() => {
+    const video = videoRef.current
+    const image = imageRef.current
+    if (!video || !image) return
+
+    const layer = image.getLayer()
+    if (!layer) return
+
+    // Criar animação que atualiza o canvas a cada frame
+    const anim = new Konva.Animation(() => {
+      // A animação força o Konva a redesenhar usando o frame atual do vídeo
+    }, layer)
+
+    anim.start()
+    animationRef.current = anim
+
+    return () => {
+      anim.stop()
+      animationRef.current = null
+    }
+  }, [])
+
+  // Calcular crop para objectFit: cover
+  const crop = React.useMemo(() => {
+    const video = videoRef.current
+    if (!video || !video.videoWidth || !video.videoHeight) return undefined
+
+    const objectFit = layer.videoMetadata?.objectFit ?? 'cover'
+    if (objectFit === 'cover') {
+      return calculateImageCrop(
+        { width: video.videoWidth, height: video.videoHeight },
+        { width, height },
+        'center-middle'
+      )
+    }
+
+    return undefined
+  }, [videoRef.current?.videoWidth, videoRef.current?.videoHeight, width, height, layer.videoMetadata?.objectFit])
+
+  // Handler de transformação
+  const handleTransformEnd = React.useCallback(() => {
+    const node = imageRef.current
+    const video = videoRef.current
+    if (!node || !video) return
+
+    const scaleX = node.scaleX()
+    const scaleY = node.scaleY()
+
+    const newWidth = Math.max(5, node.width() * scaleX)
+    const newHeight = Math.max(5, node.height() * scaleY)
+
+    node.scaleX(1)
+    node.scaleY(1)
+    node.width(newWidth)
+    node.height(newHeight)
+
+    // Recalcular crop se necessário
+    const objectFit = layer.videoMetadata?.objectFit ?? 'cover'
+    if (objectFit === 'cover' && video.videoWidth && video.videoHeight) {
+      const newCrop = calculateImageCrop(
+        { width: video.videoWidth, height: video.videoHeight },
+        { width: newWidth, height: newHeight },
+        'center-middle'
+      )
+
+      if (newCrop) {
+        node.cropX(newCrop.cropX)
+        node.cropY(newCrop.cropY)
+        node.cropWidth(newCrop.cropWidth)
+        node.cropHeight(newCrop.cropHeight)
+      }
+    }
+
+    node.getLayer()?.batchDraw()
+
+    onChange({
+      position: {
+        x: Math.round(node.x()),
+        y: Math.round(node.y()),
+      },
+      size: {
+        width: Math.round(newWidth),
+        height: Math.round(newHeight),
+      },
+      rotation: Math.round(node.rotation()),
+    })
+  }, [onChange, layer.videoMetadata?.objectFit])
+
+  // Placeholder enquanto o vídeo carrega
+  if (!videoRef.current) {
+    return (
+      <Rect
+        {...commonProps}
+        ref={shapeRef as React.RefObject<Konva.Rect>}
+        width={width}
+        height={height}
+        cornerRadius={borderRadius}
+        fill="#1f2937"
+        stroke="#374151"
+        dash={[8, 4]}
+      />
+    )
+  }
+
+  const { onTransformEnd: _, ...videoProps } = commonProps
+
+  return (
+    <KonvaImage
+      {...videoProps}
+      ref={imageRef}
+      image={videoRef.current}
+      width={width}
+      height={height}
+      {...crop}
+      cornerRadius={borderRadius}
+      stroke={borderWidth > 0 ? borderColor : undefined}
+      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+      onTransformEnd={handleTransformEnd}
+    />
+  )
 }
 
 type ImageNodeProps = {
