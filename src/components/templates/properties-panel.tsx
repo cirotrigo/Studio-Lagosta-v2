@@ -29,6 +29,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
+import { VideoProperties } from './video-properties'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
 
@@ -476,6 +477,8 @@ function PropertiesContent({
               {selectedLayer.type === 'icon' && (
                 <IconControls layer={selectedLayer} setStyleValue={setStyleValue} />
               )}
+
+              {selectedLayer.type === 'video' && <VideoProperties />}
             </React.Fragment>
           )}
         </div>

@@ -344,59 +344,137 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
 
-  // Criar e configurar elemento de vídeo
+  // Criar e configurar elemento de vídeo (somente uma vez, quando o URL muda)
   React.useEffect(() => {
     if (!videoUrl) return
 
+    console.log('[VideoNode] Criando elemento de vídeo:', videoUrl)
+
+    // ✨ SEGUINDO EXEMPLO OFICIAL DO KONVA
     const video = document.createElement('video')
     video.src = videoUrl
     video.crossOrigin = videoUrl.startsWith('http') ? 'anonymous' : undefined
-    video.loop = layer.videoMetadata?.loop ?? true
-    video.muted = layer.videoMetadata?.muted ?? true
+
+    // Configurações mínimas (como exemplo oficial)
+    video.muted = true // Para permitir autoplay
     video.playsInline = true
-    video.playbackRate = layer.videoMetadata?.playbackRate ?? 1
 
-    // Carregar vídeo
-    video.load()
+    // NÃO adicionar ao DOM - deixar como elemento independente (como exemplo oficial)
 
-    // Iniciar reprodução quando pronto
-    video.addEventListener('loadeddata', () => {
+    // ✨ Configuração simples como exemplo oficial
+    video.addEventListener('loadedmetadata', () => {
+      console.log('[VideoNode] ✅ Metadados carregados')
+      // Autoplay se configurado
       if (layer.videoMetadata?.autoplay !== false) {
         video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
+      }
+    })
+
+    // Loop manual simples
+    video.addEventListener('ended', () => {
+      if (layer.videoMetadata?.loop ?? true) {
+        video.currentTime = 0
+        video.play()
       }
     })
 
     videoRef.current = video
 
     return () => {
+      console.log('[VideoNode] Limpando elemento de vídeo')
       video.pause()
       video.src = ''
       videoRef.current = null
     }
-  }, [videoUrl, layer.videoMetadata?.loop, layer.videoMetadata?.muted, layer.videoMetadata?.autoplay, layer.videoMetadata?.playbackRate])
+  }, [videoUrl]) // ⚠️ APENAS videoUrl - não recriar quando metadata mudar
 
-  // Configurar animação para atualizar frames
+  // Atualizar propriedades do vídeo quando metadata mudar (sem recriar o elemento)
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    // Aplicar metadata sem recriar elemento
+    const muted = layer.videoMetadata?.muted ?? true
+    const playbackRate = layer.videoMetadata?.playbackRate ?? 1
+
+    if (video.muted !== muted) video.muted = muted
+    if (video.playbackRate !== playbackRate) video.playbackRate = playbackRate
+
+    console.log('[VideoNode] Propriedades atualizadas:', { muted, playbackRate })
+  }, [layer.videoMetadata?.muted, layer.videoMetadata?.playbackRate])
+
+  // ✨ Animação EXATAMENTE como exemplo oficial do Konva
   React.useEffect(() => {
     const video = videoRef.current
     const image = imageRef.current
-    if (!video || !image) return
 
-    const layer = image.getLayer()
-    if (!layer) return
+    if (!video) {
+      console.log('[VideoNode] ⏸️ Animação aguardando vídeo...')
+      return
+    }
 
-    // Criar animação que atualiza o canvas a cada frame
-    const anim = new Konva.Animation(() => {
-      // A animação força o Konva a redesenhar usando o frame atual do vídeo
-    }, layer)
+    if (!image) {
+      console.log('[VideoNode] ⏸️ Animação aguardando imageRef...')
+      return
+    }
+
+    const konvaLayer = image.getLayer()
+    if (!konvaLayer) {
+      console.log('[VideoNode] ⏸️ Animação aguardando layer...')
+      return
+    }
+
+    // Exemplo oficial: função vazia, Konva cuida do resto
+    const anim = new Konva.Animation(function () {
+      // empty function - Konva continuously redraws
+    }, konvaLayer)
 
     anim.start()
-    animationRef.current = anim
+    console.log('[VideoNode] ✅ Animação iniciada!')
 
     return () => {
       anim.stop()
-      animationRef.current = null
+      console.log('[VideoNode] Animação parada')
     }
-  }, [])
+  }, [videoRef.current, imageRef.current])
+
+  // Escutar eventos de controle de vídeo
+  React.useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    const handleVideoControl = (event: Event) => {
+      const customEvent = event as CustomEvent
+      const { layerId, action, value } = customEvent.detail
+
+      // Apenas processar eventos para esta camada
+      if (layerId !== layer.id) return
+
+      switch (action) {
+        case 'play':
+          video.play().catch((err) => console.warn('[VideoNode] Play falhou:', err))
+          break
+        case 'pause':
+          video.pause()
+          break
+        case 'mute':
+          video.muted = value
+          break
+        case 'loop':
+          video.loop = value
+          break
+        case 'playbackRate':
+          video.playbackRate = value
+          break
+      }
+    }
+
+    window.addEventListener('video-control', handleVideoControl)
+
+    return () => {
+      window.removeEventListener('video-control', handleVideoControl)
+    }
+  }, [layer.id])
 
   // Calcular crop para objectFit: cover
   const crop = React.useMemo(() => {
@@ -414,6 +492,26 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     return undefined
   }, [videoRef.current?.videoWidth, videoRef.current?.videoHeight, width, height, layer.videoMetadata?.objectFit])
+
+  // Estado para rastrear se estava tocando antes da transformação
+  const wasPlayingRef = React.useRef(false)
+
+  // Handler de início de transformação - pausar vídeo para melhor performance
+  const handleTransformStart = React.useCallback(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    // Salvar estado de reprodução
+    wasPlayingRef.current = !video.paused
+
+    // Pausar vídeo durante transform para melhor performance
+    if (!video.paused) {
+      video.pause()
+    }
+
+    // NÃO pausar a animação Konva - ela precisa continuar rodando
+    // para manter o vídeo visível durante a transformação
+  }, [])
 
   // Handler de transformação
   const handleTransformEnd = React.useCallback(() => {
@@ -451,6 +549,13 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     node.getLayer()?.batchDraw()
 
+    // Retomar reprodução se estava tocando antes
+    if (wasPlayingRef.current && layer.videoMetadata?.autoplay !== false) {
+      video.play().catch((err) => console.warn('[VideoNode] Falha ao retomar reprodução:', err))
+    }
+
+    // A animação Konva já está rodando continuamente, não precisa reiniciar
+
     onChange({
       position: {
         x: Math.round(node.x()),
@@ -462,7 +567,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, layer.videoMetadata?.objectFit])
+  }, [onChange, layer.videoMetadata?.objectFit, layer.videoMetadata?.autoplay])
 
   // Placeholder enquanto o vídeo carrega
   if (!videoRef.current) {
@@ -493,6 +598,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       cornerRadius={borderRadius}
       stroke={borderWidth > 0 ? borderColor : undefined}
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}
+      onTransformStart={handleTransformStart}
       onTransformEnd={handleTransformEnd}
     />
   )
