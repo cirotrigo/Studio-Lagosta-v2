@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { site } from '@/lib/brand-config'
 import { useMenuByLocation } from '@/hooks/use-public-menu'
+import { DynamicLogo } from '@/components/app/dynamic-logo'
 
 export function PublicHeader() {
   const [menuState, setMenuState] = React.useState(false)
@@ -40,8 +41,8 @@ export function PublicHeader() {
               <Link
                 href="/"
                 aria-label={site.shortName}
-                className="flex items-center space-x-2">
-                <Logo />
+                className="flex items-center">
+                <DynamicLogo useFull className="h-12" />
               </Link>
 
               <button
@@ -117,15 +118,5 @@ export function PublicHeader() {
         </div>
       </nav>
     </header>
-  )
-}
-
-function Logo() {
-  return (
-    <>
-      <img src={site.logo.dark} className="size-9 dark:hidden" alt={site.shortName} />
-      <img src={site.logo.light} className="hidden size-9 dark:block" alt={site.shortName} />
-      <span className="text-lg font-semibold tracking-tight">{site.shortName}</span>
-    </>
   )
 }

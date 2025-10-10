@@ -22,6 +22,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DynamicLogo } from "@/components/app/dynamic-logo";
 
 type SidebarProps = {
   collapsed: boolean;
@@ -50,15 +51,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       aria-label="Barra lateral principal"
     >
       <div className="flex h-14 items-center gap-2 px-3">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Settings className="h-5 w-5" />
-          </div>
-          {!collapsed && (
-            <span className="text-lg font-semibold">SaaS Template</span>
+        <Link href="/" className={cn("flex items-center", collapsed ? "flex-1 justify-center" : "flex-1 min-w-0")}>
+          {collapsed ? (
+            <DynamicLogo useFull={false} className="w-9 h-9 flex-shrink-0" />
+          ) : (
+            <DynamicLogo useFull={true} className="h-10" />
           )}
         </Link>
-        <div className="ml-auto">
+        <div className={cn("flex-shrink-0", !collapsed && "ml-auto")}>
           <Button
             variant="ghost"
             size="icon"

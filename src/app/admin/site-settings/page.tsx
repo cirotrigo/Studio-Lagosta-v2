@@ -22,12 +22,16 @@ export default function SiteSettingsPage() {
   // Refs para inputs de arquivo
   const logoLightInputRef = useRef<HTMLInputElement>(null)
   const logoDarkInputRef = useRef<HTMLInputElement>(null)
+  const logoFullLightInputRef = useRef<HTMLInputElement>(null)
+  const logoFullDarkInputRef = useRef<HTMLInputElement>(null)
   const faviconInputRef = useRef<HTMLInputElement>(null)
   const appleIconInputRef = useRef<HTMLInputElement>(null)
 
   // Estados de upload
   const [uploadingLogoLight, setUploadingLogoLight] = useState(false)
   const [uploadingLogoDark, setUploadingLogoDark] = useState(false)
+  const [uploadingLogoFullLight, setUploadingLogoFullLight] = useState(false)
+  const [uploadingLogoFullDark, setUploadingLogoFullDark] = useState(false)
   const [uploadingFavicon, setUploadingFavicon] = useState(false)
   const [uploadingAppleIcon, setUploadingAppleIcon] = useState(false)
 
@@ -39,6 +43,8 @@ export default function SiteSettingsPage() {
     description: '',
     logoLight: '/logo-light.svg',
     logoDark: '/logo-dark.svg',
+    logoFullLight: '',
+    logoFullDark: '',
     favicon: '/favicon.ico',
     appleIcon: '',
     metaTitle: '',
@@ -66,6 +72,8 @@ export default function SiteSettingsPage() {
         description: settings.description,
         logoLight: settings.logoLight,
         logoDark: settings.logoDark,
+        logoFullLight: settings.logoFullLight || '',
+        logoFullDark: settings.logoFullDark || '',
         favicon: settings.favicon,
         appleIcon: settings.appleIcon || '',
         metaTitle: settings.metaTitle || '',
@@ -88,7 +96,7 @@ export default function SiteSettingsPage() {
   // Função para fazer upload de arquivo
   const handleFileUpload = async (
     file: File,
-    field: 'logoLight' | 'logoDark' | 'favicon' | 'appleIcon',
+    field: 'logoLight' | 'logoDark' | 'logoFullLight' | 'logoFullDark' | 'favicon' | 'appleIcon',
     setUploading: (uploading: boolean) => void
   ) => {
     try {
@@ -404,6 +412,134 @@ export default function SiteSettingsPage() {
                   </div>
                   <p className="text-sm text-muted-foreground">
                     Tamanho recomendado: 36×36px (SVG ou PNG). Aparece em fundo claro.
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t pt-6">
+                  <h3 className="font-semibold text-lg mb-1">Logo Completa (com texto)</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Use a logo completa na home e páginas principais
+                  </p>
+                </div>
+
+                {/* Logo Full Light */}
+                <div className="space-y-3">
+                  <Label htmlFor="logoFullLight">Logo Completa Clara (Tema Escuro)</Label>
+                  <div className="flex items-center gap-4">
+                    {formData.logoFullLight && (
+                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-gray-900 p-2">
+                        <img
+                          src={formData.logoFullLight}
+                          alt="Logo Full Light"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="logoFullLight"
+                        value={formData.logoFullLight}
+                        onChange={(e) => setFormData({ ...formData, logoFullLight: e.target.value })}
+                        placeholder="/logo-full-light.svg"
+                      />
+                      <input
+                        ref={logoFullLightInputRef}
+                        type="file"
+                        accept="image/svg+xml,image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'logoFullLight', setUploadingLogoFullLight)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoFullLightInputRef.current?.click()}
+                        disabled={uploadingLogoFullLight}
+                      >
+                        {uploadingLogoFullLight ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Tamanho recomendado: L:100px H:48px (SVG ou PNG). Para home e header.
+                  </p>
+                </div>
+
+                {/* Logo Full Dark */}
+                <div className="space-y-3">
+                  <Label htmlFor="logoFullDark">Logo Completa Escura (Tema Claro)</Label>
+                  <div className="flex items-center gap-4">
+                    {formData.logoFullDark && (
+                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-white p-2">
+                        <img
+                          src={formData.logoFullDark}
+                          alt="Logo Full Dark"
+                          className="max-w-full max-h-full object-contain"
+                        />
+                      </div>
+                    )}
+                    <div className="flex-1 space-y-2">
+                      <Input
+                        id="logoFullDark"
+                        value={formData.logoFullDark}
+                        onChange={(e) => setFormData({ ...formData, logoFullDark: e.target.value })}
+                        placeholder="/logo-full-dark.svg"
+                      />
+                      <input
+                        ref={logoFullDarkInputRef}
+                        type="file"
+                        accept="image/svg+xml,image/png,image/jpeg"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) handleFileUpload(file, 'logoFullDark', setUploadingLogoFullDark)
+                        }}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => logoFullDarkInputRef.current?.click()}
+                        disabled={uploadingLogoFullDark}
+                      >
+                        {uploadingLogoFullDark ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Enviando...
+                          </>
+                        ) : (
+                          <>
+                            <Upload className="mr-2 h-4 w-4" />
+                            Fazer Upload
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    Tamanho recomendado: L:100px H:48px (SVG ou PNG). Para home e header.
+                  </p>
+                </div>
+
+                {/* Divider */}
+                <div className="border-t pt-6">
+                  <h3 className="font-semibold text-lg mb-1">Ícones</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Favicons e ícones para dispositivos
                   </p>
                 </div>
 

@@ -7,6 +7,8 @@ export type SiteSettings = {
   description: string
   logoLight: string
   logoDark: string
+  logoFullLight: string | null
+  logoFullDark: string | null
   favicon: string
   appleIcon: string | null
   metaTitle: string | null
@@ -48,6 +50,8 @@ export async function getSiteSettings(): Promise<SiteSettings> {
         'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
       logoLight: '/logo-light.svg',
       logoDark: '/logo-dark.svg',
+      logoFullLight: null,
+      logoFullDark: null,
       favicon: '/favicon.ico',
       appleIcon: null,
       metaTitle: null,
@@ -87,6 +91,8 @@ export async function getSiteConfig() {
       light: settings.logoLight,
       dark: settings.logoDark,
     },
+    logoFullLight: settings.logoFullLight || undefined,
+    logoFullDark: settings.logoFullDark || undefined,
     icons: {
       favicon: settings.favicon,
       apple: settings.appleIcon || undefined,

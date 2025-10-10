@@ -540,9 +540,13 @@ model SiteSettings {
   shortName   String   @default("Studio Lagosta")
   description String   @db.Text
 
-  // Logo
+  // Logo (Icon)
   logoLight   String   @default("/logo-light.svg")
   logoDark    String   @default("/logo-dark.svg")
+
+  // Logo Full (Complete logo with text)
+  logoFullLight String?
+  logoFullDark  String?
 
   // Icons
   favicon     String   @default("/favicon.ico")
