@@ -120,6 +120,10 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
             const { width, height } = creative
             const aspectRatio = width / height
 
+            // Verificar se é um vídeo
+            const isVideo = creative.fieldValues?.isVideo === true
+            const mimeType = creative.fieldValues?.mimeType || 'image/jpeg'
+
             return (
               <div
                 key={creative.id}
@@ -135,12 +139,26 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                   style={{ aspectRatio }}
                   className="block overflow-hidden bg-muted"
                 >
-                  <img
-                    src={creative.resultUrl}
-                    alt={`Criativo ${creative.id}`}
-                    className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                    loading="lazy"
-                  />
+                  {isVideo ? (
+                    <video
+                      src={creative.resultUrl}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      muted
+                      playsInline
+                      onMouseEnter={(e) => e.currentTarget.play()}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.pause()
+                        e.currentTarget.currentTime = 0
+                      }}
+                    />
+                  ) : (
+                    <img
+                      src={creative.resultUrl}
+                      alt={`Criativo ${creative.id}`}
+                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      loading="lazy"
+                    />
+                  )}
                 </a>
 
                 {/* Info e ações */}
@@ -165,7 +183,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                       onClick={() =>
                         handleDownload(
                           creative.resultUrl,
-                          `criativo-${creative.id}.jpg`
+                          `criativo-${creative.id}${isVideo ? '.mp4' : '.jpg'}`
                         )
                       }
                       title="Baixar criativo"

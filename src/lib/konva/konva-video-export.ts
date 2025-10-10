@@ -362,18 +362,32 @@ export async function exportVideoWithLayers(
     // Gerar blob WebM
     const webmBlob = new Blob(chunks, { type: finalMimeType })
 
-    // Se formato solicitado for MP4, converter (nota: conversão client-side não é trivial)
-    // Por enquanto, sempre retornamos WebM
-    // TODO: Implementar conversão server-side para MP4 se necessário
+    // Se formato solicitado for MP4, converter usando FFmpeg.wasm
     if (format === 'mp4') {
-      onProgress?.({ phase: 'converting', progress: 90 })
-      console.warn(
-        '[exportVideoWithLayers] Conversão para MP4 não implementada. Retornando WebM.'
-      )
+      onProgress?.({ phase: 'converting', progress: 85 })
+      console.log('[exportVideoWithLayers] Convertendo WebM para MP4...')
+
+      try {
+        const { convertWebMToMP4 } = await import('@/lib/video/ffmpeg-converter')
+
+        const mp4Blob = await convertWebMToMP4(webmBlob, (conversionProgress) => {
+          // Mapear progresso da conversão (0-100) para progresso total (85-100)
+          const totalProgress = 85 + (conversionProgress / 100) * 15
+          onProgress?.({ phase: 'converting', progress: totalProgress })
+        })
+
+        onProgress?.({ phase: 'finalizing', progress: 100 })
+        return mp4Blob
+      } catch (error) {
+        console.error('[exportVideoWithLayers] Erro ao converter para MP4:', error)
+        console.warn('[exportVideoWithLayers] Retornando WebM como fallback')
+        // Fallback: retornar WebM se conversão falhar
+        onProgress?.({ phase: 'finalizing', progress: 100 })
+        return webmBlob
+      }
     }
 
     onProgress?.({ phase: 'finalizing', progress: 100 })
-
     return webmBlob
   } finally {
     // Sempre restaurar estado do stage

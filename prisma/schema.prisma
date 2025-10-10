@@ -631,3 +631,53 @@ model Prompt {
   @@index([category])
   @@index([createdAt])
 }
+
+// Video Processing Queue - Background video conversion jobs
+enum VideoProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model VideoProcessingJob {
+  id              String                 @id @default(cuid())
+  userId          String
+  clerkUserId     String
+  templateId      Int
+  projectId       Int
+
+  // Job data
+  status          VideoProcessingStatus  @default(PENDING)
+  webmBlobUrl     String                 // Temporary WebM blob URL or storage path
+  webmFileSize    Int                    // Size in bytes
+  mp4ResultUrl    String?                // Final MP4 URL after conversion
+  thumbnailUrl    String?                // Thumbnail URL
+
+  // Metadata
+  videoName       String
+  videoDuration   Float                  // Duration in seconds
+  videoWidth      Int
+  videoHeight     Int
+  designData      Json                   // Template design data for reference
+
+  // Progress tracking
+  progress        Int                    @default(0) // 0-100
+  errorMessage    String?
+
+  // Timestamps
+  createdAt       DateTime               @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+
+  // Credits
+  creditsDeducted Boolean                @default(false)
+  creditsUsed     Int                    @default(10)
+
+  @@index([userId])
+  @@index([clerkUserId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([templateId])
+  @@index([projectId])
+}

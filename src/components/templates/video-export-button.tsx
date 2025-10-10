@@ -12,6 +12,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
@@ -31,6 +33,7 @@ export function VideoExportButton() {
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
   const [exportProgress, setExportProgress] = React.useState<VideoExportProgress | null>(null)
+  const [exportFormat, setExportFormat] = React.useState<'webm' | 'mp4'>('mp4')
 
   // Refs para acessar selectedLayerIds e setZoom dentro da função de exportação
   const selectedLayerIdsRef = React.useRef<string[]>(editorContext.selectedLayerIds)
@@ -122,7 +125,7 @@ export function VideoExportButton() {
         },
         {
           fps: 30,
-          format: 'webm',
+          format: exportFormat,
           quality: 0.8,
         },
         (progress) => {
@@ -156,7 +159,7 @@ export function VideoExportButton() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `${design.name || 'video'}-${Date.now()}.webm`
+      a.download = `${design.name || 'video'}-${Date.now()}.${exportFormat}`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
@@ -194,6 +197,8 @@ export function VideoExportButton() {
         return 'Preparando exportação...'
       case 'recording':
         return 'Gravando vídeo...'
+      case 'converting':
+        return 'Convertendo para MP4...'
       case 'finalizing':
         return 'Finalizando...'
       default:
@@ -247,16 +252,50 @@ export function VideoExportButton() {
               <div className="text-2xl font-bold">{creditCost} créditos</div>
             </div>
 
+            {/* Seleção de formato */}
+            <div className="space-y-3 rounded-lg border p-4">
+              <Label className="text-sm font-medium">Formato de exportação</Label>
+              <RadioGroup
+                value={exportFormat}
+                onValueChange={(value) => setExportFormat(value as 'webm' | 'mp4')}
+                className="space-y-2"
+              >
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="mp4" id="mp4" />
+                  <Label htmlFor="mp4" className="flex flex-col cursor-pointer">
+                    <span className="text-sm font-medium">MP4 (H.264)</span>
+                    <span className="text-xs text-muted-foreground">
+                      Recomendado - Compatível com iOS e redes sociais
+                    </span>
+                  </Label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <RadioGroupItem value="webm" id="webm" />
+                  <Label htmlFor="webm" className="flex flex-col cursor-pointer">
+                    <span className="text-sm font-medium">WebM (VP9/VP8)</span>
+                    <span className="text-xs text-muted-foreground">
+                      Exportação mais rápida - Não funciona no iOS
+                    </span>
+                  </Label>
+                </div>
+              </RadioGroup>
+            </div>
+
             {/* Configurações */}
             <div className="space-y-2 rounded-lg bg-muted p-4">
               <p className="text-sm font-medium">Configurações:</p>
               <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Formato: WebM (VP9/VP8)</li>
+                <li>• Formato: {exportFormat.toUpperCase()} {exportFormat === 'mp4' ? '(H.264)' : '(VP9/VP8)'}</li>
                 <li>• FPS: 30</li>
                 <li>• Qualidade: Alta (0.8)</li>
                 <li>
                   • Duração: {videoLayer?.videoMetadata?.duration?.toFixed(1) || 'Auto'}s
                 </li>
+                {exportFormat === 'mp4' && (
+                  <li className="text-amber-600 dark:text-amber-500">
+                    ⚠️ Conversão para MP4 pode levar mais tempo
+                  </li>
+                )}
               </ul>
             </div>
 
