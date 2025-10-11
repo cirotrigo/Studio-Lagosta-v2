@@ -12,7 +12,7 @@ const nextConfig: NextConfig = {
   // 禁用 Next.js 热重载，由 nodemon 处理重编译
   reactStrictMode: false,
 
-  // Headers necessários para FFmpeg.wasm (SharedArrayBuffer)
+  // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe
   async headers() {
     return [
       {
@@ -24,7 +24,13 @@ const nextConfig: NextConfig = {
           },
           {
             key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
+            // Usar 'credentialless' ao invés de 'require-corp' para permitir
+            // recursos cross-origin (como imagens do Vercel Blob) funcionarem
+            value: 'credentialless',
+          },
+          {
+            key: 'Cross-Origin-Resource-Policy',
+            value: 'cross-origin',
           },
         ],
       },

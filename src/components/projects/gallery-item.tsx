@@ -42,8 +42,15 @@ export function GalleryItem({
 }: GalleryItemProps) {
   const [imageLoaded, setImageLoaded] = React.useState(false)
   const [isInView, setIsInView] = React.useState(false)
+  // Inicializar com as dimensões do template para evitar flicker
   const [imageDimensions, setImageDimensions] = React.useState({ width: pswpWidth, height: pswpHeight })
   const ref = React.useRef<HTMLDivElement>(null)
+
+  // Detectar se é vídeo baseado na extensão do arquivo
+  const isVideo = React.useMemo(() => {
+    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
+    return videoExtensions.some(ext => imageUrl.toLowerCase().endsWith(ext))
+  }, [imageUrl])
 
   // Intersection Observer para animações
   React.useEffect(() => {
@@ -64,14 +71,23 @@ export function GalleryItem({
     return () => observer.disconnect()
   }, [])
 
-  // Carregar dimensões reais da imagem
+  // Carregar dimensões reais da imagem para garantir precisão
   React.useEffect(() => {
     const img = new window.Image()
     img.src = imageUrl
     img.onload = () => {
-      setImageDimensions({ width: img.naturalWidth, height: img.naturalHeight })
+      // Atualizar apenas se as dimensões reais forem diferentes
+      const realWidth = img.naturalWidth
+      const realHeight = img.naturalHeight
+
+      if (realWidth !== imageDimensions.width || realHeight !== imageDimensions.height) {
+        setImageDimensions({ width: realWidth, height: realHeight })
+      }
     }
-  }, [imageUrl, id])
+    img.onerror = () => {
+      console.warn(`Failed to load image dimensions for: ${imageUrl}`)
+    }
+  }, [imageUrl, id, imageDimensions.width, imageDimensions.height])
 
   // Calcular aspect ratio real da imagem
   const aspectRatio = imageDimensions.width / imageDimensions.height
@@ -104,11 +120,6 @@ export function GalleryItem({
   }
 
   const gridSpan = getGridSpan()
-
-  // Calcular aspect ratio numérico para inline style
-  const getAspectRatioValue = () => {
-    return aspectRatio.toString()
-  }
 
   return (
     <motion.div
@@ -149,20 +160,24 @@ export function GalleryItem({
         {date}
       </div>
 
-      {/* Container da imagem - Link para PhotoSwipe */}
+      {/* Container da imagem/vídeo - Link para PhotoSwipe */}
       <a
         href={imageUrl}
         data-pswp-width={imageDimensions.width}
         data-pswp-height={imageDimensions.height}
+        data-pswp-type={isVideo ? 'video' : 'image'}
         target="_blank"
         rel="noopener noreferrer"
         className="relative block bg-muted overflow-hidden w-full h-full cursor-zoom-in"
         onClick={(e) => {
-          // Prevenir navegação padrão se PhotoSwipe não interceptar
-          const hasPhotoSwipe = document.querySelector('.pswp')
-          if (!hasPhotoSwipe) {
-            console.log('PhotoSwipe not initialized, allowing default behavior')
-          }
+          // PhotoSwipe vai interceptar este clique
+          // Se não interceptar, o link abrirá em nova aba (fallback)
+          console.log('Gallery item clicked:', {
+            imageUrl,
+            width: imageDimensions.width,
+            height: imageDimensions.height,
+            isVideo
+          })
         }}
       >
         {/* Skeleton loader */}
@@ -170,17 +185,31 @@ export function GalleryItem({
           <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse pointer-events-none" />
         )}
 
-        {/* Imagem */}
+        {/* Imagem ou Vídeo */}
         <div className="relative w-full h-full pointer-events-none">
-          <Image
-            src={imageUrl}
-            alt={title}
-            fill
-            sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
-            className="object-cover transition-transform duration-400 group-hover:scale-105"
-            onLoad={() => setImageLoaded(true)}
-            loading="lazy"
-          />
+          {isVideo ? (
+            // Para vídeos, usar elemento <video> com poster
+            <video
+              src={imageUrl}
+              className="w-full h-full object-cover transition-transform duration-400 group-hover:scale-105"
+              onLoadedMetadata={() => setImageLoaded(true)}
+              muted
+              loop
+              playsInline
+              preload="metadata"
+            />
+          ) : (
+            // Para imagens, usar Next.js Image
+            <Image
+              src={imageUrl}
+              alt={title}
+              fill
+              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
+              className="object-cover transition-transform duration-400 group-hover:scale-105"
+              onLoad={() => setImageLoaded(true)}
+              loading="lazy"
+            />
+          )}
         </div>
 
         {/* Overlay com gradiente no hover */}
