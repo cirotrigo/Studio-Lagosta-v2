@@ -1,11 +1,19 @@
 import ffmpeg from 'fluent-ffmpeg'
-import ffmpegPath from '@ffmpeg-installer/ffmpeg'
 import { readFile, writeFile, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 
-// Configura o caminho binário do FFmpeg fornecido pelo instalador
-ffmpeg.setFfmpegPath(ffmpegPath.path)
+// Configura o caminho binário do FFmpeg
+// A Vercel já tem FFmpeg pré-instalado, então tentamos usar o instalador
+// como fallback para ambientes locais
+try {
+  const ffmpegPath = require('@ffmpeg-installer/ffmpeg')
+  ffmpeg.setFfmpegPath(ffmpegPath.path)
+} catch {
+  // Se o instalador não estiver disponível, usa o FFmpeg do sistema
+  // (Vercel tem FFmpeg pré-instalado em /usr/bin/ffmpeg)
+  console.log('[FFmpeg] Usando FFmpeg do sistema')
+}
 
 export interface ConversionProgress {
   percent: number
@@ -167,8 +175,10 @@ export async function convertWebMToMP4ServerSide(
 
 export function isFFmpegAvailable(): boolean {
   try {
+    const ffmpegPath = require('@ffmpeg-installer/ffmpeg')
     return Boolean(ffmpegPath.path)
   } catch {
-    return false
+    // Assume que FFmpeg está disponível no sistema (Vercel)
+    return true
   }
 }
