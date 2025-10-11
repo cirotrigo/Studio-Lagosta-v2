@@ -88,6 +88,7 @@ model Generation {
   googleDriveBackupUrl String?
   Project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
   Template             Template         @relation(fields: [templateId], references: [id])
+  VideoProcessingJob   VideoProcessingJob? @relation("GenerationVideoJob")
 
   @@index([createdAt])
   @@index([createdBy])
@@ -673,6 +674,8 @@ model VideoProcessingJob {
   // Credits
   creditsDeducted Boolean                @default(false)
   creditsUsed     Int                    @default(10)
+  generationId    String?                @unique
+  generation      Generation?            @relation("GenerationVideoJob", fields: [generationId], references: [id])
 
   @@index([userId])
   @@index([clerkUserId])

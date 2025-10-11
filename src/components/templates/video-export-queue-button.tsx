@@ -1,21 +1,60 @@
 "use client"
 
 import * as React from 'react'
+import { upload } from '@vercel/blob/client'
+import { useAuth } from '@clerk/nextjs'
 import { Film, Loader2, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
-import { exportVideoWithLayers } from '@/lib/konva/konva-video-export'
+import { exportVideoWithLayers, generateVideoThumbnail } from '@/lib/konva/konva-video-export'
 import { validateInstagramFormat } from '@/lib/templates/instagram-presets'
 import Konva from 'konva'
+
+function sanitizeFileName(name: string) {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
+}
+
+function generateUploadPath(clerkUserId: string, videoName: string) {
+  const randomSuffix =
+    typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+
+  return `video-processing/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.webm`
+}
+
+function generateThumbnailUploadPath(clerkUserId: string, videoName: string) {
+  const randomSuffix =
+    typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+
+  return `video-thumbnails/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.jpg`
+}
+
+async function parseJsonResponse(response: Response) {
+  const text = await response.text()
+  try {
+    return text ? JSON.parse(text) : {}
+  } catch {
+    return { raw: text }
+  }
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl)
+  return await response.blob()
+}
 
 export function VideoExportQueueButton() {
   const editorContext = useTemplateEditor()
   const { design, zoom, templateId, projectId } = editorContext
   const { toast } = useToast()
   const { canPerformOperation, getCost } = useCredits()
+  const { userId: clerkUserId } = useAuth()
 
   const [isExporting, setIsExporting] = React.useState(false)
 
@@ -104,14 +143,70 @@ export function VideoExportQueueButton() {
         }
       )
 
-      // 2. Converter Blob para Base64
-      const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(reader.result as string)
-        reader.readAsDataURL(webmBlob)
+      if (!clerkUserId) {
+        throw new Error('Sessão expirada. Faça login novamente para continuar.')
+      }
+
+      // 2. Gerar thumbnail do vídeo para exibição imediata
+      let thumbnailUploadResult: Awaited<ReturnType<typeof upload>> | null = null
+      let thumbnailBlobSize = 0
+
+      try {
+        const thumbnailDataUrl = await generateVideoThumbnail(stage, videoLayer)
+        const thumbnailBlob = await dataUrlToBlob(thumbnailDataUrl)
+        thumbnailBlobSize = thumbnailBlob.size
+
+        const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, design.name || 'video')
+
+        thumbnailUploadResult = await upload(thumbnailUploadPath, thumbnailBlob, {
+          access: 'public',
+          contentType: 'image/jpeg',
+          handleUploadUrl: '/api/video-processing/upload',
+          onUploadProgress: ({ percentage }) => {
+            if (typeof percentage === 'number') {
+              console.log(`[VideoExportQueue] Thumbnail upload progress: ${percentage.toFixed(0)}%`)
+            }
+          },
+        })
+
+        console.log('[VideoExportQueue] Thumbnail upload concluído:', thumbnailUploadResult.url)
+      } catch (thumbnailError) {
+        console.error('[VideoExportQueue] Erro ao gerar/enviar thumbnail:', thumbnailError)
+        toast({
+          variant: 'destructive',
+          title: 'Erro ao gerar thumbnail',
+          description: 'Não foi possível criar a thumbnail do vídeo. Tente novamente.',
+        })
+        throw thumbnailError
+      }
+
+      if (!thumbnailUploadResult) {
+        throw new Error('Falha ao enviar thumbnail do vídeo')
+      }
+
+      // 3. Upload direto do WebM para o Vercel Blob
+      const uploadPath = generateUploadPath(clerkUserId, design.name || 'video')
+
+      toast({
+        title: 'Enviando vídeo...',
+        description: 'Transferindo arquivo para o armazenamento seguro.',
       })
 
-      // 3. Enviar para fila
+      const uploadResult = await upload(uploadPath, webmBlob, {
+        access: 'public',
+        contentType: 'video/webm',
+        handleUploadUrl: '/api/video-processing/upload',
+        multipart: webmBlob.size > 15 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => {
+          if (typeof percentage === 'number') {
+            console.log(`[VideoExportQueue] Upload progress: ${percentage.toFixed(0)}%`)
+          }
+        },
+      })
+
+      console.log('[VideoExportQueue] Upload concluído:', uploadResult.url)
+
+      // 4. Enviar metadados para fila
       toast({
         title: 'Adicionando à fila...',
         description: 'Seu vídeo está sendo enviado para processamento.',
@@ -127,20 +222,42 @@ export function VideoExportQueueButton() {
           videoDuration: videoLayer.videoMetadata?.duration || 10,
           videoWidth: design.canvas.width,
           videoHeight: design.canvas.height,
-          webmBlob: base64,
+          webmBlobUrl: uploadResult.url,
+          webmBlobSize: webmBlob.size,
+          thumbnailBlobUrl: thumbnailUploadResult.url,
+          thumbnailBlobSize,
           designData: design,
         }),
       })
 
+      const json = await parseJsonResponse(response)
+
       if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || 'Falha ao adicionar vídeo à fila')
+        throw new Error(json?.error || 'Falha ao adicionar vídeo à fila')
       }
 
-      const { jobId } = await response.json()
+      const { jobId, generationId } = json as { jobId?: string; generationId?: string }
+      if (!jobId) {
+        throw new Error('Resposta inválida ao enfileirar vídeo')
+      }
 
-      // 4. Iniciar polling do status
-      pollJobStatus(jobId)
+      if (generationId) {
+        window.dispatchEvent(
+          new CustomEvent('video-export-queued', {
+            detail: {
+              jobId,
+              generationId,
+              projectId,
+              thumbnailUrl: thumbnailUploadResult.url,
+              progress: 0,
+              status: 'PENDING',
+            },
+          })
+        )
+      }
+
+      // 5. Iniciar polling do status
+      pollJobStatus(jobId, generationId, typeof projectId === 'number' ? projectId : undefined)
 
       const formatInfo = validation?.preset
         ? `${validation.preset.name} (${validation.preset.aspectRatio})`
@@ -164,10 +281,11 @@ export function VideoExportQueueButton() {
     }
   }
 
-  const pollJobStatus = (jobId: string) => {
+  const pollJobStatus = (jobId: string, initialGenerationId?: string, projectId?: number) => {
     console.log('[VideoExportQueue] Iniciando polling para job:', jobId)
     let pollCount = 0
     const maxPolls = 60 // Máximo 5 minutos (60 * 5s)
+    let linkedGenerationId = initialGenerationId
 
     const interval = setInterval(async () => {
       pollCount++
@@ -195,6 +313,31 @@ export function VideoExportQueueButton() {
         const job = await response.json()
         console.log('[VideoExportQueue] Status do job:', job.status, 'Progresso:', job.progress)
 
+        const currentGenerationId: string | undefined =
+          (typeof job?.generationId === 'string' ? job.generationId : undefined) ?? linkedGenerationId
+        linkedGenerationId = currentGenerationId
+
+        const resolvedProgress =
+          typeof job.progress === 'number'
+            ? job.progress
+            : job.status === 'COMPLETED'
+              ? 100
+              : job.status === 'FAILED'
+                ? 100
+                : 0
+
+        const baseDetail = {
+          jobId,
+          generationId: currentGenerationId ?? null,
+          projectId,
+          progress: resolvedProgress,
+          status: job.status,
+          mp4ResultUrl: job.mp4ResultUrl,
+          thumbnailUrl: job.thumbnailUrl,
+        }
+
+        window.dispatchEvent(new CustomEvent('video-export-progress', { detail: baseDetail }))
+
         if (job.status === 'COMPLETED') {
           console.log('[VideoExportQueue] Job concluído! URL:', job.mp4ResultUrl)
           clearInterval(interval)
@@ -206,7 +349,7 @@ export function VideoExportQueueButton() {
           })
 
           // Disparar evento para atualizar lista de criativos
-          window.dispatchEvent(new CustomEvent('video-export-completed', { detail: { jobId, url: job.mp4ResultUrl } }))
+          window.dispatchEvent(new CustomEvent('video-export-completed', { detail: baseDetail }))
         } else if (job.status === 'FAILED') {
           console.error('[VideoExportQueue] Job falhou:', job.errorMessage)
           clearInterval(interval)
@@ -216,6 +359,15 @@ export function VideoExportQueueButton() {
             title: 'Erro no processamento',
             description: job.errorMessage || 'Falha ao processar vídeo',
           })
+
+          window.dispatchEvent(
+            new CustomEvent('video-export-failed', {
+              detail: {
+                ...baseDetail,
+                errorMessage: job.errorMessage,
+              },
+            })
+          )
         } else if (job.status === 'PROCESSING') {
           // Atualizar progresso
           console.log('[VideoExportQueue] Processando... Progresso:', job.progress)

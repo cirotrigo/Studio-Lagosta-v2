@@ -33,6 +33,7 @@ export async function GET(
       progress: job.progress,
       mp4ResultUrl: job.mp4ResultUrl,
       thumbnailUrl: job.thumbnailUrl,
+      generationId: job.generationId,
       errorMessage: job.errorMessage,
       createdAt: job.createdAt,
       completedAt: job.completedAt,

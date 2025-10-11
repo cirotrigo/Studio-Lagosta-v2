@@ -62,7 +62,34 @@ const STATUS_OPTIONS = [
 ]
 
 type ViewMode = 'grid' | 'list'
-type PreviewState = { id: string; url: string; templateName?: string | null } | null
+type PreviewState = {
+  id: string
+  url: string
+  templateName?: string | null
+  isVideo?: boolean
+  posterUrl?: string | null
+} | null
+
+type ProgressOverride = {
+  progress: number
+  status: GenerationRecord['status'] | 'PENDING'
+  errorMessage?: string | null
+}
+
+function getStringField(values: Record<string, unknown>, key: string): string | undefined {
+  const value = values?.[key]
+  return typeof value === 'string' ? value : undefined
+}
+
+function getNumberField(values: Record<string, unknown>, key: string): number | undefined {
+  const value = values?.[key]
+  return typeof value === 'number' ? value : undefined
+}
+
+function getBooleanField(values: Record<string, unknown>, key: string): boolean | undefined {
+  const value = values?.[key]
+  return typeof value === 'boolean' ? value : undefined
+}
 
 export function CreativesGallery({ projectId }: { projectId: number }) {
   const { toast } = useToast()
@@ -74,6 +101,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [onlyWithResult, setOnlyWithResult] = React.useState(true)
   const [preview, setPreview] = React.useState<PreviewState>(null)
+  const [progressOverrides, setProgressOverrides] = React.useState<Record<string, ProgressOverride>>({})
 
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
     queryKey: ['generations', projectId],
@@ -112,11 +140,163 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     },
   })
 
+  React.useEffect(() => {
+    const handleQueued = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail
+      if (!detail) return
+      if (detail.projectId != null && detail.projectId !== projectId) return
+      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      if (!generationId) return
+
+      setProgressOverrides((prev) => {
+        const nextStatus: ProgressOverride['status'] = detail.status ?? 'PENDING'
+        const nextProgress =
+          typeof detail.progress === 'number'
+            ? Math.max(0, Math.min(100, detail.progress))
+            : prev[generationId]?.progress ?? 0
+
+        const previous = prev[generationId]
+        if (previous && previous.progress === nextProgress && previous.status === nextStatus) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          [generationId]: {
+            progress: nextProgress,
+            status: nextStatus,
+            errorMessage: detail.errorMessage ?? previous?.errorMessage ?? null,
+          },
+        }
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+    }
+
+    const handleProgress = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail
+      if (!detail) return
+      if (detail.projectId != null && detail.projectId !== projectId) return
+      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      if (!generationId) return
+
+      setProgressOverrides((prev) => {
+        const previous = prev[generationId]
+        const nextStatus: ProgressOverride['status'] =
+          detail.status ?? previous?.status ?? 'PROCESSING'
+        const nextProgress =
+          typeof detail.progress === 'number'
+            ? Math.max(0, Math.min(100, detail.progress))
+            : previous?.progress ?? 0
+
+        if (
+          previous &&
+          previous.progress === nextProgress &&
+          previous.status === nextStatus &&
+          previous.errorMessage === (detail.errorMessage ?? previous.errorMessage ?? null)
+        ) {
+          return prev
+        }
+
+        return {
+          ...prev,
+          [generationId]: {
+            progress: nextProgress,
+            status: nextStatus,
+            errorMessage: detail.errorMessage ?? previous?.errorMessage ?? null,
+          },
+        }
+      })
+    }
+
+    const handleCompleted = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail
+      if (!detail) return
+      if (detail.projectId != null && detail.projectId !== projectId) return
+      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      if (!generationId) return
+
+      setProgressOverrides((prev) => {
+        const previous = prev[generationId]
+        if (previous && previous.progress === 100 && previous.status === 'COMPLETED') {
+          return prev
+        }
+        return {
+          ...prev,
+          [generationId]: {
+            progress: 100,
+            status: 'COMPLETED',
+          },
+        }
+      })
+
+      queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+    }
+
+    const handleFailed = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail
+      if (!detail) return
+      if (detail.projectId != null && detail.projectId !== projectId) return
+      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      if (!generationId) return
+
+      setProgressOverrides((prev) => ({
+        ...prev,
+        [generationId]: {
+          progress:
+            typeof detail.progress === 'number'
+              ? Math.max(0, Math.min(100, detail.progress))
+              : 100,
+          status: 'FAILED',
+          errorMessage: detail.errorMessage ?? prev[generationId]?.errorMessage ?? null,
+        },
+      }))
+
+      queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
+    }
+
+    window.addEventListener('video-export-queued', handleQueued as EventListener)
+    window.addEventListener('video-export-progress', handleProgress as EventListener)
+    window.addEventListener('video-export-completed', handleCompleted as EventListener)
+    window.addEventListener('video-export-failed', handleFailed as EventListener)
+
+    return () => {
+      window.removeEventListener('video-export-queued', handleQueued as EventListener)
+      window.removeEventListener('video-export-progress', handleProgress as EventListener)
+      window.removeEventListener('video-export-completed', handleCompleted as EventListener)
+      window.removeEventListener('video-export-failed', handleFailed as EventListener)
+    }
+  }, [projectId, queryClient])
+
+  React.useEffect(() => {
+    if (!data?.generations) return
+    setProgressOverrides((prev) => {
+      let mutated = false
+      const next: Record<string, ProgressOverride> = { ...prev }
+      for (const generation of data.generations) {
+        if (!next[generation.id]) continue
+        if (generation.status === 'COMPLETED' || generation.status === 'FAILED') {
+          delete next[generation.id]
+          mutated = true
+        }
+      }
+      return mutated ? next : prev
+    })
+  }, [data?.generations])
+
   const filtered = React.useMemo(() => {
     const list = data?.generations ?? []
     return list.filter((generation) => {
+      const fieldValues = (generation.fieldValues ?? {}) as Record<string, unknown>
+      const thumbnailValue = getStringField(fieldValues, 'thumbnailUrl')
+
       const matchesStatus = statusFilter === 'all' || generation.status === statusFilter
-      const matchesResult = !onlyWithResult || Boolean(generation.resultUrl)
+      const matchesResult =
+        !onlyWithResult ||
+        Boolean(
+          generation.resultUrl ||
+            (thumbnailValue && thumbnailValue.length > 0)
+        )
       const query = searchTerm.trim().toLowerCase()
       const matchesSearch =
         !query ||
@@ -134,6 +314,53 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     dependencies: [filtered.length, isLoading],
   })
 
+  const getGenerationMeta = React.useCallback(
+    (generation: GenerationRecord) => {
+      const fieldValues = (generation.fieldValues ?? {}) as Record<string, unknown>
+      const override = progressOverrides[generation.id]
+      const thumbnailUrl = getStringField(fieldValues, 'thumbnailUrl')
+      const videoUrl = getStringField(fieldValues, 'videoUrl')
+      const serverProgress = getNumberField(fieldValues, 'progress')
+      const isVideoFlag = getBooleanField(fieldValues, 'isVideo')
+      const errorMessage = getStringField(fieldValues, 'errorMessage')
+
+      const status =
+        override?.status ??
+        (generation.status as ProgressOverride['status'])
+
+      const rawProgress =
+        override?.progress ??
+        serverProgress ??
+        (generation.status === 'COMPLETED' || generation.status === 'FAILED' ? 100 : undefined)
+
+      const progress =
+        typeof rawProgress === 'number'
+          ? Math.max(0, Math.min(100, rawProgress))
+          : undefined
+
+      const displayUrl =
+        isVideoFlag === true
+          ? thumbnailUrl ?? generation.resultUrl ?? null
+          : generation.resultUrl ?? thumbnailUrl ?? null
+
+      const assetUrl =
+        status === 'COMPLETED'
+          ? generation.resultUrl ?? videoUrl ?? null
+          : null
+
+      return {
+        displayUrl,
+        assetUrl,
+        isVideo: Boolean(isVideoFlag),
+        status,
+        progress,
+        errorMessage: override?.errorMessage ?? errorMessage ?? null,
+        thumbnailUrl,
+      }
+    },
+    [progressOverrides]
+  )
+
   const toggleSelection = React.useCallback((id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -146,41 +373,57 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     })
   }, [])
 
-  const handleDownload = React.useCallback(async (generation: GenerationRecord) => {
-    if (!generation.resultUrl) {
-      toast({ title: 'Preview indisponível', description: 'Este criativo ainda não possui arquivo gerado.', variant: 'destructive' })
-      return
-    }
+  const handleDownload = React.useCallback(
+    async (generation: GenerationRecord) => {
+      const fieldValues = (generation.fieldValues ?? {}) as Record<string, unknown>
+      const videoUrl = getStringField(fieldValues, 'videoUrl')
+      const assetUrl = generation.resultUrl ?? videoUrl
 
-    try {
-      // Fetch da imagem como blob
-      const response = await fetch(generation.resultUrl)
-      const blob = await response.blob()
+      if (!assetUrl) {
+        toast({
+          title: 'Preview indisponível',
+          description: 'Este criativo ainda não possui arquivo gerado.',
+          variant: 'destructive',
+        })
+        return
+      }
 
-      // Criar URL temporária do blob
-      const blobUrl = URL.createObjectURL(blob)
+      try {
+        const response = await fetch(assetUrl)
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
 
-      // Criar link temporário e forçar download
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = `criativo-${generation.id}.png`
-      document.body.appendChild(link)
-      link.click()
+        const cleanPath = assetUrl.split('?')[0]
+        const extensionCandidate = cleanPath.split('.').pop()
+        const extension = extensionCandidate ? extensionCandidate.toLowerCase() : 'png'
 
-      // Limpar
-      document.body.removeChild(link)
-      URL.revokeObjectURL(blobUrl)
-    } catch {
-      toast({ title: 'Erro ao baixar', description: 'Não foi possível baixar o criativo.', variant: 'destructive' })
-    }
-  }, [toast])
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = `criativo-${generation.id}.${extension}`
+        document.body.appendChild(link)
+        link.click()
+
+        document.body.removeChild(link)
+        URL.revokeObjectURL(blobUrl)
+      } catch {
+        toast({
+          title: 'Erro ao baixar',
+          description: 'Não foi possível baixar o criativo.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [toast]
+  )
 
   const handleBulkDownload = React.useCallback(async () => {
     if (selectedIds.size === 0) return
 
-    const generationsToDownload = filtered.filter(
-      (item) => selectedIds.has(item.id) && item.resultUrl
-    )
+    const generationsToDownload = filtered.filter((item) => {
+      const values = (item.fieldValues ?? {}) as Record<string, unknown>
+      const assetUrl = item.resultUrl ?? getStringField(values, 'videoUrl')
+      return selectedIds.has(item.id) && assetUrl
+    })
 
     if (generationsToDownload.length === 0) {
       toast({ title: 'Nenhum arquivo disponível', description: 'Selecione criativos concluídos para baixar.', variant: 'destructive' })
@@ -189,16 +432,22 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
     // Download sequencial com delay
     for (const generation of generationsToDownload) {
-      if (!generation.resultUrl) continue
+      const fieldValues = (generation.fieldValues ?? {}) as Record<string, unknown>
+      const videoUrl = getStringField(fieldValues, 'videoUrl')
+      const assetUrl = generation.resultUrl ?? videoUrl
+      if (!assetUrl) continue
 
       try {
-        const response = await fetch(generation.resultUrl)
+        const response = await fetch(assetUrl)
         const blob = await response.blob()
         const blobUrl = URL.createObjectURL(blob)
 
         const link = document.createElement('a')
         link.href = blobUrl
-        link.download = `criativo-${generation.id}.png`
+        const cleanPath = assetUrl.split('?')[0]
+        const extensionCandidate = cleanPath.split('.').pop()
+        const extension = extensionCandidate ? extensionCandidate.toLowerCase() : 'png'
+        link.download = `criativo-${generation.id}.${extension}`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
@@ -355,19 +604,14 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               console.log('Template dimensions:', { dimensions, width, height, aspectRatio, templateType })
             }
 
-            if (!generation.resultUrl) {
-              return (
-                <Card key={generation.id} className="aspect-square p-4 flex items-center justify-center">
-                  <div className="text-xs text-muted-foreground">Sem preview</div>
-                </Card>
-              )
-            }
+            const meta = getGenerationMeta(generation)
 
             return (
               <GalleryItem
                 key={generation.id}
                 id={generation.id}
-                imageUrl={generation.resultUrl}
+                displayUrl={meta.displayUrl ?? null}
+                assetUrl={meta.assetUrl}
                 title={templateLabel}
                 date={new Intl.DateTimeFormat('pt-BR', {
                   dateStyle: 'short',
@@ -376,6 +620,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 templateType={templateType}
                 selected={selected}
                 hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
+                status={meta.status}
+                progress={meta.progress}
+                errorMessage={meta.errorMessage ?? undefined}
+                isVideo={meta.isVideo}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}
@@ -408,6 +656,18 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 {filtered.map((generation) => {
                   const selected = selectedIds.has(generation.id)
                   const templateLabel = generation.template?.name || generation.templateName || 'Template'
+                  const meta = getGenerationMeta(generation)
+                  const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
+                  const canPreview = Boolean(previewUrl)
+                  const canDownload = meta.status === 'COMPLETED' && Boolean(meta.assetUrl)
+                  const statusLabel =
+                    meta.status === 'COMPLETED'
+                      ? 'Concluído'
+                      : meta.status === 'FAILED'
+                        ? 'Falhou'
+                        : meta.status === 'PENDING'
+                          ? 'Pendente'
+                          : 'Processando'
                   return (
                     <tr key={generation.id} className={cn('border-b border-border/30', selected && 'bg-primary/5')}>
                       <td className="px-4 py-3">
@@ -430,9 +690,17 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <Badge variant={generation.status === 'COMPLETED' ? 'secondary' : generation.status === 'FAILED' ? 'destructive' : 'outline'}>
-                          {generation.status}
-                        </Badge>
+                        <div className="flex flex-col gap-1">
+                          <Badge variant={meta.status === 'COMPLETED' ? 'secondary' : meta.status === 'FAILED' ? 'destructive' : 'outline'}>
+                            {statusLabel}
+                          </Badge>
+                          {meta.progress != null && meta.status !== 'COMPLETED' && (
+                            <span className="text-xs text-muted-foreground">{meta.progress}%</span>
+                          )}
+                          {meta.status === 'FAILED' && meta.errorMessage && (
+                            <span className="text-xs text-red-500 line-clamp-2">{meta.errorMessage}</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground">
                         {new Intl.DateTimeFormat('pt-BR', {
@@ -442,11 +710,33 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setPreview(generation.resultUrl ? { id: generation.id, url: generation.resultUrl, templateName: templateLabel } : null)} disabled={!generation.resultUrl}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setPreview(
+                                canPreview
+                                  ? {
+                                      id: generation.id,
+                                      url: previewUrl!,
+                                      templateName: templateLabel,
+                                      isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                                      posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
+                                    }
+                                  : null
+                              )
+                            }
+                            disabled={!canPreview}
+                          >
                             <Eye className="mr-1 h-4 w-4" />
                             Ver
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleDownload(generation)} disabled={!generation.resultUrl}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDownload(generation)}
+                            disabled={!canDownload}
+                          >
                             <Download className="mr-1 h-4 w-4" />
                             Baixar
                           </Button>
@@ -481,13 +771,23 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             <DialogTitle>{preview?.templateName || 'Preview'}</DialogTitle>
           </DialogHeader>
           {preview?.url ? (
-            <Image
-              src={preview.url}
-              alt={preview.templateName ?? 'Preview'}
-              width={1024}
-              height={1024}
-              className="h-auto w-full rounded-md"
-            />
+            preview.isVideo ? (
+              <video
+                src={preview.url}
+                controls
+                playsInline
+                poster={preview.posterUrl ?? undefined}
+                className="h-auto w-full rounded-md"
+              />
+            ) : (
+              <Image
+                src={preview.url}
+                alt={preview.templateName ?? 'Preview'}
+                width={1024}
+                height={1024}
+                className="h-auto w-full rounded-md"
+              />
+            )
           ) : (
             <div className="rounded-md border border-dashed border-border/50 p-12 text-center text-sm text-muted-foreground">
               Nenhum preview disponível para esta geração.

@@ -4,17 +4,22 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface GalleryItemProps {
   id: string
-  imageUrl: string
+  displayUrl: string | null
+  assetUrl?: string | null
   title: string
   date: string
   templateType: 'STORY' | 'FEED' | 'SQUARE'
   selected: boolean
   hasDriveBackup?: boolean
+  status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PENDING'
+  progress?: number
+  errorMessage?: string | null
+  isVideo?: boolean
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -26,12 +31,17 @@ interface GalleryItemProps {
 
 export function GalleryItem({
   id,
-  imageUrl,
+  displayUrl,
+  assetUrl,
   title,
   date,
   templateType,
   selected,
   hasDriveBackup,
+  status,
+  progress,
+  errorMessage,
+  isVideo,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -46,11 +56,20 @@ export function GalleryItem({
   const [imageDimensions, setImageDimensions] = React.useState({ width: pswpWidth, height: pswpHeight })
   const ref = React.useRef<HTMLDivElement>(null)
 
-  // Detectar se é vídeo baseado na extensão do arquivo
-  const isVideo = React.useMemo(() => {
+  const resolvedAssetUrl = assetUrl ?? (status === 'COMPLETED' ? displayUrl : null)
+  const effectiveDisplayUrl = displayUrl ?? undefined
+
+  const isVideoAsset = React.useMemo(() => {
+    if (typeof isVideo === 'boolean') return isVideo
+    const candidate = (resolvedAssetUrl ?? effectiveDisplayUrl ?? '').toLowerCase()
     const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
-    return videoExtensions.some(ext => imageUrl.toLowerCase().endsWith(ext))
-  }, [imageUrl])
+    return videoExtensions.some((ext) => candidate.endsWith(ext))
+  }, [resolvedAssetUrl, effectiveDisplayUrl, isVideo])
+
+  const showProgress = status === 'PROCESSING' || status === 'PENDING'
+  const clampedProgress =
+    typeof progress === 'number' ? Math.max(0, Math.min(100, Math.round(progress))) : undefined
+  const showFailure = status === 'FAILED'
 
   // Intersection Observer para animações
   React.useEffect(() => {
@@ -73,8 +92,14 @@ export function GalleryItem({
 
   // Carregar dimensões reais da imagem para garantir precisão
   React.useEffect(() => {
+    if (!effectiveDisplayUrl) {
+      setImageLoaded(true)
+      return
+    }
+
+    setImageLoaded(false)
     const img = new window.Image()
-    img.src = imageUrl
+    img.src = effectiveDisplayUrl
     img.onload = () => {
       // Atualizar apenas se as dimensões reais forem diferentes
       const realWidth = img.naturalWidth
@@ -85,9 +110,14 @@ export function GalleryItem({
       }
     }
     img.onerror = () => {
-      console.warn(`Failed to load image dimensions for: ${imageUrl}`)
+      console.warn(`Failed to load image dimensions for: ${effectiveDisplayUrl}`)
+      setImageLoaded(true)
     }
-  }, [imageUrl, id, imageDimensions.width, imageDimensions.height])
+    return () => {
+      img.onload = null
+      img.onerror = null
+    }
+  }, [effectiveDisplayUrl, id, imageDimensions.width, imageDimensions.height])
 
   // Calcular aspect ratio real da imagem
   const aspectRatio = imageDimensions.width / imageDimensions.height
@@ -162,21 +192,28 @@ export function GalleryItem({
 
       {/* Container da imagem/vídeo - Link para PhotoSwipe */}
       <a
-        href={imageUrl}
+        href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
         data-pswp-width={imageDimensions.width}
         data-pswp-height={imageDimensions.height}
-        data-pswp-type={isVideo ? 'video' : 'image'}
-        target="_blank"
+        data-pswp-type={resolvedAssetUrl && isVideoAsset ? 'video' : 'image'}
+        target={!resolvedAssetUrl || status !== 'COMPLETED' ? undefined : '_blank'}
         rel="noopener noreferrer"
-        className="relative block bg-muted overflow-hidden w-full h-full cursor-zoom-in"
+        className={cn(
+          'relative block bg-muted overflow-hidden w-full h-full',
+          resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
+        )}
         onClick={(e) => {
-          // PhotoSwipe vai interceptar este clique
-          // Se não interceptar, o link abrirá em nova aba (fallback)
+          if (!resolvedAssetUrl || status !== 'COMPLETED') {
+            e.preventDefault()
+            e.stopPropagation()
+            return
+          }
           console.log('Gallery item clicked:', {
-            imageUrl,
+            displayUrl: effectiveDisplayUrl,
+            assetUrl: resolvedAssetUrl,
             width: imageDimensions.width,
             height: imageDimensions.height,
-            isVideo
+            isVideo: isVideoAsset,
           })
         }}
       >
@@ -187,21 +224,9 @@ export function GalleryItem({
 
         {/* Imagem ou Vídeo */}
         <div className="relative w-full h-full pointer-events-none">
-          {isVideo ? (
-            // Para vídeos, usar elemento <video> com poster
-            <video
-              src={imageUrl}
-              className="w-full h-full object-cover transition-transform duration-400 group-hover:scale-105"
-              onLoadedMetadata={() => setImageLoaded(true)}
-              muted
-              loop
-              playsInline
-              preload="metadata"
-            />
-          ) : (
-            // Para imagens, usar Next.js Image
+          {effectiveDisplayUrl ? (
             <Image
-              src={imageUrl}
+              src={effectiveDisplayUrl}
               alt={title}
               fill
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
@@ -209,8 +234,36 @@ export function GalleryItem({
               onLoad={() => setImageLoaded(true)}
               loading="lazy"
             />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-muted text-xs font-medium text-muted-foreground">
+              Prévia indisponível
+            </div>
           )}
         </div>
+
+        {showProgress && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/60 text-white pointer-events-none">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span className="text-sm font-medium">
+              {clampedProgress != null ? `Processando ${clampedProgress}%` : 'Processando...'}
+            </span>
+            <div className="h-1.5 w-10/12 overflow-hidden rounded-full bg-white/20">
+              <div
+                className="h-full rounded-full bg-white"
+                style={{ width: `${clampedProgress != null ? Math.max(clampedProgress, 5) : 25}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {showFailure && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 px-4 text-center text-sm text-red-100 pointer-events-none">
+            <span className="font-medium">Falha ao processar</span>
+            {errorMessage ? (
+              <span className="text-xs opacity-80 line-clamp-3">{errorMessage}</span>
+            ) : null}
+          </div>
+        )}
 
         {/* Overlay com gradiente no hover */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
@@ -247,9 +300,13 @@ export function GalleryItem({
             size="sm"
             variant="secondary"
             className="flex-1 bg-white/95 hover:bg-white text-black font-medium shadow-lg"
+            disabled={status !== 'COMPLETED' || !resolvedAssetUrl}
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
+              if (status !== 'COMPLETED' || !resolvedAssetUrl) {
+                return
+              }
               onDownload()
             }}
           >
