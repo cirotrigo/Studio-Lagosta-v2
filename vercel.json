@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/video-processing/process.ts": {
+    "app/api/video-processing/process/route.ts": {
       "memory": 3008,
       "maxDuration": 300
     }
