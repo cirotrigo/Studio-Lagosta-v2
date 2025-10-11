@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { convertWebMToMP4ServerSide } from '@/lib/video/ffmpeg-server-converter'
 
 /**
  * POST /api/video-processing/process
@@ -38,49 +39,57 @@ export async function POST(request: Request) {
       // 3. Baixar WebM do Vercel Blob
       console.log('[Video Processor] Baixando WebM:', job.webmBlobUrl)
       const webmResponse = await fetch(job.webmBlobUrl)
-      const webmBlob = await webmResponse.blob()
+      const webmArrayBuffer = await webmResponse.arrayBuffer()
+      const webmBuffer = Buffer.from(webmArrayBuffer)
 
       // Atualizar progresso
       await db.videoProcessingJob.update({
         where: { id: job.id },
-        data: { progress: 30 },
+        data: { progress: 20 },
       })
 
-      // 4. Converter WebM para MP4 (server-side usando FFmpeg via API externa ou biblioteca)
-      // Por enquanto, vamos simular a conversão copiando o WebM
-      // TODO: Implementar conversão real com FFmpeg
-      console.log('[Video Processor] Convertendo para MP4...')
+      console.log('[Video Processor] Convertendo WebM → MP4 com FFmpeg...')
+      const { mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
+        webmBuffer,
+        async (progress) => {
+          const dbProgress = 20 + progress.percent * 0.6
+          await db.videoProcessingJob.update({
+            where: { id: job.id },
+            data: { progress: Math.min(80, Math.round(dbProgress)) },
+          })
+        },
+        {
+          preset: 'fast',
+          crf: 23,
+          generateThumbnail: true,
+        }
+      )
 
-      // Simular tempo de conversão
-      await new Promise((resolve) => setTimeout(resolve, 2000))
-
-      // Atualizar progresso
-      await db.videoProcessingJob.update({
-        where: { id: job.id },
-        data: { progress: 70 },
-      })
+      console.log('[Video Processor] Conversão concluída!')
 
       // 5. Upload do MP4 resultante
       console.log('[Video Processor] Upload do MP4...')
       const mp4Filename = `video-exports/${job.clerkUserId}/${Date.now()}-${job.videoName}.mp4`
 
-      const { url: mp4Url } = await put(mp4Filename, webmBlob, {
+      const { url: mp4Url } = await put(mp4Filename, mp4Buffer, {
         access: 'public',
         contentType: 'video/mp4',
       })
 
-      // 5.1 Gerar thumbnail do primeiro frame do vídeo
-      console.log('[Video Processor] Gerando thumbnail...')
-      const thumbnailUrl = `https://image.mux.com/${mp4Url.split('/').pop()}/thumbnail.jpg?width=400&height=400&fit_mode=smartcrop`
+      let thumbnailUrl = mp4Url
+      if (thumbnailBuffer) {
+        console.log('[Video Processor] Upload da thumbnail...')
+        const thumbnailFilename = `video-thumbnails/${job.clerkUserId}/${Date.now()}-${job.videoName}.jpg`
+        const { url } = await put(thumbnailFilename, thumbnailBuffer, {
+          access: 'public',
+          contentType: 'image/jpeg',
+        })
+        thumbnailUrl = url
+      }
 
-      // TODO: Implementar geração real de thumbnail
-      // Por enquanto, usar URL do MP4 como fallback
-      const finalThumbnail = mp4Url
-
-      // Atualizar progresso
       await db.videoProcessingJob.update({
         where: { id: job.id },
-        data: { progress: 90 },
+        data: { progress: 85 },
       })
 
       // 6. Deduzir créditos se ainda não foram deduzidos
@@ -112,6 +121,7 @@ export async function POST(request: Request) {
             originalJobId: job.id,
             isVideo: true,
             mimeType: 'video/mp4',
+            thumbnailUrl,
           },
           templateName: job.videoName,
           completedAt: new Date(),
@@ -126,7 +136,7 @@ export async function POST(request: Request) {
         data: {
           status: 'COMPLETED',
           mp4ResultUrl: mp4Url,
-          thumbnailUrl: finalThumbnail,
+          thumbnailUrl,
           progress: 100,
           completedAt: new Date(),
           creditsDeducted: true,
@@ -139,6 +149,7 @@ export async function POST(request: Request) {
         success: true,
         jobId: job.id,
         mp4Url,
+        thumbnailUrl,
       })
     } catch (error) {
       // Marcar job como FAILED em caso de erro

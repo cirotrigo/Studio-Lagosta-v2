@@ -2,6 +2,15 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 
+interface CreativeFieldValues {
+  videoExport?: boolean
+  originalJobId?: string
+  isVideo?: boolean | string
+  mimeType?: string
+  thumbnailUrl?: string
+  [key: string]: unknown
+}
+
 export const runtime = 'nodejs'
 
 /**
@@ -10,7 +19,7 @@ export const runtime = 'nodejs'
  */
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const { userId } = await auth()
@@ -18,10 +27,9 @@ export async function GET(
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const { id: templateIdStr } = await params
-    const templateId = parseInt(templateIdStr, 10)
+    const templateId = Number(params.id)
 
-    if (!templateId || isNaN(templateId)) {
+    if (!Number.isInteger(templateId) || templateId <= 0) {
       return NextResponse.json({ error: 'ID de template inválido' }, { status: 400 })
     }
 
@@ -60,6 +68,7 @@ export async function GET(
         createdAt: true,
         templateName: true,
         projectName: true,
+        fieldValues: true,
         Template: {
           select: {
             dimensions: true,
@@ -70,17 +79,34 @@ export async function GET(
 
     // Processar as dimensões do template (formato: "1080x1920")
     const creativesWithDimensions = creatives.map((creative) => {
-      const dimensions = creative.Template.dimensions || '1080x1920'
+      const dimensions = creative.Template?.dimensions || '1080x1920'
       const [width, height] = dimensions.split('x').map(Number)
+      const rawFieldValues =
+        (creative.fieldValues as CreativeFieldValues | null | undefined) ?? null
+      const fieldValues: CreativeFieldValues = rawFieldValues ?? {}
+      const thumbnailUrl =
+        typeof fieldValues.thumbnailUrl === 'string'
+          ? (fieldValues.thumbnailUrl as string)
+          : undefined
+      const isVideo =
+        fieldValues && (fieldValues.isVideo === true || fieldValues.isVideo === 'true')
+      const mimeType =
+        typeof fieldValues.mimeType === 'string'
+          ? (fieldValues.mimeType as string)
+          : undefined
 
       return {
         id: creative.id,
-        resultUrl: creative.resultUrl,
+        resultUrl: creative.resultUrl ?? '',
         createdAt: creative.createdAt,
-        templateName: creative.templateName,
-        projectName: creative.projectName,
+        templateName: creative.templateName ?? 'Criativo',
+        projectName: creative.projectName ?? '',
         width: width || 1080,
         height: height || 1920,
+        fieldValues,
+        thumbnailUrl,
+        isVideo,
+        mimeType,
       }
     })
 
@@ -101,10 +127,7 @@ export async function GET(
  * DELETE /api/templates/[id]/creatives/[creativeId]
  * Remove um criativo específico
  */
-export async function DELETE(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function DELETE(req: Request) {
   try {
     const { userId } = await auth()
     if (!userId) {
@@ -118,14 +141,9 @@ export async function DELETE(
       return NextResponse.json({ error: 'ID do criativo não fornecido' }, { status: 400 })
     }
 
-    const generationId = parseInt(creativeId, 10)
-    if (isNaN(generationId)) {
-      return NextResponse.json({ error: 'ID do criativo inválido' }, { status: 400 })
-    }
-
     // Buscar criativo e verificar ownership
     const creative = await db.generation.findFirst({
-      where: { id: generationId },
+      where: { id: creativeId },
       include: {
         Template: {
           include: {
@@ -143,13 +161,13 @@ export async function DELETE(
       return NextResponse.json({ error: 'Criativo não encontrado' }, { status: 404 })
     }
 
-    if (creative.Template.Project.userId !== userId) {
+    if (creative.Template?.Project?.userId !== userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
     // Deletar criativo
     await db.generation.delete({
-      where: { id: generationId },
+      where: { id: creativeId },
     })
 
     return NextResponse.json({ success: true })

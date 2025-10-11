@@ -132,8 +132,14 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
           videoElement.style.height = '100%'
           videoElement.style.objectFit = 'contain'
 
+          // Envolver em um container div para compatibilidade com typings
+          const wrapper = document.createElement('div')
+          wrapper.style.width = '100%'
+          wrapper.style.height = '100%'
+          wrapper.appendChild(videoElement)
+
           // Definir elemento como conteúdo do slide
-          content.element = videoElement
+          content.element = wrapper
 
           console.log('PhotoSwipe: Video content loaded:', content.data.src)
         }

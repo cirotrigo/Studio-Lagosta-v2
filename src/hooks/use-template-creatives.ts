@@ -1,14 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
+export interface CreativeFieldValues {
+  videoExport?: boolean
+  originalJobId?: string
+  isVideo?: boolean | string
+  mimeType?: string
+  thumbnailUrl?: string
+  [key: string]: unknown
+}
+
 export interface Creative {
-  id: number
+  id: string
   resultUrl: string
   createdAt: string
   templateName: string
   projectName: string
   width: number
   height: number
+  fieldValues?: CreativeFieldValues
+  thumbnailUrl?: string
+  isVideo?: boolean
+  mimeType?: string
 }
 
 /**
@@ -30,7 +43,7 @@ export function useDeleteCreative(templateId: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (creativeId: number) => {
+    mutationFn: async (creativeId: string) => {
       return api.delete(`/api/templates/${templateId}/creatives?creativeId=${creativeId}`)
     },
     onSuccess: () => {

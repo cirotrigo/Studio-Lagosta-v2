@@ -27,7 +27,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
   const { toast } = useToast()
   const { data: creatives = [], isLoading, error, refetch } = useTemplateCreatives(templateId)
   const deleteCreative = useDeleteCreative(templateId)
-  const [creativeToDelete, setCreativeToDelete] = React.useState<number | null>(null)
+  const [creativeToDelete, setCreativeToDelete] = React.useState<string | null>(null)
 
   // Debug logging
   React.useEffect(() => {
@@ -121,8 +121,21 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
             const aspectRatio = width / height
 
             // Verificar se é um vídeo
-            const isVideo = creative.fieldValues?.isVideo === true
-            const mimeType = creative.fieldValues?.mimeType || 'image/jpeg'
+            const isVideo =
+              creative.isVideo === true ||
+              creative.fieldValues?.isVideo === true ||
+              creative.fieldValues?.isVideo === 'true'
+            const mimeType =
+              creative.mimeType ||
+              (typeof creative.fieldValues?.mimeType === 'string'
+                ? creative.fieldValues.mimeType
+                : 'image/jpeg')
+            const thumbnailUrl = creative.thumbnailUrl || creative.fieldValues?.thumbnailUrl
+            const extension = mimeType?.includes('mp4')
+              ? '.mp4'
+              : mimeType?.includes('png')
+                ? '.png'
+                : '.jpg'
 
             return (
               <div
@@ -134,6 +147,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                   href={creative.resultUrl}
                   data-pswp-width={width}
                   data-pswp-height={height}
+                  data-pswp-type={isVideo ? 'video' : 'image'}
                   target="_blank"
                   rel="noreferrer"
                   style={{ aspectRatio }}
@@ -142,6 +156,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                   {isVideo ? (
                     <video
                       src={creative.resultUrl}
+                      poster={thumbnailUrl}
                       className="h-full w-full object-cover transition-transform group-hover:scale-105"
                       muted
                       playsInline
@@ -153,7 +168,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                     />
                   ) : (
                     <img
-                      src={creative.resultUrl}
+                      src={thumbnailUrl || creative.resultUrl}
                       alt={`Criativo ${creative.id}`}
                       className="h-full w-full object-cover transition-transform group-hover:scale-105"
                       loading="lazy"
@@ -183,7 +198,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                       onClick={() =>
                         handleDownload(
                           creative.resultUrl,
-                          `criativo-${creative.id}${isVideo ? '.mp4' : '.jpg'}`
+                          `criativo-${creative.id}${extension}`
                         )
                       }
                       title="Baixar criativo"

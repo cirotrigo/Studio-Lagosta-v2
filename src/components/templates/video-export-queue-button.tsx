@@ -3,10 +3,12 @@
 import * as React from 'react'
 import { Film, Loader2, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
 import { exportVideoWithLayers } from '@/lib/konva/konva-video-export'
+import { validateInstagramFormat } from '@/lib/templates/instagram-presets'
 import Konva from 'konva'
 
 export function VideoExportQueueButton() {
@@ -30,6 +32,21 @@ export function VideoExportQueueButton() {
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
+
+  const validation = React.useMemo(() => {
+    if (!videoLayer) return null
+
+    return validateInstagramFormat(
+      design.canvas.width,
+      design.canvas.height,
+      videoLayer.videoMetadata?.duration ?? 0
+    )
+  }, [
+    design.canvas.width,
+    design.canvas.height,
+    videoLayer?.id,
+    videoLayer?.videoMetadata?.duration,
+  ])
 
   const handleExportToQueue = async () => {
     if (!hasVideo || !videoLayer) {
@@ -125,9 +142,15 @@ export function VideoExportQueueButton() {
       // 4. Iniciar polling do status
       pollJobStatus(jobId)
 
+      const formatInfo = validation?.preset
+        ? `${validation.preset.name} (${validation.preset.aspectRatio})`
+        : `${design.canvas.width}x${design.canvas.height}`
+
       toast({
         title: 'Vídeo adicionado à fila! ✅',
-        description: 'Você será notificado quando o vídeo estiver pronto. Continue trabalhando!',
+        description: validation?.valid
+          ? `Formato Instagram pronto: ${formatInfo}. Você será notificado quando o MP4 estiver pronto.`
+          : `Formato atual: ${formatInfo}. Você será notificado quando o MP4 estiver pronto.`,
       })
     } catch (error) {
       console.error('Export error:', error)
@@ -210,24 +233,55 @@ export function VideoExportQueueButton() {
   if (!hasVideo) return null
 
   return (
-    <Button
-      onClick={handleExportToQueue}
-      variant="default"
-      size="sm"
-      className="gap-2"
-      disabled={!hasCredits || isExporting}
-    >
-      {isExporting ? (
-        <>
-          <Loader2 className="h-4 w-4 animate-spin" />
-          Processando...
-        </>
-      ) : (
-        <>
-          <Film className="h-4 w-4" />
-          Exportar Vídeo MP4
-        </>
-      )}
-    </Button>
+    <div className="space-y-2">
+      {validation ? (
+        validation.valid ? (
+          <div className="flex items-center gap-2 text-sm text-emerald-600">
+            <CheckCircle2 className="h-4 w-4" />
+            <Badge
+              variant="secondary"
+              className="border-emerald-200 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200"
+            >
+              Instagram Ready
+            </Badge>
+            {validation.preset ? (
+              <span>{`${validation.preset.name} (${validation.preset.aspectRatio})`}</span>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-md border border-yellow-500/40 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-900 dark:border-yellow-400/30 dark:text-yellow-200">
+            <p className="font-medium">Formato não otimizado para Instagram</p>
+            <ul className="mt-1 space-y-1">
+              {validation.warnings.map((warning, index) => (
+                <li key={index} className="flex items-start gap-2">
+                  <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                  <span>{warning}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )
+      ) : null}
+
+      <Button
+        onClick={handleExportToQueue}
+        variant="default"
+        size="sm"
+        className="gap-2"
+        disabled={!hasCredits || isExporting}
+      >
+        {isExporting ? (
+          <>
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Processando...
+          </>
+        ) : (
+          <>
+            <Film className="h-4 w-4" />
+            Exportar Vídeo MP4
+          </>
+        )}
+      </Button>
+    </div>
   )
 }

@@ -116,6 +116,12 @@ export async function convertWebMToMP4(
     // 4. Ler arquivo MP4 convertido
     console.log('[convertWebMToMP4] Lendo arquivo output.mp4...')
     const data = await ffmpeg.readFile('output.mp4')
+    const outputData =
+      data instanceof Uint8Array
+        ? data
+        : typeof data === 'string'
+          ? new TextEncoder().encode(data)
+          : new Uint8Array(data as ArrayBuffer)
 
     // 5. Limpar arquivos temporários
     onProgress?.(90)
@@ -124,7 +130,9 @@ export async function convertWebMToMP4(
 
     // 6. Criar Blob do MP4
     // Converter FileData (Uint8Array) para Blob
-    const mp4Blob = new Blob([new Uint8Array(data)], { type: 'video/mp4' })
+    const arrayBuffer = new ArrayBuffer(outputData.byteLength)
+    new Uint8Array(arrayBuffer).set(outputData)
+    const mp4Blob = new Blob([arrayBuffer], { type: 'video/mp4' })
     console.log('[convertWebMToMP4] Conversão concluída!')
     console.log('[convertWebMToMP4] Tamanho do MP4:', (mp4Blob.size / 1024 / 1024).toFixed(2), 'MB')
 
