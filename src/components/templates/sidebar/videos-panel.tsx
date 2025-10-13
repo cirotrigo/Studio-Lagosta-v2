@@ -11,7 +11,7 @@ import { useProject } from '@/hooks/use-project'
 import type { GoogleDriveItem } from '@/types/google-drive'
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
-const MAX_VIDEO_SIZE = 100 * 1024 * 1024 // 100MB
+const MAX_VIDEO_SIZE = 60 * 1024 * 1024 // 60MB
 
 interface BreadcrumbItem {
   id: string
@@ -208,7 +208,7 @@ export function VideosPanel() {
       if (file.size > MAX_VIDEO_SIZE) {
         toast({
           title: 'Arquivo muito grande',
-          description: 'O vídeo deve ter no máximo 100MB.',
+          description: 'O vídeo deve ter no máximo 60MB.',
           variant: 'destructive',
         })
         return
@@ -427,7 +427,7 @@ export function VideosPanel() {
                 <p className="mb-1 text-sm font-medium text-foreground">
                   {isDragging ? 'Solte o vídeo aqui' : 'Arraste um vídeo ou clique para selecionar'}
                 </p>
-                <p className="text-xs text-muted-foreground">MP4, WebM ou MOV até 100MB</p>
+                <p className="text-xs text-muted-foreground">MP4, WebM ou MOV até 60MB</p>
               </div>
             )}
           </div>

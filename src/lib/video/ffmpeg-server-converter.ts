@@ -1,4 +1,5 @@
 import ffmpeg from 'fluent-ffmpeg'
+import ffmpegInstaller from '@ffmpeg-installer/ffmpeg'
 import { existsSync } from 'fs'
 import { readFile, writeFile, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
@@ -6,25 +7,17 @@ import { tmpdir } from 'os'
 
 // Configura o caminho binário do FFmpeg tentando múltiplos candidatos
 const resolveInstallerPath = (): string | null => {
-  try {
-    const dynamicRequire: NodeRequire =
-      typeof module !== 'undefined' && typeof module.require === 'function'
-        ? module.require
-        : eval('require')
-    const installer = dynamicRequire('@ffmpeg-installer/ffmpeg')
-    const possiblePaths = [
-      installer?.path,
-      installer?.default?.path,
-      installer?.ffmpegPath,
-      installer?.default?.ffmpegPath,
-    ].filter(Boolean) as string[]
-    for (const installerPath of possiblePaths) {
-      if (installerPath && existsSync(installerPath)) {
-        return installerPath
-      }
+  const possiblePaths = [
+    ffmpegInstaller?.path,
+    (ffmpegInstaller as { default?: { path?: string; ffmpegPath?: string } })?.default?.path,
+    (ffmpegInstaller as { ffmpegPath?: string }).ffmpegPath,
+    (ffmpegInstaller as { default?: { ffmpegPath?: string } })?.default?.ffmpegPath,
+  ].filter(Boolean) as string[]
+
+  for (const installerPath of possiblePaths) {
+    if (installerPath && existsSync(installerPath)) {
+      return installerPath
     }
-  } catch (error) {
-    console.warn('[FFmpeg] Não foi possível carregar @ffmpeg-installer/ffmpeg dinamicamente:', error)
   }
   return null
 }
@@ -221,11 +214,5 @@ export async function convertWebMToMP4ServerSide(
 }
 
 export function isFFmpegAvailable(): boolean {
-  try {
-    const ffmpegPath = require('@ffmpeg-installer/ffmpeg')
-    return Boolean(ffmpegPath.path)
-  } catch {
-    // Assume que FFmpeg está disponível no sistema (Vercel)
-    return true
-  }
+  return configuredFfmpegPath !== null || Boolean(resolveInstallerPath())
 }
