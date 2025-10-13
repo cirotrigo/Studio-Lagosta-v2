@@ -30,19 +30,19 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
     }
 
     // Aguardar o DOM estar pronto e as animações terminarem
-    const checkAndInit = () => {
+    const checkAndInit = (): 'success' | 'retry' | 'empty' => {
       const galleryElement = document.querySelector(gallerySelector)
 
       if (!galleryElement) {
         console.warn('PhotoSwipe: Gallery element not found:', gallerySelector)
-        return false
+        return 'retry'
       }
 
       // Verificar se há elementos filhos
       const children = galleryElement.querySelectorAll(childSelector)
       if (children.length === 0) {
-        console.warn('PhotoSwipe: No children found with selector:', childSelector)
-        return false
+        console.info('PhotoSwipe: No children found with selector:', childSelector)
+        return 'empty'
       }
 
       console.log(`PhotoSwipe: Initializing with ${children.length} items`)
@@ -60,7 +60,7 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
 
       if (missingAttributes > 0) {
         console.warn(`PhotoSwipe: ${missingAttributes} items missing dimensions. Delaying initialization...`)
-        return false
+        return 'retry'
       }
 
       lightboxRef.current = new PhotoSwipeLightbox({
@@ -161,7 +161,7 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
       lightboxRef.current.init()
 
       console.log('PhotoSwipe: Initialized successfully')
-      return true
+      return 'success'
     }
 
     // Tentar inicializar com delays incrementais
@@ -169,11 +169,15 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
     const maxAttempts = 10 // Aumentado de 5 para 10
     const timer = setInterval(() => {
       attempts++
-      const success = checkAndInit()
+      const result = checkAndInit()
 
-      if (success || attempts >= maxAttempts) {
+      if (result === 'success') {
         clearInterval(timer)
-        if (!success && attempts >= maxAttempts) {
+      } else if (result === 'empty') {
+        clearInterval(timer)
+      } else if (attempts >= maxAttempts) {
+        clearInterval(timer)
+        if (result !== 'success') {
           console.error('PhotoSwipe: Failed to initialize after', maxAttempts, 'attempts')
         }
       }

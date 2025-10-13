@@ -65,7 +65,131 @@ const STATUS_OPTIONS = [
 
 type ViewMode = 'grid' | 'list'
 
-type PreviewState = { id: string; url: string; templateName?: string | null } | null
+type PreviewState =
+  | {
+      id: string
+      url: string
+      templateName?: string | null
+      isVideo?: boolean
+      posterUrl?: string | null
+    }
+  | null
+
+interface GenerationMeta {
+  displayUrl: string | null
+  assetUrl: string | null
+  downloadUrl: string | null
+  isVideo: boolean
+  progress?: number
+  errorMessage?: string | null
+  thumbnailUrl?: string | null
+  posterUrl?: string | null
+  mimeType?: string | null
+}
+
+function getStringField(fields: Record<string, unknown>, key: string): string | null {
+  const value = fields[key]
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+  return null
+}
+
+function getNumberField(fields: Record<string, unknown>, key: string): number | null {
+  const value = fields[key]
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number.parseFloat(value)
+    if (Number.isFinite(parsed)) {
+      return parsed
+    }
+  }
+  return null
+}
+
+function getBooleanField(fields: Record<string, unknown>, key: string): boolean | null {
+  const value = fields[key]
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'number') {
+    if (value === 1) return true
+    if (value === 0) return false
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase()
+    if (normalized === 'true') return true
+    if (normalized === 'false') return false
+  }
+  return null
+}
+
+function buildGenerationMeta(generation: GenerationRecord): GenerationMeta {
+  const fields = generation.fieldValues ?? {}
+
+  const thumbnailUrl = getStringField(fields, 'thumbnailUrl')
+  const previewUrl = getStringField(fields, 'previewUrl') ?? getStringField(fields, 'previewImage')
+  const videoUrl =
+    getStringField(fields, 'videoUrl') ??
+    getStringField(fields, 'mp4Url') ??
+    getStringField(fields, 'resultVideoUrl')
+  const mimeType = getStringField(fields, 'mimeType')
+  const errorMessage = getStringField(fields, 'errorMessage')
+  const progressValue = getNumberField(fields, 'progress')
+  const posterUrl = thumbnailUrl ?? previewUrl ?? null
+
+  const baseAssetUrl = generation.resultUrl ?? videoUrl ?? null
+  const isVideoFlag =
+    getBooleanField(fields, 'isVideo') ??
+    (mimeType ? mimeType.toLowerCase().startsWith('video/') : false)
+
+  const assetUrl = generation.status === 'COMPLETED' ? baseAssetUrl : null
+  const displayUrl = isVideoFlag ? posterUrl ?? baseAssetUrl : baseAssetUrl ?? posterUrl
+  const downloadUrl = baseAssetUrl
+
+  return {
+    displayUrl: displayUrl ?? null,
+    assetUrl,
+    downloadUrl,
+    isVideo: Boolean(isVideoFlag),
+    progress:
+      typeof progressValue === 'number'
+        ? Math.max(0, Math.min(100, progressValue))
+        : undefined,
+    errorMessage: errorMessage ?? undefined,
+    thumbnailUrl,
+    posterUrl,
+    mimeType,
+  }
+}
+
+function inferDownloadExtension(meta: GenerationMeta, blobType?: string | null): string {
+  const typeCandidates = [meta.mimeType, blobType].filter(Boolean) as string[]
+  for (const type of typeCandidates) {
+    const normalized = type.toLowerCase()
+    if (normalized.includes('mp4')) return 'mp4'
+    if (normalized.includes('webm')) return 'webm'
+    if (normalized.includes('mov')) return 'mov'
+    if (normalized.includes('gif')) return 'gif'
+    if (normalized.includes('png')) return 'png'
+    if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg'
+  }
+
+  if (meta.downloadUrl) {
+    try {
+      const { pathname } = new URL(meta.downloadUrl)
+      const ext = pathname.split('.').pop()
+      if (ext && ext.length <= 6) {
+        return ext.toLowerCase()
+      }
+    } catch {
+      // ignore invalid URL parsing
+    }
+  }
+
+  return meta.isVideo ? 'mp4' : 'png'
+}
 
 export default function ProjectCreativesPage() {
   const params = useParams()
@@ -131,12 +255,22 @@ export default function ProjectCreativesPage() {
     },
   })
 
+  const generationMetaMap = React.useMemo(() => {
+    const map = new Map<string, GenerationMeta>()
+    for (const generation of data?.generations ?? []) {
+      map.set(generation.id, buildGenerationMeta(generation))
+    }
+    return map
+  }, [data?.generations])
+
   const filtered = React.useMemo(() => {
     const list = data?.generations ?? []
+    const query = searchTerm.trim().toLowerCase()
+
     return list.filter((generation) => {
+      const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
       const matchesStatus = statusFilter === 'all' || generation.status === statusFilter
-      const matchesResult = !onlyWithResult || Boolean(generation.resultUrl)
-      const query = searchTerm.trim().toLowerCase()
+      const matchesResult = !onlyWithResult || Boolean(meta.assetUrl ?? meta.displayUrl)
       const matchesSearch =
         !query ||
         generation.templateName?.toLowerCase().includes(query) ||
@@ -144,7 +278,7 @@ export default function ProjectCreativesPage() {
         generation.id.toLowerCase().includes(query)
       return matchesStatus && matchesResult && matchesSearch
     })
-  }, [data?.generations, statusFilter, searchTerm, onlyWithResult])
+  }, [data?.generations, statusFilter, searchTerm, onlyWithResult, generationMetaMap])
 
   // PhotoSwipe integration - re-init quando os dados mudarem
   usePhotoSwipe({
@@ -165,73 +299,102 @@ export default function ProjectCreativesPage() {
     })
   }, [])
 
-  const handleDownload = React.useCallback(async (generation: GenerationRecord) => {
-    if (!generation.resultUrl) {
-      toast({ title: 'Preview indisponível', description: 'Este criativo ainda não possui arquivo gerado.', variant: 'destructive' })
-      return
-    }
+  const handleDownload = React.useCallback(
+    async (generation: GenerationRecord) => {
+      const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
+      const downloadUrl = meta.downloadUrl
 
-    try {
-      // Fetch da imagem como blob
-      const response = await fetch(generation.resultUrl)
-      const blob = await response.blob()
+      if (!downloadUrl) {
+        toast({
+          title: 'Arquivo indisponível',
+          description: 'Este criativo ainda não possui um arquivo para download.',
+          variant: 'destructive',
+        })
+        return
+      }
 
-      // Criar URL temporária do blob
-      const blobUrl = URL.createObjectURL(blob)
+      try {
+        const response = await fetch(downloadUrl)
+        if (!response.ok) {
+          throw new Error(`Download falhou com status ${response.status}`)
+        }
 
-      // Criar link temporário e forçar download
-      const link = document.createElement('a')
-      link.href = blobUrl
-      link.download = `criativo-${generation.id}.png`
-      document.body.appendChild(link)
-      link.click()
+        const blob = await response.blob()
+        const blobUrl = URL.createObjectURL(blob)
+        const extension = inferDownloadExtension(meta, blob.type || null)
 
-      // Limpar
-      document.body.removeChild(link)
-      URL.revokeObjectURL(blobUrl)
-    } catch {
-      toast({ title: 'Erro ao baixar', description: 'Não foi possível baixar o criativo.', variant: 'destructive' })
-    }
-  }, [toast])
+        const link = document.createElement('a')
+        link.href = blobUrl
+        link.download = `criativo-${generation.id}.${extension}`
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+        URL.revokeObjectURL(blobUrl)
+      } catch (error) {
+        console.error('[ProjectCreatives] Falha ao baixar arquivo:', error)
+        toast({
+          title: 'Erro ao baixar',
+          description: 'Não foi possível baixar o criativo.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [generationMetaMap, toast]
+  )
 
   const handleBulkDownload = React.useCallback(async () => {
     if (selectedIds.size === 0) return
 
-    const generationsToDownload = filtered.filter(
-      (item) => selectedIds.has(item.id) && item.resultUrl
-    )
+    const generationsToDownload = filtered.filter((item) => selectedIds.has(item.id))
 
     if (generationsToDownload.length === 0) {
-      toast({ title: 'Nenhum arquivo disponível', description: 'Selecione criativos concluídos para baixar.', variant: 'destructive' })
+      toast({
+        title: 'Nenhum arquivo disponível',
+        description: 'Selecione criativos concluídos para baixar.',
+        variant: 'destructive',
+      })
       return
     }
 
-    // Download sequencial com delay
     for (const generation of generationsToDownload) {
-      if (!generation.resultUrl) continue
+      const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
+      const downloadUrl = meta.downloadUrl
+      if (!downloadUrl) continue
 
       try {
-        const response = await fetch(generation.resultUrl)
+        const response = await fetch(downloadUrl)
+        if (!response.ok) {
+          throw new Error(`Download falhou com status ${response.status}`)
+        }
+
         const blob = await response.blob()
         const blobUrl = URL.createObjectURL(blob)
+        const extension = inferDownloadExtension(meta, blob.type || null)
 
         const link = document.createElement('a')
         link.href = blobUrl
-        link.download = `criativo-${generation.id}.png`
+        link.download = `criativo-${generation.id}.${extension}`
         document.body.appendChild(link)
         link.click()
         document.body.removeChild(link)
         URL.revokeObjectURL(blobUrl)
 
-        // Pequeno delay entre downloads
-        await new Promise(resolve => setTimeout(resolve, 300))
+        await new Promise((resolve) => setTimeout(resolve, 200))
       } catch (error) {
-        console.error(`Erro ao baixar criativo ${generation.id}:`, error)
+        console.error(`[ProjectCreatives] Erro ao baixar criativo ${generation.id}:`, error)
+        toast({
+          title: 'Erro ao baixar',
+          description: `Falha ao baixar o criativo ${generation.id}.`,
+          variant: 'destructive',
+        })
       }
     }
 
-    toast({ title: 'Downloads iniciados', description: `${generationsToDownload.length} arquivo(s) sendo baixado(s).` })
-  }, [filtered, selectedIds, toast])
+    toast({
+      title: 'Downloads iniciados',
+      description: `${generationsToDownload.length} arquivo(s) em processamento.`,
+    })
+  }, [filtered, generationMetaMap, selectedIds, toast])
 
   const handleDelete = React.useCallback((generation: GenerationRecord) => {
     if (!confirm('Deseja realmente remover este criativo?')) return
@@ -397,7 +560,9 @@ export default function ProjectCreativesPage() {
               console.log('Template dimensions:', { dimensions, width, height, aspectRatio, templateType })
             }
 
-            if (!generation.resultUrl) {
+            const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
+
+            if (!meta.displayUrl && !meta.assetUrl) {
               return (
                 <Card key={generation.id} className="aspect-square p-4 flex items-center justify-center">
                   <div className="text-xs text-muted-foreground">Sem preview</div>
@@ -405,11 +570,23 @@ export default function ProjectCreativesPage() {
               )
             }
 
+            const previewPayload =
+              meta.assetUrl ?? meta.displayUrl
+                ? {
+                    id: generation.id,
+                    url: (meta.assetUrl ?? meta.displayUrl) as string,
+                    templateName: templateLabel,
+                    isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                    posterUrl: meta.posterUrl ?? meta.thumbnailUrl ?? undefined,
+                  }
+                : null
+
             return (
               <GalleryItem
                 key={generation.id}
                 id={generation.id}
-                imageUrl={generation.resultUrl}
+                displayUrl={meta.displayUrl}
+                assetUrl={meta.assetUrl}
                 title={templateLabel}
                 date={new Intl.DateTimeFormat('pt-BR', {
                   dateStyle: 'short',
@@ -418,6 +595,10 @@ export default function ProjectCreativesPage() {
                 templateType={templateType}
                 selected={selected}
                 hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
+                status={generation.status}
+                progress={meta.progress}
+                errorMessage={meta.errorMessage}
+                isVideo={meta.isVideo}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}
@@ -426,6 +607,11 @@ export default function ProjectCreativesPage() {
                     ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')
                     : undefined
                 }
+                onPreview={() => {
+                  if (previewPayload) {
+                    setPreview(previewPayload)
+                  }
+                }}
                 index={index}
                 pswpWidth={width}
                 pswpHeight={height}
@@ -450,6 +636,10 @@ export default function ProjectCreativesPage() {
                 {filtered.map((generation) => {
                   const selected = selectedIds.has(generation.id)
                   const templateLabel = generation.template?.name || generation.templateName || 'Template'
+                  const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
+                  const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
+                  const canPreview = Boolean(previewUrl)
+                  const canDownload = Boolean(meta.downloadUrl)
                   return (
                     <tr key={generation.id} className={cn('border-b border-border/30', selected && 'bg-primary/5')}>
                       <td className="px-4 py-3">
@@ -484,11 +674,33 @@ export default function ProjectCreativesPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setPreview(generation.resultUrl ? { id: generation.id, url: generation.resultUrl, templateName: templateLabel } : null)} disabled={!generation.resultUrl}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() =>
+                              setPreview(
+                                canPreview
+                                  ? {
+                                      id: generation.id,
+                                      url: previewUrl!,
+                                      templateName: templateLabel,
+                                      isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                                      posterUrl: meta.posterUrl ?? meta.thumbnailUrl ?? undefined,
+                                    }
+                                  : null
+                              )
+                            }
+                            disabled={!canPreview}
+                          >
                             <Eye className="mr-1 h-4 w-4" />
                             Ver
                           </Button>
-                          <Button size="sm" variant="outline" onClick={() => handleDownload(generation)} disabled={!generation.resultUrl}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleDownload(generation)}
+                            disabled={!canDownload}
+                          >
                             <Download className="mr-1 h-4 w-4" />
                             Baixar
                           </Button>
@@ -523,13 +735,23 @@ export default function ProjectCreativesPage() {
             <DialogTitle>{preview?.templateName || 'Preview'}</DialogTitle>
           </DialogHeader>
           {preview?.url ? (
-            <Image
-              src={preview.url}
-              alt={preview.templateName ?? 'Preview'}
-              width={1024}
-              height={1024}
-              className="h-auto w-full rounded-md"
-            />
+            preview.isVideo ? (
+              <video
+                src={preview.url}
+                controls
+                playsInline
+                poster={preview.posterUrl ?? undefined}
+                className="h-auto w-full rounded-md"
+              />
+            ) : (
+              <Image
+                src={preview.url}
+                alt={preview.templateName ?? 'Preview'}
+                width={1024}
+                height={1024}
+                className="h-auto w-full rounded-md"
+              />
+            )
           ) : (
             <div className="rounded-md border border-dashed border-border/50 p-12 text-center text-sm text-muted-foreground">
               Nenhum preview disponível para esta geração.

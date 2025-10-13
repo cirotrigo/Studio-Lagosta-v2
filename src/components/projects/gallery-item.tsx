@@ -31,6 +31,8 @@ interface GalleryItemProps {
   pswpHeight: number
 }
 
+const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
+
 export function GalleryItem({
   id,
   displayUrl,
@@ -67,14 +69,16 @@ export function GalleryItem({
   const isVideoAsset = React.useMemo(() => {
     if (typeof isVideo === 'boolean') return isVideo
     const candidate = (resolvedAssetUrl ?? effectiveDisplayUrl ?? '').toLowerCase()
-    const videoExtensions = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
-    return videoExtensions.some((ext) => candidate.endsWith(ext))
+    return VIDEO_EXTENSIONS.some((ext) => candidate.endsWith(ext))
   }, [resolvedAssetUrl, effectiveDisplayUrl, isVideo])
 
   const showProgress = status === 'PROCESSING' || status === 'PENDING'
   const clampedProgress =
     typeof progress === 'number' ? Math.max(0, Math.min(100, Math.round(progress))) : undefined
   const showFailure = status === 'FAILED'
+  const displayIsVideo = effectiveDisplayUrl
+    ? VIDEO_EXTENSIONS.some((ext) => effectiveDisplayUrl.toLowerCase().endsWith(ext))
+    : false
 
   // Intersection Observer para animações
   React.useEffect(() => {
@@ -98,6 +102,12 @@ export function GalleryItem({
   // Carregar dimensões reais da imagem para garantir precisão
   React.useEffect(() => {
     if (!effectiveDisplayUrl) {
+      setImageLoaded(true)
+      return
+    }
+
+    const lowerDisplay = effectiveDisplayUrl.toLowerCase()
+    if (VIDEO_EXTENSIONS.some((ext) => lowerDisplay.endsWith(ext))) {
       setImageLoaded(true)
       return
     }
@@ -210,8 +220,7 @@ export function GalleryItem({
           resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
         )}
         onClick={(e) => {
-          const shouldHandlePreview =
-            isVideoAsset || !resolvedAssetUrl || status !== 'COMPLETED'
+          const shouldHandlePreview = !resolvedAssetUrl || status !== 'COMPLETED'
 
           if (shouldHandlePreview) {
             e.preventDefault()
@@ -236,15 +245,28 @@ export function GalleryItem({
         {/* Imagem ou Vídeo */}
         <div className="relative w-full h-full pointer-events-none">
           {effectiveDisplayUrl ? (
-            <Image
-              src={effectiveDisplayUrl}
-              alt={title}
-              fill
-              sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
-              className="object-cover transition-transform duration-400 group-hover:scale-105"
-              onLoad={() => setImageLoaded(true)}
-              loading="lazy"
-            />
+            displayIsVideo ? (
+              <video
+                src={effectiveDisplayUrl}
+                muted
+                loop
+                playsInline
+                autoPlay
+                preload="metadata"
+                className="h-full w-full object-cover"
+                onLoadedData={() => setImageLoaded(true)}
+              />
+            ) : (
+              <Image
+                src={effectiveDisplayUrl}
+                alt={title}
+                fill
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
+                className="object-cover transition-transform duration-400 group-hover:scale-105"
+                onLoad={() => setImageLoaded(true)}
+                loading="lazy"
+              />
+            )
           ) : (
             <div className="flex h-full w-full items-center justify-center bg-muted text-xs font-medium text-muted-foreground">
               Prévia indisponível
