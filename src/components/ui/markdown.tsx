@@ -7,6 +7,7 @@ import rehypeHighlight from 'rehype-highlight'
 import { Button } from '@/components/ui/button'
 import { Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 type MarkdownProps = {
   children: string
@@ -77,10 +78,12 @@ export function Markdown({ children, className }: MarkdownProps) {
           const codeText = toText(children)
           const handleCopy = async () => {
             try {
-              await navigator.clipboard.writeText(codeText)
+              await copyToClipboard(codeText)
               setCopied(true)
               setTimeout(() => setCopied(false), 1200)
-            } catch {}
+            } catch (error) {
+              console.warn('[Markdown] Failed to copy code block', error)
+            }
           }
           return (
             <div className="group relative my-3">

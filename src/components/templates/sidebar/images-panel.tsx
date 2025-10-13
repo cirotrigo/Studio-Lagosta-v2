@@ -38,6 +38,10 @@ export function ImagesPanel() {
   const [driveStatus, setDriveStatus] = React.useState<DriveStatus>('loading')
   const [driveStatusMessage, setDriveStatusMessage] = React.useState<string | null>(null)
   const { data: projectDetails } = useProject(projectId)
+  const driveFolderId =
+    projectDetails?.googleDriveImagesFolderId ?? projectDetails?.googleDriveFolderId ?? null
+  const driveFolderName =
+    projectDetails?.googleDriveImagesFolderName ?? projectDetails?.googleDriveFolderName ?? null
 
   React.useEffect(() => {
     let mounted = true
@@ -298,7 +302,8 @@ export function ImagesPanel() {
           setIsDriveModalOpen(open)
         }}
         mode="images"
-        initialFolderId={projectDetails?.googleDriveFolderId ?? undefined}
+        initialFolderId={driveFolderId ?? undefined}
+        initialFolderName={driveFolderName ?? undefined}
         onSelect={handleDriveSelect}
       />
     </div>

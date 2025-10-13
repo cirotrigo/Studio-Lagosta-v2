@@ -402,11 +402,26 @@ export default function ProjectDetailPage() {
                 <Skeleton className="mt-2 h-4 w-1/2" />
               </Card>
             ) : projectDetails ? (
-              <GoogleDriveFolderSelector
-                projectId={projectId}
-                folderId={projectDetails?.googleDriveFolderId ?? null}
-                folderName={projectDetails?.googleDriveFolderName ?? null}
-              />
+              <div className="space-y-4">
+                <GoogleDriveFolderSelector
+                  projectId={projectId}
+                  folderId={projectDetails.googleDriveFolderId}
+                  folderName={projectDetails.googleDriveFolderName}
+                  variant="backup"
+                />
+                <GoogleDriveFolderSelector
+                  projectId={projectId}
+                  folderId={projectDetails.googleDriveImagesFolderId}
+                  folderName={projectDetails.googleDriveImagesFolderName}
+                  variant="images"
+                />
+                <GoogleDriveFolderSelector
+                  projectId={projectId}
+                  folderId={projectDetails.googleDriveVideosFolderId}
+                  folderName={projectDetails.googleDriveVideosFolderName}
+                  variant="videos"
+                />
+              </div>
             ) : (
               <Card className="p-6">
                 <h4 className="text-base font-semibold">Não foi possível carregar as configurações</h4>

@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
 import { exportVideoWithLayers, generateVideoThumbnail } from '@/lib/konva/konva-video-export'
 import { validateInstagramFormat } from '@/lib/templates/instagram-presets'
+import { createId } from '@/lib/id'
 import Konva from 'konva'
 
 function sanitizeFileName(name: string) {
@@ -18,20 +19,12 @@ function sanitizeFileName(name: string) {
 }
 
 function generateUploadPath(clerkUserId: string, videoName: string) {
-  const randomSuffix =
-    typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID
-      ? globalThis.crypto.randomUUID()
-      : Math.random().toString(36).slice(2)
-
+  const randomSuffix = createId()
   return `video-processing/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.webm`
 }
 
 function generateThumbnailUploadPath(clerkUserId: string, videoName: string) {
-  const randomSuffix =
-    typeof globalThis !== 'undefined' && globalThis.crypto?.randomUUID
-      ? globalThis.crypto.randomUUID()
-      : Math.random().toString(36).slice(2)
-
+  const randomSuffix = createId()
   return `video-thumbnails/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.jpg`
 }
 

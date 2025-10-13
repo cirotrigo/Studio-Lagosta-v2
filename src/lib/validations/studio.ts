@@ -42,30 +42,67 @@ export const createProjectSchema = z.object({
 
 export const updateProjectSchema = createProjectSchema.partial()
 
+const driveField = z.string().trim().min(1).nullable().optional()
+
 export const updateProjectSettingsSchema = z
   .object({
-    googleDriveFolderId: z.string().trim().min(1).nullable().optional(),
-    googleDriveFolderName: z.string().trim().min(1).nullable().optional(),
+    googleDriveFolderId: driveField,
+    googleDriveFolderName: driveField,
+    googleDriveImagesFolderId: driveField,
+    googleDriveImagesFolderName: driveField,
+    googleDriveVideosFolderId: driveField,
+    googleDriveVideosFolderName: driveField,
   })
-  .refine((data) => {
-    const hasId = Object.prototype.hasOwnProperty.call(data, 'googleDriveFolderId')
-    const hasName = Object.prototype.hasOwnProperty.call(data, 'googleDriveFolderName')
+  .superRefine((data, ctx) => {
+    const pairs: Array<[keyof typeof data, keyof typeof data, string]> = [
+      ['googleDriveFolderId', 'googleDriveFolderName', 'googleDriveFolderId/googleDriveFolderName'],
+      ['googleDriveImagesFolderId', 'googleDriveImagesFolderName', 'googleDriveImagesFolderId/googleDriveImagesFolderName'],
+      ['googleDriveVideosFolderId', 'googleDriveVideosFolderName', 'googleDriveVideosFolderId/googleDriveVideosFolderName'],
+    ]
 
-    if (!hasId && !hasName) {
-      return false
+    let touched = false
+
+    for (const [idKey, nameKey, label] of pairs) {
+      const hasId = Object.prototype.hasOwnProperty.call(data, idKey)
+      const hasName = Object.prototype.hasOwnProperty.call(data, nameKey)
+
+      if (hasId || hasName) {
+        touched = true
+      }
+
+      if (hasId !== hasName) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `${label} devem ser enviados juntos`,
+          path: hasId ? [nameKey] : [idKey],
+        })
+        continue
+      }
+
+      if (hasId && hasName) {
+        const idValue = data[idKey]
+        const nameValue = data[nameKey]
+
+        if (idValue === null && nameValue === null) {
+          continue
+        }
+
+        if (typeof idValue !== 'string' || typeof nameValue !== 'string') {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: `${label} devem ser strings ou null`,
+            path: typeof idValue !== 'string' ? [idKey] : [nameKey],
+          })
+        }
+      }
     }
 
-    if (hasId !== hasName) {
-      return false
+    if (!touched) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Envie pelo menos um par de campos de pasta do Google Drive',
+      })
     }
-
-    if (data.googleDriveFolderId === null && data.googleDriveFolderName === null) {
-      return true
-    }
-
-    return typeof data.googleDriveFolderId === 'string' && typeof data.googleDriveFolderName === 'string'
-  }, {
-    message: 'googleDriveFolderId e googleDriveFolderName devem ser enviados juntos',
   })
 
 export const createTemplateSchema = z.object({

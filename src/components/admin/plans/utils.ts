@@ -1,5 +1,6 @@
 import type { BillingPlan, PlanFeatureForm } from './types';
 import type { ClerkPlan } from '@/hooks/use-admin-plans';
+import { createId } from '@/lib/id';
 
 export const mapFeaturesFromApi = (
   features: Array<{ name?: string | null; description?: string | null; included?: boolean | null }> | null | undefined
@@ -12,9 +13,7 @@ export const mapFeaturesFromApi = (
       const name = feature?.name?.trim() ?? ''
       if (!name) return null
       return {
-        id: typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-          ? crypto.randomUUID()
-          : Math.random().toString(36).slice(2),
+        id: createId(),
         name,
         description: feature?.description?.toString() ?? '',
         included: feature?.included ?? true,

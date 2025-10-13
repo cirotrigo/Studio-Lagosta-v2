@@ -177,8 +177,8 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
         clearInterval(timer)
       } else if (attempts >= maxAttempts) {
         clearInterval(timer)
-        if (result !== 'success') {
-          console.error('PhotoSwipe: Failed to initialize after', maxAttempts, 'attempts')
+        if (result === 'retry') {
+          console.warn('PhotoSwipe: Inicialização ignorada após', maxAttempts, 'tentativas (dados indisponíveis).')
         }
       }
     }, 300) // Aumentado de 200ms para 300ms

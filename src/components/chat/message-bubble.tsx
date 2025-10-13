@@ -7,6 +7,7 @@ import { Bot, Check, Copy, RefreshCw, User, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 export type ChatMessage = {
   id: string
@@ -68,11 +69,13 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
     try {
       const raw: unknown = (message as { content?: unknown })?.content
       const text = typeof raw === 'string' ? raw : JSON.stringify(raw)
-      await navigator.clipboard.writeText(text)
+      await copyToClipboard(text)
       setCopied(true)
-      const t = setTimeout(() => setCopied(false), 1200)
-      return () => clearTimeout(t)
-    } catch {}
+      const timeout = setTimeout(() => setCopied(false), 1200)
+      return () => clearTimeout(timeout)
+    } catch (error) {
+      console.warn('[MessageBubble] Failed to copy message content', error)
+    }
   }
 
   const downloadImage = (url: string, index: number) => {

@@ -9,6 +9,10 @@ export interface ProjectResponse {
   logoUrl: string | null
   googleDriveFolderId: string | null
   googleDriveFolderName: string | null
+  googleDriveImagesFolderId: string | null
+  googleDriveImagesFolderName: string | null
+  googleDriveVideosFolderId: string | null
+  googleDriveVideosFolderName: string | null
   createdAt: string
   updatedAt: string
 }
@@ -26,10 +30,14 @@ export interface ProjectWithLogoResponse extends ProjectResponse {
   }
 }
 
-export interface UpdateProjectSettingsInput {
+export type UpdateProjectSettingsInput = Partial<{
   googleDriveFolderId: string | null
   googleDriveFolderName: string | null
-}
+  googleDriveImagesFolderId: string | null
+  googleDriveImagesFolderName: string | null
+  googleDriveVideosFolderId: string | null
+  googleDriveVideosFolderName: string | null
+}>
 
 export function useProject(projectId: number | null) {
   return useQuery<ProjectResponse | null>({

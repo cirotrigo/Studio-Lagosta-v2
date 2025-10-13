@@ -35,6 +35,7 @@ import {
 import { useDeleteMedia } from '@/hooks/admin/use-admin-media'
 import { useToast } from '@/hooks/use-toast'
 import type { CMSMedia } from '@/hooks/admin/use-admin-media'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 type MediaGalleryProps = {
   media: CMSMedia[]
@@ -66,12 +67,21 @@ export function MediaGallery({ media, viewMode }: MediaGalleryProps) {
     }
   }
 
-  const handleCopyUrl = (url: string) => {
-    navigator.clipboard.writeText(url)
-    toast({
-      title: 'URL copiada',
-      description: 'A URL da mídia foi copiada para a área de transferência.',
-    })
+  const handleCopyUrl = async (url: string) => {
+    try {
+      await copyToClipboard(url)
+      toast({
+        title: 'URL copiada',
+        description: 'A URL da mídia foi copiada para a área de transferência.',
+      })
+    } catch (error) {
+      console.error('[MediaGallery] Failed to copy URL', error)
+      toast({
+        title: 'Erro ao copiar',
+        description: 'Não foi possível copiar automaticamente. Copie manualmente a URL exibida.',
+        variant: 'destructive',
+      })
+    }
   }
 
   const handleDownload = (url: string, filename: string) => {

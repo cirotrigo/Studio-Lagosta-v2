@@ -40,17 +40,27 @@ export async function PATCH(
       return NextResponse.json({ error: 'Dados inválidos', details: parsed.error.flatten() }, { status: 400 })
     }
 
-    const dataToUpdate: { googleDriveFolderId: string | null; googleDriveFolderName: string | null } = {
-      googleDriveFolderId: null,
-      googleDriveFolderName: null,
+    const dataToUpdate: {
+      googleDriveFolderId?: string | null
+      googleDriveFolderName?: string | null
+      googleDriveImagesFolderId?: string | null
+      googleDriveImagesFolderName?: string | null
+      googleDriveVideosFolderId?: string | null
+      googleDriveVideosFolderName?: string | null
+    } = {}
+
+    const assignField = <K extends keyof typeof dataToUpdate>(key: K) => {
+      if (Object.prototype.hasOwnProperty.call(parsed.data, key)) {
+        dataToUpdate[key] = parsed.data[key]
+      }
     }
 
-    if (parsed.data.googleDriveFolderId !== undefined) {
-      dataToUpdate.googleDriveFolderId = parsed.data.googleDriveFolderId
-    }
-    if (parsed.data.googleDriveFolderName !== undefined) {
-      dataToUpdate.googleDriveFolderName = parsed.data.googleDriveFolderName
-    }
+    assignField('googleDriveFolderId')
+    assignField('googleDriveFolderName')
+    assignField('googleDriveImagesFolderId')
+    assignField('googleDriveImagesFolderName')
+    assignField('googleDriveVideosFolderId')
+    assignField('googleDriveVideosFolderName')
 
     const updated = await db.project.update({
       where: { id: projectIdNum },
@@ -58,8 +68,16 @@ export async function PATCH(
       select: {
         id: true,
         name: true,
+        description: true,
+        status: true,
+        logoUrl: true,
         googleDriveFolderId: true,
         googleDriveFolderName: true,
+        googleDriveImagesFolderId: true,
+        googleDriveImagesFolderName: true,
+        googleDriveVideosFolderId: true,
+        googleDriveVideosFolderName: true,
+        createdAt: true,
         updatedAt: true,
       },
     })

@@ -155,13 +155,17 @@ model Project {
   status                 ProjectStatus      @default(ACTIVE)
   logoUrl                String?
   googleDriveFolderId    String?
+  googleDriveFolderName  String?
+  googleDriveImagesFolderId   String?
+  googleDriveImagesFolderName String?
+  googleDriveVideosFolderId   String?
+  googleDriveVideosFolderName String?
   makeWebhookAnalyzeUrl  String?
   makeWebhookCreativeUrl String?
   userId                 String
   workspaceId            Int?
   createdAt              DateTime           @default(now())
   updatedAt              DateTime           @updatedAt
-  googleDriveFolderName  String?
   BrandColor             BrandColor[]
   CustomFont             CustomFont[]
   Element                Element[]

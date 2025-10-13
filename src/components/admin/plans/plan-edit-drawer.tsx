@@ -34,6 +34,7 @@ import {
   XCircle
 } from "lucide-react";
 import type { ClerkPlan } from "@/hooks/use-admin-plans";
+import { createId } from "@/lib/id";
 import { DrawerSection, InfoBox, FieldGroup } from "./drawer-sections";
 import { FeatureEditor } from "./feature-editor";
 
@@ -75,10 +76,7 @@ interface PlanEditDrawerProps {
   isSaving?: boolean;
 }
 
-const generateFeatureId = () =>
-  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
-    ? crypto.randomUUID()
-    : Math.random().toString(36).slice(2)
+const generateFeatureId = () => createId()
 
 const formatPriceInput = (value: number | null | undefined) => {
   if (value == null) return ''

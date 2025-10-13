@@ -4,6 +4,7 @@ import * as React from 'react'
 import type { DesignData, DynamicField, Layer } from '@/types/template'
 import type Konva from 'konva'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { createId } from '@/lib/id'
 import { useQueryClient } from '@tanstack/react-query'
 
 export interface TemplateResource {
@@ -298,7 +299,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       if (!source) return
       const newLayer: Layer = {
         ...source,
-        id: crypto.randomUUID(),
+        id: createId(),
         name: `${source.name} Copy`,
         position: {
           x: (source.position?.x ?? 0) + 16,
@@ -387,7 +388,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           return JSON.parse(JSON.stringify(layer)) as Layer
         }
       })()
-      const newId = crypto.randomUUID()
+      const newId = createId()
       return {
         ...cloned,
         id: newId,
@@ -709,7 +710,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         exportFileName = fileName
 
         const record: ExportRecord = {
-          id: crypto.randomUUID(),
+          id: createId(),
           format,
           dataUrl,
           width: canvasWidth,
@@ -1341,7 +1342,7 @@ export function useTemplateEditor() {
 }
 
 export function createDefaultLayer(type: Layer['type']): Layer {
-  const id = crypto.randomUUID()
+  const id = createId()
   const base: Layer = {
     id,
     type,

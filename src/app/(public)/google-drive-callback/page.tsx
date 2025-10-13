@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -62,10 +63,15 @@ function GoogleDriveCallbackContent() {
     void fetchTokens()
   }, [fetchTokens])
 
-  const handleCopy = (value: string | null, label: string) => {
+  const handleCopy = async (value: string | null, label: string) => {
     if (!value) return
-    void navigator.clipboard.writeText(value)
-    alert(`${label} copiado para a área de transferência.`)
+    try {
+      await copyToClipboard(value)
+      alert(`${label} copiado para a área de transferência.`)
+    } catch (error) {
+      console.error('[GoogleDriveCallbackPage] Failed to copy token', error)
+      alert('Não foi possível copiar automaticamente. Copie manualmente o valor exibido.')
+    }
   }
 
   return (

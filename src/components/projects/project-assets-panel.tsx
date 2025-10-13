@@ -106,8 +106,10 @@ export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
     }
   }, [])
 
-  const driveFolderId = projectDetails?.googleDriveFolderId ?? null
-  const driveFolderName = projectDetails?.googleDriveFolderName ?? null
+  const driveImagesFolderId =
+    projectDetails?.googleDriveImagesFolderId ?? projectDetails?.googleDriveFolderId ?? null
+  const driveImagesFolderName =
+    projectDetails?.googleDriveImagesFolderName ?? projectDetails?.googleDriveFolderName ?? null
 
   return (
     <div className="space-y-8">
@@ -115,15 +117,15 @@ export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
         projectId={projectId}
         driveStatus={driveStatus}
         driveStatusMessage={driveStatusMessage}
-        driveFolderId={driveFolderId}
-        driveFolderName={driveFolderName}
+        driveFolderId={driveImagesFolderId}
+        driveFolderName={driveImagesFolderName}
       />
       <ElementSection
         projectId={projectId}
         driveStatus={driveStatus}
         driveStatusMessage={driveStatusMessage}
-        driveFolderId={driveFolderId}
-        driveFolderName={driveFolderName}
+        driveFolderId={driveImagesFolderId}
+        driveFolderName={driveImagesFolderName}
       />
       <ColorSection projectId={projectId} />
       <FontSection projectId={projectId} />

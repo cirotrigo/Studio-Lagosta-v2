@@ -35,6 +35,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { usePrompts } from '@/hooks/use-prompts'
 import type { Prompt } from '@/types/prompt'
+import { copyToClipboard } from '@/lib/copy-to-clipboard'
 
 interface AIImageRecord {
   id: string
@@ -177,6 +178,10 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
   const queryClient = useQueryClient()
   const { addLayer } = useTemplateEditor()
   const { data: project } = useProject(projectId)
+  const driveFolderId =
+    project?.googleDriveImagesFolderId ?? project?.googleDriveFolderId ?? null
+  const driveFolderName =
+    project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
   const [prompt, setPrompt] = React.useState('')
   const [aspectRatio, setAspectRatio] = React.useState('1:1')
@@ -503,8 +508,8 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
             open={isDriveModalOpen}
             onOpenChange={setIsDriveModalOpen}
             mode="images"
-            initialFolderId={project?.googleDriveFolderId ?? undefined}
-            initialFolderName={project?.googleDriveFolderName ?? undefined}
+            initialFolderId={driveFolderId ?? undefined}
+            initialFolderName={driveFolderName ?? undefined}
             onSelect={() => {}} // Not used in multi-select mode
             multiSelect={true}
             maxSelection={3}
@@ -690,12 +695,13 @@ function PromptsLibrary({ projectId }: { projectId: number | null | undefined })
 
   const handleCopy = async (promptContent: string, promptId: string) => {
     try {
-      await navigator.clipboard.writeText(promptContent)
+      await copyToClipboard(promptContent)
       setCopiedId(promptId)
       toast({ description: "Prompt copiado para a área de transferência!" })
       setTimeout(() => setCopiedId(null), 2000)
     } catch (error) {
-      toast({ description: "Erro ao copiar", variant: "destructive" })
+      console.warn('[PromptsLibrary] Failed to copy prompt', error)
+      toast({ description: "Erro ao copiar automaticamente. Copie manualmente o prompt.", variant: "destructive" })
     }
   }
 

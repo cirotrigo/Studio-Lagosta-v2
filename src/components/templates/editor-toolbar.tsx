@@ -84,8 +84,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
   const canvasHeight = design.canvas.height
 
   const { data: project } = useProject(projectId)
-  const driveFolderId = project?.googleDriveFolderId ?? null
-  const driveFolderName = project?.googleDriveFolderName ?? null
+  const driveFolderId =
+    project?.googleDriveImagesFolderId ?? project?.googleDriveFolderId ?? null
+  const driveFolderName =
+    project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
   const [driveStatus, setDriveStatus] = React.useState<DriveStatus>('loading')
   const [driveStatusMessage, setDriveStatusMessage] = React.useState<string | null>(null)

@@ -31,8 +31,10 @@ export function ImagesPanelContent() {
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
 
-  const driveFolderId = project?.googleDriveFolderId ?? null
-  const driveFolderName = project?.googleDriveFolderName ?? null
+  const driveFolderId =
+    project?.googleDriveImagesFolderId ?? project?.googleDriveFolderId ?? null
+  const driveFolderName =
+    project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
   // Insert image layer with exact canvas size
   const insertImageLayer = React.useCallback(

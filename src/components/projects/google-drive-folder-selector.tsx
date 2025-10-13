@@ -13,7 +13,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useGoogleDriveItems } from '@/hooks/use-google-drive'
 import type { GoogleDriveItem, GoogleDriveBrowserMode } from '@/types/google-drive'
 import { cn } from '@/lib/utils'
-import { useUpdateProjectSettings } from '@/hooks/use-project'
+import { useUpdateProjectSettings, type UpdateProjectSettingsInput } from '@/hooks/use-project'
 import { useToast } from '@/hooks/use-toast'
 
 interface FolderBreadcrumb {
@@ -641,13 +641,100 @@ function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
 }
 
 // Google Drive Folder Selector (existing component - unchanged)
+type SelectorVariant = 'backup' | 'images' | 'videos'
+
+const VARIANT_CONFIG: Record<
+  SelectorVariant,
+  {
+    fieldId: keyof UpdateProjectSettingsInput
+    fieldName: keyof UpdateProjectSettingsInput
+    title: string
+    description: string
+    badgeLabel?: string
+    badgeVariant?: 'outline' | 'default' | 'secondary'
+    selectLabel: string
+    changeLabel: string
+    removeLabel: string
+    selectToast: { title: string; description: string }
+    removeToast: { title: string; description: string }
+  }
+> = {
+  backup: {
+    fieldId: 'googleDriveFolderId',
+    fieldName: 'googleDriveFolderName',
+    title: 'Backup no Google Drive',
+    description:
+      'Os criativos são salvos no Vercel Blob (primário). Configure uma pasta no Google Drive para manter uma cópia pessoal automática em ARTES LAGOSTA.',
+    badgeLabel: 'Opcional',
+    badgeVariant: 'outline',
+    selectLabel: 'Selecionar pasta',
+    changeLabel: 'Alterar pasta',
+    removeLabel: 'Remover backup',
+    selectToast: {
+      title: 'Backup no Drive configurado!',
+      description: 'Os próximos criativos serão copiados automaticamente.',
+    },
+    removeToast: {
+      title: 'Backup no Drive desativado',
+      description: 'Continuaremos salvando no Vercel Blob normalmente.',
+    },
+  },
+  images: {
+    fieldId: 'googleDriveImagesFolderId',
+    fieldName: 'googleDriveImagesFolderName',
+    title: 'Pasta de Fotos (Imagens)',
+    description:
+      'Defina a pasta padrão de imagens do projeto. Ela será usada nas buscas do editor, logos e elementos importados do Drive.',
+    badgeLabel: 'Editor',
+    badgeVariant: 'secondary',
+    selectLabel: 'Selecionar pasta de fotos',
+    changeLabel: 'Alterar pasta de fotos',
+    removeLabel: 'Remover pasta de fotos',
+    selectToast: {
+      title: 'Pasta de imagens definida!',
+      description: 'O editor vai usar esta pasta como fonte principal de fotos.',
+    },
+    removeToast: {
+      title: 'Pasta de imagens removida',
+      description: 'Voltaremos a usar o fallback padrão para fotos.',
+    },
+  },
+  videos: {
+    fieldId: 'googleDriveVideosFolderId',
+    fieldName: 'googleDriveVideosFolderName',
+    title: 'Pasta de Vídeos',
+    description:
+      'Escolha a pasta no Google Drive com os vídeos de referência para o editor. Ela aparece na aba de vídeos do template.',
+    badgeLabel: 'Editor',
+    badgeVariant: 'secondary',
+    selectLabel: 'Selecionar pasta de vídeos',
+    changeLabel: 'Alterar pasta de vídeos',
+    removeLabel: 'Remover pasta de vídeos',
+    selectToast: {
+      title: 'Pasta de vídeos definida!',
+      description: 'Os vídeos da aba do editor serão carregados desta pasta.',
+    },
+    removeToast: {
+      title: 'Pasta de vídeos removida',
+      description: 'Voltaremos a usar o fallback padrão para vídeos.',
+    },
+  },
+}
+
 interface GoogleDriveFolderSelectorProps {
   projectId: number
   folderId: string | null
   folderName: string | null
+  variant?: SelectorVariant
 }
 
-export function GoogleDriveFolderSelector({ projectId, folderId, folderName }: GoogleDriveFolderSelectorProps) {
+export function GoogleDriveFolderSelector({
+  projectId,
+  folderId,
+  folderName,
+  variant = 'backup',
+}: GoogleDriveFolderSelectorProps) {
+  const config = VARIANT_CONFIG[variant]
   const [modalOpen, setModalOpen] = React.useState(false)
   const updateSettings = useUpdateProjectSettings(projectId)
   const { toast } = useToast()
@@ -655,10 +742,10 @@ export function GoogleDriveFolderSelector({ projectId, folderId, folderName }: G
   const handleSelect = async (item: GoogleDriveItem | { id: string; name: string; kind: 'folder' }) => {
     try {
       await updateSettings.mutateAsync({
-        googleDriveFolderId: item.id,
-        googleDriveFolderName: item.name,
-      })
-      toast({ title: 'Backup no Drive configurado!', description: 'Os próximos criativos serão copiados automaticamente.' })
+        [config.fieldId]: item.id,
+        [config.fieldName]: item.name,
+      } as UpdateProjectSettingsInput)
+      toast(config.selectToast)
     } catch (error) {
       console.error('[GoogleDriveFolderSelector] Failed to save folder', error)
       toast({
@@ -672,10 +759,10 @@ export function GoogleDriveFolderSelector({ projectId, folderId, folderName }: G
   const handleRemove = async () => {
     try {
       await updateSettings.mutateAsync({
-        googleDriveFolderId: null,
-        googleDriveFolderName: null,
-      })
-      toast({ title: 'Backup no Drive desativado', description: 'Continuaremos salvando no Vercel Blob normalmente.' })
+        [config.fieldId]: null,
+        [config.fieldName]: null,
+      } as UpdateProjectSettingsInput)
+      toast(config.removeToast)
     } catch (error) {
       console.error('[GoogleDriveFolderSelector] Failed to remove folder', error)
       toast({
@@ -692,28 +779,30 @@ export function GoogleDriveFolderSelector({ projectId, folderId, folderName }: G
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <Folder className="h-5 w-5 text-primary" />
-            <h3 className="text-lg font-semibold">Backup no Google Drive</h3>
-            <Badge variant="outline" className="text-xs uppercase">Opcional</Badge>
+            <h3 className="text-lg font-semibold">{config.title}</h3>
+            {config.badgeLabel && (
+              <Badge variant={config.badgeVariant ?? 'outline'} className="text-xs uppercase">
+                {config.badgeLabel}
+              </Badge>
+            )}
           </div>
-          <p className="text-sm text-muted-foreground">
-            Os criativos são salvos no Vercel Blob (primário). Configure uma pasta no Google Drive para manter uma cópia pessoal automática em <span className="font-medium">ARTES LAGOSTA</span>.
-          </p>
+          <p className="text-sm text-muted-foreground">{config.description}</p>
           {folderId && folderName ? (
             <div className="flex items-center gap-2 text-sm">
               <Badge variant="secondary">Pasta selecionada</Badge>
               <span className="font-medium">{folderName}</span>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Nenhuma pasta configurada. Somente o backup principal no Vercel está ativo.</p>
+            <p className="text-sm text-muted-foreground">Nenhuma pasta configurada no momento.</p>
           )}
         </div>
         <div className="flex flex-col gap-2">
           <Button onClick={() => setModalOpen(true)} disabled={updateSettings.isPending}>
-            {folderId ? 'Alterar pasta' : 'Selecionar pasta'}
+            {folderId ? config.changeLabel : config.selectLabel}
           </Button>
           {folderId && (
             <Button variant="ghost" onClick={handleRemove} disabled={updateSettings.isPending}>
-              Remover backup
+              {config.removeLabel}
             </Button>
           )}
         </div>
