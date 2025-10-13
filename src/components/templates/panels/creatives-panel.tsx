@@ -117,7 +117,8 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
         <div className="grid grid-cols-2 gap-3">
           {creatives.map((creative) => {
             // Usar dimensões reais do criativo
-            const { width, height } = creative
+            const width = Number.isFinite(creative.width) && creative.width > 0 ? creative.width : 1080
+            const height = Number.isFinite(creative.height) && creative.height > 0 ? creative.height : 1920
             const aspectRatio = width / height
 
             // Verificar se é um vídeo
@@ -148,8 +149,6 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                   data-pswp-width={width}
                   data-pswp-height={height}
                   data-pswp-type={isVideo ? 'video' : 'image'}
-                  target="_blank"
-                  rel="noreferrer"
                   style={{ aspectRatio }}
                   className="block overflow-hidden bg-muted"
                 >
