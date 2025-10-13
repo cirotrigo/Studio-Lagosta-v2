@@ -76,39 +76,65 @@ export async function convertWebMToMP4(
     console.log('[convertWebMToMP4] Escrevendo arquivo input.webm...')
     await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob))
 
-    // 3. Executar conversão com FFmpeg
-    // Usando codec copy para acelerar (sem recodificação)
-    // Se o WebM for VP9, isso funciona bem. Se for VP8, pode precisar de recodificação.
+    // 3. Executar conversão com FFmpeg garantindo frame rate constante
     onProgress?.(30)
     console.log('[convertWebMToMP4] Executando conversão...')
 
-    try {
-      // Tentar primeiro com copy (mais rápido)
+    const cleanupOutputFile = async () => {
+      try {
+        await ffmpeg.deleteFile('output.mp4')
+      } catch {
+        // Ignore if file does not exist
+      }
+    }
+
+    const runConversion = async (audioCodec: 'aac' | 'libmp3lame' | 'copy') => {
       await ffmpeg.exec([
         '-i',
         'input.webm',
         '-c:v',
-        'copy', // Copiar codec de vídeo sem recodificar
-        '-movflags',
-        'faststart', // Otimizar para streaming
-        'output.mp4',
-      ])
-    } catch (copyError) {
-      console.warn('[convertWebMToMP4] Copy falhou, tentando recodificação...')
-      // Se copy falhar, tentar recodificar com H.264
-      await ffmpeg.exec([
-        '-i',
-        'input.webm',
-        '-c:v',
-        'libx264', // Recodificar para H.264
+        'libx264',
         '-preset',
-        'fast', // Preset rápido
+        'fast',
         '-crf',
-        '23', // Qualidade (18-28, menor = melhor qualidade)
+        '23',
+        '-vf',
+        'fps=30',
+        '-r',
+        '30',
+        '-vsync',
+        'cfr',
+        '-pix_fmt',
+        'yuv420p',
+        '-profile:v',
+        'baseline',
+        '-level',
+        '3.0',
         '-movflags',
         'faststart',
+        '-c:a',
+        audioCodec,
+        ...(audioCodec === 'aac'
+          ? ['-b:a', '128k']
+          : audioCodec === 'libmp3lame'
+            ? ['-b:a', '192k']
+            : []),
         'output.mp4',
       ])
+    }
+
+    try {
+      await runConversion('aac')
+    } catch (aacError) {
+      console.warn('[convertWebMToMP4] Conversão com AAC falhou, tentando libmp3lame...', aacError)
+      await cleanupOutputFile()
+      try {
+        await runConversion('libmp3lame')
+      } catch (mp3Error) {
+        console.warn('[convertWebMToMP4] Conversão com MP3 falhou, tentando copiar áudio original...', mp3Error)
+        await cleanupOutputFile()
+        await runConversion('copy')
+      }
     }
 
     onProgress?.(80)

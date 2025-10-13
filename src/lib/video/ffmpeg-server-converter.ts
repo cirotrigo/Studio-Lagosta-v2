@@ -128,6 +128,9 @@ export async function convertWebMToMP4ServerSide(
           '-profile:v baseline',
           '-level 3.0',
           '-max_muxing_queue_size 1024',
+          '-vf fps=30',
+          '-r 30',
+          '-vsync cfr',
         ])
         .output(outputPath)
         .on('start', (commandLine) => {
