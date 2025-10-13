@@ -27,6 +27,7 @@ export function ImagesPanelContent() {
   const [currentFolder, setCurrentFolder] = React.useState<string | null>(null)
   const [breadcrumbs, setBreadcrumbs] = React.useState<BreadcrumbItem[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const [isApplyingMedia, setIsApplyingMedia] = React.useState(false)
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
@@ -147,6 +148,7 @@ export function ImagesPanelContent() {
   const uploadFile = React.useCallback(
     async (file: File) => {
       setIsUploading(true)
+      setIsApplyingMedia(true)
       try {
         const formData = new FormData()
         formData.append('file', file)
@@ -172,6 +174,7 @@ export function ImagesPanelContent() {
         })
       } finally {
         setIsUploading(false)
+        setIsApplyingMedia(false)
       }
     },
     [insertImageLayer, toast],
@@ -230,6 +233,7 @@ export function ImagesPanelContent() {
 
   // Import from Google Drive
   const importDriveFile = React.useCallback(async (fileId: string, fileName: string) => {
+    setIsApplyingMedia(true)
     try {
       const response = await fetch('/api/upload/google-drive', {
         method: 'POST',
@@ -252,11 +256,16 @@ export function ImagesPanelContent() {
         description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
         variant: 'destructive',
       })
+    } finally {
+      setIsApplyingMedia(false)
     }
   }, [insertImageLayer, toast])
 
   // Handle file/folder click
   const handleDriveItemClick = React.useCallback((item: GoogleDriveItem) => {
+    if (isApplyingMedia) {
+      return
+    }
     if (item.kind === 'folder') {
       // Navigate into folder
       navigateToFolder(item.id, item.name)
@@ -264,10 +273,12 @@ export function ImagesPanelContent() {
       // Import image
       importDriveFile(item.id, item.name)
     }
-  }, [navigateToFolder, importDriveFile])
+  }, [navigateToFolder, importDriveFile, isApplyingMedia])
+
+  const isBusy = isUploading || isApplyingMedia
 
   return (
-    <>
+    <div className="relative">
       <input
         ref={fileInputRef}
         type="file"
@@ -358,7 +369,8 @@ export function ImagesPanelContent() {
                     <button
                       key={item.id}
                       onClick={() => handleDriveItemClick(item)}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5"
+                      disabled={isBusy}
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isFolder ? (
                         <div className="flex h-full w-full flex-col items-center justify-center">
@@ -405,7 +417,11 @@ export function ImagesPanelContent() {
                 ? 'border-primary bg-primary/10'
                 : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
             }`}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (!isBusy) {
+                fileInputRef.current?.click()
+              }
+            }}
           >
             {isUploading ? (
               <div className="flex flex-col items-center justify-center py-8">
@@ -433,6 +449,14 @@ export function ImagesPanelContent() {
           </div>
         </TabsContent>
       </Tabs>
-    </>
+      {isBusy && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Aplicando imagem...
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

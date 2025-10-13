@@ -28,6 +28,7 @@ export function VideosPanel() {
   const [isLoadingDrive, setIsLoadingDrive] = React.useState(false)
   const [isUploading, setIsUploading] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [isApplying, setIsApplying] = React.useState(false)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -139,6 +140,7 @@ export function VideosPanel() {
 
   const importDriveFile = React.useCallback(
     async (item: GoogleDriveItem) => {
+      setIsApplying(true)
       try {
         const response = await fetch('/api/upload/google-drive', {
           method: 'POST',
@@ -161,6 +163,8 @@ export function VideosPanel() {
           description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
           variant: 'destructive',
         })
+      } finally {
+        setIsApplying(false)
       }
     },
     [insertVideoLayer, toast],
@@ -168,6 +172,9 @@ export function VideosPanel() {
 
   const handleDriveItemClick = React.useCallback(
     (item: GoogleDriveItem) => {
+      if (isApplying) {
+        return
+      }
       if (item.kind === 'folder') {
         navigateToFolder(item.id, item.name)
         return
@@ -184,7 +191,7 @@ export function VideosPanel() {
 
       void importDriveFile(item)
     },
-    [importDriveFile, navigateToFolder, toast],
+    [importDriveFile, navigateToFolder, toast, isApplying],
   )
 
   const uploadLocalVideo = React.useCallback(
@@ -208,12 +215,14 @@ export function VideosPanel() {
       }
 
       setIsUploading(true)
+      setIsApplying(true)
       try {
         const videoUrl = URL.createObjectURL(file)
         const baseName = file.name.replace(/\.[^/.]+$/, '')
         insertVideoLayer(videoUrl, baseName)
       } finally {
         setIsUploading(false)
+        setIsApplying(false)
       }
     },
     [insertVideoLayer, toast],
@@ -222,12 +231,12 @@ export function VideosPanel() {
   const handleFileChange = React.useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0]
-      if (file) {
+      if (file && !isApplying) {
         await uploadLocalVideo(file)
         event.target.value = ''
       }
     },
-    [uploadLocalVideo],
+    [uploadLocalVideo, isApplying],
   )
 
   const handleDragEnter = React.useCallback((event: React.DragEvent) => {
@@ -256,7 +265,7 @@ export function VideosPanel() {
       const files = Array.from(event.dataTransfer.files)
       const videoFile = files.find((file) => file.type.startsWith('video/'))
 
-      if (videoFile) {
+      if (videoFile && !isApplying) {
         await uploadLocalVideo(videoFile)
       } else {
         toast({
@@ -266,11 +275,13 @@ export function VideosPanel() {
         })
       }
     },
-    [uploadLocalVideo, toast],
+    [uploadLocalVideo, toast, isApplying],
   )
 
+  const isBusy = isUploading || isApplying
+
   return (
-    <>
+    <div className="relative">
       <input
         ref={fileInputRef}
         type="file"
@@ -298,6 +309,7 @@ export function VideosPanel() {
                 variant="ghost"
                 size="sm"
                 onClick={navigateBack}
+                disabled={isBusy}
                 className="h-8 w-full justify-start"
               >
                 <ArrowLeft className="mr-2 h-4 w-4" />
@@ -350,7 +362,8 @@ export function VideosPanel() {
                     <button
                       key={item.id}
                       onClick={() => handleDriveItemClick(item)}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5"
+                      disabled={isBusy}
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isFolder ? (
                         <div className="flex h-full w-full flex-col items-center justify-center">
@@ -397,7 +410,11 @@ export function VideosPanel() {
                 ? 'border-primary bg-primary/10'
                 : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
             }`}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => {
+              if (!isBusy) {
+                fileInputRef.current?.click()
+              }
+            }}
           >
             {isUploading ? (
               <div className="flex flex-col items-center justify-center py-8">
@@ -423,6 +440,14 @@ export function VideosPanel() {
           </div>
         </TabsContent>
       </Tabs>
-    </>
+      {isBusy && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Aplicando vídeo...
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
