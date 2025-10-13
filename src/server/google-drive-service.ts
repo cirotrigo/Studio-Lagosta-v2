@@ -36,11 +36,16 @@ function sanitizeProjectName(name?: string | null) {
   return slug || 'creative'
 }
 
-function buildFileName(projectName?: string | null) {
+function buildFileNameWithExtension(name?: string | null, extension = 'bin') {
+  const sanitizedExtension = extension.replace(/^\./, '') || 'bin'
   const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '')
-  const safeName = sanitizeProjectName(projectName)
+  const safeName = sanitizeProjectName(name)
   const randomSuffix = randomUUID().slice(0, 8)
-  return `${timestamp}_${safeName}_${randomSuffix}.png`
+  return `${timestamp}_${safeName}_${randomSuffix}.${sanitizedExtension}`
+}
+
+function buildFileName(projectName?: string | null) {
+  return buildFileNameWithExtension(projectName, 'png')
 }
 
 function ensureEnv(name: string): string | undefined {
@@ -183,21 +188,48 @@ export class GoogleDriveService {
     this.ensureEnabled()
 
     const artesFolderId = await this.ensureArtesLagostaFolder(projectFolderId)
-    const fileName = buildFileName(projectName)
+    return this.uploadFileToFolder({
+      buffer,
+      folderId: artesFolderId,
+      fileName: buildFileName(projectName),
+      mimeType: 'image/png',
+      makePublic: true,
+    })
+  }
 
-    const response = await this.withRetry('uploadCreativeToArtesLagosta', async () =>
+  async uploadFileToFolder({
+    buffer,
+    folderId,
+    mimeType,
+    fileName,
+    makePublic = true,
+  }: {
+    buffer: Buffer
+    folderId: string
+    mimeType: string
+    fileName?: string
+    makePublic?: boolean
+  }): Promise<GoogleDriveUploadResult> {
+    this.ensureEnabled()
+
+    const extensionFromMime = mimeType.split('/')[1]?.toLowerCase() || 'bin'
+    const sanitizedBaseName = fileName?.replace(/\.[^.]+$/, '') ?? undefined
+    const finalFileName = buildFileNameWithExtension(sanitizedBaseName, extensionFromMime)
+
+    const response = await this.withRetry('uploadFileToFolder', async () =>
       this.drive.files.create(
         {
           requestBody: {
-            name: fileName,
-            parents: [artesFolderId],
-            mimeType: 'image/png',
+            name: finalFileName,
+            parents: [folderId],
+            mimeType,
           },
           media: {
-            mimeType: 'image/png',
+            mimeType,
             body: Readable.from(buffer),
           },
           fields: 'id, webViewLink, webContentLink',
+          supportsAllDrives: true,
         },
         { timeout: UPLOAD_TIMEOUT },
       ),
@@ -208,12 +240,13 @@ export class GoogleDriveService {
       throw new Error('Google Drive did not return a file ID after upload')
     }
 
-    await this.makeFilePublic(fileId)
-    const publicUrl = this.getPublicUrl(fileId)
+    if (makePublic) {
+      await this.makeFilePublic(fileId)
+    }
 
     return {
       fileId,
-      publicUrl,
+      publicUrl: this.getPublicUrl(fileId),
       webViewLink: response.data.webViewLink ?? null,
       webContentLink: response.data.webContentLink ?? null,
     }

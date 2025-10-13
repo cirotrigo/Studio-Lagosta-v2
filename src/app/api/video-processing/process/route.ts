@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { googleDriveService } from '@/server/google-drive-service'
 import { convertWebMToMP4ServerSide } from '@/lib/video/ffmpeg-server-converter'
 
 export const runtime = 'nodejs'
@@ -25,6 +26,16 @@ async function processNextJob(): Promise<NextResponse> {
     let generationId = job.generationId ?? job.generation?.id ?? null
     let generationFieldValues: Record<string, unknown> =
       (job.generation?.fieldValues as Record<string, unknown> | undefined) ?? {}
+
+    const project = await db.project.findUnique({
+      where: { id: job.projectId },
+      select: {
+        googleDriveFolderId: true,
+        googleDriveFolderName: true,
+        googleDriveVideosFolderId: true,
+        googleDriveVideosFolderName: true,
+      },
+    })
 
     if (generationId) {
       generationFieldValues = {
@@ -150,6 +161,7 @@ async function processNextJob(): Promise<NextResponse> {
 
       let finalThumbnailUrl: string | null =
         typeof job.thumbnailUrl === 'string' ? job.thumbnailUrl : null
+      let driveBackupUrl: string | null = null
 
       if (thumbnailBuffer) {
         console.log('[Video Processor] Upload da thumbnail...')
@@ -164,6 +176,22 @@ async function processNextJob(): Promise<NextResponse> {
         typeof generationFieldValues['thumbnailUrl'] === 'string'
       ) {
         finalThumbnailUrl = generationFieldValues['thumbnailUrl'] as string
+      }
+
+      const driveFolderId = project?.googleDriveVideosFolderId ?? project?.googleDriveFolderId ?? null
+      if (driveFolderId && googleDriveService.isEnabled()) {
+        try {
+          const driveResult = await googleDriveService.uploadFileToFolder({
+            buffer: mp4Buffer,
+            folderId: driveFolderId,
+            mimeType: 'video/mp4',
+            fileName: job.videoName,
+          })
+          driveBackupUrl = driveResult.publicUrl
+          console.log('[Video Processor] Backup enviado ao Google Drive:', driveBackupUrl)
+        } catch (error) {
+          console.error('[Video Processor] Falha ao fazer backup no Google Drive:', error)
+        }
       }
 
       await db.videoProcessingJob.update({
@@ -194,6 +222,14 @@ async function processNextJob(): Promise<NextResponse> {
       if (finalThumbnailUrl) {
         completedFieldValues.thumbnailUrl = finalThumbnailUrl
       }
+      if (driveBackupUrl) {
+        completedFieldValues.driveBackupUrl = driveBackupUrl
+      }
+
+      const updatedDesignData = {
+        ...((job.designData as Record<string, unknown> | null) ?? {}),
+        ...(driveBackupUrl ? { driveBackupUrl } : {}),
+      }
 
       await persistGeneration(completedFieldValues, {
         status: 'COMPLETED',
@@ -210,6 +246,7 @@ async function processNextJob(): Promise<NextResponse> {
           progress: 100,
           completedAt,
           creditsDeducted: true,
+          designData: updatedDesignData,
         },
       })
 
