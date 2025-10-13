@@ -11,6 +11,15 @@ const nextConfig: NextConfig = {
   },
   // 禁用 Next.js 热重载，由 nodemon 处理重编译
   reactStrictMode: false,
+  experimental: {
+    serverComponentsExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
+    outputFileTracingIncludes: {
+      'app/api/video-processing/process/route.ts': [
+        './node_modules/fluent-ffmpeg/**/*',
+        './node_modules/@ffmpeg-installer/ffmpeg/**/*',
+      ],
+    },
+  },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe
   async headers() {
