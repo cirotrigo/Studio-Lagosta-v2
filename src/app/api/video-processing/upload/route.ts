@@ -4,7 +4,16 @@ import { handleUpload } from '@vercel/blob/client'
 
 export const runtime = 'nodejs'
 
-function getUploadSizeLimitBytes() {
+type AllowedUploadType = 'video' | 'thumbnail'
+
+function getUploadSizeLimitBytes(type: AllowedUploadType) {
+  if (type === 'thumbnail') {
+    const fallbackMb = 10
+    const overrideMb = Number(process.env.VIDEO_THUMBNAIL_MAX_MB || fallbackMb)
+    const mb = Number.isFinite(overrideMb) && overrideMb > 0 ? overrideMb : fallbackMb
+    return Math.max(1, mb) * 1024 * 1024
+  }
+
   const fallbackMb = Number(process.env.BLOB_MAX_SIZE_MB || '200')
   const overrideMb = Number(process.env.VIDEO_UPLOAD_MAX_MB || fallbackMb)
   const mb = Number.isFinite(overrideMb) && overrideMb > 0 ? overrideMb : fallbackMb
@@ -50,21 +59,31 @@ export async function POST(request: Request) {
         }
 
         const normalizedPath = normalizePathname(pathname)
-        const expectedPrefix = `video-processing/${clerkUserId}/`
+        const videoPrefix = `video-processing/${clerkUserId}/`
+        const thumbnailPrefix = `video-thumbnails/${clerkUserId}/`
 
-        if (!normalizedPath.startsWith(expectedPrefix)) {
+        let uploadType: AllowedUploadType | null = null
+        if (normalizedPath.startsWith(videoPrefix)) {
+          uploadType = 'video'
+        } else if (normalizedPath.startsWith(thumbnailPrefix)) {
+          uploadType = 'thumbnail'
+        }
+
+        if (!uploadType) {
           console.warn('[VideoUpload] Upload path rejected:', {
             normalizedPath,
-            expectedPrefix,
+            expectedPrefixes: [videoPrefix, thumbnailPrefix],
             clerkUserId,
           })
           throw new Error('Invalid upload path')
         }
 
-        const maximumSizeInBytes = getUploadSizeLimitBytes()
+        const maximumSizeInBytes = getUploadSizeLimitBytes(uploadType)
+        const allowedContentTypes =
+          uploadType === 'thumbnail' ? ['image/jpeg', 'image/png'] : ['video/webm']
 
         return {
-          allowedContentTypes: ['video/webm'],
+          allowedContentTypes,
           maximumSizeInBytes,
           tokenPayload: clientPayload,
         }

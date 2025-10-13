@@ -4,6 +4,8 @@ import { put } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { convertWebMToMP4ServerSide } from '@/lib/video/ffmpeg-server-converter'
 
+export const runtime = 'nodejs'
+
 /**
  * POST /api/video-processing/process
  * Processa o próximo job PENDING na fila (chamado por cron ou manualmente)
@@ -245,16 +247,29 @@ export async function POST(request: Request) {
         },
       })
 
+      const fallbackThumbnail =
+        job.thumbnailUrl ||
+        (typeof generationFieldValues['thumbnailUrl'] === 'string'
+          ? (generationFieldValues['thumbnailUrl'] as string)
+          : null)
+
       await persistGeneration(
         {
           progress: 100,
           errorMessage,
         },
-        { status: 'FAILED' }
+        {
+          status: 'FAILED',
+          resultUrl: fallbackThumbnail ?? null,
+        }
       )
 
       return NextResponse.json(
-        { error: 'Failed to process video', jobId: job.id },
+        {
+          error: 'Failed to process video',
+          jobId: job.id,
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
         { status: 500 }
       )
     }

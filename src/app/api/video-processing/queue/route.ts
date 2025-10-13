@@ -4,22 +4,25 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
+import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { put } from '@vercel/blob'
+
+export const runtime = 'nodejs'
 
 const queueVideoSchema = z
   .object({
-    templateId: z.number(),
-    projectId: z.number(),
+    templateId: z.coerce.number().int(),
+    projectId: z.coerce.number().int(),
     videoName: z.string(),
-    videoDuration: z.number().positive(),
-    videoWidth: z.number().positive(),
-    videoHeight: z.number().positive(),
+    videoDuration: z.coerce.number().positive(),
+    videoWidth: z.coerce.number().positive(),
+    videoHeight: z.coerce.number().positive(),
     webmBlob: z.string().optional(), // Base64 encoded WebM video (legacy fallback)
     webmBlobUrl: z.string().url().optional(), // Direct Vercel Blob URL (preferred)
-    webmBlobSize: z.number().int().positive().optional(), // Size in bytes when using webmBlobUrl
+    webmBlobSize: z.coerce.number().int().positive().optional(), // Size in bytes when using webmBlobUrl
     thumbnailBlob: z.string().optional(), // Base64 encoded thumbnail (fallback)
     thumbnailBlobUrl: z.string().url().optional(), // Direct Blob URL for thumbnail
-    thumbnailBlobSize: z.number().int().positive().optional(), // Size in bytes for thumbnail blob URL
+    thumbnailBlobSize: z.coerce.number().int().positive().optional(), // Size in bytes for thumbnail blob URL
     designData: z.any(), // Template design data
   })
   .refine(
@@ -63,12 +66,18 @@ export async function POST(request: Request) {
     // 2. Validar créditos ANTES de adicionar à fila
     await validateCreditsForFeature(clerkUserId, 'video_export')
 
-    const project = await db.project.findUnique({
-      where: { id: body.projectId },
+    const project = await db.project.findFirst({
+      where: {
+        id: body.projectId,
+        OR: [
+          { userId: clerkUserId },
+          { userId: user.id },
+        ],
+      },
       select: { id: true, userId: true, name: true },
     })
 
-    if (!project || project.userId !== user.id) {
+    if (!project) {
       return NextResponse.json(
         { error: 'Projeto não encontrado ou não pertence ao usuário' },
         { status: 404 }
@@ -245,10 +254,26 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[Queue Video] Erro ao enfileirar vídeo:', error)
 
-    if (error instanceof Error && error.message.includes('créditos insuficientes')) {
+    if (error instanceof InsufficientCreditsError) {
       return NextResponse.json(
-        { error: 'Créditos insuficientes para processar vídeo' },
+        {
+          error: 'Créditos insuficientes para processar vídeo',
+          details: {
+            required: error.required,
+            available: error.available,
+          },
+        },
         { status: 402 }
+      )
+    }
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        {
+          error: 'Dados inválidos para enfileirar vídeo',
+          details: error.issues,
+        },
+        { status: 400 }
       )
     }
 

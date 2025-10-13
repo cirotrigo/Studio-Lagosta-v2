@@ -233,7 +233,30 @@ export function VideoExportQueueButton() {
       const json = await parseJsonResponse(response)
 
       if (!response.ok) {
-        throw new Error(json?.error || 'Falha ao adicionar vídeo à fila')
+        const extractDetail = (value: unknown): string | null => {
+          if (!value) return null
+          if (typeof value === 'string') return value
+          try {
+            return JSON.stringify(value)
+          } catch {
+            return null
+          }
+        }
+
+        const serverMessage =
+          (json && (json.error || json.message)) ||
+          (typeof json === 'string' ? json : null)
+        const detailMessage =
+          extractDetail(json?.details) ||
+          extractDetail(json?.detail) ||
+          extractDetail(json?.errors)
+
+        const combinedMessage =
+          serverMessage && detailMessage && !detailMessage.includes(serverMessage)
+            ? `${serverMessage}: ${detailMessage}`
+            : serverMessage || detailMessage
+
+        throw new Error(combinedMessage || 'Falha ao adicionar vídeo à fila')
       }
 
       const { jobId, generationId } = json as { jobId?: string; generationId?: string }
@@ -255,6 +278,24 @@ export function VideoExportQueueButton() {
           })
         )
       }
+
+      // Aciona o processamento imediato do próximo job na fila (ambiente local/dev)
+      void fetch('/api/video-processing/process', {
+        method: 'POST',
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            const errorBody = await response.json().catch(() => ({}))
+            const message =
+              errorBody?.details ||
+              errorBody?.error ||
+              `Status ${response.status}`
+            console.warn('[VideoExportQueue] Process trigger failed:', message)
+          }
+        })
+        .catch((triggerError) => {
+          console.warn('[VideoExportQueue] Falha ao acionar processamento imediato:', triggerError)
+        })
 
       // 5. Iniciar polling do status
       pollJobStatus(jobId, generationId, typeof projectId === 'number' ? projectId : undefined)

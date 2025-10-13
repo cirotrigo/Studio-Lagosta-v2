@@ -606,6 +606,17 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
             const meta = getGenerationMeta(generation)
 
+            const previewPayload =
+              meta.assetUrl ?? meta.displayUrl
+                ? {
+                    id: generation.id,
+                    url: (meta.assetUrl ?? meta.displayUrl) as string,
+                    templateName: templateLabel,
+                    isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                    posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
+                  }
+                : null
+
             return (
               <GalleryItem
                 key={generation.id}
@@ -627,6 +638,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}
+                onPreview={() => {
+                  if (previewPayload) {
+                    setPreview(previewPayload)
+                  }
+                }}
                 onDriveOpen={
                   generation.googleDriveBackupUrl
                     ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')

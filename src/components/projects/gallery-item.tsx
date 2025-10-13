@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils'
 
 interface GalleryItemProps {
   id: string
-  displayUrl: string | null
+  displayUrl?: string | null
+  imageUrl?: string | null
   assetUrl?: string | null
   title: string
   date: string
@@ -24,6 +25,7 @@ interface GalleryItemProps {
   onDownload: () => void
   onDelete: () => void
   onDriveOpen?: () => void
+  onPreview?: () => void
   index: number
   pswpWidth: number
   pswpHeight: number
@@ -32,6 +34,7 @@ interface GalleryItemProps {
 export function GalleryItem({
   id,
   displayUrl,
+  imageUrl,
   assetUrl,
   title,
   date,
@@ -46,6 +49,7 @@ export function GalleryItem({
   onDownload,
   onDelete,
   onDriveOpen,
+  onPreview,
   index,
   pswpWidth,
   pswpHeight,
@@ -56,8 +60,9 @@ export function GalleryItem({
   const [imageDimensions, setImageDimensions] = React.useState({ width: pswpWidth, height: pswpHeight })
   const ref = React.useRef<HTMLDivElement>(null)
 
-  const resolvedAssetUrl = assetUrl ?? (status === 'COMPLETED' ? displayUrl : null)
-  const effectiveDisplayUrl = displayUrl ?? undefined
+  const primaryDisplayUrl = displayUrl ?? imageUrl ?? null
+  const resolvedAssetUrl = assetUrl ?? (status === 'COMPLETED' ? primaryDisplayUrl : null)
+  const effectiveDisplayUrl = primaryDisplayUrl ?? undefined
 
   const isVideoAsset = React.useMemo(() => {
     if (typeof isVideo === 'boolean') return isVideo
@@ -190,22 +195,28 @@ export function GalleryItem({
         {date}
       </div>
 
-      {/* Container da imagem/vídeo - Link para PhotoSwipe */}
+      {/* Container da imagem/vídeo */}
       <a
         href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
         data-pswp-width={imageDimensions.width}
         data-pswp-height={imageDimensions.height}
         data-pswp-type={resolvedAssetUrl && isVideoAsset ? 'video' : 'image'}
-        target={!resolvedAssetUrl || status !== 'COMPLETED' ? undefined : '_blank'}
+        target={
+          !resolvedAssetUrl || status !== 'COMPLETED' || isVideoAsset ? undefined : '_blank'
+        }
         rel="noopener noreferrer"
         className={cn(
           'relative block bg-muted overflow-hidden w-full h-full',
           resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
         )}
         onClick={(e) => {
-          if (!resolvedAssetUrl || status !== 'COMPLETED') {
+          const shouldHandlePreview =
+            isVideoAsset || !resolvedAssetUrl || status !== 'COMPLETED'
+
+          if (shouldHandlePreview) {
             e.preventDefault()
             e.stopPropagation()
+            onPreview?.()
             return
           }
           console.log('Gallery item clicked:', {
@@ -305,6 +316,7 @@ export function GalleryItem({
               e.preventDefault()
               e.stopPropagation()
               if (status !== 'COMPLETED' || !resolvedAssetUrl) {
+                onPreview?.()
                 return
               }
               onDownload()

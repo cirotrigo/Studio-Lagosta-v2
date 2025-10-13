@@ -204,10 +204,17 @@ export async function exportVideoWithLayers(
     const videoDuration =
       duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
 
-    // Posicionar vídeo no início
+    // Posicionar vídeo no início e garantir que o primeiro frame está renderizado
     videoElement.currentTime = 0
     await new Promise<void>((resolve) => {
-      videoElement.addEventListener('seeked', () => resolve(), { once: true })
+      const handleSeeked = () => {
+        resolve()
+      }
+      if (videoElement.readyState >= 2 && videoElement.currentTime === 0) {
+        resolve()
+      } else {
+        videoElement.addEventListener('seeked', handleSeeked, { once: true })
+      }
     })
 
     onProgress?.({ phase: 'preparing', progress: 30 })
@@ -230,10 +237,13 @@ export async function exportVideoWithLayers(
       throw new Error('Falha ao criar contexto do canvas offscreen')
     }
 
-    // Preencher fundo branco (ou usar cor de fundo do design)
+    // Preencher fundo branco (ou usar cor de fundo do design) com o frame inicial
+    videoNode.getLayer()?.batchDraw()
+    stage.batchDraw()
+    const initialSnapshot = stage.toCanvas()
     offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
     offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
-
+    offscreenCtx.drawImage(initialSnapshot, 0, 0)
 
     // Verificar suporte a MediaRecorder (sempre WebM)
     const mimeType = 'video/webm;codecs=vp9'
@@ -287,14 +297,22 @@ export async function exportVideoWithLayers(
     // Aguardar start com timeout
     await new Promise((resolve) => setTimeout(resolve, 200))
 
-    // Posicionar vídeo no início e reproduzir
+    // Posicionar vídeo no início (novamente após start) e reproduzir
     videoElement.currentTime = 0
 
     try {
       await videoElement.play()
     } catch (error) {
-      console.error('[Video Export] Erro ao reproduzir vídeo:', error)
-      throw new Error('Falha ao reproduzir vídeo: ' + (error instanceof Error ? error.message : 'erro desconhecido'))
+      const isAbortError =
+        error instanceof DOMException && (error.name === 'AbortError' || error.code === DOMException.ABORT_ERR)
+      if (isAbortError) {
+        console.warn('[Video Export] Reprodução interrompida imediatamente após play(). Prosseguindo mesmo assim.')
+      } else {
+        console.error('[Video Export] Erro ao reproduzir vídeo:', error)
+        throw new Error(
+          'Falha ao reproduzir vídeo: ' + (error instanceof Error ? error.message : 'erro desconhecido')
+        )
+      }
     }
 
     // Loop de animação para copiar o stage para o canvas offscreen frame por frame
@@ -304,6 +322,7 @@ export async function exportVideoWithLayers(
 
     const animationLoop = () => {
       // 1. Forçar redraw do stage para atualizar com frame atual do vídeo
+      videoNode.getLayer()?.batchDraw()
       stage.batchDraw()
 
       // 2. Copiar o stage renderizado para o canvas offscreen
@@ -434,6 +453,23 @@ export async function generateVideoThumbnail(
       video.addEventListener('loadeddata', () => resolve(), { once: true })
     }
   })
+
+  // Garantir que o primeiro frame está renderizado antes de capturar o thumbnail
+  try {
+    video.currentTime = 0
+  } catch (error) {
+    console.warn('[generateVideoThumbnail] Não foi possível definir currentTime para 0:', error)
+  }
+
+  await new Promise<void>((resolve) => {
+    video.addEventListener('seeked', () => resolve(), { once: true })
+    if (video.readyState >= 2 && video.currentTime === 0) {
+      resolve()
+    }
+  })
+
+  videoNode.getLayer()?.batchDraw()
+  stage.batchDraw()
 
   // Gerar thumbnail do stage atual
   const dataURL = stage.toDataURL({

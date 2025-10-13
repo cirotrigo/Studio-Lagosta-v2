@@ -1,18 +1,62 @@
 import ffmpeg from 'fluent-ffmpeg'
+import { existsSync } from 'fs'
 import { readFile, writeFile, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 
-// Configura o caminho binário do FFmpeg
-// A Vercel já tem FFmpeg pré-instalado, então tentamos usar o instalador
-// como fallback para ambientes locais
-try {
-  const ffmpegPath = require('@ffmpeg-installer/ffmpeg')
-  ffmpeg.setFfmpegPath(ffmpegPath.path)
-} catch {
-  // Se o instalador não estiver disponível, usa o FFmpeg do sistema
-  // (Vercel tem FFmpeg pré-instalado em /usr/bin/ffmpeg)
-  console.log('[FFmpeg] Usando FFmpeg do sistema')
+// Configura o caminho binário do FFmpeg tentando múltiplos candidatos
+const resolveInstallerPath = (): string | null => {
+  try {
+    const dynamicRequire: NodeRequire =
+      typeof module !== 'undefined' && typeof module.require === 'function'
+        ? module.require
+        : eval('require')
+    const installer = dynamicRequire('@ffmpeg-installer/ffmpeg')
+    const possiblePaths = [
+      installer?.path,
+      installer?.default?.path,
+      installer?.ffmpegPath,
+      installer?.default?.ffmpegPath,
+    ].filter(Boolean) as string[]
+    for (const installerPath of possiblePaths) {
+      if (installerPath && existsSync(installerPath)) {
+        return installerPath
+      }
+    }
+  } catch (error) {
+    console.warn('[FFmpeg] Não foi possível carregar @ffmpeg-installer/ffmpeg dinamicamente:', error)
+  }
+  return null
+}
+
+const candidatePaths = [
+  process.env.FFMPEG_PATH,
+  resolveInstallerPath(),
+  '/usr/bin/ffmpeg',
+  '/usr/local/bin/ffmpeg',
+  '/opt/homebrew/bin/ffmpeg',
+].filter(Boolean) as string[]
+
+let configuredFfmpegPath: string | null = null
+
+for (const candidate of candidatePaths) {
+  try {
+    console.log('[FFmpeg] Testando caminho:', candidate)
+    if (existsSync(candidate)) {
+      ffmpeg.setFfmpegPath(candidate)
+      configuredFfmpegPath = candidate
+      console.log('[FFmpeg] Usando binário em:', candidate)
+      break
+    }
+  } catch (error) {
+    console.warn('[FFmpeg] Falha ao testar caminho', candidate, error)
+  }
+}
+
+if (!configuredFfmpegPath) {
+  console.warn('[FFmpeg] Nenhum binário encontrado automaticamente. Usando resolução padrão do sistema.')
+} else if (!process.env.FFMPEG_PATH) {
+  process.env.FFMPEG_PATH = configuredFfmpegPath
 }
 
 export interface ConversionProgress {
@@ -161,7 +205,7 @@ export async function convertWebMToMP4ServerSide(
     throw new Error(
       `Falha ao converter vídeo: ${
         error instanceof Error ? error.message : 'Erro desconhecido'
-      }`
+      }. Caminho configurado: ${configuredFfmpegPath ?? 'nenhum'}. Candidatos testados: ${candidatePaths.join(', ')}`
     )
   } finally {
     console.log('[FFmpeg Server] Limpando arquivos temporários...')
