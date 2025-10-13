@@ -2,100 +2,16 @@ import { existsSync } from 'fs'
 import { readFile, writeFile, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
+import { spawn } from 'child_process'
 
-type FluentFfmpegModule = typeof import('fluent-ffmpeg')
-
-let ffmpegModule: FluentFfmpegModule | null = null
-let configuredFfmpegPath: string | null = null
-let attemptedConfiguration = false
-let lastTestedCandidates: string[] = []
-
-const getDynamicRequire = (): NodeRequire => {
-  return typeof module !== 'undefined' && typeof module.require === 'function'
-    ? module.require.bind(module)
-    : eval('require')
-}
-
-const getFfmpeg = (): FluentFfmpegModule => {
-  if (!ffmpegModule) {
-    const dynamicRequire = getDynamicRequire()
-    ffmpegModule = dynamicRequire('fluent-ffmpeg') as FluentFfmpegModule
-  }
-  return ffmpegModule
-}
-
-const resolveInstallerPath = (): string | null => {
-  try {
-    const dynamicRequire = getDynamicRequire()
-    const installer = dynamicRequire('@ffmpeg-installer/ffmpeg') as {
-      path?: string
-      ffmpegPath?: string
-      default?: { path?: string; ffmpegPath?: string }
-    }
-
-    const possiblePaths = [
-      installer?.path,
-      installer?.ffmpegPath,
-      installer?.default?.path,
-      installer?.default?.ffmpegPath,
-    ].filter(Boolean) as string[]
-
-    for (const installerPath of possiblePaths) {
-      if (installerPath && existsSync(installerPath)) {
-        return installerPath
-      }
-    }
-  } catch (error) {
-    console.warn('[FFmpeg] Não foi possível carregar @ffmpeg-installer/ffmpeg dinamicamente:', error)
-  }
-  return null
-}
-
-const ensureFfmpegConfigured = () => {
-  if (attemptedConfiguration) {
-    return
-  }
-  attemptedConfiguration = true
-
-  const candidatePaths = [
-    process.env.FFMPEG_PATH,
-    resolveInstallerPath(),
-    '/usr/bin/ffmpeg',
-    '/usr/local/bin/ffmpeg',
-    '/opt/homebrew/bin/ffmpeg',
-  ].filter(Boolean) as string[]
-
-  lastTestedCandidates = candidatePaths
-
-  for (const candidate of candidatePaths) {
-    try {
-      console.log('[FFmpeg] Testando caminho:', candidate)
-      if (candidate && existsSync(candidate)) {
-        getFfmpeg().setFfmpegPath(candidate)
-        configuredFfmpegPath = candidate
-        console.log('[FFmpeg] Usando binário em:', candidate)
-        break
-      }
-    } catch (error) {
-      console.warn('[FFmpeg] Falha ao testar caminho', candidate, error)
-    }
-  }
-
-  if (!configuredFfmpegPath) {
-    console.warn('[FFmpeg] Nenhum binário encontrado automaticamente. Usando resolução padrão do sistema.')
-  } else if (!process.env.FFMPEG_PATH) {
-    process.env.FFMPEG_PATH = configuredFfmpegPath
-  }
-}
-
-export interface ConversionProgress {
+export type ConversionProgress = {
   percent: number
   currentFps: number
   targetSize: string
   timemark: string
 }
 
-export interface ConversionOptions {
+export type ConversionOptions = {
   preset?:
     | 'ultrafast'
     | 'superfast'
@@ -108,6 +24,139 @@ export interface ConversionOptions {
     | 'veryslow'
   crf?: number
   generateThumbnail?: boolean
+  durationSeconds?: number
+}
+
+let cachedFfmpegPath: string | null = null
+let attemptedResolution = false
+let lastCandidatePaths: string[] = []
+
+async function resolveInstallerPath(): Promise<string | null> {
+  try {
+    const installer = await import('@ffmpeg-installer/ffmpeg')
+    const possible = [
+      (installer as { path?: string }).path,
+      (installer as { ffmpegPath?: string }).ffmpegPath,
+      (installer as { default?: { path?: string; ffmpegPath?: string } }).default?.path,
+      (installer as { default?: { path?: string; ffmpegPath?: string } }).default?.ffmpegPath,
+    ].filter(Boolean) as string[]
+
+    for (const candidate of possible) {
+      if (candidate && existsSync(candidate)) {
+        return candidate
+      }
+    }
+  } catch (error) {
+    console.warn('[FFmpeg] Não foi possível carregar @ffmpeg-installer/ffmpeg dinamicamente:', error)
+  }
+  return null
+}
+
+async function ensureFfmpegPath(): Promise<string> {
+  if (cachedFfmpegPath) {
+    return cachedFfmpegPath
+  }
+
+  if (!attemptedResolution) {
+    attemptedResolution = true
+    const installerPath = await resolveInstallerPath()
+
+    const candidates = [
+      process.env.FFMPEG_PATH,
+      installerPath,
+      '/usr/bin/ffmpeg',
+      '/usr/local/bin/ffmpeg',
+      '/opt/homebrew/bin/ffmpeg',
+    ].filter(Boolean) as string[]
+
+    lastCandidatePaths = candidates
+
+    for (const candidate of candidates) {
+      try {
+        console.log('[FFmpeg] Testando caminho:', candidate)
+        if (candidate && existsSync(candidate)) {
+          cachedFfmpegPath = candidate
+          break
+        }
+      } catch (error) {
+        console.warn('[FFmpeg] Falha ao testar caminho', candidate, error)
+      }
+    }
+
+    if (cachedFfmpegPath) {
+      console.log('[FFmpeg] Usando binário em:', cachedFfmpegPath)
+      if (!process.env.FFMPEG_PATH) {
+        process.env.FFMPEG_PATH = cachedFfmpegPath
+      }
+    } else {
+      console.warn('[FFmpeg] Nenhum binário encontrado automaticamente.')
+    }
+  }
+
+  if (!cachedFfmpegPath) {
+    throw new Error(
+      `FFmpeg não encontrado. Candidatos testados: ${
+        lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
+      }`,
+    )
+  }
+
+  return cachedFfmpegPath
+}
+
+function runFfmpegCommand(
+  args: string[],
+  {
+    onStdout,
+    onStderr,
+  }: {
+    onStdout?: (line: string) => void
+    onStderr?: (line: string) => void
+  } = {},
+): Promise<void> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const ffmpegPath = await ensureFfmpegPath()
+      const ffmpegProcess = spawn(ffmpegPath, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      })
+
+      ffmpegProcess.stdout.setEncoding('utf-8')
+      ffmpegProcess.stderr.setEncoding('utf-8')
+
+      ffmpegProcess.stdout.on('data', (chunk: string) => {
+        chunk
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .forEach((line) => onStdout?.(line))
+      })
+
+      let stderrOutput = ''
+      ffmpegProcess.stderr.on('data', (chunk: string) => {
+        stderrOutput += chunk
+        chunk
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .forEach((line) => onStderr?.(line))
+      })
+
+      ffmpegProcess.on('error', (error) => {
+        reject(new Error(`Falha ao executar FFmpeg: ${error instanceof Error ? error.message : String(error)}`))
+      })
+
+      ffmpegProcess.on('close', (code) => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(`FFmpeg retornou código ${code}. Log: ${stderrOutput}`))
+        }
+      })
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error(String(error)))
+    }
+  })
 }
 
 export async function convertWebMToMP4ServerSide(
@@ -119,14 +168,13 @@ export async function convertWebMToMP4ServerSide(
     preset = 'fast',
     crf = 23,
     generateThumbnail = true,
+    durationSeconds,
   } = options
 
   const timestamp = Date.now()
   const inputPath = join(tmpdir(), `input-${timestamp}.webm`)
   const outputPath = join(tmpdir(), `output-${timestamp}.mp4`)
   const thumbnailPath = join(tmpdir(), `thumbnail-${timestamp}.jpg`)
-
-  ensureFfmpegConfigured()
 
   console.log('[FFmpeg Server] Iniciando conversão...')
   console.log('[FFmpeg Server] Input:', inputPath)
@@ -140,71 +188,82 @@ export async function convertWebMToMP4ServerSide(
       'MB',
     )
 
-    await new Promise<void>((resolve, reject) => {
-      const command = getFfmpeg()(inputPath)
-        .videoCodec('libx264')
-        .audioCodec('aac')
-        .outputOptions([
-          `-preset ${preset}`,
-          `-crf ${crf}`,
-          '-pix_fmt yuv420p',
-          '-movflags +faststart',
-          '-profile:v baseline',
-          '-level 3.0',
-          '-max_muxing_queue_size 1024',
-          '-vf fps=30',
-          '-r 30',
-          '-vsync cfr',
-        ])
-        .output(outputPath)
-        .on('start', (commandLine) => {
-          console.log('[FFmpeg Server] Comando:', commandLine)
-        })
-        .on('progress', (progress) => {
-          console.log(`[FFmpeg Server] Progresso: ${progress.percent?.toFixed(1)}%`)
-          onProgress?.({
-            percent: progress.percent || 0,
-            currentFps: progress.currentFps || 0,
-            targetSize:
-              progress.targetSize !== undefined && progress.targetSize !== null
-                ? String(progress.targetSize)
-                : '0KB',
-            timemark: progress.timemark || '00:00:00',
-          })
-        })
-        .on('end', () => {
-          console.log('[FFmpeg Server] Conversão concluída!')
-          resolve()
-        })
-        .on('error', (err, stdout, stderr) => {
-          console.error('[FFmpeg Server] Erro:', err.message)
-          console.error('[FFmpeg Server] stderr:', stderr)
-          reject(new Error(`FFmpeg falhou: ${err.message}`))
-        })
-
-      command.run()
-    })
+    await runFfmpegCommand(
+      [
+        '-y',
+        '-i',
+        inputPath,
+        '-c:v',
+        'libx264',
+        '-preset',
+        preset,
+        '-crf',
+        String(crf),
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        '-profile:v',
+        'baseline',
+        '-level',
+        '3.0',
+        '-max_muxing_queue_size',
+        '1024',
+        '-vf',
+        'fps=30',
+        '-r',
+        '30',
+        '-vsync',
+        'cfr',
+        '-c:a',
+        'aac',
+        '-progress',
+        'pipe:1',
+        '-nostats',
+        outputPath,
+      ],
+      {
+        onStdout: (line) => {
+          if (line.startsWith('out_time_ms=') && durationSeconds) {
+            const outTimeMicro = Number(line.split('=')[1])
+            if (Number.isFinite(outTimeMicro)) {
+              const percent = Math.min(
+                100,
+                (outTimeMicro / (durationSeconds * 1_000_000)) * 100,
+              )
+              onProgress?.({
+                percent,
+                currentFps: 0,
+                targetSize: '0',
+                timemark: '',
+              })
+            }
+          }
+        },
+        onStderr: (line) => {
+          console.log('[FFmpeg Server]', line)
+        },
+      },
+    )
 
     let thumbnailBuffer: Buffer | undefined
     if (generateThumbnail) {
       console.log('[FFmpeg Server] Gerando thumbnail...')
-      await new Promise<void>((resolve, reject) => {
-        getFfmpeg()(outputPath)
-          .screenshots({
-            count: 1,
-            timemarks: ['0'],
-            filename: basename(thumbnailPath),
-            folder: dirname(thumbnailPath),
-          })
-          .on('end', () => {
-            console.log('[FFmpeg Server] Thumbnail gerado!')
-            resolve()
-          })
-          .on('error', (err) => {
-            console.error('[FFmpeg Server] Erro ao gerar thumbnail:', err.message)
-            reject(new Error(`Falha ao gerar thumbnail: ${err.message}`))
-          })
-      })
+      await runFfmpegCommand(
+        [
+          '-y',
+          '-i',
+          outputPath,
+          '-frames:v',
+          '1',
+          '-q:v',
+          '2',
+          thumbnailPath,
+        ],
+        {
+          onStderr: (line) => console.log('[FFmpeg Server][Thumbnail]', line),
+        },
+      )
 
       try {
         thumbnailBuffer = await readFile(thumbnailPath)
@@ -224,7 +283,9 @@ export async function convertWebMToMP4ServerSide(
     throw new Error(
       `Falha ao converter vídeo: ${
         error instanceof Error ? error.message : 'Erro desconhecido'
-      }. Caminho configurado: ${configuredFfmpegPath ?? 'nenhum'}. Candidatos testados: ${lastTestedCandidates.join(', ')}`,
+      }. Caminho configurado: ${cachedFfmpegPath ?? 'nenhum'}. Candidatos testados: ${
+        lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
+      }`,
     )
   } finally {
     console.log('[FFmpeg Server] Limpando arquivos temporários...')
@@ -237,6 +298,5 @@ export async function convertWebMToMP4ServerSide(
 }
 
 export function isFFmpegAvailable(): boolean {
-  ensureFfmpegConfigured()
-  return configuredFfmpegPath !== null || Boolean(resolveInstallerPath())
+  return Boolean(cachedFfmpegPath)
 }

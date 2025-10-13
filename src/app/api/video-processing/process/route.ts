@@ -134,6 +134,7 @@ async function processNextJob(): Promise<NextResponse> {
           preset: 'fast',
           crf: 23,
           generateThumbnail: true,
+          durationSeconds: job.videoDuration,
         },
       )
 
