@@ -6,16 +6,8 @@ import { convertWebMToMP4ServerSide } from '@/lib/video/ffmpeg-server-converter'
 
 export const runtime = 'nodejs'
 
-/**
- * POST /api/video-processing/process
- * Processa o próximo job PENDING na fila (chamado por cron ou manualmente)
- *
- * IMPORTANTE: Esta API deve ser chamada por um cron job (ex: Vercel Cron)
- * ou manualmente para processar a fila de vídeos
- */
-export async function POST(request: Request) {
+async function processNextJob(): Promise<NextResponse> {
   try {
-    // 1. Buscar o próximo job PENDING (FIFO)
     const job = await db.videoProcessingJob.findFirst({
       where: { status: 'PENDING' },
       orderBy: { createdAt: 'asc' },
@@ -82,7 +74,7 @@ export async function POST(request: Request) {
         status?: 'PROCESSING' | 'COMPLETED' | 'FAILED'
         resultUrl?: string | null
         completedAt?: Date
-      }
+      },
     ) => {
       if (!generationId) return
       generationFieldValues = { ...generationFieldValues, ...partialFieldValues }
@@ -97,7 +89,6 @@ export async function POST(request: Request) {
       })
     }
 
-    // 2. Marcar job como PROCESSING
     await db.videoProcessingJob.update({
       where: { id: job.id },
       data: {
@@ -112,17 +103,15 @@ export async function POST(request: Request) {
         progress: 10,
         processingStartedAt: new Date().toISOString(),
       },
-      { status: 'PROCESSING' }
+      { status: 'PROCESSING' },
     )
 
     try {
-      // 3. Baixar WebM do Vercel Blob
       console.log('[Video Processor] Baixando WebM:', job.webmBlobUrl)
       const webmResponse = await fetch(job.webmBlobUrl)
       const webmArrayBuffer = await webmResponse.arrayBuffer()
       const webmBuffer = Buffer.from(webmArrayBuffer)
 
-      // Atualizar progresso
       await db.videoProcessingJob.update({
         where: { id: job.id },
         data: { progress: 20 },
@@ -145,12 +134,11 @@ export async function POST(request: Request) {
           preset: 'fast',
           crf: 23,
           generateThumbnail: true,
-        }
+        },
       )
 
       console.log('[Video Processor] Conversão concluída!')
 
-      // 5. Upload do MP4 resultante
       console.log('[Video Processor] Upload do MP4...')
       const mp4Filename = `video-exports/${job.clerkUserId}/${Date.now()}-${job.videoName}.mp4`
 
@@ -183,7 +171,6 @@ export async function POST(request: Request) {
       })
       await persistGeneration({ progress: 85 })
 
-      // 6. Deduzir créditos se ainda não foram deduzidos
       if (!job.creditsDeducted) {
         console.log('[Video Processor] Deduzindo créditos...')
         await deductCreditsForFeature({
@@ -213,7 +200,6 @@ export async function POST(request: Request) {
         completedAt,
       })
 
-      // 8. Marcar job como COMPLETED
       await db.videoProcessingJob.update({
         where: { id: job.id },
         data: {
@@ -235,7 +221,6 @@ export async function POST(request: Request) {
         thumbnailUrl: finalThumbnailUrl ?? undefined,
       })
     } catch (error) {
-      // Marcar job como FAILED em caso de erro
       console.error('[Video Processor] Erro ao processar job:', error)
       const errorMessage = error instanceof Error ? error.message : 'Unknown error'
 
@@ -261,7 +246,7 @@ export async function POST(request: Request) {
         {
           status: 'FAILED',
           resultUrl: fallbackThumbnail ?? null,
-        }
+        },
       )
 
       return NextResponse.json(
@@ -270,11 +255,19 @@ export async function POST(request: Request) {
           jobId: job.id,
           details: error instanceof Error ? error.message : 'Unknown error',
         },
-        { status: 500 }
+        { status: 500 },
       )
     }
   } catch (error) {
     console.error('[Video Processor] Erro geral:', error)
     return NextResponse.json({ error: 'Processing failed' }, { status: 500 })
   }
+}
+
+export async function POST(_request: Request) {
+  return processNextJob()
+}
+
+export async function GET() {
+  return processNextJob()
 }
