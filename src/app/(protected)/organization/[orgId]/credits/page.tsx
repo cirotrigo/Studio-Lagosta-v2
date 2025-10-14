@@ -18,10 +18,13 @@ import {
   useOrganizationCreditsUsage,
 } from "@/hooks/use-organizations"
 import { useToast } from "@/hooks/use-toast"
+import { useParams } from "next/navigation"
 
-export default function OrganizationCreditsPage({ params }: { params: { orgId: string } }) {
+export default function OrganizationCreditsPage() {
+  const params = useParams<{ orgId: string }>()
+  const orgId = params.orgId
   const { organization, membership, isLoaded } = useOrganization()
-  const isActiveOrganization = organization?.id === params.orgId
+  const isActiveOrganization = organization?.id === orgId
   const isAdmin = membership?.role === "org:admin"
   const { toast } = useToast()
   const [amount, setAmount] = useState("100")
@@ -41,7 +44,7 @@ export default function OrganizationCreditsPage({ params }: { params: { orgId: s
     breadcrumbs: [
       { label: "Início", href: "/dashboard" },
       { label: "Organizações", href: "/organization" },
-      { label: organization?.name ?? "Organização", href: `/organization/${params.orgId}` },
+      { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Créditos" },
     ],
   })

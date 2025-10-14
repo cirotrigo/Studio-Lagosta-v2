@@ -7,9 +7,9 @@ import {
 
 export async function DELETE(
   _req: Request,
-  { params }: { params: { orgId: string; projectId: string } }
+  { params }: { params: Promise<{ orgId: string; projectId: string }> }
 ) {
-  const { orgId, projectId } = params
+  const { orgId, projectId } = await params
 
   try {
     await requireOrganizationMembership(orgId, {

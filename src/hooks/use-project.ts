@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
+export interface ProjectShareInfo {
+  organizationId: string
+  organizationName: string | null
+  defaultCanEdit: boolean
+  sharedAt: string
+}
+
 export interface ProjectResponse {
   id: number
   name: string
@@ -15,6 +22,7 @@ export interface ProjectResponse {
   googleDriveVideosFolderName: string | null
   createdAt: string
   updatedAt: string
+  organizationShares?: ProjectShareInfo[]
 }
 
 export interface ProjectWithLogoResponse extends ProjectResponse {
@@ -28,6 +36,7 @@ export interface ProjectWithLogoResponse extends ProjectResponse {
     Template: number
     Generation: number
   }
+  organizationShares?: ProjectShareInfo[]
 }
 
 export type UpdateProjectSettingsInput = Partial<{

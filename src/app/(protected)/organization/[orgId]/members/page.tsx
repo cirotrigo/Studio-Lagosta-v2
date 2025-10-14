@@ -4,10 +4,13 @@ import { OrganizationProfile, useOrganization } from "@clerk/nextjs"
 import { Card } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
+import { useParams } from "next/navigation"
 
-export default function OrganizationMembersPage({ params }: { params: { orgId: string } }) {
+export default function OrganizationMembersPage() {
+  const params = useParams<{ orgId: string }>()
+  const orgId = params.orgId
   const { organization, isLoaded } = useOrganization()
-  const isActiveOrganization = organization?.id === params.orgId
+  const isActiveOrganization = organization?.id === orgId
 
   useSetPageMetadata({
     title: "Membros da organização",
@@ -15,7 +18,7 @@ export default function OrganizationMembersPage({ params }: { params: { orgId: s
     breadcrumbs: [
       { label: "Início", href: "/dashboard" },
       { label: "Organizações", href: "/organization" },
-      { label: organization?.name ?? "Organização", href: `/organization/${params.orgId}` },
+      { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Membros" },
     ],
   })

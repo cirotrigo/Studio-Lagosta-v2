@@ -21,6 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
+import { Badge } from '@/components/ui/badge'
 
 const createProjectSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -35,10 +36,25 @@ interface Project {
   description: string | null
   status: string
   createdAt: string
-  _count: {
-    templates: number
-    generations: number
+  userId: string
+  _count?: {
+    Template?: number
+    Generation?: number
+    templates?: number
+    generations?: number
   }
+  organizationShares?: Array<{
+    organizationId: string
+    organizationName: string | null
+    defaultCanEdit: boolean
+    sharedAt: string
+  }>
+  Logo?: Array<{
+    id: number
+    name: string
+    fileUrl: string
+    isProjectLogo: boolean
+  }>
 }
 
 export default function ProjectsPage() {
@@ -182,6 +198,16 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
+              {project.organizationShares && project.organizationShares.length > 0 && (
+                <div className="mb-3 flex flex-wrap gap-2">
+                  {project.organizationShares.map((share) => (
+                    <Badge key={share.organizationId} variant="outline">
+                      {share.organizationName ?? share.organizationId}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
               {project.description && (
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
                   {project.description}
@@ -190,10 +216,10 @@ export default function ProjectsPage() {
 
               <div className="flex gap-4 text-sm text-muted-foreground mb-4">
                 <div>
-                  <span className="font-medium">{project._count.templates}</span> templates
+                  <span className="font-medium">{project._count?.Template ?? project._count?.templates ?? 0}</span> templates
                 </div>
                 <div>
-                  <span className="font-medium">{project._count.generations}</span> criativos
+                  <span className="font-medium">{project._count?.Generation ?? project._count?.generations ?? 0}</span> criativos
                 </div>
               </div>
 

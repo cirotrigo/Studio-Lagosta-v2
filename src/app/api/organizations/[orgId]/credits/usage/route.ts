@@ -7,9 +7,9 @@ import {
 
 export async function GET(
   req: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
-  const { orgId } = params
+  const { orgId } = await params
 
   try {
     await requireOrganizationMembership(orgId, {

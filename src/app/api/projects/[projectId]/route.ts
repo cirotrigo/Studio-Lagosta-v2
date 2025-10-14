@@ -36,6 +36,16 @@ export async function GET(
         googleDriveVideosFolderName: true,
         createdAt: true,
         updatedAt: true,
+        organizationProjects: {
+          include: {
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     })
 
@@ -43,7 +53,17 @@ export async function GET(
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    return NextResponse.json(project)
+    const { organizationProjects, ...rest } = project
+
+    return NextResponse.json({
+      ...rest,
+      organizationShares: organizationProjects.map((share) => ({
+        organizationId: share.organization.clerkOrgId,
+        organizationName: share.organization.name,
+        defaultCanEdit: share.defaultCanEdit,
+        sharedAt: share.sharedAt,
+      })),
+    })
   } catch (error) {
     console.error('[API] Failed to fetch project', error)
     return NextResponse.json({ error: 'Erro ao buscar projeto' }, { status: 500 })

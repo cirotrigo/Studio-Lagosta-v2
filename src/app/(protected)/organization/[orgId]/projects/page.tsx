@@ -8,10 +8,13 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
 import { useOrganizationProjects } from "@/hooks/use-organizations"
+import { useParams } from "next/navigation"
 
-export default function OrganizationProjectsPage({ params }: { params: { orgId: string } }) {
+export default function OrganizationProjectsPage() {
+  const params = useParams<{ orgId: string }>()
   const { organization, isLoaded } = useOrganization()
-  const isActiveOrganization = organization?.id === params.orgId
+  const orgId = params.orgId
+  const isActiveOrganization = organization?.id === orgId
   const {
     data: projectsData,
     isLoading,
@@ -23,7 +26,7 @@ export default function OrganizationProjectsPage({ params }: { params: { orgId: 
     breadcrumbs: [
       { label: "Início", href: "/dashboard" },
       { label: "Organizações", href: "/organization" },
-      { label: organization?.name ?? "Organização", href: `/organization/${params.orgId}` },
+      { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Projetos" },
     ],
   })

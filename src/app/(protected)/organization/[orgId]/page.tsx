@@ -9,10 +9,13 @@ import Link from "next/link"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useOrganizationCredits, useOrganizationProjects } from "@/hooks/use-organizations"
+import { useParams } from "next/navigation"
 
-export default function OrganizationDashboardPage({ params }: { params: { orgId: string } }) {
+export default function OrganizationDashboardPage() {
+  const params = useParams<{ orgId: string }>()
+  const orgId = params.orgId
   const { organization, membership, isLoaded } = useOrganization()
-  const isActiveOrganization = organization?.id === params.orgId
+  const isActiveOrganization = organization?.id === orgId
   const {
     data: creditsData,
     isLoading: creditsLoading,
@@ -56,7 +59,7 @@ export default function OrganizationDashboardPage({ params }: { params: { orgId:
       return (
         <Card className="border border-border/40 bg-card/60 p-8">
           <p className="text-sm text-muted-foreground">
-            Você está tentando acessar <strong>{params.orgId}</strong>, mas atualmente está no contexto da organização <strong>{organization.name}</strong>.
+            Você está tentando acessar <strong>{orgId}</strong>, mas atualmente está no contexto da organização <strong>{organization.name}</strong>.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
             Altere o contexto usando o seletor no topo para abrir este dashboard ou navegue até a organização ativa abaixo.
@@ -152,7 +155,7 @@ export default function OrganizationDashboardPage({ params }: { params: { orgId:
     membership?.role,
     membersCount,
     organization,
-    params.orgId,
+    orgId,
     projectsCount,
     projectsLoading,
   ])

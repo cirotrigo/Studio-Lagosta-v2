@@ -21,11 +21,35 @@ export async function GET() {
         where: { isProjectLogo: true },
         take: 1,
       },
+      organizationProjects: {
+        include: {
+          organization: {
+            select: {
+              clerkOrgId: true,
+              name: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { updatedAt: 'desc' },
   })
 
-  return NextResponse.json(projects)
+  const response = projects.map((project) => {
+    const { organizationProjects, ...rest } = project
+
+    return {
+      ...rest,
+      organizationShares: organizationProjects.map((share) => ({
+        organizationId: share.organization.clerkOrgId,
+        organizationName: share.organization.name,
+        defaultCanEdit: share.defaultCanEdit,
+        sharedAt: share.sharedAt,
+      })),
+    }
+  })
+
+  return NextResponse.json(response)
 }
 
 export async function POST(req: Request) {

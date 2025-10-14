@@ -1,10 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Trash2, Edit, Copy } from 'lucide-react'
+import { Plus, FileText, Trash2, Edit, Copy, Share2 } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -13,8 +13,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
   DialogTrigger,
 } from '@/components/ui/dialog'
 import {
@@ -36,6 +38,14 @@ import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Badge } from '@/components/ui/badge'
+import { Switch } from '@/components/ui/switch'
+import { useOrganization } from '@clerk/nextjs'
+import {
+  useRemoveSharedProjectMutation,
+  useShareProjectMutation,
+  organizationKeys,
+} from '@/hooks/use-organizations'
 
 const createTemplateSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -78,6 +88,11 @@ export default function ProjectDetailPage() {
   } = useProject(
     Number.isNaN(projectId) ? null : projectId,
   )
+  const { organization, membership, isLoaded: isOrganizationLoaded } = useOrganization()
+  const shareProjectMutation = useShareProjectMutation(organization?.id ?? null)
+  const removeShareMutation = useRemoveSharedProjectMutation(organization?.id ?? null)
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
+  const [allowOrganizationEdit, setAllowOrganizationEdit] = useState(true)
 
   const { data: templates, isLoading } = useQuery<Template[]>({
     queryKey: ['templates', projectId],
@@ -154,27 +169,268 @@ export default function ProjectDetailPage() {
     }
   }
 
-  const handleDuplicate = (id: number, name: string) => {
-    if (confirm(`Duplicar o template "${name}"?`)) {
-      duplicateMutation.mutate(id)
-    }
+const handleDuplicate = (id: number, name: string) => {
+  if (confirm(`Duplicar o template "${name}"?`)) {
+    duplicateMutation.mutate(id)
   }
+}
 
-  const getTypeLabel = (type: string) => {
-    const typeConfig = TEMPLATE_TYPES.find((t) => t.value === type)
-    return typeConfig?.label || type
-  }
+const getTypeLabel = (type: string) => {
+  const typeConfig = TEMPLATE_TYPES.find((t) => t.value === type)
+  return typeConfig?.label || type
+}
 
+if (isLoadingProject) {
+  return (
+    <div className="container mx-auto space-y-6 p-8">
+      <Skeleton className="h-6 w-32" />
+      <Skeleton className="h-10 w-3/4" />
+      <Skeleton className="h-24 w-full" />
+    </div>
+  )
+}
+
+if (projectError) {
   return (
     <div className="container mx-auto p-8">
-      <div className="mb-8">
-        <Button variant="ghost" onClick={() => router.push('/projects')} className="mb-4">
-          ← Voltar para Projetos
-        </Button>
-        <h1 className="text-3xl font-bold">Gerenciar Projeto</h1>
-      </div>
+      <Card className="border border-destructive/40 bg-destructive/10 p-6">
+        <p className="text-sm text-destructive-foreground">
+          Ocorreu um erro ao carregar este projeto. Tente novamente mais tarde.
+        </p>
+      </Card>
+    </div>
+  )
+}
 
-      <Tabs defaultValue="templates" className="w-full">
+if (!projectDetails) {
+  return (
+    <div className="container mx-auto p-8">
+      <Card className="border border-border/40 bg-card/60 p-6">
+        <p className="text-sm text-muted-foreground">Projeto não encontrado.</p>
+        <Button className="mt-4" variant="outline" onClick={() => router.push('/projects')}>
+          Voltar para projetos
+        </Button>
+      </Card>
+    </div>
+  )
+}
+
+const organizationShares = useMemo(
+  () => projectDetails.organizationShares ?? [],
+  [projectDetails.organizationShares],
+)
+
+const activeOrganizationShare = useMemo(() => {
+  if (!organization?.id) return undefined
+  return organizationShares.find((share) => share.organizationId === organization.id)
+}, [organization?.id, organizationShares])
+
+const otherOrganizationShares = useMemo(() => {
+  if (!organization?.id) return organizationShares
+  return organizationShares.filter((share) => share.organizationId !== organization.id)
+}, [organization?.id, organizationShares])
+
+const canManageSharing = Boolean(organization) && membership?.role === 'org:admin'
+
+const handleShareWithOrganization = () => {
+  if (!organization) {
+    toast.error('Selecione uma organização no topo para compartilhar o projeto.')
+    return
+  }
+
+  shareProjectMutation.mutate(
+    {
+      projectId,
+      canEdit: allowOrganizationEdit,
+    },
+    {
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+        queryClient.invalidateQueries({ queryKey: ['projects'] })
+        queryClient.invalidateQueries({ queryKey: organizationKeys.projects(organization.id) })
+        toast.success(`Projeto compartilhado com ${organization.name ?? 'a organização'}`)
+        setIsShareDialogOpen(false)
+      },
+      onError: () => {
+        toast.error('Não foi possível compartilhar o projeto.')
+      },
+    },
+  )
+}
+
+const handleRemoveShare = () => {
+  if (!organization) {
+    toast.error('Selecione uma organização no topo para gerenciar o compartilhamento.')
+    return
+  }
+
+  removeShareMutation.mutate(projectId, {
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['projects'] })
+      queryClient.invalidateQueries({ queryKey: organizationKeys.projects(organization.id) })
+      toast.success('Compartilhamento removido com sucesso.')
+    },
+    onError: () => {
+      toast.error('Não foi possível remover o compartilhamento.')
+    },
+  })
+}
+
+return (
+  <div className="container mx-auto p-8">
+    <div className="mb-8 flex flex-col gap-4">
+      <Button variant="ghost" onClick={() => router.push('/projects')} className="self-start">
+        ← Voltar para Projetos
+      </Button>
+      <div>
+        <h1 className="text-3xl font-bold text-foreground">{projectDetails.name}</h1>
+        {projectDetails.description && (
+          <p className="mt-1 text-sm text-muted-foreground">{projectDetails.description}</p>
+        )}
+      </div>
+    </div>
+
+    <Card className="mb-8 border border-border/40 bg-card/60 p-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            <Share2 className="h-4 w-4" />
+            Compartilhamento com equipes
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Controle com quais organizações este projeto está disponível. O contexto ativo no topo determina onde as ações são realizadas.
+          </p>
+          {organizationShares.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {organizationShares.map((share) => (
+                <Badge key={share.organizationId} variant="outline">
+                  {share.organizationName ?? share.organizationId}
+                  {!share.defaultCanEdit && <span className="ml-2 text-xs text-muted-foreground">(somente visualização)</span>}
+                </Badge>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">Este projeto ainda não foi compartilhado com nenhuma organização.</p>
+          )}
+          {otherOrganizationShares.length > 0 && (
+            <p className="text-xs text-muted-foreground">
+              Também disponível para: {otherOrganizationShares.map((share) => share.organizationName ?? share.organizationId).join(', ')}
+            </p>
+          )}
+        </div>
+
+        <div className="flex w-full flex-col items-start gap-2 md:w-auto md:items-end">
+          {!isOrganizationLoaded ? (
+            <Skeleton className="h-9 w-40" />
+          ) : organization ? (
+            activeOrganizationShare ? (
+              <div className="flex flex-col items-start gap-2 md:items-end">
+                <div className="rounded-md border border-border/40 bg-background/60 px-3 py-2 text-xs text-muted-foreground">
+                  Compartilhado com <span className="font-medium text-foreground">{organization.name ?? organization.id}</span>{' '}
+                  — {activeOrganizationShare.defaultCanEdit ? 'edição liberada' : 'somente visualização'}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAllowOrganizationEdit(activeOrganizationShare.defaultCanEdit)
+                      setIsShareDialogOpen(true)
+                    }}
+                    disabled={!canManageSharing}
+                  >
+                    Ajustar permissões
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={handleRemoveShare}
+                    disabled={!canManageSharing || removeShareMutation.isPending}
+                  >
+                    {removeShareMutation.isPending ? 'Removendo…' : 'Remover compartilhamento'}
+                  </Button>
+                </div>
+                {!canManageSharing && (
+                  <p className="max-w-xs text-right text-xs text-muted-foreground">
+                    Apenas administradores da organização podem alterar permissões de compartilhamento.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col items-start gap-2 md:items-end">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setAllowOrganizationEdit(true)
+                    setIsShareDialogOpen(true)
+                  }}
+                  disabled={!canManageSharing || shareProjectMutation.isPending}
+                >
+                  Compartilhar com {organization.name ?? 'a organização'}
+                </Button>
+                {!canManageSharing && (
+                  <p className="max-w-xs text-right text-xs text-muted-foreground">
+                    Apenas administradores da organização podem compartilhar novos projetos.
+                  </p>
+                )}
+              </div>
+            )
+          ) : (
+            <p className="max-w-sm text-xs text-muted-foreground md:text-right">
+              Selecione uma organização no topo para disponibilizar este projeto à sua equipe.
+            </p>
+          )}
+        </div>
+      </div>
+    </Card>
+
+    <Dialog open={isShareDialogOpen} onOpenChange={setIsShareDialogOpen}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {activeOrganizationShare ? 'Atualizar permissões da organização' : 'Compartilhar projeto com a organização'}
+          </DialogTitle>
+          <DialogDescription>
+            {organization
+              ? `O projeto será compartilhado com ${organization.name ?? organization.id}. Defina se os membros podem editar ou apenas visualizar.`
+              : 'Selecione uma organização para continuar.'}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="rounded-lg border border-border/40 bg-card/60 px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-foreground">Permitir edição pelos membros</p>
+              <p className="text-xs text-muted-foreground">
+                Quando ativado, todos os membros com acesso poderão editar os templates deste projeto.
+              </p>
+            </div>
+            <Switch
+              checked={allowOrganizationEdit}
+              onCheckedChange={(value) => setAllowOrganizationEdit(Boolean(value))}
+              disabled={!canManageSharing}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setIsShareDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            onClick={handleShareWithOrganization}
+            disabled={!canManageSharing || shareProjectMutation.isPending}
+          >
+            {shareProjectMutation.isPending
+              ? 'Salvando…'
+              : activeOrganizationShare
+              ? 'Atualizar compartilhamento'
+              : 'Compartilhar projeto'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Tabs defaultValue="templates" className="w-full">
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
