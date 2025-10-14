@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
   outputFileTracingIncludes: {
-    '/api/video-processing/process': [
+    'app/api/video-processing/process/route.ts': [
       './node_modules/fluent-ffmpeg/**/*',
       './node_modules/@ffmpeg-installer/ffmpeg/**/*',
     ],
