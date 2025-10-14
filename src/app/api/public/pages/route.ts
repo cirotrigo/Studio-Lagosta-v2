@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getHomePage, getPageByPath } from '@/lib/cms/queries'
 
+export const dynamic = 'force-dynamic'
+
 /**
  * GET /api/public/pages?path=/
  * Get a published page by path (public access)
@@ -38,6 +40,3 @@ export async function GET(request: Request) {
     )
   }
 }
-
-// Enable ISR with 60 second revalidation
-export const revalidate = 60

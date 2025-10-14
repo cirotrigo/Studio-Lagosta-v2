@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
@@ -21,12 +21,13 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   ...siteMetadata,
-  viewport: {
-    width: 'device-width',
-    initialScale: 1,
-    maximumScale: 5, // Permitir zoom para acessibilidade
-    userScalable: true,
-  },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 5, // Permitir zoom para acessibilidade
+  userScalable: true,
 };
 
 export default function RootLayout({
