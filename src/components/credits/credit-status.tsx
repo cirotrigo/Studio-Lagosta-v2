@@ -1,7 +1,6 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
-import { useCredits } from "@/hooks/use-credits";
+import { useOrganization, useUser } from "@clerk/nextjs";
 import { Coins } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -13,6 +12,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useCredits } from "@/hooks/use-credits";
+import { useOrganizationCredits } from "@/hooks/use-organizations";
 
 interface CreditStatusProps {
   className?: string;
@@ -21,18 +22,85 @@ interface CreditStatusProps {
 
 export function CreditStatus({ className, showUpgradeButton = true }: CreditStatusProps) {
   const { user, isLoaded } = useUser();
-  const { credits, isLoading } = useCredits();
+  const { organization, membership, isLoaded: isOrgLoaded } = useOrganization();
+  const { credits: personalCredits, isLoading: isPersonalCreditsLoading } = useCredits();
+  const isOrganizationContext = Boolean(organization);
+  const {
+    data: organizationCredits,
+    isLoading: isOrganizationCreditsLoading,
+  } = useOrganizationCredits(isOrganizationContext ? organization!.id : null);
 
-  if (!isLoaded || isLoading) {
+  if ((isOrganizationContext && (!isOrgLoaded || isOrganizationCreditsLoading)) || (!isOrganizationContext && (!isLoaded || isPersonalCreditsLoading))) {
     return <Skeleton className={cn("h-8 w-24", className)} />;
   }
 
-  if (!user || !credits) {
+  if (isOrganizationContext) {
+    if (!organizationCredits) {
+      return null;
+    }
+
+    const totalCredits = organizationCredits.limits.creditsPerMonth || 0;
+    const remaining = organizationCredits.credits.current ?? 0;
+    const percentage = totalCredits > 0 ? (remaining / totalCredits) * 100 : 0;
+    const isLow = percentage < 20;
+    const isEmpty = remaining === 0;
+    const isAdmin = membership?.role === "org:admin";
+
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className={cn("flex items-center gap-2", className)}>
+              <Coins
+                className={cn(
+                  "h-4 w-4",
+                  isEmpty && "text-destructive",
+                  isLow && !isEmpty && "text-orange-500"
+                )}
+              />
+              <span
+                className={cn(
+                  "text-sm font-medium",
+                  isEmpty && "text-destructive",
+                  isLow && !isEmpty && "text-orange-500"
+                )}
+              >
+                {remaining}
+              </span>
+              {showUpgradeButton && isAdmin && (
+                <Button size="sm" variant={isEmpty ? "destructive" : "outline"} asChild>
+                  <Link href={`/organization/${organization!.id}/credits`}>
+                    Gerenciar créditos
+                  </Link>
+                </Button>
+              )}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Créditos da organização</p>
+              <p className="text-xs text-muted-foreground">
+                {remaining} créditos restantes de {totalCredits} alocados para este ciclo
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Renovação mensal automática: {organizationCredits.limits.creditsPerMonth} créditos
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Permissão atual: {membership?.role === "org:admin" ? "Administrador" : "Membro"}
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  if (!user || !personalCredits) {
     return null;
   }
 
-  const totalCredits = credits.creditsTotal;
-  const remaining = credits.creditsRemaining;
+  const totalCredits = personalCredits.creditsTotal;
+  const remaining = personalCredits.creditsRemaining;
   const percentage = (remaining / totalCredits) * 100;
   const isLow = percentage < 20;
   const isEmpty = remaining === 0;
@@ -73,13 +141,13 @@ export function CreditStatus({ className, showUpgradeButton = true }: CreditStat
             <p className="text-xs text-muted-foreground">
               {remaining} créditos restantes de {totalCredits} total
             </p>
-            {credits.billingPeriodEnd && (
+            {personalCredits.billingPeriodEnd && (
               <p className="text-xs text-muted-foreground">
-                Resets on {new Date(credits.billingPeriodEnd).toLocaleDateString()}
+                Reseta em {new Date(personalCredits.billingPeriodEnd).toLocaleDateString()}
               </p>
             )}
             <p className="text-xs text-muted-foreground">
-              Plano: {credits.plan || "Free"}
+              Plano: {personalCredits.plan || "Free"}
             </p>
           </div>
         </TooltipContent>

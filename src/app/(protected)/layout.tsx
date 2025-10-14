@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { Sidebar } from "@/components/app/sidebar";
 import { Topbar } from "@/components/app/topbar";
 import { PageHeader } from "@/components/app/page-header";
+import { ContextIndicator } from "@/components/app/context-indicator";
 import { PageMetadataProvider } from "@/contexts/page-metadata";
 import { useSubscription } from "@/hooks/use-subscription";
 
@@ -96,6 +97,7 @@ export default function ProtectedLayout({
                   aria-hidden="true"
                 />
                 <div className="glass-panel border-border/40 bg-card/30 p-6">
+                  <ContextIndicator />
                   <PageHeader />
                   {children}
                 </div>

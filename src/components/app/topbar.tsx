@@ -7,7 +7,7 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Menu } from "lucide-react";
-import { SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
+import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { navigationItems } from "@/components/app/sidebar";
@@ -63,11 +63,28 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
               </nav>
               <SheetFooter className="mt-auto p-4">
                 <div className="flex w-full items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-1 flex-col gap-3">
                     <SignedIn>
-                      <div className="flex items-center gap-3">
-                        <UserButton afterSignOutUrl="/" />
-                        <CreditStatus />
+                      <div className="flex flex-col gap-3">
+                        <OrganizationSwitcher
+                          hidePersonal={false}
+                          createOrganizationMode="modal"
+                          afterCreateOrganizationUrl="/organization/:id"
+                          afterSelectOrganizationUrl="/organization/:id"
+                          afterSelectPersonalUrl="/dashboard"
+                          appearance={{
+                            elements: {
+                              rootBox: "w-full rounded-md border border-border/40 bg-background/60 px-3 py-2 text-sm",
+                              organizationSwitcherTrigger: "w-full justify-between",
+                            },
+                          }}
+                        />
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3">
+                            <UserButton afterSignOutUrl="/" />
+                            <CreditStatus />
+                          </div>
+                        </div>
                       </div>
                     </SignedIn>
                     <SignedOut>
@@ -111,16 +128,32 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
         {/* Right side actions */}
         <div className="flex items-center gap-2">
           <SignedIn>
-            <CreditStatus />
-            <Separator orientation="vertical" className="h-6" />
+            <div className="hidden items-center gap-2 sm:flex">
+              <OrganizationSwitcher
+                hidePersonal={false}
+                createOrganizationMode="modal"
+                afterCreateOrganizationUrl="/organization/:id"
+                afterSelectOrganizationUrl="/organization/:id"
+                afterSelectPersonalUrl="/dashboard"
+                appearance={{
+                  elements: {
+                    rootBox: "rounded-md border border-border/40 bg-background/70 px-3 py-1.5 text-sm transition-colors hover:border-primary/40 neon-border",
+                    organizationSwitcherTrigger: "gap-2",
+                    organizationSwitcherTriggerIcon: "text-muted-foreground",
+                  },
+                }}
+              />
+              <CreditStatus />
+              <Separator orientation="vertical" className="h-6" />
+            </div>
           </SignedIn>
-          
+
           <ThemeToggle />
-          
+
           <SignedIn>
             <UserButton />
           </SignedIn>
-          
+
           <SignedOut>
             <SignInButton mode="modal">
               <Button variant="ghost" size="sm">

@@ -13,6 +13,7 @@ import {
   FolderOpen,
   BookOpen,
   MessageSquare,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ type SidebarProps = {
 export const navigationItems = [
   { name: "Painel", href: "/dashboard", icon: Home },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
+  { name: "Organização", href: "/organization", icon: Building2 },
   { name: "Prompts", href: "/prompts", icon: MessageSquare },
   { name: "Base de Conhecimento", href: "/knowledge-base", icon: BookOpen },
   { name: "Chat com IA", href: "/ai-chat", icon: Bot },
