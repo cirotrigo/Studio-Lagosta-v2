@@ -21,7 +21,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
+import { ProjectShareControls } from '@/components/projects/project-share-controls'
 
 const createProjectSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -198,16 +198,6 @@ export default function ProjectsPage() {
                 </div>
               </div>
 
-              {project.organizationShares && project.organizationShares.length > 0 && (
-                <div className="mb-3 flex flex-wrap gap-2">
-                  {project.organizationShares.map((share) => (
-                    <Badge key={share.organizationId} variant="outline">
-                      {share.organizationName ?? share.organizationId}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
               {project.description && (
                 <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
                   {project.description}
@@ -222,6 +212,13 @@ export default function ProjectsPage() {
                   <span className="font-medium">{project._count?.Generation ?? project._count?.generations ?? 0}</span> criativos
                 </div>
               </div>
+
+              <ProjectShareControls
+                projectId={project.id}
+                projectName={project.name}
+                shares={project.organizationShares ?? []}
+                variant="card"
+              />
 
               <div className="flex gap-2">
                 <Button asChild variant="outline" className="flex-1">

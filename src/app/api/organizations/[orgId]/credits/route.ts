@@ -22,9 +22,7 @@ export async function GET(
   const { orgId } = await params
 
   try {
-    await requireOrganizationMembership(orgId, {
-      permissions: ['org:credits:view'],
-    })
+    const context = await requireOrganizationMembership(orgId)
 
     const organization = await getOrganizationByClerkId(orgId)
     if (!organization) {
@@ -50,6 +48,9 @@ export async function GET(
         maxMembers: organization.maxMembers,
         maxProjects: organization.maxProjects,
         creditsPerMonth: organization.creditsPerMonth,
+        canManage:
+          context.organizationRole === 'org:admin' ||
+          context.organizationPermissions.includes('org:credits:manage'),
       },
     })
   } catch (error) {
