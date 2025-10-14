@@ -106,11 +106,23 @@ export async function POST(
 
     const organization = await db.organization.findUnique({
       where: { clerkOrgId: orgId },
-      select: { id: true },
+      select: { id: true, maxProjects: true },
     })
 
     if (!organization) {
       return NextResponse.json({ error: 'Organização não encontrada' }, { status: 404 })
+    }
+
+    if (organization.maxProjects != null) {
+      const currentCount = await db.organizationProject.count({
+        where: { organizationId: organization.id },
+      })
+      if (currentCount >= organization.maxProjects) {
+        return NextResponse.json(
+          { error: 'Limite de projetos compartilhados atingido para este plano' },
+          { status: 403 },
+        )
+      }
     }
 
     const shared = await db.organizationProject.upsert({

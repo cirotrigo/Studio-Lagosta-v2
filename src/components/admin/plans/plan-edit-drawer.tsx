@@ -31,41 +31,17 @@ import {
   Globe,
   Link2,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Users,
+  FolderOpen,
+  Coins,
+  Layers
 } from "lucide-react";
 import type { ClerkPlan } from "@/hooks/use-admin-plans";
+import type { BillingPlan, PlanFeatureForm } from "./types";
 import { createId } from "@/lib/id";
 import { DrawerSection, InfoBox, FieldGroup } from "./drawer-sections";
 import { FeatureEditor } from "./feature-editor";
-
-type BillingPlan = {
-  planId?: string;
-  clerkId?: string | null;
-  billingSource?: 'clerk' | 'manual';
-  name: string;
-  credits: number;
-  active?: boolean;
-  sortOrder?: number;
-  clerkName?: string | null;
-  currency?: string | null;
-  priceMonthlyCents?: number | null;
-  priceYearlyCents?: number | null;
-  description?: string | null;
-  features?: PlanFeatureForm[];
-  badge?: string | null;
-  highlight?: boolean;
-  ctaType?: 'checkout' | 'contact';
-  ctaLabel?: string | null;
-  ctaUrl?: string | null;
-  isNew?: boolean;
-}
-
-type PlanFeatureForm = {
-  id: string;
-  name: string;
-  description: string;
-  included: boolean;
-}
 
 interface PlanEditDrawerProps {
   isOpen: boolean;
@@ -124,6 +100,14 @@ export function PlanEditDrawer({
   const hasNameError = !editedPlan.name || !editedPlan.name.trim();
   const hasCreditsError = !Number.isFinite(editedPlan.credits) || editedPlan.credits < 0;
   const hasCtaUrlError = ctaValue === 'contact' && !editedPlan.ctaUrl?.trim();
+
+  const parseLimitInput = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const numeric = Number(trimmed);
+    if (!Number.isFinite(numeric)) return null;
+    return Math.max(0, Math.floor(numeric));
+  };
 
   const patchPlan = (patch: Partial<BillingPlan> | ((current: BillingPlan) => BillingPlan)) => {
     setEditedPlan(prev => {
@@ -233,6 +217,96 @@ export function PlanEditDrawer({
                   ? 'Preços e alguns metadados são gerenciados pelo Clerk Dashboard.'
                   : 'Configure todos os campos manualmente. Ideal para ofertas personalizadas.'}
               </InfoBox>
+            </DrawerSection>
+
+            {/* Organizations */}
+            <DrawerSection
+              title="Organizações"
+              icon={<Users className="h-4 w-4" />}
+              description="Defina como este plano se comporta para recursos de equipe"
+              helpText="Esses limites são aplicados às organizações criadas por assinantes deste plano. Campos em branco indicam ausência de limite."
+            >
+              <div className="flex items-center justify-between rounded-lg border border-border/50 bg-background/60 px-4 py-3">
+                <div className="space-y-1">
+                  <Label htmlFor="allow-org-creation" className="text-sm font-medium">
+                    Permitir criação de organizações
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Habilita recursos colaborativos (organizational switcher, créditos compartilhados, convites).
+                  </p>
+                </div>
+                <Switch
+                  id="allow-org-creation"
+                  checked={editedPlan.allowOrgCreation ?? false}
+                  onCheckedChange={(checked) => patchPlan({ allowOrgCreation: checked })}
+                />
+              </div>
+
+              <FieldGroup className="grid-cols-1 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="org-count-limit" className="flex items-center gap-2 text-sm font-medium">
+                    <Layers className="h-3.5 w-3.5 text-muted-foreground" />
+                    Máximo de organizações por usuário
+                  </Label>
+                  <Input
+                    id="org-count-limit"
+                    type="number"
+                    min={0}
+                  value={editedPlan.orgCountLimit != null ? String(editedPlan.orgCountLimit) : ''}
+                    onChange={(event) => patchPlan({ orgCountLimit: parseLimitInput(event.target.value) })}
+                    placeholder="Ex.: 3"
+                  />
+                  <p className="text-xs text-muted-foreground">Deixe em branco para ilimitado.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="org-member-limit" className="flex items-center gap-2 text-sm font-medium">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    Máximo de membros por organização
+                  </Label>
+                  <Input
+                    id="org-member-limit"
+                    type="number"
+                    min={0}
+                    value={editedPlan.orgMemberLimit != null ? String(editedPlan.orgMemberLimit) : ''}
+                    onChange={(event) => patchPlan({ orgMemberLimit: parseLimitInput(event.target.value) })}
+                    placeholder="Ex.: 10"
+                  />
+                  <p className="text-xs text-muted-foreground">Inclui admins e convidados. Em branco para sem limite.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="org-project-limit" className="flex items-center gap-2 text-sm font-medium">
+                    <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                    Máximo de projetos compartilhados
+                  </Label>
+                  <Input
+                    id="org-project-limit"
+                    type="number"
+                    min={0}
+                    value={editedPlan.orgProjectLimit != null ? String(editedPlan.orgProjectLimit) : ''}
+                    onChange={(event) => patchPlan({ orgProjectLimit: parseLimitInput(event.target.value) })}
+                    placeholder="Ex.: 25"
+                  />
+                  <p className="text-xs text-muted-foreground">Limita quantos projetos podem ser vinculados a cada organização.</p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="org-credits-per-month" className="flex items-center gap-2 text-sm font-medium">
+                    <Coins className="h-3.5 w-3.5 text-muted-foreground" />
+                    Créditos mensais da organização
+                  </Label>
+                  <Input
+                    id="org-credits-per-month"
+                    type="number"
+                    min={0}
+                    value={editedPlan.orgCreditsPerMonth != null ? String(editedPlan.orgCreditsPerMonth) : ''}
+                    onChange={(event) => patchPlan({ orgCreditsPerMonth: parseLimitInput(event.target.value) })}
+                    placeholder="Ex.: 1000"
+                  />
+                  <p className="text-xs text-muted-foreground">Usados para saldo compartilhado. Em branco para usar o padrão global.</p>
+                </div>
+              </FieldGroup>
             </DrawerSection>
 
             {/* Basic Information */}

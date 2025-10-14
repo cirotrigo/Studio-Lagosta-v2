@@ -69,6 +69,11 @@ export default function BillingPlansPage() {
           ctaLabel: p.ctaLabel ?? null,
           ctaUrl: p.ctaUrl ?? null,
           isNew: false,
+          allowOrgCreation: p.allowOrgCreation ?? false,
+          orgMemberLimit: p.orgMemberLimit ?? null,
+          orgProjectLimit: p.orgProjectLimit ?? null,
+          orgCreditsPerMonth: p.orgCreditsPerMonth ?? null,
+          orgCountLimit: p.orgCountLimit ?? null,
         }
         if (billingPlan.billingSource === 'manual') {
           billingPlan.ctaType = 'contact'

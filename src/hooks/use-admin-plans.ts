@@ -22,6 +22,11 @@ export interface Plan {
   ctaLabel?: string | null;
   ctaUrl?: string | null;
   billingSource?: 'clerk' | 'manual' | null;
+  allowOrgCreation?: boolean | null;
+  orgMemberLimit?: number | null;
+  orgProjectLimit?: number | null;
+  orgCreditsPerMonth?: number | null;
+  orgCountLimit?: number | null;
 }
 
 export type ClerkPlan = ClerkPlanNormalized
@@ -74,6 +79,11 @@ export function useCreatePlan() {
       ctaType?: 'checkout' | 'contact' | null;
       ctaLabel?: string | null;
       ctaUrl?: string | null;
+      allowOrgCreation?: boolean | null;
+      orgMemberLimit?: number | null;
+      orgProjectLimit?: number | null;
+      orgCreditsPerMonth?: number | null;
+      orgCountLimit?: number | null;
     }) =>
       api.post('/api/admin/plans', plan),
     onSuccess: () => {
@@ -104,6 +114,11 @@ export function useUpdatePlan() {
       ctaLabel?: string | null;
       ctaUrl?: string | null;
       billingSource?: 'clerk' | 'manual';
+      allowOrgCreation?: boolean | null;
+      orgMemberLimit?: number | null;
+      orgProjectLimit?: number | null;
+      orgCreditsPerMonth?: number | null;
+      orgCountLimit?: number | null;
     }) => {
       const identifier = planId ?? clerkId
       if (!identifier) {

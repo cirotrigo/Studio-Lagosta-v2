@@ -1,0 +1,11 @@
+ALTER TABLE "Plan"
+  ADD COLUMN IF NOT EXISTS "allowOrgCreation" BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS "orgMemberLimit" INTEGER,
+  ADD COLUMN IF NOT EXISTS "orgProjectLimit" INTEGER,
+  ADD COLUMN IF NOT EXISTS "orgCreditsPerMonth" INTEGER,
+  ADD COLUMN IF NOT EXISTS "orgCountLimit" INTEGER;
+
+ALTER TABLE "Organization"
+  ADD COLUMN IF NOT EXISTS "ownerClerkId" TEXT;
+
+CREATE INDEX IF NOT EXISTS "Organization_ownerClerkId_idx" ON "Organization"("ownerClerkId");

@@ -2,6 +2,11 @@ import type { BillingPlan, PlanFeatureForm } from './types';
 import type { ClerkPlan } from '@/hooks/use-admin-plans';
 import { createId } from '@/lib/id';
 
+function sanitizeNullableInt(value: number | null | undefined) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.max(0, Math.floor(value))
+}
+
 export const mapFeaturesFromApi = (
   features: Array<{ name?: string | null; description?: string | null; included?: boolean | null }> | null | undefined
 ): PlanFeatureForm[] => {
@@ -47,6 +52,11 @@ export const serializePlanForPersistence = (plan: BillingPlan) => ({
   ctaLabel: plan.ctaLabel?.trim() ? plan.ctaLabel.trim() : null,
   ctaUrl: plan.ctaUrl?.trim() ? plan.ctaUrl.trim() : null,
   billingSource: plan.billingSource ?? 'clerk',
+  allowOrgCreation: Boolean(plan.allowOrgCreation),
+  orgMemberLimit: sanitizeNullableInt(plan.orgMemberLimit),
+  orgProjectLimit: sanitizeNullableInt(plan.orgProjectLimit),
+  orgCreditsPerMonth: sanitizeNullableInt(plan.orgCreditsPerMonth),
+  orgCountLimit: sanitizeNullableInt(plan.orgCountLimit),
 })
 
 export const findPlanKeyByClerkId = (plans: Record<string, BillingPlan>, clerkId: string) => {
@@ -125,4 +135,9 @@ export const createNewCustomPlan = (): BillingPlan => ({
   ctaLabel: 'Fale com a equipe',
   ctaUrl: '',
   isNew: true,
+  allowOrgCreation: false,
+  orgMemberLimit: null,
+  orgProjectLimit: null,
+  orgCreditsPerMonth: null,
+  orgCountLimit: null,
 })

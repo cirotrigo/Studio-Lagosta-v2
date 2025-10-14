@@ -244,42 +244,6 @@ function NextStep({ title, description, href }: { title: string; description: st
   )
 }
 
-function TrendBadge({
-  icon: Icon,
-  label,
-  highlight,
-}: {
-  icon: ComponentType<{ className?: string }>
-  label: string
-  highlight: string
-}) {
-  return (
-    <div className="flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-3 py-2">
-      <Icon className="h-4 w-4 text-primary" />
-      <div className="text-xs leading-tight">
-        <p className="font-semibold text-foreground">{highlight}</p>
-        <p className="text-muted-foreground">{label}</p>
-      </div>
-    </div>
-  )
-}
-
-type UsageEntry = {
-  id: string
-  userId: string
-  credits: number
-  feature: string
-  metadata?: Record<string, unknown>
-  createdAt: string
-  project?: { id: number; name: string }
-}
-
-function formatFeature(feature: string) {
-  return feature
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase())
-}
-
 function getWeekStart(date: Date) {
   const copy = new Date(date)
   const day = copy.getDay() // 0 (Sun) - 6 (Sat)
@@ -289,7 +253,7 @@ function getWeekStart(date: Date) {
   return copy
 }
 
-function buildCreditsInsights(entries: UsageEntry[]) {
+function buildCreditsInsights(entries: CreditActivityEntry[]) {
   if (entries.length === 0) {
     return {
       spentThisWeek: 0,
@@ -304,7 +268,7 @@ function buildCreditsInsights(entries: UsageEntry[]) {
   let spentThisWeek = 0
   let addedThisWeek = 0
 
-  const map = new Map<string, { dateLabel: string; spent: number; added: number }>()
+  const map = new Map<string, UsagePoint>()
 
   for (const entry of entries) {
     const date = new Date(entry.createdAt)
@@ -312,7 +276,7 @@ function buildCreditsInsights(entries: UsageEntry[]) {
     const dayLabel = date.toLocaleDateString(undefined, { day: "2-digit", month: "short" })
 
     if (!map.has(dayKey)) {
-      map.set(dayKey, { dateLabel: dayLabel, spent: 0, added: 0 })
+      map.set(dayKey, { dateKey: dayKey, dateLabel: dayLabel, spent: 0, added: 0 })
     }
     const bucket = map.get(dayKey)!
 
@@ -331,7 +295,7 @@ function buildCreditsInsights(entries: UsageEntry[]) {
   const dailySeries = Array.from(map.entries())
     .sort(([a], [b]) => (a < b ? 1 : -1))
     .slice(0, 7)
-    .map(([dateKey, value]) => ({ ...value, dateKey }))
+    .map(([, value]) => value)
 
   return {
     spentThisWeek,

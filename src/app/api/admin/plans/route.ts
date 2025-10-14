@@ -40,6 +40,21 @@ function normalizeBillingSource(value: unknown) {
   return normalized === 'manual' ? 'manual' : 'clerk'
 }
 
+function normalizeNullableInt(value: unknown) {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value))
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return null
+    const parsed = Number.parseInt(trimmed, 10)
+    if (!Number.isFinite(parsed)) return null
+    return Math.max(0, parsed)
+  }
+  return null
+}
+
 function toCents(value: unknown) {
   if (value == null) return null
   if (typeof value === 'number' && Number.isFinite(value)) {
@@ -81,6 +96,11 @@ export async function GET() {
       ctaLabel: p.ctaLabel ?? null,
       ctaUrl: p.ctaUrl ?? null,
       billingSource: p.billingSource ?? 'clerk',
+      allowOrgCreation: p.allowOrgCreation,
+      orgMemberLimit: p.orgMemberLimit,
+      orgProjectLimit: p.orgProjectLimit,
+      orgCreditsPerMonth: p.orgCreditsPerMonth,
+      orgCountLimit: p.orgCountLimit,
     })),
   })
 }
@@ -113,6 +133,11 @@ export async function POST(req: Request) {
       ctaLabel?: string | null
       ctaUrl?: string | null
       billingSource?: string | null
+      allowOrgCreation?: boolean | null
+      orgMemberLimit?: number | null
+      orgProjectLimit?: number | null
+      orgCreditsPerMonth?: number | null
+      orgCountLimit?: number | null
     }
     const billingSource = normalizeBillingSource(body.billingSource)
     const rawClerkId = typeof body.clerkId === 'string' ? body.clerkId.trim() : ''
@@ -145,6 +170,11 @@ export async function POST(req: Request) {
         ctaLabel: body.ctaLabel != null ? String(body.ctaLabel).trim() || null : null,
         ctaUrl: body.ctaUrl != null ? String(body.ctaUrl).trim() || null : null,
         billingSource,
+        allowOrgCreation: Boolean(body.allowOrgCreation),
+        orgMemberLimit: normalizeNullableInt(body.orgMemberLimit),
+        orgProjectLimit: normalizeNullableInt(body.orgProjectLimit),
+        orgCreditsPerMonth: normalizeNullableInt(body.orgCreditsPerMonth),
+        orgCountLimit: normalizeNullableInt(body.orgCountLimit),
       }
       const created = await db.plan.create({ data })
       return NextResponse.json({ plan: {
@@ -166,6 +196,11 @@ export async function POST(req: Request) {
         ctaLabel: created.ctaLabel ?? null,
         ctaUrl: created.ctaUrl ?? null,
         billingSource: created.billingSource ?? 'clerk',
+        allowOrgCreation: created.allowOrgCreation,
+        orgMemberLimit: created.orgMemberLimit,
+        orgProjectLimit: created.orgProjectLimit,
+        orgCreditsPerMonth: created.orgCreditsPerMonth,
+        orgCountLimit: created.orgCountLimit,
       } }, { status: 201 })
     } catch (e: unknown) {
       if (String((e as { code?: string })?.code) === 'P2002') {
@@ -215,6 +250,11 @@ export async function PUT(_req: Request, ctx: { params: Promise<{ clerkId: strin
       ctaLabel?: string | null
       ctaUrl?: string | null
       billingSource?: string | null
+      allowOrgCreation?: boolean | null
+      orgMemberLimit?: number | null
+      orgProjectLimit?: number | null
+      orgCreditsPerMonth?: number | null
+      orgCountLimit?: number | null
     }
     const current = await findPlanByIdentifier(body.planId ?? identifier)
     if (!current) return NextResponse.json({ error: 'Plano não encontrado' }, { status: 404 })
@@ -245,6 +285,11 @@ export async function PUT(_req: Request, ctx: { params: Promise<{ clerkId: strin
     if (body.ctaType !== undefined) data.ctaType = normalizeCtaType(body.ctaType)
     if (body.ctaLabel !== undefined) data.ctaLabel = body.ctaLabel === null ? null : (String(body.ctaLabel).trim() || null)
     if (body.ctaUrl !== undefined) data.ctaUrl = body.ctaUrl === null ? null : (String(body.ctaUrl).trim() || null)
+    if (body.allowOrgCreation !== undefined) data.allowOrgCreation = Boolean(body.allowOrgCreation)
+    if (body.orgMemberLimit !== undefined) data.orgMemberLimit = normalizeNullableInt(body.orgMemberLimit)
+    if (body.orgProjectLimit !== undefined) data.orgProjectLimit = normalizeNullableInt(body.orgProjectLimit)
+    if (body.orgCreditsPerMonth !== undefined) data.orgCreditsPerMonth = normalizeNullableInt(body.orgCreditsPerMonth)
+    if (body.orgCountLimit !== undefined) data.orgCountLimit = normalizeNullableInt(body.orgCountLimit)
     const updated = await db.plan.update({ where: { id: current.id }, data })
     return NextResponse.json({ plan: {
       id: updated.id,
@@ -254,6 +299,22 @@ export async function PUT(_req: Request, ctx: { params: Promise<{ clerkId: strin
       active: updated.active,
       sortOrder: updated.sortOrder ?? 0,
       clerkName: updated.clerkName || null,
+      currency: updated.currency ?? null,
+      priceMonthlyCents: updated.priceMonthlyCents ?? null,
+      priceYearlyCents: updated.priceYearlyCents ?? null,
+      description: updated.description ?? null,
+      features: updated.features ?? null,
+      badge: updated.badge ?? null,
+      highlight: updated.highlight ?? null,
+      ctaType: updated.ctaType ?? null,
+      ctaLabel: updated.ctaLabel ?? null,
+      ctaUrl: updated.ctaUrl ?? null,
+      billingSource: updated.billingSource ?? 'clerk',
+      allowOrgCreation: updated.allowOrgCreation,
+      orgMemberLimit: updated.orgMemberLimit,
+      orgProjectLimit: updated.orgProjectLimit,
+      orgCreditsPerMonth: updated.orgCreditsPerMonth,
+      orgCountLimit: updated.orgCountLimit,
     } })
   } catch (e: unknown) {
     const errorCode = (e as { code?: string })?.code;

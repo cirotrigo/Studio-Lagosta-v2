@@ -144,6 +144,11 @@ model Plan {
   highlight         Boolean  @default(false)
   billingSource     String   @default("clerk")
   sortOrder         Int      @default(0)
+  allowOrgCreation  Boolean  @default(false)
+  orgMemberLimit    Int?
+  orgProjectLimit   Int?
+  orgCreditsPerMonth Int?
+  orgCountLimit     Int?
 
   @@index([active])
 }
@@ -175,6 +180,7 @@ model Project {
   AIGeneratedImage       AIGeneratedImage[]
   PromptLibrary          PromptLibrary[]
   organizationProjects   OrganizationProject[]
+  OrganizationUsage      OrganizationUsage[]
 
   @@index([status])
   @@index([userId])
@@ -191,14 +197,18 @@ model Organization {
   maxMembers       Int                        @default(5)
   maxProjects      Int                        @default(10)
   creditsPerMonth  Int                        @default(1000)
+  ownerClerkId     String?
   createdAt        DateTime                   @default(now())
   updatedAt        DateTime                   @updatedAt
   projects         OrganizationProject[]
   creditBalance    OrganizationCreditBalance?
   usage            OrganizationUsage[]
+  memberAnalytics  OrganizationMemberAnalytics[]
+  usageHistory     UsageHistory[]
 
   @@index([clerkOrgId])
   @@index([slug])
+  @@index([ownerClerkId])
 }
 
 model OrganizationCreditBalance {
@@ -221,12 +231,15 @@ model OrganizationUsage {
   feature        String
   credits        Int
   metadata       Json?
+  projectId      Int?
   createdAt      DateTime      @default(now())
   organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([userId])
   @@index([createdAt])
+  @@index([projectId])
 }
 
 model OrganizationProject {
@@ -336,8 +349,10 @@ model UsageHistory {
   creditsUsed     Int
   details         Json?
   timestamp       DateTime      @default(now())
+  organizationId  String?
   CreditBalance   CreditBalance @relation(fields: [creditBalanceId], references: [id])
   User            User          @relation(fields: [userId], references: [id])
+  Organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([creditBalanceId])
   @@index([operationType])
@@ -345,6 +360,31 @@ model UsageHistory {
   @@index([timestamp])
   @@index([userId])
   @@index([userId, timestamp])
+  @@index([organizationId, timestamp])
+}
+
+model OrganizationMemberAnalytics {
+  id                     String        @id @default(cuid())
+  organizationId         String
+  memberClerkId          String
+  memberUserId           String?
+  imageGenerationsCount  Int           @default(0)
+  videoGenerationsCount  Int           @default(0)
+  chatInteractionsCount  Int           @default(0)
+  totalCreditsUsed       Int           @default(0)
+  periodStart            DateTime
+  periodEnd              DateTime
+  lastActivityAt         DateTime?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member                 User?         @relation(fields: [memberUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, memberClerkId, periodStart])
+  @@index([organizationId, periodStart])
+  @@index([memberClerkId])
+  @@index([memberUserId])
+  @@index([periodStart, periodEnd])
 }
 
 model User {
@@ -359,6 +399,7 @@ model User {
   StorageObject     StorageObject[]
   SubscriptionEvent SubscriptionEvent[]
   UsageHistory      UsageHistory[]
+  OrganizationMemberAnalytics OrganizationMemberAnalytics[]
 
   @@index([createdAt])
   @@index([email])

@@ -21,6 +21,11 @@ export type BillingPlan = {
   ctaLabel?: string | null;
   ctaUrl?: string | null;
   isNew?: boolean;
+  allowOrgCreation?: boolean;
+  orgMemberLimit?: number | null;
+  orgProjectLimit?: number | null;
+  orgCreditsPerMonth?: number | null;
+  orgCountLimit?: number | null;
 }
 
 export type PlanFeatureForm = {

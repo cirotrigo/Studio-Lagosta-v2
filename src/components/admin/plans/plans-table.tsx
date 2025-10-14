@@ -49,6 +49,11 @@ type BillingPlan = {
   ctaLabel?: string | null;
   ctaUrl?: string | null;
   isNew?: boolean;
+  allowOrgCreation?: boolean;
+  orgMemberLimit?: number | null;
+  orgProjectLimit?: number | null;
+  orgCreditsPerMonth?: number | null;
+  orgCountLimit?: number | null;
 }
 
 interface PlansTableProps {
@@ -146,6 +151,26 @@ export function PlansTable({
         </div>
       ),
       className: 'text-right w-[120px]',
+    },
+    {
+      key: 'organizations',
+      header: 'Organizações',
+      render: (plan: BillingPlan & { id: string }) => (
+        <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <Badge variant={plan.allowOrgCreation ? 'default' : 'secondary'} className="w-fit">
+            {plan.allowOrgCreation ? 'Habilitado' : 'Desabilitado'}
+          </Badge>
+          {plan.allowOrgCreation && (
+            <div className="space-y-0.5">
+              <p>Membros: {plan.orgMemberLimit ?? '—'}</p>
+              <p>Projetos: {plan.orgProjectLimit ?? '—'}</p>
+              <p>Créditos org.: {plan.orgCreditsPerMonth ?? '—'}</p>
+              <p>Máx. org: {plan.orgCountLimit ?? '—'}</p>
+            </div>
+          )}
+        </div>
+      ),
+      className: 'w-[180px]',
     },
     {
       key: 'pricing',
