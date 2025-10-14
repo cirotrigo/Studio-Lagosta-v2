@@ -41,6 +41,15 @@ function subtractDays(base: Date, amount: number) {
   return copy
 }
 
+type UsageSummaryEntry = Prisma.OrganizationUsageGetPayload<{
+  select: {
+    userId: true
+    feature: true
+    credits: true
+    createdAt: true
+  }
+}>
+
 export function resolveAnalyticsPeriod(
   key: AnalyticsPeriodKey,
   custom?: { start?: Date | string; end?: Date | string }
@@ -81,7 +90,7 @@ function normaliseFeature(feature: string) {
 function countForFeature(
   accumulator: MemberAnalyticsStats,
   feature: string,
-  entry: Prisma.OrganizationUsageGetPayload<{}>
+  entry: UsageSummaryEntry
 ) {
   const featureKey = normaliseFeature(feature)
 
@@ -122,6 +131,12 @@ export async function collectMemberUsageStats(
       },
     },
     orderBy: { createdAt: 'asc' },
+    select: {
+      userId: true,
+      feature: true,
+      credits: true,
+      createdAt: true,
+    },
   })
 
   const statsByMember = new Map<string, MemberAnalyticsStats>()
