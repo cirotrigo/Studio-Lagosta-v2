@@ -215,20 +215,15 @@ if (!projectDetails) {
   )
 }
 
-const organizationShares = useMemo(
-  () => projectDetails.organizationShares ?? [],
-  [projectDetails.organizationShares],
-)
+const organizationShares = projectDetails.organizationShares ?? []
 
-const activeOrganizationShare = useMemo(() => {
-  if (!organization?.id) return undefined
-  return organizationShares.find((share) => share.organizationId === organization.id)
-}, [organization?.id, organizationShares])
+const activeOrganizationShare = organization?.id
+  ? organizationShares.find((share) => share.organizationId === organization.id)
+  : undefined
 
-const otherOrganizationShares = useMemo(() => {
-  if (!organization?.id) return organizationShares
-  return organizationShares.filter((share) => share.organizationId !== organization.id)
-}, [organization?.id, organizationShares])
+const otherOrganizationShares = organization?.id
+  ? organizationShares.filter((share) => share.organizationId !== organization.id)
+  : organizationShares
 
 const canManageSharing = Boolean(organization) && membership?.role === 'org:admin'
 
