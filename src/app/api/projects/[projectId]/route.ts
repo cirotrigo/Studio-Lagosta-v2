@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -20,45 +21,13 @@ export async function GET(
       return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
     }
 
-    const project = await db.project.findUnique({
-      where: { id: projectIdNum },
-      select: {
-        id: true,
-        name: true,
-        description: true,
-        status: true,
-        logoUrl: true,
-        googleDriveFolderId: true,
-        googleDriveFolderName: true,
-        googleDriveImagesFolderId: true,
-        googleDriveImagesFolderName: true,
-        googleDriveVideosFolderId: true,
-        googleDriveVideosFolderName: true,
-        createdAt: true,
-        updatedAt: true,
-        userId: true,
-        organizationProjects: {
-          include: {
-            organization: {
-              select: {
-                clerkOrgId: true,
-                name: true,
-              },
-            },
-          },
-        },
-      },
-    })
+    const project = await fetchProjectWithShares(projectIdNum)
 
     if (!project) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    const hasOrganizationAccess = Boolean(
-      orgId && project.organizationProjects.some((share) => share.organization.clerkOrgId === orgId),
-    )
-
-    if (project.userId !== userId && !hasOrganizationAccess) {
+    if (!hasProjectReadAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

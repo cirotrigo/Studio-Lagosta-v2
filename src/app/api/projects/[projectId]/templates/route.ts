@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { createTemplateSchema } from '@/lib/validations/studio'
 import { createBlankDesign } from '@/lib/studio/defaults'
 import type { Prisma } from '@/lib/prisma-types'
@@ -12,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { projectId } = await params
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -22,8 +23,8 @@ export async function GET(
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await db.project.findFirst({ where: { id: projectIdNum, userId } })
-  if (!project) {
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!hasProjectReadAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
@@ -44,7 +45,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -55,8 +56,8 @@ export async function POST(
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await db.project.findFirst({ where: { id: projectIdNum, userId } })
-  if (!project) {
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

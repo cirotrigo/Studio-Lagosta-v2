@@ -2,12 +2,9 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
-
-async function verifyProject(projectId: number, userId: string) {
-  return db.project.findFirst({ where: { id: projectId, userId } })
-}
 
 export async function GET(
   _req: Request,
@@ -15,7 +12,7 @@ export async function GET(
 ) {
   const { projectId } = await params
   const projectIdNum = Number(projectId)
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -24,8 +21,8 @@ export async function GET(
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await verifyProject(projectIdNum, userId)
-  if (!project) {
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
@@ -43,7 +40,7 @@ export async function POST(
 ) {
   const { projectId } = await params
   const projectIdNum = Number(projectId)
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -52,8 +49,8 @@ export async function POST(
     return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
   }
 
-  const project = await verifyProject(projectIdNum, userId)
-  if (!project) {
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!project || !hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

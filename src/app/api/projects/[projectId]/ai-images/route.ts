@@ -1,12 +1,13 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -20,11 +21,9 @@ export async function GET(
 
   try {
     // Verificar ownership do projeto
-    const project = await db.project.findFirst({
-      where: { id: projectId, userId },
-    })
+    const project = await fetchProjectWithShares(projectId)
 
-    if (!project) {
+    if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 

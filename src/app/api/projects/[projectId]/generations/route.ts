@@ -5,6 +5,7 @@ import { createGenerationSchema } from '@/lib/validations/studio'
 import { renderGeneration } from '@/lib/generation-utils'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 60 segundos para renderização
@@ -14,7 +15,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -23,11 +24,9 @@ export async function GET(
     const projectIdNum = parseInt(projectId)
 
     // Verificar ownership do projeto
-    const project = await db.project.findFirst({
-      where: { id: projectIdNum, userId },
-    })
+    const project = await fetchProjectWithShares(projectIdNum)
 
-    if (!project) {
+    if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
@@ -78,7 +77,7 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -87,11 +86,9 @@ export async function POST(
     const projectIdNum = parseInt(projectId)
 
     // Verificar ownership do projeto
-    const project = await db.project.findFirst({
-      where: { id: projectIdNum, userId },
-    })
+    const project = await fetchProjectWithShares(projectIdNum)
 
-    if (!project) {
+    if (!project || !hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
