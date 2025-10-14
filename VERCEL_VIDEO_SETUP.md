@@ -167,6 +167,19 @@ Filtrar por `[Video Processor]` para ver apenas logs do processamento de vídeo.
 
 ---
 
+## 🎯 5. Backup Automático no Google Drive
+
+Cada vídeo processado é enviado automaticamente para a pasta configurada no projeto. Para garantir que o backup está ativo:
+
+1. Abra o projeto no painel e defina as pastas de **Fotos** e **Vídeos** nas configurações.
+2. Exporte um vídeo pelo editor e aguarde a conclusão na fila.
+3. No Google Drive, acesse a pasta de vídeos configurada; um arquivo com padrão `AAAAMMDDHHmmss_nome-random.mp4` deve estar presente.
+4. O link público gerado pelo Drive é salvo nos metadados do job (`driveBackupUrl`) e pode ser exibido no painel de criativos, se necessário.
+
+> Caso o backup falhe, verifique os logs com `[Video Processor] Falha ao fazer backup no Google Drive` para identificar permissões ou credenciais ausentes.
+
+---
+
 ## 🔍 4. Monitoramento
 
 ### 4.1 Ver Jobs na Fila (SQL)
