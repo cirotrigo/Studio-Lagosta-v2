@@ -2,13 +2,27 @@
 
 import { useMemo, type ComponentType } from "react"
 import { useOrganization } from "@clerk/nextjs"
-import { Building2, Coins, FolderOpen, Users } from "lucide-react"
+import {
+  Building2,
+  Coins,
+  FolderOpen,
+  Users,
+  History,
+  TrendingDown,
+  TrendingUp,
+  Loader2,
+} from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
 import { Skeleton } from "@/components/ui/skeleton"
-import { useOrganizationCredits, useOrganizationProjects } from "@/hooks/use-organizations"
+import {
+  useOrganizationCredits,
+  useOrganizationProjects,
+  useOrganizationCreditsUsage,
+} from "@/hooks/use-organizations"
 import { useParams } from "next/navigation"
 
 export default function OrganizationDashboardPage() {
@@ -24,11 +38,17 @@ export default function OrganizationDashboardPage() {
     data: projectsData,
     isLoading: projectsLoading,
   } = useOrganizationProjects(isActiveOrganization ? organization.id : null)
+  const {
+    data: usageData,
+    isLoading: usageLoading,
+    refetch: refetchUsage,
+  } = useOrganizationCreditsUsage(isActiveOrganization ? organization.id : null, { limit: 50 })
 
   const membersCount = organization?.membersCount ?? 0
   const projectsCount = projectsData?.projects.length ?? 0
   const creditsCurrent = creditsData?.credits.current ?? 0
   const creditsTotal = creditsData?.limits.creditsPerMonth ?? 0
+  const usageEntries = (usageData?.data ?? []) as UsageEntry[]
 
   useSetPageMetadata({
     title: organization?.name ?? "Organização",
@@ -70,6 +90,8 @@ export default function OrganizationDashboardPage() {
         </Card>
       )
     }
+
+    const { spentThisWeek, addedThisWeek, dailySeries } = buildCreditsInsights(usageEntries)
 
     return (
       <div className="space-y-6">
@@ -129,6 +151,105 @@ export default function OrganizationDashboardPage() {
           />
         </div>
 
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="border border-border/40 bg-card/60 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Uso recente de créditos</h3>
+                <p className="text-sm text-muted-foreground">
+                  Saldos consumidos ou adicionados nos últimos dias
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchUsage()}
+                disabled={usageLoading}
+              >
+                {usageLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Atualizando
+                  </>
+                ) : (
+                  "Atualizar"
+                )}
+              </Button>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-4 text-sm">
+              <TrendBadge
+                icon={TrendingDown}
+                label="Consumidos nesta semana"
+                highlight={`-${spentThisWeek} créditos`}
+              />
+              <TrendBadge
+                icon={TrendingUp}
+                label="Adicionados nesta semana"
+                highlight={`+${addedThisWeek} créditos`}
+              />
+            </div>
+
+            <div className="mt-6 space-y-3">
+              {usageLoading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <Skeleton key={index} className="h-12 w-full" />
+                ))
+              ) : dailySeries.length > 0 ? (
+                dailySeries.map((point, index) => (
+                  <div
+                    key={`${point.dateKey}-${index}`}
+                    className="flex items-center justify-between rounded-md border border-border/30 bg-background/50 px-3 py-2 text-sm"
+                  >
+                    <div className="font-medium text-foreground">{point.dateLabel}</div>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1 text-destructive">
+                        <TrendingDown className="h-3 w-3" />
+                        {point.spent} usados
+                      </span>
+                      <span className="flex items-center gap-1 text-green-500">
+                        <TrendingUp className="h-3 w-3" />
+                        {point.added} adicionados
+                      </span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhum uso registrado recentemente. As operações da equipe aparecerão aqui.
+                </p>
+              )}
+            </div>
+          </Card>
+
+          <Card className="border border-border/40 bg-card/60 p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Atividade da equipe</h3>
+                <p className="text-sm text-muted-foreground">
+                  Últimas ações realizadas por membros e automatizações
+                </p>
+              </div>
+              <History className="h-5 w-5 text-muted-foreground" />
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {usageLoading ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <Skeleton key={index} className="h-12 w-full" />
+                ))
+              ) : usageEntries.length > 0 ? (
+                usageEntries.slice(0, 8).map((entry) => (
+                  <UsageListItem key={entry.id} entry={entry} />
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Assim que membros consumirem créditos, as atividades aparecerão aqui.
+                </p>
+              )}
+            </div>
+          </Card>
+        </div>
+
         <Card className="border border-border/40 bg-card/60 p-6">
           <h3 className="text-lg font-semibold">O que fazer a seguir?</h3>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
@@ -158,6 +279,9 @@ export default function OrganizationDashboardPage() {
     orgId,
     projectsCount,
     projectsLoading,
+    usageEntries,
+    usageLoading,
+    refetchUsage,
   ])
 
   return content
@@ -205,4 +329,127 @@ function NextStep({ title, description, href }: { title: string; description: st
       </Button>
     </Card>
   )
+}
+
+function TrendBadge({
+  icon: Icon,
+  label,
+  highlight,
+}: {
+  icon: ComponentType<{ className?: string }>
+  label: string
+  highlight: string
+}) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-3 py-2">
+      <Icon className="h-4 w-4 text-primary" />
+      <div className="text-xs leading-tight">
+        <p className="font-semibold text-foreground">{highlight}</p>
+        <p className="text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+type UsageEntry = {
+  id: string
+  userId: string
+  credits: number
+  feature: string
+  metadata?: Record<string, unknown>
+  createdAt: string
+  project?: { id: number; name: string }
+}
+
+function UsageListItem({ entry }: { entry: UsageEntry }) {
+  const isCreditAddition = entry.credits < 0
+  const absoluteCredits = Math.abs(entry.credits)
+  const feature = formatFeature(entry.feature)
+  const projectName = entry.project?.name
+
+  return (
+    <div className="flex items-start justify-between rounded-md border border-border/30 bg-background/40 px-3 py-2 text-sm">
+      <div className="space-y-1">
+        <div className="flex items-center gap-2 font-medium text-foreground">
+          <span>{isCreditAddition ? "Créditos adicionados" : "Créditos usados"}</span>
+          <Badge variant="outline" className={isCreditAddition ? "text-green-600" : "text-destructive"}>
+            {isCreditAddition ? `+${absoluteCredits}` : `-${absoluteCredits}`}
+          </Badge>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {feature}
+          {projectName ? ` · Projeto: ${projectName}` : ""}
+        </p>
+      </div>
+      <div className="text-xs text-muted-foreground">
+        {new Date(entry.createdAt).toLocaleString()}
+      </div>
+    </div>
+  )
+}
+
+function formatFeature(feature: string) {
+  return feature
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function getWeekStart(date: Date) {
+  const copy = new Date(date)
+  const day = copy.getDay() // 0 (Sun) - 6 (Sat)
+  const diff = copy.getDate() - day + (day === 0 ? -6 : 1) // start Monday
+  copy.setDate(diff)
+  copy.setHours(0, 0, 0, 0)
+  return copy
+}
+
+function buildCreditsInsights(entries: UsageEntry[]) {
+  if (entries.length === 0) {
+    return {
+      spentThisWeek: 0,
+      addedThisWeek: 0,
+      dailySeries: [],
+    }
+  }
+
+  const now = new Date()
+  const weekStart = getWeekStart(now)
+
+  let spentThisWeek = 0
+  let addedThisWeek = 0
+
+  const map = new Map<string, { dateLabel: string; spent: number; added: number }>()
+
+  for (const entry of entries) {
+    const date = new Date(entry.createdAt)
+    const dayKey = date.toISOString().slice(0, 10)
+    const dayLabel = date.toLocaleDateString(undefined, { day: "2-digit", month: "short" })
+
+    if (!map.has(dayKey)) {
+      map.set(dayKey, { dateLabel: dayLabel, spent: 0, added: 0 })
+    }
+    const bucket = map.get(dayKey)!
+
+    if (entry.credits >= 0) {
+      bucket.spent += entry.credits
+    } else {
+      bucket.added += Math.abs(entry.credits)
+    }
+
+    if (date >= weekStart) {
+      if (entry.credits >= 0) spentThisWeek += entry.credits
+      else addedThisWeek += Math.abs(entry.credits)
+    }
+  }
+
+  const dailySeries = Array.from(map.entries())
+    .sort(([a], [b]) => (a < b ? 1 : -1))
+    .slice(0, 7)
+    .map(([dateKey, value]) => ({ ...value, dateKey }))
+
+  return {
+    spentThisWeek,
+    addedThisWeek,
+    dailySeries,
+  }
 }

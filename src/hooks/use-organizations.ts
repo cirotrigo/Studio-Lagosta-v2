@@ -48,8 +48,9 @@ type CreditsUsageResponse = {
     userId: string
     feature: string
     credits: number
-    metadata: unknown
+    metadata?: Record<string, unknown>
     createdAt: string
+    project?: { id: number; name: string }
   }>
   nextCursor: string | null
 }

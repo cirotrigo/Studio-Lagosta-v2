@@ -4,6 +4,7 @@ import {
   OrganizationAccessError,
   requireOrganizationMembership,
 } from '@/lib/organizations'
+import { fetchProjectWithShares } from '@/lib/projects/access'
 
 export async function GET(
   req: Request,
@@ -44,8 +45,48 @@ export async function GET(
     const hasMore = usage.length > limit
     const items = hasMore ? usage.slice(0, limit) : usage
 
+    const projectIds = Array.from(
+      new Set(
+        items
+          .map((entry) =>
+            typeof entry.metadata === 'object' && entry.metadata !== null
+              ? (entry.metadata as { projectId?: number }).projectId
+              : undefined,
+          )
+          .filter((id): id is number => typeof id === 'number' && Number.isFinite(id)),
+      ),
+    )
+
+    const projects = projectIds.length
+      ? await Promise.all(projectIds.map((id) => fetchProjectWithShares(id)))
+      : []
+
+    const projectMap = new Map<number, { name: string }>()
+    projects.forEach((project, index) => {
+      const id = projectIds[index]
+      if (project && typeof project.name === 'string') {
+        projectMap.set(id, { name: project.name })
+      }
+    })
+
+    const enriched = items.map((entry) => {
+      const metadata =
+        typeof entry.metadata === 'object' && entry.metadata !== null
+          ? (entry.metadata as Record<string, unknown>)
+          : undefined
+
+      const projectId = metadata?.projectId as number | undefined
+      const projectInfo = projectId ? projectMap.get(projectId) : undefined
+
+      return {
+        ...entry,
+        metadata,
+        project: projectInfo ? { id: projectId, name: projectInfo.name } : undefined,
+      }
+    })
+
     return NextResponse.json({
-      data: items,
+      data: enriched,
       nextCursor: hasMore ? items[items.length - 1]?.id ?? null : null,
     })
   } catch (error) {
