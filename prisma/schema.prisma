@@ -174,10 +174,74 @@ model Project {
   Template               Template[]
   AIGeneratedImage       AIGeneratedImage[]
   PromptLibrary          PromptLibrary[]
+  organizationProjects   OrganizationProject[]
 
   @@index([status])
   @@index([userId])
   @@index([workspaceId])
+}
+
+model Organization {
+  id               String                     @id @default(cuid())
+  clerkOrgId       String                     @unique
+  name             String
+  slug             String                     @unique
+  imageUrl         String?
+  isActive         Boolean                    @default(true)
+  maxMembers       Int                        @default(5)
+  maxProjects      Int                        @default(10)
+  creditsPerMonth  Int                        @default(1000)
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+  projects         OrganizationProject[]
+  creditBalance    OrganizationCreditBalance?
+  usage            OrganizationUsage[]
+
+  @@index([clerkOrgId])
+  @@index([slug])
+}
+
+model OrganizationCreditBalance {
+  id             String        @id @default(cuid())
+  organizationId String        @unique
+  credits        Int           @default(0)
+  lastRefill     DateTime?
+  refillAmount   Int           @default(1000)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model OrganizationUsage {
+  id             String        @id @default(cuid())
+  organizationId String
+  userId         String
+  feature        String
+  credits        Int
+  metadata       Json?
+  createdAt      DateTime      @default(now())
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model OrganizationProject {
+  id             String        @id @default(cuid())
+  organizationId String
+  projectId      Int
+  sharedBy       String
+  sharedAt       DateTime      @default(now())
+  defaultCanEdit Boolean       @default(true)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, projectId])
+  @@index([projectId])
+  @@index([organizationId])
 }
 
 model StorageObject {
