@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -20,8 +20,8 @@ export async function GET(
       return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
     }
 
-    const project = await db.project.findFirst({
-      where: { id: projectIdNum, userId },
+    const project = await db.project.findUnique({
+      where: { id: projectIdNum },
       select: {
         id: true,
         name: true,
@@ -36,6 +36,7 @@ export async function GET(
         googleDriveVideosFolderName: true,
         createdAt: true,
         updatedAt: true,
+        userId: true,
         organizationProjects: {
           include: {
             organization: {
@@ -51,6 +52,14 @@ export async function GET(
 
     if (!project) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
+
+    const hasOrganizationAccess = Boolean(
+      orgId && project.organizationProjects.some((share) => share.organization.clerkOrgId === orgId),
+    )
+
+    if (project.userId !== userId && !hasOrganizationAccess) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
     const { organizationProjects, ...rest } = project

@@ -1,9 +1,10 @@
 "use client";
 
-import { useUser } from "@clerk/nextjs";
+import { useOrganization, useUser } from "@clerk/nextjs";
 import { useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { useOrganizationCredits, organizationKeys } from '@/hooks/use-organizations';
 
 export type OperationType =
   | "generate_content"
@@ -40,7 +41,9 @@ export function useCredits(): {
   getCost: (operation: OperationType) => number;
   refresh: () => void;
 } {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded: isUserLoaded } = useUser();
+  const { organization, isLoaded: isOrgLoaded } = useOrganization();
+  const isOrganizationContext = Boolean(organization);
   const queryClient = useQueryClient();
 
   // Fetch dynamic settings
@@ -53,11 +56,13 @@ export function useCredits(): {
 
   const { data, isLoading: loadingServer } = useQuery<{ creditsRemaining: number } | null>({
     queryKey: ['credits', user?.id],
-    enabled: isLoaded && !!user,
+    enabled: !isOrganizationContext && isUserLoaded && !!user,
     refetchOnWindowFocus: true,
     refetchInterval: 30000,
     queryFn: () => api.get('/api/credits/me'),
   });
+
+  const organizationCreditsQuery = useOrganizationCredits(organization?.id ?? null);
 
   const publicMetadata = user?.publicMetadata as {
     subscriptionPlan?: string;
@@ -67,7 +72,28 @@ export function useCredits(): {
   } | undefined;
 
   const credits = useMemo(() => {
-    if (!isLoaded || !user) {
+    if (isOrganizationContext) {
+      const orgData = organizationCreditsQuery.data;
+      if (!isOrgLoaded || !organization || !orgData) {
+        return null;
+      }
+
+      const creditsRemaining = orgData.credits.current ?? 0;
+      const creditsTotal = orgData.limits.creditsPerMonth ?? Math.max(creditsRemaining, 0);
+      const percentage = creditsTotal > 0 ? (creditsRemaining / creditsTotal) * 100 : 0;
+
+      return {
+        plan: 'organization',
+        creditsRemaining,
+        creditsTotal,
+        billingPeriodEnd: null,
+        percentage,
+        isLow: percentage < 20,
+        isEmpty: creditsRemaining === 0,
+      } satisfies CreditData;
+    }
+
+    if (!isUserLoaded || !user) {
       return null;
     }
 
@@ -88,7 +114,16 @@ export function useCredits(): {
       isLow: percentage < 20,
       isEmpty: creditsRemaining === 0,
     };
-  }, [isLoaded, user, publicMetadata, data]);
+  }, [
+    isOrganizationContext,
+    organization,
+    isOrgLoaded,
+    organizationCreditsQuery.data,
+    isUserLoaded,
+    user,
+    publicMetadata,
+    data,
+  ]);
 
   // Map backend feature keys to UI operation keys
   const getDynamicCosts = (): Record<OperationType, number> => {
@@ -114,10 +149,35 @@ export function useCredits(): {
   };
 
   const refresh = () => {
-    if (user?.id) queryClient.invalidateQueries({ queryKey: ['credits', user.id] });
+    if (isOrganizationContext && organization?.id) {
+      queryClient.invalidateQueries({ queryKey: organizationKeys.credits(organization.id) });
+    }
+    if (!isOrganizationContext && user?.id) {
+      queryClient.invalidateQueries({ queryKey: ['credits', user.id] });
+    }
   };
 
-  if (!isLoaded) {
+  if (isOrganizationContext) {
+    if (!isOrgLoaded) {
+      return {
+        credits: null,
+        isLoading: true,
+        canPerformOperation: () => false,
+        getCost: (operation) => DEFAULT_UI_CREDIT_COSTS[operation],
+        refresh,
+      };
+    }
+
+    return {
+      credits,
+      isLoading: organizationCreditsQuery.isLoading,
+      canPerformOperation,
+      getCost,
+      refresh,
+    };
+  }
+
+  if (!isUserLoaded) {
     return {
       credits: null,
       isLoading: true,

@@ -6,12 +6,12 @@ import { createProjectSchema } from '@/lib/validations/studio'
 export const runtime = 'nodejs'
 
 export async function GET() {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const projects = await db.project.findMany({
+  const ownedProjects = await db.project.findMany({
     where: { userId },
     include: {
       _count: {
@@ -35,7 +35,46 @@ export async function GET() {
     orderBy: { updatedAt: 'desc' },
   })
 
-  const response = projects.map((project) => {
+  let sharedProjects: typeof ownedProjects = []
+
+  if (orgId) {
+    sharedProjects = await db.project.findMany({
+      where: {
+        organizationProjects: {
+          some: {
+            organization: {
+              clerkOrgId: orgId,
+            },
+          },
+        },
+      },
+      include: {
+        _count: {
+          select: { Template: true, Generation: true },
+        },
+        Logo: {
+          where: { isProjectLogo: true },
+          take: 1,
+        },
+        organizationProjects: {
+          include: {
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    })
+  }
+
+  const ownedIds = new Set(ownedProjects.map((project) => project.id))
+  const combined = [...ownedProjects, ...sharedProjects.filter((project) => !ownedIds.has(project.id))]
+
+  const response = combined.map((project) => {
     const { organizationProjects, ...rest } = project
 
     return {
