@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import type { Prisma, PrismaClient } from '../../../prisma/generated/client'
+import { getPlanLimitsForUser } from './limits'
 
 type TransactionClient = Prisma.TransactionClient | PrismaClient
 
@@ -13,6 +14,7 @@ export interface ClerkOrganizationPayload {
   image_url?: NullableString
   logo_url?: NullableString
   public_metadata?: MaybeRecord
+  created_by?: NullableString
 }
 
 function sanitizeSlug(slug: NullableString, fallback: string) {
@@ -49,6 +51,18 @@ function extractLimits(metadata: MaybeRecord) {
     maxProjects: coerceNumber(metadata.maxProjects) ?? undefined,
     creditsPerMonth: coerceNumber(metadata.creditsPerMonth) ?? undefined,
   }
+}
+
+function extractOwnerFromMetadata(metadata: MaybeRecord): string | undefined {
+  if (!metadata || typeof metadata !== 'object') {
+    return undefined
+  }
+
+  const owner = (metadata as Record<string, unknown>).ownerClerkId
+  if (typeof owner === 'string' && owner.trim().length > 0) {
+    return owner.trim()
+  }
+  return undefined
 }
 
 export async function getOrganizationByClerkId(clerkOrgId: string) {
@@ -93,20 +107,32 @@ export async function syncOrganizationFromClerk(
   })
 
   const limits = extractLimits(payload.public_metadata)
+  const ownerFromMetadata = extractOwnerFromMetadata(payload.public_metadata)
+  const createdBy =
+    typeof payload.created_by === 'string' && payload.created_by.trim().length > 0
+      ? payload.created_by.trim()
+      : undefined
+
   const baseData = {
     name: payload.name?.toString().trim() || 'Organização sem nome',
     slug: sanitizeSlug(payload.slug, payload.id),
     imageUrl: normalizeImageUrl(payload),
     isActive: true,
+    ownerClerkId: ownerFromMetadata ?? createdBy ?? undefined,
     ...(typeof limits.maxMembers === 'number' ? { maxMembers: limits.maxMembers } : {}),
     ...(typeof limits.maxProjects === 'number' ? { maxProjects: limits.maxProjects } : {}),
     ...(typeof limits.creditsPerMonth === 'number' ? { creditsPerMonth: limits.creditsPerMonth } : {}),
   }
 
   if (existing) {
+    const ownerClerkId = baseData.ownerClerkId ?? existing.ownerClerkId ?? null
+
     const updated = await tx.organization.update({
       where: { id: existing.id },
-      data: baseData,
+      data: {
+        ...baseData,
+        ownerClerkId,
+      },
     })
 
     await syncOrganizationCreditBalance(
@@ -119,13 +145,48 @@ export async function syncOrganizationFromClerk(
     return updated
   }
 
+  const ownerClerkId = baseData.ownerClerkId ?? createdBy ?? null
+  let planLimits:
+    | Awaited<ReturnType<typeof getPlanLimitsForUser>>
+    | null = null
+
+  if (ownerClerkId) {
+    planLimits = await getPlanLimitsForUser(ownerClerkId)
+
+    if (planLimits.allowOrgCreation && planLimits.orgCountLimit != null) {
+      const ownedCount = await tx.organization.count({
+        where: { ownerClerkId, isActive: true },
+      })
+
+      if (ownedCount >= planLimits.orgCountLimit) {
+        console.warn(
+          `[organizations] owner ${ownerClerkId} reached plan organization limit (${planLimits.orgCountLimit})`,
+        )
+      }
+    }
+  }
+
+  const resolvedMaxMembers =
+    baseData.maxMembers ??
+    planLimits?.orgMemberLimit ??
+    5
+  const resolvedMaxProjects =
+    baseData.maxProjects ??
+    planLimits?.orgProjectLimit ??
+    10
+  const resolvedCredits =
+    baseData.creditsPerMonth ??
+    planLimits?.orgCreditsPerMonth ??
+    1000
+
   const created = await tx.organization.create({
     data: {
       clerkOrgId: payload.id,
       ...baseData,
-      maxMembers: baseData.maxMembers ?? 5,
-      maxProjects: baseData.maxProjects ?? 10,
-      creditsPerMonth: baseData.creditsPerMonth ?? 1000,
+      ownerClerkId,
+      maxMembers: resolvedMaxMembers,
+      maxProjects: resolvedMaxProjects,
+      creditsPerMonth: resolvedCredits,
     },
   })
 

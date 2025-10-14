@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useState } from "react"
 import { useOrganization } from "@clerk/nextjs"
 import { useParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
@@ -50,132 +50,124 @@ export default function OrganizationAnalyticsPage() {
     ],
   })
 
-  const content = useMemo(() => {
-    if (!isLoaded) {
-      return <Skeleton className="h-60 w-full" />
-    }
+  if (!isLoaded) {
+    return <Skeleton className="h-60 w-full" />
+  }
 
-    if (!organization) {
-      return (
-        <Card className="border border-border/40 bg-card/60 p-8 text-sm text-muted-foreground">
-          Selecione uma organização ativa para visualizar os analytics da equipe.
-        </Card>
-      )
-    }
-
-    if (!isActiveOrganization) {
-      return (
-        <Card className="border border-border/40 bg-card/60 p-8 text-sm text-muted-foreground">
-          Troque para a organização correta usando o seletor no topo para acessar esta página.
-        </Card>
-      )
-    }
-
-    const summary = analyticsQuery.data?.summary
-    const features = analyticsQuery.data?.features ?? []
-    const recentActivity = (analyticsQuery.data?.recentActivity ?? []).map((entry) => ({
-      id: entry.id,
-      userId: entry.userId ?? "",
-      credits: entry.credits,
-      feature: entry.feature,
-      createdAt: entry.createdAt,
-      metadata: entry.projectId ? { projectId: entry.projectId } : undefined,
-    }))
-
-    const members = membersQuery.data?.members ?? []
-
+  if (!organization) {
     return (
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-foreground">
-              Analytics de créditos · {organization.name}
-            </h2>
-            <p className="text-sm text-muted-foreground">
-              Visualize a distribuição de consumo de créditos pelos recursos e membros da equipe.
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <PeriodToggle value={period} onChange={setPeriod} disabled={analyticsQuery.isFetching || membersQuery.isFetching} />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                analyticsQuery.refetch()
-                membersQuery.refetch()
-              }}
-              disabled={analyticsQuery.isFetching || membersQuery.isFetching}
-            >
-              <RefreshCw className={cn("mr-2 h-4 w-4", (analyticsQuery.isFetching || membersQuery.isFetching) && "animate-spin")} />
-              Atualizar
-            </Button>
-          </div>
-        </div>
+      <Card className="border border-border/40 bg-card/60 p-8 text-sm text-muted-foreground">
+        Selecione uma organização ativa para visualizar os analytics da equipe.
+      </Card>
+    )
+  }
 
-        <AnalyticsSummaryCards
+  if (!isActiveOrganization) {
+    return (
+      <Card className="border border-border/40 bg-card/60 p-8 text-sm text-muted-foreground">
+        Troque para a organização correta usando o seletor no topo para acessar esta página.
+      </Card>
+    )
+  }
+
+  const summary = analyticsQuery.data?.summary
+  const features = analyticsQuery.data?.features ?? []
+  const recentActivity = (analyticsQuery.data?.recentActivity ?? []).map((entry) => ({
+    id: entry.id,
+    userId: entry.userId ?? "",
+    credits: entry.credits,
+    feature: entry.feature,
+    createdAt: entry.createdAt,
+    metadata: entry.projectId ? { projectId: entry.projectId } : undefined,
+  }))
+
+  const members = membersQuery.data?.members ?? []
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-foreground">
+            Analytics de créditos · {organization.name}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Visualize a distribuição de consumo de créditos pelos recursos e membros da equipe.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <PeriodToggle
+            value={period}
+            onChange={setPeriod}
+            disabled={analyticsQuery.isFetching || membersQuery.isFetching}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              analyticsQuery.refetch()
+              membersQuery.refetch()
+            }}
+            disabled={analyticsQuery.isFetching || membersQuery.isFetching}
+          >
+            <RefreshCw
+              className={cn(
+                "mr-2 h-4 w-4",
+                (analyticsQuery.isFetching || membersQuery.isFetching) && "animate-spin",
+              )}
+            />
+            Atualizar
+          </Button>
+        </div>
+      </div>
+
+      <AnalyticsSummaryCards
+        isLoading={analyticsQuery.isLoading}
+        totalCreditsUsed={summary?.totalCreditsUsed}
+        totalOperations={summary?.totalOperations}
+        membersActive={summary?.membersActive}
+        creditsPerMonth={analyticsQuery.data?.organization.creditsPerMonth}
+      />
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <FeatureUsageList
+          features={features}
           isLoading={analyticsQuery.isLoading}
           totalCreditsUsed={summary?.totalCreditsUsed}
-          totalOperations={summary?.totalOperations}
-          membersActive={summary?.membersActive}
-          creditsPerMonth={analyticsQuery.data?.organization.creditsPerMonth}
+          recentActivity={recentActivity}
         />
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <FeatureUsageList
-            features={features}
-            isLoading={analyticsQuery.isLoading}
-            totalCreditsUsed={summary?.totalCreditsUsed}
-            recentActivity={recentActivity}
-          />
-          <Card className="border border-border/40 bg-card/60 p-6">
-            <h3 className="text-lg font-semibold text-foreground">Período analisado</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Os dados abaixo refletem as atividades registradas no período selecionado.
-            </p>
-            <div className="mt-4 flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
-              <CalendarIcon className="h-4 w-4" />
-              <span>
-                {analyticsQuery.data?.period
-                  ? `${new Date(analyticsQuery.data.period.start).toLocaleDateString()} até ${new Date(analyticsQuery.data.period.end).toLocaleDateString()}`
-                  : "Período desconhecido"}
-              </span>
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground">
-              Os relatórios são atualizados automaticamente conforme novas operações de créditos são registradas.
-              Você pode forçar uma atualização manual a qualquer momento.
-            </p>
-          </Card>
-        </div>
-
-        <MemberAnalyticsTable
-          members={members}
-          isLoading={membersQuery.isLoading}
-          totals={membersQuery.data?.totals}
-        />
-
-        {membership?.role !== "org:admin" && (
-          <Card className="border border-border/40 bg-card/40 p-4 text-xs text-muted-foreground">
-            Algumas ações (como exportar relatórios) podem exigir permissões adicionais. Contate um administrador se precisar de acessos extras.
-          </Card>
-        )}
+        <Card className="border border-border/40 bg-card/60 p-6">
+          <h3 className="text-lg font-semibold text-foreground">Período analisado</h3>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Os dados abaixo refletem as atividades registradas no período selecionado.
+          </p>
+          <div className="mt-4 flex items-center gap-2 rounded-md border border-border/40 bg-background/60 px-3 py-2 text-sm text-muted-foreground">
+            <CalendarIcon className="h-4 w-4" />
+            <span>
+              {analyticsQuery.data?.period
+                ? `${new Date(analyticsQuery.data.period.start).toLocaleDateString()} até ${new Date(analyticsQuery.data.period.end).toLocaleDateString()}`
+                : "Período desconhecido"}
+            </span>
+          </div>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Os relatórios são atualizados automaticamente conforme novas operações de créditos são registradas.
+            Você pode forçar uma atualização manual a qualquer momento.
+          </p>
+        </Card>
       </div>
-    )
-  }, [
-    analyticsQuery.data,
-    analyticsQuery.isLoading,
-    analyticsQuery.isFetching,
-    isActiveOrganization,
-    isLoaded,
-    membersQuery.data,
-    membersQuery.isLoading,
-    membersQuery.isFetching,
-    membership?.role,
-    organization,
-    orgIdParam,
-    period,
-  ])
 
-  return content
+      <MemberAnalyticsTable
+        members={members}
+        isLoading={membersQuery.isLoading}
+        totals={membersQuery.data?.totals}
+      />
+
+      {membership?.role !== "org:admin" && (
+        <Card className="border border-border/40 bg-card/40 p-4 text-xs text-muted-foreground">
+          Algumas ações (como exportar relatórios) podem exigir permissões adicionais. Contate um administrador se precisar de acessos extras.
+        </Card>
+      )}
+    </div>
+  )
 }
 
 function PeriodToggle({

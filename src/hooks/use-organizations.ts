@@ -9,6 +9,7 @@ const organizationKeys = {
   credits: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'credits'] as const,
   usage: (orgId: string, params: { cursor?: string; limit?: number } = {}) =>
     [...ORGANIZATION_QUERY_ROOT, orgId, 'credits', 'usage', params] as const,
+  limitsInfo: [...ORGANIZATION_QUERY_ROOT, 'limits'] as const,
   analytics: (orgId: string, params: { period?: string; startDate?: string; endDate?: string } = {}) =>
     [...ORGANIZATION_QUERY_ROOT, orgId, 'analytics', params] as const,
   analyticsMembers: (
@@ -180,6 +181,27 @@ export function useOrganizationMemberAnalytics(
       return api.get<MemberAnalyticsResponse>(url)
     },
     enabled: Boolean(orgId),
+  })
+}
+
+type OrganizationCreationLimitsResponse = {
+  limits: {
+    allowOrgCreation: boolean
+    orgMemberLimit: number | null
+    orgProjectLimit: number | null
+    orgCreditsPerMonth: number | null
+    orgCountLimit: number | null
+  }
+  ownedCount: number
+  activeOwnedCount: number
+  canCreate: boolean
+}
+
+export function useOrganizationCreationLimits() {
+  return useQuery({
+    queryKey: organizationKeys.limitsInfo,
+    queryFn: () => api.get<OrganizationCreationLimitsResponse>('/api/organizations/limits'),
+    staleTime: 60_000,
   })
 }
 

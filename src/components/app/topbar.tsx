@@ -11,6 +11,7 @@ import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, SignUpButton, 
 import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { navigationItems } from "@/components/app/sidebar";
+import { useOrganizationCreationLimits } from "@/hooks/use-organizations";
 
 type TopbarProps = {
   onToggleSidebar: () => void;
@@ -18,6 +19,15 @@ type TopbarProps = {
 };
 
 export function Topbar({ onToggleSidebar }: TopbarProps) {
+  const { data: creationLimits } = useOrganizationCreationLimits();
+  const createMode = creationLimits?.canCreate === false ? "disabled" : "modal";
+  const creationReminder =
+    creationLimits?.canCreate === false
+      ? creationLimits.limits.orgCountLimit != null
+        ? `Seu plano permite até ${creationLimits.limits.orgCountLimit} organização(ões) ativa(s).`
+        : 'Seu plano atual não permite criar novas organizações.'
+      : null;
+
   return (
     <header
       className={cn(
@@ -68,7 +78,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                       <div className="flex flex-col gap-3">
                         <OrganizationSwitcher
                           hidePersonal={false}
-                          createOrganizationMode="modal"
+                          createOrganizationMode={createMode}
                           afterCreateOrganizationUrl="/organization/:id"
                           afterSelectOrganizationUrl="/organization/:id"
                           afterSelectPersonalUrl="/dashboard"
@@ -79,6 +89,11 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                             },
                           }}
                         />
+                        {creationReminder && (
+                          <p className="text-xs text-muted-foreground">
+                            {creationReminder}
+                          </p>
+                        )}
                         <div className="flex items-center justify-between gap-3">
                           <div className="flex items-center gap-3">
                             <UserButton afterSignOutUrl="/" />
@@ -131,7 +146,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
             <div className="hidden items-center gap-2 sm:flex">
               <OrganizationSwitcher
                 hidePersonal={false}
-                createOrganizationMode="modal"
+                createOrganizationMode={createMode}
                 afterCreateOrganizationUrl="/organization/:id"
                 afterSelectOrganizationUrl="/organization/:id"
                 afterSelectPersonalUrl="/dashboard"
@@ -143,6 +158,9 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                   },
                 }}
               />
+              {creationReminder && (
+                <span className="text-xs text-muted-foreground">Criação de equipe indisponível para o plano atual.</span>
+              )}
               <CreditStatus />
               <Separator orientation="vertical" className="h-6" />
             </div>

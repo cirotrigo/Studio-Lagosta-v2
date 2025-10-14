@@ -45,8 +45,6 @@ export default function OrganizationDashboardPage() {
   const projectsCount = projectsData?.projects.length ?? 0
   const creditsCurrent = creditsData?.credits.current ?? 0
   const creditsTotal = creditsData?.limits.creditsPerMonth ?? 0
-  const usageEntries = (usageData?.data ?? []) as CreditActivityEntry[]
-
   useSetPageMetadata({
     title: organization?.name ?? "Organização",
     description: organization
@@ -88,6 +86,7 @@ export default function OrganizationDashboardPage() {
       )
     }
 
+    const usageEntries = (usageData?.data ?? []) as CreditActivityEntry[]
     const { spentThisWeek, addedThisWeek, dailySeries } = buildCreditsInsights(usageEntries)
 
     return (
@@ -200,9 +199,9 @@ export default function OrganizationDashboardPage() {
     orgId,
     projectsCount,
     projectsLoading,
-    usageEntries,
     usageLoading,
     refetchUsage,
+    usageData?.data,
   ])
 
   return content

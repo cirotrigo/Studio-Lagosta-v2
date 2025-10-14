@@ -5,14 +5,16 @@ import { OrganizationList } from "@clerk/nextjs"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
-import { Building2, ArrowRight, PlusCircle } from "lucide-react"
+import { Building2, PlusCircle } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
+import { useOrganizationCreationLimits } from "@/hooks/use-organizations"
 
 export default function OrganizationLandingPage() {
   const { organization, isLoaded } = useOrganization()
   const router = useRouter()
+  const { data: creationLimits } = useOrganizationCreationLimits()
 
   useSetPageMetadata({
     title: "Organizações",
@@ -82,6 +84,13 @@ export default function OrganizationLandingPage() {
               <p className="text-sm text-muted-foreground">
                 Use a lista abaixo para criar, gerenciar ou entrar em equipes existentes.
               </p>
+              {creationLimits && creationLimits.canCreate === false && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {creationLimits.limits.orgCountLimit != null
+                    ? `Limite atingido: ${creationLimits.limits.orgCountLimit} organização(ões) ativa(s) para o plano atual.`
+                    : 'Seu plano não permite criar novas organizações. Atualize o plano para liberar a funcionalidade.'}
+                </p>
+              )}
             </div>
             <PlusCircle className="h-5 w-5 text-muted-foreground" />
           </div>
