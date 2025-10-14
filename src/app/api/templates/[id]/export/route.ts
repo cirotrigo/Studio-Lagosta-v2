@@ -16,7 +16,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -64,7 +64,9 @@ export async function POST(
 
     // Validar créditos disponíveis
     try {
-      await validateCreditsForFeature(userId, 'creative_download')
+      await validateCreditsForFeature(userId, 'creative_download', 1, {
+        organizationId: orgId ?? undefined,
+      })
     } catch (error) {
       if (error instanceof InsufficientCreditsError) {
         return NextResponse.json(
@@ -103,6 +105,7 @@ export async function POST(
         exportType: 'konva_editor',
         fileName,
       },
+      organizationId: orgId ?? undefined,
     })
 
     console.log('[TEMPLATE_EXPORT] Credits deducted. Remaining:', creditResult.creditsRemaining)

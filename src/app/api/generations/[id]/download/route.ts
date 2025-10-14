@@ -8,7 +8,7 @@ export const runtime = 'nodejs'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -55,6 +55,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           templateName: generation.templateName,
           projectName: generation.projectName,
         },
+        organizationId: orgId ?? undefined,
       })
       console.log('[DOWNLOAD] Credits deducted successfully. Remaining:', result.creditsRemaining)
     } catch (error) {

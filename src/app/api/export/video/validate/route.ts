@@ -8,7 +8,7 @@ const validateVideoSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -17,7 +17,9 @@ export async function POST(request: Request) {
     const body = validateVideoSchema.parse(await request.json())
 
     // Validar créditos ANTES de processar
-    const validation = await validateCreditsForFeature(userId, 'video_export')
+    const validation = await validateCreditsForFeature(userId, 'video_export', 1, {
+      organizationId: orgId ?? undefined,
+    })
 
     return NextResponse.json({
       success: true,

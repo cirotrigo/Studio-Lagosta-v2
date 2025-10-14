@@ -13,14 +13,177 @@ interface DeductParams {
   feature: FeatureKey
   details?: JsonValue
   quantity?: number
+  organizationId?: string
+}
+
+interface CreditContextOptions {
+  organizationId?: string
+}
+
+async function ensureOrganizationWithBalance(clerkOrgId: string) {
+  const organization = await db.organization.findUnique({
+    where: { clerkOrgId },
+    include: { creditBalance: true },
+  })
+
+  if (!organization) {
+    throw new Error(`Organização ${clerkOrgId} não encontrada`)
+  }
+
+  if (organization.creditBalance) {
+    return {
+      organization,
+      balance: organization.creditBalance,
+    }
+  }
+
+  const balance = await db.organizationCreditBalance.create({
+    data: {
+      organizationId: organization.id,
+      credits: organization.creditsPerMonth,
+      refillAmount: organization.creditsPerMonth,
+    },
+  })
+
+  return { organization, balance }
+}
+
+async function deductOrganizationCredits({
+  clerkUserId,
+  feature,
+  details,
+  quantity = 1,
+  organizationId,
+}: DeductParams) {
+  const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
+
+  return db.$transaction(async (tx) => {
+    const organization = await tx.organization.findUnique({
+      where: { clerkOrgId: organizationId! },
+      include: { creditBalance: true },
+    })
+
+    if (!organization) {
+      throw new Error(`Organização ${organizationId} não encontrada`)
+    }
+
+    let balance = organization.creditBalance
+    if (!balance) {
+      balance = await tx.organizationCreditBalance.create({
+        data: {
+          organizationId: organization.id,
+          credits: organization.creditsPerMonth,
+          refillAmount: organization.creditsPerMonth,
+        },
+      })
+    }
+
+    const updated = await tx.organizationCreditBalance.updateMany({
+      where: { id: balance.id, credits: { gte: creditsToUse } },
+      data: { credits: { decrement: creditsToUse } },
+    })
+
+    if (updated.count === 0) {
+      throw new InsufficientCreditsError(creditsToUse, balance.credits)
+    }
+
+    await tx.organizationUsage.create({
+      data: {
+        organizationId: organization.id,
+        userId: clerkUserId,
+        feature,
+        credits: creditsToUse,
+        metadata: details ?? undefined,
+      },
+    })
+
+    const after = await tx.organizationCreditBalance.findUnique({
+      where: { id: balance.id },
+    })
+
+    return { creditsRemaining: after?.credits ?? 0 }
+  })
+}
+
+async function refundOrganizationCredits({
+  clerkUserId,
+  feature,
+  quantity = 1,
+  reason,
+  details,
+  organizationId,
+}: {
+  clerkUserId: string
+  feature: FeatureKey
+  quantity?: number
+  reason?: string
+  details?: JsonValue
+  organizationId: string
+}) {
+  const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
+
+  return db.$transaction(async (tx) => {
+    const organization = await tx.organization.findUnique({
+      where: { clerkOrgId: organizationId },
+      include: { creditBalance: true },
+    })
+
+    if (!organization) {
+      throw new Error(`Organização ${organizationId} não encontrada`)
+    }
+
+    let balance = organization.creditBalance
+    if (!balance) {
+      balance = await tx.organizationCreditBalance.create({
+        data: {
+          organizationId: organization.id,
+          credits: organization.creditsPerMonth,
+          refillAmount: organization.creditsPerMonth,
+        },
+      })
+    }
+
+    await tx.organizationUsage.create({
+      data: {
+        organizationId: organization.id,
+        userId: clerkUserId,
+        feature,
+        credits: -refundAmount,
+        metadata: {
+          ...(details as JsonObject | null ?? {}),
+          refund: true,
+          reason,
+        },
+      },
+    })
+
+    const updated = await tx.organizationCreditBalance.update({
+      where: { id: balance.id },
+      data: { credits: { increment: refundAmount } },
+    })
+
+    return { creditsRemaining: updated.credits }
+  })
 }
 
 export async function validateCreditsForFeature(
   clerkUserId: string,
   feature: FeatureKey,
-  quantity: number = 1
+  quantity: number = 1,
+  options: CreditContextOptions = {}
 ) {
   try {
+    if (options.organizationId) {
+      const { balance } = await ensureOrganizationWithBalance(options.organizationId)
+      const costPerUse = await getFeatureCost(feature)
+      const needed = costPerUse * Math.max(1, quantity)
+      const available = balance.credits
+      if (available < needed) {
+        throw new InsufficientCreditsError(needed, available)
+      }
+      return { available, needed }
+    }
+
     const user = await getUserFromClerkId(clerkUserId)
     const balance = await db.creditBalance.findUnique({ where: { userId: user.id } })
     const costPerUse = await getFeatureCost(feature)
@@ -41,9 +204,21 @@ export async function deductCreditsForFeature({
   feature,
   details,
   quantity = 1,
+  organizationId,
 }: DeductParams): Promise<{ creditsRemaining: number }> {
   try {
     console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity })
+
+    if (organizationId) {
+      return deductOrganizationCredits({
+        clerkUserId,
+        feature,
+        details,
+        quantity,
+        organizationId,
+      })
+    }
+
     const user = await getUserFromClerkId(clerkUserId)
     console.log('[DEDUCT] User found:', user.id)
     const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
@@ -121,14 +296,27 @@ export async function refundCreditsForFeature({
   quantity = 1,
   reason,
   details,
+  organizationId,
 }: {
   clerkUserId: string
   feature: FeatureKey
   quantity?: number
   reason?: string
   details?: JsonValue
+  organizationId?: string
 }): Promise<{ creditsRemaining: number } | null> {
   try {
+    if (organizationId) {
+      return refundOrganizationCredits({
+        clerkUserId,
+        feature,
+        quantity,
+        reason,
+        details,
+        organizationId,
+      })
+    }
+
     const user = await getUserFromClerkId(clerkUserId)
     const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
     const op = toPrismaOperationType(feature)

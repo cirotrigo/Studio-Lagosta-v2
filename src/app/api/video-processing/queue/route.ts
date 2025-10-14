@@ -45,7 +45,7 @@ const queueVideoSchema = z
  * Adiciona um vídeo WebM à fila de processamento
  */
 export async function POST(request: Request) {
-  const { userId: clerkUserId } = await auth()
+  const { userId: clerkUserId, orgId } = await auth()
   if (!clerkUserId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -64,7 +64,9 @@ export async function POST(request: Request) {
     const user = await getUserFromClerkId(clerkUserId)
 
     // 2. Validar créditos ANTES de adicionar à fila
-    await validateCreditsForFeature(clerkUserId, 'video_export')
+    await validateCreditsForFeature(clerkUserId, 'video_export', 1, {
+      organizationId: orgId ?? undefined,
+    })
 
     const project = await db.project.findFirst({
       where: {
@@ -189,6 +191,11 @@ export async function POST(request: Request) {
       videoHeight: body.videoHeight,
     }
 
+    const designDataWithContext =
+      typeof body.designData === 'object' && body.designData !== null && !Array.isArray(body.designData)
+        ? { ...body.designData, __organizationId: orgId ?? null }
+        : { value: body.designData, __organizationId: orgId ?? null }
+
     const { job, generation } = await db.$transaction(async (tx) => {
       const createdGeneration = await tx.generation.create({
         data: {
@@ -217,7 +224,7 @@ export async function POST(request: Request) {
           videoDuration: body.videoDuration,
           videoWidth: body.videoWidth,
           videoHeight: body.videoHeight,
-          designData: body.designData,
+          designData: designDataWithContext,
           progress: 0,
           creditsDeducted: false,
           creditsUsed: 10,

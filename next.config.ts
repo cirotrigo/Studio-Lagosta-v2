@@ -13,6 +13,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   experimental: {
     serverComponentsExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
+    // @ts-expect-error - property not yet typed in Next.js experimental config
     outputFileTracingIncludes: {
       'app/api/video-processing/process/route.ts': [
         './node_modules/fluent-ffmpeg/**/*',

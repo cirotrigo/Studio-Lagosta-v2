@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { Prisma } from '../../../../../prisma/generated/client'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
@@ -22,6 +23,11 @@ async function processNextJob(): Promise<NextResponse> {
     }
 
     console.log('[Video Processor] Processando job:', job.id)
+
+    const organizationId =
+      typeof job.designData === 'object' && job.designData !== null && !Array.isArray(job.designData)
+        ? ((job.designData as { __organizationId?: string | null }).__organizationId ?? null)
+        : null
 
     let generationId = job.generationId ?? job.generation?.id ?? null
     let generationFieldValues: Record<string, unknown> =
@@ -65,7 +71,7 @@ async function processNextJob(): Promise<NextResponse> {
           createdBy: job.clerkUserId,
           status: 'PROCESSING',
           templateName: job.videoName,
-          fieldValues: baseFieldValues,
+          fieldValues: baseFieldValues as Prisma.InputJsonValue,
           resultUrl: job.thumbnailUrl,
         },
       })
@@ -95,7 +101,7 @@ async function processNextJob(): Promise<NextResponse> {
           ...(extra?.status ? { status: extra.status } : {}),
           ...(extra?.resultUrl !== undefined ? { resultUrl: extra.resultUrl } : {}),
           ...(extra?.completedAt ? { completedAt: extra.completedAt } : {}),
-          fieldValues: generationFieldValues,
+          fieldValues: generationFieldValues as Prisma.InputJsonValue,
         },
       })
     }
@@ -210,6 +216,7 @@ async function processNextJob(): Promise<NextResponse> {
             videoName: job.videoName,
             duration: job.videoDuration,
           },
+          organizationId: organizationId ?? undefined,
         })
       }
 

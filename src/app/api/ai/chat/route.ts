@@ -1,3 +1,4 @@
+import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { streamText } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
@@ -88,6 +89,8 @@ export async function POST(req: Request) {
     try {
       // clerk user id
       const userId = await validateUserAuthentication()
+      const { orgId } = await auth()
+      const organizationId = orgId ?? null
       // Pre-parse to also include in credits usage details if valid
       const parsed = BodySchema.safeParse(await req.json())
       if (!parsed.success) {
@@ -153,11 +156,14 @@ ${ragContext}
       // Credits: 1 credit per LLM request
       const feature: FeatureKey = 'ai_text_chat'
       try {
-        await validateCreditsForFeature(userId, feature)
+        await validateCreditsForFeature(userId, feature, 1, {
+          organizationId: organizationId ?? undefined,
+        })
         await deductCreditsForFeature({
           clerkUserId: userId,
           feature,
           details: { provider, model },
+          organizationId: organizationId ?? undefined,
         })
       } catch (err: unknown) {
         if (err instanceof InsufficientCreditsError) {
@@ -192,6 +198,7 @@ ${ragContext}
           quantity: 1,
           reason: (providerErr as { message?: string })?.message || 'chat_provider_error',
           details: { provider, model },
+          organizationId: organizationId ?? undefined,
         })
         return NextResponse.json({ error: 'Erro do provedor' }, { status: 502 })
       }

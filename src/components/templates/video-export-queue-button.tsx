@@ -118,6 +118,11 @@ export function VideoExportQueueButton() {
         description: 'Aguarde enquanto preparamos seu vídeo.',
       })
 
+      const videoName =
+        typeof design.name === 'string' && design.name.trim().length > 0
+          ? design.name
+          : 'video'
+
       const webmBlob = await exportVideoWithLayers(
         stage,
         videoLayer,
@@ -148,7 +153,7 @@ export function VideoExportQueueButton() {
         const thumbnailBlob = await dataUrlToBlob(thumbnailDataUrl)
         thumbnailBlobSize = thumbnailBlob.size
 
-        const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, design.name || 'video')
+        const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, videoName)
 
         thumbnailUploadResult = await upload(thumbnailUploadPath, thumbnailBlob, {
           access: 'public',
@@ -177,7 +182,7 @@ export function VideoExportQueueButton() {
       }
 
       // 3. Upload direto do WebM para o Vercel Blob
-      const uploadPath = generateUploadPath(clerkUserId, design.name || 'video')
+      const uploadPath = generateUploadPath(clerkUserId, videoName)
 
       toast({
         title: 'Enviando vídeo...',

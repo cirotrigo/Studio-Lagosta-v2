@@ -10,7 +10,7 @@ const confirmVideoSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -35,6 +35,7 @@ export async function POST(request: Request) {
         fileSize: body.fileSize,
         timestamp: new Date().toISOString(),
       },
+      organizationId: orgId ?? undefined,
     })
 
     console.log('[Video Export Confirm] Créditos deduzidos com sucesso:', {

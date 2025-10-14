@@ -16,7 +16,7 @@ const generateImageSchema = z.object({
 const NANO_BANANA_VERSION = '1b00a781b969984d0336047c859f06a54097bc7b5e9494ccd307ebde81094c34'
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -36,7 +36,9 @@ export async function POST(request: Request) {
     }
 
     // 3. Validar créditos
-    await validateCreditsForFeature(userId, 'ai_image_generation')
+    await validateCreditsForFeature(userId, 'ai_image_generation', 1, {
+      organizationId: orgId ?? undefined,
+    })
 
     // 4. Upload de imagens de referência para Vercel Blob (se houver)
     let publicReferenceUrls: string[] = []
@@ -135,6 +137,7 @@ export async function POST(request: Request) {
         aiImageId: aiImage.id,
         aspectRatio: body.aspectRatio,
       },
+      organizationId: orgId ?? undefined,
     })
 
     return NextResponse.json(aiImage)

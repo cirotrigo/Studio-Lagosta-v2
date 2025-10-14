@@ -1,3 +1,4 @@
+import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { validateUserAuthentication } from '@/lib/auth-utils'
@@ -56,8 +57,9 @@ const BodySchema = z
   .strict()
 
 export async function POST(req: Request) {
+  let userId: string | null = null
+  let organizationId: string | null = null
   try {
-    let userId: string | null = null
     try {
       userId = await validateUserAuthentication()
     } catch (e: unknown) {
@@ -66,6 +68,9 @@ export async function POST(req: Request) {
       }
       throw e
     }
+
+    const { orgId } = await auth()
+    organizationId = orgId ?? null
 
     const parsed = BodySchema.safeParse(await req.json())
     if (!parsed.success) {
@@ -78,8 +83,16 @@ export async function POST(req: Request) {
     const feature: FeatureKey = 'ai_image_generation'
     const quantity = typeof count === 'number' ? count : 1
     try {
-      await validateCreditsForFeature(userId!, feature, quantity)
-      await deductCreditsForFeature({ clerkUserId: userId!, feature, quantity, details: { model } })
+      await validateCreditsForFeature(userId!, feature, quantity, {
+        organizationId: organizationId ?? undefined,
+      })
+      await deductCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        details: { model },
+        organizationId: organizationId ?? undefined,
+      })
     } catch (e: unknown) {
       if (e instanceof InsufficientCreditsError) {
         return NextResponse.json({ error: 'insufficient_credits', required: e.required, available: e.available }, { status: 402 })
@@ -199,7 +212,14 @@ export async function POST(req: Request) {
         errorPayload.providerBody = providerBody?.slice(0, 1200)
       }
       // Refund since provider request failed
-      await refundCreditsForFeature({ clerkUserId: userId!, feature, quantity, reason: `http_${res.status}`, details: { model } })
+      await refundCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        reason: `http_${res.status}`,
+        details: { model },
+        organizationId: organizationId ?? undefined,
+      })
       return NextResponse.json(errorPayload, { status: res.status })
     }
 
@@ -211,7 +231,14 @@ export async function POST(req: Request) {
           bodyPreview: body?.slice(0, 2000),
         })
       }
-      await refundCreditsForFeature({ clerkUserId: userId!, feature, quantity, reason: 'invalid_content_type', details: { model } })
+      await refundCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        reason: 'invalid_content_type',
+        details: { model },
+        organizationId: organizationId ?? undefined,
+      })
       return NextResponse.json({ error: 'Invalid provider response' }, { status: 502 })
     }
 
@@ -226,7 +253,14 @@ export async function POST(req: Request) {
       if (DEBUG) {
         console.error('[img] invalid provider response (no json)', { elapsedMs: Date.now() - startedAt })
       }
-      await refundCreditsForFeature({ clerkUserId: userId!, feature, quantity, reason: 'json_parse_error', details: { model } })
+      await refundCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        reason: 'json_parse_error',
+        details: { model },
+        organizationId: organizationId ?? undefined,
+      })
       return NextResponse.json({ error: 'Invalid provider response' }, { status: 502 })
     }
 
@@ -239,7 +273,14 @@ export async function POST(req: Request) {
       if (process.env.NODE_ENV !== 'production') {
         payload.provider = json
       }
-      await refundCreditsForFeature({ clerkUserId: userId!, feature, quantity, reason: 'provider_error', details: { model, message } })
+      await refundCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        reason: 'provider_error',
+        details: { model, message },
+        organizationId: organizationId ?? undefined,
+      })
       return NextResponse.json(payload, { status: 502 })
     }
 
@@ -266,7 +307,14 @@ export async function POST(req: Request) {
       if (DEBUG) {
         console.error('[img] empty images array (chat/completions)', { json })
       }
-      await refundCreditsForFeature({ clerkUserId: userId!, feature, quantity, reason: 'no_images', details: { model } })
+      await refundCreditsForFeature({
+        clerkUserId: userId!,
+        feature,
+        quantity,
+        reason: 'no_images',
+        details: { model },
+        organizationId: organizationId ?? undefined,
+      })
       return NextResponse.json({ error: 'No images returned' }, { status: 502 })
     }
 
@@ -282,8 +330,15 @@ export async function POST(req: Request) {
     console.error('[img] unhandled error', { detail: (payload as { detail?: string }).detail })
     // Attempt refund on unexpected error path
     try {
-      // best-effort: we don't have quantity here; default to 1
-      await refundCreditsForFeature({ clerkUserId: (await validateUserAuthentication().catch(()=>null)) || '', feature: 'ai_image_generation', quantity: 1, reason: 'unhandled_error' })
+      if (userId) {
+        await refundCreditsForFeature({
+          clerkUserId: userId,
+          feature: 'ai_image_generation',
+          quantity: 1,
+          reason: 'unhandled_error',
+          organizationId: organizationId ?? undefined,
+        })
+      }
     } catch {}
     return NextResponse.json(payload, { status: 500 })
   }
