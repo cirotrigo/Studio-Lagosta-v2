@@ -19,7 +19,7 @@ export const runtime = 'nodejs'
  */
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -27,7 +27,8 @@ export async function GET(
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
 
-    const templateId = Number(params.id)
+    const { id } = await params
+    const templateId = Number(id)
 
     if (!Number.isInteger(templateId) || templateId <= 0) {
       return NextResponse.json({ error: 'ID de template inválido' }, { status: 400 })

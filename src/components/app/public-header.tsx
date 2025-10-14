@@ -17,11 +17,6 @@ export function PublicHeader() {
   const { data: menuData, isLoading, error } = useMenuByLocation('header')
   const menuItems = menuData?.menu?.items || []
 
-  // Debug logs
-  React.useEffect(() => {
-    console.log('Menu Debug:', { menuData, isLoading, error, menuItems })
-  }, [menuData, isLoading, error, menuItems])
-
   React.useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50)

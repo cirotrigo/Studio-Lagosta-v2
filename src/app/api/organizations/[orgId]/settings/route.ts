@@ -18,9 +18,9 @@ const settingsSchema = z
 
 export async function GET(
   _req: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
-  const { orgId } = params
+  const { orgId } = await params
 
   try {
     const context = await requireOrganizationMembership(orgId)
@@ -62,9 +62,9 @@ export async function GET(
 
 export async function PATCH(
   req: Request,
-  { params }: { params: { orgId: string } }
+  { params }: { params: Promise<{ orgId: string }> }
 ) {
-  const { orgId } = params
+  const { orgId } = await params
 
   try {
     const context = await requireOrganizationMembership(orgId)

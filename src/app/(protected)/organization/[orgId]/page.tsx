@@ -114,6 +114,9 @@ export default function OrganizationDashboardPage() {
               <Button variant="outline" asChild>
                 <Link href={`/organization/${organization.id}/members`}>Membros</Link>
               </Button>
+              <Button variant="outline" asChild>
+                <Link href={`/organization/${organization.id}/analytics`}>Analytics</Link>
+              </Button>
               <Button variant="default" asChild>
                 <Link href={`/organization/${organization.id}/credits`}>Créditos</Link>
               </Button>
@@ -165,7 +168,7 @@ export default function OrganizationDashboardPage() {
 
         <Card className="border border-border/40 bg-card/60 p-6">
           <h3 className="text-lg font-semibold">O que fazer a seguir?</h3>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
             <NextStep
               title="Compartilhar um projeto"
               description="Selecione projetos existentes para disponibilizar à equipe."
@@ -175,6 +178,11 @@ export default function OrganizationDashboardPage() {
               title="Convidar novos membros"
               description="Gerencie convites, papéis e permissões diretamente pelo Clerk."
               href={`/organization/${organization.id}/members`}
+            />
+            <NextStep
+              title="Analisar consumo"
+              description="Veja quais recursos e membros consomem mais créditos."
+              href={`/organization/${organization.id}/analytics`}
             />
           </div>
         </Card>

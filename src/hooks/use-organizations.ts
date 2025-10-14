@@ -9,6 +9,12 @@ const organizationKeys = {
   credits: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'credits'] as const,
   usage: (orgId: string, params: { cursor?: string; limit?: number } = {}) =>
     [...ORGANIZATION_QUERY_ROOT, orgId, 'credits', 'usage', params] as const,
+  analytics: (orgId: string, params: { period?: string; startDate?: string; endDate?: string } = {}) =>
+    [...ORGANIZATION_QUERY_ROOT, orgId, 'analytics', params] as const,
+  analyticsMembers: (
+    orgId: string,
+    params: { period?: string; startDate?: string; endDate?: string } = {}
+  ) => [...ORGANIZATION_QUERY_ROOT, orgId, 'analytics', 'members', params] as const,
   projects: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'projects'] as const,
   settings: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'settings'] as const,
 }
@@ -69,6 +75,109 @@ export function useOrganizationCreditsUsage(
       const query = search.toString()
       const url = `/api/organizations/${orgId}/credits/usage${query ? `?${query}` : ''}`
       return api.get<CreditsUsageResponse>(url)
+    },
+    enabled: Boolean(orgId),
+  })
+}
+
+type AnalyticsSummaryResponse = {
+  organization: {
+    id: string
+    name: string
+    creditsPerMonth: number
+  }
+  period: {
+    key: string
+    start: string
+    end: string
+  }
+  summary: {
+    totalCreditsUsed: number
+    totalOperations: number
+    membersActive: number
+  }
+  features: Array<{
+    feature: string
+    operations: number
+    creditsUsed: number
+  }>
+  recentActivity: Array<{
+    id: string
+    userId: string | null
+    feature: string
+    credits: number
+    createdAt: string
+    projectId?: number | null
+  }>
+}
+
+export function useOrganizationAnalytics(
+  orgId: string | null,
+  params: { period?: string; startDate?: string; endDate?: string } = {}
+) {
+  return useQuery({
+    queryKey: orgId ? organizationKeys.analytics(orgId, params) : ['organization', 'analytics', 'disabled'],
+    queryFn: () => {
+      const search = new URLSearchParams()
+      if (params.period) search.set('period', params.period)
+      if (params.startDate) search.set('startDate', params.startDate)
+      if (params.endDate) search.set('endDate', params.endDate)
+      const query = search.toString()
+      const url = `/api/organizations/${orgId}/analytics${query ? `?${query}` : ''}`
+      return api.get<AnalyticsSummaryResponse>(url)
+    },
+    enabled: Boolean(orgId),
+  })
+}
+
+type MemberAnalyticsResponse = {
+  period: {
+    key: string
+    start: string
+    end: string
+  }
+  totals: {
+    imageGenerations: number
+    videoGenerations: number
+    chatInteractions: number
+    totalCreditsUsed: number
+  }
+  members: Array<{
+    clerkId: string
+    userId: string | null
+    name: string | null
+    email: string | null
+    stats: {
+      imageGenerations: number
+      videoGenerations: number
+      chatInteractions: number
+      totalCreditsUsed: number
+      lastActivityAt: string | null
+    }
+    period: {
+      start: string
+      end: string
+    }
+    updatedAt: string
+  }>
+}
+
+export function useOrganizationMemberAnalytics(
+  orgId: string | null,
+  params: { period?: string; startDate?: string; endDate?: string } = {}
+) {
+  return useQuery({
+    queryKey: orgId
+      ? organizationKeys.analyticsMembers(orgId, params)
+      : ['organization', 'analytics', 'members', 'disabled'],
+    queryFn: () => {
+      const search = new URLSearchParams()
+      if (params.period) search.set('period', params.period)
+      if (params.startDate) search.set('startDate', params.startDate)
+      if (params.endDate) search.set('endDate', params.endDate)
+      const query = search.toString()
+      const url = `/api/organizations/${orgId}/analytics/members${query ? `?${query}` : ''}`
+      return api.get<MemberAnalyticsResponse>(url)
     },
     enabled: Boolean(orgId),
   })
