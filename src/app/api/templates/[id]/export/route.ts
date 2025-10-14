@@ -106,6 +106,7 @@ export async function POST(
         fileName,
       },
       organizationId: orgId ?? undefined,
+      projectId: template.Project.id,
     })
 
     console.log('[TEMPLATE_EXPORT] Credits deducted. Remaining:', creditResult.creditsRemaining)

@@ -56,6 +56,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           projectName: generation.projectName,
         },
         organizationId: orgId ?? undefined,
+        projectId: generation.projectId,
       })
       console.log('[DOWNLOAD] Credits deducted successfully. Remaining:', result.creditsRemaining)
     } catch (error) {

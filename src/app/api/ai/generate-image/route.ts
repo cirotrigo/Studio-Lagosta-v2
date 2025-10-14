@@ -138,6 +138,7 @@ export async function POST(request: Request) {
         aspectRatio: body.aspectRatio,
       },
       organizationId: orgId ?? undefined,
+      projectId: body.projectId,
     })
 
     return NextResponse.json(aiImage)

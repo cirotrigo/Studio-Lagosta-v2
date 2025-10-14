@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
+import { db } from '@/lib/db'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 
 export const runtime = 'nodejs'
@@ -18,6 +19,15 @@ export async function POST(req: Request) {
 
     const body = await req.json()
     const { templateId, format } = body
+
+    let projectId: number | undefined
+    if (typeof templateId === 'number') {
+      const template = await db.template.findUnique({
+        where: { id: templateId },
+        select: { projectId: true },
+      })
+      projectId = template?.projectId
+    }
 
     console.log('[TEMPLATE_EXPORT] Starting export for user:', userId, 'format:', format)
 
@@ -50,6 +60,7 @@ export async function POST(req: Request) {
         exportType: 'local_konva',
       },
       organizationId: orgId ?? undefined,
+      projectId,
     })
 
     console.log('[TEMPLATE_EXPORT] Credits deducted successfully. Remaining:', result.creditsRemaining)

@@ -13,6 +13,7 @@ export type CreditActivityEntry = {
   feature: string
   createdAt: string
   metadata?: Record<string, unknown>
+  projectId?: number | null
   project?: { id: number; name: string }
 }
 

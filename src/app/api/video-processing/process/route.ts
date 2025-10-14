@@ -217,6 +217,7 @@ async function processNextJob(): Promise<NextResponse> {
             duration: job.videoDuration,
           },
           organizationId: organizationId ?? undefined,
+          projectId: job.projectId,
         })
       }
 

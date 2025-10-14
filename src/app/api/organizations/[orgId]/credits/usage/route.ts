@@ -48,11 +48,18 @@ export async function GET(
     const projectIds = Array.from(
       new Set(
         items
-          .map((entry) =>
-            typeof entry.metadata === 'object' && entry.metadata !== null
-              ? (entry.metadata as { projectId?: number }).projectId
-              : undefined,
-          )
+          .map((entry) => {
+            if (typeof entry.projectId === 'number' && Number.isFinite(entry.projectId)) {
+              return entry.projectId
+            }
+            if (typeof entry.metadata === 'object' && entry.metadata !== null) {
+              const metadataProjectId = (entry.metadata as { projectId?: number }).projectId
+              if (typeof metadataProjectId === 'number' && Number.isFinite(metadataProjectId)) {
+                return metadataProjectId
+              }
+            }
+            return undefined
+          })
           .filter((id): id is number => typeof id === 'number' && Number.isFinite(id)),
       ),
     )
@@ -75,13 +82,15 @@ export async function GET(
           ? (entry.metadata as Record<string, unknown>)
           : undefined
 
-      const projectId = metadata?.projectId as number | undefined
+      const metadataProjectId = metadata?.projectId as number | undefined
+      const projectId = entry.projectId ?? metadataProjectId
       const projectInfo = projectId ? projectMap.get(projectId) : undefined
 
       return {
         ...entry,
         metadata,
-        project: projectInfo ? { id: projectId, name: projectInfo.name } : undefined,
+        projectId: projectId ?? null,
+        project: projectInfo ? { id: projectId!, name: projectInfo.name } : undefined,
       }
     })
 

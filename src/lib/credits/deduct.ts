@@ -14,6 +14,7 @@ interface DeductParams {
   details?: JsonValue
   quantity?: number
   organizationId?: string
+  projectId?: number
 }
 
 interface CreditContextOptions {
@@ -54,6 +55,7 @@ async function deductOrganizationCredits({
   details,
   quantity = 1,
   organizationId,
+  projectId,
 }: DeductParams) {
   const creditsToUse = (await getFeatureCost(feature)) * Math.max(1, quantity)
 
@@ -94,6 +96,7 @@ async function deductOrganizationCredits({
         feature,
         credits: creditsToUse,
         metadata: details ?? undefined,
+        projectId: projectId ?? undefined,
       },
     })
 
@@ -112,6 +115,7 @@ async function refundOrganizationCredits({
   reason,
   details,
   organizationId,
+  projectId,
 }: {
   clerkUserId: string
   feature: FeatureKey
@@ -119,6 +123,7 @@ async function refundOrganizationCredits({
   reason?: string
   details?: JsonValue
   organizationId: string
+  projectId?: number
 }) {
   const refundAmount = (await getFeatureCost(feature)) * Math.max(1, quantity)
 
@@ -154,6 +159,7 @@ async function refundOrganizationCredits({
           refund: true,
           reason,
         },
+        projectId: projectId ?? undefined,
       },
     })
 
@@ -205,6 +211,7 @@ export async function deductCreditsForFeature({
   details,
   quantity = 1,
   organizationId,
+  projectId,
 }: DeductParams): Promise<{ creditsRemaining: number }> {
   try {
     console.log('[DEDUCT] Starting credit deduction for:', { clerkUserId, feature, quantity })
@@ -216,6 +223,7 @@ export async function deductCreditsForFeature({
         details,
         quantity,
         organizationId,
+        projectId,
       })
     }
 
@@ -297,6 +305,7 @@ export async function refundCreditsForFeature({
   reason,
   details,
   organizationId,
+  projectId,
 }: {
   clerkUserId: string
   feature: FeatureKey
@@ -304,6 +313,7 @@ export async function refundCreditsForFeature({
   reason?: string
   details?: JsonValue
   organizationId?: string
+  projectId?: number
 }): Promise<{ creditsRemaining: number } | null> {
   try {
     if (organizationId) {
@@ -314,6 +324,7 @@ export async function refundCreditsForFeature({
         reason,
         details,
         organizationId,
+        projectId,
       })
     }
 
