@@ -7,14 +7,9 @@ import {
   Coins,
   FolderOpen,
   Users,
-  History,
-  TrendingDown,
-  TrendingUp,
-  Loader2,
 } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useSetPageMetadata } from "@/contexts/page-metadata"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -24,6 +19,8 @@ import {
   useOrganizationCreditsUsage,
 } from "@/hooks/use-organizations"
 import { useParams } from "next/navigation"
+import { CreditUsageCard, UsagePoint } from "@/components/organization/credit-usage-card"
+import { CreditActivityFeed, CreditActivityEntry } from "@/components/organization/credit-activity-feed"
 
 export default function OrganizationDashboardPage() {
   const params = useParams<{ orgId: string }>()
@@ -48,7 +45,7 @@ export default function OrganizationDashboardPage() {
   const projectsCount = projectsData?.projects.length ?? 0
   const creditsCurrent = creditsData?.credits.current ?? 0
   const creditsTotal = creditsData?.limits.creditsPerMonth ?? 0
-  const usageEntries = (usageData?.data ?? []) as UsageEntry[]
+  const usageEntries = (usageData?.data ?? []) as CreditActivityEntry[]
 
   useSetPageMetadata({
     title: organization?.name ?? "Organização",
@@ -152,102 +149,18 @@ export default function OrganizationDashboardPage() {
         </div>
 
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card className="border border-border/40 bg-card/60 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Uso recente de créditos</h3>
-                <p className="text-sm text-muted-foreground">
-                  Saldos consumidos ou adicionados nos últimos dias
-                </p>
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => refetchUsage()}
-                disabled={usageLoading}
-              >
-                {usageLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Atualizando
-                  </>
-                ) : (
-                  "Atualizar"
-                )}
-              </Button>
-            </div>
-            <div className="mt-4 flex flex-wrap gap-4 text-sm">
-              <TrendBadge
-                icon={TrendingDown}
-                label="Consumidos nesta semana"
-                highlight={`-${spentThisWeek} créditos`}
-              />
-              <TrendBadge
-                icon={TrendingUp}
-                label="Adicionados nesta semana"
-                highlight={`+${addedThisWeek} créditos`}
-              />
-            </div>
+          <CreditUsageCard
+            spentThisWeek={spentThisWeek}
+            addedThisWeek={addedThisWeek}
+            dailySeries={dailySeries}
+            isLoading={usageLoading}
+            onRefresh={() => refetchUsage()}
+          />
 
-            <div className="mt-6 space-y-3">
-              {usageLoading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <Skeleton key={index} className="h-12 w-full" />
-                ))
-              ) : dailySeries.length > 0 ? (
-                dailySeries.map((point, index) => (
-                  <div
-                    key={`${point.dateKey}-${index}`}
-                    className="flex items-center justify-between rounded-md border border-border/30 bg-background/50 px-3 py-2 text-sm"
-                  >
-                    <div className="font-medium text-foreground">{point.dateLabel}</div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1 text-destructive">
-                        <TrendingDown className="h-3 w-3" />
-                        {point.spent} usados
-                      </span>
-                      <span className="flex items-center gap-1 text-green-500">
-                        <TrendingUp className="h-3 w-3" />
-                        {point.added} adicionados
-                      </span>
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Nenhum uso registrado recentemente. As operações da equipe aparecerão aqui.
-                </p>
-              )}
-            </div>
-          </Card>
-
-          <Card className="border border-border/40 bg-card/60 p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-lg font-semibold text-foreground">Atividade da equipe</h3>
-                <p className="text-sm text-muted-foreground">
-                  Últimas ações realizadas por membros e automatizações
-                </p>
-              </div>
-              <History className="h-5 w-5 text-muted-foreground" />
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {usageLoading ? (
-                Array.from({ length: 5 }).map((_, index) => (
-                  <Skeleton key={index} className="h-12 w-full" />
-                ))
-              ) : usageEntries.length > 0 ? (
-                usageEntries.slice(0, 8).map((entry) => (
-                  <UsageListItem key={entry.id} entry={entry} />
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Assim que membros consumirem créditos, as atividades aparecerão aqui.
-                </p>
-              )}
-            </div>
-          </Card>
+          <CreditActivityFeed
+            entries={usageEntries}
+            isLoading={usageLoading}
+          />
         </div>
 
         <Card className="border border-border/40 bg-card/60 p-6">
@@ -359,33 +272,6 @@ type UsageEntry = {
   metadata?: Record<string, unknown>
   createdAt: string
   project?: { id: number; name: string }
-}
-
-function UsageListItem({ entry }: { entry: UsageEntry }) {
-  const isCreditAddition = entry.credits < 0
-  const absoluteCredits = Math.abs(entry.credits)
-  const feature = formatFeature(entry.feature)
-  const projectName = entry.project?.name
-
-  return (
-    <div className="flex items-start justify-between rounded-md border border-border/30 bg-background/40 px-3 py-2 text-sm">
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 font-medium text-foreground">
-          <span>{isCreditAddition ? "Créditos adicionados" : "Créditos usados"}</span>
-          <Badge variant="outline" className={isCreditAddition ? "text-green-600" : "text-destructive"}>
-            {isCreditAddition ? `+${absoluteCredits}` : `-${absoluteCredits}`}
-          </Badge>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          {feature}
-          {projectName ? ` · Projeto: ${projectName}` : ""}
-        </p>
-      </div>
-      <div className="text-xs text-muted-foreground">
-        {new Date(entry.createdAt).toLocaleString()}
-      </div>
-    </div>
-  )
 }
 
 function formatFeature(feature: string) {

@@ -3,6 +3,8 @@
 import { useOrganization } from "@clerk/nextjs"
 import { OrganizationList } from "@clerk/nextjs"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
 import { Building2, ArrowRight, PlusCircle } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -10,6 +12,7 @@ import { useSetPageMetadata } from "@/contexts/page-metadata"
 
 export default function OrganizationLandingPage() {
   const { organization, isLoaded } = useOrganization()
+  const router = useRouter()
 
   useSetPageMetadata({
     title: "Organizações",
@@ -19,6 +22,27 @@ export default function OrganizationLandingPage() {
       { label: "Organizações" },
     ],
   })
+
+  useEffect(() => {
+    if (!isLoaded) return
+    if (organization) {
+      router.replace(`/organization/${organization.id}`)
+    }
+  }, [isLoaded, organization, router])
+
+  if (!isLoaded) {
+    return (
+      <div className="space-y-6">
+        <Card className="border border-border/40 bg-card/60 p-6">
+          <div className="h-6 w-40 animate-pulse rounded bg-muted" />
+        </Card>
+      </div>
+    )
+  }
+
+  if (organization) {
+    return null
+  }
 
   return (
     <div className="space-y-6">
@@ -41,19 +65,11 @@ export default function OrganizationLandingPage() {
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {organization && (
-              <Button asChild variant="default">
-                <Link href={`/organization/${organization.id}`}>
-                  Ir para o dashboard
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
-            )}
-            <Button asChild variant="outline">
-              <Link href="/dashboard">
-                Voltar ao painel pessoal
-              </Link>
-            </Button>
+          <Button asChild variant="outline">
+            <Link href="/dashboard">
+              Voltar ao painel pessoal
+            </Link>
+          </Button>
           </div>
         </div>
       </Card>
