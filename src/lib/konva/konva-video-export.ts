@@ -19,7 +19,7 @@ interface StageCleanupState {
   previousPosition: { x: number; y: number }
   guidesWasVisible: boolean
   invisibleLayersState: Array<{
-    node: any
+    node: Konva.Node
     originalOpacity: number
     originalVisible: boolean
   }>
@@ -43,7 +43,7 @@ async function prepareStageForExport(
   const previousPosition = { x: stage.x(), y: stage.y() }
 
   const invisibleLayersState: Array<{
-    node: any
+    node: Konva.Node
     originalOpacity: number
     originalVisible: boolean
   }> = []
@@ -75,7 +75,7 @@ async function prepareStageForExport(
   if (contentLayer) {
     const children = (contentLayer as Konva.Layer).getChildren()
 
-    children.forEach((node: any) => {
+    children.forEach((node: Konva.Node) => {
       const layerId = node.id()
       const layer = design.layers.find((l) => l.id === layerId)
 

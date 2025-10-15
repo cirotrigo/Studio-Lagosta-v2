@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -24,7 +25,6 @@ export function ImagesPanelContent() {
   const [isDragging, setIsDragging] = React.useState(false)
   const [driveItems, setDriveItems] = React.useState<GoogleDriveItem[]>([])
   const [isLoadingDrive, setIsLoadingDrive] = React.useState(false)
-  const [currentFolder, setCurrentFolder] = React.useState<string | null>(null)
   const [breadcrumbs, setBreadcrumbs] = React.useState<BreadcrumbItem[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [isApplyingMedia, setIsApplyingMedia] = React.useState(false)
@@ -380,11 +380,14 @@ export function ImagesPanelContent() {
                           </p>
                         </div>
                       ) : item.thumbnailLink ? (
-                        <img
-                          src={item.thumbnailLink}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                        />
+                        <div className="relative h-full w-full">
+                          <Image
+                            src={item.thumbnailLink}
+                            alt={item.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
                           <ImageIcon className="h-8 w-8 text-muted-foreground/50" />

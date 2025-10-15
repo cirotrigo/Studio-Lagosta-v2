@@ -257,19 +257,6 @@ export function FontsPanel() {
     [fontManager, forceUpdate, projectId],
   )
 
-  /**
-   * Formatar tamanho do arquivo
-   */
-  const formatFileSize = (base64?: string): string => {
-    if (!base64) return 'N/A'
-
-    // Estimar tamanho a partir do base64
-    const sizeBytes = (base64.length * 3) / 4
-    if (sizeBytes < 1024) return `${sizeBytes.toFixed(0)} B`
-    if (sizeBytes < 1024 * 1024) return `${(sizeBytes / 1024).toFixed(1)} KB`
-    return `${(sizeBytes / (1024 * 1024)).toFixed(1)} MB`
-  }
-
   return (
     <div
       ref={dropZoneRef}

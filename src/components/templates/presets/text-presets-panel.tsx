@@ -3,7 +3,6 @@
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { Badge } from '@/components/ui/badge'
 import { useTextPresets } from '@/hooks/use-text-presets'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Sparkles, Trash2 } from 'lucide-react'
@@ -46,11 +45,11 @@ export function TextPresetsPanel() {
           description: 'Os elementos de texto foram adicionados ao canvas.',
         })
       } catch (_error) {
-        console.error('[TextPresetsPanel] Erro ao aplicar preset:', error)
+        console.error('[TextPresetsPanel] Erro ao aplicar preset:', _error)
 
         toast({
           title: '❌ Erro ao aplicar preset',
-          description: error instanceof Error ? error.message : 'Erro desconhecido',
+          description: _error instanceof Error ? _error.message : 'Erro desconhecido',
           variant: 'destructive',
         })
       } finally {
@@ -157,7 +156,7 @@ function PresetCard({ preset, onApply, onRemove, isApplying, disabled, isCustom 
     >
       {/* Preview minimalista dos elementos */}
       <div className="space-y-1 p-4 min-h-[80px] flex flex-col justify-center">
-        {preset.elements.map((element, idx) => (
+        {preset.elements.map((element) => (
           <div
             key={element.id}
             className="truncate"

@@ -37,7 +37,7 @@ export function useTextPresets() {
   // Carregar presets customizados do localStorage ao montar
   React.useEffect(() => {
     loadCustomPresets()
-  }, [])
+  }, [loadCustomPresets])
 
   /**
    * Carregar presets customizados do localStorage

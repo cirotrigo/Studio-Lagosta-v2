@@ -28,23 +28,23 @@ export function StrokeControl({ config, onChange }: StrokeControlProps) {
     }, 100)
 
     return () => clearTimeout(timeout)
-  }, [strokeWidth])
+  }, [strokeWidth, config, onChange])
 
   React.useEffect(() => {
     setStrokeWidth(config.strokeWidth)
   }, [config.strokeWidth])
 
-  const handleToggle = (enabled: boolean) => {
+  const handleToggle = React.useCallback((enabled: boolean) => {
     onChange({ ...config, enabled })
-  }
+  }, [config, onChange])
 
-  const handleColorChange = (strokeColor: string) => {
+  const handleColorChange = React.useCallback((strokeColor: string) => {
     onChange({ ...config, strokeColor })
-  }
+  }, [config, onChange])
 
-  const handleSliderChange = (values: number[]) => {
+  const handleSliderChange = React.useCallback((values: number[]) => {
     setStrokeWidth(values[0])
-  }
+  }, [])
 
   return (
     <div className="space-y-4 p-4 border rounded-lg">

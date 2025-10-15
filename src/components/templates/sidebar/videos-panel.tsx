@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { HardDrive, Upload, Loader2, FolderOpen, ChevronRight, ArrowLeft, Folder, Film } from 'lucide-react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
@@ -373,11 +374,14 @@ export function VideosPanel() {
                           </p>
                         </div>
                       ) : item.thumbnailLink ? (
-                        <img
-                          src={item.thumbnailLink}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                        />
+                        <div className="relative h-full w-full">
+                          <Image
+                            src={item.thumbnailLink}
+                            alt={item.name}
+                            fill
+                            className="object-cover"
+                          />
+                        </div>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
                           <Film className="h-10 w-10 text-muted-foreground/60" />

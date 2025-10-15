@@ -81,7 +81,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
    * Atualizar propriedade de um elemento
    */
   const updateElement = React.useCallback(
-    (elementId: string, property: keyof TextPresetElement, value: any) => {
+    (elementId: string, property: keyof TextPresetElement, value: string | number) => {
       if (!customizedPreset) return
 
       setCustomizedPreset((prev) => {
@@ -112,7 +112,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
       const originalPreset = getPresetById(customizedPreset.id)
 
       if (originalPreset) {
-        customizedPreset.elements.forEach((element, idx) => {
+        customizedPreset.elements.forEach((element) => {
           customizations[element.id] = element
         })
       }
@@ -157,7 +157,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
     setIsSaving(true)
 
     try {
-      const newPresetId = saveCustomPreset(presetName.trim(), {
+      saveCustomPreset(presetName.trim(), {
         name: presetName.trim(),
         description: customizedPreset.description,
         icon: customizedPreset.icon,
@@ -174,11 +174,11 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
 
       onOpenChange(false)
     } catch (_error) {
-      console.error('[CustomizePresetDialog] Erro ao salvar:', error)
+      console.error('[CustomizePresetDialog] Erro ao salvar:', _error)
 
       toast({
         title: '❌ Erro ao salvar',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        description: _error instanceof Error ? _error.message : 'Erro desconhecido',
         variant: 'destructive',
       })
     } finally {

@@ -51,7 +51,7 @@ interface AIImageRecord {
 }
 
 export function AIImagesPanel() {
-  const { addLayer, projectId, design } = useTemplateEditor()
+  const { addLayer, projectId } = useTemplateEditor()
   const { toast } = useToast()
 
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
@@ -286,7 +286,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     } catch (_error) {
       toast({
         variant: 'destructive',
-        description: error instanceof Error ? error.message : 'Erro ao processar imagens'
+        description: _error instanceof Error ? _error.message : 'Erro ao processar imagens'
       })
     }
   }
@@ -429,11 +429,14 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
               {/* Imagens do Google Drive */}
               {referenceImages.map((img, index) => (
                 <div key={`ref-${img.id}-${index}`} className="relative group">
-                  <img
-                    src={`/api/google-drive/thumbnail/${img.id}`}
-                    alt={img.name}
-                    className="w-full h-20 object-cover rounded border"
-                  />
+                  <div className="relative w-full h-20 rounded border overflow-hidden">
+                    <Image
+                      src={`/api/google-drive/thumbnail/${img.id}`}
+                      alt={img.name}
+                      fill
+                      className="object-cover"
+                    />
+                  </div>
                   <button
                     onClick={() => handleRemoveReferenceImage(img.id)}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -446,11 +449,15 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
               {/* Arquivos locais */}
               {localFiles.map((file, index) => (
                 <div key={`local-${index}`} className="relative group">
-                  <img
-                    src={URL.createObjectURL(file)}
-                    alt={file.name}
-                    className="w-full h-20 object-cover rounded border"
-                  />
+                  <div className="relative w-full h-20 rounded border overflow-hidden">
+                    <Image
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
                   <button
                     onClick={() => handleRemoveLocalFile(index)}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -580,9 +587,9 @@ function ImageCard({
     }
   })
 
-  const handleDelete = (e: React.MouseEvent) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const handleDelete = (_e: React.MouseEvent) => {
+    _e.preventDefault()
+    _e.stopPropagation()
 
     if (confirm(`Deletar "${image.name}"?`)) {
       deleteMutation.mutate()
@@ -627,7 +634,7 @@ function ImageCard({
               <Button
                 size="icon"
                 variant="secondary"
-                onClick={(e) => {
+                onClick={(_e) => {
                   // Deixar o PhotoSwipe abrir
                 }}
                 className="h-8 w-8"
@@ -673,7 +680,7 @@ function ImageCard({
 
 
 // Biblioteca de Prompts Globais
-function PromptsLibrary({ projectId }: { projectId: number | null | undefined }) {
+function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | undefined }) {
   const { toast } = useToast()
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
   const [selectedPrompt, setSelectedPrompt] = React.useState<Prompt | null>(null)
@@ -700,7 +707,7 @@ function PromptsLibrary({ projectId }: { projectId: number | null | undefined })
       toast({ description: "Prompt copiado para a área de transferência!" })
       setTimeout(() => setCopiedId(null), 2000)
     } catch (_error) {
-      console.warn('[PromptsLibrary] Failed to copy prompt', error)
+      console.warn('[PromptsLibrary] Failed to copy prompt', _error)
       toast({ description: "Erro ao copiar automaticamente. Copie manualmente o prompt.", variant: "destructive" })
     }
   }

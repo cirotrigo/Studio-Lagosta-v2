@@ -15,14 +15,14 @@
  * @example
  * const handleMove = throttle((e) => console.log(e), 16) // 60 FPS
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: never[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null
   let previous = 0
 
-  return function (this: any, ...args: Parameters<T>) {
+  return function (this: unknown, ...args: Parameters<T>) {
     const now = Date.now()
     const remaining = wait - (now - previous)
 
@@ -53,13 +53,13 @@ export function throttle<T extends (...args: any[]) => any>(
  * @example
  * const handleSearch = debounce((query) => search(query), 300)
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: never[]) => unknown>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
   let timeout: NodeJS.Timeout | null = null
 
-  return function (this: any, ...args: Parameters<T>) {
+  return function (this: unknown, ...args: Parameters<T>) {
     if (timeout) clearTimeout(timeout)
 
     timeout = setTimeout(() => {

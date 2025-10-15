@@ -141,7 +141,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
     }
 
     // Aplicar fonte e peso no layer
-    const updates: any = {
+    const updates: Partial<Layer> = {
       style: {
         ...selectedLayer.style,
         fontFamily: family,

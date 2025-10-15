@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import { Button } from '@/components/ui/button'
-import { Type, Heading1, Heading2, Heading3, AlignLeft } from 'lucide-react'
+import { Heading1, Heading2, Heading3, AlignLeft } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 

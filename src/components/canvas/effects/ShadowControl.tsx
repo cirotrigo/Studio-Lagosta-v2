@@ -42,7 +42,7 @@ export function ShadowControl({ config, onChange }: ShadowControlProps) {
     }, 100)
 
     return () => clearTimeout(timeout)
-  }, [shadowBlur, shadowOffsetX, shadowOffsetY, shadowOpacity])
+  }, [shadowBlur, shadowOffsetX, shadowOffsetY, shadowOpacity, config, onChange])
 
   React.useEffect(() => {
     setShadowBlur(config.shadowBlur)
@@ -51,13 +51,13 @@ export function ShadowControl({ config, onChange }: ShadowControlProps) {
     setShadowOpacity(config.shadowOpacity)
   }, [config.shadowBlur, config.shadowOffsetX, config.shadowOffsetY, config.shadowOpacity])
 
-  const handleToggle = (enabled: boolean) => {
+  const handleToggle = React.useCallback((enabled: boolean) => {
     onChange({ ...config, enabled })
-  }
+  }, [config, onChange])
 
-  const handleColorChange = (shadowColor: string) => {
+  const handleColorChange = React.useCallback((shadowColor: string) => {
     onChange({ ...config, shadowColor })
-  }
+  }, [config, onChange])
 
   return (
     <div className="space-y-4 p-4 border rounded-lg">

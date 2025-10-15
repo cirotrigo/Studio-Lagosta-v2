@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { Button } from '@/components/ui/button'
+import Image from 'next/image'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Upload, Loader2, X } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
@@ -335,13 +335,16 @@ export function LogoPanelContent() {
                   >
                     <button
                       onClick={() => insertLogoLayer(logo)}
-                      className="h-full w-full"
+                      className="relative h-full w-full"
                     >
-                      <img
-                        src={logo.fileUrl}
-                        alt={logo.name}
-                        className="h-full w-full object-contain p-2"
-                      />
+                      <div className="relative h-full w-full p-2">
+                        <Image
+                          src={logo.fileUrl}
+                          alt={logo.name}
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
                         <p className="truncate text-xs font-medium text-white">
                           {logo.name}

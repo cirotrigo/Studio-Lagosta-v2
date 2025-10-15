@@ -1,9 +1,10 @@
 "use client"
 
 import * as React from 'react'
-import { Plus, Copy, Trash2, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react'
+import Image from 'next/image'
+import { Plus, Copy, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { usePages, useCreatePage, useDeletePage, useDuplicatePage, useReorderPages } from '@/hooks/use-pages'
+import { usePages, useCreatePage, useDeletePage, useDuplicatePage } from '@/hooks/use-pages'
 import { cn } from '@/lib/utils'
 import type { DesignData } from '@/types/template'
 
@@ -188,9 +189,9 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
             )}
           >
             {/* Thumbnail */}
-            <div className="mb-2 aspect-[9/16] w-full overflow-hidden rounded bg-muted">
+            <div className="mb-2 aspect-[9/16] w-full overflow-hidden rounded bg-muted relative">
               {page.thumbnail ? (
-                <img src={page.thumbnail} alt={page.name} className="h-full w-full object-cover" />
+                <Image src={page.thumbnail} alt={page.name} fill className="object-cover" />
               ) : (
                 <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
                   Sem preview

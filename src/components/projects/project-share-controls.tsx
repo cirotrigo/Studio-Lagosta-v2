@@ -45,7 +45,6 @@ interface ProjectShareControlsProps {
 
 export function ProjectShareControls({
   projectId,
-  projectName,
   shares,
   className,
   variant = "page",
@@ -57,7 +56,8 @@ export function ProjectShareControls({
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [allowOrganizationEdit, setAllowOrganizationEdit] = useState(true)
 
-  const organizationShares = shares ?? []
+  const organizationShares = useMemo(() => shares ?? [], [shares])
+
   const activeShare = useMemo(() => {
     if (!organization?.id) return undefined
     return organizationShares.find((share) => share.organizationId === organization.id)

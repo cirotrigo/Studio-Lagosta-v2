@@ -119,7 +119,7 @@ export class EffectsManager {
   static updateEffect(
     node: Konva.Text | Konva.TextPath,
     effectType: keyof TextEffectsConfig,
-    effectConfig: any,
+    effectConfig: TextEffectsConfig[keyof TextEffectsConfig],
     layer: Konva.Layer
   ): Konva.Text | Konva.TextPath {
     const currentConfig = this.getEffects(node);

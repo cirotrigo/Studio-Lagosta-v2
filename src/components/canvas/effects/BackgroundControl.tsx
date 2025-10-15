@@ -28,23 +28,23 @@ export function BackgroundControl({ config, onChange }: BackgroundControlProps) 
     }, 100)
 
     return () => clearTimeout(timeout)
-  }, [padding])
+  }, [padding, config, onChange])
 
   React.useEffect(() => {
     setPadding(config.padding)
   }, [config.padding])
 
-  const handleToggle = (enabled: boolean) => {
+  const handleToggle = React.useCallback((enabled: boolean) => {
     onChange({ ...config, enabled })
-  }
+  }, [config, onChange])
 
-  const handleColorChange = (backgroundColor: string) => {
+  const handleColorChange = React.useCallback((backgroundColor: string) => {
     onChange({ ...config, backgroundColor })
-  }
+  }, [config, onChange])
 
-  const handleSliderChange = (values: number[]) => {
+  const handleSliderChange = React.useCallback((values: number[]) => {
     setPadding(values[0])
-  }
+  }, [])
 
   return (
     <div className="space-y-4 p-4 border rounded-lg">

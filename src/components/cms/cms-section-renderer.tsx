@@ -10,7 +10,7 @@ type CMSSection = {
   id: string
   type: string
   name: string
-  content: any
+  content: Record<string, unknown>
   order: number
   isVisible: boolean
   cssClasses: string | null

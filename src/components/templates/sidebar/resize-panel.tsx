@@ -1,7 +1,6 @@
 "use client"
 
 import * as React from 'react'
-import { Button } from '@/components/ui/button'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { RectangleVertical, Maximize2, Square } from 'lucide-react'
@@ -68,7 +67,7 @@ export function ResizePanel() {
           description: `O canvas foi redimensionado para ${preset.description}.`,
         })
       } catch (_error) {
-        console.error('[ResizePanel] Erro ao redimensionar canvas:', error)
+        console.error('[ResizePanel] Erro ao redimensionar canvas:', _error)
         toast({
           title: 'Erro ao redimensionar',
           description: 'Não foi possível redimensionar o canvas. Tente novamente.',

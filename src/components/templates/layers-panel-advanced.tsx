@@ -18,13 +18,11 @@ import {
 } from '@dnd-kit/sortable'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { LayerItem } from './layers/layer-item'
 import { LayerSearch } from './layers/layer-search'
 import { LayersHelpModal } from './layers/layers-help-modal'
 import { Layers, CheckSquare, SquareDashedMousePointer, HelpCircle } from 'lucide-react'
-import type { Layer } from '@/types/template'
 
 export function LayersPanelAdvanced() {
   const {
@@ -42,7 +40,6 @@ export function LayersPanelAdvanced() {
   } = useTemplateEditor()
 
   const [searchQuery, setSearchQuery] = React.useState('')
-  const [hoveredLayerId, setHoveredLayerId] = React.useState<string | null>(null)
   const [showHelp, setShowHelp] = React.useState(false)
 
   // Ordenar camadas (camadas no topo têm order maior)

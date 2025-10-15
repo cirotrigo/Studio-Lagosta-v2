@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -734,7 +735,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
                           className="group overflow-hidden rounded-lg border border-border/40 transition hover:border-primary"
                         >
                           <div className="relative aspect-video bg-muted">
-                            <img src={logo.fileUrl} alt={logo.name} className="h-full w-full object-contain" />
+                            <Image src={logo.fileUrl} alt={logo.name} fill className="object-contain" />
                           </div>
                           <div className="px-3 py-2 text-left text-xs font-medium">
                             <span className="truncate block">{logo.name}</span>
@@ -804,7 +805,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
                           className="group overflow-hidden rounded-lg border border-border/40 transition hover:border-primary"
                         >
                           <div className="relative aspect-square bg-muted">
-                            <img src={element.fileUrl} alt={element.name} className="h-full w-full object-contain" />
+                            <Image src={element.fileUrl} alt={element.name} fill className="object-contain" />
                           </div>
                           <div className="px-3 py-2 text-left text-xs font-medium">
                             <span className="truncate block">{element.name}</span>

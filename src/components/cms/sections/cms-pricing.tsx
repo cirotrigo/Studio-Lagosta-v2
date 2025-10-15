@@ -22,7 +22,7 @@ function normalizeFeatures(features: unknown): {
   }
 
   const normalized = features
-    .map((raw: any) => {
+    .map((raw: unknown) => {
       if (!raw) return null
 
       if (typeof raw === 'string') {
@@ -35,13 +35,14 @@ function normalizeFeatures(features: unknown): {
         }
       }
 
-      const label = raw.name?.trim() ?? ''
+      const label = (raw as Record<string, unknown>).name?.toString().trim() ?? ''
       if (!label) return null
 
+      const rawObj = raw as Record<string, unknown>
       return {
         name: label,
-        description: raw.description?.toString().trim() || null,
-        included: raw.included ?? true,
+        description: rawObj.description?.toString().trim() || null,
+        included: rawObj.included !== undefined ? Boolean(rawObj.included) : true,
       }
     })
     .filter(Boolean) as Array<{

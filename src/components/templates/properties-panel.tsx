@@ -319,17 +319,17 @@ function PropertiesContent({
   imageEditorOpen,
   setImageEditorOpen,
 }: {
-  design: any
+  design: import('@/types/template').DesignData
   selectedLayer: Layer | null
   isImageLayer: boolean
-  editor: any
-  updateLayerPartial: any
-  setStyleValue: any
-  resetImageFilters: any
-  handleCanvasBackground: any
-  updatePosition: any
-  updateSize: any
-  handleApplyImageEdit: any
+  editor: ReturnType<typeof useTemplateEditor>
+  updateLayerPartial: (id: string, partial: Partial<Layer>) => void
+  setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
+  resetImageFilters: (layer: Layer) => void
+  handleCanvasBackground: (event: React.ChangeEvent<HTMLInputElement>) => void
+  updatePosition: (field: 'x' | 'y', value: number) => void
+  updateSize: (field: 'width' | 'height', value: number) => void
+  handleApplyImageEdit: ({ fileUrl, width, height }: { fileUrl: string; width: number; height: number }) => void
   imageEditorOpen: boolean
   setImageEditorOpen: (open: boolean) => void
 }) {
@@ -497,7 +497,7 @@ function PropertiesContent({
 }
 
 function LayersContent() {
-  const { design, selectedLayerIds, selectLayer, toggleLayerVisibility, toggleLayerLock } = useTemplateEditor()
+  const { design, selectedLayerIds, selectLayer } = useTemplateEditor()
 
   const orderedLayers = React.useMemo(() => [...design.layers].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [design.layers])
 
@@ -628,7 +628,7 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
                     : 'bg-card hover:bg-accent hover:text-accent-foreground'
                   }
                 `}
-                onClick={() => setStyleValue(layer, { textTransform: transform.value as any })}
+                onClick={() => setStyleValue(layer, { textTransform: transform.value as 'none' | 'uppercase' | 'lowercase' | 'capitalize' })}
               >
                 {transform.label}
               </button>
@@ -707,7 +707,7 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
                       : 'bg-card hover:bg-accent hover:text-accent-foreground'
                     }
                   `}
-                  onClick={() => setStyleValue(layer, { cropPosition: pos.value as any })}
+                  onClick={() => setStyleValue(layer, { cropPosition: pos.value as 'left-top' | 'center-top' | 'right-top' | 'left-middle' | 'center-middle' | 'right-middle' | 'left-bottom' | 'center-bottom' | 'right-bottom' })}
                 >
                   {pos.label}
                 </button>

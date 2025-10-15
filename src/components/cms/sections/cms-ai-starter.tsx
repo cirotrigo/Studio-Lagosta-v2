@@ -39,7 +39,7 @@ export function CMSAIStarter({ content }: CMSAIStarterProps) {
           {badge && (
             <span className="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs text-muted-foreground">
               {badge.icon && (() => {
-                const BadgeIcon = (Icons as any)[badge.icon] as LucideIcon
+                const BadgeIcon = (Icons as Record<string, LucideIcon>)[badge.icon]
                 return BadgeIcon ? <BadgeIcon className="h-3.5 w-3.5 text-primary" /> : null
               })()}
               {badge.text}
@@ -62,7 +62,7 @@ export function CMSAIStarter({ content }: CMSAIStarterProps) {
           {cards && cards.length > 0 && (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {cards.map((card) => {
-                const IconComponent = (Icons as any)[card.icon] as LucideIcon
+                const IconComponent = (Icons as Record<string, LucideIcon>)[card.icon]
 
                 return (
                   <div

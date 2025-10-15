@@ -11,7 +11,7 @@ export type CMSComponent = {
   slug: string
   description: string | null
   type: string
-  content: any
+  content: Record<string, unknown>
   thumbnail: string | null
   isGlobal: boolean
   createdBy: string
@@ -24,7 +24,7 @@ export type CreateComponentInput = {
   slug: string
   description?: string
   type: string
-  content: any
+  content: Record<string, unknown>
   thumbnail?: string
   isGlobal?: boolean
 }
@@ -34,7 +34,7 @@ export type UpdateComponentInput = {
   slug?: string
   description?: string
   type?: string
-  content?: any
+  content?: Record<string, unknown>
   thumbnail?: string
   isGlobal?: boolean
 }

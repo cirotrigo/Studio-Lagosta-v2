@@ -142,7 +142,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   React.useEffect(() => {
     const handleQueued = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
       const generationId: string | undefined = detail.generationId ?? detail.generationID
@@ -174,7 +174,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     }
 
     const handleProgress = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
       const generationId: string | undefined = detail.generationId ?? detail.generationID
@@ -210,7 +210,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     }
 
     const handleCompleted = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
       const generationId: string | undefined = detail.generationId ?? detail.generationID
@@ -234,7 +234,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     }
 
     const handleFailed = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
       const generationId: string | undefined = detail.generationId ?? detail.generationID

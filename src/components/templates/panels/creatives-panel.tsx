@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Trash2, Download, Loader2, ImageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -166,11 +167,11 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                       }}
                     />
                   ) : (
-                    <img
+                    <Image
                       src={thumbnailUrl || creative.resultUrl}
                       alt={`Criativo ${creative.id}`}
-                      className="h-full w-full object-cover transition-transform group-hover:scale-105"
-                      loading="lazy"
+                      fill
+                      className="object-cover transition-transform group-hover:scale-105"
                     />
                   )}
                 </a>

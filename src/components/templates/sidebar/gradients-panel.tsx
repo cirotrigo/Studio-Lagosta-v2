@@ -11,7 +11,7 @@ import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-edito
 import type { GradientStop } from '@/types/template'
 
 export function GradientsPanel() {
-  const { addLayer, design, updateLayerStyle, selectedLayerId } = useTemplateEditor()
+  const { addLayer, design, selectedLayerId } = useTemplateEditor()
 
   // Verifica se há uma layer de gradiente selecionada
   const selectedLayer = React.useMemo(

@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { createPortal } from 'react-dom'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
 import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
@@ -9,12 +10,10 @@ import { useUpdateTemplateWithThumbnail } from '@/hooks/use-template'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Save, Download, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Upload, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
-import { CanvasPreview } from './canvas-preview'
 import { EditorSidebar } from './sidebar/editor-sidebar'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
@@ -135,8 +134,6 @@ function TemplateEditorContent() {
     templateId,
     name,
     setName,
-    type,
-    dimensions,
     design,
     dynamicFields,
     markSaved,
@@ -732,7 +729,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                   }`}
                 >
                   {page.thumbnail ? (
-                    <img src={page.thumbnail} alt={page.name} className="h-full w-full object-cover" />
+                    <Image src={page.thumbnail} alt={page.name} fill className="object-cover" />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-muted/50">
                       <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>

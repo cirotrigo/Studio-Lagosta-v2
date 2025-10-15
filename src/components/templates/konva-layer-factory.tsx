@@ -337,7 +337,6 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const imageRef = React.useRef<Konva.Image>(null)
-  const animationRef = React.useRef<Konva.Animation | null>(null)
 
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
 

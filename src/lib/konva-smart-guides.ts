@@ -391,7 +391,7 @@ export function computeAlignmentGuides(
  * Throttle para otimização de performance.
  * Limita a frequência de execução de uma função.
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: never[]) => unknown>(
   func: T,
   delay: number
 ): (...args: Parameters<T>) => void {

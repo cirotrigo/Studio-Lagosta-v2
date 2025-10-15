@@ -44,7 +44,7 @@ const transitionVariants = {
 } as const
 
 export function CMSHero({ content }: CMSHeroProps) {
-  const { badge, title, description, ctas, backgroundImage, centerImage, demoImage, clients, showLogos, logos } = content
+  const { badge, title, description, ctas, centerImage, demoImage, clients, showLogos, logos } = content
 
   return (
     <main className="overflow-hidden">
@@ -188,7 +188,7 @@ export function CMSHero({ content }: CMSHeroProps) {
                     <Button
                       asChild
                       size="lg"
-                      variant={cta.variant === 'outline' || cta.variant === 'ghost' ? (cta.variant as any) : 'default'}
+                      variant={cta.variant === 'outline' || cta.variant === 'ghost' ? (cta.variant as 'outline' | 'ghost') : 'default'}
                       className={cta.variant === 'default' ? 'rounded-xl px-5 text-base' : 'h-10.5 rounded-xl px-5'}>
                       <Link href={cta.href}>
                         <span className="text-nowrap">{cta.text}</span>
