@@ -105,8 +105,8 @@ export function DesktopGoogleDriveModal({
   }, [driveQuery.data])
 
   const queryError = driveQuery.isError
-    ? driveQuery._error instanceof Error
-      ? driveQuery._error.message
+    ? driveQuery.error instanceof Error
+      ? driveQuery.error.message
       : 'Erro ao carregar arquivos do Google Drive.'
     : null
 
