@@ -92,7 +92,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -110,6 +110,49 @@ export async function POST(req: Request) {
         userId,
       },
     })
+
+    // Auto-share with organization if user is in organization context
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true, maxProjects: true },
+      })
+
+      if (organization) {
+        // Check project limit for organization
+        if (organization.maxProjects != null) {
+          const currentCount = await db.organizationProject.count({
+            where: { organizationId: organization.id },
+          })
+
+          // Only auto-share if within limit
+          if (currentCount < organization.maxProjects) {
+            await db.organizationProject.create({
+              data: {
+                organizationId: organization.id,
+                projectId: project.id,
+                sharedBy: userId,
+                defaultCanEdit: true,
+              },
+            })
+          } else {
+            console.warn(
+              `Project ${project.id} not auto-shared: organization ${orgId} has reached project limit`
+            )
+          }
+        } else {
+          // No limit, auto-share
+          await db.organizationProject.create({
+            data: {
+              organizationId: organization.id,
+              projectId: project.id,
+              sharedBy: userId,
+              defaultCanEdit: true,
+            },
+          })
+        }
+      }
+    }
 
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
