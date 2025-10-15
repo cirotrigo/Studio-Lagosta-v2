@@ -36,8 +36,15 @@ export function SectionPreview({ section }: SectionPreviewProps) {
   )
 }
 
+interface HeroData {
+  badge?: { text?: string }
+  title?: { lines?: Array<string | { text: string }> }
+  description?: string
+  ctas?: Array<{ text: string; variant?: string }>
+}
+
 function HeroPreview({ content }: { content: Record<string, unknown> }) {
-  const data = content as any
+  const data = content as HeroData
 
   return (
     <div className="space-y-6 text-center max-w-3xl mx-auto">
@@ -47,7 +54,7 @@ function HeroPreview({ content }: { content: Record<string, unknown> }) {
         </div>
       )}
       <h1 className="text-4xl md:text-6xl font-bold">
-        {data.title?.lines?.map((line: any, i: number) => (
+        {data.title?.lines?.map((line, i: number) => (
           <div key={i}>
             {typeof line === 'string' ? line : line.text}
           </div>
@@ -58,7 +65,7 @@ function HeroPreview({ content }: { content: Record<string, unknown> }) {
       )}
       {data.ctas && data.ctas.length > 0 && (
         <div className="flex gap-4 justify-center">
-          {data.ctas.map((cta: any, i: number) => (
+          {data.ctas.map((cta, i: number) => (
             <button
               key={i}
               className={`px-6 py-3 rounded-lg font-medium ${
@@ -76,8 +83,14 @@ function HeroPreview({ content }: { content: Record<string, unknown> }) {
   )
 }
 
+interface FAQData {
+  title?: string
+  subtitle?: string
+  faqs?: Array<{ question: string; answer: string }>
+}
+
 function FAQPreview({ content }: { content: Record<string, unknown> }) {
-  const data = content as any
+  const data = content as FAQData
 
   return (
     <div className="space-y-6 max-w-2xl mx-auto">
@@ -88,7 +101,7 @@ function FAQPreview({ content }: { content: Record<string, unknown> }) {
         <p className="text-muted-foreground text-center">{data.subtitle}</p>
       )}
       <div className="space-y-4">
-        {(data.faqs || []).map((faq: any, i: number) => (
+        {(data.faqs || []).map((faq, i: number) => (
           <div key={i} className="border rounded-lg p-4">
             <h3 className="font-semibold mb-2">{faq.question}</h3>
             <p className="text-sm text-muted-foreground">{faq.answer}</p>
@@ -99,8 +112,14 @@ function FAQPreview({ content }: { content: Record<string, unknown> }) {
   )
 }
 
+interface CTAData {
+  title?: string
+  description?: string
+  button?: { text?: string }
+}
+
 function CTAPreview({ content }: { content: Record<string, unknown> }) {
-  const data = content as any
+  const data = content as CTAData
 
   return (
     <div className="space-y-6 text-center max-w-2xl mx-auto p-12 rounded-lg bg-primary/5">

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, GripVertical, Edit2, Trash2, Eye, EyeOff, Save, Loader2 } from 'lucide-react'
+import { Plus, GripVertical, Edit2, Trash2, EyeOff, Save, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -59,8 +59,6 @@ export function MenuEditor({ menu }: MenuEditorProps) {
   const [itemToDelete, setItemToDelete] = useState<string | null>(null)
 
   const updateMenuMutation = useUpdateMenu(menu.id)
-  const createItemMutation = useCreateMenuItem(menu.id)
-  const updateItemMutation = useUpdateMenuItem(menu.id)
   const deleteItemMutation = useDeleteMenuItem(menu.id)
 
   const handleSaveMenu = async () => {
@@ -75,7 +73,7 @@ export function MenuEditor({ menu }: MenuEditorProps) {
         title: 'Menu atualizado',
         description: 'As configurações do menu foram salvas.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar as configurações do menu.',
@@ -105,7 +103,7 @@ export function MenuEditor({ menu }: MenuEditorProps) {
       })
       setDeleteDialogOpen(false)
       setItemToDelete(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao deletar',
         description: 'Não foi possível deletar o item.',
@@ -366,7 +364,7 @@ function MenuItemDialog({ open, onOpenChange, menuId, item, onSave }: MenuItemDi
       setUrl('')
       setTarget('_self')
       setIsVisible(true)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar o item.',

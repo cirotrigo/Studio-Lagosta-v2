@@ -92,7 +92,7 @@ export function CreateMenuDialog({ open, onOpenChange }: CreateMenuDialogProps) 
       form.reset()
       onOpenChange(false)
       router.push(`/admin/content/menus/${result.menu.id}`)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao criar menu',
         description: 'Não foi possível criar o menu. Tente novamente.',

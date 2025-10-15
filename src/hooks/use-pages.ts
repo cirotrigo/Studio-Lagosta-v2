@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
-import type { Page } from '@/types/template'
 
 interface CreatePageData {
   name: string
@@ -68,7 +67,7 @@ export function useCreatePage() {
       api.post(`/api/templates/${templateId}/pages`, data),
     onSuccess: (newPage, { templateId }) => {
       // Atualizar cache manualmente sem invalidar (sem re-fetch)
-      queryClient.setQueryData(['pages', templateId], (oldPages: any) => {
+      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return [newPage]
         return [...oldPages, newPage]
       })
@@ -96,9 +95,9 @@ export function useUpdatePage(options?: { skipInvalidation?: boolean }) {
         queryClient.setQueryData(['page', templateId, pageId], updatedPage)
 
         // Atualizar a página na lista de páginas
-        queryClient.setQueryData(['pages', templateId], (oldPages: any) => {
+        queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
           if (!oldPages) return oldPages
-          return oldPages.map((page: any) => (page.id === pageId ? updatedPage : page))
+          return oldPages.map((page) => (page.id === pageId ? updatedPage : page))
         })
       } else {
         // Invalidar normalmente (causa re-fetch)
@@ -118,9 +117,9 @@ export function useDeletePage() {
       api.delete(`/api/templates/${templateId}/pages/${pageId}`),
     onSuccess: (_, { templateId, pageId }) => {
       // Atualizar cache manualmente sem invalidar (sem re-fetch)
-      queryClient.setQueryData(['pages', templateId], (oldPages: any) => {
+      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return []
-        return oldPages.filter((page: any) => page.id !== pageId)
+        return oldPages.filter((page) => page.id !== pageId)
       })
     },
   })
@@ -135,7 +134,7 @@ export function useDuplicatePage() {
       api.post(`/api/templates/${templateId}/pages/${pageId}/duplicate`, {}),
     onSuccess: (duplicatedPage, { templateId }) => {
       // Atualizar cache manualmente sem invalidar (sem re-fetch)
-      queryClient.setQueryData(['pages', templateId], (oldPages: any) => {
+      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return [duplicatedPage]
         return [...oldPages, duplicatedPage]
       })
@@ -165,10 +164,10 @@ export function useReorderPages() {
     },
     onSuccess: (pageIds, { templateId }) => {
       // Atualizar cache manualmente reordenando as páginas
-      queryClient.setQueryData(['pages', templateId], (oldPages: any) => {
+      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return []
         // Criar um mapa para busca rápida
-        const pageMap = new Map(oldPages.map((p: any) => [p.id, p]))
+        const pageMap = new Map(oldPages.map((p) => [p.id, p]))
         // Reordenar baseado nos IDs fornecidos e atualizar order
         return pageIds
           .map((id, index) => {
@@ -176,7 +175,7 @@ export function useReorderPages() {
             if (!page || typeof page !== 'object') return null
             return { ...page, order: index }
           })
-          .filter((p): p is any => p !== null)
+          .filter((p): p is PageResponse => p !== null)
       })
     },
   })

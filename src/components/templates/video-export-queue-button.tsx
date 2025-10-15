@@ -307,7 +307,7 @@ export function VideoExportQueueButton() {
           ? `Formato Instagram pronto: ${formatInfo}. Você será notificado quando o MP4 estiver pronto.`
           : `Formato atual: ${formatInfo}. Você será notificado quando o MP4 estiver pronto.`,
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('Export error:', error)
       toast({
         variant: 'destructive',
@@ -410,7 +410,7 @@ export function VideoExportQueueButton() {
           // Atualizar progresso
           console.log('[VideoExportQueue] Processando... Progresso:', job.progress)
         }
-      } catch (error) {
+      } catch (_error) {
         console.error('[VideoExportQueue] Polling error:', error)
         clearInterval(interval)
       }

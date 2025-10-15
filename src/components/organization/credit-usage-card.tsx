@@ -4,7 +4,6 @@ import { Loader2, TrendingDown, TrendingUp } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Badge } from "@/components/ui/badge"
 import type { ComponentType } from "react"
 
 export type UsagePoint = {

@@ -15,7 +15,6 @@ import { Download, Trash2, Upload, HardDrive, Loader2, Plus } from 'lucide-react
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
-import { FONT_CONFIG } from '@/lib/font-config'
 
 type DriveStatus = 'loading' | 'available' | 'unavailable'
 
@@ -91,7 +90,7 @@ export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
           setDriveStatus('unavailable')
           setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
         }
-      } catch (error) {
+      } catch (_error) {
         console.warn('[ProjectAssetsPanel] Falha ao verificar Google Drive', error)
         if (!isMounted) return
         setDriveStatus('unavailable')
@@ -290,7 +289,7 @@ function LogoSection({
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'logos'] })
       toast({ title: 'Logo importado', description: 'O arquivo do Google Drive foi adicionado ao projeto.' })
       setIsDriveModalOpen(false)
-    } catch (error) {
+    } catch (_error) {
       console.error('[ProjectAssetsPanel] Drive import error (logo):', error)
       toast({
         title: 'Erro ao importar do Drive',
@@ -579,7 +578,7 @@ function ElementSection({
       queryClient.invalidateQueries({ queryKey: ['project-assets', projectId, 'elements'] })
       toast({ title: 'Elemento importado', description: 'O arquivo do Google Drive foi adicionado ao projeto.' })
       setIsDriveModalOpen(false)
-    } catch (error) {
+    } catch (_error) {
       console.error('[ProjectAssetsPanel] Drive import error (element):', error)
       toast({
         title: 'Erro ao importar do Drive',

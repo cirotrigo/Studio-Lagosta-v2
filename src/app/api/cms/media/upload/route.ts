@@ -50,7 +50,7 @@ export async function POST(request: Request) {
       // For images, we can try to get dimensions from the file
       // This is a simplified approach - in production you might want to use sharp or similar
       const buffer = await file.arrayBuffer()
-      const uint8Array = new Uint8Array(buffer)
+      const _uint8Array = new Uint8Array(buffer)
 
       // Try to extract dimensions (this is a basic example)
       // In production, use a proper image processing library

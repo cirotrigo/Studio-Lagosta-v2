@@ -8,7 +8,6 @@ import {
   ChevronRight,
   Home,
   CreditCard,
-  Settings,
   Bot,
   FolderOpen,
   BookOpen,

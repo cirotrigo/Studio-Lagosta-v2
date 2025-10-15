@@ -7,7 +7,7 @@ const updatePageSchema = z.object({
   name: z.string().min(1).optional(),
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
-  layers: z.array(z.any()).optional(),
+  layers: z.array(z.unknown()).optional(),
   background: z.string().optional(),
   order: z.number().int().optional(),
   thumbnail: z.string().optional(),
@@ -109,7 +109,7 @@ export async function PATCH(
     const validatedData = updatePageSchema.parse(body)
 
     // Preparar dados com layers serializados se fornecidos
-    const updateData: any = { ...validatedData }
+    const updateData: Record<string, unknown> = { ...validatedData }
     if (validatedData.layers !== undefined) {
       updateData.layers = JSON.stringify(validatedData.layers)
     }

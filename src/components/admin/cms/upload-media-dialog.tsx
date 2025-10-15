@@ -90,7 +90,7 @@ export function UploadMediaDialog({
       setCaption('')
       setFolder('images')
       onOpenChange(false)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro no upload',
         description: 'Não foi possível fazer upload do arquivo.',

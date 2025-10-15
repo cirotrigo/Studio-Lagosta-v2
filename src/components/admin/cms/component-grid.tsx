@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import {
@@ -57,7 +58,7 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
         description: 'O componente foi excluído com sucesso.',
       })
       setDeleteId(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao excluir',
         description: 'Não foi possível excluir o componente.',
@@ -70,7 +71,7 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
     router.push(`/admin/content/components/${id}`)
   }
 
-  const handleView = (component: CMSComponent) => {
+  const handleView = (_component: CMSComponent) => {
     // TODO: Implement component preview
     toast({
       title: 'Em breve',
@@ -78,7 +79,7 @@ export function ComponentGrid({ components, viewMode }: ComponentGridProps) {
     })
   }
 
-  const handleDuplicate = (component: CMSComponent) => {
+  const handleDuplicate = (_component: CMSComponent) => {
     // TODO: Implement duplicate
     toast({
       title: 'Em breve',
@@ -180,12 +181,14 @@ function ComponentCard({ component, onEdit, onView, onDelete, onDuplicate }: Com
   return (
     <div className="group relative overflow-hidden rounded-lg border bg-card transition-all hover:shadow-md">
       {/* Preview */}
-      <div className="aspect-video bg-muted p-4">
+      <div className="aspect-video bg-muted p-4 relative">
         {component.thumbnail ? (
-          <img
+          <Image
             src={component.thumbnail}
             alt={component.name}
-            className="h-full w-full object-cover rounded"
+            fill
+            className="object-cover rounded"
+            unoptimized
           />
         ) : (
           <div className="flex h-full items-center justify-center">
@@ -269,12 +272,14 @@ function ComponentListItem({
   return (
     <div className="flex items-center gap-4 p-4 hover:bg-muted/50">
       {/* Thumbnail */}
-      <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-md bg-muted">
+      <div className="h-16 w-24 flex-shrink-0 overflow-hidden rounded-md bg-muted relative">
         {component.thumbnail ? (
-          <img
+          <Image
             src={component.thumbnail}
             alt={component.name}
-            className="h-full w-full object-cover"
+            fill
+            className="object-cover"
+            unoptimized
           />
         ) : (
           <div className="flex h-full items-center justify-center">

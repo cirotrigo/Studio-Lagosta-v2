@@ -138,7 +138,7 @@ export function CreatePageDialog({ open, onOpenChange }: CreatePageDialogProps) 
       onOpenChange(false)
       form.reset()
       router.push(`/admin/content/pages/${result.page.id}`)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao criar página',
         description: 'Não foi possível criar a página. Tente novamente.',

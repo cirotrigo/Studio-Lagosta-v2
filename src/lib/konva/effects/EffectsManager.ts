@@ -9,7 +9,7 @@ import { StrokeEffect } from './StrokeEffect';
 import { ShadowEffect } from './ShadowEffect';
 import { BackgroundEffect } from './BackgroundEffect';
 import { CurvedTextEffect } from './CurvedTextEffect';
-import type { TextEffectsConfig, DEFAULT_EFFECTS_CONFIG } from './types';
+import type { TextEffectsConfig } from './types';
 
 export class EffectsManager {
   /**

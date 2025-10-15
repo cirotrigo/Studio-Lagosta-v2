@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -145,7 +145,7 @@ export function FeatureGridDialog({
       }
       onOpenChange(false)
       reset()
-    } catch (error) {
+    } catch (_error) {
       toast.error(`Erro ao ${isEditing ? 'atualizar' : 'criar'} item`)
     }
   }

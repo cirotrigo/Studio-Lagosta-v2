@@ -52,7 +52,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
         description: 'O criativo foi removido com sucesso.',
       })
       setCreativeToDelete(null)
-    } catch (error) {
+    } catch (_error) {
       console.error('Failed to delete creative:', error)
       toast({
         title: 'Erro ao remover',

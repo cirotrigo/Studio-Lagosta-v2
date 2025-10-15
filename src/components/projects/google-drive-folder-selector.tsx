@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Folder, HardDrive, ImageIcon, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage } from 'lucide-react'
+import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -746,7 +746,7 @@ export function GoogleDriveFolderSelector({
         [config.fieldName]: item.name,
       } as UpdateProjectSettingsInput)
       toast(config.selectToast)
-    } catch (error) {
+    } catch (_error) {
       console.error('[GoogleDriveFolderSelector] Failed to save folder', error)
       toast({
         title: 'Erro ao salvar pasta',
@@ -763,7 +763,7 @@ export function GoogleDriveFolderSelector({
         [config.fieldName]: null,
       } as UpdateProjectSettingsInput)
       toast(config.removeToast)
-    } catch (error) {
+    } catch (_error) {
       console.error('[GoogleDriveFolderSelector] Failed to remove folder', error)
       toast({
         title: 'Erro ao remover pasta',

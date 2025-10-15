@@ -74,7 +74,7 @@ export async function GET(req: NextRequest) {
     const workspaceId = searchParams.get('workspaceId') || undefined
 
     // Build where clause
-    const where: any = {
+    const where: Record<string, unknown> = {
       userId: dbUser.id,
     }
 

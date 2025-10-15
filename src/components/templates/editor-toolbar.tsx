@@ -23,7 +23,6 @@ import {
   Upload,
   Copy,
   ClipboardPaste,
-  Download,
   Share2,
   Undo2,
   Redo2,
@@ -111,7 +110,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
           setDriveStatus('unavailable')
           setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
         }
-      } catch (error) {
+      } catch (_error) {
         console.warn('[EditorToolbar] Falha ao verificar Google Drive', error)
         if (!active) return
         setDriveStatus('unavailable')
@@ -287,7 +286,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         }
         insertImageLayer(payload.url, payload.name ?? file.name)
         setIsImageDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Upload de imagem falhou', error)
         toast({
           title: 'Erro ao enviar imagem',
@@ -324,7 +323,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertImageLayer(uploaded.url, uploaded.name ?? item.name)
         setIsDriveImageModalOpen(false)
         setIsImageDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Importação de imagem do Drive falhou', error)
         toast({
           title: 'Erro ao importar do Drive',
@@ -364,7 +363,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         await queryClient.invalidateQueries({ queryKey: ['template-editor', projectId, 'logos'] })
         insertLogoLayer(payload)
         setIsLogoDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Upload de logo falhou', error)
         toast({
           title: 'Erro ao enviar logo',
@@ -416,7 +415,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertLogoLayer(payload)
         setIsDriveLogoModalOpen(false)
         setIsLogoDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Importação de logo do Drive falhou', error)
         toast({
           title: 'Erro ao importar do Drive',
@@ -456,7 +455,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         await queryClient.invalidateQueries({ queryKey: ['template-editor', projectId, 'elements'] })
         insertElementLayer(payload)
         setIsElementDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Upload de elemento falhou', error)
         toast({
           title: 'Erro ao enviar elemento',
@@ -508,7 +507,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertElementLayer(payload)
         setIsDriveElementModalOpen(false)
         setIsElementDialogOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[EditorToolbar] Importação de elemento do Drive falhou', error)
         toast({
           title: 'Erro ao importar do Drive',
@@ -554,7 +553,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         title: 'Criativo salvo com sucesso!',
         description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('Export failed:', error)
       toast({
         title: 'Erro ao salvar criativo',

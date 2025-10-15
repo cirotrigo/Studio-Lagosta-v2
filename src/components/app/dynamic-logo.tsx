@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { useSiteConfig } from '@/hooks/use-site-config'
 import { site } from '@/lib/brand-config'
 
@@ -27,15 +28,19 @@ export function DynamicLogo({ useFull = false, className }: DynamicLogoProps) {
     return (
       <>
         {/* Logo completa para tema claro (escura) */}
-        <img
-          src={logoFullDark}
+        <Image
+          src={logoFullDark || ''}
+          width={200}
+          height={48}
           className={`dark:hidden object-contain ${fullLogoClasses}`}
           alt={config.shortName || config.name}
           style={{ width: 'auto', maxWidth: '200px' }}
         />
         {/* Logo completa para tema escuro (clara) */}
-        <img
-          src={logoFullLight}
+        <Image
+          src={logoFullLight || ''}
+          width={200}
+          height={48}
           className={`hidden dark:block object-contain ${fullLogoClasses}`}
           alt={config.shortName || config.name}
           style={{ width: 'auto', maxWidth: '200px' }}
@@ -49,13 +54,17 @@ export function DynamicLogo({ useFull = false, className }: DynamicLogoProps) {
 
   return (
     <>
-      <img
-        src={config.logo?.dark}
+      <Image
+        src={config.logo?.dark || ''}
+        width={36}
+        height={36}
         className={`dark:hidden object-contain ${iconClasses}`}
         alt={config.shortName || config.name}
       />
-      <img
-        src={config.logo?.light}
+      <Image
+        src={config.logo?.light || ''}
+        width={36}
+        height={36}
         className={`hidden dark:block object-contain ${iconClasses}`}
         alt={config.shortName || config.name}
       />

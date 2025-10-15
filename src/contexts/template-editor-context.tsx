@@ -465,7 +465,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       const previousPosition = { x: stage.x(), y: stage.y() }
 
       // Estado das camadas invisíveis (precisa ser definido aqui para estar disponível no finally/catch)
-      const invisibleLayersState: Array<{ node: any; originalOpacity: number; originalVisible: boolean }> = []
+      const invisibleLayersState: Array<{ node: Konva.Node; originalOpacity: number; originalVisible: boolean }> = []
 
       try {
         // 1. Limpar seleção para ocultar transformers
@@ -495,7 +495,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         if (contentLayer) {
           const children = (contentLayer as Konva.Layer).getChildren()
 
-          children.forEach((node: any) => {
+          children.forEach((node: Konva.Node) => {
             const layerId = node.id()
             const layer = design.layers.find((l) => l.id === layerId)
 
@@ -590,7 +590,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       const previousPosition = { x: stage.x(), y: stage.y() }
 
       // Estado das camadas invisíveis (precisa ser definido aqui para estar disponível no finally)
-      const invisibleLayersState: Array<{ node: any; originalOpacity: number; originalVisible: boolean }> = []
+      const invisibleLayersState: Array<{ node: Konva.Node; originalOpacity: number; originalVisible: boolean }> = []
 
       try {
         // 1. Limpar seleção para ocultar transformers
@@ -620,7 +620,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         if (contentLayer) {
           const children = (contentLayer as Konva.Layer).getChildren()
 
-          children.forEach((node: any) => {
+          children.forEach((node: Konva.Node) => {
             const layerId = node.id()
             const layer = design.layers.find((l) => l.id === layerId)
 

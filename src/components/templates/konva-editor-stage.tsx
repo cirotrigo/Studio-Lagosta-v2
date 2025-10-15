@@ -6,7 +6,7 @@ import { Stage, Layer as KonvaLayer, Rect, Line } from 'react-konva'
 
 // IMPORTANTE: Ativar fix de renderização para melhor qualidade de fontes
 // Especialmente importante para fontes ornamentadas/decorativas
-// @ts-ignore - Propriedade interna do Konva não documentada nos tipos
+// @ts-expect-error - Propriedade interna do Konva não documentada nos tipos
 Konva._fixTextRendering = true
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
@@ -39,7 +39,6 @@ import { useIsMobile } from '@/hooks/use-device-detection'
 
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 5
-const ZOOM_SCALE_BY = 1.05 // 5% por scroll
 
 
 export function KonvaEditorStage() {
@@ -78,14 +77,14 @@ export function KonvaEditorStage() {
 
   const stageRef = React.useRef<Konva.Stage | null>(null)
   const [guides, setGuides] = React.useState<GuideLine[]>([])
-  const [showGrid, setShowGrid] = React.useState(false)
-  const [snapConfig, setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
+  const [showGrid, _setShowGrid] = React.useState(false)
+  const [snapConfig, _setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
   // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
   const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
   const [showTestGuide, setShowTestGuide] = React.useState(true)
   const [showMarginGuides, setShowMarginGuides] = React.useState(true)
   const [showCanvasBounds, setShowCanvasBounds] = React.useState(true)
-  const [fontsReady, setFontsReady] = React.useState(false)
+  const [_fontsReady, setFontsReady] = React.useState(false)
 
   // Drag-to-select state
   const [selectionRect, setSelectionRect] = React.useState<{
@@ -151,7 +150,7 @@ export function KonvaEditorStage() {
             stageRef.current.batchDraw()
             console.log('🎨 [KonvaEditorStage] Stage re-renderizado com fontes prontas')
           }
-        } catch (error) {
+        } catch (_error) {
           console.warn('⚠️ [KonvaEditorStage] Erro ao aguardar fontes:', error)
           setFontsReady(true) // Continuar mesmo com erro
         }
@@ -168,7 +167,7 @@ export function KonvaEditorStage() {
   const deferredLayers = React.useDeferredValue(design.layers)
 
   // Container ref para calcular tamanho disponível
-  const containerRef = React.useRef<HTMLDivElement>(null)
+  const _containerRef = React.useRef<HTMLDivElement>(null)
 
   React.useEffect(() => {
     if (stageRef.current) {
@@ -190,11 +189,11 @@ export function KonvaEditorStage() {
     if (Math.abs(currentScale - zoom) > 0.001) {
       // Obter dimensões do stage (container)
       const stageWidth = stage.width()
-      const stageHeight = stage.height()
+      const _stageHeight = stage.height()
 
       // Dimensões do canvas escalado
       const scaledCanvasWidth = canvasWidth * zoom
-      const scaledCanvasHeight = canvasHeight * zoom
+      const _scaledCanvasHeight = canvasHeight * zoom
 
       // Centralizar horizontalmente SEMPRE
       const centerX = (stageWidth - scaledCanvasWidth) / 2
@@ -312,7 +311,7 @@ export function KonvaEditorStage() {
   // Scroll do mouse DESABILITADO - apenas scroll vertical nativo
   // Zoom funciona apenas via botões e atalhos (Cmd/Ctrl +/-)
   const handleWheel = React.useCallback(
-    (event: KonvaEventObject<WheelEvent>) => {
+    (_event: KonvaEventObject<WheelEvent>) => {
       // NÃO prevenir default - permitir scroll vertical nativo
       // NÃO fazer zoom com scroll do mouse
       return

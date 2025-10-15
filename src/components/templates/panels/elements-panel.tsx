@@ -83,7 +83,7 @@ export function ElementsPanelContent() {
           title: 'Elemento adicionado',
           description: 'Redimensione conforme necessário.'
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[ElementsPanel] Failed to load image dimensions', error)
         toast({
           title: 'Erro ao adicionar elemento',
@@ -107,7 +107,7 @@ export function ElementsPanelContent() {
       }
       const data = await response.json()
       setElements(data)
-    } catch (error) {
+    } catch (_error) {
       console.error('[ElementsPanel] Failed to load elements', error)
       toast({
         title: 'Erro ao carregar elementos',
@@ -170,7 +170,7 @@ export function ElementsPanelContent() {
           title: 'Elemento salvo',
           description: 'O elemento foi salvo no projeto e está disponível para todos os templates.'
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[ElementsPanel] Upload failed', error)
         toast({
           title: 'Erro ao enviar elemento',
@@ -263,7 +263,7 @@ export function ElementsPanelContent() {
         title: 'Elemento removido',
         description: 'O elemento foi removido do projeto.'
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('[ElementsPanel] Failed to remove element', error)
       toast({
         title: 'Erro ao remover elemento',

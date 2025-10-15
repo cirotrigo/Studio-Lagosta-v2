@@ -62,7 +62,7 @@ export function ImagesPanel() {
           setDriveStatus('unavailable')
           setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
         }
-      } catch (error) {
+      } catch (_error) {
         console.warn('[ImagesPanel] Falha ao verificar Google Drive', error)
         if (!mounted) return
         setDriveStatus('unavailable')
@@ -201,7 +201,7 @@ export function ImagesPanel() {
         }
         await insertImageLayer(uploaded.url, uploaded.name ?? item.name)
         setIsDriveModalOpen(false)
-      } catch (error) {
+      } catch (_error) {
         console.error('[ImagesPanel] Falha ao importar do Drive', error)
         toast({
           title: 'Erro ao importar do Drive',

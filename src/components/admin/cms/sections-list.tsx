@@ -216,7 +216,7 @@ export function SectionsList({
           title: 'Ordem atualizada',
           description: 'A ordem das seções foi atualizada.',
         })
-      } catch (error) {
+      } catch (_error) {
         toast({
           title: 'Erro ao reordenar',
           description: 'Não foi possível reordenar as seções.',
@@ -237,7 +237,7 @@ export function SectionsList({
       })
       setDeleteDialogOpen(false)
       setSectionToDelete(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao deletar',
         description: 'Não foi possível deletar a seção.',
@@ -253,7 +253,7 @@ export function SectionsList({
         title: 'Seção duplicada',
         description: 'A seção foi duplicada com sucesso.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao duplicar',
         description: 'Não foi possível duplicar a seção.',
@@ -269,7 +269,7 @@ export function SectionsList({
         title: 'Visibilidade atualizada',
         description: 'A visibilidade da seção foi atualizada.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro',
         description: 'Não foi possível atualizar a visibilidade.',

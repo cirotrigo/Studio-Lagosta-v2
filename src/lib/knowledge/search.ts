@@ -140,7 +140,7 @@ export function formatContextFromResults(
   const sections: string[] = []
   let totalTokens = 0
 
-  for (const [entryId, entryResults] of entriesMap) {
+  for (const [_entryId, entryResults] of entriesMap) {
     // Sort chunks by ordinal to maintain reading order
     const sortedChunks = entryResults.sort((a, b) => a.ordinal - b.ordinal)
 

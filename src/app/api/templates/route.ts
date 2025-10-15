@@ -2,20 +2,8 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import type { Prisma } from '@/lib/prisma-types'
-import { TemplateType } from '@/lib/prisma-types'
 
 export const runtime = 'nodejs'
-
-const CATEGORY_ALL = 'all'
-
-function normalizeCategory(category: string | null): string | null {
-  if (!category) return null
-  const trimmed = category.trim().toUpperCase()
-  if (!trimmed || trimmed === CATEGORY_ALL.toUpperCase()) {
-    return null
-  }
-  return trimmed
-}
 
 function parseLimit(value: string | null): number | undefined {
   if (!value) return undefined

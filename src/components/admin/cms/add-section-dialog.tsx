@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
@@ -138,7 +137,7 @@ export function AddSectionDialog({
 
       form.reset()
       onSectionCreated(result.section)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao criar seção',
         description: 'Não foi possível criar a seção. Tente novamente.',

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Edit, Trash2, GripVertical, Eye, EyeOff } from 'lucide-react'
+import { Edit, Trash2, GripVertical } from 'lucide-react'
 import * as Icons from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -20,7 +20,6 @@ import { FeatureGridDialog } from './feature-grid-dialog'
 import {
   type FeatureGridItem,
   useDeleteFeatureGridItem,
-  useUpdateFeatureGridItem,
 } from '@/hooks/admin/use-admin-feature-grid'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -42,7 +41,7 @@ export function FeatureGridList({ items }: FeatureGridListProps) {
       await deleteItem.mutateAsync(deletingItem.id)
       toast.success('Item removido com sucesso')
       setDeletingItem(null)
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao remover item')
     }
   }
@@ -61,7 +60,7 @@ export function FeatureGridList({ items }: FeatureGridListProps) {
     <>
       <div className="space-y-4">
         {items.map((item) => {
-          const IconComponent = (Icons as any)[item.icon] as Icons.LucideIcon
+          const IconComponent = (Icons as Record<string, Icons.LucideIcon>)[item.icon]
 
           return (
             <Card key={item.id} className="p-4">

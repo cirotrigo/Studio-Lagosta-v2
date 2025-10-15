@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import { Settings, Save, Loader2, Globe, Image as ImageIcon, Mail, Share2, BarChart3, Upload } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -308,11 +309,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="logoLight">Logo Clara (Tema Escuro)</Label>
                   <div className="flex items-center gap-4">
                     {formData.logoLight && (
-                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-gray-900 p-2">
-                        <img
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-gray-900 p-2 relative">
+                        <Image
                           src={formData.logoLight}
                           alt="Logo Light"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}
@@ -364,11 +367,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="logoDark">Logo Escura (Tema Claro)</Label>
                   <div className="flex items-center gap-4">
                     {formData.logoDark && (
-                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
-                        <img
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2 relative">
+                        <Image
                           src={formData.logoDark}
                           alt="Logo Dark"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}
@@ -428,11 +433,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="logoFullLight">Logo Completa Clara (Tema Escuro)</Label>
                   <div className="flex items-center gap-4">
                     {formData.logoFullLight && (
-                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-gray-900 p-2">
-                        <img
+                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-gray-900 p-2 relative">
+                        <Image
                           src={formData.logoFullLight}
                           alt="Logo Full Light"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}
@@ -484,11 +491,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="logoFullDark">Logo Completa Escura (Tema Claro)</Label>
                   <div className="flex items-center gap-4">
                     {formData.logoFullDark && (
-                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-white p-2">
-                        <img
+                      <div className="w-32 h-16 border rounded-lg flex items-center justify-center bg-white p-2 relative">
+                        <Image
                           src={formData.logoFullDark}
                           alt="Logo Full Dark"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}
@@ -548,11 +557,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="favicon">Favicon</Label>
                   <div className="flex items-center gap-4">
                     {formData.favicon && (
-                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
-                        <img
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2 relative">
+                        <Image
                           src={formData.favicon}
                           alt="Favicon"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}
@@ -604,11 +615,13 @@ export default function SiteSettingsPage() {
                   <Label htmlFor="appleIcon">Apple Touch Icon (opcional)</Label>
                   <div className="flex items-center gap-4">
                     {formData.appleIcon && (
-                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2">
-                        <img
+                      <div className="w-20 h-20 border rounded-lg flex items-center justify-center bg-white p-2 relative">
+                        <Image
                           src={formData.appleIcon}
                           alt="Apple Icon"
-                          className="max-w-full max-h-full object-contain"
+                          fill
+                          className="object-contain"
+                          unoptimized
                         />
                       </div>
                     )}

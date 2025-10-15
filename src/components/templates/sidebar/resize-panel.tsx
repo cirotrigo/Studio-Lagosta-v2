@@ -67,7 +67,7 @@ export function ResizePanel() {
           title: 'Canvas redimensionado!',
           description: `O canvas foi redimensionado para ${preset.description}.`,
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[ResizePanel] Erro ao redimensionar canvas:', error)
         toast({
           title: 'Erro ao redimensionar',

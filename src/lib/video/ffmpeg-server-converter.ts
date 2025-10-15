@@ -1,6 +1,6 @@
 import { existsSync } from 'fs'
 import { readFile, writeFile, unlink } from 'fs/promises'
-import { basename, dirname, join } from 'path'
+import { join } from 'path'
 import { tmpdir } from 'os'
 import { spawn } from 'child_process'
 

@@ -1,5 +1,5 @@
 import type Konva from 'konva'
-import type { Page, Layer } from '@/types/template'
+import type { Page } from '@/types/template'
 
 interface ThumbnailOptions {
   maxWidth?: number

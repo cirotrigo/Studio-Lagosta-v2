@@ -283,7 +283,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         aspectRatio,
         referenceImages: allImageUrls
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         variant: 'destructive',
         description: error instanceof Error ? error.message : 'Erro ao processar imagens'
@@ -699,7 +699,7 @@ function PromptsLibrary({ projectId }: { projectId: number | null | undefined })
       setCopiedId(promptId)
       toast({ description: "Prompt copiado para a área de transferência!" })
       setTimeout(() => setCopiedId(null), 2000)
-    } catch (error) {
+    } catch (_error) {
       console.warn('[PromptsLibrary] Failed to copy prompt', error)
       toast({ description: "Erro ao copiar automaticamente. Copie manualmente o prompt.", variant: "destructive" })
     }

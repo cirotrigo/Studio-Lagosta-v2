@@ -81,7 +81,7 @@ export function Markdown({ children, className }: MarkdownProps) {
               await copyToClipboard(codeText)
               setCopied(true)
               setTimeout(() => setCopied(false), 1200)
-            } catch (error) {
+            } catch (_error) {
               console.warn('[Markdown] Failed to copy code block', error)
             }
           }

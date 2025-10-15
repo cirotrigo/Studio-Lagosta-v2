@@ -89,7 +89,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
             console.error('[PageSync] Erro ao atualizar thumbnail:', err)
           )
         }
-      } catch (error) {
+      } catch (_error) {
         console.error('[PageSync] Erro ao salvar layers:', error)
       }
     }, 3000) // Aumentado para 3 segundos (menos salvamentos)

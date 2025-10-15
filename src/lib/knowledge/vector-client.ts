@@ -9,7 +9,7 @@ import { Index } from '@upstash/vector'
 let _vectorIndex: Index | null = null
 
 export const vectorIndex = new Proxy({} as Index, {
-  get(_target, prop) {
+  get(_target, prop: string | symbol) {
     if (!_vectorIndex) {
       if (!process.env.UPSTASH_VECTOR_REST_URL) {
         throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
@@ -25,7 +25,7 @@ export const vectorIndex = new Proxy({} as Index, {
       })
     }
 
-    return (_vectorIndex as any)[prop]
+    return _vectorIndex[prop as keyof Index]
   },
 })
 
@@ -73,7 +73,7 @@ export async function upsertVectors(
     },
   }))
 
-  await vectorIndex.upsert(vectors as any)
+  await vectorIndex.upsert(vectors as Parameters<typeof vectorIndex.upsert>[0])
 }
 
 /**

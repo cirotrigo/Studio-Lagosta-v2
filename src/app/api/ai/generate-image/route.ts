@@ -178,7 +178,7 @@ async function createReplicatePrediction(params: {
   aspectRatio: string
   referenceImages?: string[]
 }) {
-  const inputData: Record<string, any> = {
+  const inputData: Record<string, unknown> = {
     prompt: params.prompt,
     aspect_ratio: params.aspectRatio,
     output_format: 'png',

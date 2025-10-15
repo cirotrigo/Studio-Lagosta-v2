@@ -49,7 +49,7 @@ export function MenusList({ menus }: MenusListProps) {
       })
       setDeleteDialogOpen(false)
       setMenuToDelete(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao deletar',
         description: 'Não foi possível deletar o menu.',

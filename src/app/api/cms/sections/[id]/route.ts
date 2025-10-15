@@ -4,8 +4,6 @@ import { getSectionById } from '@/lib/cms/queries'
 import {
   updateSection,
   deleteSection,
-  toggleSectionVisibility,
-  duplicateSection,
 } from '@/lib/cms/mutations'
 import { z } from 'zod'
 

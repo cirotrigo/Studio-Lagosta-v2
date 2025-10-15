@@ -49,7 +49,7 @@ export async function GET(
           'X-Content-Type-Options': 'nosniff',
         },
       })
-    } catch (thumbnailError) {
+    } catch (_thumbnailError) {
       console.warn(`[API] Thumbnail not available for ${fileId}, falling back to full image`)
 
       // Fallback: retornar imagem completa se thumbnail não disponível

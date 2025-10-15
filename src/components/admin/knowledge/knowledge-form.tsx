@@ -16,7 +16,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
-import { Loader2, X, Upload } from 'lucide-react'
+import { Loader2, Upload } from 'lucide-react'
 
 const MAX_CONTENT_LENGTH = 50000
 
@@ -242,7 +242,7 @@ export function KnowledgeForm({
         <Label htmlFor="status">Status</Label>
         <Select
           value={statusValue}
-          onValueChange={(value) => setValue('status', value as any)}
+          onValueChange={(value) => setValue('status', value as 'ACTIVE' | 'DRAFT' | 'ARCHIVED')}
           disabled={isLoading}
         >
           <SelectTrigger>

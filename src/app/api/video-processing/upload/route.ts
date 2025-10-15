@@ -53,7 +53,7 @@ export async function POST(request: Request) {
     const result = await handleUpload({
       request,
       body: event as Parameters<typeof handleUpload>[0]['body'],
-      onBeforeGenerateToken: async (pathname, clientPayload, multipart) => {
+      onBeforeGenerateToken: async (pathname, clientPayload, _multipart) => {
         if (!clerkUserId) {
           throw new Error('Unauthorized upload attempt')
         }

@@ -4,10 +4,6 @@ import { getPageById } from '@/lib/cms/queries'
 import {
   updatePage,
   deletePage,
-  publishPage,
-  unpublishPage,
-  archivePage,
-  duplicatePage,
 } from '@/lib/cms/mutations'
 import { z } from 'zod'
 

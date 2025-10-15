@@ -51,7 +51,7 @@ export default function MigrateKnowledgeBasePage() {
   const migrateMutation = useMutation({
     mutationFn: (entryIds: string[]) =>
       api.post('/api/admin/knowledge-base/orphaned', { entryIds }),
-    onSuccess: (result: any) => {
+    onSuccess: (result: { message?: string }) => {
       toast({
         title: 'Migração concluída',
         description: result.message || 'Entradas migradas com sucesso',

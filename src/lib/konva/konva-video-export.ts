@@ -271,18 +271,12 @@ export async function exportVideoWithLayers(
     })
 
     const chunks: Blob[] = []
-    let isRecording = false
 
     // Coletar chunks de vídeo
     mediaRecorder.ondataavailable = (e) => {
       if (e.data.size > 0) {
         chunks.push(e.data)
       }
-    }
-
-    // Configurar callback de start
-    mediaRecorder.onstart = () => {
-      isRecording = true
     }
 
     mediaRecorder.onerror = (e) => {
@@ -317,7 +311,6 @@ export async function exportVideoWithLayers(
 
     // Loop de animação para copiar o stage para o canvas offscreen frame por frame
     let animationId: number | null = null
-    let frameCount = 0
     const startTime = Date.now()
 
     const animationLoop = () => {
@@ -333,8 +326,6 @@ export async function exportVideoWithLayers(
       offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
       offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
       offscreenCtx.drawImage(stageSnapshot, 0, 0)
-
-      frameCount++
 
       const elapsed = (Date.now() - startTime) / 1000
       if (elapsed < videoDuration) {
@@ -361,7 +352,6 @@ export async function exportVideoWithLayers(
         }
 
         videoElement.pause()
-        isRecording = false
 
         // Aguardar um pouco antes de parar para garantir que último frame foi capturado
         setTimeout(() => {

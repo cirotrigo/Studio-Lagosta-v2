@@ -286,7 +286,7 @@ export function alignToCanvasCenterH(
     // CORREÇÃO CRÍTICA: Usar getClientRect com relativeTo para ignorar transformações do Stage
     const box = node.getClientRect({ relativeTo: layerInstance })
     const nodeX = node.x()
-    const nodeY = node.y()
+    const _nodeY = node.y()
 
     // Calcular onde o bounding box DEVE estar
     const targetBoxX = centerX - box.width / 2
@@ -365,7 +365,7 @@ export function alignToCanvasCenterV(
 
     // CORREÇÃO CRÍTICA: Usar getClientRect com relativeTo para ignorar transformações do Stage
     const box = node.getClientRect({ relativeTo: layerInstance })
-    const nodeX = node.x()
+    const _nodeX = node.x()
     const nodeY = node.y()
 
     // Calcular onde o bounding box DEVE estar
@@ -443,7 +443,7 @@ export function sendToBack(nodes: AlignmentNode[], allLayers: Layer[]): Layer[] 
 export function moveForward(nodes: AlignmentNode[], allLayers: Layer[]): Layer[] {
   if (nodes.length === 0) return allLayers
 
-  const selectedIds = new Set(nodes.map(({ layer }) => layer.id))
+  const _selectedIds = new Set(nodes.map(({ layer }) => layer.id))
   const result = [...allLayers]
 
   // Sort by current index (highest first) to avoid conflicts
@@ -469,7 +469,7 @@ export function moveForward(nodes: AlignmentNode[], allLayers: Layer[]): Layer[]
 export function moveBackward(nodes: AlignmentNode[], allLayers: Layer[]): Layer[] {
   if (nodes.length === 0) return allLayers
 
-  const selectedIds = new Set(nodes.map(({ layer }) => layer.id))
+  const _selectedIds = new Set(nodes.map(({ layer }) => layer.id))
   const result = [...allLayers]
 
   // Sort by current index (lowest first)

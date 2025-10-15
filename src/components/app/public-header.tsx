@@ -14,7 +14,7 @@ export function PublicHeader() {
   const [isScrolled, setIsScrolled] = React.useState(false)
 
   // Fetch menu from CMS
-  const { data: menuData, isLoading, error } = useMenuByLocation('header')
+  const { data: menuData } = useMenuByLocation('header')
   const menuItems = menuData?.menu?.items || []
 
   React.useEffect(() => {

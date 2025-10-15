@@ -15,7 +15,6 @@ import {
   SendToBack,
   ArrowUp,
   ArrowDown,
-  LayoutPanelTop,
 } from 'lucide-react'
 import {
   Tooltip,

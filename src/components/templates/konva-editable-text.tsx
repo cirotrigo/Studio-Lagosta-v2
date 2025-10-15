@@ -65,8 +65,8 @@ export function KonvaEditableText({
   layer,
   shapeRef,
   commonProps,
-  borderColor,
-  borderWidth,
+  borderColor: _borderColor,
+  borderWidth: _borderWidth,
   onChange,
   stageRef,
 }: KonvaEditableTextProps) {

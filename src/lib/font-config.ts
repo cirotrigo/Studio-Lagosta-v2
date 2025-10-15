@@ -23,7 +23,7 @@ export const FONT_CONFIG = {
     const safeFonts = this.SAFE_FONTS
 
     // Se já é fonte segura, retornar
-    if (safeFonts.includes(fontName as any)) {
+    if (safeFonts.includes(fontName as typeof safeFonts[number])) {
       return fontName
     }
 

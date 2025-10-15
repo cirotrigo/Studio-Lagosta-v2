@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import { getMenuById, getMenuItems } from '@/lib/cms/queries'
+import { getMenuById } from '@/lib/cms/queries'
 import { updateMenu, deleteMenu } from '@/lib/cms/mutations'
 import { z } from 'zod'
 

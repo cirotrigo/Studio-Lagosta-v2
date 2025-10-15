@@ -78,7 +78,7 @@ export function PageSettings({ page }: PageSettingsProps) {
         title: 'Configurações salvas',
         description: 'As configurações da página foram atualizadas.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar as configurações.',

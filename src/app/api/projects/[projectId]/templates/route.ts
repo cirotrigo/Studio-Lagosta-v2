@@ -13,7 +13,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { projectId } = await params
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -45,8 +45,8 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
-  const { userId, orgId, orgRole } = await auth()
-  if (!userId) {
+  const authData = await auth()
+  if (!authData.userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
@@ -57,7 +57,7 @@ export async function POST(
   }
 
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+  if (!hasProjectWriteAccess(project, { userId: authData.userId, orgId: authData.orgId, orgRole: authData.orgRole })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
@@ -71,7 +71,7 @@ export async function POST(
         type: parsed.type,
         dimensions: parsed.dimensions,
         projectId: projectIdNum,
-        createdBy: userId,
+        createdBy: authData.userId,
         designData: createBlankDesign(parsed.type) as unknown as Prisma.JsonValue,
         dynamicFields: [] as unknown as Prisma.JsonValue,
       },

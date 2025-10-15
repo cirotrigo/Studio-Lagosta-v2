@@ -128,7 +128,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
       })
 
       onOpenChange(false)
-    } catch (error) {
+    } catch (_error) {
       console.error('[CustomizePresetDialog] Erro ao aplicar:', error)
 
       toast({
@@ -173,7 +173,7 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
       })
 
       onOpenChange(false)
-    } catch (error) {
+    } catch (_error) {
       console.error('[CustomizePresetDialog] Erro ao salvar:', error)
 
       toast({

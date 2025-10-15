@@ -64,7 +64,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
       if (newPage && typeof newPage === 'object' && 'id' in newPage) {
         onPageChange(newPage.id as string)
       }
-    } catch (error) {
+    } catch (_error) {
       console.error('Error creating page:', error)
     }
   }, [templateId, pages.length, canvasData, createPageMutation, onPageChange])
@@ -75,7 +75,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
       e.stopPropagation()
       try {
         await duplicatePageMutation.mutateAsync({ templateId, pageId })
-      } catch (error) {
+      } catch (_error) {
         console.error('Error duplicating page:', error)
       }
     },
@@ -106,7 +106,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
             onPageChange(nextPage.id)
           }
         }
-      } catch (error) {
+      } catch (_error) {
         console.error('Error deleting page:', error)
       }
     },

@@ -38,7 +38,7 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
           title: 'Exportação concluída!',
           description: `Arquivo ${record.fileName} gerado com sucesso (${formatBytes(record.sizeBytes)})`,
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('Export failed:', error)
         toast({
           title: 'Erro ao exportar',

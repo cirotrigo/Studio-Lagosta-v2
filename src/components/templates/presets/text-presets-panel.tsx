@@ -45,7 +45,7 @@ export function TextPresetsPanel() {
           title: '✅ Preset aplicado!',
           description: 'Os elementos de texto foram adicionados ao canvas.',
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[TextPresetsPanel] Erro ao aplicar preset:', error)
 
         toast({

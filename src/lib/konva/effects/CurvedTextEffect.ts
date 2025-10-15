@@ -38,7 +38,7 @@ export class CurvedTextEffect {
 
     // Calculate text width to determine appropriate radius
     const textWidth = textNode.width();
-    const textLength = text.length;
+    const _textLength = text.length;
 
     // Adjust radius based on text width and curvature
     // Larger curvature = smaller radius for tighter curves

@@ -62,7 +62,7 @@ export function TemplatesPanel() {
           title: 'Template carregado',
           description: 'O layout selecionado foi aplicado ao editor.',
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[TemplatesPanel] Failed to load template', error)
         toast({
           title: 'Erro ao carregar template',

@@ -7,7 +7,6 @@ import { ptBR } from 'date-fns/locale'
 import {
   MoreVertical,
   Trash2,
-  Edit,
   Copy,
   Download,
   File,
@@ -44,7 +43,6 @@ type MediaGalleryProps = {
 
 export function MediaGallery({ media, viewMode }: MediaGalleryProps) {
   const [deleteId, setDeleteId] = useState<string | null>(null)
-  const [selectedMedia, setSelectedMedia] = useState<CMSMedia | null>(null)
   const { toast } = useToast()
   const deleteMutation = useDeleteMedia()
 
@@ -58,7 +56,7 @@ export function MediaGallery({ media, viewMode }: MediaGalleryProps) {
         description: 'A mídia foi excluída com sucesso.',
       })
       setDeleteId(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao excluir',
         description: 'Não foi possível excluir a mídia.',
@@ -74,8 +72,8 @@ export function MediaGallery({ media, viewMode }: MediaGalleryProps) {
         title: 'URL copiada',
         description: 'A URL da mídia foi copiada para a área de transferência.',
       })
-    } catch (error) {
-      console.error('[MediaGallery] Failed to copy URL', error)
+    } catch (_error) {
+      console.error('[MediaGallery] Failed to copy URL', _error)
       toast({
         title: 'Erro ao copiar',
         description: 'Não foi possível copiar automaticamente. Copie manualmente a URL exibida.',

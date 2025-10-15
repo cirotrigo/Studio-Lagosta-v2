@@ -256,7 +256,7 @@ export function useTextPresets() {
    */
   const removeCustomPreset = React.useCallback(
     (presetId: string) => {
-      const { [presetId]: removed, ...remaining } = customPresets
+      const { [presetId]: _removed, ...remaining } = customPresets
       setCustomPresets(remaining)
       saveCustomPresetsToStorage(remaining)
 

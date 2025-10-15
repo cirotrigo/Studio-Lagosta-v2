@@ -94,7 +94,7 @@ export function PagesTable({ pages, isLoading }: PagesTableProps) {
       })
       setDeleteDialogOpen(false)
       setPageToDelete(null)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao deletar',
         description: 'Não foi possível deletar a página.',
@@ -110,7 +110,7 @@ export function PagesTable({ pages, isLoading }: PagesTableProps) {
         title: 'Página duplicada',
         description: 'A página foi duplicada com sucesso.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao duplicar',
         description: 'Não foi possível duplicar a página.',
@@ -130,7 +130,7 @@ export function PagesTable({ pages, isLoading }: PagesTableProps) {
           ? 'A página está agora visível no site.'
           : 'A página não está mais visível no site.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro',
         description: 'Não foi possível alterar o status da página.',

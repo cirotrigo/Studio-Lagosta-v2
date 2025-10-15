@@ -112,7 +112,7 @@ export function CreateComponentDialog({
 
       form.reset()
       onOpenChange(false)
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao criar componente',
         description: 'Não foi possível criar o componente. Tente novamente.',
@@ -257,7 +257,7 @@ export function CreateComponentDialog({
 }
 
 // Helper function to get default content based on type
-function getDefaultContent(type: string): any {
+function getDefaultContent(type: string): Record<string, unknown> {
   switch (type) {
     case 'HERO':
       return {

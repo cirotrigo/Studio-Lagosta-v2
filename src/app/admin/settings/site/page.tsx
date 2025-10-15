@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -171,8 +172,8 @@ export default function SiteSettingsPage() {
             </p>
             <div className="flex items-center gap-4">
               {logoLight && (
-                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white">
-                  <img src={logoLight} alt="Logo Light" className="max-w-full max-h-full" />
+                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white relative">
+                  <Image src={logoLight} alt="Logo Light" fill className="object-contain" unoptimized />
                 </div>
               )}
               <div className="flex-1">
@@ -203,8 +204,8 @@ export default function SiteSettingsPage() {
             </p>
             <div className="flex items-center gap-4">
               {logoDark && (
-                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-gray-900">
-                  <img src={logoDark} alt="Logo Dark" className="max-w-full max-h-full" />
+                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-gray-900 relative">
+                  <Image src={logoDark} alt="Logo Dark" fill className="object-contain" unoptimized />
                 </div>
               )}
               <div className="flex-1">
@@ -235,8 +236,8 @@ export default function SiteSettingsPage() {
             </p>
             <div className="flex items-center gap-4">
               {favicon && (
-                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white">
-                  <img src={favicon} alt="Favicon" className="max-w-full max-h-full" />
+                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white relative">
+                  <Image src={favicon} alt="Favicon" fill className="object-contain" unoptimized />
                 </div>
               )}
               <div className="flex-1">
@@ -267,8 +268,8 @@ export default function SiteSettingsPage() {
             </p>
             <div className="flex items-center gap-4">
               {appleIcon && (
-                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white">
-                  <img src={appleIcon} alt="Apple Icon" className="max-w-full max-h-full" />
+                <div className="w-16 h-16 border rounded-lg flex items-center justify-center bg-white relative">
+                  <Image src={appleIcon} alt="Apple Icon" fill className="object-contain" unoptimized />
                 </div>
               )}
               <div className="flex-1">

@@ -47,7 +47,7 @@ export function SectionEditor({ section, pageId, onClose }: SectionEditorProps) 
         title: 'Seção salva',
         description: 'As alterações foram salvas com sucesso.',
       })
-    } catch (error) {
+    } catch (_error) {
       toast({
         title: 'Erro ao salvar',
         description: 'Não foi possível salvar as alterações.',

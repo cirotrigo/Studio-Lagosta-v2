@@ -82,7 +82,7 @@ export function LogoPanelContent() {
           title: 'Logo adicionado',
           description: 'Redimensione conforme necessário.'
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[LogoPanel] Failed to load image dimensions', error)
         toast({
           title: 'Erro ao adicionar logo',
@@ -106,7 +106,7 @@ export function LogoPanelContent() {
       }
       const data = await response.json()
       setLogos(data)
-    } catch (error) {
+    } catch (_error) {
       console.error('[LogoPanel] Failed to load logos', error)
       toast({
         title: 'Erro ao carregar logos',
@@ -169,7 +169,7 @@ export function LogoPanelContent() {
           title: 'Logo salvo',
           description: 'O logo foi salvo no projeto e está disponível para todos os templates.'
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('[LogoPanel] Upload failed', error)
         toast({
           title: 'Erro ao enviar logo',
@@ -260,7 +260,7 @@ export function LogoPanelContent() {
         title: 'Logo removido',
         description: 'O logo foi removido do projeto.'
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('[LogoPanel] Failed to remove logo', error)
       toast({
         title: 'Erro ao remover logo',

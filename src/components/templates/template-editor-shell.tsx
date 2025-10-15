@@ -82,7 +82,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
             try {
               await document.fonts.load(`16px '${font.family}'`)
               console.log(`✅ Fonte "${font.family}" pronta para uso no Konva`)
-            } catch (error) {
+            } catch (_error) {
               console.warn(`⚠️ Erro ao pré-carregar fonte "${font.family}":`, error)
             }
           }
@@ -93,7 +93,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 
         console.log('✅ [TemplateEditorShell] Todas as fontes pré-carregadas!')
         setFontsLoaded(true)
-      } catch (error) {
+      } catch (_error) {
         console.error('❌ [TemplateEditorShell] Erro ao pré-carregar fontes:', error)
         // Continuar mesmo se houver erro
         setFontsLoaded(true)
@@ -197,7 +197,7 @@ function TemplateEditorContent() {
           ? 'Thumbnail gerado e alterações aplicadas.'
           : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('[TemplateEditor] Falha ao salvar template', error)
 
       // Remover toast de loading
@@ -218,7 +218,7 @@ function TemplateEditorContent() {
         title: 'Criativo salvo com sucesso!',
         description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('Export failed:', error)
       toast({
         title: 'Erro ao salvar criativo',
@@ -493,7 +493,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
         title: 'Página criada!',
         description: 'Nova página adicionada ao template.',
       })
-    } catch (error) {
+    } catch (_error) {
       console.error('[PagesBar] Erro ao criar página:', error)
       const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
       toast({
@@ -513,7 +513,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           title: 'Página duplicada!',
           description: 'A página foi duplicada com sucesso.',
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('Error duplicating page:', error)
         toast({
           title: 'Erro ao duplicar',
@@ -553,7 +553,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           title: 'Página deletada!',
           description: 'A página foi removida com sucesso.',
         })
-      } catch (error) {
+      } catch (_error) {
         console.error('Error deleting page:', error)
         toast({
           title: 'Erro ao deletar',

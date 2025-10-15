@@ -95,7 +95,7 @@ export function ImagesPanelContent() {
 
       setDriveItems(items)
       setCurrentFolder(folderId)
-    } catch (error) {
+    } catch (_error) {
       console.error('[ImagesPanel] Failed to load Drive files', error)
       toast({
         title: 'Erro ao carregar Drive',
@@ -165,7 +165,7 @@ export function ImagesPanelContent() {
           throw new Error('Resposta inválida do servidor de upload')
         }
         insertImageLayer(payload.url, payload.name ?? file.name)
-      } catch (error) {
+      } catch (_error) {
         console.error('[ImagesPanel] Upload failed', error)
         toast({
           title: 'Erro ao enviar imagem',
@@ -249,7 +249,7 @@ export function ImagesPanelContent() {
         throw new Error('Falha ao importar arquivo do Google Drive')
       }
       insertImageLayer(uploaded.url, uploaded.name ?? fileName)
-    } catch (error) {
+    } catch (_error) {
       console.error('[ImagesPanel] Drive import failed', error)
       toast({
         title: 'Erro ao importar do Drive',

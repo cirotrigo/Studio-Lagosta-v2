@@ -174,7 +174,7 @@ export function VideoExportButton() {
       })
 
       setIsOpen(false)
-    } catch (error) {
+    } catch (_error) {
       console.error('Export error:', error)
       toast({
         variant: 'destructive',
