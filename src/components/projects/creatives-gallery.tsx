@@ -3,6 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useOrganization } from '@clerk/nextjs'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from './gallery-item'
+import { MemberFilter } from '../filters/member-filter'
 import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -94,9 +96,11 @@ function getBooleanField(values: Record<string, unknown>, key: string): boolean 
 export function CreativesGallery({ projectId }: { projectId: number }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { organization } = useOrganization()
 
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
+  const [memberFilter, setMemberFilter] = React.useState<string | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [onlyWithResult, setOnlyWithResult] = React.useState(true)
@@ -104,11 +108,18 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [progressOverrides, setProgressOverrides] = React.useState<Record<string, ProgressOverride>>({})
 
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
-    queryKey: ['generations', projectId],
+    queryKey: ['generations', projectId, memberFilter],
     enabled: !!projectId,
-    queryFn: () => api.get(`/api/projects/${projectId}/generations?page=1&pageSize=100`),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: '1', pageSize: '100' })
+      if (memberFilter) {
+        params.set('createdBy', memberFilter)
+      }
+      return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
+    },
     staleTime: 10_000,
   })
+
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/generations/${id}`),
@@ -510,6 +521,14 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               ))}
             </SelectContent>
           </Select>
+          {organization && (
+            <MemberFilter
+              organizationId={organization.id}
+              value={memberFilter}
+              onChange={setMemberFilter}
+              items={data?.generations || []}
+            />
+          )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
             <label htmlFor="only-result">Somente com arquivo</label>
@@ -635,6 +654,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 progress={meta.progress}
                 errorMessage={meta.errorMessage ?? undefined}
                 isVideo={meta.isVideo}
+                authorClerkId={generation.createdBy}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}

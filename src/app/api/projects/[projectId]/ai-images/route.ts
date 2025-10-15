@@ -27,9 +27,19 @@ export async function GET(
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
+    // Query params para filtros
+    const { searchParams } = new URL(request.url)
+    const createdBy = searchParams.get('createdBy') || undefined
+
+    // Construir filtro de busca
+    const whereFilter = {
+      projectId,
+      ...(createdBy && { createdBy }),
+    }
+
     // Buscar imagens IA do projeto
     const images = await db.aIGeneratedImage.findMany({
-      where: { projectId },
+      where: whereFilter,
       orderBy: { createdAt: 'desc' },
     })
 

@@ -4,6 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useOrganization } from '@clerk/nextjs'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -18,6 +19,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from '@/components/projects/gallery-item'
+import { MemberFilter } from '@/components/filters/member-filter'
 import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -196,6 +198,7 @@ export default function ProjectCreativesPage() {
   const router = useRouter()
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { organization } = useOrganization()
 
   const projectId = Number(params?.id)
   const isValidProject = Number.isFinite(projectId) && projectId > 0
@@ -213,15 +216,22 @@ export default function ProjectCreativesPage() {
 
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
+  const [memberFilter, setMemberFilter] = React.useState<string | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [onlyWithResult, setOnlyWithResult] = React.useState(true)
   const [preview, setPreview] = React.useState<PreviewState>(null)
 
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
-    queryKey: ['generations', projectId],
+    queryKey: ['generations', projectId, memberFilter],
     enabled: isValidProject,
-    queryFn: () => api.get(`/api/projects/${projectId}/generations?page=1&pageSize=100`),
+    queryFn: () => {
+      const params = new URLSearchParams({ page: '1', pageSize: '100' })
+      if (memberFilter) {
+        params.set('createdBy', memberFilter)
+      }
+      return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
+    },
     staleTime: 10_000,
   })
 
@@ -463,6 +473,14 @@ export default function ProjectCreativesPage() {
               ))}
             </SelectContent>
           </Select>
+          {organization && (
+            <MemberFilter
+              organizationId={organization.id}
+              value={memberFilter}
+              onChange={setMemberFilter}
+              items={data?.generations || []}
+            />
+          )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
             <label htmlFor="only-result">Somente com arquivo</label>
@@ -599,6 +617,7 @@ export default function ProjectCreativesPage() {
                 progress={meta.progress}
                 errorMessage={meta.errorMessage}
                 isVideo={meta.isVideo}
+                authorClerkId={generation.createdBy}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}

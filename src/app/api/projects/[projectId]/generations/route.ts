@@ -30,16 +30,23 @@ export async function GET(
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    // Query params para paginação
+    // Query params para paginação e filtros
     const { searchParams } = new URL(req.url)
     const page = parseInt(searchParams.get('page') || '1')
     const pageSize = parseInt(searchParams.get('pageSize') || '18')
     const skip = (page - 1) * pageSize
+    const createdBy = searchParams.get('createdBy') || undefined
+
+    // Construir filtro de busca
+    const whereFilter = {
+      projectId: projectIdNum,
+      ...(createdBy && { createdBy }),
+    }
 
     // Buscar gerações do projeto
     const [generations, total] = await Promise.all([
       db.generation.findMany({
-        where: { projectId: projectIdNum },
+        where: whereFilter,
         include: {
           Template: {
             select: {
@@ -54,7 +61,7 @@ export async function GET(
         skip,
         take: pageSize,
       }),
-      db.generation.count({ where: { projectId: projectIdNum } }),
+      db.generation.count({ where: whereFilter }),
     ])
 
     return NextResponse.json({

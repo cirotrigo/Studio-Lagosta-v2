@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Download, Trash2, HardDrive, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { MemberAvatar } from '@/components/members/member-avatar'
 
 interface GalleryItemProps {
   id: string
@@ -21,6 +22,7 @@ interface GalleryItemProps {
   progress?: number
   errorMessage?: string | null
   isVideo?: boolean
+  authorClerkId?: string
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -47,6 +49,7 @@ export function GalleryItem({
   progress,
   errorMessage,
   isVideo,
+  authorClerkId,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -200,9 +203,16 @@ export function GalleryItem({
         />
       </div>
 
-      {/* Data/hora badge */}
-      <div className="absolute top-3 right-3 z-20 px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-xs font-medium shadow-lg pointer-events-none">
-        {date}
+      {/* Data/hora e autor badges */}
+      <div className="absolute top-3 right-3 z-20 flex flex-col gap-2 items-end pointer-events-none">
+        <div className="px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-xs font-medium shadow-lg">
+          {date}
+        </div>
+        {authorClerkId && (
+          <div className="rounded-full ring-2 ring-white/50 shadow-lg overflow-hidden">
+            <MemberAvatar clerkId={authorClerkId} size="sm" showTooltip />
+          </div>
+        )}
       </div>
 
       {/* Container da imagem/vídeo */}
