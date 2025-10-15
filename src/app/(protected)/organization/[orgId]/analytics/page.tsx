@@ -36,6 +36,9 @@ export default function OrganizationAnalyticsPage() {
   const isActiveOrganization = organization?.id === orgIdParam
   const [period, setPeriod] = useState<string>("30d")
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>()
+  const [searchQuery, setSearchQuery] = useState<string>("")
+  const [sortBy, setSortBy] = useState<string>("totalCreditsUsed")
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc')
 
   const analyticsParams = period === 'custom' && customDateRange?.from && customDateRange?.to
     ? {
@@ -51,7 +54,12 @@ export default function OrganizationAnalyticsPage() {
   )
   const membersQuery = useOrganizationMemberAnalytics(
     isActiveOrganization ? organization.id : null,
-    analyticsParams,
+    {
+      ...analyticsParams,
+      search: searchQuery || undefined,
+      sortBy,
+      order: sortOrder,
+    },
   )
   const timelineQuery = useOrganizationTimeline(
     isActiveOrganization ? organization.id : null,
@@ -199,6 +207,14 @@ export default function OrganizationAnalyticsPage() {
         members={members}
         isLoading={membersQuery.isLoading}
         totals={membersQuery.data?.totals}
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(newSortBy, newOrder) => {
+          setSortBy(newSortBy)
+          setSortOrder(newOrder)
+        }}
       />
 
       {membership?.role !== "org:admin" && (

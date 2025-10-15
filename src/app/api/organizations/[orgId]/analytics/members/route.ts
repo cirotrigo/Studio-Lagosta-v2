@@ -16,6 +16,9 @@ function parsePeriodParams(req: Request) {
   const periodParam = (searchParams.get('period') ?? DEFAULT_PERIOD) as AnalyticsPeriodKey
   const startDate = searchParams.get('startDate')
   const endDate = searchParams.get('endDate')
+  const search = searchParams.get('search') ?? undefined
+  const sortBy = searchParams.get('sortBy') ?? 'totalCreditsUsed'
+  const order = searchParams.get('order') ?? 'desc'
 
   if (periodParam === 'custom' && (!startDate || !endDate)) {
     throw new Error('startDate e endDate são obrigatórios quando period=custom')
@@ -29,6 +32,9 @@ function parsePeriodParams(req: Request) {
   return {
     key: periodParam,
     range,
+    search,
+    sortBy,
+    order: order as 'asc' | 'desc',
   }
 }
 
@@ -43,7 +49,7 @@ export async function GET(
       permissions: ['org:credits:view'],
     })
 
-    const { key, range } = parsePeriodParams(req)
+    const { key, range, search, sortBy, order } = parsePeriodParams(req)
 
     await upsertOrganizationMemberAnalytics(orgId, range)
     const analytics = await listOrganizationMemberAnalytics(orgId, range)
@@ -58,7 +64,7 @@ export async function GET(
 
     const userMap = new Map(users.map((user) => [user.clerkId, user]))
 
-    const members = analytics.map((entry) => {
+    let members = analytics.map((entry) => {
       const user = userMap.get(entry.memberClerkId)
 
       return {
@@ -79,6 +85,64 @@ export async function GET(
         },
         updatedAt: entry.updatedAt.toISOString(),
       }
+    })
+
+    // Apply search filter
+    if (search) {
+      const searchLower = search.toLowerCase()
+      members = members.filter(
+        (member) =>
+          member.name?.toLowerCase().includes(searchLower) ||
+          member.email?.toLowerCase().includes(searchLower)
+      )
+    }
+
+    // Apply sorting
+    members.sort((a, b) => {
+      let aValue: number | string | null = 0
+      let bValue: number | string | null = 0
+
+      switch (sortBy) {
+        case 'name':
+          aValue = a.name ?? ''
+          bValue = b.name ?? ''
+          break
+        case 'email':
+          aValue = a.email ?? ''
+          bValue = b.email ?? ''
+          break
+        case 'imageGenerations':
+          aValue = a.stats.imageGenerations
+          bValue = b.stats.imageGenerations
+          break
+        case 'videoGenerations':
+          aValue = a.stats.videoGenerations
+          bValue = b.stats.videoGenerations
+          break
+        case 'chatInteractions':
+          aValue = a.stats.chatInteractions
+          bValue = b.stats.chatInteractions
+          break
+        case 'totalCreditsUsed':
+          aValue = a.stats.totalCreditsUsed
+          bValue = b.stats.totalCreditsUsed
+          break
+        case 'lastActivityAt':
+          aValue = a.stats.lastActivityAt ?? ''
+          bValue = b.stats.lastActivityAt ?? ''
+          break
+        default:
+          aValue = a.stats.totalCreditsUsed
+          bValue = b.stats.totalCreditsUsed
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        return order === 'asc'
+          ? aValue.localeCompare(bValue)
+          : bValue.localeCompare(aValue)
+      }
+
+      return order === 'asc' ? Number(aValue) - Number(bValue) : Number(bValue) - Number(aValue)
     })
 
     const totals = members.reduce(

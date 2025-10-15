@@ -86,7 +86,9 @@ export async function GET(
       db.organizationUsage.findMany({
         where: {
           ...whereClause,
-          userId: { isSet: true },
+          NOT: {
+            userId: null,
+          },
         },
         distinct: ['userId'],
         select: { userId: true },

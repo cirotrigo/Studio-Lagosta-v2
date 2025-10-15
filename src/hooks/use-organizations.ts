@@ -167,7 +167,14 @@ type MemberAnalyticsResponse = {
 
 export function useOrganizationMemberAnalytics(
   orgId: string | null,
-  params: { period?: string; startDate?: string; endDate?: string } = {}
+  params: {
+    period?: string
+    startDate?: string
+    endDate?: string
+    search?: string
+    sortBy?: string
+    order?: string
+  } = {}
 ) {
   return useQuery({
     queryKey: orgId
@@ -178,6 +185,9 @@ export function useOrganizationMemberAnalytics(
       if (params.period) search.set('period', params.period)
       if (params.startDate) search.set('startDate', params.startDate)
       if (params.endDate) search.set('endDate', params.endDate)
+      if (params.search) search.set('search', params.search)
+      if (params.sortBy) search.set('sortBy', params.sortBy)
+      if (params.order) search.set('order', params.order)
       const query = search.toString()
       const url = `/api/organizations/${orgId}/analytics/members${query ? `?${query}` : ''}`
       return api.get<MemberAnalyticsResponse>(url)
