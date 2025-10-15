@@ -91,7 +91,7 @@ export function ProjectAssetsPanel({ projectId }: { projectId: number }) {
           setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
         }
       } catch (_error) {
-        console.warn('[ProjectAssetsPanel] Falha ao verificar Google Drive', error)
+        console.warn('[ProjectAssetsPanel] Falha ao verificar Google Drive', _error)
         if (!isMounted) return
         setDriveStatus('unavailable')
         setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
@@ -184,7 +184,7 @@ function LogoSection({
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao enviar logo',
-        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+        description: _error instanceof Error ? _error.message : 'Tente novamente mais tarde.',
         variant: 'destructive',
       })
     },
@@ -211,7 +211,7 @@ function LogoSection({
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao atualizar logo',
-        description: error instanceof Error ? error.message : 'Não foi possível atualizar o logo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível atualizar o logo.',
         variant: 'destructive',
       })
     },
@@ -236,7 +236,7 @@ function LogoSection({
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao remover logo',
-        description: error instanceof Error ? error.message : 'Não foi possível remover o logo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível remover o logo.',
         variant: 'destructive',
       })
     },
@@ -293,7 +293,7 @@ function LogoSection({
       console.error('[ProjectAssetsPanel] Drive import error (logo):', error)
       toast({
         title: 'Erro ao importar do Drive',
-        description: error instanceof Error ? error.message : 'Não foi possível importar este arquivo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível importar este arquivo.',
         variant: 'destructive',
       })
     } finally {
@@ -501,7 +501,7 @@ function ElementSection({
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao enviar elemento',
-        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+        description: _error instanceof Error ? _error.message : 'Tente novamente mais tarde.',
         variant: 'destructive',
       })
     },
@@ -525,7 +525,7 @@ function ElementSection({
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao remover elemento',
-        description: error instanceof Error ? error.message : 'Não foi possível remover o elemento.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível remover o elemento.',
         variant: 'destructive',
       })
     },
@@ -582,7 +582,7 @@ function ElementSection({
       console.error('[ProjectAssetsPanel] Drive import error (element):', error)
       toast({
         title: 'Erro ao importar do Drive',
-        description: error instanceof Error ? error.message : 'Não foi possível importar este arquivo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível importar este arquivo.',
         variant: 'destructive',
       })
     } finally {
@@ -818,7 +818,7 @@ function FontSection({ projectId }: { projectId: number }) {
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao enviar fonte',
-        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+        description: _error instanceof Error ? _error.message : 'Tente novamente mais tarde.',
         variant: 'destructive',
       })
     },
@@ -842,7 +842,7 @@ function FontSection({ projectId }: { projectId: number }) {
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao remover fonte',
-        description: error instanceof Error ? error.message : 'Não foi possível remover a fonte.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível remover a fonte.',
         variant: 'destructive',
       })
     },
@@ -995,7 +995,7 @@ function ColorSection({ projectId }: { projectId: number }) {
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao cadastrar cor',
-        description: error instanceof Error ? error.message : 'Tente novamente mais tarde.',
+        description: _error instanceof Error ? _error.message : 'Tente novamente mais tarde.',
         variant: 'destructive',
       })
     },
@@ -1019,7 +1019,7 @@ function ColorSection({ projectId }: { projectId: number }) {
     onError: (error: unknown) => {
       toast({
         title: 'Erro ao remover cor',
-        description: error instanceof Error ? error.message : 'Não foi possível remover a cor.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível remover a cor.',
         variant: 'destructive',
       })
     },

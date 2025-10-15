@@ -308,11 +308,11 @@ export function VideoExportQueueButton() {
           : `Formato atual: ${formatInfo}. Você será notificado quando o MP4 estiver pronto.`,
       })
     } catch (_error) {
-      console.error('Export error:', error)
+      console.error('Export error:', _error)
       toast({
         variant: 'destructive',
         title: 'Erro ao exportar vídeo',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        description: _error instanceof Error ? _error.message : 'Erro desconhecido',
       })
     } finally {
       setIsExporting(false)
@@ -411,7 +411,7 @@ export function VideoExportQueueButton() {
           console.log('[VideoExportQueue] Processando... Progresso:', job.progress)
         }
       } catch (_error) {
-        console.error('[VideoExportQueue] Polling error:', error)
+        console.error('[VideoExportQueue] Polling error:', _error)
         clearInterval(interval)
       }
     }, 5000) // Poll a cada 5 segundos

@@ -136,7 +136,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
         await fontManager.loadFont(family)
         console.log(`✅ Fonte "${value}" carregada e pronta para uso no Konva`)
       } catch (_error) {
-        console.error(`❌ Erro ao carregar fonte "${value}":`, error)
+        console.error(`❌ Erro ao carregar fonte "${value}":`, _error)
       }
     }
 

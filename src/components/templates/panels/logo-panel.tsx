@@ -83,7 +83,7 @@ export function LogoPanelContent() {
           description: 'Redimensione conforme necessário.'
         })
       } catch (_error) {
-        console.error('[LogoPanel] Failed to load image dimensions', error)
+        console.error('[LogoPanel] Failed to load image dimensions', _error)
         toast({
           title: 'Erro ao adicionar logo',
           description: 'Não foi possível carregar as dimensões da imagem.',
@@ -107,7 +107,7 @@ export function LogoPanelContent() {
       const data = await response.json()
       setLogos(data)
     } catch (_error) {
-      console.error('[LogoPanel] Failed to load logos', error)
+      console.error('[LogoPanel] Failed to load logos', _error)
       toast({
         title: 'Erro ao carregar logos',
         description: 'Não foi possível carregar os logos do projeto.',
@@ -170,10 +170,10 @@ export function LogoPanelContent() {
           description: 'O logo foi salvo no projeto e está disponível para todos os templates.'
         })
       } catch (_error) {
-        console.error('[LogoPanel] Upload failed', error)
+        console.error('[LogoPanel] Upload failed', _error)
         toast({
           title: 'Erro ao enviar logo',
-          description: error instanceof Error ? error.message : 'Não foi possível enviar o logo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível enviar o logo.',
           variant: 'destructive',
         })
       } finally {
@@ -261,7 +261,7 @@ export function LogoPanelContent() {
         description: 'O logo foi removido do projeto.'
       })
     } catch (_error) {
-      console.error('[LogoPanel] Failed to remove logo', error)
+      console.error('[LogoPanel] Failed to remove logo', _error)
       toast({
         title: 'Erro ao remover logo',
         description: 'Não foi possível remover o logo.',

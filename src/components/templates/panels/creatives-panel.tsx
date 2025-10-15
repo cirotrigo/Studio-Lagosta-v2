@@ -34,7 +34,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
   React.useEffect(() => {
     console.log('[CreativesPanel] templateId:', templateId)
     console.log('[CreativesPanel] isLoading:', isLoading)
-    console.log('[CreativesPanel] error:', error)
+    console.log('[CreativesPanel] error:', _error)
     console.log('[CreativesPanel] creatives:', creatives)
   }, [templateId, isLoading, error, creatives])
 
@@ -54,7 +54,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
       })
       setCreativeToDelete(null)
     } catch (_error) {
-      console.error('Failed to delete creative:', error)
+      console.error('Failed to delete creative:', _error)
       toast({
         title: 'Erro ao remover',
         description: 'Não foi possível remover o criativo.',

@@ -85,10 +85,10 @@ export function VideosPanel() {
         const payload = (await response.json()) as { items?: GoogleDriveItem[] }
         setDriveItems(payload.items ?? [])
       } catch (_error) {
-        console.error('[VideosPanel] Failed to load Drive files', error)
+        console.error('[VideosPanel] Failed to load Drive files', _error)
         toast({
           title: 'Erro ao carregar Drive',
-          description: error instanceof Error ? error.message : 'Não foi possível carregar os arquivos do Google Drive.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível carregar os arquivos do Google Drive.',
           variant: 'destructive',
         })
       } finally {
@@ -158,10 +158,10 @@ export function VideosPanel() {
         }
         insertVideoLayer(uploaded.url, uploaded.name ?? item.name)
       } catch (_error) {
-        console.error('[VideosPanel] Drive import failed', error)
+        console.error('[VideosPanel] Drive import failed', _error)
         toast({
           title: 'Erro ao importar do Drive',
-          description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível copiar o arquivo.',
           variant: 'destructive',
         })
       } finally {

@@ -66,7 +66,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
         onPageChange(newPage.id as string)
       }
     } catch (_error) {
-      console.error('Error creating page:', error)
+      console.error('Error creating page:', _error)
     }
   }, [templateId, pages.length, canvasData, createPageMutation, onPageChange])
 
@@ -77,7 +77,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
       try {
         await duplicatePageMutation.mutateAsync({ templateId, pageId })
       } catch (_error) {
-        console.error('Error duplicating page:', error)
+        console.error('Error duplicating page:', _error)
       }
     },
     [templateId, duplicatePageMutation]
@@ -108,7 +108,7 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
           }
         }
       } catch (_error) {
-        console.error('Error deleting page:', error)
+        console.error('Error deleting page:', _error)
       }
     },
     [templateId, pages.length, currentPageId, sortedPages, deletePageMutation, onPageChange]

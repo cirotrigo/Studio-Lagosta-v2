@@ -84,7 +84,7 @@ export function ElementsPanelContent() {
           description: 'Redimensione conforme necessário.'
         })
       } catch (_error) {
-        console.error('[ElementsPanel] Failed to load image dimensions', error)
+        console.error('[ElementsPanel] Failed to load image dimensions', _error)
         toast({
           title: 'Erro ao adicionar elemento',
           description: 'Não foi possível carregar as dimensões da imagem.',
@@ -108,7 +108,7 @@ export function ElementsPanelContent() {
       const data = await response.json()
       setElements(data)
     } catch (_error) {
-      console.error('[ElementsPanel] Failed to load elements', error)
+      console.error('[ElementsPanel] Failed to load elements', _error)
       toast({
         title: 'Erro ao carregar elementos',
         description: 'Não foi possível carregar os elementos do projeto.',
@@ -171,10 +171,10 @@ export function ElementsPanelContent() {
           description: 'O elemento foi salvo no projeto e está disponível para todos os templates.'
         })
       } catch (_error) {
-        console.error('[ElementsPanel] Upload failed', error)
+        console.error('[ElementsPanel] Upload failed', _error)
         toast({
           title: 'Erro ao enviar elemento',
-          description: error instanceof Error ? error.message : 'Não foi possível enviar o elemento.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível enviar o elemento.',
           variant: 'destructive',
         })
       } finally {
@@ -264,7 +264,7 @@ export function ElementsPanelContent() {
         description: 'O elemento foi removido do projeto.'
       })
     } catch (_error) {
-      console.error('[ElementsPanel] Failed to remove element', error)
+      console.error('[ElementsPanel] Failed to remove element', _error)
       toast({
         title: 'Erro ao remover elemento',
         description: 'Não foi possível remover o elemento.',

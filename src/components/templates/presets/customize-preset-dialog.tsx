@@ -129,11 +129,11 @@ export function CustomizePresetDialog({ open, onOpenChange, presetId }: Customiz
 
       onOpenChange(false)
     } catch (_error) {
-      console.error('[CustomizePresetDialog] Erro ao aplicar:', error)
+      console.error('[CustomizePresetDialog] Erro ao aplicar:', _error)
 
       toast({
         title: '❌ Erro ao aplicar',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        description: _error instanceof Error ? _error.message : 'Erro desconhecido',
         variant: 'destructive',
       })
     } finally {

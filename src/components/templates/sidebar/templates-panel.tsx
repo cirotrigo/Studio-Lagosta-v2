@@ -63,11 +63,11 @@ export function TemplatesPanel() {
           description: 'O layout selecionado foi aplicado ao editor.',
         })
       } catch (_error) {
-        console.error('[TemplatesPanel] Failed to load template', error)
+        console.error('[TemplatesPanel] Failed to load template', _error)
         toast({
           title: 'Erro ao carregar template',
           description:
-            error instanceof Error ? error.message : 'Não foi possível carregar o template selecionado.',
+            _error instanceof Error ? _error.message : 'Não foi possível carregar o template selecionado.',
           variant: 'destructive',
         })
       } finally {

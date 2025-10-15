@@ -53,10 +53,10 @@ export function ColorsPanelContent() {
       console.log('[ColorsPanel] Loaded colors:', data)
       setColors(Array.isArray(data) ? data : [])
     } catch (_error) {
-      console.error('[ColorsPanel] Failed to load colors', error)
+      console.error('[ColorsPanel] Failed to load colors', _error)
       toast({
         title: 'Erro ao carregar cores',
-        description: error instanceof Error ? error.message : 'Não foi possível carregar as cores do projeto.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível carregar as cores do projeto.',
         variant: 'destructive',
       })
     } finally {
@@ -94,7 +94,7 @@ export function ColorsPanelContent() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(error.error || 'Falha ao adicionar cor')
+        throw new Error(_error.error || 'Falha ao adicionar cor')
       }
 
       const newColor = await response.json()
@@ -110,10 +110,10 @@ export function ColorsPanelContent() {
         description: 'A cor foi salva no projeto e está disponível para todos os templates.'
       })
     } catch (_error) {
-      console.error('[ColorsPanel] Failed to add color', error)
+      console.error('[ColorsPanel] Failed to add color', _error)
       toast({
         title: 'Erro ao adicionar cor',
-        description: error instanceof Error ? error.message : 'Não foi possível adicionar a cor.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível adicionar a cor.',
         variant: 'destructive',
       })
     } finally {
@@ -142,7 +142,7 @@ export function ColorsPanelContent() {
         description: 'A cor foi removida do projeto.'
       })
     } catch (_error) {
-      console.error('[ColorsPanel] Failed to remove color', error)
+      console.error('[ColorsPanel] Failed to remove color', _error)
       toast({
         title: 'Erro ao remover cor',
         description: 'Não foi possível remover a cor.',

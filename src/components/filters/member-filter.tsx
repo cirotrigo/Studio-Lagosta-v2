@@ -82,7 +82,7 @@ export function MemberFilter({
 
         setMembersData(enrichedMembers.filter(m => m.totalItems > 0))
       } catch (error) {
-        console.error('Error fetching members data:', error)
+        console.error('Error fetching members data:', _error)
       }
     }
 

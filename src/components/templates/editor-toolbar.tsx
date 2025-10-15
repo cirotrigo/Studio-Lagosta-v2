@@ -112,7 +112,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
           setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
         }
       } catch (_error) {
-        console.warn('[EditorToolbar] Falha ao verificar Google Drive', error)
+        console.warn('[EditorToolbar] Falha ao verificar Google Drive', _error)
         if (!active) return
         setDriveStatus('unavailable')
         setDriveStatusMessage('Não foi possível conectar ao Google Drive.')
@@ -288,10 +288,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertImageLayer(payload.url, payload.name ?? file.name)
         setIsImageDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Upload de imagem falhou', error)
+        console.error('[EditorToolbar] Upload de imagem falhou', _error)
         toast({
           title: 'Erro ao enviar imagem',
-          description: error instanceof Error ? error.message : 'Não foi possível enviar a imagem.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível enviar a imagem.',
           variant: 'destructive',
         })
       } finally {
@@ -325,10 +325,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         setIsDriveImageModalOpen(false)
         setIsImageDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Importação de imagem do Drive falhou', error)
+        console.error('[EditorToolbar] Importação de imagem do Drive falhou', _error)
         toast({
           title: 'Erro ao importar do Drive',
-          description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível copiar o arquivo.',
           variant: 'destructive',
         })
       } finally {
@@ -365,10 +365,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertLogoLayer(payload)
         setIsLogoDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Upload de logo falhou', error)
+        console.error('[EditorToolbar] Upload de logo falhou', _error)
         toast({
           title: 'Erro ao enviar logo',
-          description: error instanceof Error ? error.message : 'Não foi possível enviar o logo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível enviar o logo.',
           variant: 'destructive',
         })
       } finally {
@@ -417,10 +417,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         setIsDriveLogoModalOpen(false)
         setIsLogoDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Importação de logo do Drive falhou', error)
+        console.error('[EditorToolbar] Importação de logo do Drive falhou', _error)
         toast({
           title: 'Erro ao importar do Drive',
-          description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível copiar o arquivo.',
           variant: 'destructive',
         })
       } finally {
@@ -457,10 +457,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         insertElementLayer(payload)
         setIsElementDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Upload de elemento falhou', error)
+        console.error('[EditorToolbar] Upload de elemento falhou', _error)
         toast({
           title: 'Erro ao enviar elemento',
-          description: error instanceof Error ? error.message : 'Não foi possível enviar o elemento.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível enviar o elemento.',
           variant: 'destructive',
         })
       } finally {
@@ -509,10 +509,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         setIsDriveElementModalOpen(false)
         setIsElementDialogOpen(false)
       } catch (_error) {
-        console.error('[EditorToolbar] Importação de elemento do Drive falhou', error)
+        console.error('[EditorToolbar] Importação de elemento do Drive falhou', _error)
         toast({
           title: 'Erro ao importar do Drive',
-          description: error instanceof Error ? error.message : 'Não foi possível copiar o arquivo.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível copiar o arquivo.',
           variant: 'destructive',
         })
       } finally {
@@ -555,10 +555,10 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
     } catch (_error) {
-      console.error('Export failed:', error)
+      console.error('Export failed:', _error)
       toast({
         title: 'Erro ao salvar criativo',
-        description: error instanceof Error ? error.message : 'Não foi possível salvar o criativo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível salvar o criativo.',
         variant: 'destructive',
       })
     }

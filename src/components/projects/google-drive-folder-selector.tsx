@@ -105,8 +105,8 @@ export function DesktopGoogleDriveModal({
   }, [driveQuery.data])
 
   const queryError = driveQuery.isError
-    ? driveQuery.error instanceof Error
-      ? driveQuery.error.message
+    ? driveQuery._error instanceof Error
+      ? driveQuery._error.message
       : 'Erro ao carregar arquivos do Google Drive.'
     : null
 
@@ -747,7 +747,7 @@ export function GoogleDriveFolderSelector({
       } as UpdateProjectSettingsInput)
       toast(config.selectToast)
     } catch (_error) {
-      console.error('[GoogleDriveFolderSelector] Failed to save folder', error)
+      console.error('[GoogleDriveFolderSelector] Failed to save folder', _error)
       toast({
         title: 'Erro ao salvar pasta',
         description: 'Tente novamente mais tarde.',
@@ -764,7 +764,7 @@ export function GoogleDriveFolderSelector({
       } as UpdateProjectSettingsInput)
       toast(config.removeToast)
     } catch (_error) {
-      console.error('[GoogleDriveFolderSelector] Failed to remove folder', error)
+      console.error('[GoogleDriveFolderSelector] Failed to remove folder', _error)
       toast({
         title: 'Erro ao remover pasta',
         description: 'Tente novamente mais tarde.',

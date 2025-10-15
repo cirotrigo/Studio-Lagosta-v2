@@ -44,7 +44,7 @@ export function CMSBentoGrid({ content }: CMSBentoGridProps) {
         setIsLoading(false)
       })
       .catch((error) => {
-        console.error('Error fetching feature grid items:', error)
+        console.error('Error fetching feature grid items:', _error)
         // Fallback para items do content em caso de erro
         if (content.items) {
           setItems(content.items)

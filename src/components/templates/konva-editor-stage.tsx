@@ -151,7 +151,7 @@ export function KonvaEditorStage() {
             console.log('🎨 [KonvaEditorStage] Stage re-renderizado com fontes prontas')
           }
         } catch (_error) {
-          console.warn('⚠️ [KonvaEditorStage] Erro ao aguardar fontes:', error)
+          console.warn('⚠️ [KonvaEditorStage] Erro ao aguardar fontes:', _error)
           setFontsReady(true) // Continuar mesmo com erro
         }
       } else {
