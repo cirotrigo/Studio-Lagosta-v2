@@ -20,7 +20,8 @@ type TopbarProps = {
 
 export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { data: creationLimits } = useOrganizationCreationLimits();
-  const createMode = creationLimits?.canCreate === false ? "disabled" : "modal";
+  const canCreateOrg = creationLimits?.canCreate !== false;
+  const createMode: "modal" | "navigation" = "modal";
   const creationReminder =
     creationLimits?.canCreate === false
       ? creationLimits.limits.orgCountLimit != null

@@ -109,7 +109,7 @@ export function VideoExportButton() {
 
       if (!validateResponse.ok) {
         const error = await validateResponse.json()
-        throw new Error(_error.error || 'Falha ao validar créditos')
+        throw new Error(error.error || 'Falha ao validar créditos')
       }
 
       // 2. Exportar vídeo client-side
@@ -147,7 +147,7 @@ export function VideoExportButton() {
 
         if (!confirmResponse.ok) {
           const error = await confirmResponse.json()
-          console.warn('Falha ao confirmar exportação:', _error)
+          console.warn('Falha ao confirmar exportação:', error)
           // Continuar mesmo se a confirmação falhar (já temos o vídeo)
         }
       } catch (confirmError) {

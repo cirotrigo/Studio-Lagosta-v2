@@ -94,7 +94,6 @@ export function ImagesPanelContent() {
       }
 
       setDriveItems(items)
-      setCurrentFolder(folderId)
     } catch (_error) {
       console.error('[ImagesPanel] Failed to load Drive files', _error)
       toast({

@@ -210,7 +210,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(_error.error || 'Falha ao gerar imagem')
+        throw new Error(error.error || 'Falha ao gerar imagem')
       }
 
       return response.json()
@@ -233,7 +233,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     onError: (error: Error) => {
       toast({
         variant: 'destructive',
-        description: _error.message,
+        description: error.message,
       })
     },
   })

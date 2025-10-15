@@ -39,7 +39,7 @@ export function MemberAvatar({ clerkId, size = 'md', className, showTooltip = fa
           })
         }
       } catch (error) {
-        console.error('Error fetching member data:', _error)
+        console.error('Error fetching member data:', error)
       }
     }
 

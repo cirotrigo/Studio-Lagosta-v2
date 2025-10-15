@@ -32,7 +32,7 @@ export function LogoPanelContent() {
   // Load image to get original dimensions
   const loadImageDimensions = (url: string): Promise<{ width: number; height: number }> => {
     return new Promise((resolve, reject) => {
-      const img = new Image()
+      const img = window.Image ? new window.Image() : document.createElement('img')
       img.onload = () => {
         resolve({ width: img.width, height: img.height })
       }

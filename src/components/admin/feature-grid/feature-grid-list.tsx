@@ -60,7 +60,7 @@ export function FeatureGridList({ items }: FeatureGridListProps) {
     <>
       <div className="space-y-4">
         {items.map((item) => {
-          const IconComponent = (Icons as Record<string, Icons.LucideIcon>)[item.icon]
+          const IconComponent = (Icons as unknown as Record<string, Icons.LucideIcon>)[item.icon]
 
           return (
             <Card key={item.id} className="p-4">

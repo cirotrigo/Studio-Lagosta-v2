@@ -156,11 +156,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
-      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      const generationId = (typeof detail.generationId === 'string' ? detail.generationId : typeof detail.generationID === 'string' ? detail.generationID : undefined) as string | undefined
       if (!generationId) return
 
       setProgressOverrides((prev) => {
-        const nextStatus: ProgressOverride['status'] = detail.status ?? 'PENDING'
+        const nextStatus: ProgressOverride['status'] = (typeof detail.status === 'string' ? detail.status : 'PENDING') as ProgressOverride['status']
         const nextProgress =
           typeof detail.progress === 'number'
             ? Math.max(0, Math.min(100, detail.progress))
@@ -176,7 +176,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           [generationId]: {
             progress: nextProgress,
             status: nextStatus,
-            errorMessage: detail.errorMessage ?? previous?.errorMessage ?? null,
+            errorMessage: (typeof detail.errorMessage === 'string' ? detail.errorMessage : previous?.errorMessage) ?? null,
           },
         }
       })
@@ -188,23 +188,25 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
-      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      const generationId = (typeof detail.generationId === 'string' ? detail.generationId : typeof detail.generationID === 'string' ? detail.generationID : undefined) as string | undefined
       if (!generationId) return
 
       setProgressOverrides((prev) => {
         const previous = prev[generationId]
         const nextStatus: ProgressOverride['status'] =
-          detail.status ?? previous?.status ?? 'PROCESSING'
+          (typeof detail.status === 'string' ? detail.status : previous?.status ?? 'PROCESSING') as ProgressOverride['status']
         const nextProgress =
           typeof detail.progress === 'number'
             ? Math.max(0, Math.min(100, detail.progress))
             : previous?.progress ?? 0
 
+        const nextErrorMessage = typeof detail.errorMessage === 'string' ? detail.errorMessage : previous?.errorMessage ?? null
+
         if (
           previous &&
           previous.progress === nextProgress &&
           previous.status === nextStatus &&
-          previous.errorMessage === (detail.errorMessage ?? previous.errorMessage ?? null)
+          previous.errorMessage === nextErrorMessage
         ) {
           return prev
         }
@@ -214,7 +216,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           [generationId]: {
             progress: nextProgress,
             status: nextStatus,
-            errorMessage: detail.errorMessage ?? previous?.errorMessage ?? null,
+            errorMessage: nextErrorMessage,
           },
         }
       })
@@ -224,7 +226,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
-      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      const generationId = (typeof detail.generationId === 'string' ? detail.generationId : typeof detail.generationID === 'string' ? detail.generationID : undefined) as string | undefined
       if (!generationId) return
 
       setProgressOverrides((prev) => {
@@ -248,7 +250,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail
       if (!detail) return
       if (detail.projectId != null && detail.projectId !== projectId) return
-      const generationId: string | undefined = detail.generationId ?? detail.generationID
+      const generationId = (typeof detail.generationId === 'string' ? detail.generationId : typeof detail.generationID === 'string' ? detail.generationID : undefined) as string | undefined
       if (!generationId) return
 
       setProgressOverrides((prev) => ({
@@ -258,8 +260,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             typeof detail.progress === 'number'
               ? Math.max(0, Math.min(100, detail.progress))
               : 100,
-          status: 'FAILED',
-          errorMessage: detail.errorMessage ?? prev[generationId]?.errorMessage ?? null,
+          status: 'FAILED' as const,
+          errorMessage: (typeof detail.errorMessage === 'string' ? detail.errorMessage : prev[generationId]?.errorMessage) ?? null,
         },
       }))
 

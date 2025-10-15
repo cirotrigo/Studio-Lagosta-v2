@@ -34,7 +34,7 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
   React.useEffect(() => {
     console.log('[CreativesPanel] templateId:', templateId)
     console.log('[CreativesPanel] isLoading:', isLoading)
-    console.log('[CreativesPanel] error:', _error)
+    console.log('[CreativesPanel] error:', error)
     console.log('[CreativesPanel] creatives:', creatives)
   }, [templateId, isLoading, error, creatives])
 

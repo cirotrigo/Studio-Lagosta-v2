@@ -44,7 +44,7 @@ export function CMSBentoGrid({ content }: CMSBentoGridProps) {
         setIsLoading(false)
       })
       .catch((error) => {
-        console.error('Error fetching feature grid items:', _error)
+        console.error('Error fetching feature grid items:', error)
         // Fallback para items do content em caso de erro
         if (content.items) {
           setItems(content.items)
@@ -90,7 +90,7 @@ export function CMSBentoGrid({ content }: CMSBentoGridProps) {
 
       <ul className="grid grid-cols-1 grid-rows-none gap-4 md:grid-cols-3 md:grid-rows-4 lg:gap-4">
         {items?.map((item) => {
-          const IconComponent = (Icons as Record<string, LucideIcon>)[item.icon]
+          const IconComponent = (Icons as unknown as Record<string, LucideIcon>)[item.icon]
 
           return (
             <li

@@ -156,7 +156,7 @@ export async function duplicatePage(id: string, createdBy: string) {
         pageId: newPage.id,
         type: section.type,
         name: section.name,
-        content: section.content as Record<string, unknown>,
+        content: section.content as any,
         order: section.order,
         isVisible: section.isVisible,
         cssClasses: section.cssClasses,
@@ -197,7 +197,7 @@ export async function createSection(data: CreateSectionInput) {
   return await db.cMSSection.create({
     data: {
       ...data,
-      content: data.content as Record<string, unknown>,
+      content: data.content as any,
     },
     include: {
       page: true,
@@ -213,7 +213,7 @@ export async function updateSection(id: string, data: UpdateSectionInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as Record<string, unknown>) : undefined,
+      content: data.content ? (data.content as any) : undefined,
     },
     include: {
       page: true,
@@ -277,7 +277,7 @@ export async function duplicateSection(id: string) {
       pageId: original.pageId,
       type: original.type,
       name: `${original.name} (Copy)`,
-      content: original.content as Record<string, unknown>,
+      content: original.content as any,
       order: (maxOrder?.order ?? 0) + 1,
       isVisible: original.isVisible,
       cssClasses: original.cssClasses,
@@ -440,7 +440,7 @@ export async function createComponent(data: CreateComponentInput) {
   return await db.cMSComponent.create({
     data: {
       ...data,
-      content: data.content as Record<string, unknown>,
+      content: data.content as any,
     },
   })
 }
@@ -453,7 +453,7 @@ export async function updateComponent(id: string, data: UpdateComponentInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as Record<string, unknown>) : undefined,
+      content: data.content ? (data.content as any) : undefined,
     },
   })
 }

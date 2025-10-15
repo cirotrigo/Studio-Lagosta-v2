@@ -105,7 +105,7 @@ export async function GET(
       where: {
         ...whereClause,
         userId: { isSet: true },
-      },
+      } as any,
       by: ['userId'],
       _count: true,
     })

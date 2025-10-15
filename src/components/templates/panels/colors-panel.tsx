@@ -94,7 +94,7 @@ export function ColorsPanelContent() {
 
       if (!response.ok) {
         const error = await response.json()
-        throw new Error(_error.error || 'Falha ao adicionar cor')
+        throw new Error(error.error || 'Falha ao adicionar cor')
       }
 
       const newColor = await response.json()

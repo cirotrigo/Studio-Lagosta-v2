@@ -170,7 +170,7 @@ function normalizePlan(raw: unknown): ClerkPlanNormalized | null {
     publiclyVisible: safeBoolean(rawObj?.publicly_visible),
     hasBaseFee: safeBoolean(rawObj?.has_base_fee),
     payerType: Array.isArray(rawObj?.payer_type)
-      ? (rawObj.payer_type as unknown[]).filter((value: unknown) => typeof value === 'string' && value.trim().length > 0)
+      ? (rawObj.payer_type as unknown[]).filter((value: unknown) => typeof value === 'string' && value.trim().length > 0) as string[]
       : [],
     forPayerType: safeString(rawObj?.for_payer_type),
     avatarUrl: safeString(rawObj?.avatar_url),

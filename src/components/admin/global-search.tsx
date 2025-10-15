@@ -142,7 +142,7 @@ export function GlobalSearch() {
                 value={media.name}
                 onSelect={() => handleSelect(() => router.push('/admin/content/media'))}
               >
-                <Image className="mr-2 h-4 w-4" alt="" />
+                <Image className="mr-2 h-4 w-4" />
                 <div className="flex-1">
                   <div>{media.name}</div>
                   <div className="text-xs text-muted-foreground">{media.mimeType}</div>

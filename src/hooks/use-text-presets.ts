@@ -34,11 +34,6 @@ export function useTextPresets() {
   const [customPresets, setCustomPresets] = React.useState<Record<string, TextPreset>>({})
   const [isApplying, setIsApplying] = React.useState(false)
 
-  // Carregar presets customizados do localStorage ao montar
-  React.useEffect(() => {
-    loadCustomPresets()
-  }, [loadCustomPresets])
-
   /**
    * Carregar presets customizados do localStorage
    */
@@ -53,6 +48,11 @@ export function useTextPresets() {
       console.error('[useTextPresets] Erro ao carregar presets:', error)
     }
   }, [])
+
+  // Carregar presets customizados do localStorage ao montar
+  React.useEffect(() => {
+    loadCustomPresets()
+  }, [loadCustomPresets])
 
   /**
    * Salvar presets customizados no localStorage
