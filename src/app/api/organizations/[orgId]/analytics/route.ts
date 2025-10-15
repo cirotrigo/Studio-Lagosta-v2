@@ -70,7 +70,7 @@ export async function GET(
       },
     }
 
-    const [usageAggregates, featureBreakdown, distinctMembers, recentUsage] = await Promise.all([
+    const [usageAggregates, featureBreakdown, recentUsage] = await Promise.all([
       db.organizationUsage.aggregate({
         where: whereClause,
         _sum: { credits: true },
@@ -82,16 +82,6 @@ export async function GET(
         _sum: { credits: true },
         _count: { feature: true },
         orderBy: { _sum: { credits: 'desc' } },
-      }),
-      db.organizationUsage.findMany({
-        where: {
-          ...whereClause,
-          NOT: {
-            userId: null,
-          },
-        },
-        distinct: ['userId'],
-        select: { userId: true },
       }),
       db.organizationUsage.findMany({
         where: {
@@ -110,9 +100,19 @@ export async function GET(
       }),
     ])
 
+    // Get distinct members count separately
+    const distinctUserIds = await db.organizationUsage.groupBy({
+      where: {
+        ...whereClause,
+        userId: { isSet: true },
+      },
+      by: ['userId'],
+      _count: true,
+    })
+
     const totalCreditsUsed = usageAggregates._sum.credits ?? 0
     const totalOperations = usageAggregates._count._all ?? 0
-    const membersActive = distinctMembers.length
+    const membersActive = distinctUserIds.length
 
     const featureSummary = featureBreakdown.map((entry) => ({
       feature: entry.feature,

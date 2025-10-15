@@ -158,9 +158,6 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                   },
                 }}
               />
-              {creationReminder && (
-                <span className="text-xs text-muted-foreground">Criação de equipe indisponível para o plano atual.</span>
-              )}
               <CreditStatus />
               <Separator orientation="vertical" className="h-6" />
             </div>
