@@ -16,6 +16,8 @@ const organizationKeys = {
     orgId: string,
     params: { period?: string; startDate?: string; endDate?: string } = {}
   ) => [...ORGANIZATION_QUERY_ROOT, orgId, 'analytics', 'members', params] as const,
+  analyticsTimeline: (orgId: string, params: { period?: string } = {}) =>
+    [...ORGANIZATION_QUERY_ROOT, orgId, 'analytics', 'timeline', params] as const,
   projects: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'projects'] as const,
   settings: (orgId: string) => [...ORGANIZATION_QUERY_ROOT, orgId, 'settings'] as const,
 }
@@ -181,6 +183,43 @@ export function useOrganizationMemberAnalytics(
       return api.get<MemberAnalyticsResponse>(url)
     },
     enabled: Boolean(orgId),
+  })
+}
+
+type TimelineDataPoint = {
+  date: string
+  imageGenerations: number
+  videoGenerations: number
+  chatInteractions: number
+  creditsUsed: number
+}
+
+type TimelineResponse = {
+  period: {
+    key: string
+    start: string
+    end: string
+  }
+  timeline: TimelineDataPoint[]
+}
+
+export function useOrganizationTimeline(
+  orgId: string | null,
+  params: { period?: string } = { period: '30d' }
+) {
+  return useQuery({
+    queryKey: orgId
+      ? organizationKeys.analyticsTimeline(orgId, params)
+      : ['organization', 'analytics', 'timeline', 'disabled'],
+    queryFn: () => {
+      const search = new URLSearchParams()
+      if (params.period) search.set('period', params.period)
+      const query = search.toString()
+      const url = `/api/organizations/${orgId}/analytics/timeline${query ? `?${query}` : ''}`
+      return api.get<TimelineResponse>(url)
+    },
+    enabled: Boolean(orgId),
+    staleTime: 2 * 60_000, // 2 minutes
   })
 }
 

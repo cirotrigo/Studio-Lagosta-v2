@@ -10,10 +10,13 @@ import { useSetPageMetadata } from "@/contexts/page-metadata"
 import {
   useOrganizationAnalytics,
   useOrganizationMemberAnalytics,
+  useOrganizationTimeline,
 } from "@/hooks/use-organizations"
 import { AnalyticsSummaryCards } from "@/components/organization/analytics-summary-cards"
 import { FeatureUsageList } from "@/components/organization/feature-usage-list"
 import { MemberAnalyticsTable } from "@/components/organization/member-analytics-table"
+import { UsageTrendChart } from "@/components/organizations/usage-trend-chart"
+import { FeatureBreakdownChart } from "@/components/organizations/feature-breakdown-chart"
 import { CalendarIcon, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
 
@@ -35,6 +38,10 @@ export default function OrganizationAnalyticsPage() {
     { period },
   )
   const membersQuery = useOrganizationMemberAnalytics(
+    isActiveOrganization ? organization.id : null,
+    { period },
+  )
+  const timelineQuery = useOrganizationTimeline(
     isActiveOrganization ? organization.id : null,
     { period },
   )
@@ -106,13 +113,14 @@ export default function OrganizationAnalyticsPage() {
             onClick={() => {
               analyticsQuery.refetch()
               membersQuery.refetch()
+              timelineQuery.refetch()
             }}
-            disabled={analyticsQuery.isFetching || membersQuery.isFetching}
+            disabled={analyticsQuery.isFetching || membersQuery.isFetching || timelineQuery.isFetching}
           >
             <RefreshCw
               className={cn(
                 "mr-2 h-4 w-4",
-                (analyticsQuery.isFetching || membersQuery.isFetching) && "animate-spin",
+                (analyticsQuery.isFetching || membersQuery.isFetching || timelineQuery.isFetching) && "animate-spin",
               )}
             />
             Atualizar
@@ -126,6 +134,19 @@ export default function OrganizationAnalyticsPage() {
         totalOperations={summary?.totalOperations}
         membersActive={summary?.membersActive}
         creditsPerMonth={analyticsQuery.data?.organization.creditsPerMonth}
+      />
+
+      {/* Usage Trend Chart */}
+      <UsageTrendChart
+        data={timelineQuery.data?.timeline ?? []}
+        period={period}
+        isLoading={timelineQuery.isLoading}
+      />
+
+      {/* Feature Breakdown Chart */}
+      <FeatureBreakdownChart
+        data={features}
+        isLoading={analyticsQuery.isLoading}
       />
 
       <div className="grid gap-4 lg:grid-cols-2">
