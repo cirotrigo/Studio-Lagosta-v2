@@ -74,7 +74,7 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
       const timeout = setTimeout(() => setCopied(false), 1200)
       return () => clearTimeout(timeout)
     } catch (_error) {
-      console.warn('[MessageBubble] Failed to copy message content', error)
+      console.warn('[MessageBubble] Failed to copy message content', _error)
     }
   }
 

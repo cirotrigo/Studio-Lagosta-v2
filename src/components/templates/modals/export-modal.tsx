@@ -39,10 +39,10 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
           description: `Arquivo ${record.fileName} gerado com sucesso (${formatBytes(record.sizeBytes)})`,
         })
       } catch (_error) {
-        console.error('Export failed:', error)
+        console.error('Export failed:', _error)
         toast({
           title: 'Erro ao exportar',
-          description: error instanceof Error ? error.message : 'Não foi possível exportar o design.',
+          description: _error instanceof Error ? _error.message : 'Não foi possível exportar o design.',
           variant: 'destructive',
         })
       }

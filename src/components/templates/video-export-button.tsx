@@ -175,11 +175,11 @@ export function VideoExportButton() {
 
       setIsOpen(false)
     } catch (_error) {
-      console.error('Export error:', error)
+      console.error('Export error:', _error)
       toast({
         variant: 'destructive',
         title: 'Erro ao exportar vídeo',
-        description: error instanceof Error ? error.message : 'Erro desconhecido',
+        description: _error instanceof Error ? _error.message : 'Erro desconhecido',
       })
     } finally {
       setIsExporting(false)

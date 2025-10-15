@@ -52,7 +52,7 @@ export async function getPageBySlug(slug: string) {
  * Get a page by path with sections
  */
 export async function getPageByPath(path: string) {
-  return await db.cMSPage.findUnique({
+  const page = await db.cMSPage.findUnique({
     where: { path },
     include: {
       sections: {
@@ -61,13 +61,23 @@ export async function getPageByPath(path: string) {
       },
     },
   })
+
+  if (!page) return null
+
+  return {
+    ...page,
+    sections: page.sections.map(section => ({
+      ...section,
+      content: section.content as Record<string, unknown>,
+    })),
+  }
 }
 
 /**
  * Get the home page with sections
  */
 export async function getHomePage() {
-  return await db.cMSPage.findFirst({
+  const page = await db.cMSPage.findFirst({
     where: { isHome: true, status: 'PUBLISHED' },
     include: {
       sections: {
@@ -76,6 +86,16 @@ export async function getHomePage() {
       },
     },
   })
+
+  if (!page) return null
+
+  return {
+    ...page,
+    sections: page.sections.map(section => ({
+      ...section,
+      content: section.content as Record<string, unknown>,
+    })),
+  }
 }
 
 /**

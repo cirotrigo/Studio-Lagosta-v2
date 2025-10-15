@@ -46,7 +46,7 @@ export default function DashboardPage() {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-medium">Projetos</h2>
           <Button variant="default" size="sm" asChild>
-            <Link href="/projects/new">
+            <Link href="/projects">
               <Plus className="mr-1.5 h-4 w-4" />
               Novo
             </Link>
@@ -76,7 +76,7 @@ export default function DashboardPage() {
               Nenhum projeto encontrado
             </p>
             <Button variant="default" size="sm" asChild>
-              <Link href="/projects/new">
+              <Link href="/projects">
                 <Plus className="mr-1.5 h-4 w-4" />
                 Criar Projeto
               </Link>

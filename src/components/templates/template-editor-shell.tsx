@@ -82,7 +82,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
               await document.fonts.load(`16px '${font.family}'`)
               console.log(`✅ Fonte "${font.family}" pronta para uso no Konva`)
             } catch (_error) {
-              console.warn(`⚠️ Erro ao pré-carregar fonte "${font.family}":`, error)
+              console.warn(`⚠️ Erro ao pré-carregar fonte "${font.family}":`, _error)
             }
           }
         }
@@ -93,7 +93,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
         console.log('✅ [TemplateEditorShell] Todas as fontes pré-carregadas!')
         setFontsLoaded(true)
       } catch (_error) {
-        console.error('❌ [TemplateEditorShell] Erro ao pré-carregar fontes:', error)
+        console.error('❌ [TemplateEditorShell] Erro ao pré-carregar fontes:', _error)
         // Continuar mesmo se houver erro
         setFontsLoaded(true)
       }
@@ -195,7 +195,7 @@ function TemplateEditorContent() {
           : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
     } catch (_error) {
-      console.error('[TemplateEditor] Falha ao salvar template', error)
+      console.error('[TemplateEditor] Falha ao salvar template', _error)
 
       // Remover toast de loading
       loadingToast.dismiss?.()
@@ -216,10 +216,10 @@ function TemplateEditorContent() {
         description: 'O criativo foi salvo e está disponível na biblioteca.',
       })
     } catch (_error) {
-      console.error('Export failed:', error)
+      console.error('Export failed:', _error)
       toast({
         title: 'Erro ao salvar criativo',
-        description: error instanceof Error ? error.message : 'Não foi possível salvar o criativo.',
+        description: _error instanceof Error ? _error.message : 'Não foi possível salvar o criativo.',
         variant: 'destructive',
       })
     }
@@ -491,8 +491,8 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
         description: 'Nova página adicionada ao template.',
       })
     } catch (_error) {
-      console.error('[PagesBar] Erro ao criar página:', error)
-      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+      console.error('[PagesBar] Erro ao criar página:', _error)
+      const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
       toast({
         title: 'Erro ao criar página',
         description: errorMessage,
@@ -511,7 +511,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           description: 'A página foi duplicada com sucesso.',
         })
       } catch (_error) {
-        console.error('Error duplicating page:', error)
+        console.error('Error duplicating page:', _error)
         toast({
           title: 'Erro ao duplicar',
           description: 'Não foi possível duplicar a página.',
@@ -551,7 +551,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           description: 'A página foi removida com sucesso.',
         })
       } catch (_error) {
-        console.error('Error deleting page:', error)
+        console.error('Error deleting page:', _error)
         toast({
           title: 'Erro ao deletar',
           description: 'Não foi possível deletar a página.',
