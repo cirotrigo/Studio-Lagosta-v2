@@ -24,12 +24,19 @@ export const runtime = 'nodejs'
 export async function GET(req: Request) {
   try {
     // Security: Verify authorization token
+    // Vercel Cron automatically sets CRON_SECRET header for scheduled runs
     const authHeader = req.headers.get('authorization')
-    const expectedToken = process.env.CRON_SECRET
+    const cronSecretHeader = req.headers.get('x-vercel-cron-secret')
 
-    if (expectedToken && authHeader !== `Bearer ${expectedToken}`) {
+    // Check Vercel's automatic cron secret (production cron jobs)
+    const vercelCronSecret = process.env.CRON_SECRET
+    if (vercelCronSecret && cronSecretHeader === vercelCronSecret) {
+      // Valid Vercel cron request
+    } else if (vercelCronSecret && authHeader === `Bearer ${vercelCronSecret}`) {
+      // Valid manual request with Bearer token
+    } else {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { error: 'Unauthorized - Invalid or missing cron secret' },
         { status: 401 }
       )
     }

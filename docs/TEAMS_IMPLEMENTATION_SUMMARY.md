@@ -120,6 +120,41 @@ CLERK_WEBHOOK_SECRET=whsec_...
 CRON_SECRET=your-random-secret-here
 ```
 
+**Como gerar o CRON_SECRET:**
+
+O Vercel **automaticamente** gera e injeta um `CRON_SECRET` em produção para cron jobs agendados. Você tem duas opções:
+
+#### Opção A: Deixar Vercel Gerenciar (Recomendado)
+
+1. No deploy em produção, o Vercel automaticamente cria `CRON_SECRET`
+2. Cron jobs agendados funcionam automaticamente
+3. Você não precisa configurar nada manualmente
+
+#### Opção B: Criar Seu Próprio Secret (Para Testes Manuais)
+
+1. Gere uma string aleatória:
+   ```bash
+   openssl rand -base64 32
+   # Resultado: kJ8mN2pQ4rT6vX9zA1bC3dE5fG7hI0jK2lM4nO6pQ8r=
+   ```
+
+2. Adicione ao `.env` local:
+   ```env
+   CRON_SECRET=kJ8mN2pQ4rT6vX9zA1bC3dE5fG7hI0jK2lM4nO6pQ8r=
+   ```
+
+3. Adicione no Vercel Dashboard:
+   - Settings → Environment Variables
+   - Name: `CRON_SECRET`
+   - Value: sua string gerada
+   - Environment: Production + Preview
+
+**Para testes manuais em desenvolvimento:**
+```bash
+curl -X POST http://localhost:3000/api/cron/refill-org-credits \
+  -H "Authorization: Bearer kJ8mN2pQ4rT6vX9zA1bC3dE5fG7hI0jK2lM4nO6pQ8r="
+```
+
 ### 2. Configuração do Clerk Dashboard
 
 **Webhooks:**
