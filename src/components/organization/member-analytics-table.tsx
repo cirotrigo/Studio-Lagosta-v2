@@ -73,7 +73,8 @@ export function MemberAnalyticsTable({
             <thead className="bg-muted/30 text-xs uppercase text-muted-foreground">
               <tr>
                 <th className="px-6 py-3 text-left font-medium">Membro</th>
-                <th className="px-4 py-3 text-left font-medium">Imagens</th>
+                <th className="px-4 py-3 text-left font-medium">Criativos</th>
+                <th className="px-4 py-3 text-left font-medium">Imagens IA</th>
                 <th className="px-4 py-3 text-left font-medium">Vídeos</th>
                 <th className="px-4 py-3 text-left font-medium">Chats</th>
                 <th className="px-4 py-3 text-left font-medium">Créditos</th>
@@ -84,49 +85,59 @@ export function MemberAnalyticsTable({
               {members.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={6}
+                    colSpan={7}
                     className="px-6 py-6 text-center text-sm text-muted-foreground"
                   >
                     Nenhum membro consumiu créditos no período selecionado.
                   </td>
                 </tr>
               ) : (
-                members.map((member) => (
-                  <tr key={member.clerkId} className="align-middle">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback>
-                            {initials(member.name, member.email ?? member.clerkId)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="flex flex-col">
-                          <span className="font-medium text-foreground">
-                            {member.name ?? "Sem nome"}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {member.email ?? member.clerkId}
-                          </span>
+                members.map((member) => {
+                  const totalCreatives =
+                    member.stats.imageGenerations +
+                    member.stats.videoGenerations +
+                    member.stats.chatInteractions
+
+                  return (
+                    <tr key={member.clerkId} className="align-middle">
+                      <td className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback>
+                              {initials(member.name, member.email ?? member.clerkId)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex flex-col">
+                            <span className="font-medium text-foreground">
+                              {member.name ?? "Sem nome"}
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              {member.email ?? member.clerkId}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4 font-medium text-foreground">
-                      {member.stats.imageGenerations.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4 font-medium text-foreground">
-                      {member.stats.videoGenerations.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4 font-medium text-foreground">
-                      {member.stats.chatInteractions.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4 font-semibold text-primary">
-                      {member.stats.totalCreditsUsed.toLocaleString()}
-                    </td>
-                    <td className="px-4 py-4 text-xs text-muted-foreground">
-                      {formatLastActivity(member.stats.lastActivityAt)}
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td className="px-4 py-4 font-semibold text-purple-600">
+                        {totalCreatives.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4 font-medium text-foreground">
+                        {member.stats.imageGenerations.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4 font-medium text-foreground">
+                        {member.stats.videoGenerations.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4 font-medium text-foreground">
+                        {member.stats.chatInteractions.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4 font-semibold text-primary">
+                        {member.stats.totalCreditsUsed.toLocaleString()}
+                      </td>
+                      <td className="px-4 py-4 text-xs text-muted-foreground">
+                        {formatLastActivity(member.stats.lastActivityAt)}
+                      </td>
+                    </tr>
+                  )
+                })
               )}
             </tbody>
             {totals && members.length > 0 && (
@@ -134,6 +145,13 @@ export function MemberAnalyticsTable({
                 <tr className="border-t border-border/40 bg-muted/20 text-xs uppercase text-muted-foreground">
                   <td className="px-6 py-3 text-left font-semibold text-foreground">
                     Totais
+                  </td>
+                  <td className="px-4 py-3 font-semibold text-purple-600">
+                    {(
+                      totals.imageGenerations +
+                      totals.videoGenerations +
+                      totals.chatInteractions
+                    ).toLocaleString()}
                   </td>
                   <td className="px-4 py-3 font-semibold text-foreground">
                     {totals.imageGenerations.toLocaleString()}

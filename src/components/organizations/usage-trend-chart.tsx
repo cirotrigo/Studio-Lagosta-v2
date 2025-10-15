@@ -32,6 +32,7 @@ export function UsageTrendChart({ data, period, isLoading }: UsageTrendChartProp
     return data.map((item) => ({
       ...item,
       dateFormatted: format(new Date(item.date), 'dd MMM', { locale: ptBR }),
+      totalCreatives: item.imageGenerations + item.videoGenerations + item.chatInteractions,
     }))
   }, [data])
 
@@ -108,8 +109,17 @@ export function UsageTrendChart({ data, period, isLoading }: UsageTrendChartProp
           />
           <Line
             type="monotone"
+            dataKey="totalCreatives"
+            name="Criativos"
+            stroke="hsl(280 100% 70%)"
+            strokeWidth={3}
+            dot={{ fill: 'hsl(280 100% 70%)', r: 5 }}
+            activeDot={{ r: 7 }}
+          />
+          <Line
+            type="monotone"
             dataKey="imageGenerations"
-            name="Imagens"
+            name="Imagens IA"
             stroke="hsl(217 91% 60%)"
             strokeWidth={2}
             dot={{ fill: 'hsl(217 91% 60%)', r: 4 }}

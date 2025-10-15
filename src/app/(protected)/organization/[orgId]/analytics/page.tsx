@@ -17,13 +17,16 @@ import { FeatureUsageList } from "@/components/organization/feature-usage-list"
 import { MemberAnalyticsTable } from "@/components/organization/member-analytics-table"
 import { UsageTrendChart } from "@/components/organizations/usage-trend-chart"
 import { FeatureBreakdownChart } from "@/components/organizations/feature-breakdown-chart"
+import { DateRangePicker } from "@/components/analytics/date-range-picker"
 import { CalendarIcon, RefreshCw } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { DateRange } from "react-day-picker"
 
 const PERIOD_OPTIONS = [
   { label: "7 dias", value: "7d" },
   { label: "30 dias", value: "30d" },
   { label: "90 dias", value: "90d" },
+  { label: "Customizado", value: "custom" },
 ]
 
 export default function OrganizationAnalyticsPage() {
@@ -32,18 +35,27 @@ export default function OrganizationAnalyticsPage() {
   const { organization, isLoaded, membership } = useOrganization()
   const isActiveOrganization = organization?.id === orgIdParam
   const [period, setPeriod] = useState<string>("30d")
+  const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>()
+
+  const analyticsParams = period === 'custom' && customDateRange?.from && customDateRange?.to
+    ? {
+        period: 'custom',
+        startDate: customDateRange.from.toISOString(),
+        endDate: customDateRange.to.toISOString(),
+      }
+    : { period }
 
   const analyticsQuery = useOrganizationAnalytics(
     isActiveOrganization ? organization.id : null,
-    { period },
+    analyticsParams,
   )
   const membersQuery = useOrganizationMemberAnalytics(
     isActiveOrganization ? organization.id : null,
-    { period },
+    analyticsParams,
   )
   const timelineQuery = useOrganizationTimeline(
     isActiveOrganization ? organization.id : null,
-    { period },
+    { period: period === 'custom' && customDateRange?.from && customDateRange?.to ? '30d' : period },
   )
 
   useSetPageMetadata({
@@ -107,6 +119,13 @@ export default function OrganizationAnalyticsPage() {
             onChange={setPeriod}
             disabled={analyticsQuery.isFetching || membersQuery.isFetching}
           />
+          {period === 'custom' && (
+            <DateRangePicker
+              value={customDateRange}
+              onChange={setCustomDateRange}
+              disabled={analyticsQuery.isFetching || membersQuery.isFetching}
+            />
+          )}
           <Button
             variant="outline"
             size="sm"
