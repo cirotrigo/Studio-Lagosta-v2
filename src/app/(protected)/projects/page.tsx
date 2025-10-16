@@ -110,18 +110,20 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="container mx-auto p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="container mx-auto px-4 py-6 md:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Projetos</h1>
-          <p className="text-muted-foreground mt-1">
+          <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+            Projetos
+          </h1>
+          <p className="text-muted-foreground mt-2">
             Gerencie seus projetos de criativos
           </p>
         </div>
 
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
-            <Button>
+            <Button size="lg" className="shadow-lg">
               <Plus className="w-4 h-4 mr-2" />
               Novo Projeto
             </Button>
@@ -172,85 +174,136 @@ export default function ProjectsPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Carregando projetos...</p>
+          <div className="flex flex-col items-center gap-3">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <p className="text-muted-foreground">Carregando projetos...</p>
+          </div>
         </div>
       ) : projects && projects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {projects.map((project) => (
-            <Card key={project.id} className="p-6 hover:shadow-lg transition-shadow">
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-primary/10 rounded-lg">
-                    <FolderOpen className="w-5 h-5 text-primary" />
+          {projects.map((project) => {
+            const projectLogo = project.Logo?.find(logo => logo.isProjectLogo) ?? project.Logo?.[0]
+
+            return (
+              <Card key={project.id} className="group relative overflow-hidden hover:shadow-xl transition-all duration-300 border-border/40 bg-card/60 backdrop-blur-sm">
+                {/* Gradient Background Effect */}
+                <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+
+                <div className="relative p-6 space-y-4">
+                  {/* Header with Logo and Title */}
+                  <div className="flex items-start gap-4">
+                    {/* Project Logo or Icon */}
+                    <div className="flex-shrink-0">
+                      {projectLogo ? (
+                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted ring-2 ring-border/40 group-hover:ring-primary/40 transition-all duration-300">
+                          <img
+                            src={projectLogo.fileUrl}
+                            alt={projectLogo.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center ring-2 ring-border/40 group-hover:ring-primary/40 transition-all duration-300">
+                          <FolderOpen className="w-7 h-7 text-primary" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Title and Status */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-semibold text-lg mb-2 truncate group-hover:text-primary transition-colors">
+                        {project.name}
+                      </h3>
+                      <span
+                        className={`inline-flex items-center text-xs px-2.5 py-1 rounded-full font-medium ${
+                          project.status === 'ACTIVE'
+                            ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                            : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                          project.status === 'ACTIVE' ? 'bg-green-500' : 'bg-gray-500'
+                        }`} />
+                        {project.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="font-semibold text-lg">{project.name}</h3>
-                    <span
-                      className={`text-xs px-2 py-1 rounded-full ${
-                        project.status === 'ACTIVE'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-gray-100 text-gray-700'
-                      }`}
+
+                  {/* Description */}
+                  {project.description && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                      {project.description}
+                    </p>
+                  )}
+
+                  {/* Stats */}
+                  <div className="flex gap-6 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <span className="text-xs font-semibold text-primary">
+                          {project._count?.Template ?? project._count?.templates ?? 0}
+                        </span>
+                      </div>
+                      <span className="text-muted-foreground">templates</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                        <span className="text-xs font-semibold text-primary">
+                          {project._count?.Generation ?? project._count?.generations ?? 0}
+                        </span>
+                      </div>
+                      <span className="text-muted-foreground">criativos</span>
+                    </div>
+                  </div>
+
+                  {/* Share Controls */}
+                  <div className="pt-2 border-t border-border/40">
+                    <ProjectShareControls
+                      projectId={project.id}
+                      projectName={project.name}
+                      shares={project.organizationShares ?? []}
+                      variant="card"
+                    />
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2 pt-2">
+                    <Button asChild variant="default" className="flex-1 group/btn">
+                      <Link href={`/projects/${project.id}`}>
+                        <Settings className="w-4 h-4 mr-2 group-hover/btn:rotate-90 transition-transform duration-300" />
+                        Abrir Projeto
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={() => handleDelete(project.id, project.name)}
+                      disabled={deleteMutation.isPending}
+                      className="hover:bg-red-50 hover:text-red-600 hover:border-red-200 dark:hover:bg-red-950 dark:hover:text-red-400 dark:hover:border-red-900 transition-colors"
                     >
-                      {project.status === 'ACTIVE' ? 'Ativo' : 'Inativo'}
-                    </span>
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </div>
-              </div>
-
-              {project.description && (
-                <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                  {project.description}
-                </p>
-              )}
-
-              <div className="flex gap-4 text-sm text-muted-foreground mb-4">
-                <div>
-                  <span className="font-medium">{project._count?.Template ?? project._count?.templates ?? 0}</span> templates
-                </div>
-                <div>
-                  <span className="font-medium">{project._count?.Generation ?? project._count?.generations ?? 0}</span> criativos
-                </div>
-              </div>
-
-              <ProjectShareControls
-                projectId={project.id}
-                projectName={project.name}
-                shares={project.organizationShares ?? []}
-                variant="card"
-              />
-
-              <div className="flex gap-2">
-                <Button asChild variant="outline" className="flex-1">
-                  <Link href={`/projects/${project.id}`}>
-                    <Settings className="w-4 h-4 mr-2" />
-                    Abrir
-                  </Link>
-                </Button>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() => handleDelete(project.id, project.name)}
-                  disabled={deleteMutation.isPending}
-                >
-                  <Trash2 className="w-4 h-4 text-red-500" />
-                </Button>
-              </div>
-            </Card>
-          ))}
+              </Card>
+            )
+          })}
         </div>
       ) : (
-        <Card className="p-12 text-center">
-          <div className="flex flex-col items-center gap-4">
-            <div className="p-4 bg-muted rounded-full">
-              <FolderOpen className="w-8 h-8 text-muted-foreground" />
+        <Card className="p-12 md:p-16 text-center border-dashed border-2 border-border/60 bg-card/40 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-6 max-w-md mx-auto">
+            <div className="relative">
+              <div className="absolute inset-0 bg-primary/20 rounded-full blur-2xl" />
+              <div className="relative p-6 bg-gradient-to-br from-primary/10 to-primary/5 rounded-full ring-2 ring-primary/20">
+                <FolderOpen className="w-12 h-12 text-primary" />
+              </div>
             </div>
             <div>
-              <h3 className="font-semibold text-lg mb-2">Nenhum projeto ainda</h3>
-              <p className="text-muted-foreground mb-4">
-                Crie seu primeiro projeto para começar a criar criativos
+              <h3 className="font-semibold text-xl mb-2">Nenhum projeto ainda</h3>
+              <p className="text-muted-foreground mb-6 leading-relaxed">
+                Crie seu primeiro projeto para começar a organizar e criar criativos incríveis
               </p>
-              <Button onClick={() => setIsDialogOpen(true)}>
+              <Button size="lg" onClick={() => setIsDialogOpen(true)} className="shadow-lg">
                 <Plus className="w-4 h-4 mr-2" />
                 Criar Primeiro Projeto
               </Button>
