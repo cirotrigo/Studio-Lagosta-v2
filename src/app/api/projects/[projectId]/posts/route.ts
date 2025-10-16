@@ -9,24 +9,22 @@ import { PostType, ScheduleType, RecurrenceFrequency } from '../../../../../../p
 const createPostSchema = z.object({
   postType: z.nativeEnum(PostType),
   caption: z.string().max(2200),
-  generationIds: z.array(z.string()),
+  generationIds: z.array(z.string()).min(1),
   scheduleType: z.nativeEnum(ScheduleType),
   scheduledDatetime: z.string().datetime().optional(),
-  recurringConfig: z
-    .object({
-      frequency: z.nativeEnum(RecurrenceFrequency),
-      daysOfWeek: z.array(z.number()).optional(),
-      time: z.string(),
-      endDate: z.string().datetime().optional(),
-    })
-    .optional(),
+  recurringConfig: z.object({
+    frequency: z.nativeEnum(RecurrenceFrequency),
+    daysOfWeek: z.array(z.number()).optional(),
+    time: z.string(),
+    endDate: z.string().datetime().optional(),
+  }).optional(),
   altText: z.array(z.string()).optional(),
   firstComment: z.string().optional(),
 })
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: { projectId: string } }
 ) {
   try {
     const { userId: clerkUserId } = await auth()
@@ -35,8 +33,7 @@ export async function POST(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const { projectId: projectIdStr } = await params
-    const projectId = parseInt(projectIdStr)
+    const projectId = parseInt(params.projectId)
 
     // Verify project ownership
     const project = await db.project.findFirst({
@@ -61,10 +58,13 @@ export async function POST(
     })
 
     if (generations.length !== data.generationIds.length) {
-      return NextResponse.json({ error: 'Some generations not found' }, { status: 404 })
+      return NextResponse.json(
+        { error: 'Some generations not found' },
+        { status: 404 }
+      )
     }
 
-    const mediaUrls = generations.map((g) => g.resultUrl).filter(Boolean) as string[]
+    const mediaUrls = generations.map(g => g.resultUrl).filter(Boolean) as string[]
 
     // Create post using the scheduler
     const scheduler = new PostScheduler()
@@ -77,6 +77,7 @@ export async function POST(
     })
 
     return NextResponse.json(result)
+
   } catch (error) {
     console.error('Error creating post:', error)
 
@@ -87,13 +88,16 @@ export async function POST(
       )
     }
 
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: { projectId: string } }
 ) {
   try {
     const { userId: clerkUserId } = await auth()
@@ -102,8 +106,7 @@ export async function GET(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const { projectId: projectIdStr } = await params
-    const projectId = parseInt(projectIdStr)
+    const projectId = parseInt(params.projectId)
 
     const posts = await db.socialPost.findMany({
       where: {
@@ -123,8 +126,12 @@ export async function GET(
     })
 
     return NextResponse.json(posts)
+
   } catch (error) {
     console.error('Error fetching posts:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }

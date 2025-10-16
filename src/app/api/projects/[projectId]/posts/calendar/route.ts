@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
-import { PostStatus } from '../../../../../../../prisma/generated/client'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
+  { params }: { params: { projectId: string } }
 ) {
   try {
     const { userId: clerkUserId } = await auth()
@@ -15,8 +14,7 @@ export async function GET(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const { projectId: projectIdStr } = await params
-    const projectId = parseInt(projectIdStr)
+    const projectId = parseInt(params.projectId)
 
     const { searchParams } = new URL(req.url)
     const startDate = searchParams.get('startDate')
@@ -43,7 +41,7 @@ export async function GET(
           },
           {
             // Already sent posts in the period
-            status: PostStatus.SENT,
+            status: 'SENT',
             sentAt: {
               gte: new Date(startDate),
               lte: new Date(endDate),
@@ -64,8 +62,12 @@ export async function GET(
     })
 
     return NextResponse.json(posts)
+
   } catch (error) {
     console.error('Error fetching calendar posts:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
   }
 }
