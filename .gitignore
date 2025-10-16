@@ -47,4 +47,5 @@ prisma/generated/
 my-replicate-app/
 
 # Internal prompts and docs (may contain sensitive info)
-prompts/
+# Only ignore the root-level prompts/ directory, not src/app/(protected)/prompts/
+/prompts/
