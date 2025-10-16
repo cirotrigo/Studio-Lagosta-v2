@@ -12,7 +12,8 @@ import {
   Tag,
   MoreHorizontal,
   MessageCircle,
-  Instagram
+  Instagram,
+  Plus
 } from 'lucide-react'
 import {
   Select,
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Project } from '@prisma/client'
+import type { Project } from '../../../../prisma/generated/client'
 
 type ViewMode = 'month' | 'week' | 'day'
 
@@ -31,6 +32,7 @@ interface CalendarHeaderProps {
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
   selectedProject?: Project
+  onCreatePost?: () => void
 }
 
 export function CalendarHeader({
@@ -38,7 +40,8 @@ export function CalendarHeader({
   onDateChange,
   viewMode,
   onViewModeChange,
-  selectedProject
+  selectedProject,
+  onCreatePost
 }: CalendarHeaderProps) {
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate)
@@ -92,6 +95,14 @@ export function CalendarHeader({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Botão Novo Post */}
+          {selectedProject && onCreatePost && (
+            <Button onClick={onCreatePost}>
+              <Plus className="w-4 h-4 mr-2" />
+              Novo Post
+            </Button>
+          )}
+
           <Button variant="ghost" size="sm">
             <MessageCircle className="w-4 h-4 mr-2" />
             Share Feedback

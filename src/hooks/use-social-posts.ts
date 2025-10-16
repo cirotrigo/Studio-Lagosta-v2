@@ -58,6 +58,8 @@ export function useSocialPosts(projectId: number) {
       api.post(`/api/projects/${projectId}/posts`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
+      // Also invalidate agenda-posts to update calendar view
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts', projectId] })
     },
   })
 
@@ -68,6 +70,7 @@ export function useSocialPosts(projectId: number) {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
       queryClient.invalidateQueries({ queryKey: ['social-post', variables.postId] })
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts', projectId] })
     },
   })
 
@@ -77,6 +80,7 @@ export function useSocialPosts(projectId: number) {
       api.delete(`/api/projects/${projectId}/posts/${postId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts', projectId] })
     },
   })
 

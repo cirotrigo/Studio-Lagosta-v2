@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { Search, Plus, Settings, Tag, Instagram } from 'lucide-react'
-import type { Project } from '@prisma/client'
+import type { Project } from '../../../../prisma/generated/client'
 
 interface ChannelsSidebarProps {
   projects: Project[]

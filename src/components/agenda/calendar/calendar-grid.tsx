@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { CalendarDayCell } from './calendar-day-cell'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { SocialPost } from '@prisma/client'
+import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarGridProps {
   posts: SocialPost[]

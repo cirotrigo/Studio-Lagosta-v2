@@ -2,7 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { PostMiniCard } from './post-mini-card'
-import type { SocialPost } from '@prisma/client'
+import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarDayCellProps {
   day: {

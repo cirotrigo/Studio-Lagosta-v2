@@ -8,7 +8,8 @@ import { CalendarHeader } from './calendar-header'
 import { CalendarGrid } from './calendar-grid'
 import { PostPreviewModal } from '../post-actions/post-preview-modal'
 import { ChannelsSidebar } from '../channels-sidebar/channels-list'
-import type { SocialPost, Project } from '@prisma/client'
+import { PostComposer } from '@/components/posts/post-composer'
+import type { SocialPost, Project } from '../../../../prisma/generated/client'
 
 type ViewMode = 'month' | 'week' | 'day'
 
@@ -17,6 +18,7 @@ export function AgendaCalendarView() {
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
+  const [isComposerOpen, setIsComposerOpen] = useState(false)
 
   // Fetch user projects (channels)
   const { data: projects } = useQuery<Project[]>({
@@ -54,13 +56,14 @@ export function AgendaCalendarView() {
           viewMode={viewMode}
           onViewModeChange={setViewMode}
           selectedProject={selectedProject}
+          onCreatePost={() => setIsComposerOpen(true)}
         />
 
         {/* Calendário */}
         <div className="flex-1 overflow-auto">
           {viewMode === 'month' && (
             <CalendarGrid
-              posts={posts || []}
+              posts={(posts as SocialPost[]) || []}
               selectedDate={selectedDate}
               onPostClick={setSelectedPost}
               isLoading={isLoading}
@@ -75,6 +78,15 @@ export function AgendaCalendarView() {
           post={selectedPost}
           open={!!selectedPost}
           onClose={() => setSelectedPost(null)}
+        />
+      )}
+
+      {/* Post Composer */}
+      {selectedProjectId && (
+        <PostComposer
+          projectId={selectedProjectId}
+          open={isComposerOpen}
+          onClose={() => setIsComposerOpen(false)}
         />
       )}
     </div>

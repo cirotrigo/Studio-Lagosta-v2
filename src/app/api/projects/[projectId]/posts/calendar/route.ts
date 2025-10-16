@@ -5,8 +5,9 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const { projectId: projectIdParam } = await params
   try {
     const { userId: clerkUserId } = await auth()
     if (!clerkUserId) {
@@ -14,7 +15,7 @@ export async function GET(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const projectId = parseInt(params.projectId)
+    const projectId = parseInt(projectIdParam)
 
     const { searchParams } = new URL(req.url)
     const startDate = searchParams.get('startDate')

@@ -24,8 +24,9 @@ const createPostSchema = z.object({
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const { projectId: projectIdParam } = await params
   try {
     const { userId: clerkUserId } = await auth()
     if (!clerkUserId) {
@@ -33,11 +34,11 @@ export async function POST(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const projectId = parseInt(params.projectId)
+    const projectId = parseInt(projectIdParam)
 
-    // Verify project ownership
+    // Verify project ownership - use clerkUserId, not user.id
     const project = await db.project.findFirst({
-      where: { id: projectId, userId: user.id },
+      where: { id: projectId, userId: clerkUserId },
     })
 
     if (!project) {
@@ -69,11 +70,22 @@ export async function POST(
     // Create post using the scheduler
     const scheduler = new PostScheduler()
     const result = await scheduler.createPost({
-      ...data,
       projectId,
       userId: user.id,
       generationId: data.generationIds[0], // Link to first creative
       mediaUrls,
+      postType: data.postType,
+      caption: data.caption,
+      scheduleType: data.scheduleType,
+      scheduledDatetime: data.scheduledDatetime,
+      recurringConfig: data.recurringConfig ? {
+        frequency: data.recurringConfig.frequency,
+        daysOfWeek: data.recurringConfig.daysOfWeek,
+        time: data.recurringConfig.time,
+        endDate: data.recurringConfig.endDate,
+      } : undefined,
+      altText: data.altText,
+      firstComment: data.firstComment,
     })
 
     return NextResponse.json(result)
@@ -97,8 +109,9 @@ export async function POST(
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const { projectId: projectIdParam } = await params
   try {
     const { userId: clerkUserId } = await auth()
     if (!clerkUserId) {
@@ -106,7 +119,7 @@ export async function GET(
     }
 
     const user = await getUserFromClerkId(clerkUserId)
-    const projectId = parseInt(params.projectId)
+    const projectId = parseInt(projectIdParam)
 
     const posts = await db.socialPost.findMany({
       where: {

@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Video, Layers, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { SocialPost } from '@prisma/client'
+import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostMiniCardProps {
   post: SocialPost

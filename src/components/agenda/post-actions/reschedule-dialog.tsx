@@ -17,7 +17,7 @@ import { toast } from 'sonner'
 import { CalendarIcon, Clock } from 'lucide-react'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/lib/utils'
-import type { SocialPost } from '@prisma/client'
+import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface RescheduleDialogProps {
   post: SocialPost
@@ -28,7 +28,7 @@ interface RescheduleDialogProps {
 export function RescheduleDialog({ post, open, onClose }: RescheduleDialogProps) {
   const [selectedDate, setSelectedDate] = useState<Date>()
   const [selectedTime, setSelectedTime] = useState('12:00')
-  const { reschedulePost } = usePostActions()
+  const { reschedulePost } = usePostActions(post.projectId)
 
   // Initialize with current scheduled time
   useEffect(() => {
@@ -61,7 +61,7 @@ export function RescheduleDialog({ post, open, onClose }: RescheduleDialogProps)
     try {
       await reschedulePost.mutateAsync({
         postId: post.id,
-        newDateTime: newDateTime.toISOString(),
+        scheduledDatetime: newDateTime.toISOString(),
       })
       toast.success('Post reagendado com sucesso!')
       onClose()

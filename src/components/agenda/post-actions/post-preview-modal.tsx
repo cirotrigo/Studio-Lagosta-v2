@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Dialog, DialogContent } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import {
   Send,
   Edit,
@@ -23,7 +24,7 @@ import {
 import { usePostActions } from '@/hooks/use-post-actions'
 import { RescheduleDialog } from './reschedule-dialog'
 import { toast } from 'sonner'
-import type { SocialPost } from '@prisma/client'
+import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostPreviewModalProps {
   post: SocialPost
@@ -33,7 +34,7 @@ interface PostPreviewModalProps {
 
 export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
-  const { publishNow, deletePost, duplicatePost } = usePostActions()
+  const { publishNow, deletePost, duplicatePost } = usePostActions(post.projectId)
 
   const handlePublishNow = async () => {
     try {
@@ -88,6 +89,10 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
     <>
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className="max-w-md">
+          <VisuallyHidden>
+            <DialogTitle>Preview do Post</DialogTitle>
+          </VisuallyHidden>
+
           {/* Header */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">

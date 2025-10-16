@@ -51,7 +51,7 @@ export class PostScheduler {
         scheduledDatetime: data.scheduledDatetime
           ? new Date(data.scheduledDatetime)
           : null,
-        recurringConfig: data.recurringConfig || null,
+        recurringConfig: data.recurringConfig ? JSON.parse(JSON.stringify(data.recurringConfig)) : null,
         status: data.scheduleType === 'IMMEDIATE' ? PostStatus.PROCESSING : PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
         zapierWebhookUrl: this.zapierWebhookUrl,

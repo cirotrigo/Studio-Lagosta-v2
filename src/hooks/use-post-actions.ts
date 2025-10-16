@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { SocialPost } from '../../prisma/generated/client'
 
 export function usePostActions(projectId: number) {
   const queryClient = useQueryClient()
@@ -49,13 +50,14 @@ export function usePostActions(projectId: number) {
   // Duplicate post
   const duplicatePost = useMutation({
     mutationFn: async (postId: string) => {
-      const post = await api.get(`/api/projects/${projectId}/posts/${postId}`)
-      
+      const post = await api.get<SocialPost>(`/api/projects/${projectId}/posts/${postId}`)
+
       return api.post(`/api/projects/${projectId}/posts`, {
         postType: post.postType,
         caption: post.caption,
         generationIds: post.generationId ? [post.generationId] : [],
-        scheduleType: 'DRAFT',
+        scheduleType: 'SCHEDULED' as const,
+        scheduledDatetime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         altText: post.altText,
         firstComment: post.firstComment,
       })
