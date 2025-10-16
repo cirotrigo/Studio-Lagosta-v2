@@ -14,6 +14,10 @@
     {
       "path": "/api/cron/refill-org-credits",
       "schedule": "0 0 1 * *"
+    },
+    {
+      "path": "/api/cron/posts",
+      "schedule": "* * * * *"
     }
   ]
 }
