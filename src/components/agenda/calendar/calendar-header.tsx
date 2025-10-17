@@ -13,8 +13,17 @@ import {
   MoreHorizontal,
   MessageCircle,
   Instagram,
-  Plus
+  Plus,
+  AlertCircle
 } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
+import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
 import {
   Select,
   SelectContent,
@@ -43,6 +52,8 @@ export function CalendarHeader({
   selectedProject,
   onCreatePost
 }: CalendarHeaderProps) {
+  const router = useRouter()
+
   const navigateMonth = (direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate)
     newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
@@ -51,6 +62,26 @@ export function CalendarHeader({
 
   const goToToday = () => {
     onDateChange(new Date())
+  }
+
+  const handleCreatePost = () => {
+    if (!selectedProject) {
+      toast.error('Selecione um projeto para criar um post')
+      return
+    }
+
+    if (!selectedProject.instagramAccountId) {
+      toast.error('Configure o Instagram antes de criar posts', {
+        description: 'Clique para ir às configurações',
+        action: {
+          label: 'Configurar',
+          onClick: () => router.push(`/projects/${selectedProject.id}?tab=configuracoes`)
+        }
+      })
+      return
+    }
+
+    onCreatePost?.()
   }
 
   return (
@@ -97,10 +128,32 @@ export function CalendarHeader({
         <div className="flex items-center gap-2">
           {/* Botão Novo Post */}
           {selectedProject && onCreatePost && (
-            <Button onClick={onCreatePost}>
-              <Plus className="w-4 h-4 mr-2" />
-              Novo Post
-            </Button>
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div>
+                    <Button
+                      onClick={handleCreatePost}
+                      variant={!selectedProject.instagramAccountId ? 'outline' : 'default'}
+                      className={!selectedProject.instagramAccountId ? 'opacity-60' : ''}
+                    >
+                      {!selectedProject.instagramAccountId && (
+                        <AlertCircle className="w-4 h-4 mr-2 text-amber-500" />
+                      )}
+                      {selectedProject.instagramAccountId && (
+                        <Plus className="w-4 h-4 mr-2" />
+                      )}
+                      Novo Post
+                    </Button>
+                  </div>
+                </TooltipTrigger>
+                {!selectedProject.instagramAccountId && (
+                  <TooltipContent>
+                    <p className="text-xs">Configure o Instagram nas configurações do projeto</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           )}
 
           <Button variant="ghost" size="sm">

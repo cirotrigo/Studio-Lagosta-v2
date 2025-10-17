@@ -28,6 +28,7 @@ import { toast } from 'sonner'
 import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
+import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ProjectShareControls } from '@/components/projects/project-share-controls'
@@ -429,11 +430,11 @@ return (
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">
-          <div className="space-y-4">
+          <div className="space-y-6">
             <Card className="p-6">
               <h3 className="text-lg font-semibold">Configurações do Projeto</h3>
               <p className="text-sm text-muted-foreground">
-                Ajuste integrações e recursos extras para este projeto. Novas opções serão adicionadas em breve.
+                Ajuste integrações e recursos extras para este projeto
               </p>
             </Card>
 
@@ -444,25 +445,37 @@ return (
                 <Skeleton className="mt-2 h-4 w-1/2" />
               </Card>
             ) : projectDetails ? (
-              <div className="space-y-4">
-                <GoogleDriveFolderSelector
+              <div className="space-y-6">
+                {/* Instagram Account Configuration */}
+                <InstagramAccountConfig
                   projectId={projectId}
-                  folderId={projectDetails.googleDriveFolderId}
-                  folderName={projectDetails.googleDriveFolderName}
-                  variant="backup"
+                  instagramAccountId={projectDetails.instagramAccountId}
+                  instagramUsername={projectDetails.instagramUsername}
+                  instagramProfileUrl={projectDetails.instagramProfileUrl}
                 />
-                <GoogleDriveFolderSelector
-                  projectId={projectId}
-                  folderId={projectDetails.googleDriveImagesFolderId}
-                  folderName={projectDetails.googleDriveImagesFolderName}
-                  variant="images"
-                />
-                <GoogleDriveFolderSelector
-                  projectId={projectId}
-                  folderId={projectDetails.googleDriveVideosFolderId}
-                  folderName={projectDetails.googleDriveVideosFolderName}
-                  variant="videos"
-                />
+
+                {/* Google Drive Folders */}
+                <div className="space-y-4">
+                  <h4 className="text-base font-semibold">Integração Google Drive</h4>
+                  <GoogleDriveFolderSelector
+                    projectId={projectId}
+                    folderId={projectDetails.googleDriveFolderId}
+                    folderName={projectDetails.googleDriveFolderName}
+                    variant="backup"
+                  />
+                  <GoogleDriveFolderSelector
+                    projectId={projectId}
+                    folderId={projectDetails.googleDriveImagesFolderId}
+                    folderName={projectDetails.googleDriveImagesFolderName}
+                    variant="images"
+                  />
+                  <GoogleDriveFolderSelector
+                    projectId={projectId}
+                    folderId={projectDetails.googleDriveVideosFolderId}
+                    folderName={projectDetails.googleDriveVideosFolderName}
+                    variant="videos"
+                  />
+                </div>
               </div>
             ) : (
               <Card className="p-6">

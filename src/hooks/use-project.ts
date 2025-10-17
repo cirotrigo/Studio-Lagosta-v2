@@ -14,6 +14,9 @@ export interface ProjectResponse {
   description: string | null
   status: 'ACTIVE' | 'INACTIVE' | 'ARCHIVED'
   logoUrl: string | null
+  instagramAccountId: string | null
+  instagramUsername: string | null
+  instagramProfileUrl: string | null
   googleDriveFolderId: string | null
   googleDriveFolderName: string | null
   googleDriveImagesFolderId: string | null

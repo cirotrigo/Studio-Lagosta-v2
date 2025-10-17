@@ -18,6 +18,10 @@
     {
       "path": "/api/cron/posts",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/cleanup-db",
+      "schedule": "0 2 * * 0"
     }
   ]
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import type { Prisma } from '@/lib/prisma-types'
+import { hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -25,7 +26,7 @@ function parseLimit(value: string | null): number | undefined {
  * - publicOnly: buscar apenas templates públicos
  */
 export async function GET(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -47,16 +48,49 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
     }
 
-    const project = await db.project.findFirst({ where: { id: parsed, userId } })
+    // Verificar se o usuário tem acesso ao projeto (dono ou membro da organização)
+    const project = await db.project.findFirst({
+      where: {
+        id: parsed,
+        OR: [
+          { userId },
+          ...(orgId ? [{
+            organizationProjects: {
+              some: {
+                organization: {
+                  clerkOrgId: orgId
+                }
+              }
+            }
+          }] : [])
+        ]
+      }
+    })
     if (!project) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
     projectId = parsed
   }
 
+  // Construir filtro para templates: públicos OU de projetos que o usuário tem acesso
   const where: Prisma.TemplateWhereInput = publicOnly
     ? { isPublic: true }
-    : { Project: { userId } }
+    : {
+        Project: {
+          OR: [
+            { userId },
+            ...(orgId ? [{
+              organizationProjects: {
+                some: {
+                  organization: {
+                    clerkOrgId: orgId
+                  }
+                }
+              }
+            }] : [])
+          ]
+        }
+      }
 
   if (typeof projectId === 'number') {
     where.projectId = projectId
@@ -106,7 +140,7 @@ export async function GET(req: Request) {
  * Cria um novo template
  */
 export async function POST(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -119,10 +153,29 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 })
     }
 
-    // Verificar se o projeto pertence ao usuário
-    const project = await db.project.findFirst({ where: { id: projectId, userId } })
+    // Verificar se o usuário tem permissão de escrita no projeto
+    const project = await db.project.findFirst({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+    })
+
     if (!project) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    }
+
+    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
     const template = await db.template.create({

@@ -5,8 +5,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { Search, Plus, Settings, Tag, Instagram } from 'lucide-react'
+import { Search, Plus, Settings, Tag, Instagram, AlertCircle } from 'lucide-react'
 import type { Project } from '../../../../prisma/generated/client'
 
 interface ChannelsSidebarProps {
@@ -90,46 +96,66 @@ export function ChannelsSidebar({
           {filteredProjects.map((project) => {
             const postCount = getPostCount(project.id)
             const isSelected = selectedProjectId === project.id
+            const hasInstagram = Boolean(project.instagramAccountId)
 
             return (
-              <button
-                key={project.id}
-                onClick={() => onSelectProject(project.id)}
-                className={cn(
-                  'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
-                  isSelected
-                    ? 'bg-primary text-primary-foreground'
-                    : 'hover:bg-muted/50'
-                )}
-              >
-                {/* Avatar */}
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                  {project.name.substring(0, 2).toUpperCase()}
-                </div>
+              <TooltipProvider key={project.id}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => onSelectProject(project.id)}
+                      className={cn(
+                        'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
+                        isSelected
+                          ? 'bg-primary text-primary-foreground'
+                          : 'hover:bg-muted/50',
+                        !hasInstagram && 'opacity-60'
+                      )}
+                    >
+                      {/* Avatar */}
+                      <div className={cn(
+                        "w-10 h-10 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-bold text-sm flex-shrink-0 relative",
+                        hasInstagram ? "from-pink-500 to-purple-500" : "from-gray-400 to-gray-500"
+                      )}>
+                        {project.name.substring(0, 2).toUpperCase()}
+                        {!hasInstagram && (
+                          <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
+                            <AlertCircle className="w-3 h-3 text-white" />
+                          </div>
+                        )}
+                      </div>
 
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium truncate">
-                      {project.instagramUsername || project.name}
-                    </p>
-                    <Instagram className="w-3 h-3 flex-shrink-0" />
-                  </div>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {project.name}
-                  </p>
-                </div>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium truncate">
+                            {project.instagramUsername || project.name}
+                          </p>
+                          {hasInstagram && <Instagram className="w-3 h-3 flex-shrink-0 text-pink-500" />}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {hasInstagram ? project.name : 'Instagram não configurado'}
+                        </p>
+                      </div>
 
-                {/* Post count */}
-                {postCount > 0 && (
-                  <Badge
-                    variant={isSelected ? 'outline' : 'secondary'}
-                    className="ml-auto"
-                  >
-                    {postCount}
-                  </Badge>
-                )}
-              </button>
+                      {/* Post count */}
+                      {postCount > 0 && (
+                        <Badge
+                          variant={isSelected ? 'outline' : 'secondary'}
+                          className="ml-auto"
+                        >
+                          {postCount}
+                        </Badge>
+                      )}
+                    </button>
+                  </TooltipTrigger>
+                  {!hasInstagram && (
+                    <TooltipContent side="right">
+                      <p className="text-xs">Configure o Instagram nas configurações do projeto</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              </TooltipProvider>
             )
           })}
 

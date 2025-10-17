@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
+import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -11,7 +12,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -22,21 +23,44 @@ export async function GET(
   }
 
   const template = await db.template.findFirst({
-    where: { id: templateId, Project: { userId } },
+    where: { id: templateId },
+    include: {
+      Project: {
+        include: {
+          organizationProjects: {
+            include: {
+              organization: {
+                select: {
+                  clerkOrgId: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
   if (!template) {
     return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
   }
 
-  return NextResponse.json(template)
+  // Verificar se o usuário tem acesso ao projeto (dono ou membro de organização)
+  if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+  }
+
+  // Remover dados do projeto antes de retornar o template
+  const { Project, ...templateData } = template
+  return NextResponse.json(templateData)
 }
 
 export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -49,11 +73,31 @@ export async function PUT(
 
   const existing = await db.template.findFirst({
     where: { id: templateId },
-    include: { Project: true },
+    include: {
+      Project: {
+        include: {
+          organizationProjects: {
+            include: {
+              organization: {
+                select: {
+                  clerkOrgId: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
-  if (!existing || existing.Project.userId !== userId) {
+  if (!existing) {
     return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+  }
+
+  // Verificar se o usuário tem permissão de escrita no projeto
+  if (!hasProjectWriteAccess(existing.Project, { userId, orgId, orgRole })) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
   try {
@@ -88,7 +132,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -101,11 +145,31 @@ export async function DELETE(
 
   const existing = await db.template.findFirst({
     where: { id: templateId },
-    include: { Project: true },
+    include: {
+      Project: {
+        include: {
+          organizationProjects: {
+            include: {
+              organization: {
+                select: {
+                  clerkOrgId: true,
+                  name: true,
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   })
 
-  if (!existing || existing.Project.userId !== userId) {
+  if (!existing) {
     return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
+  }
+
+  // Verificar se o usuário tem permissão de escrita no projeto
+  if (!hasProjectWriteAccess(existing.Project, { userId, orgId, orgRole })) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
   try {

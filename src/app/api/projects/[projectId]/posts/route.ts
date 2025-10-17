@@ -39,10 +39,22 @@ export async function POST(
     // Verify project ownership - use clerkUserId, not user.id
     const project = await db.project.findFirst({
       where: { id: projectId, userId: clerkUserId },
+      select: {
+        id: true,
+        instagramAccountId: true,
+      },
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    // Validate Instagram configuration
+    if (!project.instagramAccountId) {
+      return NextResponse.json(
+        { error: 'Instagram account not configured for this project' },
+        { status: 400 }
+      )
     }
 
     // Validate data

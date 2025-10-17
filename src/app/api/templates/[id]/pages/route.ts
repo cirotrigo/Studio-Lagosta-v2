@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 const createPageSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -18,7 +19,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -26,16 +27,33 @@ export async function GET(
     const { id } = await params
     const templateId = Number(id)
 
-    // Verificar ownership do template
+    // Verificar acesso ao template através do projeto
     const template = await db.template.findFirst({
-      where: {
-        id: templateId,
-        createdBy: userId,
+      where: { id: templateId },
+      include: {
+        Project: {
+          include: {
+            organizationProjects: {
+              include: {
+                organization: {
+                  select: {
+                    clerkOrgId: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     })
 
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+    }
+
+    if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     // Buscar todas as páginas do template
@@ -66,7 +84,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -74,16 +92,33 @@ export async function POST(
     const { id } = await params
     const templateId = Number(id)
 
-    // Verificar ownership do template
+    // Verificar permissão de escrita no template através do projeto
     const template = await db.template.findFirst({
-      where: {
-        id: templateId,
-        createdBy: userId,
+      where: { id: templateId },
+      include: {
+        Project: {
+          include: {
+            organizationProjects: {
+              include: {
+                organization: {
+                  select: {
+                    clerkOrgId: true,
+                    name: true,
+                  },
+                },
+              },
+            },
+          },
+        },
       },
     })
 
     if (!template) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+    }
+
+    if (!hasProjectWriteAccess(template.Project, { userId, orgId, orgRole })) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     const body = await request.json()

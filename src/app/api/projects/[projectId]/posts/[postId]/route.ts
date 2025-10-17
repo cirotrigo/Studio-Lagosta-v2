@@ -37,7 +37,7 @@ export async function GET(
     const post = await db.socialPost.findUnique({
       where: { id: postId },
       include: {
-        generation: true,
+        Generation: true,
       },
     })
 
@@ -122,7 +122,7 @@ export async function PUT(
         ...(firstComment !== undefined && { firstComment }),
       },
       include: {
-        generation: true,
+        Generation: true,
       },
     })
 
