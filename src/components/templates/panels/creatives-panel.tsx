@@ -63,20 +63,40 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
     }
   }, [creativeToDelete, deleteCreative, toast])
 
-  const handleDownload = React.useCallback((url: string, fileName: string) => {
-    // Criar link de download
-    const link = document.createElement('a')
-    link.href = url
-    link.download = fileName
-    link.target = '_blank'
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
+  const handleDownload = React.useCallback(async (url: string, fileName: string) => {
+    try {
+      // Buscar o arquivo e fazer download via blob
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Download falhou com status ${response.status}`)
+      }
 
-    toast({
-      title: 'Download iniciado',
-      description: 'O criativo está sendo baixado.',
-    })
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+
+      // Criar link de download
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+
+      // Limpar blob URL
+      URL.revokeObjectURL(blobUrl)
+
+      toast({
+        title: 'Download concluído',
+        description: 'O criativo foi baixado com sucesso.',
+      })
+    } catch (error) {
+      console.error('[CreativesPanel] Falha ao baixar arquivo:', error)
+      toast({
+        title: 'Erro ao baixar',
+        description: 'Não foi possível baixar o criativo.',
+        variant: 'destructive',
+      })
+    }
   }, [toast])
 
   if (isLoading) {
