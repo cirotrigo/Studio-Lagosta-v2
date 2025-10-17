@@ -53,21 +53,61 @@ export async function GET(
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
-    // Fetch generations for this project
+    // Parse pagination params
+    const url = new URL(req.url)
+    const page = parseInt(url.searchParams.get('page') || '1', 10)
+    const pageSize = parseInt(url.searchParams.get('pageSize') || '100', 10)
+    const createdByFilter = url.searchParams.get('createdBy')
+
+    // Build where clause
+    const where: any = { projectId }
+    if (createdByFilter) {
+      where.createdBy = createdByFilter
+    }
+
+    // Fetch total count
+    const total = await db.generation.count({ where })
+
+    // Fetch generations for this project with pagination
     const generations = await db.generation.findMany({
-      where: {
-        projectId: projectId,
-      },
+      where,
       select: {
         id: true,
-        templateName: true,
+        status: true,
+        templateId: true,
+        fieldValues: true,
         resultUrl: true,
+        googleDriveFileId: true,
+        googleDriveBackupUrl: true,
+        projectId: true,
+        templateName: true,
+        projectName: true,
+        createdBy: true,
         createdAt: true,
+        completedAt: true,
+        Template: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            dimensions: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
     })
 
-    return NextResponse.json(generations)
+    return NextResponse.json({
+      generations,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    })
   } catch (error) {
     console.error('Error fetching generations:', error)
     return NextResponse.json(
