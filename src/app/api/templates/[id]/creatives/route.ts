@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 interface CreativeFieldValues {
   videoExport?: boolean
@@ -22,7 +23,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -34,13 +35,22 @@ export async function GET(
       return NextResponse.json({ error: 'ID de template inválido' }, { status: 400 })
     }
 
-    // Buscar template e verificar ownership
+    // Buscar template e verificar acesso (dono ou membro da organização)
     const template = await db.template.findFirst({
       where: { id: templateId },
       include: {
         Project: {
-          select: {
-            userId: true,
+          include: {
+            organizationProjects: {
+              include: {
+                organization: {
+                  select: {
+                    clerkOrgId: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -50,7 +60,7 @@ export async function GET(
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    if (template.Project.userId !== userId) {
+    if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
@@ -130,7 +140,7 @@ export async function GET(
  */
 export async function DELETE(req: Request) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -142,15 +152,24 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'ID do criativo não fornecido' }, { status: 400 })
     }
 
-    // Buscar criativo e verificar ownership
+    // Buscar criativo e verificar acesso (dono ou membro da organização)
     const creative = await db.generation.findFirst({
       where: { id: creativeId },
       include: {
         Template: {
           include: {
             Project: {
-              select: {
-                userId: true,
+              include: {
+                organizationProjects: {
+                  include: {
+                    organization: {
+                      select: {
+                        clerkOrgId: true,
+                        name: true,
+                      },
+                    },
+                  },
+                },
               },
             },
           },
@@ -162,7 +181,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Criativo não encontrado' }, { status: 404 })
     }
 
-    if (creative.Template?.Project?.userId !== userId) {
+    if (!hasProjectWriteAccess(creative.Template?.Project ?? null, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

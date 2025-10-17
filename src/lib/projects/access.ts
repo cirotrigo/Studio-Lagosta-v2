@@ -57,6 +57,6 @@ export function hasProjectWriteAccess(
     (item) => item.organization.clerkOrgId === orgId,
   )
   if (!share) return false
-  if (share.defaultCanEdit) return true
-  return orgRole === 'org:admin'
+  // Todos os membros da organização têm permissão de edição colaborativa
+  return true
 }
