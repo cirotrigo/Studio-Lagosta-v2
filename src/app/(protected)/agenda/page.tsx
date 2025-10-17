@@ -1,6 +1,5 @@
 'use client'
 
-import { useState } from 'react'
 import { useUser } from '@clerk/nextjs'
 import { AgendaCalendarView } from '@/components/agenda/calendar/agenda-calendar-view'
 import { Loader2 } from 'lucide-react'

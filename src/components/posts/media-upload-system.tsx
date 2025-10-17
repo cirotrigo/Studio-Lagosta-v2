@@ -45,7 +45,7 @@ export function MediaUploadSystem({
 }: MediaUploadSystemProps) {
   const [activeTab, setActiveTab] = useState('generations')
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false)
-  const [selectedGoogleDriveFiles, setSelectedGoogleDriveFiles] = useState<GoogleDriveItem[]>([])
+  const [_selectedGoogleDriveFiles, _setSelectedGoogleDriveFiles] = useState<GoogleDriveItem[]>([])
 
   // Use refs to avoid recreating callbacks
   const selectedMediaRef = useRef(selectedMedia)
@@ -107,7 +107,7 @@ export function MediaUploadSystem({
 
     try {
       await downloadDriveMutation.mutateAsync(items.map(item => item.id))
-    } catch (error) {
+    } catch (_error) {
       // Error already handled in mutation
     }
   }
@@ -279,7 +279,7 @@ export function MediaUploadSystem({
         mode="images"
         multiSelect={true}
         maxSelection={remainingSlots}
-        selectedItems={selectedGoogleDriveFiles}
+        selectedItems={_selectedGoogleDriveFiles}
         onSelect={() => {}} // Not used in multi-select mode
         onMultiSelectConfirm={handleGoogleDriveConfirm}
       />

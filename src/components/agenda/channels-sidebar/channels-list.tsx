@@ -35,7 +35,7 @@ export function ChannelsSidebar({
   )
 
   // Count posts for each project (simulated for now)
-  const getPostCount = (projectId: number) => {
+  const getPostCount = (_projectId: number) => {
     // TODO: Implement actual post count from API
     return Math.floor(Math.random() * 10)
   }

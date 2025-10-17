@@ -14,7 +14,7 @@ import { SchedulePicker } from './schedule-picker'
 import { RecurringConfig } from './recurring-config'
 import { toast } from 'sonner'
 import { PostType, ScheduleType, RecurrenceFrequency } from '../../../prisma/generated/client'
-import { Calendar, Clock, Repeat, Zap } from 'lucide-react'
+import { Calendar, Repeat, Zap } from 'lucide-react'
 
 const postSchema = z.object({
   postType: z.enum(['POST', 'STORY', 'REEL', 'CAROUSEL']),

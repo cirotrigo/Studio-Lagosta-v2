@@ -21,6 +21,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'File must be an image' }, { status: 400 })
     }
 
+    // Verificar tamanho do arquivo (max 25MB por padrão)
+    const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')
+    const maxBytes = Math.max(1, maxMb) * 1024 * 1024
+    if (file.size > maxBytes) {
+      return NextResponse.json(
+        { error: `Arquivo muito grande (máx ${maxMb}MB)` },
+        { status: 413 }
+      )
+    }
+
     // Upload para Vercel Blob
     const fileName = `upload-${Date.now()}-${file.name}`
     const blob = await put(fileName, file, {

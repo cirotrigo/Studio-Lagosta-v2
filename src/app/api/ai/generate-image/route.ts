@@ -45,30 +45,67 @@ export async function POST(request: Request) {
     if (body.referenceImages && body.referenceImages.length > 0) {
       console.log('[AI Generate] Uploading reference images to Vercel Blob...')
 
-      // Obter cookie de autenticação do request original
-      const cookie = request.headers.get('cookie')
-
       publicReferenceUrls = await Promise.all(
         body.referenceImages.map(async (url, index) => {
-          // Fazer fetch da imagem do Google Drive com autenticação
-          const response = await fetch(url, {
-            headers: cookie ? { cookie } : {}
-          })
-          if (!response.ok) {
-            console.error(`[AI Generate] Failed to fetch reference image ${index + 1}:`, response.status, response.statusText)
-            throw new Error(`Failed to fetch reference image ${index + 1}`)
+          try {
+            // Se já é uma URL pública do Vercel Blob, usar diretamente
+            if (url.includes('vercel-storage.com') || url.includes('blob.vercel-storage.com')) {
+              console.log('[AI Generate] Using existing Vercel Blob URL:', url)
+              return url
+            }
+
+            // Se é uma URL do Google Drive, fazer fetch com autenticação
+            let imageBuffer: ArrayBuffer
+            let contentType = 'image/jpeg'
+
+            if (url.includes('/api/google-drive/')) {
+              // Construir URL absoluta se necessária
+              const absoluteUrl = url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}${url}`
+
+              // Obter cookie de autenticação do request original
+              const cookie = request.headers.get('cookie')
+
+              console.log('[AI Generate] Fetching Google Drive image:', absoluteUrl)
+              const response = await fetch(absoluteUrl, {
+                headers: cookie ? { cookie } : {}
+              })
+
+              if (!response.ok) {
+                console.error(`[AI Generate] Failed to fetch reference image ${index + 1}:`, response.status, response.statusText)
+                throw new Error(`Failed to fetch reference image ${index + 1} from Google Drive`)
+              }
+
+              imageBuffer = await response.arrayBuffer()
+              contentType = response.headers.get('content-type') || 'image/jpeg'
+            } else {
+              // Para outras URLs, fazer fetch normal
+              const response = await fetch(url)
+              if (!response.ok) {
+                throw new Error(`Failed to fetch reference image ${index + 1}`)
+              }
+              imageBuffer = await response.arrayBuffer()
+              contentType = response.headers.get('content-type') || 'image/jpeg'
+            }
+
+            // Validar tamanho da imagem de referência
+            const maxMb = 10 // Limite de 10MB para imagens de referência
+            if (imageBuffer.byteLength > maxMb * 1024 * 1024) {
+              throw new Error(`Reference image ${index + 1} is too large (max ${maxMb}MB)`)
+            }
+
+            // Upload para Vercel Blob
+            const fileName = `ai-ref-${Date.now()}-${index}.jpg`
+            const blob = await put(fileName, imageBuffer, {
+              access: 'public',
+              contentType,
+            })
+
+            console.log('[AI Generate] Reference image uploaded:', blob.url)
+            return blob.url
+          } catch (error) {
+            console.error(`[AI Generate] Error processing reference image ${index + 1}:`, error)
+            throw new Error(`Failed to process reference image ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`)
           }
-          const imageBuffer = await response.arrayBuffer()
-
-          // Upload para Vercel Blob
-          const fileName = `ref-${Date.now()}-${index}.jpg`
-          const blob = await put(fileName, imageBuffer, {
-            access: 'public',
-            contentType: response.headers.get('content-type') || 'image/jpeg',
-          })
-
-          console.log('[AI Generate] Reference image uploaded:', blob.url)
-          return blob.url
         })
       )
     }

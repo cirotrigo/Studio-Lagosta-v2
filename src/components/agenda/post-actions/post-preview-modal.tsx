@@ -41,7 +41,7 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
       await publishNow.mutateAsync(post.id)
       toast.success('Post publicado com sucesso!')
       onClose()
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao publicar post')
     }
   }
@@ -53,7 +53,7 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
       await deletePost.mutateAsync(post.id)
       toast.success('Post deletado')
       onClose()
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao deletar post')
     }
   }
@@ -63,7 +63,7 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
       await duplicatePost.mutateAsync(post.id)
       toast.success('Post duplicado com sucesso!')
       onClose()
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao duplicar post')
     }
   }

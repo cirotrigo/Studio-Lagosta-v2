@@ -49,21 +49,26 @@ export async function GET(
           'X-Content-Type-Options': 'nosniff',
         },
       })
-    } catch (_thumbnailError) {
-      console.warn(`[API] Thumbnail not available for ${fileId}, falling back to full image`)
+    } catch (thumbnailError) {
+      console.warn(`[API] Thumbnail not available for ${fileId}, falling back to full image:`, thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error')
 
-      // Fallback: retornar imagem completa se thumbnail não disponível
-      const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
-      const webStream = Readable.toWeb(stream)
+      try {
+        // Fallback: retornar imagem completa se thumbnail não disponível
+        const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
+        const webStream = Readable.toWeb(stream)
 
-      return new NextResponse(webStream as unknown as BodyInit, {
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-          'Cache-Control': 'public, max-age=3600',
-          'X-Thumbnail-Fallback': 'true',
-        },
-      })
+        return new NextResponse(webStream as unknown as BodyInit, {
+          headers: {
+            'Content-Type': mimeType,
+            'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
+            'Cache-Control': 'public, max-age=3600',
+            'X-Thumbnail-Fallback': 'true',
+          },
+        })
+      } catch (fallbackError) {
+        console.error(`[API] Both thumbnail and full image failed for ${fileId}:`, fallbackError)
+        throw fallbackError // Re-throw para ser capturado pelo catch externo
+      }
     }
   } catch (error) {
     if (error instanceof RateLimitError) {

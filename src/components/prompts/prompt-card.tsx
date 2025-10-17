@@ -34,7 +34,7 @@ export function PromptCard({ prompt, onEdit }: PromptCardProps) {
       setCopied(true)
       toast({ description: 'Prompt copiado para a área de transferência!' })
       setTimeout(() => setCopied(false), 2000)
-    } catch (error) {
+    } catch (_error) {
       toast({
         variant: 'destructive',
         description: 'Erro ao copiar prompt',
@@ -47,7 +47,7 @@ export function PromptCard({ prompt, onEdit }: PromptCardProps) {
       try {
         await deleteMutation.mutateAsync(prompt.id)
         toast({ description: 'Prompt deletado com sucesso!' })
-      } catch (error) {
+      } catch (_error) {
         toast({
           variant: 'destructive',
           description: 'Erro ao deletar prompt',

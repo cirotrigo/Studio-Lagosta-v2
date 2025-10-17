@@ -427,18 +427,24 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
           {(referenceImages.length > 0 || localFiles.length > 0) && (
             <div className="grid grid-cols-3 gap-2">
               {/* Imagens do Google Drive */}
-              {referenceImages.map((img, index) => (
-                <div key={`ref-${img.id}-${index}`} className="relative group">
+              {referenceImages.map((refImg, index) => (
+                <div key={`ref-${refImg.id}-${index}`} className="relative group">
                   <div className="relative w-full h-20 rounded border overflow-hidden">
                     <Image
-                      src={`/api/google-drive/thumbnail/${img.id}`}
-                      alt={img.name}
+                      src={`/api/google-drive/thumbnail/${refImg.id}`}
+                      alt={refImg.name}
                       fill
                       className="object-cover"
+                      unoptimized
+                      onError={(e) => {
+                        // Fallback to full image if thumbnail fails
+                        const imgElement = e.currentTarget
+                        imgElement.src = `/api/google-drive/image/${refImg.id}`
+                      }}
                     />
                   </div>
                   <button
-                    onClick={() => handleRemoveReferenceImage(img.id)}
+                    onClick={() => handleRemoveReferenceImage(refImg.id)}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
                     <X className="h-3 w-3" />

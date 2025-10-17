@@ -210,8 +210,27 @@ export class PostScheduler {
     }
   }
 
-  async createRecurringSeries(parentPost: any) {
-    const { recurringConfig } = parentPost
+  async createRecurringSeries(parentPost: unknown) {
+    const post = parentPost as {
+      id: string
+      projectId: number
+      userId: string
+      generationId: string
+      postType: PostType
+      caption: string
+      mediaUrls: string[]
+      altText: string[]
+      firstComment: string | null
+      zapierWebhookUrl: string
+      recurringConfig: {
+        frequency: RecurrenceFrequency
+        time: string
+        daysOfWeek?: number[]
+        endDate?: string
+      } | null
+    }
+
+    const { recurringConfig } = post
     if (!recurringConfig) return
 
     const occurrences = this.generateOccurrences(
@@ -225,21 +244,21 @@ export class PostScheduler {
     for (const occurrence of occurrences) {
       await db.socialPost.create({
         data: {
-          parentPostId: parentPost.id,
-          projectId: parentPost.projectId,
-          userId: parentPost.userId,
-          generationId: parentPost.generationId,
-          postType: parentPost.postType,
-          caption: parentPost.caption,
-          mediaUrls: parentPost.mediaUrls,
-          altText: parentPost.altText,
-          firstComment: parentPost.firstComment,
+          parentPostId: post.id,
+          projectId: post.projectId,
+          userId: post.userId,
+          generationId: post.generationId,
+          postType: post.postType,
+          caption: post.caption,
+          mediaUrls: post.mediaUrls,
+          altText: post.altText,
+          firstComment: post.firstComment,
           scheduleType: ScheduleType.SCHEDULED,
           scheduledDatetime: occurrence,
           status: PostStatus.SCHEDULED,
           isRecurring: true,
           originalScheduleType: ScheduleType.RECURRING,
-          zapierWebhookUrl: parentPost.zapierWebhookUrl,
+          zapierWebhookUrl: post.zapierWebhookUrl,
         },
       })
     }
@@ -260,7 +279,7 @@ export class PostScheduler {
       ? new Date(endDate)
       : new Date(startDate.getTime() + 365 * 24 * 60 * 60 * 1000) // 1 year
 
-    let currentDate = new Date(startDate)
+    const currentDate = new Date(startDate)
 
     while (currentDate <= maxDate && occurrences.length < 365) {
       if (frequency === RecurrenceFrequency.DAILY) {
@@ -307,13 +326,13 @@ export class PostScheduler {
     })
   }
 
-  async createLog(postId: string, event: PostLogEvent, message: string, metadata?: any) {
+  async createLog(postId: string, event: PostLogEvent, message: string, metadata?: unknown) {
     await db.postLog.create({
       data: {
         postId,
         event,
         message,
-        metadata,
+        metadata: metadata as any,
       },
     })
   }

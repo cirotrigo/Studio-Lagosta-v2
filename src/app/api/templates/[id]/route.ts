@@ -52,7 +52,7 @@ export async function GET(
   }
 
   // Remover dados do projeto antes de retornar o template
-  const { Project, ...templateData } = template
+  const { Project: _Project, ...templateData } = template
   return NextResponse.json(templateData)
 }
 

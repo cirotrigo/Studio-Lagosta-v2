@@ -65,7 +65,7 @@ export function RescheduleDialog({ post, open, onClose }: RescheduleDialogProps)
       })
       toast.success('Post reagendado com sucesso!')
       onClose()
-    } catch (error) {
+    } catch (_error) {
       toast.error('Erro ao reagendar post')
     }
   }
