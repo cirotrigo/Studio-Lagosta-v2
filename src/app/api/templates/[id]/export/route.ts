@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { put } from '@vercel/blob'
+import { hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -16,7 +17,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId, orgId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -28,15 +29,22 @@ export async function POST(
       return NextResponse.json({ error: 'ID de template inválido' }, { status: 400 })
     }
 
-    // Buscar template e verificar ownership
+    // Buscar template e verificar acesso (dono ou membro da organização)
     const template = await db.template.findFirst({
       where: { id: templateId },
       include: {
         Project: {
-          select: {
-            id: true,
-            userId: true,
-            name: true,
+          include: {
+            organizationProjects: {
+              include: {
+                organization: {
+                  select: {
+                    clerkOrgId: true,
+                    name: true,
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -46,7 +54,7 @@ export async function POST(
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    if (template.Project.userId !== userId) {
+    if (!hasProjectWriteAccess(template.Project, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
