@@ -36,40 +36,19 @@ export async function GET(
     const { searchParams } = new URL(request.url)
     const size = parseInt(searchParams.get('size') ?? '400', 10)
 
-    // Tentar obter thumbnail otimizado
-    try {
-      const { stream, mimeType, name } = await googleDriveService.getThumbnailStream(fileId, size)
-      const webStream = Readable.toWeb(stream)
+    // Get image stream from Google Drive
+    // Note: getThumbnailStream returns full image, Next.js Image component handles optimization
+    const { stream, mimeType, name } = await googleDriveService.getThumbnailStream(fileId, size)
+    const webStream = Readable.toWeb(stream)
 
-      return new NextResponse(webStream as unknown as BodyInit, {
-        headers: {
-          'Content-Type': mimeType,
-          'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-          'Cache-Control': 'public, max-age=3600, immutable', // Cache agressivo para thumbnails
-          'X-Content-Type-Options': 'nosniff',
-        },
-      })
-    } catch (thumbnailError) {
-      console.warn(`[API] Thumbnail not available for ${fileId}, falling back to full image:`, thumbnailError instanceof Error ? thumbnailError.message : 'Unknown error')
-
-      try {
-        // Fallback: retornar imagem completa se thumbnail não disponível
-        const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
-        const webStream = Readable.toWeb(stream)
-
-        return new NextResponse(webStream as unknown as BodyInit, {
-          headers: {
-            'Content-Type': mimeType,
-            'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-            'Cache-Control': 'public, max-age=3600',
-            'X-Thumbnail-Fallback': 'true',
-          },
-        })
-      } catch (fallbackError) {
-        console.error(`[API] Both thumbnail and full image failed for ${fileId}:`, fallbackError)
-        throw fallbackError // Re-throw para ser capturado pelo catch externo
-      }
-    }
+    return new NextResponse(webStream as unknown as BodyInit, {
+      headers: {
+        'Content-Type': mimeType,
+        'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
+        'Cache-Control': 'public, max-age=3600, immutable', // Aggressive cache for images
+        'X-Content-Type-Options': 'nosniff',
+      },
+    })
   } catch (error) {
     if (error instanceof RateLimitError) {
       return NextResponse.json(

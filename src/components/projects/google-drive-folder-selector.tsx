@@ -607,7 +607,6 @@ function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
               )}
               onError={handleImageError}
               onLoad={handleImageLoad}
-              unoptimized
             />
 
             {/* Error state */}

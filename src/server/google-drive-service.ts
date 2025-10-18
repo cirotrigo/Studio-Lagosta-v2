@@ -287,47 +287,44 @@ export class GoogleDriveService {
     }
   }
 
-  async getThumbnailStream(fileId: string, size = 400) {
+  async getThumbnailStream(fileId: string, _size = 400) {
     this.ensureEnabled()
 
-    // Get file metadata including thumbnailLink
+    // Note: size parameter is kept for API compatibility but not used
+    // Google Drive API doesn't provide a reliable thumbnail endpoint via SDK
+    // We return the full image and let Next.js Image optimization handle resizing
+
+    // Get file metadata
     const metadata = await this.withRetry('getThumbnailMetadata', async () =>
       this.drive.files.get(
         {
           fileId,
-          fields: 'name, mimeType, thumbnailLink',
+          fields: 'name, mimeType',
           supportsAllDrives: true,
         },
         { timeout: 15_000 },
       ),
     )
 
-    // Try to get thumbnail using Google's thumbnail generation
-    try {
-      // Google Drive API doesn't have a direct thumbnail endpoint via SDK
-      // We need to use the thumbnailLink or fall back to the full image
-      if (metadata.data.thumbnailLink) {
-        // The thumbnailLink already includes size parameter, but we can modify it
-        const thumbnailUrl = metadata.data.thumbnailLink.replace(/=s\d+/, `=s${size}`)
+    // Get the full image stream
+    const mediaResponse = await this.withRetry('getThumbnailStream', async () =>
+      this.drive.files.get(
+        {
+          fileId,
+          alt: 'media',
+          supportsAllDrives: true,
+          acknowledgeAbuse: false,
+        },
+        { responseType: 'stream', timeout: LIST_TIMEOUT },
+      ),
+    )
 
-        // Fetch thumbnail using the OAuth client
-        const response = await this.oauth2Client.request<Readable>({
-          url: thumbnailUrl,
-          responseType: 'stream',
-        })
+    const stream = mediaResponse.data as unknown as Readable
 
-        return {
-          stream: response.data,
-          mimeType: 'image/jpeg', // Thumbnails are usually JPEG
-          name: metadata.data.name ?? fileId,
-        }
-      }
-
-      // No thumbnail link available, throw to trigger fallback
-      throw new Error('No thumbnail link available for this file')
-    } catch (error) {
-      console.warn(`[GoogleDriveService] Failed to get thumbnail for ${fileId}, will use full image:`, error)
-      throw error // Let the API route handle fallback to full image
+    return {
+      stream,
+      mimeType: metadata.data.mimeType ?? 'application/octet-stream',
+      name: metadata.data.name ?? fileId,
     }
   }
 
