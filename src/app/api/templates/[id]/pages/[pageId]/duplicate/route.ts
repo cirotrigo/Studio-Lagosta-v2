@@ -40,14 +40,19 @@ export async function POST(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
-    // Obter o maior order atual
-    const maxOrder = await db.page.findFirst({
-      where: { templateId },
-      orderBy: { order: 'desc' },
-      select: { order: true },
+    // A página duplicada será sempre inserida na posição 1 (segunda página)
+    // Primeiro, incrementar o order de todas as páginas que estão na posição 1 ou superior
+    await db.page.updateMany({
+      where: {
+        templateId,
+        order: { gte: 1 },
+      },
+      data: {
+        order: { increment: 1 },
+      },
     })
 
-    // Criar cópia da página (manter layers como está - já é JSON)
+    // Criar cópia da página na posição 1 (segunda página)
     const newPage = await db.page.create({
       data: {
         name: `${pageToDuplicate.name} (cópia)`,
@@ -55,7 +60,7 @@ export async function POST(
         height: pageToDuplicate.height,
         layers: pageToDuplicate.layers, // Já está serializado no banco
         background: pageToDuplicate.background,
-        order: (maxOrder?.order ?? 0) + 1,
+        order: 1, // Sempre segunda página
         templateId,
       },
     })

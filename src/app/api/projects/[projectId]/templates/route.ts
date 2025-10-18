@@ -65,16 +65,38 @@ export async function POST(
     const payload = await req.json()
     const parsed = createTemplateSchema.parse(payload)
 
-    const template = await db.template.create({
-      data: {
-        name: parsed.name,
-        type: parsed.type,
-        dimensions: parsed.dimensions,
-        projectId: projectIdNum,
-        createdBy: authData.userId,
-        designData: createBlankDesign(parsed.type) as unknown as Prisma.JsonValue,
-        dynamicFields: [] as unknown as Prisma.JsonValue,
-      },
+    const blankDesign = createBlankDesign(parsed.type)
+
+    // Criar template e primeira página juntos em uma transação
+    const template = await db.$transaction(async (tx) => {
+      // Criar o template
+      const newTemplate = await tx.template.create({
+        data: {
+          name: parsed.name,
+          type: parsed.type,
+          dimensions: parsed.dimensions,
+          projectId: projectIdNum,
+          createdBy: authData.userId,
+          designData: blankDesign as unknown as Prisma.JsonValue,
+          dynamicFields: [] as unknown as Prisma.JsonValue,
+        },
+      })
+
+      // Criar automaticamente a primeira página (Página 1) com o design inicial
+      // Esta página serve como "template base" e preserva o design original
+      await tx.page.create({
+        data: {
+          name: 'Página 1',
+          width: blankDesign.canvas.width,
+          height: blankDesign.canvas.height,
+          layers: JSON.stringify([]), // Página inicial vazia
+          background: blankDesign.canvas.backgroundColor,
+          order: 0, // Sempre primeira página
+          templateId: newTemplate.id,
+        },
+      })
+
+      return newTemplate
     })
 
     return NextResponse.json(template, { status: 201 })

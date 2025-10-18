@@ -178,21 +178,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    const template = await db.template.create({
-      data: {
-        name,
-        type,
-        dimensions,
-        designData,
-        dynamicFields: dynamicFields ?? [],
-        thumbnailUrl,
-        category,
-        tags: tags ?? [],
-        isPublic: isPublic ?? false,
-        isPremium: isPremium ?? false,
-        projectId,
-        createdBy: userId,
-      },
+    // Criar template e primeira página juntos em uma transação
+    const template = await db.$transaction(async (tx) => {
+      // Criar o template
+      const newTemplate = await tx.template.create({
+        data: {
+          name,
+          type,
+          dimensions,
+          designData,
+          dynamicFields: dynamicFields ?? [],
+          thumbnailUrl,
+          category,
+          tags: tags ?? [],
+          isPublic: isPublic ?? false,
+          isPremium: isPremium ?? false,
+          projectId,
+          createdBy: userId,
+        },
+      })
+
+      // Criar automaticamente a primeira página (Página 1) com o design inicial
+      // Esta página serve como "template base" e preserva o design original
+      const designDataParsed = typeof designData === 'string' ? JSON.parse(designData) : designData
+      await tx.page.create({
+        data: {
+          name: 'Página 1',
+          width: designDataParsed.canvas?.width ?? 1080,
+          height: designDataParsed.canvas?.height ?? 1920,
+          layers: JSON.stringify([]), // Página inicial vazia
+          background: designDataParsed.canvas?.backgroundColor ?? '#ffffff',
+          order: 0, // Sempre primeira página
+          templateId: newTemplate.id,
+        },
+      })
+
+      return newTemplate
     })
 
     return NextResponse.json(template, { status: 201 })

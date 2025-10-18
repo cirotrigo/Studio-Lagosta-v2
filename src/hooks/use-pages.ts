@@ -132,12 +132,10 @@ export function useDuplicatePage() {
   return useMutation({
     mutationFn: ({ templateId, pageId }: { templateId: number; pageId: string }) =>
       api.post(`/api/templates/${templateId}/pages/${pageId}/duplicate`, {}),
-    onSuccess: (duplicatedPage, { templateId }) => {
-      // Atualizar cache manualmente sem invalidar (sem re-fetch)
-      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
-        if (!oldPages) return [duplicatedPage]
-        return [...oldPages, duplicatedPage]
-      })
+    onSuccess: (_, { templateId }) => {
+      // Invalidar queries para re-fetch com a ordem correta do banco
+      // A página duplicada é sempre inserida na posição 1 (segunda página) no backend
+      queryClient.invalidateQueries({ queryKey: ['pages', templateId] })
     },
   })
 }
