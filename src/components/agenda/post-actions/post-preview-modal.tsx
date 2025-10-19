@@ -24,15 +24,17 @@ import {
 import { usePostActions } from '@/hooks/use-post-actions'
 import { RescheduleDialog } from './reschedule-dialog'
 import { toast } from 'sonner'
+import { getPostDate } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostPreviewModalProps {
   post: SocialPost
   open: boolean
   onClose: () => void
+  onEdit?: (post: SocialPost) => void
 }
 
-export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps) {
+export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewModalProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const { publishNow, deletePost, duplicatePost } = usePostActions(post.projectId)
 
@@ -68,9 +70,24 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
     }
   }
 
-  const scheduledTime = post.scheduledDatetime
-    ? new Date(post.scheduledDatetime)
-    : new Date()
+  const handleEdit = () => {
+    if (onEdit) {
+      onEdit(post)
+      onClose()
+    }
+  }
+
+  const referenceDate = getPostDate(post)
+  const scheduledTimeLabel = referenceDate
+    ? referenceDate.toLocaleDateString('pt-BR', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    : post.scheduleType === 'IMMEDIATE'
+      ? 'Enviando agora'
+      : 'Horário não definido'
 
   const getPostTypeBadge = () => {
     switch (post.postType) {
@@ -99,12 +116,7 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-muted-foreground" />
                 <span className="text-sm font-medium">
-                  {scheduledTime.toLocaleDateString('pt-BR', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  })}
+                  {scheduledTimeLabel}
                 </span>
                 <Badge variant="outline" className="text-xs">
                   {post.scheduleType === 'IMMEDIATE' && 'Imediato'}
@@ -202,7 +214,8 @@ export function PostPreviewModal({ post, open, onClose }: PostPreviewModalProps)
             <Button
               variant="outline"
               size="sm"
-              onClick={onClose}
+              onClick={handleEdit}
+              disabled={!onEdit || post.status === 'SENT'}
             >
               <Edit className="w-4 h-4 mr-2" />
               Editar

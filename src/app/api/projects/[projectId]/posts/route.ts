@@ -4,23 +4,33 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { PostScheduler } from '@/lib/posts/scheduler'
-import { PostType, ScheduleType, RecurrenceFrequency } from '../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
 
-const createPostSchema = z.object({
-  postType: z.nativeEnum(PostType),
-  caption: z.string().max(2200),
-  generationIds: z.array(z.string()).min(1),
-  scheduleType: z.nativeEnum(ScheduleType),
-  scheduledDatetime: z.string().datetime().optional(),
-  recurringConfig: z.object({
-    frequency: z.nativeEnum(RecurrenceFrequency),
-    daysOfWeek: z.array(z.number()).optional(),
-    time: z.string(),
-    endDate: z.string().datetime().optional(),
-  }).optional(),
-  altText: z.array(z.string()).optional(),
-  firstComment: z.string().optional(),
-})
+// Dynamic validation schema based on post type
+const createPostValidationSchema = (postType?: PostType) => {
+  const isStory = postType === PostType.STORY
+
+  return z.object({
+    postType: z.nativeEnum(PostType),
+    caption: isStory
+      ? z.string().max(2200).optional().default('')
+      : z.string().min(1, 'Caption is required').max(2200),
+    generationIds: z.array(z.string()).min(1),
+    scheduleType: z.nativeEnum(ScheduleType),
+    scheduledDatetime: z.string().datetime().optional(),
+    recurringConfig: z.object({
+      frequency: z.nativeEnum(RecurrenceFrequency),
+      daysOfWeek: z.array(z.number()).optional(),
+      time: z.string(),
+      endDate: z.string().datetime().optional(),
+    }).optional(),
+    altText: z.array(z.string()).optional(),
+    firstComment: z.string().optional(),
+    publishType: z.nativeEnum(PublishType).optional().default(PublishType.DIRECT),
+  })
+}
+
+const createPostSchema = createPostValidationSchema()
 
 export async function POST(
   req: NextRequest,
@@ -59,7 +69,11 @@ export async function POST(
 
     // Validate data
     const body = await req.json()
-    const data = createPostSchema.parse(body)
+
+    // First parse to get postType, then validate with appropriate schema
+    const baseData = z.object({ postType: z.nativeEnum(PostType) }).parse(body)
+    const schema = createPostValidationSchema(baseData.postType)
+    const data = schema.parse(body)
 
     // Fetch URLs from generations
     const generations = await db.generation.findMany({
@@ -98,6 +112,7 @@ export async function POST(
       } : undefined,
       altText: data.altText,
       firstComment: data.firstComment,
+      publishType: data.publishType || PublishType.DIRECT,
     })
 
     return NextResponse.json(result)

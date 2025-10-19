@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import type { PostType } from '@prisma/client'
 
 export async function GET(
   req: NextRequest,
@@ -20,6 +21,8 @@ export async function GET(
     const { searchParams } = new URL(req.url)
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
+    const postTypeParam = searchParams.get('postType')
+    const postType = postTypeParam ? (postTypeParam as PostType) : null
 
     if (!startDate || !endDate) {
       return NextResponse.json(
@@ -32,6 +35,7 @@ export async function GET(
       where: {
         projectId,
         userId: user.id,
+        ...(postType ? { postType } : {}),
         OR: [
           {
             // Scheduled posts in the period

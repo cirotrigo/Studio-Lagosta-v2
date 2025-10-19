@@ -5,7 +5,8 @@ import {
   ScheduleType,
   RecurrenceFrequency,
   PostStatus,
-  PostLogEvent
+  PostLogEvent,
+  PublishType
 } from '../../../prisma/generated/client'
 
 interface RecurringConfig {
@@ -27,6 +28,7 @@ interface CreatePostData {
   recurringConfig?: RecurringConfig
   altText?: string[]
   firstComment?: string
+  publishType?: PublishType
 }
 
 export class PostScheduler {
@@ -47,10 +49,14 @@ export class PostScheduler {
         mediaUrls: data.mediaUrls,
         altText: data.altText || [],
         firstComment: data.firstComment,
+        publishType: data.publishType || PublishType.DIRECT,
         scheduleType: data.scheduleType,
-        scheduledDatetime: data.scheduledDatetime
-          ? new Date(data.scheduledDatetime)
-          : null,
+        scheduledDatetime:
+          data.scheduleType === ScheduleType.IMMEDIATE
+            ? new Date()
+            : data.scheduledDatetime
+              ? new Date(data.scheduledDatetime)
+              : null,
         recurringConfig: data.recurringConfig ? JSON.parse(JSON.stringify(data.recurringConfig)) : null,
         status: data.scheduleType === 'IMMEDIATE' ? PostStatus.PROCESSING : PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
@@ -63,8 +69,12 @@ export class PostScheduler {
 
     // Process based on schedule type
     if (data.scheduleType === 'IMMEDIATE') {
-      // Post immediately
-      await this.sendToZapier(post.id)
+      // Post immediately, but don't block response if webhook falhar
+      try {
+        await this.sendToZapier(post.id)
+      } catch (error) {
+        console.error('⚠️ Falha ao enviar post imediato, será reprocessado pelo sistema de retries.', error)
+      }
     } else if (data.scheduleType === 'RECURRING') {
       // Create recurring series
       await this.createRecurringSeries(post)
@@ -119,14 +129,38 @@ export class PostScheduler {
         throw new Error('Instagram account not configured for this project')
       }
 
+      // Detect media type based on URL and count
+      const detectMediaType = (urls: string[]): string => {
+        if (urls.length > 1) {
+          return 'CAROUSEL_ALBUM'
+        }
+
+        const url = urls[0].toLowerCase()
+        const isVideo = url.includes('.mp4') ||
+                       url.includes('.mov') ||
+                       url.includes('.avi') ||
+                       url.includes('video') ||
+                       url.includes('.webm')
+
+        return isVideo ? 'VIDEO' : 'IMAGE'
+      }
+
+      const mediaType = detectMediaType(post.mediaUrls)
+
+      // Map post types to Buffer format
+      const bufferPostType = post.postType.toLowerCase() === 'reel' ? 'reels' : post.postType.toLowerCase()
+
       // Payload for Zapier (always immediate posting)
       const payload = {
         // Post data
-        post_type: post.postType.toLowerCase(),
+        post_type: bufferPostType, // post, reels, story
+        media_type: mediaType, // IMAGE, VIDEO, CAROUSEL_ALBUM
         caption: post.caption,
         media_urls: post.mediaUrls,
+        media_count: post.mediaUrls.length,
         alt_text: post.altText,
         first_comment: post.firstComment || '',
+        publish_type: post.publishType.toLowerCase(), // direct or reminder
 
         // INSTAGRAM ACCOUNT IDENTIFICATION
         instagram_account_id: post.Project.instagramAccountId,

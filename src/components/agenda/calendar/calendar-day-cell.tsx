@@ -2,6 +2,7 @@
 
 import { cn } from '@/lib/utils'
 import { PostMiniCard } from './post-mini-card'
+import { sortPostsByDate } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarDayCellProps {
@@ -25,11 +26,8 @@ export function CalendarDayCell({
   isToday,
   onPostClick
 }: CalendarDayCellProps) {
-  // Ordenar posts por hora
-  const sortedPosts = posts.sort((a, b) => {
-    if (!a.scheduledDatetime || !b.scheduledDatetime) return 0
-    return new Date(a.scheduledDatetime).getTime() - new Date(b.scheduledDatetime).getTime()
-  })
+  // Ordenar posts por horário de exibição (agendado ou enviado)
+  const sortedPosts = sortPostsByDate(posts)
 
   return (
     <div

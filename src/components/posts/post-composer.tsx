@@ -13,12 +13,13 @@ import { MediaUploadSystem } from './media-upload-system'
 import { SchedulePicker } from './schedule-picker'
 import { RecurringConfig } from './recurring-config'
 import { toast } from 'sonner'
-import { PostType, ScheduleType, RecurrenceFrequency } from '../../../prisma/generated/client'
+import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../prisma/generated/client'
 import { Calendar, Repeat, Zap } from 'lucide-react'
 
+// Base schema - caption is optional, we validate manually based on postType
 const postSchema = z.object({
   postType: z.enum(['POST', 'STORY', 'REEL', 'CAROUSEL']),
-  caption: z.string().max(2200, 'Máximo de 2200 caracteres'),
+  caption: z.string().max(2200, 'Máximo de 2200 caracteres').optional().default(''),
   mediaUrls: z.array(z.string()).min(1, 'Selecione ao menos uma mídia'),
   generationIds: z.array(z.string()),
   scheduleType: z.enum(['IMMEDIATE', 'SCHEDULED', 'RECURRING']),
@@ -31,6 +32,7 @@ const postSchema = z.object({
   }).optional(),
   altText: z.array(z.string()).optional(),
   firstComment: z.string().optional(),
+  publishType: z.enum(['DIRECT', 'REMINDER']).default('DIRECT'),
 })
 
 type PostFormData = z.infer<typeof postSchema>
@@ -50,10 +52,11 @@ interface PostComposerProps {
   open: boolean
   onClose: () => void
   initialData?: Partial<PostFormData>
+  postId?: string
 }
 
-export function PostComposer({ projectId, open, onClose, initialData }: PostComposerProps) {
-  const { createPost } = useSocialPosts(projectId)
+export function PostComposer({ projectId, open, onClose, initialData, postId }: PostComposerProps) {
+  const { createPost, updatePost } = useSocialPosts(projectId)
   const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
 
   const form = useForm<PostFormData>({
@@ -66,6 +69,7 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
       scheduleType: 'IMMEDIATE',
       altText: [],
       firstComment: '',
+      publishType: 'DIRECT',
       ...initialData,
     },
   })
@@ -73,6 +77,7 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
   const postType = form.watch('postType')
   const scheduleType = form.watch('scheduleType')
   const caption = form.watch('caption')
+  const publishType = form.watch('publishType')
 
   // Calculate max media based on post type
   const maxMedia = postType === 'CAROUSEL' ? 10 : 1
@@ -85,6 +90,17 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
     setSelectedMediaRef.current = setSelectedMedia
     formRef.current = form
   }, [setSelectedMedia, form])
+
+  // Clear caption and firstComment when switching to STORY
+  useEffect(() => {
+    if (postType === 'STORY') {
+      form.setValue('caption', '')
+      form.setValue('firstComment', '')
+      // Clear any caption errors
+      form.clearErrors('caption')
+      form.clearErrors('firstComment')
+    }
+  }, [postType, form])
 
   // Memoize the recurring config onChange to prevent infinite loops
   const handleRecurringConfigChange = useCallback((config: any) => {
@@ -100,9 +116,24 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
 
   const onSubmit = async (data: PostFormData) => {
     try {
+      // Validate caption for non-Story posts
+      if (postType !== 'STORY' && (!data.caption || data.caption.trim() === '')) {
+        toast.error('Legenda é obrigatória')
+        form.setError('caption', {
+          type: 'manual',
+          message: 'Legenda é obrigatória',
+        })
+        return
+      }
+
       // Validate media selection based on post type
+      if (selectedMedia.length === 0) {
+        toast.error('Selecione ao menos uma mídia')
+        return
+      }
+
       if (postType === 'CAROUSEL' && selectedMedia.length < 2) {
-        toast.error('Carrossel deve ter pelo menos 2 imgens')
+        toast.error('Carrossel deve ter pelo menos 2 imagens')
         return
       }
       if (postType === 'CAROUSEL' && selectedMedia.length > 10) {
@@ -111,6 +142,12 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
       }
       if (['STORY', 'REEL', 'POST'].includes(postType) && selectedMedia.length !== 1) {
         toast.error(`${postType} deve ter exatamente 1 mídia`)
+        return
+      }
+
+      // Ensure we have generationIds when creating (not updating)
+      if (!postId && data.generationIds.length === 0) {
+        toast.error('Erro: IDs de mídia não encontrados. Tente selecionar a mídia novamente.')
         return
       }
 
@@ -127,15 +164,24 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
       }
 
       // Validate recurring config
-      if (data.scheduleType === 'RECURRING' && !data.recurringConfig) {
-        toast.error('Configure a recorrência')
-        return
+      if (data.scheduleType === 'RECURRING') {
+        if (!data.recurringConfig) {
+          toast.error('Configure a recorrência')
+          return
+        }
+        if (!data.recurringConfig.time) {
+          toast.error('Selecione um horário para a recorrência')
+          return
+        }
+        if (!data.recurringConfig.frequency) {
+          toast.error('Selecione a frequência da recorrência')
+          return
+        }
       }
 
-      await createPost.mutateAsync({
+      const postData = {
         postType: data.postType as PostType,
-        caption: data.caption,
-        generationIds: data.generationIds,
+        caption: data.postType === 'STORY' ? '' : (data.caption || ''), // Force empty for stories
         scheduleType: data.scheduleType as ScheduleType,
         scheduledDatetime: data.scheduledDatetime?.toISOString(),
         recurringConfig: data.recurringConfig ? {
@@ -145,23 +191,50 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
           endDate: data.recurringConfig.endDate?.toISOString(),
         } : undefined,
         altText: data.altText,
-        firstComment: data.firstComment,
-      })
+        firstComment: data.postType === 'STORY' ? undefined : data.firstComment, // No first comment for stories
+        publishType: data.publishType as PublishType,
+      }
 
-      toast.success(
-        data.scheduleType === 'IMMEDIATE'
-          ? 'Post enviado!'
-          : data.scheduleType === 'SCHEDULED'
-          ? 'Post agendado com sucesso!'
-          : 'Série recorrente criada com sucesso!'
-      )
+      console.log('📤 Sending post data:', postData)
+
+      if (postId) {
+        // Update existing post
+        await updatePost.mutateAsync({
+          postId,
+          data: postData,
+        })
+
+        toast.success('Post atualizado com sucesso!')
+      } else {
+        // Create new post
+        await createPost.mutateAsync({
+          ...postData,
+          generationIds: data.generationIds,
+        })
+
+        toast.success(
+          data.scheduleType === 'IMMEDIATE'
+            ? 'Post enviado!'
+            : data.scheduleType === 'SCHEDULED'
+            ? 'Post agendado com sucesso!'
+            : 'Série recorrente criada com sucesso!'
+        )
+      }
 
       onClose()
       form.reset()
       setSelectedMedia([])
-    } catch (error) {
-      console.error('Error creating post:', error)
-      toast.error('Erro ao criar post')
+    } catch (error: any) {
+      console.error('Error creating/updating post:', error)
+
+      // More detailed error message
+      if (error?.message) {
+        toast.error(`Erro: ${error.message}`)
+      } else if (error?.details) {
+        toast.error(`Erro de validação: ${JSON.stringify(error.details)}`)
+      } else {
+        toast.error('Erro ao processar post. Verifique os dados e tente novamente.')
+      }
     }
   }
 
@@ -233,41 +306,81 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
             />
           </div>
 
-          {/* Legenda */}
-          <div>
-            <Label htmlFor="caption" className="text-base font-semibold">
-              Legenda
-            </Label>
-            <Textarea
-              id="caption"
-              {...form.register('caption')}
-              placeholder="Escreva sua legenda..."
-              rows={5}
-              maxLength={2200}
-              className="mt-2 resize-none"
-            />
-            <div className="flex justify-between mt-1">
-              <p className="text-xs text-muted-foreground">
-                Máximo de 2.200 caracteres
-              </p>
-              <p className="text-xs font-medium">
-                {caption.length}/2200
-              </p>
+          {/* Legenda - Hidden for Stories */}
+          {postType !== 'STORY' && (
+            <div>
+              <Label htmlFor="caption" className="text-base font-semibold">
+                Legenda
+              </Label>
+              <Textarea
+                id="caption"
+                {...form.register('caption')}
+                placeholder="Escreva sua legenda..."
+                rows={5}
+                maxLength={2200}
+                className="mt-2 resize-none"
+              />
+              <div className="flex justify-between mt-1">
+                <p className="text-xs text-muted-foreground">
+                  Máximo de 2.200 caracteres
+                </p>
+                <p className="text-xs font-medium">
+                  {caption?.length || 0}/2200
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Primeiro Comentário (Opcional) */}
+          {/* Primeiro Comentário (Opcional) - Hidden for Stories */}
+          {postType !== 'STORY' && (
+            <div>
+              <Label htmlFor="firstComment" className="text-base font-semibold">
+                Primeiro Comentário (Opcional)
+              </Label>
+              <Textarea
+                id="firstComment"
+                {...form.register('firstComment')}
+                placeholder="Adicione um comentário que será postado automaticamente..."
+                rows={2}
+                className="mt-2 resize-none"
+              />
+            </div>
+          )}
+
+          {/* Tipo de Publicação */}
           <div>
-            <Label htmlFor="firstComment" className="text-base font-semibold">
-              Primeiro Comentário (Opcional)
-            </Label>
-            <Textarea
-              id="firstComment"
-              {...form.register('firstComment')}
-              placeholder="Adicione um comentário que será postado automaticamente..."
-              rows={2}
-              className="mt-2 resize-none"
-            />
+            <Label className="text-base font-semibold">Tipo de Publicação</Label>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  value="DIRECT"
+                  {...form.register('publishType')}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <span className="font-medium">Publicar Direto</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    O post será enviado diretamente para o Instagram
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                <input
+                  type="radio"
+                  value="REMINDER"
+                  {...form.register('publishType')}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <span className="font-medium">Lembrete no Buffer</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Criar um lembrete para publicação manual
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Tipo de Agendamento */}
@@ -355,9 +468,10 @@ export function PostComposer({ projectId, open, onClose, initialData }: PostComp
             </Button>
             <Button
               type="submit"
-              disabled={createPost.isPending || selectedMedia.length === 0}
+              disabled={createPost.isPending || updatePost.isPending || selectedMedia.length === 0}
             >
-              {createPost.isPending ? 'Processando...' :
+              {(createPost.isPending || updatePost.isPending) ? 'Processando...' :
+                postId ? 'Salvar Alterações' :
                 scheduleType === 'IMMEDIATE' ? 'Postar Agora' :
                 scheduleType === 'SCHEDULED' ? 'Agendar Post' :
                 'Criar Série Recorrente'}

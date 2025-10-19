@@ -834,6 +834,11 @@ enum RecurrenceFrequency {
   MONTHLY
 }
 
+enum PublishType {
+  DIRECT
+  REMINDER
+}
+
 enum PostLogEvent {
   CREATED
   SCHEDULED
@@ -865,6 +870,7 @@ model SocialPost {
   mediaUrls         String[]          // URLs of creatives (from Generation)
   altText           String[]          @default([])
   firstComment      String?           @db.Text
+  publishType       PublishType       @default(DIRECT)
 
   // Scheduling
   scheduleType      ScheduleType

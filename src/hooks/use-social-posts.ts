@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
-import { PostType, ScheduleType, RecurrenceFrequency } from '../../prisma/generated/client'
+import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../prisma/generated/client'
 
 interface CreatePostData {
   postType: PostType
@@ -16,6 +16,7 @@ interface CreatePostData {
   }
   altText?: string[]
   firstComment?: string
+  publishType?: PublishType
 }
 
 interface UpdatePostData {
@@ -31,6 +32,7 @@ interface UpdatePostData {
   } | null
   altText?: string[]
   firstComment?: string | null
+  publishType?: PublishType
 }
 
 export function useSocialPosts(projectId: number) {

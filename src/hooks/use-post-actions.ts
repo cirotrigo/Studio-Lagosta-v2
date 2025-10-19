@@ -10,7 +10,7 @@ export function usePostActions(projectId: number) {
     mutationFn: (postId: string) =>
       api.put(`/api/projects/${projectId}/posts/${postId}`, {
         scheduleType: 'IMMEDIATE',
-        scheduledDatetime: new Date().toISOString(),
+        scheduledDatetime: null,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })

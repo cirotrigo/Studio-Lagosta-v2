@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import { CalendarDayCell } from './calendar-day-cell'
 import { Skeleton } from '@/components/ui/skeleton'
+import { getPostDateKey } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarGridProps {
@@ -28,9 +29,9 @@ export function CalendarGrid({
     const grouped: Record<string, SocialPost[]> = {}
 
     posts.forEach(post => {
-      if (!post.scheduledDatetime) return
+      const dayKey = getPostDateKey(post)
+      if (!dayKey) return
 
-      const dayKey = new Date(post.scheduledDatetime).toISOString().split('T')[0]
       if (!grouped[dayKey]) grouped[dayKey] = []
       grouped[dayKey].push(post)
     })

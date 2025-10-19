@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Video, Layers, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { formatPostTime } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostMiniCardProps {
@@ -11,12 +12,7 @@ interface PostMiniCardProps {
 }
 
 export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
-  const time = post.scheduledDatetime
-    ? new Date(post.scheduledDatetime).toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    : '00:00'
+  const time = formatPostTime(post)
 
   const getIcon = () => {
     switch (post.postType) {

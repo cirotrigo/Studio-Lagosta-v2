@@ -2,8 +2,6 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 
-export const _runtime = 'nodejs';
-
 // DELETE - Deletar um prompt
 export async function DELETE(
   _req: Request,

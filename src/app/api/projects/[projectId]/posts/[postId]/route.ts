@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { PostType, ScheduleType, RecurrenceFrequency } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType } from '../../../../../../../prisma/generated/client'
+import { PostScheduler } from '@/lib/posts/scheduler'
 
 // GET: Fetch individual post
 export async function GET(
@@ -100,31 +101,51 @@ export async function PUT(
       recurringConfig,
       altText,
       firstComment,
+      publishType,
     } = body
+
+    // Prepare update data
+    const updateData: any = {
+      ...(postType && { postType: postType as PostType }),
+      ...(caption !== undefined && { caption }),
+      ...(scheduleType && { scheduleType: scheduleType as ScheduleType }),
+      ...(scheduleType === 'IMMEDIATE'
+        ? { scheduledDatetime: new Date() }
+        : scheduledDatetime !== undefined
+          ? {
+              scheduledDatetime: scheduledDatetime ? new Date(scheduledDatetime) : null,
+            }
+          : {}),
+      ...(recurringConfig !== undefined && {
+        recurringConfig: recurringConfig ? JSON.parse(JSON.stringify(recurringConfig)) : null,
+      }),
+      ...(altText !== undefined && { altText }),
+      ...(firstComment !== undefined && { firstComment }),
+      ...(publishType !== undefined && { publishType: publishType as PublishType }),
+    }
+
+    // If changing to IMMEDIATE, set status to PROCESSING
+    if (scheduleType === 'IMMEDIATE') {
+      updateData.status = PostStatus.PROCESSING
+    }
 
     // Update post
     const updatedPost = await db.socialPost.update({
       where: { id: postId },
-      data: {
-        ...(postType && { postType: postType as PostType }),
-        ...(caption !== undefined && { caption }),
-        ...(scheduleType && { scheduleType: scheduleType as ScheduleType }),
-        ...(scheduledDatetime !== undefined && {
-          scheduledDatetime: scheduledDatetime ? new Date(scheduledDatetime) : null,
-        }),
-        ...(recurringConfig !== undefined && {
-          recurringFrequency: recurringConfig?.frequency as RecurrenceFrequency | null,
-          recurringDaysOfWeek: recurringConfig?.daysOfWeek || null,
-          recurringTime: recurringConfig?.time || null,
-          recurringEndDate: recurringConfig?.endDate ? new Date(recurringConfig.endDate) : null,
-        }),
-        ...(altText !== undefined && { altText }),
-        ...(firstComment !== undefined && { firstComment }),
-      },
+      data: updateData,
       include: {
         Generation: true,
       },
     })
+
+    // If schedule type changed to IMMEDIATE, send to Zapier now
+    if (scheduleType === 'IMMEDIATE') {
+      const scheduler = new PostScheduler()
+      // Send asynchronously (don't wait)
+      scheduler.sendToZapier(postId).catch((error) => {
+        console.error('Error sending immediate post to Zapier:', error)
+      })
+    }
 
     return NextResponse.json(updatedPost)
   } catch (error) {

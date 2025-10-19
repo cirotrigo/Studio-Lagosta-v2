@@ -74,11 +74,34 @@ export async function GET() {
   const ownedIds = new Set(ownedProjects.map((project) => project.id))
   const combined = [...ownedProjects, ...sharedProjects.filter((project) => !ownedIds.has(project.id))]
 
+  const projectIds = combined.map((project) => project.id)
+  const now = new Date()
+
+  const scheduledCounts = projectIds.length === 0
+    ? []
+    : await db.socialPost.groupBy({
+        by: ['projectId'],
+        where: {
+          projectId: { in: projectIds },
+          scheduledDatetime: { gte: now },
+          status: { in: ['SCHEDULED', 'PROCESSING'] },
+        },
+        _count: {
+          _all: true,
+        },
+      })
+
+  const countsMap = scheduledCounts.reduce<Record<number, number>>((acc, item) => {
+    acc[item.projectId] = item._count._all
+    return acc
+  }, {})
+
   const response = combined.map((project) => {
     const { organizationProjects, ...rest } = project
 
     return {
       ...rest,
+      scheduledPostCount: countsMap[project.id] ?? 0,
       organizationShares: organizationProjects.map((share) => ({
         organizationId: share.organization.clerkOrgId,
         organizationName: share.organization.name,

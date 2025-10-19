@@ -7,10 +7,6 @@ import {
   List,
   ChevronLeft,
   ChevronRight,
-  MapPin,
-  Tag,
-  MoreHorizontal,
-  MessageCircle,
   Instagram,
   Plus,
   AlertCircle
@@ -30,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { Project } from '../../../../prisma/generated/client'
+import type { Project, PostType } from '../../../../prisma/generated/client'
 
 type ViewMode = 'month' | 'week' | 'day'
 
@@ -41,6 +37,8 @@ interface CalendarHeaderProps {
   onViewModeChange: (mode: ViewMode) => void
   selectedProject?: Project
   onCreatePost?: () => void
+  postTypeFilter: PostType | 'ALL'
+  onPostTypeFilterChange: (postType: PostType | 'ALL') => void
 }
 
 export function CalendarHeader({
@@ -49,13 +47,24 @@ export function CalendarHeader({
   viewMode,
   onViewModeChange,
   selectedProject,
-  onCreatePost
+  onCreatePost,
+  postTypeFilter,
+  onPostTypeFilterChange,
 }: CalendarHeaderProps) {
   const router = useRouter()
 
-  const navigateMonth = (direction: 'prev' | 'next') => {
+  const navigateDate = (direction: 'prev' | 'next') => {
     const newDate = new Date(selectedDate)
-    newDate.setMonth(newDate.getMonth() + (direction === 'next' ? 1 : -1))
+    const step = direction === 'next' ? 1 : -1
+
+    if (viewMode === 'week') {
+      newDate.setDate(newDate.getDate() + step * 7)
+    } else if (viewMode === 'day') {
+      newDate.setDate(newDate.getDate() + step)
+    } else {
+      newDate.setMonth(newDate.getMonth() + step)
+    }
+
     onDateChange(newDate)
   }
 
@@ -105,7 +114,7 @@ export function CalendarHeader({
                   <p className="text-sm text-muted-foreground">
                     <span className="inline-flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                      1/3 posts sent this week
+                      1/3 posts enviados nesta semana
                     </span>
                   </p>
                 </div>
@@ -113,11 +122,11 @@ export function CalendarHeader({
             </>
           ) : (
             <div>
-              <h1 className="text-2xl font-bold">All Channels</h1>
+              <h1 className="text-2xl font-bold">Todos os canais</h1>
               <p className="text-sm text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-                  Viewing all scheduled posts
+                  Visualizando todos os agendamentos
                 </span>
               </p>
             </div>
@@ -154,12 +163,6 @@ export function CalendarHeader({
               </Tooltip>
             </TooltipProvider>
           )}
-
-          <Button variant="ghost" size="sm">
-            <MessageCircle className="w-4 h-4 mr-2" />
-            Share Feedback
-          </Button>
-
           {/* View Mode Selector */}
           <div className="flex items-center gap-1 border border-border/40 rounded-lg p-1">
             <Button
@@ -194,7 +197,7 @@ export function CalendarHeader({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigateMonth('prev')}
+            onClick={() => navigateDate('prev')}
           >
             <ChevronLeft className="w-4 h-4" />
           </Button>
@@ -211,7 +214,7 @@ export function CalendarHeader({
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => navigateMonth('next')}
+            onClick={() => navigateDate('next')}
           >
             <ChevronRight className="w-4 h-4" />
           </Button>
@@ -219,46 +222,25 @@ export function CalendarHeader({
           <Button variant="outline" size="sm" onClick={goToToday}>
             Hoje
           </Button>
-
-          <Select value="month">
-            <SelectTrigger className="w-[140px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="month">Mês</SelectItem>
-              <SelectItem value="week">Semana</SelectItem>
-              <SelectItem value="day">Dia</SelectItem>
-            </SelectContent>
-          </Select>
         </div>
 
         {/* Filtros */}
         <div className="flex items-center gap-2">
-          <Select>
-            <SelectTrigger className="w-[140px]">
-              <SelectValue placeholder="All Posts" />
+          <Select
+            value={postTypeFilter}
+            onValueChange={(value) => onPostTypeFilterChange(value as PostType | 'ALL')}
+          >
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Todos os formatos" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">All Posts</SelectItem>
-              <SelectItem value="scheduled">Scheduled</SelectItem>
-              <SelectItem value="published">Published</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="ALL">Todos os formatos</SelectItem>
+              <SelectItem value="POST">Post de feed</SelectItem>
+              <SelectItem value="STORY">Story</SelectItem>
+              <SelectItem value="REEL">Reels</SelectItem>
+              <SelectItem value="CAROUSEL">Carrossel</SelectItem>
             </SelectContent>
           </Select>
-
-          <Button variant="outline" size="sm">
-            <Tag className="w-4 h-4 mr-2" />
-            Tags
-          </Button>
-
-          <Button variant="outline" size="sm">
-            <MapPin className="w-4 h-4 mr-2" />
-            @Sao Paulo
-          </Button>
-
-          <Button variant="outline" size="sm">
-            <MoreHorizontal className="w-4 h-4" />
-          </Button>
         </div>
       </div>
     </div>

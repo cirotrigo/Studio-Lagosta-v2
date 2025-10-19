@@ -3,8 +3,6 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
 
-export const _runtime = 'nodejs';
-
 const updatePromptSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').optional(),
   content: z.string().min(1, 'Conteúdo é obrigatório').optional(),
