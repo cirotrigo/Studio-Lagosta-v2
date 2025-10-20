@@ -13,15 +13,31 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
 
-  // Optimize for Vercel deployment
-  experimental: {
-    outputFileTracingExcludes: {
-      '*': [
-        'node_modules/@swc/core-linux-x64-gnu',
-        'node_modules/@swc/core-linux-x64-musl',
-        'node_modules/@esbuild/linux-x64',
-      ],
-    },
+  // Optimize for Vercel deployment - exclude large/unnecessary files
+  outputFileTracingExcludes: {
+    '*': [
+      'node_modules/@swc/core-linux-x64-gnu/**/*',
+      'node_modules/@swc/core-linux-x64-musl/**/*',
+      'node_modules/@swc/core-darwin-x64/**/*',
+      'node_modules/@swc/core-darwin-arm64/**/*',
+      'node_modules/@esbuild/**/*',
+      'node_modules/fluent-ffmpeg/**/*',
+      'node_modules/@ffmpeg-installer/**/*',
+      'node_modules/@ffmpeg/**/*',
+      'node_modules/canvas/**/*',
+      'node_modules/@napi-rs/canvas/**/*',
+      'node_modules/sharp/**/*',
+      'node_modules/playwright/**/*',
+      'node_modules/@playwright/**/*',
+      'node_modules/axe-core/**/*',
+      'node_modules/typescript/**/*',
+      'node_modules/eslint/**/*',
+      'node_modules/prettier/**/*',
+      '.next/cache/**/*',
+      'scripts/**/*',
+      'test-results/**/*',
+      'playwright-report/**/*',
+    ],
   },
   outputFileTracingIncludes: {
     '/api/video-processing/process': [

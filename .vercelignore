@@ -12,10 +12,14 @@
 *.spec.tsx
 __tests__
 coverage
+playwright-report
+test-results
 
-# Documentation (opcional - remova se quiser que vá para produção)
-# *.md
-# docs/
+# Documentation
+README.md
+CLAUDE.md
+*.md
+docs/
 
 # Logs
 *.log
@@ -37,9 +41,22 @@ Thumbs.db
 # Git
 .git
 .gitignore
+.gitattributes
 
-# Next.js cache (to prevent large deployments)
+# Next.js cache and unnecessary files
 .next/cache
+.next/*.json
 
-# Others
+# Scripts (development only)
+scripts/
+
+# Prisma migration files (already applied via vercel-build)
+prisma/migrations/
+
+# Other build artifacts
 .eslintcache
+*.tsbuildinfo
+
+# Development dependencies that shouldn't be in production
+playwright/
+.playwright/

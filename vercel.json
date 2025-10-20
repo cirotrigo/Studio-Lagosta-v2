@@ -2,22 +2,20 @@
   "installCommand": "npm install --include=optional",
   "buildCommand": "npm run build",
   "functions": {
+    "app/api/**/*.ts": {
+      "maxDuration": 60
+    },
     "app/api/video-processing/process/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/ai/generate-image/route.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
     {
-      "path": "/api/video-processing/process",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/cron/refill-org-credits",
       "schedule": "0 0 1 * *"
-    },
-    {
-      "path": "/api/cron/posts",
-      "schedule": "* * * * *"
     },
     {
       "path": "/api/cron/cleanup-db",
