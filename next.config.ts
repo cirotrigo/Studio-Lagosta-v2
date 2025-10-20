@@ -12,6 +12,17 @@ const nextConfig: NextConfig = {
   // 禁用 Next.js 热重载，由 nodemon 处理重编译
   reactStrictMode: false,
   serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
+
+  // Optimize for Vercel deployment
+  experimental: {
+    outputFileTracingExcludes: {
+      '*': [
+        'node_modules/@swc/core-linux-x64-gnu',
+        'node_modules/@swc/core-linux-x64-musl',
+        'node_modules/@esbuild/linux-x64',
+      ],
+    },
+  },
   outputFileTracingIncludes: {
     '/api/video-processing/process': [
       './node_modules/fluent-ffmpeg/**/*',

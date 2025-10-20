@@ -1,5 +1,6 @@
 {
   "installCommand": "npm install --include=optional",
+  "buildCommand": "npm run build",
   "functions": {
     "app/api/video-processing/process/route.ts": {
       "maxDuration": 300
