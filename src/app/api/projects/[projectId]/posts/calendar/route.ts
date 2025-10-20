@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
-import type { PostType } from '@prisma/client'
+import type { PostType } from '../../../../../../../prisma/generated/client'
 
 export async function GET(
   req: NextRequest,

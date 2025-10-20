@@ -214,7 +214,7 @@ export class PostScheduler {
         throw new Error(`Zapier retornou erro: ${response.status}`)
       }
 
-      let webhookResponse: unknown = null
+      let webhookResponse: string | object | null = null
       const contentType = response.headers.get('content-type') || ''
       if (contentType.includes('application/json')) {
         webhookResponse = await response.json()
@@ -228,7 +228,7 @@ export class PostScheduler {
         data: {
           status: PostStatus.SENT,
           sentAt: new Date(),
-          webhookResponse,
+          webhookResponse: webhookResponse as any,
         },
       })
 
