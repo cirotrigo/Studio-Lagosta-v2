@@ -6,6 +6,9 @@ import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFea
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { type FeatureKey } from '@/lib/credits/feature-config'
 
+export const runtime = 'nodejs'
+export const maxDuration = 120 // 2 minutes for AI image generation via OpenRouter
+
 type ImageUrl = {
   type?: string
   image_url?: { url: string } | string

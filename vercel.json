@@ -8,8 +8,20 @@
     "app/api/video-processing/process/route.ts": {
       "maxDuration": 300
     },
-    "app/api/ai/generate-image/route.ts": {
+    "app/api/ai/chat/route.ts": {
       "maxDuration": 120
+    },
+    "app/api/ai/image/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/admin/knowledge/[id]/reindex/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/projects/[projectId]/generations/carousel/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/admin/users/sync/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [

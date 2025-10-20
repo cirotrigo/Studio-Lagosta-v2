@@ -8,6 +8,9 @@ import { auth } from '@clerk/nextjs/server'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 
+export const runtime = 'nodejs'
+export const maxDuration = 120 // 2 minutes for reindexing with embedding generation
+
 // Admin check utility
 async function isAdmin(clerkUserId: string): Promise<boolean> {
   const adminEmails = process.env.ADMIN_EMAILS?.split(',').map(e => e.trim()) || []
