@@ -2,6 +2,10 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { del } from '@vercel/blob'
 import { db } from '@/lib/db'
+import {
+  fetchProjectWithShares,
+  hasProjectWriteAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -12,7 +16,7 @@ export async function DELETE(
   const { projectId, elementId } = await params
   const projectIdNum = Number(projectId)
   const elementIdNum = Number(elementId)
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -26,8 +30,14 @@ export async function DELETE(
     include: { Project: true },
   })
 
-  if (!element || element.Project.userId !== userId || element.projectId !== projectIdNum) {
+  if (!element || element.projectId !== projectIdNum) {
     return NextResponse.json({ error: 'Elemento não encontrado' }, { status: 404 })
+  }
+
+  // Verificar acesso ao projeto considerando organizações
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
   const token = process.env.BLOB_READ_WRITE_TOKEN

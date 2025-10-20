@@ -2,13 +2,17 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { generateThumbnail } from '@/lib/generation-utils'
+import {
+  fetchProjectWithShares,
+  hasProjectWriteAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30 // 30 segundos para thumbnail
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -32,8 +36,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    // Verificar ownership
-    if (template.Project.userId !== userId) {
+    // Verificar acesso ao projeto considerando organizações
+    const project = await fetchProjectWithShares(template.projectId)
+    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import {
+  fetchProjectWithShares,
+  hasProjectWriteAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
-
-async function verifyProject(projectId: number, userId: string) {
-  return db.project.findFirst({ where: { id: projectId, userId } })
-}
 
 export async function DELETE(
   _req: Request,
@@ -15,7 +15,7 @@ export async function DELETE(
   const { projectId, colorId } = await params
   const projectIdNum = Number(projectId)
   const colorIdNum = Number(colorId)
-  const { userId } = await auth()
+  const { userId, orgId, orgRole } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -25,8 +25,9 @@ export async function DELETE(
     return NextResponse.json({ error: 'IDs inválidos' }, { status: 400 })
   }
 
-  const project = await verifyProject(projectIdNum, userId)
-  if (!project) {
+  // Verificar acesso ao projeto considerando organizações
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

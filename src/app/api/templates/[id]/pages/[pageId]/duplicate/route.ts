@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import {
+  fetchTemplateWithProject,
+  hasTemplateWriteAccess,
+} from '@/lib/templates/access'
 
 // POST - Duplicar página
 export async function POST(
@@ -8,7 +12,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string; pageId: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -16,15 +20,10 @@ export async function POST(
     const { id, pageId } = await params
     const templateId = Number(id)
 
-    // Verificar ownership do template
-    const template = await db.template.findFirst({
-      where: {
-        id: templateId,
-        createdBy: userId,
-      },
-    })
+    // Verificar acesso ao template considerando organizações
+    const template = await fetchTemplateWithProject(templateId)
 
-    if (!template) {
+    if (!hasTemplateWriteAccess(template, { userId, orgId })) {
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 

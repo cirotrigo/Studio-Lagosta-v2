@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import {
+  fetchProjectWithShares,
+  hasProjectWriteAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -9,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -36,7 +40,10 @@ export async function POST(
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    if (original.Project.userId !== userId) {
+    // Verificar acesso ao projeto considerando organizações
+    const project = await fetchProjectWithShares(original.projectId)
+
+    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Não autorizado para duplicar este template' }, { status: 403 })
     }
 

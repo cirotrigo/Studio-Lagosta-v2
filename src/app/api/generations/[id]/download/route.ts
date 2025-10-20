@@ -3,12 +3,16 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
+import {
+  fetchProjectWithShares,
+  hasProjectReadAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId, orgId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -31,8 +35,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
       return NextResponse.json({ error: 'Criativo não encontrado' }, { status: 404 })
     }
 
-    // Verificar ownership
-    if (generation.Project.userId !== userId) {
+    // Verificar acesso ao projeto considerando organizações
+    const project = await fetchProjectWithShares(generation.projectId)
+
+    if (!hasProjectReadAccess(project, { userId, orgId, orgRole })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
