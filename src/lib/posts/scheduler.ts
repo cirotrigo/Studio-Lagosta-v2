@@ -107,6 +107,10 @@ export class PostScheduler {
 
   async sendToZapier(postId: string) {
     try {
+      if (!this.zapierWebhookUrl) {
+        throw new Error('Zapier webhook URL (ZAPIER_WEBHOOK_URL) não está configurada')
+      }
+
       const post = await db.socialPost.findUnique({
         where: { id: postId },
         include: {
@@ -127,6 +131,15 @@ export class PostScheduler {
       // Validate that the project has Instagram configured
       if (!post.Project.instagramAccountId) {
         throw new Error('Instagram account not configured for this project')
+      }
+
+      const postAuthor = await db.user.findUnique({
+        where: { id: post.userId },
+        select: { clerkId: true },
+      })
+
+      if (!postAuthor?.clerkId) {
+        throw new Error('Clerk user ID not found for post author')
       }
 
       // Detect media type based on URL and count
@@ -179,7 +192,7 @@ export class PostScheduler {
 
       // Deduct credits BEFORE sending
       await deductCreditsForFeature({
-        clerkUserId: post.userId,
+        clerkUserId: postAuthor.clerkId,
         feature: 'social_media_post',
         details: {
           postId: post.id,
@@ -201,7 +214,13 @@ export class PostScheduler {
         throw new Error(`Zapier retornou erro: ${response.status}`)
       }
 
-      const webhookResponse = await response.json()
+      let webhookResponse: unknown = null
+      const contentType = response.headers.get('content-type') || ''
+      if (contentType.includes('application/json')) {
+        webhookResponse = await response.json()
+      } else {
+        webhookResponse = await response.text()
+      }
 
       // Update status
       await db.socialPost.update({

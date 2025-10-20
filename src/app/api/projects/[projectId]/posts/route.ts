@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
+import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 // Dynamic validation schema based on post type
 const createPostValidationSchema = (postType?: PostType) => {
@@ -38,7 +39,7 @@ export async function POST(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -46,17 +47,37 @@ export async function POST(
     const user = await getUserFromClerkId(clerkUserId)
     const projectId = parseInt(projectIdParam)
 
-    // Verify project ownership - use clerkUserId, not user.id
-    const project = await db.project.findFirst({
-      where: { id: projectId, userId: clerkUserId },
-      select: {
-        id: true,
-        instagramAccountId: true,
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              },
+            },
+          },
+        },
       },
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (
+      !hasProjectWriteAccess(project, {
+        userId: clerkUserId,
+        orgId,
+        orgRole:
+          typeof sessionClaims?.org_role === 'string'
+            ? (sessionClaims.org_role as string)
+            : undefined,
+      })
+    ) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Validate Instagram configuration
@@ -140,18 +161,42 @@ export async function GET(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const user = await getUserFromClerkId(clerkUserId)
     const projectId = parseInt(projectIdParam)
+
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: { clerkOrgId: true, name: true },
+            },
+          },
+        },
+      },
+    })
+
+    if (!project) {
+      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (
+      !hasProjectReadAccess(project, {
+        userId: clerkUserId,
+        orgId,
+      })
+    ) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
+    }
 
     const posts = await db.socialPost.findMany({
       where: {
         projectId,
-        userId: user.id,
       },
       include: {
         Generation: {

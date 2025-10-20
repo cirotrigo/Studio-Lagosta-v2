@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { PostType, ScheduleType, PostStatus, PublishType } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
+import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 // GET: Fetch individual post
 export async function GET(
@@ -17,21 +18,35 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify project ownership
-    const project = await db.project.findFirst({
-      where: {
-        id: projectId,
-        userId: clerkUserId,
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: { clerkOrgId: true, name: true },
+            },
+          },
+        },
       },
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (
+      !hasProjectReadAccess(project, {
+        userId: clerkUserId,
+        orgId,
+      })
+    ) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Fetch post
@@ -66,21 +81,39 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify project ownership
-    const project = await db.project.findFirst({
-      where: {
-        id: projectId,
-        userId: clerkUserId,
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: { clerkOrgId: true, name: true },
+            },
+          },
+        },
       },
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (
+      !hasProjectWriteAccess(project, {
+        userId: clerkUserId,
+        orgId,
+        orgRole:
+          typeof sessionClaims?.org_role === 'string'
+            ? (sessionClaims.org_role as string)
+            : undefined,
+      })
+    ) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Verify post belongs to project
@@ -167,21 +200,39 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    const { userId: clerkUserId } = await auth()
+    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Verify project ownership
-    const project = await db.project.findFirst({
-      where: {
-        id: projectId,
-        userId: clerkUserId,
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      include: {
+        organizationProjects: {
+          include: {
+            organization: {
+              select: { clerkOrgId: true, name: true },
+            },
+          },
+        },
       },
     })
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+    }
+
+    if (
+      !hasProjectWriteAccess(project, {
+        userId: clerkUserId,
+        orgId,
+        orgRole:
+          typeof sessionClaims?.org_role === 'string'
+            ? (sessionClaims.org_role as string)
+            : undefined,
+      })
+    ) {
+      return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
     // Verify post belongs to project
