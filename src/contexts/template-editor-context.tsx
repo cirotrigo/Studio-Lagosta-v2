@@ -459,83 +459,78 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         return null
       }
 
-      // Salvar estado atual
-      const previousSelection = [...selectedLayerIdsRef.current]
-      const previousZoom = zoom
-      const previousPosition = { x: stage.x(), y: stage.y() }
+      if (typeof document === 'undefined') {
+        return null
+      }
 
-      // Estado das camadas invisíveis (precisa ser definido aqui para estar disponível no finally/catch)
-      const invisibleLayersState: Array<{ node: Konva.Node; originalOpacity: number; originalVisible: boolean }> = []
+      const canvasWidth = design.canvas.width
+      const canvasHeight = design.canvas.height
+      const aspectRatio = canvasWidth / canvasHeight
+
+      let thumbWidth = maxWidth
+      let thumbHeight = Math.round(maxWidth / aspectRatio)
+
+      if (thumbHeight > maxWidth * 2) {
+        thumbHeight = maxWidth * 2
+        thumbWidth = Math.round(thumbHeight * aspectRatio)
+      }
+
+      let cloneStage: Konva.Stage | null = null
+      let cloneContainer: HTMLDivElement | null = null
 
       try {
-        // 1. Limpar seleção para ocultar transformers
-        setSelectedLayerIds([])
+        // Garantir que o stage atual esteja desenhado antes de clonar
+        stage.batchDraw()
 
-        // 2. Aguardar próximo frame para React atualizar
-        await new Promise((resolve) => requestAnimationFrame(resolve))
+        cloneContainer = document.createElement('div')
+        cloneContainer.style.position = 'absolute'
+        cloneContainer.style.pointerEvents = 'none'
+        cloneContainer.style.opacity = '0'
+        cloneContainer.style.left = '-10000px'
+        cloneContainer.style.top = '-10000px'
+        cloneContainer.style.width = `${canvasWidth}px`
+        cloneContainer.style.height = `${canvasHeight}px`
+        document.body.appendChild(cloneContainer)
 
-        // 3. Normalizar zoom para 100% (escala 1:1)
-        setZoomState(1)
-        stage.scale({ x: 1, y: 1 })
-        stage.position({ x: 0, y: 0 })
+        cloneStage = stage.clone({
+          container: cloneContainer,
+          listening: false,
+        })
 
-        // 4. Aguardar frame para zoom ser aplicado
-        await new Promise((resolve) => requestAnimationFrame(resolve))
+        // Normalizar transformação apenas no clone
+        cloneStage.scale({ x: 1, y: 1 })
+        cloneStage.position({ x: 0, y: 0 })
+        cloneStage.size({ width: canvasWidth, height: canvasHeight })
+        cloneStage.batchDraw()
 
-        // 5. Ocultar camada de guides temporariamente
-        const guidesLayer = stage.findOne('.guides-layer')
-        const guidesWasVisible = guidesLayer?.visible() ?? false
-        if (guidesLayer) {
-          guidesLayer.visible(false)
-        }
+        // Ocultar elementos de UI no clone
+        const guidesLayer = cloneStage.findOne('.guides-layer')
+        guidesLayer?.visible(false)
 
-        // 6. Ocultar completamente camadas invisíveis (visible: false)
-        const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+        const gridLayer = cloneStage.findOne('.grid-layer')
+        gridLayer?.visible(false)
 
+        cloneStage.find('Transformer').forEach((node) => {
+          if (node.getClassName() === 'Transformer') {
+            node.destroy()
+          }
+        })
+
+        // Respeitar camadas invisíveis
+        const contentLayer = cloneStage.findOne('.content-layer') as Konva.Layer | undefined
         if (contentLayer) {
-          const children = (contentLayer as Konva.Layer).getChildren()
-
-          children.forEach((node: Konva.Node) => {
+          contentLayer.getChildren().forEach((node: Konva.Node) => {
             const layerId = node.id()
             const layer = design.layers.find((l) => l.id === layerId)
-
-            // Se a camada está marcada como invisível, ocultar completamente para thumbnail
             if (layer && layer.visible === false) {
-              // Salvar estado original
-              invisibleLayersState.push({
-                node,
-                originalOpacity: node.opacity(),
-                originalVisible: node.visible(),
-              })
-
-              // Ocultar node do Konva
               node.visible(false)
             }
           })
         }
 
-        // 7. Forçar redraw para aplicar mudanças
-        stage.batchDraw()
+        cloneStage.batchDraw()
 
-        // 8. Aguardar frame para garantir que mudanças foram aplicadas
-        await new Promise((resolve) => requestAnimationFrame(resolve))
-
-        // 9. Calcular dimensões do thumbnail mantendo aspect ratio
-        const canvasWidth = design.canvas.width
-        const canvasHeight = design.canvas.height
-        const aspectRatio = canvasWidth / canvasHeight
-
-        let thumbWidth = maxWidth
-        let thumbHeight = Math.round(maxWidth / aspectRatio)
-
-        // Se altura calculada for muito grande, ajustar pela altura
-        if (thumbHeight > maxWidth * 2) {
-          thumbHeight = maxWidth * 2
-          thumbWidth = Math.round(thumbHeight * aspectRatio)
-        }
-
-        // 10. Gerar thumbnail em JPEG com qualidade 85%
-        const dataUrl = stage.toDataURL({
+        return cloneStage.toDataURL({
           pixelRatio: thumbWidth / canvasWidth,
           mimeType: 'image/jpeg',
           quality: 0.85,
@@ -544,32 +539,17 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
           width: canvasWidth,
           height: canvasHeight,
         })
-
-        // 11. Restaurar visibilidade dos guides
-        if (guidesLayer) {
-          guidesLayer.visible(guidesWasVisible)
-        }
-
-        return dataUrl
       } catch (error) {
         console.error('[generateThumbnail] Erro ao gerar thumbnail:', error)
         return null
       } finally {
-        // Restaurar estado das camadas invisíveis PRIMEIRO
-        invisibleLayersState.forEach(({ node, originalOpacity, originalVisible }) => {
-          node.opacity(originalOpacity)
-          node.visible(originalVisible)
-        })
-
-        // Restaurar zoom, posição e seleção original
-        setZoomState(previousZoom)
-        stage.scale({ x: previousZoom, y: previousZoom })
-        stage.position(previousPosition)
-        stage.batchDraw()
-        setSelectedLayerIds(previousSelection)
+        cloneStage?.destroy()
+        if (cloneContainer?.parentNode) {
+          cloneContainer.parentNode.removeChild(cloneContainer)
+        }
       }
     },
-    [design.canvas.width, design.canvas.height, zoom, design.layers],
+    [design.canvas.width, design.canvas.height, design.layers],
   )
 
   const exportDesign = React.useCallback(
