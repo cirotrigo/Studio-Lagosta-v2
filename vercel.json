@@ -2,7 +2,6 @@
   "installCommand": "npm install --include=optional",
   "functions": {
     "app/api/video-processing/process/route.ts": {
-      "memory": 3008,
       "maxDuration": 300
     }
   },
