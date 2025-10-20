@@ -1,6 +1,36 @@
 import type { NextConfig } from "next";
 import path from "path";
 
+const heavyNodeModulesGlobs = [
+  './node_modules/@swc/core-linux-x64-gnu/**/*',
+  './node_modules/@swc/core-linux-x64-musl/**/*',
+  './node_modules/@swc/core-darwin-x64/**/*',
+  './node_modules/@swc/core-darwin-arm64/**/*',
+  './node_modules/@esbuild/**/*',
+  './node_modules/canvas/**/*',
+  './node_modules/@napi-rs/canvas/**/*',
+  './node_modules/sharp/**/*',
+  './node_modules/playwright/**/*',
+  './node_modules/@playwright/**/*',
+  './node_modules/axe-core/**/*',
+];
+
+const formatToolingGlobs = [
+  './node_modules/typescript/**/*',
+  './node_modules/eslint/**/*',
+  './node_modules/prettier/**/*',
+  './scripts/**/*',
+  './test-results/**/*',
+  './playwright-report/**/*',
+  './.next/cache/**/*',
+];
+
+const ffmpegGlobs = [
+  './node_modules/fluent-ffmpeg/**/*',
+  './node_modules/@ffmpeg-installer/ffmpeg/**/*',
+  './node_modules/@ffmpeg/**/*',
+];
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -13,37 +43,17 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
 
-  // Optimize for Vercel deployment - exclude large/unnecessary files
+  // Optimize tracing so Vercel functions stay below size limits
   outputFileTracingExcludes: {
     '*': [
-      'node_modules/@swc/core-linux-x64-gnu/**/*',
-      'node_modules/@swc/core-linux-x64-musl/**/*',
-      'node_modules/@swc/core-darwin-x64/**/*',
-      'node_modules/@swc/core-darwin-arm64/**/*',
-      'node_modules/@esbuild/**/*',
-      'node_modules/fluent-ffmpeg/**/*',
-      'node_modules/@ffmpeg-installer/**/*',
-      'node_modules/@ffmpeg/**/*',
-      'node_modules/canvas/**/*',
-      'node_modules/@napi-rs/canvas/**/*',
-      'node_modules/sharp/**/*',
-      'node_modules/playwright/**/*',
-      'node_modules/@playwright/**/*',
-      'node_modules/axe-core/**/*',
-      'node_modules/typescript/**/*',
-      'node_modules/eslint/**/*',
-      'node_modules/prettier/**/*',
-      '.next/cache/**/*',
-      'scripts/**/*',
-      'test-results/**/*',
-      'playwright-report/**/*',
+      ...heavyNodeModulesGlobs,
+      ...ffmpegGlobs,
+      ...formatToolingGlobs,
     ],
   },
   outputFileTracingIncludes: {
-    '/api/video-processing/process': [
-      './node_modules/fluent-ffmpeg/**/*',
-      './node_modules/@ffmpeg-installer/ffmpeg/**/*',
-    ],
+    // Keep ffmpeg binaries only for the video processing worker
+    '/api/video-processing/process': ffmpegGlobs,
   },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe
