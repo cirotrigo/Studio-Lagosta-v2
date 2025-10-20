@@ -38,7 +38,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     // Verificar acesso ao projeto considerando organizações
     const project = await fetchProjectWithShares(generation.projectId)
 
-    if (!hasProjectReadAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectReadAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
