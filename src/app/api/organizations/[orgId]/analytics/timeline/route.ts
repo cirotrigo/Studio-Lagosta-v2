@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { requireOrganizationMembership, OrganizationAccessError } from '@/lib/organizations'
 
+export const runtime = 'nodejs'
+export const maxDuration = 60 // Analytics queries can be heavy with large datasets
+
 type Period = '7d' | '30d' | '90d'
 
 function getPeriodDates(period: Period) {

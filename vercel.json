@@ -22,6 +22,18 @@
     },
     "app/api/admin/users/sync/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/projects/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/organizations/[orgId]/analytics/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/organizations/[orgId]/analytics/timeline/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/organizations/[orgId]/analytics/members/route.ts": {
+      "maxDuration": 60
     }
   },
   "crons": [

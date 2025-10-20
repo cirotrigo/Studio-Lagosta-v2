@@ -9,6 +9,9 @@ import {
   type AnalyticsPeriodKey,
 } from '@/lib/organizations'
 
+export const runtime = 'nodejs'
+export const maxDuration = 60 // Heavy analytics aggregation with upsert operations
+
 const DEFAULT_PERIOD: AnalyticsPeriodKey = '30d'
 
 function parsePeriodParams(req: Request) {

@@ -7,6 +7,9 @@ import {
   type AnalyticsPeriodKey,
 } from '@/lib/organizations'
 
+export const runtime = 'nodejs'
+export const maxDuration = 60 // Heavy aggregation queries with groupBy
+
 const DEFAULT_PERIOD: AnalyticsPeriodKey = '30d'
 
 function parsePeriodParams(req: Request) {

@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { createProjectSchema } from '@/lib/validations/studio'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60 // Complex queries with multiple JOINs and aggregations
 
 export async function GET() {
   const { userId, orgId } = await auth()
