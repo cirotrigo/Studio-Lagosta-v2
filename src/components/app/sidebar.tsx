@@ -36,7 +36,7 @@ export const navigationItems = [
   { name: "Agenda", href: "/agenda", icon: Calendar },
   { name: "Organização", href: "/organization", icon: Building2 },
   { name: "Prompts", href: "/prompts", icon: MessageSquare },
-  { name: "Base de Conhecimento", href: "/knowledge-base", icon: BookOpen },
+  { name: "Base de Conhecimento", href: "/knowledge", icon: BookOpen },
   { name: "Chat com IA", href: "/ai-chat", icon: Bot },
   { name: "Cobrança", href: "/billing", icon: CreditCard },
 ];
