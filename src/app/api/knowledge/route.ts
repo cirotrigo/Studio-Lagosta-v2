@@ -179,8 +179,32 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     console.error('Error creating organization knowledge:', error)
 
-    if (error.message?.includes('Unsupported file type')) {
-      return NextResponse.json({ error: error.message }, { status: 400 })
+    // Provide more specific error messages
+    if (error instanceof Error) {
+      if (error.message?.includes('Unsupported file type')) {
+        return NextResponse.json({ error: error.message }, { status: 400 })
+      }
+
+      if (error.message?.includes('OPENAI_API_KEY')) {
+        return NextResponse.json({
+          error: 'OpenAI API key não configurada. Configure OPENAI_API_KEY nas variáveis de ambiente.'
+        }, { status: 500 })
+      }
+
+      if (error.message?.includes('UPSTASH_VECTOR')) {
+        return NextResponse.json({
+          error: 'Upstash Vector não configurado. Configure UPSTASH_VECTOR_REST_URL e UPSTASH_VECTOR_REST_TOKEN nas variáveis de ambiente.'
+        }, { status: 500 })
+      }
+
+      // In development, show the actual error message
+      if (process.env.NODE_ENV === 'development') {
+        return NextResponse.json({
+          error: 'Erro ao criar conhecimento',
+          details: error.message,
+          stack: error.stack
+        }, { status: 500 })
+      }
     }
 
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })

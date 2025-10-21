@@ -31,6 +31,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -171,6 +172,9 @@ export default function OrgKnowledgePage() {
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>Adicionar à Base de Conhecimento</DialogTitle>
+              <DialogDescription>
+                Adicione conhecimento em formato de texto ou faça upload de um arquivo para compartilhar com sua organização.
+              </DialogDescription>
             </DialogHeader>
 
             <Tabs defaultValue="text" className="w-full">
