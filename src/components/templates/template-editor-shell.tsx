@@ -29,6 +29,9 @@ import { VideoExportQueueButton } from './video-export-queue-button'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
+import { GenerateCreativesModal } from './modals/generate-creatives-modal'
+import { useGenerateMultipleCreatives } from '@/hooks/use-generate-multiple-creatives'
+import { useCredits } from '@/hooks/use-credits'
 import {
   DndContext,
   closestCenter,
@@ -160,9 +163,14 @@ function TemplateEditorContent() {
     projectId,
   } = useTemplateEditor()
 
+  const { pages, currentPageId } = useMultiPage()
+  const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
+  const { canPerformOperation, getCost } = useCredits()
+
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
+  const [showGenerateModal, setShowGenerateModal] = React.useState(false)
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -225,6 +233,13 @@ function TemplateEditorContent() {
   }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast])
 
   const handleExport = React.useCallback(async () => {
+    // Se tem múltiplas páginas, abrir modal de seleção
+    if (pages.length > 1) {
+      setShowGenerateModal(true)
+      return
+    }
+
+    // Se tem apenas 1 página, exportar diretamente
     try {
       await exportDesign('jpeg')
       toast({
@@ -239,7 +254,21 @@ function TemplateEditorContent() {
         variant: 'destructive',
       })
     }
-  }, [exportDesign, toast])
+  }, [pages.length, exportDesign, toast])
+
+  const handleGenerateMultipleCreatives = React.useCallback(async (selectedPageIds: string[]) => {
+    try {
+      await generateMultiple(selectedPageIds)
+      setShowGenerateModal(false)
+    } catch (_error) {
+      console.error('[TemplateEditor] Error generating multiple creatives:', _error)
+      // Erro já foi tratado no hook
+    }
+  }, [generateMultiple])
+
+  // Calcular custo por criativo
+  const creativeCost = getCost('creative_download')
+  const hasCredits = pages.length <= 1 ? canPerformOperation('creative_download') : true // Para modal, verificar no próprio modal
 
   const togglePanel = React.useCallback((panel: SidePanel) => {
     setActivePanel((current) => (current === panel ? null : panel))
@@ -283,9 +312,9 @@ function TemplateEditorContent() {
             <Save className="mr-2 h-4 w-4" />
             {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
           </Button>
-          <Button size="sm" onClick={handleExport} disabled={isExporting}>
+          <Button size="sm" onClick={handleExport} disabled={isExporting || isGeneratingMultiple}>
             <Save className="mr-2 h-4 w-4" />
-            {isExporting ? 'Salvando...' : 'Salvar Criativo'}
+            {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
           </Button>
           <VideoExportQueueButton />
           <Button size="sm" variant="outline" onClick={toggleFullscreen}>
@@ -440,15 +469,45 @@ function TemplateEditorContent() {
 
   // Se estiver em fullscreen, renderizar em portal direto no body
   if (isFullscreen && typeof window !== 'undefined') {
-    return createPortal(
-      <div className="fixed inset-0 z-[9999] bg-background">
-        {editorContent}
-      </div>,
-      document.body
+    return (
+      <>
+        {createPortal(
+          <div className="fixed inset-0 z-[9999] bg-background">
+            {editorContent}
+          </div>,
+          document.body
+        )}
+        <GenerateCreativesModal
+          open={showGenerateModal}
+          onOpenChange={setShowGenerateModal}
+          pages={pages}
+          currentPageId={currentPageId}
+          onGenerate={handleGenerateMultipleCreatives}
+          creditCost={creativeCost}
+          hasCredits={canPerformOperation('creative_download')}
+          isGenerating={isGeneratingMultiple}
+          generationProgress={generationProgress}
+        />
+      </>
     )
   }
 
-  return editorContent
+  return (
+    <>
+      {editorContent}
+      <GenerateCreativesModal
+        open={showGenerateModal}
+        onOpenChange={setShowGenerateModal}
+        pages={pages}
+        currentPageId={currentPageId}
+        onGenerate={handleGenerateMultipleCreatives}
+        creditCost={creativeCost}
+        hasCredits={canPerformOperation('creative_download')}
+        isGenerating={isGeneratingMultiple}
+        generationProgress={generationProgress}
+      />
+    </>
+  )
 }
 
 // Componente individual de página sortable

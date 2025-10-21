@@ -12,7 +12,8 @@ export type OperationType =
   | "export_report"
   | "ai_chat"
   | "image_generation"
-  | "video_export";
+  | "video_export"
+  | "creative_download";
 
 // Default UI credit costs (fallbacks). Dynamic values come from /api/credits/settings.
 const DEFAULT_UI_CREDIT_COSTS: Record<OperationType, number> = {
@@ -22,6 +23,7 @@ const DEFAULT_UI_CREDIT_COSTS: Record<OperationType, number> = {
   ai_chat: 1,
   image_generation: 5,
   video_export: 10,
+  creative_download: 2,
 };
 
 export interface CreditData {
@@ -133,6 +135,7 @@ export function useCredits(): {
     if (typeof fc['ai_text_chat'] === 'number') base.ai_chat = Math.max(0, Math.floor(fc['ai_text_chat']));
     if (typeof fc['ai_image_generation'] === 'number') base.image_generation = Math.max(0, Math.floor(fc['ai_image_generation']));
     if (typeof fc['video_export'] === 'number') base.video_export = Math.max(0, Math.floor(fc['video_export']));
+    if (typeof fc['creative_download'] === 'number') base.creative_download = Math.max(0, Math.floor(fc['creative_download']));
     return base;
   };
 
