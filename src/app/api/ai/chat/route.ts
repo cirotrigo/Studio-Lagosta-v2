@@ -156,10 +156,14 @@ export async function POST(req: Request) {
         try {
           console.log('[RAG] Attempting to get context for query:', lastUserMessage.content.substring(0, 100))
           const dbUser = await getUserFromClerkId(userId)
-          console.log('[RAG] DB User:', dbUser.id)
-          const ragContext = await getRAGContext(lastUserMessage.content, {
-            userId: dbUser.id,
-          })
+          console.log('[RAG] DB User:', dbUser.id, 'Organization:', organizationId || 'none')
+
+          // Build tenant key: prioritize organization knowledge, fallback to user knowledge
+          const tenantKey = organizationId
+            ? { workspaceId: organizationId } // Organization knowledge (shared)
+            : { userId: dbUser.id } // Personal knowledge (fallback)
+
+          const ragContext = await getRAGContext(lastUserMessage.content, tenantKey)
           console.log('[RAG] Context retrieved, length:', ragContext.length)
 
           if (ragContext.trim()) {
@@ -206,13 +210,26 @@ ${ragContext}
         const defaultMaxTokens = getMaxOutputTokens(provider as AIProvider)
         const finalMaxTokens = maxTokens || defaultMaxTokens
 
-        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens)
-        const result = await streamText({
+        // GPT-5 models use max_completion_tokens instead of max_tokens
+        const isGPT5 = provider === 'openai' && model.startsWith('gpt-5')
+
+        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens, 'isGPT5:', isGPT5)
+
+        const streamConfig: Parameters<typeof streamText>[0] = {
           model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
           messages: mergedMessages,
           temperature,
-          maxTokens: finalMaxTokens,
-        })
+        }
+
+        // Use the appropriate token parameter based on model
+        if (isGPT5) {
+          // @ts-ignore - maxCompletionTokens is valid for GPT-5 but not in type definition yet
+          streamConfig.maxCompletionTokens = finalMaxTokens
+        } else {
+          streamConfig.maxTokens = finalMaxTokens
+        }
+
+        const result = await streamText(streamConfig)
         console.log('[CHAT] Stream text successful, returning response')
         return result.toAIStreamResponse()
       } catch (providerErr: unknown) {
