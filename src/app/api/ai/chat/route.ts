@@ -48,12 +48,6 @@ const ProviderSchema = z.enum(['openai', 'anthropic', 'google', 'mistral', 'open
 // Known-safe models for direct providers. OpenRouter models are dynamic; validate format below.
 const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
   openai: [
-    'gpt-5-2025-08-07',
-    'gpt-5-mini-2025-08-07',
-    'gpt-5-nano-2025-08-07',
-    'gpt-5',
-    'gpt-5-mini',
-    'gpt-5-nano',
     'gpt-4o',
     'gpt-4o-mini',
     'gpt-4-turbo',
@@ -210,23 +204,13 @@ ${ragContext}
         const defaultMaxTokens = getMaxOutputTokens(provider as AIProvider)
         const finalMaxTokens = maxTokens || defaultMaxTokens
 
-        // GPT-5 models use max_completion_tokens instead of max_tokens
-        const isGPT5 = provider === 'openai' && model.startsWith('gpt-5')
-
-        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens, 'isGPT5:', isGPT5)
+        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens)
 
         const streamConfig: Parameters<typeof streamText>[0] = {
           model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
           messages: mergedMessages,
           temperature,
-        }
-
-        // Use the appropriate token parameter based on model
-        if (isGPT5) {
-          // @ts-ignore - maxCompletionTokens is valid for GPT-5 but not in type definition yet
-          streamConfig.maxCompletionTokens = finalMaxTokens
-        } else {
-          streamConfig.maxTokens = finalMaxTokens
+          maxTokens: finalMaxTokens,
         }
 
         const result = await streamText(streamConfig)

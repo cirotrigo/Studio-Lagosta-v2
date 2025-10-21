@@ -10,13 +10,10 @@ type Provider = {
   models: { id: string; label: string }[]
 }
 
-// Available models for each provider (updated for 2025)
+// Available models for each provider
 const PROVIDER_MODELS: Record<string, { id: string; label: string }[]> = {
   openai: [
-    { id: 'gpt-5-2025-08-07', label: 'GPT-5 (Latest)' },
-    { id: 'gpt-5-mini-2025-08-07', label: 'GPT-5 Mini' },
-    { id: 'gpt-5-nano-2025-08-07', label: 'GPT-5 Nano' },
-    { id: 'gpt-4o', label: 'GPT-4o' },
+    { id: 'gpt-4o', label: 'GPT-4o (Latest)' },
     { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
   ],

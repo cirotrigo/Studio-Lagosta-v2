@@ -27,10 +27,7 @@ const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
     { id: 'mistralai/mistral-small', label: 'Mistral · Mistral Small' },
   ],
   openai: [
-    { id: 'gpt-5-2025-08-07', label: 'GPT-5 (Latest)' },
-    { id: 'gpt-5-mini-2025-08-07', label: 'GPT-5 Mini' },
-    { id: 'gpt-5-nano-2025-08-07', label: 'GPT-5 Nano' },
-    { id: 'gpt-4o', label: 'GPT-4o' },
+    { id: 'gpt-4o', label: 'GPT-4o (Latest)' },
     { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
     { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
   ],
@@ -77,11 +74,11 @@ export default function AIChatPage() {
   // Set initial provider when providers are loaded
   React.useEffect(() => {
     if (availableProviders.length > 0 && !provider) {
-      // Prioritize OpenAI with GPT-5 as default
+      // Prioritize OpenAI with GPT-4o as default (most capable model available)
       const openaiProvider = availableProviders.find(p => p.key === 'openai')
       if (openaiProvider) {
         setProvider('openai')
-        setModel('gpt-5-2025-08-07') // GPT-5 as default
+        setModel('gpt-4o') // GPT-4o as default
       } else {
         // Fallback to first available provider
         const firstProvider = availableProviders[0]
