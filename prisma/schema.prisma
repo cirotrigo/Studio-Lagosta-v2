@@ -948,3 +948,53 @@ model PostLog {
   @@index([createdAt])
   @@index([event])
 }
+
+// =============================================================================
+// AI Chat Conversation History (7-day retention)
+// =============================================================================
+
+model ChatConversation {
+  id             String        @id @default(cuid())
+  userId         String
+  clerkUserId    String
+  organizationId String?
+
+  // Conversation metadata
+  title          String        @default("Nova Conversa")
+  lastMessageAt  DateTime      @default(now())
+
+  // Automatic cleanup after 7 days
+  expiresAt      DateTime      // Auto-calculated: lastMessageAt + 7 days
+
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  messages       ChatMessage[]
+
+  @@index([userId])
+  @@index([clerkUserId])
+  @@index([organizationId])
+  @@index([lastMessageAt])
+  @@index([expiresAt]) // For cleanup queries
+}
+
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+
+  // Message content
+  role           String           // 'user' | 'assistant' | 'system'
+  content        String           @db.Text
+
+  // AI metadata
+  provider       String?          // 'openai', 'anthropic', etc.
+  model          String?          // Model used for this message
+  attachments    Json?            // Array of attachment objects
+
+  createdAt      DateTime         @default(now())
+
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}

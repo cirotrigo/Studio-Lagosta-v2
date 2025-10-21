@@ -44,6 +44,10 @@
     {
       "path": "/api/cron/cleanup-db",
       "schedule": "0 2 * * 0"
+    },
+    {
+      "path": "/api/ai/conversations/cleanup",
+      "schedule": "0 3 * * *"
     }
   ]
 }

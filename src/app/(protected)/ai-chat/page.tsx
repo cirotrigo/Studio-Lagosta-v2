@@ -17,6 +17,9 @@ import { CreditStatus } from '@/components/credits/credit-status'
 import { useOpenRouterModels } from '@/hooks/use-openrouter-models'
 import { useGenerateImage } from '@/hooks/use-ai-image'
 import { useAIProviders } from '@/hooks/use-ai-providers'
+import { useConversations, useConversation, useCreateConversation, useDeleteConversation } from '@/hooks/use-conversations'
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
+import { History, Plus, MoreVertical, Pencil } from 'lucide-react'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
@@ -70,6 +73,16 @@ export default function AIChatPage() {
   const [model, setModel] = React.useState<string>('')
   const [dynamicOpenRouterModels, setDynamicOpenRouterModels] = React.useState<{ id: string; label: string }[] | null>(null)
   const [mode, setMode] = React.useState<'text' | 'image'>('text')
+
+  // Conversation history state
+  const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null)
+  const [historyOpen, setHistoryOpen] = React.useState(false)
+
+  // Fetch conversations and current conversation
+  const { data: conversationsData } = useConversations()
+  const { data: currentConversation } = useConversation(currentConversationId)
+  const createConversation = useCreateConversation()
+  const deleteConversation = useDeleteConversation()
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -130,6 +143,7 @@ export default function AIChatPage() {
       provider,
       model,
       attachments: readyAttachments.map(a => ({ name: a.name, url: a.url })),
+      conversationId: currentConversationId,
     },
     experimental_throttle: 60,
     async onResponse(res) {
@@ -148,6 +162,18 @@ export default function AIChatPage() {
   })
 
   const deferredMessages = React.useDeferredValue(messages)
+
+  // Load conversation messages when a conversation is selected
+  React.useEffect(() => {
+    if (currentConversation?.messages) {
+      const loadedMessages = currentConversation.messages.map((msg) => ({
+        id: msg.id,
+        role: msg.role as 'user' | 'assistant' | 'system',
+        content: msg.content,
+      }))
+      setMessages(loadedMessages)
+    }
+  }, [currentConversation, setMessages])
 
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
 
@@ -293,18 +319,41 @@ export default function AIChatPage() {
   }
   
   // Wrap text submit to clear input right after sending
-  const handleSubmitText = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmitText = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
     const prompt = input.trim()
     if (!prompt) {
-      e.preventDefault()
       return
     }
-    handleSubmit(e)
-    // clear input immediately after sending
-    setInput('')
-    setAttachments([])
-    // deduct happens before stream starts on server; small delay then refresh
-    setTimeout(() => refresh(), 300)
+
+    // Auto-create conversation if none selected
+    if (!currentConversationId) {
+      try {
+        const title = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt
+        const newConv = await createConversation.mutateAsync({ title })
+        setCurrentConversationId(newConv.id)
+
+        // Wait a bit for state to update before submitting
+        setTimeout(() => {
+          handleSubmit(e)
+          setInput('')
+          setAttachments([])
+          setTimeout(() => refresh(), 300)
+        }, 100)
+      } catch (error) {
+        console.error('Error creating conversation:', error)
+        // Fallback: continue without conversation
+        handleSubmit(e)
+        setInput('')
+        setAttachments([])
+        setTimeout(() => refresh(), 300)
+      }
+    } else {
+      handleSubmit(e)
+      setInput('')
+      setAttachments([])
+      setTimeout(() => refresh(), 300)
+    }
   }
   
 
@@ -362,6 +411,42 @@ export default function AIChatPage() {
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true) }
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false) }
 
+  // Create new conversation
+  const handleNewConversation = async () => {
+    try {
+      const newConv = await createConversation.mutateAsync({
+        title: 'Nova Conversa',
+      })
+      setCurrentConversationId(newConv.id)
+      setMessages([])
+      setHistoryOpen(false)
+    } catch (error) {
+      console.error('Error creating conversation:', error)
+    }
+  }
+
+  // Select existing conversation
+  const handleSelectConversation = (id: string) => {
+    setCurrentConversationId(id)
+    setHistoryOpen(false)
+  }
+
+  // Delete conversation
+  const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (confirm('Tem certeza que deseja excluir esta conversa?')) {
+      try {
+        await deleteConversation.mutateAsync(id)
+        if (currentConversationId === id) {
+          setCurrentConversationId(null)
+          setMessages([])
+        }
+      } catch (error) {
+        console.error('Error deleting conversation:', error)
+      }
+    }
+  }
+
   const handleRetry = React.useCallback((assistantIndex: number) => {
     // Only makes sense for assistant messages – trim to the last user message before it and reload
     let shouldReload = false
@@ -400,8 +485,86 @@ export default function AIChatPage() {
   }, [credits?.creditsRemaining])
 
   return (
-    <Card className="p-4">
-      <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+    <>
+      {/* History Sidebar */}
+      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+        <SheetTrigger asChild>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mb-3 gap-2"
+            onClick={() => setHistoryOpen(true)}
+          >
+            <History className="h-4 w-4" />
+            Histórico de Conversas
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-80 overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Histórico de Conversas</SheetTitle>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-2">
+            <Button
+              onClick={handleNewConversation}
+              className="w-full gap-2"
+              variant="default"
+            >
+              <Plus className="h-4 w-4" />
+              Nova Conversa
+            </Button>
+
+            <div className="mt-4 space-y-1">
+              {conversationsData?.conversations.map((conv) => (
+                <div
+                  key={conv.id}
+                  className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
+                    currentConversationId === conv.id ? 'bg-accent border-primary' : ''
+                  }`}
+                  onClick={() => handleSelectConversation(conv.id)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-sm truncate">
+                      {conv.title}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {conv._count?.messages || 0} mensagens · {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
+                    </div>
+                  </div>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                        }}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              ))}
+
+              {(!conversationsData?.conversations || conversationsData.conversations.length === 0) && (
+                <p className="text-center text-sm text-muted-foreground py-8">
+                  Nenhuma conversa ainda. Comece uma nova!
+                </p>
+              )}
+            </div>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      <Card className="p-4">
+        <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <div>
           Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
           {provider === 'openrouter' && model.includes(':free') && (
@@ -615,5 +778,6 @@ export default function AIChatPage() {
         </form>
       </div>
     </Card>
+    </>
   )
 }

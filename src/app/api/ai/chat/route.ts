@@ -12,6 +12,7 @@ import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFea
 import { type FeatureKey } from '@/lib/credits/feature-config'
 import { getRAGContext } from '@/lib/knowledge/search'
 import { getMaxOutputTokens, type AIProvider } from '@/lib/ai/token-limits'
+import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI streaming responses + RAG context retrieval
@@ -92,6 +93,7 @@ const BodySchema = z
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().min(100).max(32000).optional(),
     attachments: z.array(AttachmentSchema).optional(),
+    conversationId: z.string().optional(), // Optional conversation ID for history
   })
   .strict()
 
@@ -116,7 +118,7 @@ export async function POST(req: Request) {
       if (!parsed.success) {
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
-      const { provider, model, messages, temperature = 0.4, maxTokens, attachments } = parsed.data
+      const { provider, model, messages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data
 
       if (!isAllowedModel(provider, model)) {
         return NextResponse.json({ error: 'Modelo não permitido para este provedor' }, { status: 400 })
@@ -206,11 +208,76 @@ ${ragContext}
 
         console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens)
 
+        // Conversation history: verify ownership and save user message
+        let conversationDbId: string | null = null
+        if (conversationId) {
+          const dbUser = await getUserFromClerkId(userId)
+          const conversation = await db.chatConversation.findFirst({
+            where: {
+              id: conversationId,
+              userId: dbUser.id,
+            },
+          })
+
+          if (!conversation) {
+            return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+          }
+
+          conversationDbId = conversation.id
+
+          // Save user message (last message in the array)
+          const lastUserMessage = messages[messages.length - 1]
+          if (lastUserMessage && lastUserMessage.role === 'user') {
+            await db.chatMessage.create({
+              data: {
+                conversationId: conversationDbId,
+                role: 'user',
+                content: lastUserMessage.content,
+                provider,
+                model,
+                attachments: attachments ? JSON.parse(JSON.stringify(attachments)) : null,
+              },
+            })
+          }
+        }
+
         const streamConfig: Parameters<typeof streamText>[0] = {
           model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
           messages: mergedMessages,
           temperature,
           maxTokens: finalMaxTokens,
+          async onFinish({ text }) {
+            // Save assistant response to conversation history
+            if (conversationDbId) {
+              try {
+                await db.chatMessage.create({
+                  data: {
+                    conversationId: conversationDbId,
+                    role: 'assistant',
+                    content: text,
+                    provider,
+                    model,
+                  },
+                })
+
+                // Update conversation's lastMessageAt and expiresAt
+                const newExpiresAt = new Date()
+                newExpiresAt.setDate(newExpiresAt.getDate() + 7)
+
+                await db.chatConversation.update({
+                  where: { id: conversationDbId },
+                  data: {
+                    lastMessageAt: new Date(),
+                    expiresAt: newExpiresAt,
+                  },
+                })
+
+                console.log('[CHAT] Saved assistant message to conversation:', conversationDbId)
+              } catch (saveErr) {
+                console.error('[CHAT] Error saving message to conversation:', saveErr)
+              }
+            }
+          },
         }
 
         const result = await streamText(streamConfig)
