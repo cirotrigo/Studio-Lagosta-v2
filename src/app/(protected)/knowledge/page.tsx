@@ -6,6 +6,8 @@
  */
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -15,10 +17,17 @@ import {
   useOrgKnowledgeEntries,
   useCreateOrgKnowledgeEntry,
   useUploadOrgKnowledgeFile,
+  useDeleteOrgKnowledgeEntry,
 } from '@/hooks/use-org-knowledge'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
-import { Plus, Upload, BookOpen, Clock } from 'lucide-react'
+import { Plus, Upload, BookOpen, Clock, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Dialog,
   DialogContent,
@@ -50,8 +59,10 @@ export default function OrgKnowledgePage() {
     search: search || undefined,
   })
 
+  const router = useRouter()
   const createMutation = useCreateOrgKnowledgeEntry()
   const uploadMutation = useUploadOrgKnowledgeFile()
+  const deleteMutation = useDeleteOrgKnowledgeEntry()
 
   const handleSubmitText = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -113,6 +124,27 @@ export default function OrgKnowledgePage() {
       toast({
         title: 'Erro ao processar arquivo',
         description: error instanceof Error ? error.message : 'Não foi possível processar o arquivo',
+        variant: 'destructive',
+      })
+    }
+  }
+
+  const handleDelete = async (id: string, title: string) => {
+    if (!confirm(`Tem certeza que deseja excluir "${title}"?`)) {
+      return
+    }
+
+    try {
+      await deleteMutation.mutateAsync(id)
+
+      toast({
+        title: 'Entrada excluída!',
+        description: 'A entrada foi removida da base de conhecimento.',
+      })
+    } catch (error) {
+      toast({
+        title: 'Erro ao excluir',
+        description: error instanceof Error ? error.message : 'Não foi possível excluir a entrada',
         variant: 'destructive',
       })
     }
@@ -269,7 +301,34 @@ export default function OrgKnowledgePage() {
           {data.entries.map((entry) => (
             <Card key={entry.id} className="p-4 hover:shadow-lg transition-shadow">
               <div className="space-y-2">
-                <h3 className="font-semibold line-clamp-1">{entry.title}</h3>
+                <div className="flex items-start justify-between gap-2">
+                  <h3 className="font-semibold line-clamp-1 flex-1">{entry.title}</h3>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}`)}>
+                        <Eye className="h-4 w-4 mr-2" />
+                        Ver detalhes
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}/edit`)}>
+                        <Edit className="h-4 w-4 mr-2" />
+                        Editar
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onClick={() => handleDelete(entry.id, entry.title)}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Excluir
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
                 <p className="text-sm text-muted-foreground line-clamp-3">
                   {entry.content}
                 </p>

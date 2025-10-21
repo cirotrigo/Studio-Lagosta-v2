@@ -6,7 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { getUserFromClerkId } from '@/lib/auth-utils'
+import { isAdmin } from '@/lib/admin-utils'
 
 /**
  * GET /api/admin/knowledge/migrate-workspace
@@ -16,15 +16,8 @@ export async function GET() {
   try {
     const { userId: clerkUserId } = await auth()
 
-    if (!clerkUserId) {
+    if (!clerkUserId || !(await isAdmin(clerkUserId))) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    }
-
-    const dbUser = await getUserFromClerkId(clerkUserId)
-
-    // Check if user is admin
-    if (dbUser.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     // Get all entries with their current workspaceId
@@ -81,15 +74,8 @@ export async function POST(req: NextRequest) {
   try {
     const { userId: clerkUserId } = await auth()
 
-    if (!clerkUserId) {
+    if (!clerkUserId || !(await isAdmin(clerkUserId))) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
-    }
-
-    const dbUser = await getUserFromClerkId(clerkUserId)
-
-    // Check if user is admin
-    if (dbUser.role !== 'ADMIN') {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     const body = await req.json()

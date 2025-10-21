@@ -14,7 +14,7 @@ import {
   useDeleteKnowledgeEntry,
 } from '@/hooks/admin/use-admin-knowledge'
 import { useToast } from '@/hooks/use-toast'
-import { Plus } from 'lucide-react'
+import { Plus, RefreshCw } from 'lucide-react'
 
 export default function AdminKnowledgePage() {
   const [page, setPage] = useState(1)
@@ -76,12 +76,20 @@ export default function AdminKnowledgePage() {
             Gerencie o conteúdo que será usado no RAG do chat
           </p>
         </div>
-        <Link href="/admin/knowledge/new">
-          <Button>
-            <Plus className="w-4 h-4 mr-2" />
-            Nova Entrada
-          </Button>
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/admin/knowledge/migrate">
+            <Button variant="outline">
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Migrar Workspace
+            </Button>
+          </Link>
+          <Link href="/admin/knowledge/new">
+            <Button>
+              <Plus className="w-4 h-4 mr-2" />
+              Nova Entrada
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <KnowledgeList

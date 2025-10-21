@@ -77,10 +77,18 @@ export default function AIChatPage() {
   // Set initial provider when providers are loaded
   React.useEffect(() => {
     if (availableProviders.length > 0 && !provider) {
-      const firstProvider = availableProviders[0]
-      setProvider(firstProvider.key)
-      if (firstProvider.models.length > 0) {
-        setModel(firstProvider.models[0].id)
+      // Prioritize OpenAI with GPT-5 as default
+      const openaiProvider = availableProviders.find(p => p.key === 'openai')
+      if (openaiProvider) {
+        setProvider('openai')
+        setModel('gpt-5-2025-08-07') // GPT-5 as default
+      } else {
+        // Fallback to first available provider
+        const firstProvider = availableProviders[0]
+        setProvider(firstProvider.key)
+        if (firstProvider.models.length > 0) {
+          setModel(firstProvider.models[0].id)
+        }
       }
     }
   }, [availableProviders, provider])
