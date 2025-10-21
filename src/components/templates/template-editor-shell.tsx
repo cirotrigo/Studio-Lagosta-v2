@@ -163,7 +163,7 @@ function TemplateEditorContent() {
     projectId,
   } = useTemplateEditor()
 
-  const { pages, currentPageId } = useMultiPage()
+  const { pages, currentPageId, setCurrentPageId } = useMultiPage()
   const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
   const { canPerformOperation, getCost } = useCredits()
 
@@ -187,12 +187,40 @@ function TemplateEditorContent() {
     // Mostrar feedback de que está gerando thumbnail
     const loadingToast = toast({
       title: 'Salvando template...',
-      description: 'Gerando thumbnail e salvando alterações.',
+      description: 'Gerando thumbnail da primeira página e salvando alterações.',
     })
 
     try {
-      // Gerar thumbnail do canvas atual
-      const thumbnailUrl = await generateThumbnail(300)
+      // Guardar página atual para restaurar depois
+      const originalPageId = currentPageId
+
+      // Ordenar páginas e pegar a primeira
+      const sortedPages = [...pages].sort((a, b) => a.order - b.order)
+      const firstPage = sortedPages[0]
+
+      let thumbnailUrl: string | null = null
+
+      if (firstPage && firstPage.id !== currentPageId) {
+        // Se não estamos na primeira página, navegar para ela
+        console.log('[TemplateEditor] Navegando para primeira página para gerar thumbnail')
+        setCurrentPageId(firstPage.id)
+
+        // Aguardar renderização da primeira página
+        await new Promise((resolve) => requestAnimationFrame(resolve))
+        await new Promise((resolve) => setTimeout(resolve, 500))
+
+        // Gerar thumbnail da primeira página
+        thumbnailUrl = await generateThumbnail(300)
+
+        // Restaurar página original
+        if (originalPageId) {
+          setCurrentPageId(originalPageId)
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+        }
+      } else {
+        // Já estamos na primeira página, gerar thumbnail diretamente
+        thumbnailUrl = await generateThumbnail(300)
+      }
 
       const payload = {
         id: templateId,
@@ -215,7 +243,7 @@ function TemplateEditorContent() {
       toast({
         title: 'Template salvo com sucesso!',
         description: thumbnailUrl
-          ? 'Thumbnail gerado e alterações aplicadas.'
+          ? 'Thumbnail da primeira página gerado e alterações aplicadas.'
           : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
     } catch (_error) {
@@ -230,7 +258,7 @@ function TemplateEditorContent() {
         variant: 'destructive',
       })
     }
-  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast])
+  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId])
 
   const handleExport = React.useCallback(async () => {
     // Se tem múltiplas páginas, abrir modal de seleção
