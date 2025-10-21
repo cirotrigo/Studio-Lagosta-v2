@@ -15,7 +15,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ promptId: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -23,14 +23,32 @@ export async function GET(
   const { promptId } = await params
 
   try {
-    const prompt = await db.prompt.findFirst({
-      where: {
-        id: promptId,
-        userId,
-      },
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      organizationId = organization?.id ?? null
+    }
+
+    const prompt = await db.prompt.findUnique({
+      where: { id: promptId },
     })
 
     if (!prompt) {
+      return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
+    }
+
+    const canAccessPersonal = !prompt.organizationId && prompt.userId === userId
+    const canAccessOrganization =
+      prompt.organizationId != null &&
+      organizationId != null &&
+      prompt.organizationId === organizationId
+
+    if (!canAccessPersonal && !canAccessOrganization) {
       return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
     }
 
@@ -49,7 +67,7 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ promptId: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -57,15 +75,32 @@ export async function PATCH(
   const { promptId } = await params
 
   try {
-    // Verificar se o prompt existe e pertence ao usuário
-    const existingPrompt = await db.prompt.findFirst({
-      where: {
-        id: promptId,
-        userId,
-      },
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      organizationId = organization?.id ?? null
+    }
+
+    const existingPrompt = await db.prompt.findUnique({
+      where: { id: promptId },
     })
 
     if (!existingPrompt) {
+      return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
+    }
+
+    const canEditPersonal = !existingPrompt.organizationId && existingPrompt.userId === userId
+    const canEditOrganization =
+      existingPrompt.organizationId != null &&
+      organizationId != null &&
+      existingPrompt.organizationId === organizationId
+
+    if (!canEditPersonal && !canEditOrganization) {
       return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
     }
 
@@ -100,7 +135,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ promptId: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -108,15 +143,32 @@ export async function DELETE(
   const { promptId } = await params
 
   try {
-    // Verificar se o prompt existe e pertence ao usuário
-    const existingPrompt = await db.prompt.findFirst({
-      where: {
-        id: promptId,
-        userId,
-      },
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      organizationId = organization?.id ?? null
+    }
+
+    const existingPrompt = await db.prompt.findUnique({
+      where: { id: promptId },
     })
 
     if (!existingPrompt) {
+      return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
+    }
+
+    const canDeletePersonal = !existingPrompt.organizationId && existingPrompt.userId === userId
+    const canDeleteOrganization =
+      existingPrompt.organizationId != null &&
+      organizationId != null &&
+      existingPrompt.organizationId === organizationId
+
+    if (!canDeletePersonal && !canDeleteOrganization) {
       return NextResponse.json({ error: 'Prompt não encontrado' }, { status: 404 })
     }
 

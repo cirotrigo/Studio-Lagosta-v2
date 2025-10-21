@@ -16,33 +16,38 @@ import { useCredits } from '@/hooks/use-credits'
 import { CreditStatus } from '@/components/credits/credit-status'
 import { useOpenRouterModels } from '@/hooks/use-openrouter-models'
 import { useGenerateImage } from '@/hooks/use-ai-image'
+import { useAIProviders } from '@/hooks/use-ai-providers'
 
-const PROVIDERS = [
-  { key: 'openrouter', name: 'OpenRouter' },
-  { key: 'openai', name: 'OpenAI' },
-  { key: 'anthropic', name: 'Anthropic' },
-  { key: 'google', name: 'Google' },
-  { key: 'mistral', name: 'Mistral' },
-]
-
+// Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
   openrouter: [
-    { id: 'openai/gpt-4o-mini', label: 'OpenAI · gpt-4o-mini' },
+    { id: 'openai/gpt-4o-mini', label: 'OpenAI · GPT-4o Mini' },
     { id: 'anthropic/claude-3.5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
-    { id: 'google/gemini-2.0-flash-001', label: 'Google · Gemini 2.0 Flash' },
-    { id: 'mistralai/mistral-small', label: 'Mistral · mistral-small' },
+    { id: 'google/gemini-2.0-flash-exp:free', label: 'Google · Gemini 2.0 Flash (Free)' },
+    { id: 'mistralai/mistral-small', label: 'Mistral · Mistral Small' },
   ],
   openai: [
-    { id: 'gpt-5', label: 'GPT‑5' },
+    { id: 'gpt-5-2025-08-07', label: 'GPT-5 (Latest)' },
+    { id: 'gpt-5-mini-2025-08-07', label: 'GPT-5 Mini' },
+    { id: 'gpt-5-nano-2025-08-07', label: 'GPT-5 Nano' },
+    { id: 'gpt-4o', label: 'GPT-4o' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
   ],
   anthropic: [
-    { id: 'claude-4-sonnet', label: 'Claude Sonnet 4' },
+    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
+    { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
+    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
   ],
   google: [
     { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
+    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
+    { id: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
   ],
   mistral: [
-    { id: 'mistral-small-latest', label: 'mistral-small-latest' },
+    { id: 'mistral-large-latest', label: 'Mistral Large (Latest)' },
+    { id: 'mistral-small-latest', label: 'Mistral Small (Latest)' },
+    { id: 'mistral-medium-latest', label: 'Mistral Medium (Latest)' },
   ],
 }
 
@@ -55,14 +60,49 @@ export default function AIChatPage() {
     { label: 'Início', href: '/dashboard' },
     { label: 'Chat com IA' },
   ])
-  const [provider, setProvider] = React.useState('openrouter')
-  const [model, setModel] = React.useState(STATIC_MODELS['openrouter'][0].id)
+
+  // Fetch available providers (only those with API keys)
+  const { data: providersData, isLoading: isLoadingProviders } = useAIProviders()
+  const availableProviders = React.useMemo(() =>
+    providersData?.providers ?? [],
+    [providersData]
+  )
+
+  // Initialize with first available provider
+  const [provider, setProvider] = React.useState<string>('')
+  const [model, setModel] = React.useState<string>('')
   const [dynamicOpenRouterModels, setDynamicOpenRouterModels] = React.useState<{ id: string; label: string }[] | null>(null)
   const [mode, setMode] = React.useState<'text' | 'image'>('text')
-  const currentModels = provider === 'openrouter'
-    ? (dynamicOpenRouterModels ?? (mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : STATIC_MODELS['openrouter']))
-    : STATIC_MODELS[provider]
-  const modelItems = React.useMemo(() => (currentModels ?? []).map((m) => ({ value: m.id, label: m.label })), [currentModels])
+
+  // Set initial provider when providers are loaded
+  React.useEffect(() => {
+    if (availableProviders.length > 0 && !provider) {
+      const firstProvider = availableProviders[0]
+      setProvider(firstProvider.key)
+      if (firstProvider.models.length > 0) {
+        setModel(firstProvider.models[0].id)
+      }
+    }
+  }, [availableProviders, provider])
+
+  // Get current provider data
+  const currentProviderData = React.useMemo(() =>
+    availableProviders.find(p => p.key === provider),
+    [availableProviders, provider]
+  )
+
+  // Get models for current provider
+  const currentModels = React.useMemo(() => {
+    if (provider === 'openrouter') {
+      return dynamicOpenRouterModels ?? (mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : (currentProviderData?.models ?? STATIC_MODELS['openrouter']))
+    }
+    return currentProviderData?.models ?? STATIC_MODELS[provider] ?? []
+  }, [provider, dynamicOpenRouterModels, mode, currentProviderData])
+
+  const modelItems = React.useMemo(() =>
+    currentModels.map((m) => ({ value: m.id, label: m.label })),
+    [currentModels]
+  )
 
   // Upload state (declared before useChat so it can be referenced in request body)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -123,17 +163,24 @@ export default function AIChatPage() {
           label: model.label
         }))
         setDynamicOpenRouterModels(formattedModels)
-        setModel(openRouterModelsData.models[0].id)
+        if (formattedModels.length > 0 && !model) {
+          setModel(formattedModels[0].id)
+        }
       } else if (!isLoadingModels) {
         // Fallback to static models if API fails
         setDynamicOpenRouterModels(null)
-        const fallback = (mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : STATIC_MODELS['openrouter'])[0]?.id
-        if (fallback) setModel(fallback)
+        const fallbackModels = mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : (currentProviderData?.models ?? STATIC_MODELS['openrouter'])
+        if (fallbackModels.length > 0 && !model) {
+          setModel(fallbackModels[0].id)
+        }
       }
-    } else {
-      setModel(STATIC_MODELS[provider]?.[0]?.id)
+    } else if (currentProviderData) {
+      // For non-OpenRouter providers, use models from provider data
+      if (currentProviderData.models.length > 0 && !model) {
+        setModel(currentProviderData.models[0].id)
+      }
     }
-  }, [provider, mode, openRouterModelsData, isLoadingModels])
+  }, [provider, mode, openRouterModelsData, isLoadingModels, currentProviderData, model])
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const endRef = React.useRef<HTMLDivElement>(null)
@@ -351,7 +398,10 @@ export default function AIChatPage() {
     <Card className="p-4">
       <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <div>
-          Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{PROVIDERS.find(p=>p.key===provider)?.name}</span> · Modelo: <span className="font-medium text-foreground">{model}</span>
+          Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
+          {provider === 'openrouter' && model.includes(':free') && (
+            <span className="ml-1 text-green-600 dark:text-green-400">(Gratuito)</span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {credits && (
@@ -495,17 +545,23 @@ export default function AIChatPage() {
               {/* Provider selector */}
               <DropdownMenu open={mode === 'image' ? false : providerMenuOpen} onOpenChange={(o)=>{ if (mode !== 'image') setProviderMenuOpen(o) }}>
                 <DropdownMenuTrigger asChild>
-                  <DropdownTriggerButton isOpen={providerMenuOpen} aria-label="Selecionar provedor" disabled={mode==='image'}>
+                  <DropdownTriggerButton isOpen={providerMenuOpen} aria-label="Selecionar provedor" disabled={mode==='image' || isLoadingProviders}>
                     <Bot className="h-4 w-4" />
-                    <span className="truncate max-w-[140px]">{PROVIDERS.find((p) => p.key === provider)?.name}</span>
+                    <span className="truncate max-w-[140px]">{availableProviders.find((p) => p.key === provider)?.name || 'Carregando...'}</span>
                   </DropdownTriggerButton>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="start">
-                  {PROVIDERS.map((p) => (
-                    <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
-                      {p.name}
+                  {availableProviders.length === 0 ? (
+                    <DropdownMenuItem disabled>
+                      Nenhum provedor disponível
                     </DropdownMenuItem>
-                  ))}
+                  ) : (
+                    availableProviders.map((p) => (
+                      <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
+                        {p.name}
+                      </DropdownMenuItem>
+                    ))
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
               {/* Model selector */}

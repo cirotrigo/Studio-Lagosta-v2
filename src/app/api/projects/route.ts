@@ -6,6 +6,8 @@ import { createProjectSchema } from '@/lib/validations/studio'
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Complex queries with multiple JOINs and aggregations
 
+const ORG_PROJECT_LIMIT_ERROR = 'ORG_PROJECT_LIMIT_REACHED'
+
 export async function GET() {
   const { userId, orgId } = await auth()
   if (!userId) {
@@ -125,61 +127,66 @@ export async function POST(req: Request) {
     const payload = await req.json()
     const parsed = createProjectSchema.parse(payload)
 
-    const project = await db.project.create({
-      data: {
-        name: parsed.name,
-        description: parsed.description,
-        logoUrl: parsed.logoUrl,
-        status: parsed.status ?? 'ACTIVE',
-        userId,
-      },
-    })
+    let organization: { id: string; maxProjects: number | null } | null = null
 
-    // Auto-share with organization if user is in organization context
     if (orgId) {
-      const organization = await db.organization.findUnique({
+      organization = await db.organization.findUnique({
         where: { clerkOrgId: orgId },
         select: { id: true, maxProjects: true },
       })
 
-      if (organization) {
-        // Check project limit for organization
-        if (organization.maxProjects != null) {
-          const currentCount = await db.organizationProject.count({
-            where: { organizationId: organization.id },
-          })
-
-          // Only auto-share if within limit
-          if (currentCount < organization.maxProjects) {
-            await db.organizationProject.create({
-              data: {
-                organizationId: organization.id,
-                projectId: project.id,
-                sharedBy: userId,
-                defaultCanEdit: true,
-              },
-            })
-          } else {
-            console.warn(
-              `Project ${project.id} not auto-shared: organization ${orgId} has reached project limit`
-            )
-          }
-        } else {
-          // No limit, auto-share
-          await db.organizationProject.create({
-            data: {
-              organizationId: organization.id,
-              projectId: project.id,
-              sharedBy: userId,
-              defaultCanEdit: true,
-            },
-          })
-        }
+      if (!organization) {
+        return NextResponse.json(
+          { error: 'Organização não encontrada' },
+          { status: 404 }
+        )
       }
     }
 
+    const project = await db.$transaction(async (tx) => {
+      if (organization?.maxProjects != null) {
+        const currentCount = await tx.organizationProject.count({
+          where: { organizationId: organization.id },
+        })
+
+        if (currentCount >= organization.maxProjects) {
+          throw new Error(ORG_PROJECT_LIMIT_ERROR)
+        }
+      }
+
+      const createdProject = await tx.project.create({
+        data: {
+          name: parsed.name,
+          description: parsed.description,
+          logoUrl: parsed.logoUrl,
+          status: parsed.status ?? 'ACTIVE',
+          userId,
+        },
+      })
+
+      if (organization) {
+        await tx.organizationProject.create({
+          data: {
+            organizationId: organization.id,
+            projectId: createdProject.id,
+            sharedBy: userId,
+            defaultCanEdit: true,
+          },
+        })
+      }
+
+      return createdProject
+    })
+
     return NextResponse.json(project, { status: 201 })
   } catch (error) {
+    if (error instanceof Error && error.message === ORG_PROJECT_LIMIT_ERROR) {
+      return NextResponse.json(
+        { error: 'Limite de projetos compartilhados atingido para este plano' },
+        { status: 403 }
+      )
+    }
+
     console.error('Failed to create project', error)
     return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
   }

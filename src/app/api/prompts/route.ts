@@ -12,7 +12,7 @@ const createPromptSchema = z.object({
 
 // GET - Buscar todos os prompts do usuário
 export async function GET(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -22,20 +22,42 @@ export async function GET(req: Request) {
     const search = searchParams.get('search')
     const category = searchParams.get('category')
 
-    // Construir filtros
-    const where: Record<string, unknown> = { userId }
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      organizationId = organization?.id ?? null
+    }
+
+    const orFilters = [
+      { userId, organizationId: null },
+      ...(organizationId ? [{ organizationId }] : []),
+    ]
+
+    const andFilters: Array<Record<string, unknown>> = []
 
     if (category) {
-      where.category = category
+      andFilters.push({ category })
     }
 
     if (search) {
-      where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { content: { contains: search, mode: 'insensitive' } },
-        { tags: { hasSome: [search] } },
-      ]
+      andFilters.push({
+        OR: [
+          { title: { contains: search, mode: 'insensitive' } },
+          { content: { contains: search, mode: 'insensitive' } },
+          { tags: { hasSome: [search] } },
+        ],
+      })
     }
+
+    const where = {
+      OR: orFilters,
+      ...(andFilters.length > 0 ? { AND: andFilters } : {}),
+    } as Parameters<typeof db.prompt.findMany>[0]['where']
 
     const prompts = await db.prompt.findMany({
       where,
@@ -54,7 +76,7 @@ export async function GET(req: Request) {
 
 // POST - Criar novo prompt
 export async function POST(req: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -67,12 +89,31 @@ export async function POST(req: Request) {
     const validatedData = createPromptSchema.parse(body)
     console.log('[POST /api/prompts] Validated data:', validatedData)
 
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      if (!organization) {
+        return NextResponse.json(
+          { error: 'Organização não encontrada' },
+          { status: 404 }
+        )
+      }
+
+      organizationId = organization.id
+    }
+
     const promptData = {
       title: validatedData.title,
       content: validatedData.content,
       category: validatedData.category || null,
       userId,
       tags: validatedData.tags || [],
+      organizationId,
     }
     console.log('[POST /api/prompts] Creating prompt with data:', promptData)
 

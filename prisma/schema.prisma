@@ -72,8 +72,8 @@ model Feature {
 }
 
 model Generation {
-  id                   String           @id @default(cuid())
-  status               GenerationStatus @default(PROCESSING)
+  id                   String              @id @default(cuid())
+  status               GenerationStatus    @default(PROCESSING)
   templateId           Int
   fieldValues          Json
   resultUrl            String?
@@ -82,14 +82,14 @@ model Generation {
   templateName         String?
   projectName          String?
   createdBy            String
-  createdAt            DateTime         @default(now())
+  createdAt            DateTime            @default(now())
   completedAt          DateTime?
   googleDriveFileId    String?
   googleDriveBackupUrl String?
-  Project              Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Template             Template         @relation(fields: [templateId], references: [id])
+  Project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Template             Template            @relation(fields: [templateId], references: [id])
   VideoProcessingJob   VideoProcessingJob? @relation("GenerationVideoJob")
-  socialPosts          SocialPost[]     // Posts that use this creative
+  socialPosts          SocialPost[] // Posts that use this creative
 
   @@index([createdAt])
   @@index([createdBy])
@@ -99,14 +99,14 @@ model Generation {
 }
 
 model Logo {
-  id             Int      @id @default(autoincrement())
-  name           String
-  fileUrl        String
-  projectId      Int
-  uploadedBy     String
-  isProjectLogo  Boolean  @default(false)
-  createdAt      DateTime @default(now())
-  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id            Int      @id @default(autoincrement())
+  name          String
+  fileUrl       String
+  projectId     Int
+  uploadedBy    String
+  isProjectLogo Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  Project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([projectId, isProjectLogo])
@@ -125,70 +125,70 @@ model BrandColor {
 }
 
 model Plan {
-  id                String   @id @default(cuid())
-  clerkId           String?  @unique
-  clerkName         String?
-  name              String
-  credits           Int
-  active            Boolean  @default(true)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  currency          String?
-  priceMonthlyCents Int?
-  priceYearlyCents  Int?
-  badge             String?
-  ctaLabel          String?
-  ctaType           String?  @default("checkout")
-  ctaUrl            String?
-  description       String?
-  features          Json?
-  highlight         Boolean  @default(false)
-  billingSource     String   @default("clerk")
-  sortOrder         Int      @default(0)
-  allowOrgCreation  Boolean  @default(false)
-  orgMemberLimit    Int?
-  orgProjectLimit   Int?
+  id                 String   @id @default(cuid())
+  clerkId            String?  @unique
+  clerkName          String?
+  name               String
+  credits            Int
+  active             Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  currency           String?
+  priceMonthlyCents  Int?
+  priceYearlyCents   Int?
+  badge              String?
+  ctaLabel           String?
+  ctaType            String?  @default("checkout")
+  ctaUrl             String?
+  description        String?
+  features           Json?
+  highlight          Boolean  @default(false)
+  billingSource      String   @default("clerk")
+  sortOrder          Int      @default(0)
+  allowOrgCreation   Boolean  @default(false)
+  orgMemberLimit     Int?
+  orgProjectLimit    Int?
   orgCreditsPerMonth Int?
-  orgCountLimit     Int?
+  orgCountLimit      Int?
 
   @@index([active])
 }
 
 model Project {
-  id                     Int                @id @default(autoincrement())
-  name                   String
-  description            String?
-  status                 ProjectStatus      @default(ACTIVE)
-  logoUrl                String?
-  googleDriveFolderId    String?
-  googleDriveFolderName  String?
+  id                          Int           @id @default(autoincrement())
+  name                        String
+  description                 String?
+  status                      ProjectStatus @default(ACTIVE)
+  logoUrl                     String?
+  googleDriveFolderId         String?
+  googleDriveFolderName       String?
   googleDriveImagesFolderId   String?
   googleDriveImagesFolderName String?
   googleDriveVideosFolderId   String?
   googleDriveVideosFolderName String?
-  makeWebhookAnalyzeUrl  String?
-  makeWebhookCreativeUrl String?
-  userId                 String
-  workspaceId            Int?
+  makeWebhookAnalyzeUrl       String?
+  makeWebhookCreativeUrl      String?
+  userId                      String
+  workspaceId                 Int?
 
   // Instagram account configuration
-  instagramAccountId     String?            @db.Text
-  instagramUsername      String?            @db.Text
-  instagramProfileUrl    String?            @db.Text
+  instagramAccountId  String? @db.Text
+  instagramUsername   String? @db.Text
+  instagramProfileUrl String? @db.Text
 
-  createdAt              DateTime           @default(now())
-  updatedAt              DateTime           @updatedAt
-  BrandColor             BrandColor[]
-  CustomFont             CustomFont[]
-  Element                Element[]
-  Generation             Generation[]
-  Logo                   Logo[]
-  Template               Template[]
-  AIGeneratedImage       AIGeneratedImage[]
-  PromptLibrary          PromptLibrary[]
-  organizationProjects   OrganizationProject[]
-  OrganizationUsage      OrganizationUsage[]
-  SocialPost             SocialPost[]       // Social media posts for this account
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  BrandColor           BrandColor[]
+  CustomFont           CustomFont[]
+  Element              Element[]
+  Generation           Generation[]
+  Logo                 Logo[]
+  Template             Template[]
+  AIGeneratedImage     AIGeneratedImage[]
+  PromptLibrary        PromptLibrary[]
+  organizationProjects OrganizationProject[]
+  OrganizationUsage    OrganizationUsage[]
+  SocialPost           SocialPost[] // Social media posts for this account
 
   @@index([status])
   @@index([userId])
@@ -196,23 +196,24 @@ model Project {
 }
 
 model Organization {
-  id               String                     @id @default(cuid())
-  clerkOrgId       String                     @unique
-  name             String
-  slug             String                     @unique
-  imageUrl         String?
-  isActive         Boolean                    @default(true)
-  maxMembers       Int                        @default(5)
-  maxProjects      Int                        @default(10)
-  creditsPerMonth  Int                        @default(1000)
-  ownerClerkId     String?
-  createdAt        DateTime                   @default(now())
-  updatedAt        DateTime                   @updatedAt
-  projects         OrganizationProject[]
-  creditBalance    OrganizationCreditBalance?
-  usage            OrganizationUsage[]
-  memberAnalytics  OrganizationMemberAnalytics[]
-  usageHistory     UsageHistory[]
+  id              String                        @id @default(cuid())
+  clerkOrgId      String                        @unique
+  name            String
+  slug            String                        @unique
+  imageUrl        String?
+  isActive        Boolean                       @default(true)
+  maxMembers      Int                           @default(5)
+  maxProjects     Int                           @default(10)
+  creditsPerMonth Int                           @default(1000)
+  ownerClerkId    String?
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+  projects        OrganizationProject[]
+  creditBalance   OrganizationCreditBalance?
+  usage           OrganizationUsage[]
+  memberAnalytics OrganizationMemberAnalytics[]
+  usageHistory    UsageHistory[]
+  Prompt          Prompt[]
 
   @@index([clerkOrgId])
   @@index([slug])
@@ -220,29 +221,29 @@ model Organization {
 }
 
 model OrganizationCreditBalance {
-  id             String        @id @default(cuid())
-  organizationId String        @unique
-  credits        Int           @default(0)
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  credits        Int          @default(0)
   lastRefill     DateTime?
-  refillAmount   Int           @default(1000)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  refillAmount   Int          @default(1000)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
 }
 
 model OrganizationUsage {
-  id             String        @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   userId         String
   feature        String
   credits        Int
   metadata       Json?
   projectId      Int?
-  createdAt      DateTime      @default(now())
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project        Project?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
   @@index([userId])
@@ -251,14 +252,14 @@ model OrganizationUsage {
 }
 
 model OrganizationProject {
-  id             String        @id @default(cuid())
+  id             String       @id @default(cuid())
   organizationId String
   projectId      Int
   sharedBy       String
-  sharedAt       DateTime      @default(now())
-  defaultCanEdit Boolean       @default(true)
-  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sharedAt       DateTime     @default(now())
+  defaultCanEdit Boolean      @default(true)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, projectId])
   @@index([projectId])
@@ -372,21 +373,21 @@ model UsageHistory {
 }
 
 model OrganizationMemberAnalytics {
-  id                     String        @id @default(cuid())
-  organizationId         String
-  memberClerkId          String
-  memberUserId           String?
-  imageGenerationsCount  Int           @default(0)
-  videoGenerationsCount  Int           @default(0)
-  chatInteractionsCount  Int           @default(0)
-  totalCreditsUsed       Int           @default(0)
-  periodStart            DateTime
-  periodEnd              DateTime
-  lastActivityAt         DateTime?
-  createdAt              DateTime      @default(now())
-  updatedAt              DateTime      @updatedAt
-  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  member                 User?         @relation(fields: [memberUserId], references: [id], onDelete: SetNull)
+  id                    String       @id @default(cuid())
+  organizationId        String
+  memberClerkId         String
+  memberUserId          String?
+  imageGenerationsCount Int          @default(0)
+  videoGenerationsCount Int          @default(0)
+  chatInteractionsCount Int          @default(0)
+  totalCreditsUsed      Int          @default(0)
+  periodStart           DateTime
+  periodEnd             DateTime
+  lastActivityAt        DateTime?
+  createdAt             DateTime     @default(now())
+  updatedAt             DateTime     @updatedAt
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  member                User?        @relation(fields: [memberUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, memberClerkId, periodStart])
   @@index([organizationId, periodStart])
@@ -396,17 +397,17 @@ model OrganizationMemberAnalytics {
 }
 
 model User {
-  id                String              @id @default(cuid())
-  clerkId           String              @unique
-  email             String?             @unique
-  name              String?
-  isActive          Boolean             @default(true)
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  CreditBalance     CreditBalance?
-  StorageObject     StorageObject[]
-  SubscriptionEvent SubscriptionEvent[]
-  UsageHistory      UsageHistory[]
+  id                          String                        @id @default(cuid())
+  clerkId                     String                        @unique
+  email                       String?                       @unique
+  name                        String?
+  isActive                    Boolean                       @default(true)
+  createdAt                   DateTime                      @default(now())
+  updatedAt                   DateTime                      @updatedAt
+  CreditBalance               CreditBalance?
+  StorageObject               StorageObject[]
+  SubscriptionEvent           SubscriptionEvent[]
+  UsageHistory                UsageHistory[]
   OrganizationMemberAnalytics OrganizationMemberAnalytics[]
 
   @@index([createdAt])
@@ -481,15 +482,15 @@ model AIGeneratedImage {
 }
 
 model KnowledgeBaseEntry {
-  id          String      @id @default(cuid())
+  id          String           @id @default(cuid())
   title       String
-  content     String      @db.Text
+  content     String           @db.Text
   tags        String[]
-  status      EntryStatus @default(ACTIVE)
+  status      EntryStatus      @default(ACTIVE)
   userId      String?
   workspaceId String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
   chunks      KnowledgeChunk[]
 
   @@index([userId])
@@ -499,15 +500,15 @@ model KnowledgeBaseEntry {
 }
 
 model KnowledgeChunk {
-  id        String              @id @default(cuid())
+  id        String             @id @default(cuid())
   entryId   String
   ordinal   Int
-  content   String              @db.Text
+  content   String             @db.Text
   tokens    Int?
   vectorId  String
-  createdAt DateTime            @default(now())
-  updatedAt DateTime            @updatedAt
-  entry     KnowledgeBaseEntry  @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  entry     KnowledgeBaseEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
 
   @@unique([entryId, ordinal])
   @@index([entryId])
@@ -631,21 +632,21 @@ model CMSComponent {
 }
 
 model CMSMedia {
-  id          String   @id @default(cuid())
-  name        String
-  filename    String
-  url         String
+  id           String   @id @default(cuid())
+  name         String
+  filename     String
+  url          String
   thumbnailUrl String?
-  mimeType    String
-  size        Int
-  width       Int?
-  height      Int?
-  alt         String?
-  caption     String?  @db.Text
-  folder      String?
-  uploadedBy  String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  mimeType     String
+  size         Int
+  width        Int?
+  height       Int?
+  alt          String?
+  caption      String?  @db.Text
+  folder       String?
+  uploadedBy   String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([folder])
   @@index([mimeType])
@@ -653,63 +654,63 @@ model CMSMedia {
 }
 
 model SiteSettings {
-  id          String   @id @default(cuid())
+  id String @id @default(cuid())
 
   // Brand
-  siteName    String   @default("Studio Lagosta")
-  shortName   String   @default("Studio Lagosta")
-  description String   @db.Text
+  siteName    String @default("Studio Lagosta")
+  shortName   String @default("Studio Lagosta")
+  description String @db.Text
 
   // Logo (Icon)
-  logoLight   String   @default("/logo-light.svg")
-  logoDark    String   @default("/logo-dark.svg")
+  logoLight String @default("/logo-light.svg")
+  logoDark  String @default("/logo-dark.svg")
 
   // Logo Full (Complete logo with text)
   logoFullLight String?
   logoFullDark  String?
 
   // Icons
-  favicon     String   @default("/favicon.ico")
-  appleIcon   String?
+  favicon   String  @default("/favicon.ico")
+  appleIcon String?
 
   // SEO
-  metaTitle   String?
-  metaDesc    String?  @db.Text
-  ogImage     String?
-  keywords    String[] @default([])
+  metaTitle String?
+  metaDesc  String?  @db.Text
+  ogImage   String?
+  keywords  String[] @default([])
 
   // Contact
   supportEmail String?
 
   // Social
-  twitter     String?
-  facebook    String?
-  instagram   String?
-  linkedin    String?
-  github      String?
+  twitter   String?
+  facebook  String?
+  instagram String?
+  linkedin  String?
+  github    String?
 
   // Analytics
-  gtmId       String?
-  gaId        String?
+  gtmId           String?
+  gaId            String?
   facebookPixelId String?
 
   // General
-  isActive    Boolean  @default(true)
-  updatedBy   String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  updatedBy String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([isActive])
 }
 
 model FeatureGridItem {
   id          String   @id @default(cuid())
-  icon        String                // Nome do ícone Lucide (ex: "Sparkles")
-  iconColor   String?               // Classe Tailwind (ex: "text-sky-500")
+  icon        String // Nome do ícone Lucide (ex: "Sparkles")
+  iconColor   String? // Classe Tailwind (ex: "text-sky-500")
   title       String
   description String   @db.Text
-  gridArea    String?               // CSS grid-area (ex: "md:[grid-area:1/1/2/2]")
-  order       Int      @default(0)  // Ordem de exibição
+  gridArea    String? // CSS grid-area (ex: "md:[grid-area:1/1/2/2]")
+  order       Int      @default(0) // Ordem de exibição
   isActive    Boolean  @default(true)
   createdBy   String
   updatedBy   String?
@@ -737,18 +738,21 @@ model PromptLibrary {
 
 // Global Prompts - User-level prompts (reusable across all projects)
 model Prompt {
-  id        String   @id @default(cuid())
-  userId    String
-  title     String
-  content   String   @db.Text
-  category  String?
-  tags      String[] @default([])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String        @id @default(cuid())
+  userId         String
+  title          String
+  content        String        @db.Text
+  category       String?
+  tags           String[]      @default([])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
 
   @@index([userId])
   @@index([category])
   @@index([createdAt])
+  @@index([organizationId])
 }
 
 // Video Processing Queue - Background video conversion jobs
@@ -760,40 +764,40 @@ enum VideoProcessingStatus {
 }
 
 model VideoProcessingJob {
-  id              String                 @id @default(cuid())
-  userId          String
-  clerkUserId     String
-  templateId      Int
-  projectId       Int
+  id          String @id @default(cuid())
+  userId      String
+  clerkUserId String
+  templateId  Int
+  projectId   Int
 
   // Job data
-  status          VideoProcessingStatus  @default(PENDING)
-  webmBlobUrl     String                 // Temporary WebM blob URL or storage path
-  webmFileSize    Int                    // Size in bytes
-  mp4ResultUrl    String?                // Final MP4 URL after conversion
-  thumbnailUrl    String?                // Thumbnail URL
+  status       VideoProcessingStatus @default(PENDING)
+  webmBlobUrl  String // Temporary WebM blob URL or storage path
+  webmFileSize Int // Size in bytes
+  mp4ResultUrl String? // Final MP4 URL after conversion
+  thumbnailUrl String? // Thumbnail URL
 
   // Metadata
-  videoName       String
-  videoDuration   Float                  // Duration in seconds
-  videoWidth      Int
-  videoHeight     Int
-  designData      Json                   // Template design data for reference
+  videoName     String
+  videoDuration Float // Duration in seconds
+  videoWidth    Int
+  videoHeight   Int
+  designData    Json // Template design data for reference
 
   // Progress tracking
-  progress        Int                    @default(0) // 0-100
-  errorMessage    String?
+  progress     Int     @default(0) // 0-100
+  errorMessage String?
 
   // Timestamps
-  createdAt       DateTime               @default(now())
-  startedAt       DateTime?
-  completedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  startedAt   DateTime?
+  completedAt DateTime?
 
   // Credits
-  creditsDeducted Boolean                @default(false)
-  creditsUsed     Int                    @default(10)
-  generationId    String?                @unique
-  generation      Generation?            @relation("GenerationVideoJob", fields: [generationId], references: [id])
+  creditsDeducted Boolean     @default(false)
+  creditsUsed     Int         @default(10)
+  generationId    String?     @unique
+  generation      Generation? @relation("GenerationVideoJob", fields: [generationId], references: [id])
 
   @@index([userId])
   @@index([clerkUserId])
@@ -857,52 +861,52 @@ enum RetryStatus {
 }
 
 model SocialPost {
-  id                String            @id @default(cuid())
+  id String @id @default(cuid())
 
   // Relationships
-  projectId         Int
-  generationId      String?           // Link to existing creative
-  userId            String
+  projectId    Int
+  generationId String? // Link to existing creative
+  userId       String
 
   // Content
-  postType          PostType
-  caption           String            @db.Text
-  mediaUrls         String[]          // URLs of creatives (from Generation)
-  altText           String[]          @default([])
-  firstComment      String?           @db.Text
-  publishType       PublishType       @default(DIRECT)
+  postType     PostType
+  caption      String      @db.Text
+  mediaUrls    String[] // URLs of creatives (from Generation)
+  altText      String[]    @default([])
+  firstComment String?     @db.Text
+  publishType  PublishType @default(DIRECT)
 
   // Scheduling
   scheduleType      ScheduleType
   scheduledDatetime DateTime?
-  recurringConfig   Json?             // RecurringConfig
+  recurringConfig   Json? // RecurringConfig
 
   // Status and control
-  status            PostStatus        @default(DRAFT)
-  sentAt            DateTime?
-  failedAt          DateTime?
-  errorMessage      String?           @db.Text
+  status       PostStatus @default(DRAFT)
+  sentAt       DateTime?
+  failedAt     DateTime?
+  errorMessage String?    @db.Text
 
   // Webhook integration
-  webhookResponse   Json?
-  zapierWebhookUrl  String?           // Specific Zapier URL for this post
+  webhookResponse  Json?
+  zapierWebhookUrl String? // Specific Zapier URL for this post
 
   // Metadata
-  isRecurring       Boolean           @default(false)
-  parentPostId      String?           // For recurring posts
-  originalScheduleType ScheduleType?  // Original type reference
+  isRecurring          Boolean       @default(false)
+  parentPostId         String? // For recurring posts
+  originalScheduleType ScheduleType? // Original type reference
 
   // Timestamps
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  Project           Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Generation        Generation?       @relation(fields: [generationId], references: [id], onDelete: SetNull)
-  parentPost        SocialPost?       @relation("PostRecurrence", fields: [parentPostId], references: [id], onDelete: Cascade)
-  childPosts        SocialPost[]      @relation("PostRecurrence")
-  retries           PostRetry[]
-  logs              PostLog[]
+  Project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Generation Generation?  @relation(fields: [generationId], references: [id], onDelete: SetNull)
+  parentPost SocialPost?  @relation("PostRecurrence", fields: [parentPostId], references: [id], onDelete: Cascade)
+  childPosts SocialPost[] @relation("PostRecurrence")
+  retries    PostRetry[]
+  logs       PostLog[]
 
   @@index([projectId])
   @@index([userId])
@@ -914,16 +918,16 @@ model SocialPost {
 }
 
 model PostRetry {
-  id              String      @id @default(cuid())
-  postId          String
-  attemptNumber   Int
-  scheduledFor    DateTime
-  status          RetryStatus @default(PENDING)
-  errorMessage    String?     @db.Text
-  executedAt      DateTime?
-  createdAt       DateTime    @default(now())
+  id            String      @id @default(cuid())
+  postId        String
+  attemptNumber Int
+  scheduledFor  DateTime
+  status        RetryStatus @default(PENDING)
+  errorMessage  String?     @db.Text
+  executedAt    DateTime?
+  createdAt     DateTime    @default(now())
 
-  post            SocialPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId])
   @@index([scheduledFor])
@@ -931,14 +935,14 @@ model PostRetry {
 }
 
 model PostLog {
-  id        String        @id @default(cuid())
+  id        String       @id @default(cuid())
   postId    String
   event     PostLogEvent
-  message   String        @db.Text
+  message   String       @db.Text
   metadata  Json?
-  createdAt DateTime      @default(now())
+  createdAt DateTime     @default(now())
 
-  post      SocialPost    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@index([postId])
   @@index([createdAt])

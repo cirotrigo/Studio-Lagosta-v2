@@ -47,15 +47,38 @@ const ProviderSchema = z.enum(['openai', 'anthropic', 'google', 'mistral', 'open
 
 // Known-safe models for direct providers. OpenRouter models are dynamic; validate format below.
 const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
-  openai: ['gpt-5'],
-  anthropic: ['claude-4-sonnet'],
-  google: ['gemini-2.5-pro'],
-  mistral: ['mistral-small-latest'],
+  openai: [
+    'gpt-5-2025-08-07',
+    'gpt-5-mini-2025-08-07',
+    'gpt-5-nano-2025-08-07',
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5-nano',
+    'gpt-4o',
+    'gpt-4o-mini',
+    'gpt-4-turbo',
+  ],
+  anthropic: [
+    'claude-sonnet-4-5',
+    'claude-sonnet-4',
+    'claude-3-5-sonnet-20241022',
+  ],
+  google: [
+    'gemini-2.5-pro',
+    'gemini-2.5-flash',
+    'gemini-2.0-flash-exp',
+  ],
+  mistral: [
+    'mistral-large-latest',
+    'mistral-small-latest',
+    'mistral-medium-latest',
+  ],
   openrouter: [
     // Representative defaults; OpenRouter validated by pattern
     'openai/gpt-4o-mini',
     'anthropic/claude-3.5-sonnet',
     'google/gemini-2.0-flash-001',
+    'google/gemini-2.0-flash-exp:free',
     'mistralai/mistral-small',
   ],
 }

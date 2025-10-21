@@ -13,7 +13,7 @@ const createEntrySchema = z.object({
 })
 
 export async function GET(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -21,11 +21,32 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const status = searchParams.get('status')
 
+  let organizationId: string | null = null
+
+  if (orgId) {
+    const organization = await db.organization.findUnique({
+      where: { clerkOrgId: orgId },
+      select: { id: true },
+    })
+
+    organizationId = organization?.id ?? null
+  }
+
+  const where: NonNullable<
+    Parameters<typeof db.knowledgeBaseEntry.findMany>[0]
+  >['where'] = {
+    OR: [
+      { userId, workspaceId: null },
+      ...(organizationId ? [{ workspaceId: organizationId }] : []),
+    ],
+  }
+
+  if (status) {
+    where.status = status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  }
+
   const entries = await db.knowledgeBaseEntry.findMany({
-    where: {
-      userId,
-      ...(status && { status: status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED' }),
-    },
+    where,
     orderBy: { updatedAt: 'desc' },
   })
 
@@ -33,7 +54,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -42,6 +63,24 @@ export async function POST(request: Request) {
     const body = await request.json()
     const data = createEntrySchema.parse(body)
 
+    let workspaceId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      if (!organization) {
+        return NextResponse.json(
+          { error: 'Organização não encontrada' },
+          { status: 404 }
+        )
+      }
+
+      workspaceId = organization.id
+    }
+
     const entry = await db.knowledgeBaseEntry.create({
       data: {
         title: data.title,
@@ -49,6 +88,7 @@ export async function POST(request: Request) {
         tags: data.tags,
         status: data.status,
         userId,
+        workspaceId,
       },
     })
 

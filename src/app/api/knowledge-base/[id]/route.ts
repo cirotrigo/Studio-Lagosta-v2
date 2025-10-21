@@ -16,21 +16,40 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
   const { id } = await params
 
-  const entry = await db.knowledgeBaseEntry.findFirst({
-    where: {
-      id,
-      userId,
-    },
+  let organizationId: string | null = null
+
+  if (orgId) {
+    const organization = await db.organization.findUnique({
+      where: { clerkOrgId: orgId },
+      select: { id: true },
+    })
+
+    organizationId = organization?.id ?? null
+  }
+
+  const entry = await db.knowledgeBaseEntry.findUnique({
+    where: { id },
   })
 
   if (!entry) {
+    return NextResponse.json(
+      { error: 'Entrada não encontrada' },
+      { status: 404 }
+    )
+  }
+
+  const canAccessPersonal = entry.workspaceId == null && entry.userId === userId
+  const canAccessOrganization =
+    entry.workspaceId != null && organizationId != null && entry.workspaceId === organizationId
+
+  if (!canAccessPersonal && !canAccessOrganization) {
     return NextResponse.json(
       { error: 'Entrada não encontrada' },
       { status: 404 }
@@ -44,7 +63,7 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -53,14 +72,35 @@ export async function PATCH(
 
   try {
     // Verificar ownership
-    const existing = await db.knowledgeBaseEntry.findFirst({
-      where: {
-        id,
-        userId,
-      },
+    let organizationId: string | null = null
+
+    if (orgId) {
+      const organization = await db.organization.findUnique({
+        where: { clerkOrgId: orgId },
+        select: { id: true },
+      })
+
+      organizationId = organization?.id ?? null
+    }
+
+    const existing = await db.knowledgeBaseEntry.findUnique({
+      where: { id },
     })
 
     if (!existing) {
+      return NextResponse.json(
+        { error: 'Entrada não encontrada' },
+        { status: 404 }
+      )
+    }
+
+    const canEditPersonal = existing.workspaceId == null && existing.userId === userId
+    const canEditOrganization =
+      existing.workspaceId != null &&
+      organizationId != null &&
+      existing.workspaceId === organizationId
+
+    if (!canEditPersonal && !canEditOrganization) {
       return NextResponse.json(
         { error: 'Entrada não encontrada' },
         { status: 404 }
@@ -95,7 +135,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const { userId } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -103,14 +143,35 @@ export async function DELETE(
   const { id } = await params
 
   // Verificar ownership
-  const existing = await db.knowledgeBaseEntry.findFirst({
-    where: {
-      id,
-      userId,
-    },
+  let organizationId: string | null = null
+
+  if (orgId) {
+    const organization = await db.organization.findUnique({
+      where: { clerkOrgId: orgId },
+      select: { id: true },
+    })
+
+    organizationId = organization?.id ?? null
+  }
+
+  const existing = await db.knowledgeBaseEntry.findUnique({
+    where: { id },
   })
 
   if (!existing) {
+    return NextResponse.json(
+      { error: 'Entrada não encontrada' },
+      { status: 404 }
+    )
+  }
+
+  const canDeletePersonal = existing.workspaceId == null && existing.userId === userId
+  const canDeleteOrganization =
+    existing.workspaceId != null &&
+    organizationId != null &&
+    existing.workspaceId === organizationId
+
+  if (!canDeletePersonal && !canDeleteOrganization) {
     return NextResponse.json(
       { error: 'Entrada não encontrada' },
       { status: 404 }

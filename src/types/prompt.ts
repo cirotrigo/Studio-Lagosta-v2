@@ -1,6 +1,7 @@
 export interface Prompt {
   id: string
   userId: string
+  organizationId: string | null
   title: string
   content: string
   category: string | null
