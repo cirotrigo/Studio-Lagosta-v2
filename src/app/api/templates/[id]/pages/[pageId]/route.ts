@@ -183,9 +183,23 @@ export async function DELETE(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
+    // Obter order da página a ser deletada
+    const pageOrder = existingPage.order
+
     // Deletar página
     await db.page.delete({
       where: { id: pageId },
+    })
+
+    // Reordenar páginas restantes (diminuir order de páginas que estavam após a deletada)
+    await db.page.updateMany({
+      where: {
+        templateId,
+        order: { gt: pageOrder },
+      },
+      data: {
+        order: { decrement: 1 },
+      },
     })
 
     return NextResponse.json({ success: true })

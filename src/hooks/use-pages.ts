@@ -115,12 +115,47 @@ export function useDeletePage() {
   return useMutation({
     mutationFn: ({ templateId, pageId }: { templateId: number; pageId: string }) =>
       api.delete(`/api/templates/${templateId}/pages/${pageId}`),
-    onSuccess: (_, { templateId, pageId }) => {
-      // Atualizar cache manualmente sem invalidar (sem re-fetch)
+    // Atualização otimista - remove ANTES da API responder
+    onMutate: async ({ templateId, pageId }) => {
+      // Cancelar queries em andamento
+      await queryClient.cancelQueries({ queryKey: ['pages', templateId] })
+
+      // Snapshot do estado anterior (para rollback se der erro)
+      const previousPages = queryClient.getQueryData<PageResponse[]>(['pages', templateId])
+
+      // Atualizar cache otimisticamente
       queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return []
-        return oldPages.filter((page) => page.id !== pageId)
+
+        // Encontrar order da página sendo deletada
+        const deletedPage = oldPages.find((p) => p.id === pageId)
+        const deletedOrder = deletedPage?.order ?? -1
+
+        // Remover página e reordenar as restantes
+        return oldPages
+          .filter((page) => page.id !== pageId)
+          .map((page) => {
+            // Se a página estava depois da deletada, decrementar order
+            if (page.order > deletedOrder) {
+              return { ...page, order: page.order - 1 }
+            }
+            return page
+          })
+          .sort((a, b) => a.order - b.order) // Garantir ordenação
       })
+
+      // Retornar snapshot para possível rollback
+      return { previousPages }
+    },
+    // Se der erro, reverter para estado anterior
+    onError: (_err, { templateId }, context) => {
+      if (context?.previousPages) {
+        queryClient.setQueryData(['pages', templateId], context.previousPages)
+      }
+    },
+    // Após sucesso, garantir que está sincronizado
+    onSettled: (_data, _error, { templateId }) => {
+      queryClient.invalidateQueries({ queryKey: ['pages', templateId] })
     },
   })
 }
@@ -160,8 +195,15 @@ export function useReorderPages() {
       )
       return pageIds
     },
-    onSuccess: (pageIds, { templateId }) => {
-      // Atualizar cache manualmente reordenando as páginas
+    // Atualização otimista - aplica mudança ANTES da API responder
+    onMutate: async ({ templateId, pageIds }) => {
+      // Cancelar queries em andamento
+      await queryClient.cancelQueries({ queryKey: ['pages', templateId] })
+
+      // Snapshot do estado anterior (para rollback se der erro)
+      const previousPages = queryClient.getQueryData<PageResponse[]>(['pages', templateId])
+
+      // Atualizar cache otimisticamente
       queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return []
         // Criar um mapa para busca rápida
@@ -170,11 +212,24 @@ export function useReorderPages() {
         return pageIds
           .map((id, index) => {
             const page = pageMap.get(id)
-            if (!page || typeof page !== 'object') return null
+            if (!page) return null
             return { ...page, order: index }
           })
           .filter((p): p is PageResponse => p !== null)
       })
+
+      // Retornar snapshot para possível rollback
+      return { previousPages }
+    },
+    // Se der erro, reverter para estado anterior
+    onError: (_err, { templateId }, context) => {
+      if (context?.previousPages) {
+        queryClient.setQueryData(['pages', templateId], context.previousPages)
+      }
+    },
+    // Após sucesso, garantir que está sincronizado
+    onSettled: (_data, _error, { templateId }) => {
+      queryClient.invalidateQueries({ queryKey: ['pages', templateId] })
     },
   })
 }

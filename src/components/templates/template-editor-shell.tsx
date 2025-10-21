@@ -27,8 +27,24 @@ import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportQueueButton } from './video-export-queue-button'
 import { getFontManager } from '@/lib/font-manager'
-import { useCreatePage, useDuplicatePage, useDeletePage } from '@/hooks/use-pages'
+import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragOverlay,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -435,6 +451,76 @@ function TemplateEditorContent() {
   return editorContent
 }
 
+// Componente individual de página sortable
+interface SortablePageThumbnailProps {
+  page: {
+    id: string
+    name: string
+    thumbnail?: string
+    order: number
+  }
+  index: number
+  isActive: boolean
+  onClick: () => void
+}
+
+function SortablePageThumbnail({ page, index, isActive, onClick }: SortablePageThumbnailProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: page.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={onClick}
+      className={`group relative flex flex-shrink-0 cursor-move flex-col items-center gap-1 transition-all ${
+        isActive ? 'scale-105' : 'hover:scale-102'
+      } ${isDragging ? 'z-50' : ''}`}
+      title="Clique para selecionar, arraste para reordenar"
+    >
+      {/* Miniatura */}
+      <div
+        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
+          isActive
+            ? 'border-primary shadow-md'
+            : 'border-border/60 hover:border-primary/60'
+        } ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+      >
+        {page.thumbnail ? (
+          <Image src={page.thumbnail} alt={page.name} width={56} height={56} className="object-cover" unoptimized />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center bg-muted/50">
+            <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Label */}
+      <span
+        className={`text-[10px] transition-colors ${
+          isActive ? 'font-semibold text-primary' : 'text-muted-foreground'
+        }`}
+      >
+        Pág. {index + 1}
+      </span>
+    </div>
+  )
+}
+
 // Componente de barra de páginas
 interface PagesBarProps {
   isCollapsed: boolean
@@ -448,11 +534,49 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   const createPageMutation = useCreatePage()
   const duplicatePageMutation = useDuplicatePage()
   const deletePageMutation = useDeletePage()
+  const reorderPagesMutation = useReorderPages()
+  const [activeId, setActiveId] = React.useState<string | null>(null)
+
+  // Configurar sensores para drag-and-drop
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5, // Permitir clique sem arrastar
+      },
+    })
+  )
 
   // Ordenar páginas por order
   const sortedPages = React.useMemo(() => {
     return [...pages].sort((a, b) => a.order - b.order)
   }, [pages])
+
+  // Handler para drag-and-drop
+  const handleDragStart = React.useCallback((event: DragEndEvent) => {
+    setActiveId(event.active.id as string)
+  }, [])
+
+  const handleDragEnd = React.useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+      setActiveId(null)
+
+      if (over && active.id !== over.id) {
+        const oldIndex = sortedPages.findIndex((p) => p.id === active.id)
+        const newIndex = sortedPages.findIndex((p) => p.id === over.id)
+
+        if (oldIndex !== -1 && newIndex !== -1) {
+          // Reordenar array localmente para UI responsiva
+          const newOrder = arrayMove(sortedPages, oldIndex, newIndex)
+          const pageIds = newOrder.map((p) => p.id)
+
+          // Atualizar no backend
+          reorderPagesMutation.mutate({ templateId, pageIds })
+        }
+      }
+    },
+    [sortedPages, templateId, reorderPagesMutation]
+  )
 
   const handleAddPage = React.useCallback(async () => {
     try {
@@ -536,25 +660,28 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
       }
 
       try {
-        await deletePageMutation.mutateAsync({ templateId, pageId })
-
-        // Se deletou a página atual, navegar para a primeira
-        if (pageId === currentPageId && sortedPages.length > 0) {
-          const nextPage = sortedPages[0].id === pageId ? sortedPages[1] : sortedPages[0]
+        // Se deletar a página atual, navegar para outra ANTES de deletar
+        if (pageId === currentPageId && sortedPages.length > 1) {
+          const currentIndex = sortedPages.findIndex((p) => p.id === pageId)
+          // Navegar para a página anterior ou próxima
+          const nextPage = currentIndex > 0 ? sortedPages[currentIndex - 1] : sortedPages[currentIndex + 1]
           if (nextPage) {
             setCurrentPageId(nextPage.id)
           }
         }
+
+        await deletePageMutation.mutateAsync({ templateId, pageId })
 
         toast({
           title: 'Página deletada!',
           description: 'A página foi removida com sucesso.',
         })
       } catch (_error) {
-        console.error('Error deleting page:', _error)
+        console.error('[PagesBar] Error deleting page:', _error)
+        const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
         toast({
           title: 'Erro ao deletar',
-          description: 'Não foi possível deletar a página.',
+          description: errorMessage,
           variant: 'destructive',
         })
       }
@@ -712,41 +839,27 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
 
           {/* Miniaturas das páginas */}
           <div className="flex flex-1 items-center gap-3 overflow-x-auto px-4 py-2">
-            {sortedPages.map((page, index) => (
-              <div
-                key={page.id}
-                onClick={() => setCurrentPageId(page.id)}
-                className={`group relative flex flex-shrink-0 cursor-pointer flex-col items-center gap-1 transition-all ${
-                  currentPageId === page.id ? 'scale-105' : 'hover:scale-102'
-                }`}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={sortedPages.map((p) => p.id)}
+                strategy={horizontalListSortingStrategy}
               >
-                {/* Miniatura */}
-                <div
-                  className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
-                    currentPageId === page.id
-                      ? 'border-primary shadow-md'
-                      : 'border-border/60 hover:border-primary/60'
-                  }`}
-                >
-                  {page.thumbnail ? (
-                    <Image src={page.thumbnail} alt={page.name} fill className="object-cover" />
-                  ) : (
-                    <div className="flex h-full w-full items-center justify-center bg-muted/50">
-                      <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Label */}
-                <span
-                  className={`text-[10px] transition-colors ${
-                    currentPageId === page.id ? 'font-semibold text-primary' : 'text-muted-foreground'
-                  }`}
-                >
-                  Pág. {index + 1}
-                </span>
-              </div>
-            ))}
+                {sortedPages.map((page, index) => (
+                  <SortablePageThumbnail
+                    key={page.id}
+                    page={page}
+                    index={index}
+                    isActive={currentPageId === page.id}
+                    onClick={() => setCurrentPageId(page.id)}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
             {/* Botão para adicionar página */}
             <button

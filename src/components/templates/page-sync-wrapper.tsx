@@ -51,8 +51,21 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       requestAnimationFrame(() => {
         isSyncingRef.current = false
       })
+
+      // Se a página não tem thumbnail, gerar um após carregar
+      if (!currentPage.thumbnail) {
+        console.log(`[PageSync] Página sem thumbnail, gerando...`)
+        setTimeout(async () => {
+          const thumbnail = await generateThumbnail(150)
+          if (thumbnail) {
+            updatePageThumbnail(currentPageId, thumbnail).catch(err =>
+              console.error('[PageSync] Erro ao gerar thumbnail inicial:', err)
+            )
+          }
+        }, 1000) // Aguardar 1 segundo para garantir que o canvas foi renderizado
+      }
     }
-  }, [currentPage, currentPageId, loadTemplate])
+  }, [currentPage, currentPageId, loadTemplate, generateThumbnail, updatePageThumbnail])
 
   // 2. Salvar layers da página atual quando o design muda (debounced e otimizado)
   React.useEffect(() => {
