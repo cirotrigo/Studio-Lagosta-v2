@@ -196,15 +196,15 @@ if (!projectDetails) {
 }
 
 return (
-  <div className="container mx-auto p-8">
-    <div className="mb-8 flex flex-col gap-4">
+  <div className="container mx-auto p-4 md:p-8 max-w-full overflow-x-hidden">
+    <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4">
       <Button variant="ghost" onClick={() => router.push('/projects')} className="self-start">
         ← Voltar para Projetos
       </Button>
       <div>
-        <h1 className="text-3xl font-bold text-foreground">{projectDetails.name}</h1>
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words">{projectDetails.name}</h1>
         {projectDetails.description && (
-          <p className="mt-1 text-sm text-muted-foreground">{projectDetails.description}</p>
+          <p className="mt-1 text-sm text-muted-foreground break-words">{projectDetails.description}</p>
         )}
       </div>
     </div>
@@ -344,25 +344,26 @@ return (
                           <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
                         </div>
                       )}
-                      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                      {/* Overlay com botões - sempre visível em mobile, hover em desktop */}
+                      <div className="absolute inset-0 bg-black/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <Button
                           size="icon"
                           variant="secondary"
                           asChild
-                          className="h-9 w-9"
+                          className="h-11 w-11 md:h-9 md:w-9"
                         >
                           <Link href={`/templates/${template.id}/editor`}>
-                            <Edit className="w-4 h-4" />
+                            <Edit className="w-4 h-4 md:w-4 md:h-4" />
                           </Link>
                         </Button>
                         <Button
                           size="icon"
                           variant="secondary"
-                          className="h-9 w-9"
+                          className="h-11 w-11 md:h-9 md:w-9"
                           onClick={() => handleDuplicate(template.id, template.name)}
                           disabled={duplicateMutation.isPending}
                         >
-                          <Copy className="w-4 h-4" />
+                          <Copy className="w-4 h-4 md:w-4 md:h-4" />
                         </Button>
                       </div>
                     </div>

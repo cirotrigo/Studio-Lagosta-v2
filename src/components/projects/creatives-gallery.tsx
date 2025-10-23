@@ -500,66 +500,83 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   return (
     <>
-      <Card className="flex flex-wrap items-center gap-3 p-4 mb-6">
-        <div className="flex flex-1 items-center gap-2">
-          <div className="relative w-full max-w-sm">
+      {/* Filtros e controles - layout responsivo mobile-first */}
+      <Card className="flex flex-col gap-4 p-4 mb-6 max-w-full overflow-hidden">
+        {/* Filtros superiores */}
+        <div className="flex flex-col sm:flex-row gap-3 w-full">
+          <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por template ou ID"
-              className="pl-8"
+              className="pl-8 w-full"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
             />
           </div>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-            <SelectTrigger className="w-[160px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {organization && (
-            <MemberFilter
-              organizationId={organization.id}
-              value={memberFilter}
-              onChange={setMemberFilter}
-              items={data?.generations || []}
-            />
-          )}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
-            <label htmlFor="only-result">Somente com arquivo</label>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+              <SelectTrigger className="w-full sm:w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {organization && (
+              <MemberFilter
+                organizationId={organization.id}
+                value={memberFilter}
+                onChange={setMemberFilter}
+                items={data?.generations || []}
+              />
+            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
-            <Grid3X3 className="h-4 w-4" />
-          </Button>
-          <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('list')}>
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            disabled={selectedIds.size === 0}
-            onClick={handleBulkDownload}
-          >
-            <Download className="mr-2 h-4 w-4" /> Baixar selecionados ({selectedIds.size})
-          </Button>
-          <Button
-            variant="outline"
-            disabled={selectedIds.size === 0}
-            onClick={handleBulkDelete}
-          >
-            <Trash2 className="mr-2 h-4 w-4 text-red-500" /> Excluir selecionados ({selectedIds.size})
-          </Button>
-          <Button variant="ghost" size="icon" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
+
+        {/* Controles inferiores */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
+            <label htmlFor="only-result" className="whitespace-nowrap">Somente com arquivo</label>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
+              <Grid3X3 className="h-4 w-4" />
+            </Button>
+            <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('list')}>
+              <List className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkDownload}
+              className="flex-1 sm:flex-none"
+            >
+              <Download className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Baixar ({selectedIds.size})</span>
+              <span className="sm:hidden ml-2">({selectedIds.size})</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={selectedIds.size === 0}
+              onClick={handleBulkDelete}
+              className="flex-1 sm:flex-none"
+            >
+              <Trash2 className="h-4 w-4 text-red-500 sm:mr-2" />
+              <span className="hidden sm:inline">Excluir ({selectedIds.size})</span>
+              <span className="sm:hidden ml-2">({selectedIds.size})</span>
+            </Button>
+            <Button variant="ghost" size="icon" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </Card>
 
