@@ -285,12 +285,14 @@
       overflow-wrap: break-word;
       word-break: break-word;
       hyphens: auto;
+      -webkit-hyphens: auto; /* Safari */
     }
 
     /* Força todos os containers a respeitar viewport */
     body, html, #__next, main, [role="main"] {
       max-width: 100vw !important;
       overflow-x: hidden !important;
+      -webkit-overflow-scrolling: touch; /* Safari smooth scroll */
     }
 
     /* Prevenir elementos de estorar */
@@ -303,6 +305,29 @@
     img, video, canvas, svg, picture {
       max-width: 100% !important;
       height: auto !important;
+    }
+  }
+
+  /* Safari-specific fixes */
+  @supports (-webkit-touch-callout: none) {
+    /* Forçar overflow hidden no Safari iOS */
+    body, html {
+      position: relative;
+      overflow-x: hidden !important;
+      width: 100% !important;
+      max-width: 100vw !important;
+    }
+
+    /* Prevenir zoom em inputs no Safari iOS */
+    input, select, textarea {
+      font-size: 16px !important;
+    }
+
+    /* Fix para sticky elements no Safari */
+    [style*="position: sticky"],
+    [style*="position:sticky"] {
+      position: -webkit-sticky;
+      position: sticky;
     }
   }
 

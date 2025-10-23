@@ -92,6 +92,15 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
         initialZoomLevel: 'fit',
         secondaryZoomLevel: 1.5,
         maxZoomLevel: 3,
+        // Garantir que PhotoSwipe intercepta cliques
+        preload: [1, 1],
+        // Adicionar suporte para Safari
+        allowPanToNext: true,
+        closeOnVerticalDrag: true,
+        pinchToClose: true,
+        // Melhorar interação em mobile
+        tapAction: 'close',
+        doubleTapAction: 'zoom',
       })
 
       // Filtro essencial para processar atributos data-pswp-width, data-pswp-height e data-pswp-type
@@ -157,22 +166,44 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
         }
       })
 
-      // Event listeners para debug
+      // Event listeners para debug e funcionalidade
       lightboxRef.current.on('beforeOpen', () => {
-        console.log('PhotoSwipe: Opening lightbox')
+        console.log('✅ PhotoSwipe: Opening lightbox')
       })
 
       lightboxRef.current.on('uiRegister', () => {
-        console.log('PhotoSwipe: UI registered')
+        console.log('✅ PhotoSwipe: UI registered')
       })
 
       lightboxRef.current.on('change', () => {
-        console.log('PhotoSwipe: Slide changed')
+        console.log('✅ PhotoSwipe: Slide changed')
+      })
+
+      lightboxRef.current.on('close', () => {
+        console.log('✅ PhotoSwipe: Closed')
+      })
+
+      // Debug: verificar se está capturando cliques
+      lightboxRef.current.on('initialZoomInEnd', () => {
+        console.log('✅ PhotoSwipe: Zoom in animation completed')
+      })
+
+      // Adicionar listener para cliques nos links
+      const links = galleryElement.querySelectorAll(childSelector)
+      console.log(`✅ PhotoSwipe: Found ${links.length} clickable items`)
+      links.forEach((link, index) => {
+        link.addEventListener('click', (e) => {
+          console.log(`🖱️ PhotoSwipe: Link ${index} clicked`, {
+            href: (link as HTMLAnchorElement).href,
+            width: link.getAttribute('data-pswp-width'),
+            height: link.getAttribute('data-pswp-height'),
+          })
+        }, { capture: true }) // Usar capture para interceptar antes
       })
 
       lightboxRef.current.init()
 
-      console.log('PhotoSwipe: Initialized successfully')
+      console.log('✅ PhotoSwipe: Initialized successfully')
       return 'success'
     }
 

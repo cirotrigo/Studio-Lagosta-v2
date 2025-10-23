@@ -21,6 +21,12 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   ...siteMetadata,
+  // Prevenir cache agressivo
+  other: {
+    'Cache-Control': 'no-cache, no-store, must-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  },
 };
 
 export const viewport: Viewport = {
@@ -30,6 +36,8 @@ export const viewport: Viewport = {
   maximumScale: 5, // Permitir zoom para acessibilidade
   userScalable: true,
   viewportFit: 'cover', // Melhor ajuste para notch em iPhones
+  // Safari-specific
+  interactiveWidget: 'resizes-content',
 };
 
 export default function RootLayout({

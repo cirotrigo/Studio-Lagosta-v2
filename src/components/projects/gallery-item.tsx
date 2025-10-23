@@ -211,15 +211,14 @@ export function GalleryItem({
         data-pswp-width={imageDimensions.width}
         data-pswp-height={imageDimensions.height}
         data-pswp-type={resolvedAssetUrl && isVideoAsset ? 'video' : 'image'}
-        target={
-          !resolvedAssetUrl || status !== 'COMPLETED' || isVideoAsset ? undefined : '_blank'
-        }
+        target="_blank"
         rel="noopener noreferrer"
         className={cn(
           'relative block bg-muted overflow-hidden w-full h-full',
           resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
         )}
         onClick={(e) => {
+          // Se não está completo, prevenir e mostrar preview dialog
           const shouldHandlePreview = !resolvedAssetUrl || status !== 'COMPLETED'
 
           if (shouldHandlePreview) {
@@ -228,9 +227,11 @@ export function GalleryItem({
             onPreview?.()
             return
           }
-          console.log('Gallery item clicked:', {
-            displayUrl: effectiveDisplayUrl,
-            assetUrl: resolvedAssetUrl,
+
+          // Se está completo, deixar o PhotoSwipe interceptar o clique
+          // NÃO fazer preventDefault aqui, o PhotoSwipe precisa interceptar
+          console.log('PhotoSwipe: Item clicável', {
+            href: resolvedAssetUrl ?? effectiveDisplayUrl,
             width: imageDimensions.width,
             height: imageDimensions.height,
             isVideo: isVideoAsset,

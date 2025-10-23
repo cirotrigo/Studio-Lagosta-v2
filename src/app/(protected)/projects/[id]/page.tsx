@@ -37,7 +37,6 @@ import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-fo
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ProjectShareControls } from '@/components/projects/project-share-controls'
 
 const createTemplateSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -222,14 +221,6 @@ return (
         )}
       </div>
     </div>
-
-    <ProjectShareControls
-      projectId={projectId}
-      projectName={projectDetails.name}
-      shares={projectDetails.organizationShares ?? []}
-      variant="page"
-      className="mb-8"
-    />
 
     <Tabs defaultValue="templates" className="w-full max-w-full overflow-x-hidden">
         <TabsList>
