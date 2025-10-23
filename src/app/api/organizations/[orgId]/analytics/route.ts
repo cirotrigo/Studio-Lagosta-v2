@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import {
   OrganizationAccessError,
@@ -62,7 +63,7 @@ export async function GET(
       )
     }
 
-    const whereClause = {
+    const whereClause: Prisma.OrganizationUsageWhereInput = {
       organizationId: organization.id,
       createdAt: {
         gte: range.start,
@@ -108,7 +109,7 @@ export async function GET(
       where: {
         ...whereClause,
         userId: { isSet: true },
-      } as any,
+      },
       by: ['userId'],
       _count: true,
     })

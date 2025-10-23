@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MediaUploadSystem } from './media-upload-system'
 import { SchedulePicker } from './schedule-picker'
-import { RecurringConfig } from './recurring-config'
+import { RecurringConfig, type RecurringConfigValue } from './recurring-config'
 import { toast } from 'sonner'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../prisma/generated/client'
 import { Calendar, Repeat, Zap } from 'lucide-react'
@@ -35,7 +35,7 @@ const postSchema = z.object({
   publishType: z.enum(['DIRECT', 'REMINDER']).default('DIRECT'),
 })
 
-type PostFormData = z.infer<typeof postSchema>
+export type PostFormData = z.infer<typeof postSchema>
 
 interface MediaItem {
   id: string
@@ -77,7 +77,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   const postType = form.watch('postType')
   const scheduleType = form.watch('scheduleType')
   const caption = form.watch('caption')
-  const publishType = form.watch('publishType')
+  const recurringConfig = form.watch('recurringConfig')
 
   // Calculate max media based on post type
   const maxMedia = postType === 'CAROUSEL' ? 10 : 1
@@ -103,7 +103,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   }, [postType, form])
 
   // Memoize the recurring config onChange to prevent infinite loops
-  const handleRecurringConfigChange = useCallback((config: any) => {
+  const handleRecurringConfigChange = useCallback((config: RecurringConfigValue | undefined) => {
     formRef.current.setValue('recurringConfig', config)
   }, [])
 
@@ -224,17 +224,20 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       onClose()
       form.reset()
       setSelectedMedia([])
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error creating/updating post:', error)
 
-      // More detailed error message
-      if (error?.message) {
+      if (error instanceof Error) {
         toast.error(`Erro: ${error.message}`)
-      } else if (error?.details) {
-        toast.error(`Erro de validação: ${JSON.stringify(error.details)}`)
-      } else {
-        toast.error('Erro ao processar post. Verifique os dados e tente novamente.')
+        return
       }
+
+      if (error && typeof error === 'object' && 'details' in error) {
+        toast.error(`Erro de validação: ${JSON.stringify((error as { details: unknown }).details)}`)
+        return
+      }
+
+      toast.error('Erro ao processar post. Verifique os dados e tente novamente.')
     }
   }
 
@@ -272,7 +275,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
                   type="button"
                   variant={postType === type.value ? 'default' : 'outline'}
                   onClick={() => {
-                    form.setValue('postType', type.value as any)
+                    form.setValue('postType', type.value as PostFormData['postType'])
                     // Reset media if switching to/from carousel
                     if ((type.value === 'CAROUSEL' && selectedMedia.length > 10) ||
                         (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
@@ -453,7 +456,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
               {scheduleType === 'RECURRING' && (
                 <div className="ml-9 pl-3 border-l-2">
                   <RecurringConfig
-                    value={form.watch('recurringConfig') as any}
+                    value={recurringConfig ?? undefined}
                     onChange={handleRecurringConfigChange}
                   />
                 </div>

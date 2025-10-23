@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import type { Prisma } from '@prisma/client'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
@@ -60,7 +61,7 @@ export async function GET(
     const createdByFilter = url.searchParams.get('createdBy')
 
     // Build where clause
-    const where: any = { projectId }
+    const where: Prisma.GenerationWhereInput = { projectId }
     if (createdByFilter) {
       where.createdBy = createdByFilter
     }

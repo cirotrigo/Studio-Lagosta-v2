@@ -31,8 +31,6 @@ const createPostValidationSchema = (postType?: PostType) => {
   })
 }
 
-const createPostSchema = createPostValidationSchema()
-
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -161,7 +159,7 @@ export async function GET(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

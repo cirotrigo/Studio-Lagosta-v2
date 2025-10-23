@@ -145,7 +145,7 @@ const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo
 const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
-const [updateCounter, setUpdateCounter] = React.useState(0)
+const [, setUpdateCounter] = React.useState(0)
 
   // Keep ref in sync with state
   React.useEffect(() => {
@@ -754,7 +754,7 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
         setIsExporting(false)
       }
     },
-    [template.id, design.canvas.width, design.canvas.height, zoom, design.layers],
+    [template.id, design.canvas.width, design.canvas.height, zoom, design.layers, queryClient],
   )
 
   const removeExport = React.useCallback((id: string) => {
@@ -1292,7 +1292,6 @@ const [updateCounter, setUpdateCounter] = React.useState(0)
       clearExports,
       setStageInstance,
       forceUpdate,
-      updateCounter,
       alignSelectedLeft,
       alignSelectedCenterH,
       alignSelectedRight,

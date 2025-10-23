@@ -1,5 +1,6 @@
 import { db } from '@/lib/db'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import type { Prisma } from '@prisma/client'
 import {
   PostType,
   ScheduleType,
@@ -228,7 +229,7 @@ export class PostScheduler {
         data: {
           status: PostStatus.SENT,
           sentAt: new Date(),
-          webhookResponse: webhookResponse as any,
+          webhookResponse: webhookResponse as Prisma.InputJsonValue,
         },
       })
 
@@ -385,7 +386,7 @@ export class PostScheduler {
         postId,
         event,
         message,
-        metadata: metadata as any,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
       },
     })
   }

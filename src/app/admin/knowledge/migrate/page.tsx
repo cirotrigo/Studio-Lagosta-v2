@@ -5,7 +5,7 @@
  * Migrate entries from old workspaceId to Clerk organization IDs
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -54,11 +54,7 @@ export default function KnowledgeMigratePage() {
   const [targetOrgId, setTargetOrgId] = useState('')
   const { toast } = useToast()
 
-  useEffect(() => {
-    fetchMigrationData()
-  }, [])
-
-  const fetchMigrationData = async () => {
+  const fetchMigrationData = useCallback(async () => {
     try {
       setLoading(true)
       const response = await fetch('/api/admin/knowledge/migrate-workspace')
@@ -74,7 +70,11 @@ export default function KnowledgeMigratePage() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [toast])
+
+  useEffect(() => {
+    void fetchMigrationData()
+  }, [fetchMigrationData])
 
   const handleMigrate = async () => {
     if (!targetOrgId.trim()) {

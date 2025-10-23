@@ -374,7 +374,7 @@ export function KonvaEditableText({
     textarea.focus()
     const position = textarea.value.length
     textarea.setSelectionRange(position, position)
-  }, [isEditing])
+  }, [isEditing, editingState])
 
   React.useLayoutEffect(() => {
     if (!isEditing || !editingState) return
@@ -516,7 +516,7 @@ export function KonvaEditableText({
       offsetY: 0,
       listening: false,
     }
-  }, [layer.position?.x, layer.position?.y, layer.rotation, isEditing, shapeRef])
+  }, [layer.position?.x, layer.position?.y, layer.rotation, shapeRef])
 
   const displayText = React.useMemo(() => {
     return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
@@ -582,6 +582,7 @@ export function KonvaEditableText({
     layer.content,
     layer.size?.width,
     layer.size?.height,
+    shapeRef,
   ])
 
   return (

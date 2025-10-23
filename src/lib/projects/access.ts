@@ -25,9 +25,11 @@ export function hasProjectReadAccess(
   {
     userId,
     orgId,
+    orgRole: _orgRole,
   }: {
     userId: string
     orgId?: string | null
+    orgRole?: string | null
   },
 ) {
   if (!project) return false
@@ -43,11 +45,9 @@ export function hasProjectWriteAccess(
   {
     userId,
     orgId,
-    orgRole,
   }: {
     userId: string
     orgId?: string | null
-    orgRole?: string | null
   },
 ) {
   if (!project) return false

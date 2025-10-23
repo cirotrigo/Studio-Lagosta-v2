@@ -12,6 +12,7 @@ import type { GoogleDriveItem } from '@/types/google-drive'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import Image from 'next/image'
 
 interface MediaItem {
   id: string
@@ -37,6 +38,19 @@ interface Generation {
   createdAt: string
 }
 
+interface DownloadedDriveFile {
+  id: string
+  url: string
+  name: string
+  size?: number
+  mimeType?: string
+}
+
+interface GoogleDriveDownloadResponse {
+  files: DownloadedDriveFile[]
+  uploaded: number
+}
+
 export function MediaUploadSystem({
   projectId,
   selectedMedia,
@@ -58,15 +72,15 @@ export function MediaUploadSystem({
   }, [selectedMedia, onSelectionChange])
 
   // Mutation para download e upload de arquivos do Google Drive
-  const downloadDriveMutation = useMutation({
-    mutationFn: async (fileIds: string[]) => {
+  const downloadDriveMutation = useMutation<GoogleDriveDownloadResponse, Error, string[]>({
+    mutationFn: async (fileIds) => {
       // Simulação - em produção, implementar endpoint real
       // POST /api/projects/{projectId}/google-drive/download
-      return api.post(`/api/projects/${projectId}/google-drive/download`, { fileIds })
+      return api.post(`/api/projects/${projectId}/google-drive/download`, { fileIds }) as Promise<GoogleDriveDownloadResponse>
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data) => {
       // Adicionar arquivos baixados à seleção
-      const newMedia: MediaItem[] = data.files.map((file: any) => ({
+      const newMedia: MediaItem[] = data.files.map((file) => ({
         id: file.id,
         type: 'google-drive' as const,
         url: file.url,
@@ -233,10 +247,13 @@ export function MediaUploadSystem({
             {selectedMedia.map((item, index) => (
               <div key={`${item.type}-${item.id}-${index}`} className="relative group">
                 <div className="aspect-square rounded-lg overflow-hidden border-2 border-primary bg-muted">
-                  <img
+                  <Image
                     src={item.thumbnailUrl || item.url}
                     alt={item.name}
-                    className="w-full h-full object-cover"
+                    fill
+                    sizes="80px"
+                    className="object-cover"
+                    unoptimized
                   />
 
                   {/* Remove button */}

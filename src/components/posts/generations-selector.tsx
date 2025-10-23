@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Image as ImageIcon, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import Image from 'next/image'
 
 interface Generation {
   id: string
@@ -122,11 +123,14 @@ export function GenerationsSelector({
                 onClick={() => canSelect && handleToggle(gen)}
               >
                 {/* Thumbnail */}
-                <div className="aspect-square bg-muted overflow-hidden relative">
-                  <img
+                <div className="relative aspect-square overflow-hidden bg-muted">
+                  <Image
                     src={gen.resultUrl}
-                    alt={gen.templateName}
-                    className="w-full h-full object-cover"
+                    alt={gen.templateName || 'Criativo selecionável'}
+                    fill
+                    sizes="(max-width: 768px) 45vw, 200px"
+                    className="object-cover"
+                    unoptimized
                   />
 
                   {/* Selection indicator */}

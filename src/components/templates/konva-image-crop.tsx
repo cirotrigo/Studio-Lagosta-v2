@@ -174,7 +174,7 @@ export function KonvaImageCrop({ imageNode, onConfirm, onCancel, stageRef }: Kon
         height: Math.round(displayHeight),
       },
     })
-  }, [cropArea, displayX, displayY, imageScaleX, imageScaleY, scaleToFit, onConfirm])
+  }, [cropArea, displayX, displayY, imageScaleX, imageScaleY, scaleToFit, onConfirm, imageNode])
 
   // Atalhos de teclado
   React.useEffect(() => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Calendar } from '@/components/ui/calendar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ interface SchedulePickerProps {
 export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
   const [date, setDate] = useState<Date | undefined>(value)
   const [time, setTime] = useState<string>('')
+  const hasInitialized = useRef(false)
 
   // Initialize time from value
   useEffect(() => {
@@ -27,7 +28,8 @@ export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
       const minutes = value.getMinutes().toString().padStart(2, '0')
       setTime(`${hours}:${minutes}`)
       setDate(value)
-    } else {
+      hasInitialized.current = true
+    } else if (!hasInitialized.current) {
       // Default to tomorrow at 12:00
       const tomorrow = new Date()
       tomorrow.setDate(tomorrow.getDate() + 1)
@@ -35,8 +37,9 @@ export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
       setDate(tomorrow)
       setTime('12:00')
       onChange(tomorrow)
+      hasInitialized.current = true
     }
-  }, []) // Only run on mount
+  }, [value, onChange])
 
   const handleDateSelect = (selectedDate: Date | undefined) => {
     if (!selectedDate) return

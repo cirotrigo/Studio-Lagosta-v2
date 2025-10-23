@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { getUserFromClerkId } from '@/lib/auth-utils'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 
 const UpdateEntrySchema = z.object({
@@ -93,7 +92,6 @@ export async function PUT(
       )
     }
 
-    const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
     const body = await req.json()
 

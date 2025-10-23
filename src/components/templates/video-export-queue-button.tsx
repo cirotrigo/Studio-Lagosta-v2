@@ -72,12 +72,7 @@ export function VideoExportQueueButton() {
       design.canvas.height,
       videoLayer.videoMetadata?.duration ?? 0
     )
-  }, [
-    design.canvas.width,
-    design.canvas.height,
-    videoLayer?.id,
-    videoLayer?.videoMetadata?.duration,
-  ])
+  }, [videoLayer, design.canvas.width, design.canvas.height])
 
   const handleExportToQueue = async () => {
     if (!hasVideo || !videoLayer) {

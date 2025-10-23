@@ -60,6 +60,10 @@ export default function KnowledgeEditPage() {
     }
   }, [entry])
 
+  const handleStatusChange = (value: 'ACTIVE' | 'DRAFT' | 'ARCHIVED') => {
+    setStatus(value)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -167,7 +171,7 @@ export default function KnowledgeEditPage() {
 
           <div>
             <Label htmlFor="status">Status</Label>
-            <Select value={status} onValueChange={(value: any) => setStatus(value)}>
+            <Select value={status} onValueChange={handleStatusChange}>
               <SelectTrigger id="status">
                 <SelectValue />
               </SelectTrigger>

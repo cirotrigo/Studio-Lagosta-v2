@@ -10,11 +10,46 @@ import { CalendarWeekView } from './calendar-week-view'
 import { CalendarDayView } from './calendar-day-view'
 import { PostPreviewModal } from '../post-actions/post-preview-modal'
 import { ChannelsSidebar } from '../channels-sidebar/channels-list'
-import { PostComposer } from '@/components/posts/post-composer'
+import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import type { SocialPost, Project, PostType } from '../../../../prisma/generated/client'
 
 type ViewMode = 'month' | 'week' | 'day'
 type ProjectWithCounts = Project & { scheduledPostCount: number }
+type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
+
+const RECURRENCE_FREQUENCIES: ReadonlyArray<RecurringFormValue['frequency']> = ['DAILY', 'WEEKLY', 'MONTHLY']
+
+function isRecurrenceFrequency(value: unknown): value is RecurringFormValue['frequency'] {
+  return typeof value === 'string' && RECURRENCE_FREQUENCIES.includes(value as RecurringFormValue['frequency'])
+}
+
+function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
+  if (!config || typeof config !== 'object') return undefined
+
+  const raw = config as Record<string, unknown>
+  const frequency = raw.frequency
+  const time = raw.time
+
+  if (!isRecurrenceFrequency(frequency) || typeof time !== 'string') {
+    return undefined
+  }
+
+  const days = Array.isArray(raw.daysOfWeek)
+    ? raw.daysOfWeek.filter((day): day is number => typeof day === 'number')
+    : undefined
+  const endDateValue = raw.endDate
+  const endDate =
+    typeof endDateValue === 'string' && endDateValue
+      ? new Date(endDateValue)
+      : undefined
+
+  return {
+    frequency,
+    time,
+    ...(days && days.length > 0 ? { daysOfWeek: days } : {}),
+    ...(endDate ? { endDate } : {}),
+  }
+}
 
 export function AgendaCalendarView() {
   const [viewMode, setViewMode] = useState<ViewMode>('month')
@@ -68,25 +103,24 @@ export function AgendaCalendarView() {
   }
 
   // Convert SocialPost to PostFormData format for editing
-  const getInitialData = () => {
+  const getInitialData = (): Partial<PostFormData> | undefined => {
     if (!editingPost) return undefined
+
+    const recurringConfig = parseRecurringConfig(editingPost.recurringConfig)
+    const scheduledDate =
+      editingPost.scheduledDatetime ? new Date(editingPost.scheduledDatetime) : undefined
 
     return {
       postType: editingPost.postType,
       caption: editingPost.caption || '',
-      mediaUrls: editingPost.mediaUrls || [],
+      mediaUrls: editingPost.mediaUrls ?? [],
       generationIds: editingPost.generationId ? [editingPost.generationId] : [],
       scheduleType: editingPost.scheduleType,
-      scheduledDatetime: editingPost.scheduledDatetime ? new Date(editingPost.scheduledDatetime) : undefined,
-      recurringConfig: editingPost.recurringConfig ? {
-        frequency: (editingPost.recurringConfig as any).frequency,
-        daysOfWeek: (editingPost.recurringConfig as any).daysOfWeek,
-        time: (editingPost.recurringConfig as any).time,
-        endDate: (editingPost.recurringConfig as any).endDate ? new Date((editingPost.recurringConfig as any).endDate) : undefined,
-      } : undefined,
-      altText: editingPost.altText || [],
-      firstComment: editingPost.firstComment || '',
-      publishType: editingPost.publishType || 'DIRECT',
+      scheduledDatetime: scheduledDate,
+      recurringConfig,
+      altText: editingPost.altText ?? [],
+      firstComment: editingPost.firstComment ?? '',
+      publishType: (editingPost.publishType ?? 'DIRECT') as PostFormData['publishType'],
     }
   }
 

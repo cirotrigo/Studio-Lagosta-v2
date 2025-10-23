@@ -25,6 +25,12 @@ interface RecurringConfigProps {
   onChange: (config: RecurringConfigValue | undefined) => void
 }
 
+const FREQUENCIES: ReadonlyArray<{ value: RecurringConfigValue['frequency']; label: string; icon: string }> = [
+  { value: 'DAILY', label: 'Diário', icon: '📅' },
+  { value: 'WEEKLY', label: 'Semanal', icon: '📆' },
+  { value: 'MONTHLY', label: 'Mensal', icon: '🗓️' },
+]
+
 const DAYS_OF_WEEK = [
   { value: 0, label: 'Dom', fullName: 'Domingo' },
   { value: 1, label: 'Seg', fullName: 'Segunda' },
@@ -139,16 +145,12 @@ export function RecurringConfig({ value, onChange }: RecurringConfigProps) {
       <div className="space-y-2">
         <Label>Frequência</Label>
         <div className="grid grid-cols-3 gap-2">
-          {[
-            { value: 'DAILY', label: 'Diário', icon: '📅' },
-            { value: 'WEEKLY', label: 'Semanal', icon: '📆' },
-            { value: 'MONTHLY', label: 'Mensal', icon: '🗓️' },
-          ].map((freq) => (
+          {FREQUENCIES.map((freq) => (
             <Button
               key={freq.value}
               type="button"
               variant={frequency === freq.value ? 'default' : 'outline'}
-              onClick={() => handleFrequencyChange(freq.value as any)}
+              onClick={() => handleFrequencyChange(freq.value)}
               className="flex flex-col items-center gap-1 h-auto py-3"
             >
               <span className="text-xl">{freq.icon}</span>

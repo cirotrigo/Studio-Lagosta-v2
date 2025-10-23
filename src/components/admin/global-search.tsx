@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { FileText, Menu as MenuIcon, Package, Image } from 'lucide-react'
+import { FileText, Menu as MenuIcon, Package, Image as ImageIcon } from 'lucide-react'
 import {
   CommandDialog,
   CommandEmpty,
@@ -142,7 +142,7 @@ export function GlobalSearch() {
                 value={media.name}
                 onSelect={() => handleSelect(() => router.push('/admin/content/media'))}
               >
-                <Image className="mr-2 h-4 w-4" />
+                <ImageIcon className="mr-2 h-4 w-4" />
                 <div className="flex-1">
                   <div>{media.name}</div>
                   <div className="text-xs text-muted-foreground">{media.mimeType}</div>

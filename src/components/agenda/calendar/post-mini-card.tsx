@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Video, Layers, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
@@ -52,11 +53,14 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
     >
       {/* Thumbnail */}
       {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
-        <div className="relative w-10 h-10 rounded overflow-hidden flex-shrink-0 bg-muted">
-          <img
+        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
+          <Image
             src={post.mediaUrls[0]}
-            alt=""
-            className="w-full h-full object-cover"
+            alt={post.caption || 'Prévia do post'}
+            fill
+            sizes="40px"
+            className="object-cover"
+            unoptimized
           />
 
           {/* Badge de Story */}

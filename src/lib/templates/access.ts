@@ -29,9 +29,11 @@ export function hasTemplateReadAccess(
   {
     userId,
     orgId,
+    orgRole: _orgRole,
   }: {
     userId: string
     orgId?: string | null
+    orgRole?: string | null
   },
 ) {
   if (!template) return false
@@ -54,11 +56,9 @@ export function hasTemplateWriteAccess(
   {
     userId,
     orgId,
-    orgRole,
   }: {
     userId: string
     orgId?: string | null
-    orgRole?: string | null
   },
 ) {
   if (!template) return false

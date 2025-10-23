@@ -336,6 +336,17 @@ type VideoNodeProps = {
 function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius, onChange }: VideoNodeProps) {
   const videoUrl = layer.fileUrl || ''
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
+  const autoplayRef = React.useRef(layer.videoMetadata?.autoplay)
+  const loopRef = React.useRef(layer.videoMetadata?.loop)
+  const [videoMetaVersion, setVideoMetaVersion] = React.useState(0)
+
+  React.useEffect(() => {
+    autoplayRef.current = layer.videoMetadata?.autoplay
+  }, [layer.videoMetadata?.autoplay])
+
+  React.useEffect(() => {
+    loopRef.current = layer.videoMetadata?.loop
+  }, [layer.videoMetadata?.loop])
   const imageRef = React.useRef<Konva.Image>(null)
 
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
@@ -364,14 +375,15 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     video.addEventListener('loadedmetadata', () => {
       console.log('[VideoNode] ✅ Metadados carregados')
       // Autoplay se configurado
-      if (layer.videoMetadata?.autoplay !== false) {
+      if (autoplayRef.current !== false) {
         video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
       }
+      setVideoMetaVersion((prev) => prev + 1)
     })
 
     // Loop manual simples
     video.addEventListener('ended', () => {
-      if (layer.videoMetadata?.loop ?? true) {
+      if (loopRef.current ?? true) {
         video.currentTime = 0
         video.play()
       }
@@ -385,7 +397,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       video.src = ''
       videoRef.current = null
     }
-  }, [videoUrl]) // ⚠️ APENAS videoUrl - não recriar quando metadata mudar
+  }, [videoUrl])
 
   // Atualizar propriedades do vídeo quando metadata mudar (sem recriar o elemento)
   React.useEffect(() => {
@@ -435,7 +447,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       anim.stop()
       console.log('[VideoNode] Animação parada')
     }
-  }, [videoRef.current, imageRef.current])
+  }, [videoMetaVersion, width, height, layer.id])
 
   // Escutar eventos de controle de vídeo
   React.useEffect(() => {
@@ -477,8 +489,9 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
   // Calcular crop para objectFit: cover
   const crop = React.useMemo(() => {
+    const metadataReady = videoMetaVersion > 0
     const video = videoRef.current
-    if (!video || !video.videoWidth || !video.videoHeight) return undefined
+    if (!metadataReady || !video || !video.videoWidth || !video.videoHeight) return undefined
 
     const objectFit = layer.videoMetadata?.objectFit ?? 'cover'
     if (objectFit === 'cover') {
@@ -490,7 +503,7 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
 
     return undefined
-  }, [videoRef.current?.videoWidth, videoRef.current?.videoHeight, width, height, layer.videoMetadata?.objectFit])
+  }, [videoMetaVersion, width, height, layer.videoMetadata?.objectFit])
 
   // Estado para rastrear se estava tocando antes da transformação
   const wasPlayingRef = React.useRef(false)

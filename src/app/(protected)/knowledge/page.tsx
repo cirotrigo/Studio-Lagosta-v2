@@ -7,7 +7,6 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -21,7 +20,7 @@ import {
 } from '@/hooks/use-org-knowledge'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
-import { Plus, Upload, BookOpen, Clock, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
+import { Plus, BookOpen, Clock, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,

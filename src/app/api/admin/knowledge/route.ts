@@ -63,8 +63,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    const dbUser = await getUserFromClerkId(clerkUserId)
-
     // Parse query params
     const searchParams = req.nextUrl.searchParams
     const page = parseInt(searchParams.get('page') || '1', 10)

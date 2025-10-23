@@ -16,6 +16,7 @@
     "vercel-build": "rm -rf .next/cache && prisma migrate deploy && prisma generate && next build || (echo 'Migration failed, continuing with build...' && rm -rf .next/cache && prisma generate && next build)",
     "start": "next start",
     "lint": "next lint",
+    "test": "npm run test:e2e",
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "format": "prettier --write .",

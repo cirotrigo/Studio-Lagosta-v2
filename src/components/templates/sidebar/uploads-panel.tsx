@@ -66,7 +66,7 @@ export function UploadsPanel() {
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
-  }, [addLayer])
+  }, [addLayer, canvasHeight, canvasWidth])
 
   const handleRemoveUpload = React.useCallback((id: string) => {
     setUploads((prev) => {

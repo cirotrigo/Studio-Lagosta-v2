@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import type { Prisma } from '@prisma/client'
 
 type CMSPageStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 type CMSSectionType = 'HERO' | 'BENTO_GRID' | 'FAQ' | 'AI_STARTER' | 'PRICING' | 'CTA' | 'CUSTOM'
@@ -156,7 +157,7 @@ export async function duplicatePage(id: string, createdBy: string) {
         pageId: newPage.id,
         type: section.type,
         name: section.name,
-        content: section.content as any,
+        content: section.content as Prisma.InputJsonValue,
         order: section.order,
         isVisible: section.isVisible,
         cssClasses: section.cssClasses,
@@ -197,7 +198,7 @@ export async function createSection(data: CreateSectionInput) {
   return await db.cMSSection.create({
     data: {
       ...data,
-      content: data.content as any,
+      content: data.content as Prisma.InputJsonValue,
     },
     include: {
       page: true,
@@ -213,7 +214,7 @@ export async function updateSection(id: string, data: UpdateSectionInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as any) : undefined,
+      content: data.content ? (data.content as Prisma.InputJsonValue) : undefined,
     },
     include: {
       page: true,
@@ -277,7 +278,7 @@ export async function duplicateSection(id: string) {
       pageId: original.pageId,
       type: original.type,
       name: `${original.name} (Copy)`,
-      content: original.content as any,
+      content: original.content as Prisma.InputJsonValue,
       order: (maxOrder?.order ?? 0) + 1,
       isVisible: original.isVisible,
       cssClasses: original.cssClasses,
@@ -440,7 +441,7 @@ export async function createComponent(data: CreateComponentInput) {
   return await db.cMSComponent.create({
     data: {
       ...data,
-      content: data.content as any,
+      content: data.content as Prisma.InputJsonValue,
     },
   })
 }
@@ -453,7 +454,7 @@ export async function updateComponent(id: string, data: UpdateComponentInput) {
     where: { id },
     data: {
       ...data,
-      content: data.content ? (data.content as any) : undefined,
+      content: data.content ? (data.content as Prisma.InputJsonValue) : undefined,
     },
   })
 }

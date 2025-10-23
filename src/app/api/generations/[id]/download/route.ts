@@ -12,7 +12,7 @@ export const runtime = 'nodejs'
 
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId, orgId, orgRole } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }

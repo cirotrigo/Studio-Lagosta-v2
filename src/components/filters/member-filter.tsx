@@ -39,7 +39,10 @@ export function MemberFilter({
   const { data: analyticsData, isLoading } = useOrganizationMemberAnalytics(organizationId)
   const [membersData, setMembersData] = React.useState<MemberData[]>([])
 
-  const members = analyticsData?.members ?? []
+  const members = React.useMemo(
+    () => analyticsData?.members ?? [],
+    [analyticsData?.members]
+  )
 
   // Contar itens por membro na lista atual
   const itemCountsByMember = React.useMemo(() => {

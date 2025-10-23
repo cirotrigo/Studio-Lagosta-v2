@@ -39,7 +39,6 @@ import {
   useSensor,
   useSensors,
   DragEndEvent,
-  DragOverlay,
 } from '@dnd-kit/core'
 import {
   arrayMove,
@@ -512,7 +511,7 @@ function TemplateEditorContent() {
           currentPageId={currentPageId}
           onGenerate={handleGenerateMultipleCreatives}
           creditCost={creativeCost}
-          hasCredits={canPerformOperation('creative_download')}
+          hasCredits={hasCredits}
           isGenerating={isGeneratingMultiple}
           generationProgress={generationProgress}
         />
@@ -530,7 +529,7 @@ function TemplateEditorContent() {
         currentPageId={currentPageId}
         onGenerate={handleGenerateMultipleCreatives}
         creditCost={creativeCost}
-        hasCredits={canPerformOperation('creative_download')}
+        hasCredits={hasCredits}
         isGenerating={isGeneratingMultiple}
         generationProgress={generationProgress}
       />
@@ -622,7 +621,6 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   const duplicatePageMutation = useDuplicatePage()
   const deletePageMutation = useDeletePage()
   const reorderPagesMutation = useReorderPages()
-  const [activeId, setActiveId] = React.useState<string | null>(null)
 
   // Configurar sensores para drag-and-drop
   const sensors = useSensors(
@@ -639,14 +637,13 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   }, [pages])
 
   // Handler para drag-and-drop
-  const handleDragStart = React.useCallback((event: DragEndEvent) => {
-    setActiveId(event.active.id as string)
+  const handleDragStart = React.useCallback((_event: DragEndEvent) => {
+    // No-op: reservado para feedback visual futuro
   }, [])
 
   const handleDragEnd = React.useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
-      setActiveId(null)
 
       if (over && active.id !== over.id) {
         const oldIndex = sortedPages.findIndex((p) => p.id === active.id)

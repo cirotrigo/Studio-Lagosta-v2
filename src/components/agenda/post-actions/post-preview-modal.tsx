@@ -26,6 +26,7 @@ import { RescheduleDialog } from './reschedule-dialog'
 import { toast } from 'sonner'
 import { getPostDate } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
+import Image from 'next/image'
 
 interface PostPreviewModalProps {
   post: SocialPost
@@ -138,11 +139,14 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
           {/* Preview da mídia */}
           {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
-            <div className="relative aspect-square rounded-lg overflow-hidden bg-muted">
-              <img
+            <div className="relative aspect-square overflow-hidden rounded-lg bg-muted">
+              <Image
                 src={post.mediaUrls[0]}
-                alt="Post preview"
-                className="w-full h-full object-cover"
+                alt={post.caption || 'Prévia do post'}
+                fill
+                sizes="(max-width: 768px) 80vw, 400px"
+                className="object-cover"
+                unoptimized
               />
 
               {/* Badge de carrossel */}

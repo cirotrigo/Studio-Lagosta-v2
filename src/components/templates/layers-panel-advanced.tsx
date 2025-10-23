@@ -88,10 +88,10 @@ export function LayersPanelAdvanced() {
     reorderLayers(reorderedIds)
   }
 
-  const handleSelectAll = () => {
+  const handleSelectAll = React.useCallback(() => {
     const allIds = filteredLayers.map((layer) => layer.id)
     selectLayers(allIds)
-  }
+  }, [filteredLayers, selectLayers])
 
   const handleInvertSelection = () => {
     const selectedSet = new Set(selectedLayerIds)
@@ -163,7 +163,7 @@ export function LayersPanelAdvanced() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, clearLayerSelection, duplicateLayer, removeLayer])
+  }, [selectedLayerIds, clearLayerSelection, duplicateLayer, removeLayer, handleSelectAll])
 
   return (
     <div className="flex h-full flex-col">

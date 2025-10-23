@@ -19,7 +19,7 @@ import { useGenerateImage } from '@/hooks/use-ai-image'
 import { useAIProviders } from '@/hooks/use-ai-providers'
 import { useConversations, useConversation, useCreateConversation, useDeleteConversation } from '@/hooks/use-conversations'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { History, Plus, MoreVertical, Pencil } from 'lucide-react'
+import { History, Plus, MoreVertical } from 'lucide-react'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {

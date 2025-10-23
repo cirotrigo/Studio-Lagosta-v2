@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { PostType, ScheduleType, PostStatus, PublishType } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import type { Prisma } from '@prisma/client'
 
 // GET: Fetch individual post
 export async function GET(
@@ -138,7 +139,7 @@ export async function PUT(
     } = body
 
     // Prepare update data
-    const updateData: any = {
+    const updateData: Prisma.SocialPostUpdateInput = {
       ...(postType && { postType: postType as PostType }),
       ...(caption !== undefined && { caption }),
       ...(scheduleType && { scheduleType: scheduleType as ScheduleType }),

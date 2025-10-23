@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, FolderOpen, Settings, Trash2 } from 'lucide-react'
+import Image from 'next/image'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -195,11 +196,14 @@ export default function ProjectsPage() {
                     {/* Project Logo or Icon */}
                     <div className="flex-shrink-0">
                       {projectLogo ? (
-                        <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-muted ring-2 ring-border/40 group-hover:ring-primary/40 transition-all duration-300">
-                          <img
+                        <div className="relative h-16 w-16 overflow-hidden rounded-xl bg-muted ring-2 ring-border/40 transition-all duration-300 group-hover:ring-primary/40">
+                          <Image
                             src={projectLogo.fileUrl}
                             alt={projectLogo.name}
-                            className="w-full h-full object-cover"
+                            fill
+                            sizes="64px"
+                            className="object-cover"
+                            unoptimized
                           />
                         </div>
                       ) : (
