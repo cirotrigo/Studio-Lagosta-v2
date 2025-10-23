@@ -150,24 +150,14 @@ export function GalleryItem({
 
   const orientation = getOrientation()
 
-  // Determinar grid spans baseado na orientação
-  const getGridSpan = () => {
-    switch (orientation) {
-      case 'portrait':
-        // Portrait ocupa 1 col x 2 rows
-        return { colSpan: 'col-span-1', rowSpan: 'row-span-2' }
-      case 'landscape':
-        // Landscape ocupa 2 cols x 1 row
-        return { colSpan: 'col-span-2', rowSpan: 'row-span-1' }
-      case 'square':
-        // Square ocupa 1 col x 1 row
-        return { colSpan: 'col-span-1', rowSpan: 'row-span-1' }
-      default:
-        return { colSpan: 'col-span-1', rowSpan: 'row-span-1' }
-    }
+  // Calcular aspect ratio CSS para manter proporções
+  const getAspectRatioClass = () => {
+    // Usar o aspect ratio real da imagem
+    const ratio = aspectRatio.toFixed(4)
+    return { aspectRatio: ratio }
   }
 
-  const gridSpan = getGridSpan()
+  const aspectRatioStyle = getAspectRatioClass()
 
   return (
     <motion.div
@@ -183,9 +173,9 @@ export function GalleryItem({
         'group relative rounded-xl overflow-hidden bg-card transition-all duration-300',
         'border border-border/50 shadow-sm hover:shadow-xl hover:shadow-primary/5',
         selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
-        gridSpan.colSpan,
-        gridSpan.rowSpan
+        'w-full' // Garantir largura total da grid cell
       )}
+      style={aspectRatioStyle}
       data-orientation={orientation}
     >
       {/* Checkbox */}

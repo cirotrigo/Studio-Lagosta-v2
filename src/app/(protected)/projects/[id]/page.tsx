@@ -4,13 +4,19 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter } from 'next/navigation'
-import { Plus, FileText, Trash2, Edit, Copy } from 'lucide-react'
+import { Plus, FileText, Trash2, Edit, Copy, MoreVertical } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
   Select,
   SelectContent,
@@ -329,64 +335,82 @@ return (
                     className="group overflow-hidden transition-all hover:shadow-lg hover:scale-[1.02]"
                   >
                     <div className={cn('relative bg-muted group', aspectRatio)}>
-                      {template.thumbnailUrl ? (
-                        <Image
-                          src={template.thumbnailUrl}
-                          alt={template.name}
-                          fill
-                          sizes="(min-width: 1536px) 20vw, (min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                          className="object-cover"
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                          <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
-                          <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
-                        </div>
-                      )}
-                      {/* Overlay com botões - sempre visível em mobile, hover em desktop */}
-                      <div className="absolute inset-0 bg-black/60 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          asChild
-                          className="h-11 w-11 md:h-9 md:w-9"
-                        >
-                          <Link href={`/templates/${template.id}/editor`}>
-                            <Edit className="w-4 h-4 md:w-4 md:h-4" />
-                          </Link>
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="secondary"
-                          className="h-11 w-11 md:h-9 md:w-9"
-                          onClick={() => handleDuplicate(template.id, template.name)}
-                          disabled={duplicateMutation.isPending}
-                        >
-                          <Copy className="w-4 h-4 md:w-4 md:h-4" />
-                        </Button>
+                      {/* Link para abrir o editor ao clicar na imagem */}
+                      <Link
+                        href={`/templates/${template.id}/editor`}
+                        className="absolute inset-0 z-0"
+                      >
+                        {template.thumbnailUrl ? (
+                          <Image
+                            src={template.thumbnailUrl}
+                            alt={template.name}
+                            fill
+                            sizes="(min-width: 1536px) 20vw, (min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
+                            className="object-cover"
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+                            <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
+                            <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
+                          </div>
+                        )}
+                      </Link>
+
+                      {/* Menu dropdown no canto superior direito */}
+                      <div className="absolute top-2 right-2 z-10">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button
+                              size="icon"
+                              variant="secondary"
+                              className="h-9 w-9 shadow-lg"
+                              onClick={(e) => e.preventDefault()}
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="w-48">
+                            <DropdownMenuItem asChild>
+                              <Link
+                                href={`/templates/${template.id}/editor`}
+                                className="flex items-center cursor-pointer"
+                              >
+                                <Edit className="mr-2 h-4 w-4" />
+                                Editar Template
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDuplicate(template.id, template.name)}
+                              disabled={duplicateMutation.isPending}
+                              className="cursor-pointer"
+                            >
+                              <Copy className="mr-2 h-4 w-4" />
+                              Duplicar Template
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleDelete(template.id, template.name)}
+                              disabled={deleteMutation.isPending}
+                              className="cursor-pointer text-red-600 focus:text-red-600"
+                            >
+                              <Trash2 className="mr-2 h-4 w-4" />
+                              Deletar Template
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </div>
                     </div>
                     <div className="p-3">
                       <h3 className="font-semibold text-sm leading-tight line-clamp-1 mb-1">
                         {template.name}
                       </h3>
-                      <div className="flex items-center justify-between text-xs mb-1">
+                      <div className="flex items-center justify-between text-xs">
                         <span className="text-muted-foreground truncate">
                           {getTypeLabel(template.type)} • {template.dimensions}
                         </span>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7 shrink-0"
-                          onClick={() => handleDelete(template.id, template.name)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                        </Button>
                       </div>
                       {template._count && template._count.Page > 0 && (
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground mt-1">
                           {template._count.Page} {template._count.Page === 1 ? 'página' : 'páginas'}
                         </div>
                       )}

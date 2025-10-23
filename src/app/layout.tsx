@@ -26,8 +26,10 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
+  minimumScale: 1,
   maximumScale: 5, // Permitir zoom para acessibilidade
   userScalable: true,
+  viewportFit: 'cover', // Melhor ajuste para notch em iPhones
 };
 
 export default function RootLayout({
