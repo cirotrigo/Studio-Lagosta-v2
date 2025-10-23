@@ -31,10 +31,22 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
 
     // Aguardar o DOM estar pronto e as animações terminarem
     const checkAndInit = (): 'success' | 'retry' | 'empty' => {
+      // Verificar se document e window estão disponíveis (SSR safety)
+      if (typeof document === 'undefined' || typeof window === 'undefined') {
+        console.warn('PhotoSwipe: Document/Window not available (SSR)')
+        return 'retry'
+      }
+
       const galleryElement = document.querySelector(gallerySelector)
 
       if (!galleryElement) {
         console.warn('PhotoSwipe: Gallery element not found:', gallerySelector)
+        return 'retry'
+      }
+
+      // Verificar se o elemento está realmente no DOM e visível
+      if (!document.body.contains(galleryElement)) {
+        console.warn('PhotoSwipe: Gallery element not in document body')
         return 'retry'
       }
 

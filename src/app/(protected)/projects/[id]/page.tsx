@@ -202,15 +202,23 @@ if (!projectDetails) {
 }
 
 return (
-  <div className="container mx-auto p-4 md:p-8 max-w-full overflow-x-hidden">
-    <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4">
-      <Button variant="ghost" onClick={() => router.push('/projects')} className="self-start">
+  <div className="w-full max-w-full overflow-x-hidden px-0">
+    <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4 max-w-full overflow-hidden">
+      <Button
+        variant="ghost"
+        onClick={() => router.push('/projects')}
+        className="self-start flex-shrink-0"
+      >
         ← Voltar para Projetos
       </Button>
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words">{projectDetails.name}</h1>
+      <div className="max-w-full overflow-hidden">
+        <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words overflow-wrap-anywhere">
+          {projectDetails.name}
+        </h1>
         {projectDetails.description && (
-          <p className="mt-1 text-sm text-muted-foreground break-words">{projectDetails.description}</p>
+          <p className="mt-1 text-sm text-muted-foreground break-words overflow-wrap-anywhere">
+            {projectDetails.description}
+          </p>
         )}
       </div>
     </div>
@@ -223,7 +231,7 @@ return (
       className="mb-8"
     />
 
-    <Tabs defaultValue="templates" className="w-full">
+    <Tabs defaultValue="templates" className="w-full max-w-full overflow-x-hidden">
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>

@@ -74,14 +74,14 @@ export default function ProtectedLayout({
   // Authenticated layout with sidebar
   return (
     <PageMetadataProvider>
-      <div className="min-h-dvh w-full text-foreground">
-        <div className="flex">
+      <div className="min-h-dvh w-full text-foreground overflow-x-hidden">
+        <div className="flex max-w-full">
           <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />
-          <div className="flex min-h-dvh flex-1 flex-col p-4">
+          <div className="flex min-h-dvh flex-1 flex-col p-4 max-w-full overflow-x-hidden">
             <Topbar onToggleSidebar={toggleCollapse} sidebarCollapsed={collapsed} />
             <main
               className={cn(
-                "container mx-auto w-full max-w-[1400px] pb-10 pt-6"
+                "container mx-auto w-full max-w-full lg:max-w-[1400px] pb-10 pt-6 overflow-x-hidden"
               )}
             >
               {/* layered glow behind the main content for futuristic feel */}
