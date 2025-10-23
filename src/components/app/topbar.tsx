@@ -12,6 +12,9 @@ import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
 import { navigationItems } from "@/components/app/sidebar";
 import { useOrganizationCreationLimits } from "@/hooks/use-organizations";
+import { DynamicLogo } from "@/components/app/dynamic-logo";
+import { useSiteConfig } from "@/hooks/use-site-config";
+import { site } from "@/lib/brand-config";
 
 type TopbarProps = {
   onToggleSidebar: () => void;
@@ -20,6 +23,8 @@ type TopbarProps = {
 
 export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { data: creationLimits } = useOrganizationCreationLimits();
+  const { data: siteConfig } = useSiteConfig();
+  const config = siteConfig || site;
   const createMode: "modal" | "navigation" = "modal";
   const creationReminder =
     creationLimits?.canCreate === false
@@ -51,8 +56,9 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
             </SheetTrigger>
             <SheetContent side="left" className="w-72 p-0 md:hidden">
               <SheetHeader className="p-4 text-left">
-                <div className="flex items-center justify-between">
-                  <SheetTitle>SaaS Template</SheetTitle>
+                <div className="flex items-center gap-2">
+                  <DynamicLogo className="h-8 w-8" />
+                  <SheetTitle>{config.shortName || config.name}</SheetTitle>
                 </div>
               </SheetHeader>
               <nav className="flex flex-col gap-1 p-2">
@@ -121,9 +127,9 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
         </div>
 
         {/* Brand (mobile) */}
-        <Link href="/" className="flex items-center gap-2 md:hidden">
-          <div className="h-6 w-6 rounded bg-primary" />
-          <span className="text-sm font-semibold">SaaS Template</span>
+        <Link href="/dashboard" className="flex items-center gap-2 md:hidden">
+          <DynamicLogo className="h-7 w-7" />
+          <span className="text-sm font-semibold">{config.shortName || config.name}</span>
         </Link>
 
         <div className="hidden items-center gap-2 md:flex">
