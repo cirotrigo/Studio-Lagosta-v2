@@ -102,7 +102,14 @@ export interface ExportRecord {
 
 const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
 
-const DEFAULT_ZOOM = 0.3
+// Detectar mobile para zoom inicial
+const getDefaultZoom = () => {
+  if (typeof window === 'undefined') return 0.3
+  const isMobile = window.innerWidth <= 768
+  return isMobile ? 0.25 : 0.3 // Mobile começa com 25%, desktop com 30%
+}
+
+const DEFAULT_ZOOM = getDefaultZoom()
 
 interface TemplateEditorProviderProps {
   template: TemplateResource
@@ -137,7 +144,8 @@ const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>(() => {
   return firstId ? [firstId] : []
 })
 const [dirty, setDirty] = React.useState(false)
-const [zoom, setZoomState] = React.useState(DEFAULT_ZOOM)
+// Zoom inicial depende do dispositivo
+const [zoom, setZoomState] = React.useState(() => getDefaultZoom())
 const [isExporting, setIsExporting] = React.useState(false)
 const [exportHistory, setExportHistory] = React.useState<ExportRecord[]>([])
 const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })

@@ -251,24 +251,26 @@ export function EditorCanvas() {
       </div>
 
       {/* Alignment Toolbar - sempre visível no topo do canvas */}
-      <div className="flex items-center justify-center border-b border-border/40 bg-background/95 p-2 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <AlignmentToolbar
-          selectedCount={selectedLayerIds.length}
-          onAlignLeft={alignSelectedLeft}
-          onAlignCenterH={alignSelectedCenterH}
-          onAlignRight={alignSelectedRight}
-          onAlignTop={alignSelectedTop}
-          onAlignMiddleV={alignSelectedMiddleV}
-          onAlignBottom={alignSelectedBottom}
-          onDistributeH={distributeSelectedH}
-          onDistributeV={distributeSelectedV}
-          onBringToFront={bringSelectedToFront}
-          onSendToBack={sendSelectedToBack}
-          onMoveForward={moveSelectedForward}
-          onMoveBackward={moveSelectedBackward}
-          onAlignToCanvasCenterH={alignSelectedToCanvasCenterH}
-          onAlignToCanvasCenterV={alignSelectedToCanvasCenterV}
-        />
+      <div className="overflow-x-auto border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="flex items-center justify-center p-2 min-w-max">
+          <AlignmentToolbar
+            selectedCount={selectedLayerIds.length}
+            onAlignLeft={alignSelectedLeft}
+            onAlignCenterH={alignSelectedCenterH}
+            onAlignRight={alignSelectedRight}
+            onAlignTop={alignSelectedTop}
+            onAlignMiddleV={alignSelectedMiddleV}
+            onAlignBottom={alignSelectedBottom}
+            onDistributeH={distributeSelectedH}
+            onDistributeV={distributeSelectedV}
+            onBringToFront={bringSelectedToFront}
+            onSendToBack={sendSelectedToBack}
+            onMoveForward={moveSelectedForward}
+            onMoveBackward={moveSelectedBackward}
+            onAlignToCanvasCenterH={alignSelectedToCanvasCenterH}
+            onAlignToCanvasCenterV={alignSelectedToCanvasCenterV}
+          />
+        </div>
       </div>
 
       {/* Canvas Konva + Effects Panel */}
@@ -288,13 +290,15 @@ export function EditorCanvas() {
           />
         )}
 
-        {/* Zoom Controls - centralizado horizontalmente no rodapé */}
-        <ZoomControls
-          zoom={zoom}
-          onZoomChange={setZoom}
-          minZoom={0.1}
-          maxZoom={5}
-        />
+        {/* Zoom Controls - centralizado horizontalmente no rodapé (APENAS DESKTOP) */}
+        <div className="hidden md:block">
+          <ZoomControls
+            zoom={zoom}
+            onZoomChange={setZoom}
+            minZoom={0.1}
+            maxZoom={5}
+          />
+        </div>
       </div>
     </div>
   )

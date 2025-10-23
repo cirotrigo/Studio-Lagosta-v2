@@ -176,8 +176,71 @@ export function KonvaEditorStage() {
     return () => setStageInstance(null)
   }, [setStageInstance])
 
+  // MOBILE: Calcular zoom inicial para caber na tela
+  React.useEffect(() => {
+    if (!isMobile) return
+
+    const stage = stageRef.current
+    if (!stage) return
+
+    const container = stage.container().parentElement
+    if (!container) return
+
+    // Função para calcular e aplicar zoom ideal
+    const fitToContainer = () => {
+      const containerWidth = container.clientWidth
+      const containerHeight = container.clientHeight
+
+      if (containerWidth === 0 || containerHeight === 0) {
+        console.warn('📱 [Mobile] Container sem dimensões ainda')
+        return
+      }
+
+      // Calcular zoom para caber na largura com margem
+      const margin = 16 // Margem total (8px de cada lado)
+      const availableWidth = containerWidth - margin
+      const fitZoom = availableWidth / canvasWidth
+
+      // Limitar zoom entre 15% e 80% (nunca chegar a 100% no mobile)
+      const clampedZoom = Math.max(0.15, Math.min(0.8, fitZoom))
+
+      console.log('📱 [Mobile] Auto-zoom aplicado:', {
+        containerWidth,
+        containerHeight,
+        canvasWidth,
+        canvasHeight,
+        availableWidth,
+        fitZoom: fitZoom.toFixed(3),
+        clampedZoom: clampedZoom.toFixed(3),
+        zoomPercentage: Math.round(clampedZoom * 100) + '%'
+      })
+
+      // Aplicar zoom e posição
+      setZoom(clampedZoom)
+      stage.scale({ x: clampedZoom, y: clampedZoom })
+      stage.position({ x: margin / 2, y: 0 })
+      stage.batchDraw()
+    }
+
+    // Aplicar zoom inicial após um pequeno delay
+    const timeoutId = setTimeout(fitToContainer, 150)
+
+    // Observer para detectar mudanças de tamanho
+    const resizeObserver = new ResizeObserver(() => {
+      fitToContainer()
+    })
+
+    resizeObserver.observe(container)
+
+    return () => {
+      clearTimeout(timeoutId)
+      resizeObserver.disconnect()
+    }
+  }, [isMobile, canvasWidth, canvasHeight, setZoom])
+
   // Sincronizar estado zoom com Konva stage.scale()
-  // SEMPRE mantém o canvas centralizado horizontalmente
+  // Desktop: mantém canvas centralizado horizontalmente
+  // Mobile: aplica zoom mantendo margem fixa
   React.useEffect(() => {
     const stage = stageRef.current
     if (!stage) return
@@ -195,23 +258,33 @@ export function KonvaEditorStage() {
       const scaledCanvasWidth = canvasWidth * zoom
       const _scaledCanvasHeight = canvasHeight * zoom
 
-      // Centralizar horizontalmente SEMPRE
-      const centerX = (stageWidth - scaledCanvasWidth) / 2
-
-      // Posição Y = 0 (topo, permitindo scroll vertical)
-      const newX = centerX
+      let newX = 0
       const newY = 0
 
-      // Só atualizar se a posição realmente mudou (evitar re-renders desnecessários)
-      const positionChanged = Math.abs(currentPos.x - newX) > 0.1 || Math.abs(currentPos.y - newY) > 0.1
-
-      if (positionChanged) {
-        stage.scale({ x: zoom, y: zoom })
-        stage.position({ x: newX, y: newY })
-        stage.batchDraw()
+      if (isMobile) {
+        // MOBILE: Margem fixa de 8px, sempre à esquerda
+        newX = 8
+      } else {
+        // DESKTOP: Centralizar horizontalmente se cabe na tela
+        if (scaledCanvasWidth < stageWidth) {
+          newX = (stageWidth - scaledCanvasWidth) / 2
+        } else {
+          newX = 0 // Se não cabe, alinhar à esquerda
+        }
       }
+
+      // Sempre aplicar zoom quando mudou
+      console.log('🔄 [Zoom Sync] Aplicando zoom:', {
+        zoom: zoom.toFixed(3),
+        newX,
+        newY,
+        isMobile
+      })
+      stage.scale({ x: zoom, y: zoom })
+      stage.position({ x: newX, y: newY })
+      stage.batchDraw()
     }
-  }, [zoom, canvasWidth, canvasHeight])
+  }, [zoom, canvasWidth, canvasHeight, isMobile])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -321,7 +394,8 @@ export function KonvaEditorStage() {
 
 
   // Zoom animado para atalhos de teclado
-  // SEMPRE mantém canvas centralizado horizontalmente
+  // Desktop: mantém canvas centralizado horizontalmente
+  // Mobile: margem fixa de 16px
   const animateZoom = React.useCallback(
     (newScale: number, duration = 300) => {
       const stage = stageRef.current
@@ -339,12 +413,20 @@ export function KonvaEditorStage() {
       // Dimensões do canvas escalado
       const scaledCanvasWidth = canvasWidth * clampedScale
 
-      // Centralizar horizontalmente SEMPRE
-      const centerX = (stageWidth - scaledCanvasWidth) / 2
-
-      // Posição Y = 0 (topo, permitindo scroll vertical)
-      const newX = centerX
+      let newX = 0
       const newY = 0
+
+      if (isMobile) {
+        // MOBILE: Margem fixa de 16px
+        newX = 16
+      } else {
+        // DESKTOP: Centralizar se cabe na tela
+        if (scaledCanvasWidth < stageWidth) {
+          newX = (stageWidth - scaledCanvasWidth) / 2
+        } else {
+          newX = 0
+        }
+      }
 
       // Animar zoom usando Konva.Tween
       new Konva.Tween({
@@ -360,7 +442,7 @@ export function KonvaEditorStage() {
         },
       }).play()
     },
-    [setZoom, canvasWidth],
+    [setZoom, canvasWidth, isMobile],
   )
 
   const handleLayerChange = React.useCallback(
@@ -735,10 +817,10 @@ export function KonvaEditorStage() {
 
   return (
     <div
-      className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-hidden"
-      style={{ padding: '2rem' }}
+      className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-auto"
+      style={{ padding: isMobile ? '0.5rem' : '2rem' }}
     >
-      <div className="flex justify-center min-h-full">
+      <div className={`flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
         <Stage
           ref={stageRef}
           width={canvasWidth}

@@ -47,6 +47,10 @@ import {
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { useIsMobile } from '@/hooks/use-media-query'
+import { MobileToolsDrawer } from './mobile-tools-drawer'
+import { FloatingZoomControls } from './floating-zoom-controls'
+import { FloatingToolbarButton } from './floating-toolbar-button'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -160,16 +164,23 @@ function TemplateEditorContent() {
     exportDesign,
     isExporting,
     projectId,
+    zoom,
+    zoomIn,
+    zoomOut,
+    setZoom,
   } = useTemplateEditor()
 
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
   const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
   const { canPerformOperation, getCost } = useCredits()
+  const createPageMutation = useCreatePage()
 
+  const isMobile = useIsMobile()
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
+  const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -308,6 +319,43 @@ function TemplateEditorContent() {
     }
   }, [isFullscreen])
 
+  // Handler para adicionar página (usado no mobile)
+  const handleAddPage = React.useCallback(async () => {
+    try {
+      const pageData = {
+        name: `Página ${pages.length + 1}`,
+        width: design.canvas.width || 1080,
+        height: design.canvas.height || 1920,
+        layers: [],
+        background: design.canvas.backgroundColor || '#ffffff',
+        order: pages.length,
+      }
+
+      const newPage = await createPageMutation.mutateAsync({
+        templateId,
+        data: pageData,
+      })
+
+      // Selecionar nova página
+      if (newPage && typeof newPage === 'object' && 'id' in newPage) {
+        setCurrentPageId(newPage.id as string)
+      }
+
+      toast({
+        title: 'Página criada!',
+        description: 'Nova página adicionada ao template.',
+      })
+    } catch (_error) {
+      console.error('[handleAddPage] Erro ao criar página:', _error)
+      const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
+      toast({
+        title: 'Erro ao criar página',
+        description: errorMessage,
+        variant: 'destructive',
+      })
+    }
+  }, [templateId, pages.length, design.canvas, createPageMutation, setCurrentPageId, toast])
+
   // Efeito para esconder body scroll quando em fullscreen
   React.useEffect(() => {
     if (isFullscreen) {
@@ -317,6 +365,262 @@ function TemplateEditorContent() {
     }
   }, [isFullscreen])
 
+  // Mobile Layout
+  const mobileEditorContent = (
+    <div className="polotno-editor flex overflow-hidden bg-background h-[100dvh] flex-col">
+      {/* Minimal Mobile Header - Only name and save */}
+      <header className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-3 shadow-sm">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <FileText className="h-4 w-4 text-primary flex-shrink-0" />
+          <Input
+            className="h-7 flex-1 border-0 bg-transparent text-xs font-medium focus-visible:ring-0 px-1"
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Nome do template"
+          />
+          {dirty && <span className="text-xs text-orange-500 flex-shrink-0">●</span>}
+        </div>
+        <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty} className="h-7 text-xs px-2">
+          <Save className="mr-1 h-3 w-3" />
+          {isSaving ? 'Salvando...' : 'Salvar'}
+        </Button>
+      </header>
+
+      {/* Main Canvas Area - Full Screen */}
+      <main className="flex flex-1 overflow-hidden">
+        <EditorCanvas />
+      </main>
+
+      {/* Floating Controls - FORA do main para evitar z-index issues */}
+      {/* Compact Mobile Pages Bar - Fixed at bottom center */}
+      {pages.length > 1 && !mobileToolsOpen && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999]
+                        bg-background/95 backdrop-blur-lg rounded-full shadow-xl
+                        px-3 py-2 flex items-center gap-2 border border-border/40"
+             style={{ pointerEvents: 'auto' }}>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => {
+              const currentIndex = pages.findIndex((p) => p.id === currentPageId)
+              if (currentIndex > 0) {
+                setCurrentPageId(pages[currentIndex - 1].id)
+              }
+            }}
+            disabled={pages.findIndex((p) => p.id === currentPageId) === 0}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+
+          <span className="text-xs font-medium px-2">
+            {pages.findIndex((p) => p.id === currentPageId) + 1} / {pages.length}
+          </span>
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={() => {
+              const currentIndex = pages.findIndex((p) => p.id === currentPageId)
+              if (currentIndex < pages.length - 1) {
+                setCurrentPageId(pages[currentIndex + 1].id)
+              }
+            }}
+            disabled={pages.findIndex((p) => p.id === currentPageId) === pages.length - 1}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-8 w-8"
+            onClick={handleAddPage}
+            title="Adicionar página"
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Floating Toolbar Button */}
+      <FloatingToolbarButton
+        isOpen={mobileToolsOpen}
+        onToggle={() => setMobileToolsOpen(!mobileToolsOpen)}
+        className="z-[9999]"
+      />
+
+      {/* Floating Zoom Controls */}
+      <FloatingZoomControls
+        zoom={zoom}
+        onZoomIn={() => {
+          // Aumentar zoom em 20%
+          const newZoom = Math.min(zoom * 1.2, 2) // Max 200%
+          setZoom(newZoom)
+        }}
+        onZoomOut={() => {
+          // Diminuir zoom em 20%
+          const newZoom = Math.max(zoom / 1.2, 0.1) // Min 10%
+          setZoom(newZoom)
+        }}
+        onZoomReset={() => {
+          // Reset para zoom que cabe na tela (calculado automaticamente)
+          // Forçar re-render do efeito de auto-zoom
+          setZoom(0.25)
+          setTimeout(() => {
+            // Trigger resize para recalcular
+            window.dispatchEvent(new Event('resize'))
+          }, 50)
+        }}
+        className="z-[9999]"
+      />
+
+      {/* Floating Save Creative Button */}
+      <Button
+        className="fixed bottom-20 right-20 z-[9999] h-12 px-4 rounded-full shadow-xl"
+        onClick={handleExport}
+        disabled={isExporting || isGeneratingMultiple}
+        style={{ pointerEvents: 'auto' }}
+      >
+        <Save className="mr-2 h-4 w-4" />
+        {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
+      </Button>
+
+      {/* Mobile Tools Drawer */}
+      <MobileToolsDrawer
+        open={mobileToolsOpen}
+        onOpenChange={setMobileToolsOpen}
+        title="Ferramentas"
+      >
+        {/* Tool selection buttons */}
+        <div className="grid grid-cols-3 gap-2 p-4">
+          <Button
+            variant={activePanel === 'layers' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('layers')}
+          >
+            <Layers2 className="h-5 w-5" />
+            <span className="text-xs">Layers</span>
+          </Button>
+          <Button
+            variant={activePanel === 'text' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('text')}
+          >
+            <TypeIcon className="h-5 w-5" />
+            <span className="text-xs">Texto</span>
+          </Button>
+          <Button
+            variant={activePanel === 'images' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('images')}
+          >
+            <ImageIcon className="h-5 w-5" />
+            <span className="text-xs">Imagens</span>
+          </Button>
+          <Button
+            variant={activePanel === 'videos' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('videos')}
+          >
+            <Film className="h-5 w-5" />
+            <span className="text-xs">Vídeos</span>
+          </Button>
+          <Button
+            variant={activePanel === 'elements' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('elements')}
+          >
+            <Square className="h-5 w-5" />
+            <span className="text-xs">Elementos</span>
+          </Button>
+          <Button
+            variant={activePanel === 'logo' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('logo')}
+          >
+            <Award className="h-5 w-5" />
+            <span className="text-xs">Logo</span>
+          </Button>
+          <Button
+            variant={activePanel === 'colors' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('colors')}
+          >
+            <Palette className="h-5 w-5" />
+            <span className="text-xs">Cores</span>
+          </Button>
+          <Button
+            variant={activePanel === 'gradients' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('gradients')}
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-xs">Gradientes</span>
+          </Button>
+          <Button
+            variant={activePanel === 'ai-images' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('ai-images')}
+          >
+            <Wand2 className="h-5 w-5" />
+            <span className="text-xs">IA ✨</span>
+          </Button>
+          <Button
+            variant={activePanel === 'creatives' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('creatives')}
+          >
+            <FileImage className="h-5 w-5" />
+            <span className="text-xs">Criativos</span>
+          </Button>
+          <Button
+            variant={activePanel === 'properties' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('properties')}
+          >
+            <Settings className="h-5 w-5" />
+            <span className="text-xs">Propriedades</span>
+          </Button>
+        </div>
+
+        {/* Tool Panel Content */}
+        {activePanel && (
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            <div className="mb-3 pb-2 border-b border-border/40">
+              <h3 className="text-sm font-semibold">
+                {activePanel === 'text' && 'Texto & Fontes'}
+                {activePanel === 'images' && 'Imagens'}
+                {activePanel === 'videos' && 'Vídeos'}
+                {activePanel === 'elements' && 'Elementos'}
+                {activePanel === 'logo' && 'Logo da Marca'}
+                {activePanel === 'colors' && 'Cores da Marca'}
+                {activePanel === 'gradients' && 'Gradientes'}
+                {activePanel === 'ai-images' && 'Imagens IA ✨'}
+                {activePanel === 'creatives' && 'Criativos'}
+                {activePanel === 'properties' && 'Propriedades'}
+                {activePanel === 'layers' && 'Camadas'}
+              </h3>
+            </div>
+            {activePanel === 'text' && <TextToolsPanel />}
+            {activePanel === 'images' && <ImagesPanelContent />}
+            {activePanel === 'videos' && <VideosPanel />}
+            {activePanel === 'elements' && <ElementsPanelContent />}
+            {activePanel === 'logo' && <LogoPanelContent />}
+            {activePanel === 'colors' && <ColorsPanelContent />}
+            {activePanel === 'gradients' && <GradientsPanel />}
+            {activePanel === 'ai-images' && <AIImagesPanel />}
+            {activePanel === 'creatives' && <CreativesPanel templateId={templateId} />}
+            {activePanel === 'properties' && <PropertiesPanel />}
+            {activePanel === 'layers' && <LayersPanelAdvanced />}
+          </div>
+        )}
+      </MobileToolsDrawer>
+    </div>
+  )
+
+  // Desktop Layout
   const editorContent = (
     <div className={`polotno-editor flex overflow-hidden bg-background ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)]'} flex-col`}>
       {/* Top Toolbar - Polotno Style */}
@@ -494,7 +798,27 @@ function TemplateEditorContent() {
     </div>
   )
 
-  // Se estiver em fullscreen, renderizar em portal direto no body
+  // Mobile: sempre renderizar mobile layout
+  if (isMobile) {
+    return (
+      <>
+        {mobileEditorContent}
+        <GenerateCreativesModal
+          open={showGenerateModal}
+          onOpenChange={setShowGenerateModal}
+          pages={pages}
+          currentPageId={currentPageId}
+          onGenerate={handleGenerateMultipleCreatives}
+          creditCost={creativeCost}
+          hasCredits={hasCredits}
+          isGenerating={isGeneratingMultiple}
+          generationProgress={generationProgress}
+        />
+      </>
+    )
+  }
+
+  // Desktop: Se estiver em fullscreen, renderizar em portal direto no body
   if (isFullscreen && typeof window !== 'undefined') {
     return (
       <>
@@ -519,6 +843,7 @@ function TemplateEditorContent() {
     )
   }
 
+  // Desktop: layout normal
   return (
     <>
       {editorContent}
