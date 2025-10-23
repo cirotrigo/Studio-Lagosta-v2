@@ -97,7 +97,8 @@ export default function ProtectedLayout({
                   aria-hidden="true"
                 />
                 <div className="glass-panel border-border/40 bg-card/30 p-6">
-                  <ContextIndicator />
+                  {/* Mostrar ContextIndicator apenas no dashboard */}
+                  {pathname === '/dashboard' && <ContextIndicator />}
                   <PageHeader />
                   {children}
                 </div>
