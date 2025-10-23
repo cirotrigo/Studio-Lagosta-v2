@@ -217,11 +217,14 @@ export function KonvaEditableText({
     const stage = stageRef?.current ?? textNode.getStage()
     if (!stage) return
 
-    // OFICIAL KONVA PATTERN: Esconder text node E transformer durante edição
-    textNode.hide()
-    const transformer = stage.findOne('Transformer') as Konva.Transformer | null
-    if (transformer) {
-      transformer.hide()
+    // DESKTOP: Esconder text node e transformer durante edição
+    // MOBILE: Manter visível para atualização em tempo real
+    if (!isMobile) {
+      textNode.hide()
+      const transformer = stage.findOne('Transformer') as Konva.Transformer | null
+      if (transformer) {
+        transformer.hide()
+      }
     }
 
     const currentValue = layer.content ?? textNode.text() ?? ''
@@ -279,7 +282,7 @@ export function KonvaEditableText({
   }, [startEditing])
 
   // Mobile: Handler customizado de tap para detectar duplo tap
-  const handleTap = React.useCallback(() => {
+  const handleTap = React.useCallback((e: KonvaEventObject<MouseEvent | TouchEvent>) => {
     if (!isMobile) return
 
     const now = Date.now()
@@ -287,6 +290,8 @@ export function KonvaEditableText({
 
     if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
       // Duplo tap detectado (< 300ms)
+      e.evt.preventDefault()
+      e.evt.stopPropagation()
       startEditing()
       lastTapTimeRef.current = 0
     } else {
@@ -297,16 +302,22 @@ export function KonvaEditableText({
 
   const finishEditing = React.useCallback(
     (commit: boolean) => {
+      // Capturar valor do textarea antes de limpar estado
+      const currentValue = textareaRef.current?.value
+
       setEditingState((prev) => {
         if (!prev) return null
 
         const textNode = shapeRef.current
         const stage = stageRef?.current ?? textNode?.getStage()
 
-        if (commit && prev.value !== prev.initialValue) {
+        // Usar valor do textarea se disponível (modal mobile)
+        const finalValue = currentValue !== undefined ? currentValue : prev.value
+
+        if (commit && finalValue !== prev.initialValue) {
           // ⚡ ATUALIZAR NODE DIRETAMENTE para visualização imediata
           if (textNode) {
-            textNode.text(prev.value)
+            textNode.text(finalValue)
             // Limpar e recriar cache para fontes de alta qualidade
             if (textNode.isCached()) {
               textNode.clearCache()
@@ -317,15 +328,16 @@ export function KonvaEditableText({
             }
           }
           onChange({
-            content: prev.value,
+            content: finalValue,
           })
         }
 
-        // OFICIAL KONVA PATTERN: Restaurar visibilidade de text node e transformer
-        if (textNode) {
+        // DESKTOP: Restaurar visibilidade de text node e transformer
+        // MOBILE: Já está visível, não precisa mostrar novamente
+        if (textNode && !isMobile) {
           textNode.show()
         }
-        if (stage) {
+        if (stage && !isMobile) {
           const transformer = stage.findOne('Transformer') as Konva.Transformer | null
           if (transformer) {
             transformer.show()
@@ -347,16 +359,16 @@ export function KonvaEditableText({
         stage.batchDraw()
       }
     },
-    [onChange, shapeRef, stageRef],
+    [onChange, shapeRef, stageRef, isMobile],
   )
 
 
   const isEditing = editingState !== null
 
-  // OFICIAL KONVA PATTERN: Criar textarea usando DOM nativo
+  // MODAL MOBILE: Criar modal de edição para mobile
   React.useEffect(() => {
     if (!isEditing) {
-      // Limpar textarea se existir
+      // Limpar modal/textarea se existir
       if (textareaRef.current) {
         textareaRef.current.remove()
         textareaRef.current = null
@@ -372,7 +384,227 @@ export function KonvaEditableText({
     const stage = textNode.getStage()
     if (!stage) return
 
-    // Criar textarea element
+    // MOBILE: Criar input minimalista acima do teclado
+    if (isMobile) {
+      // NÃO esconder o texto - atualizar em tempo real
+      textNode.show()
+
+      // Detectar tema atual (dark/light mode)
+      const isDarkMode = document.documentElement.classList.contains('dark') ||
+                        window.matchMedia('(prefers-color-scheme: dark)').matches
+
+      // Cores adaptativas ao tema
+      const colors = {
+        background: isDarkMode ? 'rgba(23, 23, 23, 0.85)' : 'rgba(255, 255, 255, 0.85)',
+        border: isDarkMode ? 'rgba(82, 82, 91, 0.3)' : 'rgba(228, 228, 231, 0.3)',
+        text: isDarkMode ? '#e4e4e7' : '#18181b',
+        placeholder: isDarkMode ? '#71717a' : '#a1a1aa',
+        buttonBg: isDarkMode ? '#3b82f6' : '#3b82f6',
+        buttonText: '#ffffff',
+        shadow: isDarkMode ? 'rgba(0, 0, 0, 0.4)' : 'rgba(0, 0, 0, 0.08)',
+      }
+
+      // Container minimalista
+      const inputContainer = document.createElement('div')
+      inputContainer.style.cssText = `
+        position: fixed;
+        left: 16px;
+        right: 16px;
+        bottom: 20px;
+        z-index: 10000;
+        transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      `
+
+      // Input com fundo glassmorphism
+      const textarea = document.createElement('textarea')
+      textarea.value = editingState.value
+      textarea.style.cssText = `
+        width: 100%;
+        padding: 14px 48px 14px 16px;
+        font-size: 16px;
+        font-family: ${textNode.fontFamily()};
+        color: ${colors.text};
+        background: ${colors.background};
+        backdrop-filter: blur(20px) saturate(180%);
+        -webkit-backdrop-filter: blur(20px) saturate(180%);
+        border: 1px solid ${colors.border};
+        border-radius: 16px;
+        outline: none;
+        resize: none;
+        line-height: 1.5;
+        box-shadow: 0 8px 32px ${colors.shadow};
+        min-height: 48px;
+        max-height: 140px;
+        transition: all 0.2s ease;
+      `
+      textarea.placeholder = 'Digite o texto...'
+
+      // Estilo do placeholder
+      const style = document.createElement('style')
+      style.textContent = `
+        textarea::placeholder {
+          color: ${colors.placeholder};
+          opacity: 1;
+        }
+      `
+      document.head.appendChild(style)
+
+      // Botão de concluir (check) - moderno
+      const doneButton = document.createElement('button')
+      doneButton.innerHTML = `
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `
+      doneButton.style.cssText = `
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 36px;
+        height: 36px;
+        border: none;
+        background: ${colors.buttonBg};
+        color: ${colors.buttonText};
+        border-radius: 10px;
+        font-size: 18px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+      `
+
+      // Efeito hover/active no botão
+      doneButton.addEventListener('touchstart', () => {
+        doneButton.style.transform = 'translateY(-50%) scale(0.95)'
+        doneButton.style.boxShadow = '0 1px 4px rgba(59, 130, 246, 0.2)'
+      })
+      doneButton.addEventListener('touchend', () => {
+        doneButton.style.transform = 'translateY(-50%) scale(1)'
+        doneButton.style.boxShadow = '0 2px 8px rgba(59, 130, 246, 0.3)'
+      })
+
+      // Atualizar texto em tempo real
+      const handleInput = (e: Event) => {
+        // Não atualizar durante composição (acentuação)
+        if (isComposingRef.current) return
+
+        const target = e.target as HTMLTextAreaElement
+        const value = target.value
+
+        // Atualizar canvas em tempo real
+        textNode.text(value)
+        const konvaLayer = textNode.getLayer()
+        if (konvaLayer) konvaLayer.batchDraw()
+
+        // Auto-resize
+        target.style.height = 'auto'
+        target.style.height = `${Math.min(target.scrollHeight, 120)}px`
+
+        // Atualizar estado
+        setEditingState((prev) => {
+          if (!prev) return null
+          return { ...prev, value }
+        })
+      }
+
+      const handleCompositionStart = () => {
+        isComposingRef.current = true
+      }
+
+      const handleCompositionEnd = (e: Event) => {
+        isComposingRef.current = false
+
+        // Atualizar após composição
+        const target = e.target as HTMLTextAreaElement
+        const value = target.value
+
+        textNode.text(value)
+        const konvaLayer = textNode.getLayer()
+        if (konvaLayer) konvaLayer.batchDraw()
+
+        setEditingState((prev) => {
+          if (!prev) return null
+          return { ...prev, value }
+        })
+      }
+
+      const handleDone = () => {
+        finishEditing(true)
+      }
+
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Não capturar Enter durante composição
+        if (isComposingRef.current) return
+
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault()
+          handleDone()
+        }
+      }
+
+      textarea.addEventListener('input', handleInput)
+      textarea.addEventListener('compositionstart', handleCompositionStart)
+      textarea.addEventListener('compositionend', handleCompositionEnd)
+      textarea.addEventListener('keydown', handleKeyDown)
+      doneButton.addEventListener('click', handleDone)
+
+      // Ajustar posição quando teclado abre (iOS/Android)
+      const adjustPosition = () => {
+        const viewportHeight = window.visualViewport?.height || window.innerHeight
+        const windowHeight = window.innerHeight
+        const keyboardHeight = windowHeight - viewportHeight
+
+        if (keyboardHeight > 100) {
+          // Teclado aberto - subir o input
+          inputContainer.style.bottom = `${keyboardHeight + 10}px`
+        } else {
+          // Teclado fechado
+          inputContainer.style.bottom = '20px'
+        }
+      }
+
+      window.visualViewport?.addEventListener('resize', adjustPosition)
+      window.visualViewport?.addEventListener('scroll', adjustPosition)
+
+      // Montar estrutura
+      inputContainer.appendChild(textarea)
+      inputContainer.appendChild(doneButton)
+      document.body.appendChild(inputContainer)
+
+      // Guardar referência
+      textareaRef.current = textarea
+
+      // Focus
+      setTimeout(() => {
+        textarea.focus()
+        const position = textarea.value.length
+        textarea.setSelectionRange(position, position)
+        adjustPosition()
+      }, 100)
+
+      // Cleanup
+      return () => {
+        textarea.removeEventListener('input', handleInput)
+        textarea.removeEventListener('compositionstart', handleCompositionStart)
+        textarea.removeEventListener('compositionend', handleCompositionEnd)
+        textarea.removeEventListener('keydown', handleKeyDown)
+        doneButton.removeEventListener('click', handleDone)
+        doneButton.removeEventListener('touchstart', () => {})
+        doneButton.removeEventListener('touchend', () => {})
+        window.visualViewport?.removeEventListener('resize', adjustPosition)
+        window.visualViewport?.removeEventListener('scroll', adjustPosition)
+        inputContainer.remove()
+        style.remove() // Remover estilo do placeholder
+        textareaRef.current = null
+        isComposingRef.current = false
+      }
+    }
+
+    // DESKTOP: Criar textarea in-place (código existente)
     const textarea = document.createElement('textarea')
     textareaRef.current = textarea
 
@@ -380,18 +612,29 @@ export function KonvaEditableText({
     const absoluteScale = textNode.getAbsoluteScale().x
     const width = (textNode.width() - textNode.padding() * 2) * absoluteScale
     const height = (textNode.height() - textNode.padding() * 2) * absoluteScale
-    const fontSize = textNode.fontSize() * absoluteScale
+
+    // MOBILE: Garantir fontSize mínimo de 16px para ativar teclado no iOS
+    const baseFontSize = textNode.fontSize() * absoluteScale
+    const fontSize = isMobile ? Math.max(16, baseFontSize) : baseFontSize
 
     // OFICIAL KONVA: Transform com rotação e ajuste de 2px
     let transform = ''
     if (editingState.rotation) {
       transform += `rotateZ(${editingState.rotation}deg)`
     }
+
+    // MOBILE: Ajustar scale do transform se fontSize foi aumentado
+    if (isMobile && fontSize > baseFontSize) {
+      const fontScale = baseFontSize / fontSize
+      transform += ` scale(${fontScale})`
+    }
+
     transform += ' translateY(-2px)'
 
     // OFICIAL KONVA: Textarea invisível que fica exatamente sobre o texto
+    // MOBILE: Usar position fixed para evitar problemas com scroll
     Object.assign(textarea.style, {
-      position: 'absolute',
+      position: 'fixed',
       top: `${editingState.absoluteY}px`,
       left: `${editingState.absoluteX}px`,
       width: `${width}px`,
@@ -425,6 +668,13 @@ export function KonvaEditableText({
     textarea.setAttribute('inputmode', 'text')
     textarea.setAttribute('enterkeyhint', 'done')
     textarea.tabIndex = 0
+
+    // MOBILE: Atributos adicionais para garantir que o teclado apareça
+    if (isMobile) {
+      textarea.setAttribute('data-mobile-edit', 'true')
+      textarea.readOnly = false
+      textarea.disabled = false
+    }
 
     // Event listeners - usar closures para evitar dependências
     const handleInput = (e: Event) => {
@@ -512,16 +762,46 @@ export function KonvaEditableText({
     textarea.style.height = 'auto'
     textarea.style.height = `${textarea.scrollHeight + 3}px`
 
-    // Focus com delay para mobile
-    requestAnimationFrame(() => {
+    // MOBILE: Focus agressivo para garantir que o teclado apareça
+    const focusTextarea = () => {
       textarea.focus()
+
       const position = textarea.value.length
       textarea.setSelectionRange(position, position)
 
-      // iOS fix
-      if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      // iOS/Android: Múltiplas estratégias para ativar teclado
+      if (isMobile) {
+        // Estratégia 1: Click direto
         textarea.click()
+
+        // Estratégia 2: Touch event simulado
+        const touchEvent = new TouchEvent('touchstart', {
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        })
+        textarea.dispatchEvent(touchEvent)
+
+        // Estratégia 3: Focus novamente após delay
+        setTimeout(() => {
+          textarea.focus()
+          textarea.setSelectionRange(position, position)
+        }, 100)
+
+        // Estratégia 4: Verificar e tentar novamente se necessário
+        setTimeout(() => {
+          if (document.activeElement !== textarea) {
+            textarea.focus()
+            textarea.click()
+          }
+        }, 300)
       }
+    }
+
+    // Executar focus em múltiplos frames para garantir
+    requestAnimationFrame(() => {
+      focusTextarea()
+      requestAnimationFrame(focusTextarea)
     })
 
     // Cleanup
@@ -540,9 +820,9 @@ export function KonvaEditableText({
     // CRÍTICO: Apenas isEditing nas dependências, não editingState
   }, [isEditing, shapeRef, finishEditing])
 
-  // Detectar cliques fora do textarea
+  // Detectar cliques fora do textarea (apenas desktop)
   React.useEffect(() => {
-    if (!isEditing) return
+    if (!isEditing || isMobile) return // Skip para mobile (modal tem seus próprios botões)
 
     const handleClick = (event: MouseEvent | TouchEvent) => {
       const textarea = textareaRef.current
@@ -566,7 +846,7 @@ export function KonvaEditableText({
       window.removeEventListener('click', handleClick)
       window.removeEventListener('touchstart', handleClick)
     }
-  }, [isEditing, finishEditing])
+  }, [isEditing, isMobile, finishEditing])
 
   React.useEffect(() => {
     if (!editingState) return
@@ -653,9 +933,9 @@ export function KonvaEditableText({
     }
   }, [])
 
-  // Update textarea position when zoom/pan/scroll changes
+  // Update textarea position when zoom/pan/scroll changes (apenas desktop)
   React.useEffect(() => {
-    if (!isEditing || !editingState) return
+    if (!isEditing || isMobile) return // Skip para mobile (modal é fixo)
 
     const textarea = textareaRef.current
     if (!textarea) return
@@ -670,7 +950,7 @@ export function KonvaEditableText({
       const textPosition = textNode.absolutePosition()
       const stageBox = stage.container().getBoundingClientRect()
 
-      // Atualizar apenas posição (tamanho já está correto e aplicado com scale)
+      // FIXED: Atualizar posição usando fixed positioning
       const absoluteX = stageBox.left + textPosition.x
       const absoluteY = stageBox.top + textPosition.y
 
@@ -690,7 +970,7 @@ export function KonvaEditableText({
       window.removeEventListener('resize', updatePosition)
       clearInterval(intervalId)
     }
-  }, [isEditing, editingState, shapeRef, stageRef])
+  }, [isEditing, isMobile, shapeRef, stageRef])
 
   const displayText = React.useMemo(() => {
     return applyTextTransform(layer.content ?? '', layer.style?.textTransform)
