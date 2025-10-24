@@ -41,6 +41,7 @@ interface MediaItem {
   id: string
   type: 'generation' | 'google-drive' | 'upload'
   url: string
+  pathname?: string // Blob pathname for cleanup
   thumbnailUrl?: string
   name: string
   size?: number
@@ -145,12 +146,6 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
         return
       }
 
-      // Ensure we have generationIds when creating (not updating)
-      if (!postId && data.generationIds.length === 0) {
-        toast.error('Erro: IDs de mídia não encontrados. Tente selecionar a mídia novamente.')
-        return
-      }
-
       // Validate scheduled datetime for SCHEDULED type
       if (data.scheduleType === 'SCHEDULED') {
         if (!data.scheduledDatetime) {
@@ -179,9 +174,18 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
         }
       }
 
+      // Extract blobPathnames from selected media
+      const blobPathnames = selectedMedia
+        .filter(m => m.type === 'upload' || m.type === 'google-drive')
+        .map(m => m.pathname)
+        .filter(Boolean) as string[]
+
       const postData = {
         postType: data.postType as PostType,
         caption: data.postType === 'STORY' ? '' : (data.caption || ''), // Force empty for stories
+        mediaUrls: data.mediaUrls,
+        blobPathnames, // Add pathnames for cleanup
+        generationIds: data.generationIds,
         scheduleType: data.scheduleType as ScheduleType,
         scheduledDatetime: data.scheduledDatetime?.toISOString(),
         recurringConfig: data.recurringConfig ? {
@@ -207,10 +211,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
         toast.success('Post atualizado com sucesso!')
       } else {
         // Create new post
-        await createPost.mutateAsync({
-          ...postData,
-          generationIds: data.generationIds,
-        })
+        await createPost.mutateAsync(postData)
 
         toast.success(
           data.scheduleType === 'IMMEDIATE'
@@ -299,13 +300,18 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
             <p className="text-sm text-muted-foreground mb-3">
               {postType === 'CAROUSEL'
                 ? 'Selecione de 2 a 10 imagens para o carrossel'
-                : 'Selecione 1 imagem ou vídeo'}
+                : postType === 'REEL'
+                ? 'Selecione 1 vídeo para o reel'
+                : postType === 'STORY'
+                ? 'Selecione 1 imagem ou vídeo para o story'
+                : 'Selecione 1 imagem'}
             </p>
             <MediaUploadSystem
               projectId={projectId}
               selectedMedia={selectedMedia}
               onSelectionChange={handleMediaChange}
               maxSelection={maxMedia}
+              postType={postType}
             />
           </div>
 

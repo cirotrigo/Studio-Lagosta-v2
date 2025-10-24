@@ -107,7 +107,7 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <Badge variant="secondary" className="text-xs">
-              <span className="mr-1">🌸</span> {time}
+              <span className="mr-1">⏰</span> {time}
             </Badge>
 
             {post.postType === 'STORY' && (

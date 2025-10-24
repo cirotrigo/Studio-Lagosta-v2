@@ -16,7 +16,12 @@ const createPostValidationSchema = (postType?: PostType) => {
     caption: isStory
       ? z.string().max(2200).optional().default('')
       : z.string().min(1, 'Caption is required').max(2200),
-    generationIds: z.array(z.string()).min(1),
+
+    // Accept either generationIds OR mediaUrls (at least one required)
+    generationIds: z.array(z.string()).optional().default([]),
+    mediaUrls: z.array(z.string().url()).optional(),
+    blobPathnames: z.array(z.string()).optional().default([]),
+
     scheduleType: z.nativeEnum(ScheduleType),
     scheduledDatetime: z.string().datetime().optional(),
     recurringConfig: z.object({
@@ -88,37 +93,63 @@ export async function POST(
 
     // Validate data
     const body = await req.json()
+    console.log('📥 Received post data:', JSON.stringify(body, null, 2))
 
     // First parse to get postType, then validate with appropriate schema
     const baseData = z.object({ postType: z.nativeEnum(PostType) }).parse(body)
     const schema = createPostValidationSchema(baseData.postType)
     const data = schema.parse(body)
+    console.log('✅ Validated data:', JSON.stringify(data, null, 2))
 
-    // Fetch URLs from generations
-    const generations = await db.generation.findMany({
-      where: {
-        id: { in: data.generationIds },
-        projectId: projectId,
-      },
-      select: { id: true, resultUrl: true },
-    })
+    // Determine media URLs source
+    let mediaUrls: string[]
+    let generationId: string | undefined
 
-    if (generations.length !== data.generationIds.length) {
+    if (data.mediaUrls && data.mediaUrls.length > 0) {
+      // Direct media URLs (from upload or Google Drive)
+      mediaUrls = data.mediaUrls
+      generationId = data.generationIds?.[0] // Optional generation link
+    } else if (data.generationIds && data.generationIds.length > 0) {
+      // Fetch URLs from generations
+      const generations = await db.generation.findMany({
+        where: {
+          id: { in: data.generationIds },
+          projectId: projectId,
+        },
+        select: { id: true, resultUrl: true },
+      })
+
+      if (generations.length !== data.generationIds.length) {
+        return NextResponse.json(
+          { error: 'Some generations not found' },
+          { status: 404 }
+        )
+      }
+
+      mediaUrls = generations.map(g => g.resultUrl).filter(Boolean) as string[]
+      generationId = data.generationIds[0]
+    } else {
       return NextResponse.json(
-        { error: 'Some generations not found' },
-        { status: 404 }
+        { error: 'Either generationIds or mediaUrls is required' },
+        { status: 400 }
       )
     }
 
-    const mediaUrls = generations.map(g => g.resultUrl).filter(Boolean) as string[]
+    if (mediaUrls.length === 0) {
+      return NextResponse.json(
+        { error: 'No media URLs found' },
+        { status: 400 }
+      )
+    }
 
     // Create post using the scheduler
     const scheduler = new PostScheduler()
     const result = await scheduler.createPost({
       projectId,
       userId: user.id,
-      generationId: data.generationIds[0], // Link to first creative
+      generationId, // Optional now
       mediaUrls,
+      blobPathnames: data.blobPathnames || [],
       postType: data.postType,
       caption: data.caption,
       scheduleType: data.scheduleType,
@@ -146,8 +177,12 @@ export async function POST(
       )
     }
 
+    // Return detailed error message for debugging
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('Detailed error:', errorMessage, error)
+
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', details: errorMessage },
       { status: 500 }
     )
   }

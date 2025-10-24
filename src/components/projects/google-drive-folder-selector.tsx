@@ -125,7 +125,7 @@ export function DesktopGoogleDriveModal({
   }, [])
 
   const handleItemClick = React.useCallback((item: GoogleDriveItem) => {
-    if (multiSelect && (mode === 'images' || mode === 'videos')) {
+    if (multiSelect && (mode === 'images' || mode === 'videos' || mode === 'both')) {
       // Multi-select mode: toggle selection (only for files, not folders)
       if (item.kind === 'folder') return
 
@@ -138,7 +138,7 @@ export function DesktopGoogleDriveModal({
         } else {
           // Add to selection
           if (prev.length >= maxSelection) {
-            const itemType = mode === 'videos' ? 'vídeos' : 'imagens'
+            const itemType = mode === 'videos' ? 'vídeos' : mode === 'both' ? 'arquivos' : 'imagens'
             toast({
               variant: 'destructive',
               description: `Máximo de ${maxSelection} ${itemType} selecionados`,
@@ -226,12 +226,15 @@ export function DesktopGoogleDriveModal({
   const headerTitle =
     mode === 'folders' ? 'Selecionar Pasta' :
     mode === 'videos' ? 'Escolher Vídeo do Google Drive' :
+    mode === 'both' ? 'Escolher Mídia do Google Drive' :
     'Escolher Imagem do Google Drive'
   const description =
     mode === 'folders'
       ? 'Escolha a pasta que receberá os backups automáticos dos criativos.'
       : mode === 'videos'
       ? 'Selecione um vídeo da pasta configurada'
+      : mode === 'both'
+      ? 'Selecione imagens ou vídeos da pasta configurada'
       : 'Selecione uma imagem da pasta configurada'
 
   const isLoading = driveQuery.isLoading

@@ -8,7 +8,7 @@ const querySchema = z.object({
   folderId: z.string().min(1).optional(),
   search: z.string().min(1).optional(),
   pageToken: z.string().min(1).optional(),
-  mode: z.enum(['folders', 'images', 'videos']).default('folders'),
+  mode: z.enum(['folders', 'images', 'videos', 'both']).default('folders'),
 })
 
 export async function GET(req: Request) {

@@ -142,16 +142,20 @@ export class GoogleDriveService {
       queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}')`)
     } else if (mode === 'videos') {
       queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}')`)
+    } else if (mode === 'both') {
+      queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}')`)
     }
 
     if (search && search.trim().length > 0) {
       queryParts.push(`name contains '${escapeQueryValue(search.trim())}'`)
     }
 
+    const query = queryParts.join(' and ')
+
     const response = await this.withRetry('listFiles', async () =>
       this.drive.files.list(
         {
-          q: queryParts.join(' and '),
+          q: query,
           orderBy: 'folder, name',
           pageSize: 50,
           pageToken,

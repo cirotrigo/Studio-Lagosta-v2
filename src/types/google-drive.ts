@@ -1,4 +1,4 @@
-export type GoogleDriveBrowserMode = 'folders' | 'images' | 'videos'
+export type GoogleDriveBrowserMode = 'folders' | 'images' | 'videos' | 'both'
 
 export interface GoogleDriveListRequest {
   folderId?: string

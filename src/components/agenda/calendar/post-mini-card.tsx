@@ -83,7 +83,7 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
       <div className="flex-1 min-w-0 text-left">
         <div className="flex items-center gap-1">
           <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-            <span className="mr-0.5">🌸</span> {time}
+            <span className="mr-0.5">⏰</span> {time}
           </Badge>
           {getIcon()}
           {post.isRecurring && <RefreshCw className="w-3 h-3 text-muted-foreground" />}

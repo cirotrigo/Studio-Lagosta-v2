@@ -20,10 +20,11 @@ interface RecurringConfig {
 interface CreatePostData {
   projectId: number
   userId: string
-  generationId: string
+  generationId?: string // Optional now
   postType: PostType
   caption: string
   mediaUrls: string[]
+  blobPathnames?: string[] // For cleanup
   scheduleType: ScheduleType
   scheduledDatetime?: string
   recurringConfig?: RecurringConfig
@@ -39,25 +40,33 @@ export class PostScheduler {
     // Validate post type and media count
     this.validatePost(data)
 
+    // For IMMEDIATE posts, use current date/time
+    const currentDateTime = new Date()
+    const scheduledDatetime =
+      data.scheduleType === ScheduleType.IMMEDIATE
+        ? currentDateTime
+        : data.scheduledDatetime
+          ? new Date(data.scheduledDatetime)
+          : null
+
+    console.log('📅 Creating post with schedule type:', data.scheduleType)
+    console.log('📅 Scheduled datetime:', scheduledDatetime)
+
     // Create post in database
     const post = await db.socialPost.create({
       data: {
         projectId: data.projectId,
         userId: data.userId,
-        generationId: data.generationId,
+        generationId: data.generationId, // Can be undefined
         postType: data.postType,
         caption: data.caption,
         mediaUrls: data.mediaUrls,
+        blobPathnames: data.blobPathnames || [], // Save pathnames for cleanup
         altText: data.altText || [],
         firstComment: data.firstComment,
         publishType: data.publishType || PublishType.DIRECT,
         scheduleType: data.scheduleType,
-        scheduledDatetime:
-          data.scheduleType === ScheduleType.IMMEDIATE
-            ? new Date()
-            : data.scheduledDatetime
-              ? new Date(data.scheduledDatetime)
-              : null,
+        scheduledDatetime,
         recurringConfig: data.recurringConfig ? JSON.parse(JSON.stringify(data.recurringConfig)) : null,
         status: data.scheduleType === 'IMMEDIATE' ? PostStatus.PROCESSING : PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
@@ -146,7 +155,7 @@ export class PostScheduler {
       // Detect media type based on URL and count
       const detectMediaType = (urls: string[]): string => {
         if (urls.length > 1) {
-          return 'CAROUSEL_ALBUM'
+          return 'multiple_images'
         }
 
         const url = urls[0].toLowerCase()
@@ -156,7 +165,7 @@ export class PostScheduler {
                        url.includes('video') ||
                        url.includes('.webm')
 
-        return isVideo ? 'VIDEO' : 'IMAGE'
+        return isVideo ? 'video' : 'image'
       }
 
       const mediaType = detectMediaType(post.mediaUrls)
@@ -164,17 +173,28 @@ export class PostScheduler {
       // Map post types to Buffer format
       const bufferPostType = post.postType.toLowerCase() === 'reel' ? 'reels' : post.postType.toLowerCase()
 
+      // Prepare carousel URLs (always send 10 variables, empty if not used)
+      const carouselUrls: Record<string, string> = {}
+      if (mediaType === 'multiple_images') {
+        for (let i = 1; i <= 10; i++) {
+          carouselUrls[`url${i}`] = post.mediaUrls[i - 1] || ''
+        }
+      }
+
       // Payload for Zapier (always immediate posting)
       const payload = {
         // Post data
         post_type: bufferPostType, // post, reels, story
-        media_type: mediaType, // IMAGE, VIDEO, CAROUSEL_ALBUM
+        media_type: mediaType, // image, video, multiple_images
         caption: post.caption,
-        media_urls: post.mediaUrls,
+        media_urls: post.mediaUrls, // Keep original array for backward compatibility
         media_count: post.mediaUrls.length,
         alt_text: post.altText,
         first_comment: post.firstComment || '',
         publish_type: post.publishType.toLowerCase(), // direct or reminder
+
+        // Carousel URLs (url1 to url10) - only populated for multiple_images
+        ...carouselUrls,
 
         // INSTAGRAM ACCOUNT IDENTIFICATION
         instagram_account_id: post.Project.instagramAccountId,
@@ -190,6 +210,7 @@ export class PostScheduler {
       }
 
       console.log(`🚀 Enviando post ${post.id} para Zapier...`)
+      console.log('📦 Payload:', JSON.stringify(payload, null, 2))
 
       // Deduct credits BEFORE sending
       await deductCreditsForFeature({

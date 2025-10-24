@@ -33,23 +33,52 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Build where clause
-    const where = {
-      project: {
-        userId: user.id,
-      },
-      scheduledDatetime: {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      },
-      ...(postType && postType !== 'ALL' ? { postType } : {}),
+    // Get auth info for organization access
+    const { orgId } = await auth()
+
+    // Get user's own projects
+    const ownedProjects = await db.project.findMany({
+      where: { userId: user.id },
+      select: { id: true },
+    })
+
+    // Get organization shared projects if user is in an org
+    let sharedProjects: { id: number }[] = []
+    if (orgId) {
+      sharedProjects = await db.project.findMany({
+        where: {
+          organizationProjects: {
+            some: {
+              organization: {
+                clerkOrgId: orgId,
+              },
+            },
+          },
+        },
+        select: { id: true },
+      })
     }
 
-    // Fetch posts from all user projects
-    const posts = await db.socialPost.findMany({
-      where,
+    // Combine project IDs (deduplicated)
+    const ownedIds = new Set(ownedProjects.map(p => p.id))
+    const allProjectIds = [
+      ...ownedProjects.map(p => p.id),
+      ...sharedProjects.filter(p => !ownedIds.has(p.id)).map(p => p.id),
+    ]
+
+    // Fetch regular scheduled posts
+    const scheduledPosts = await db.socialPost.findMany({
+      where: {
+        projectId: { in: allProjectIds },
+        scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
+        scheduledDatetime: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+        ...(postType && postType !== 'ALL' ? { postType } : {}),
+      },
       include: {
-        project: {
+        Project: {
           select: {
             id: true,
             name: true,
@@ -57,12 +86,61 @@ export async function GET(request: NextRequest) {
           },
         },
       },
-      orderBy: {
-        scheduledDatetime: 'asc',
+    })
+
+    // Fetch active recurring posts (they don't have scheduledDatetime in range)
+    const recurringPosts = await db.socialPost.findMany({
+      where: {
+        projectId: { in: allProjectIds },
+        scheduleType: 'RECURRING',
+        status: { in: ['SCHEDULED', 'PROCESSING'] },
+        ...(postType && postType !== 'ALL' ? { postType } : {}),
+      },
+      include: {
+        Project: {
+          select: {
+            id: true,
+            name: true,
+            instagramUsername: true,
+          },
+        },
       },
     })
 
-    return NextResponse.json(posts)
+    // Filter and expand recurring posts to show their next occurrence in the date range
+    const rangeStart = new Date(startDate)
+    const rangeEnd = new Date(endDate)
+    const now = new Date()
+
+    const expandedRecurringPosts = recurringPosts.filter(post => {
+      if (!post.recurringConfig || typeof post.recurringConfig !== 'object') return false
+
+      const config = post.recurringConfig as { endDate?: string }
+      // Check if recurring post is still active
+      if (config.endDate) {
+        const endDate = new Date(config.endDate)
+        if (endDate < now) return false // Already ended
+      }
+
+      return true
+    }).map(post => {
+      // For simplicity, we'll show recurring posts on the first day of the range
+      // A more sophisticated implementation would calculate exact occurrences
+      return {
+        ...post,
+        scheduledDatetime: rangeStart,
+        isRecurringPlaceholder: true,
+      }
+    })
+
+    // Combine all posts and sort by date
+    const allPosts = [...scheduledPosts, ...expandedRecurringPosts].sort((a, b) => {
+      const dateA = a.scheduledDatetime?.getTime() || 0
+      const dateB = b.scheduledDatetime?.getTime() || 0
+      return dateA - dateB
+    })
+
+    return NextResponse.json(allPosts)
   } catch (error) {
     console.error('[POSTS_CALENDAR_GET]', error)
     return NextResponse.json(

@@ -31,10 +31,12 @@ export async function GET(
       )
     }
 
-    const posts = await db.socialPost.findMany({
+    // Fetch regular scheduled and sent posts
+    const scheduledPosts = await db.socialPost.findMany({
       where: {
         projectId,
         userId: user.id,
+        scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
         ...(postType ? { postType } : {}),
         OR: [
           {
@@ -63,10 +65,56 @@ export async function GET(
           },
         },
       },
-      orderBy: { scheduledDatetime: 'asc' },
     })
 
-    return NextResponse.json(posts)
+    // Fetch active recurring posts
+    const recurringPosts = await db.socialPost.findMany({
+      where: {
+        projectId,
+        userId: user.id,
+        scheduleType: 'RECURRING',
+        status: { in: ['SCHEDULED', 'PROCESSING'] },
+        ...(postType ? { postType } : {}),
+      },
+      include: {
+        Generation: {
+          select: {
+            id: true,
+            templateName: true,
+            resultUrl: true,
+          },
+        },
+      },
+    })
+
+    // Filter and expand recurring posts
+    const rangeStart = new Date(startDate)
+    const now = new Date()
+
+    const expandedRecurringPosts = recurringPosts.filter(post => {
+      if (!post.recurringConfig || typeof post.recurringConfig !== 'object') return false
+
+      const config = post.recurringConfig as { endDate?: string }
+      if (config.endDate) {
+        const endDate = new Date(config.endDate)
+        if (endDate < now) return false
+      }
+
+      return true
+    }).map(post => ({
+      ...post,
+      scheduledDatetime: rangeStart,
+      isRecurringPlaceholder: true,
+    }))
+
+    // Combine and sort
+    const allPosts = [...scheduledPosts, ...expandedRecurringPosts].sort((a, b) => {
+      const dateA = a.scheduledDatetime?.getTime() || 0
+      const dateB = b.scheduledDatetime?.getTime() || 0
+      return dateA - dateB
+    })
+
+    return NextResponse.json(allPosts)
 
   } catch (error) {
     console.error('Error fetching calendar posts:', error)

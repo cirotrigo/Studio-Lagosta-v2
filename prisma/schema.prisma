@@ -869,12 +869,13 @@ model SocialPost {
   userId       String
 
   // Content
-  postType     PostType
-  caption      String      @db.Text
-  mediaUrls    String[] // URLs of creatives (from Generation)
-  altText      String[]    @default([])
-  firstComment String?     @db.Text
-  publishType  PublishType @default(DIRECT)
+  postType      PostType
+  caption       String      @db.Text
+  mediaUrls     String[] // URLs of creatives (from Generation)
+  blobPathnames String[]    @default([]) // Vercel Blob pathnames for cleanup
+  altText       String[]    @default([])
+  firstComment  String?     @db.Text
+  publishType   PublishType @default(DIRECT)
 
   // Scheduling
   scheduleType      ScheduleType

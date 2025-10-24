@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import { CalendarDayCell } from './calendar-day-cell'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getPostDateKey } from './calendar-utils'
+import { getPostDateKey, createDateKey } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarGridProps {
@@ -106,7 +106,7 @@ function generateCalendarDays(date: Date) {
     const date = new Date(year, month - 1, day)
     days.push({
       date,
-      dateKey: date.toISOString().split('T')[0],
+      dateKey: createDateKey(date),
       dayNumber: day,
       isCurrentMonth: false,
       isToday: false,
@@ -124,7 +124,7 @@ function generateCalendarDays(date: Date) {
 
     days.push({
       date,
-      dateKey: date.toISOString().split('T')[0],
+      dateKey: createDateKey(date),
       dayNumber: day,
       isCurrentMonth: true,
       isToday,
@@ -137,7 +137,7 @@ function generateCalendarDays(date: Date) {
     const date = new Date(year, month + 1, day)
     days.push({
       date,
-      dateKey: date.toISOString().split('T')[0],
+      dateKey: createDateKey(date),
       dayNumber: day,
       isCurrentMonth: false,
       isToday: false,

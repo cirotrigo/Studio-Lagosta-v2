@@ -80,22 +80,44 @@ export async function GET() {
   const projectIds = combined.map((project) => project.id)
   const now = new Date()
 
-  const scheduledCounts = projectIds.length === 0
+  // Count scheduled posts: future scheduled posts OR active recurring posts
+  // For recurring posts, we need to fetch and check the endDate from JSON
+  const allScheduledPosts = projectIds.length === 0
     ? []
-    : await db.socialPost.groupBy({
-        by: ['projectId'],
+    : await db.socialPost.findMany({
         where: {
           projectId: { in: projectIds },
-          scheduledDatetime: { gte: now },
           status: { in: ['SCHEDULED', 'PROCESSING'] },
         },
-        _count: {
-          _all: true,
+        select: {
+          projectId: true,
+          scheduleType: true,
+          scheduledDatetime: true,
+          recurringConfig: true,
         },
       })
 
-  const countsMap = scheduledCounts.reduce<Record<number, number>>((acc, item) => {
-    acc[item.projectId] = item._count._all
+  // Filter posts based on schedule type
+  const activePosts = allScheduledPosts.filter(post => {
+    // For non-recurring posts, check if scheduled time is in the future
+    if (post.scheduleType !== 'RECURRING') {
+      return post.scheduledDatetime && post.scheduledDatetime >= now
+    }
+
+    // For recurring posts, check if they're still active (no endDate or endDate in future)
+    if (post.recurringConfig && typeof post.recurringConfig === 'object') {
+      const config = post.recurringConfig as { endDate?: string }
+      if (!config.endDate) return true // No end date = always active
+      const endDate = new Date(config.endDate)
+      return endDate >= now
+    }
+
+    return false
+  })
+
+  // Group by projectId
+  const countsMap = activePosts.reduce<Record<number, number>>((acc, post) => {
+    acc[post.projectId] = (acc[post.projectId] || 0) + 1
     return acc
   }, {})
 

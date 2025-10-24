@@ -7,17 +7,35 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ImageIcon, FolderIcon, UploadIcon, X, Loader2 } from 'lucide-react'
 import { GenerationsSelector } from './generations-selector'
+import { LocalFileUploader } from './local-file-uploader'
+import { SortableMediaItem } from './sortable-media-item'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { toast } from 'sonner'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import Image from 'next/image'
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable'
 
 interface MediaItem {
   id: string
   type: 'generation' | 'google-drive' | 'upload'
   url: string
+  pathname?: string // Blob pathname for cleanup
   thumbnailUrl?: string
   name: string
   size?: number
@@ -29,6 +47,7 @@ interface MediaUploadSystemProps {
   selectedMedia: MediaItem[]
   onSelectionChange: (media: MediaItem[]) => void
   maxSelection: number
+  postType?: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'
 }
 
 interface Generation {
@@ -41,9 +60,19 @@ interface Generation {
 interface DownloadedDriveFile {
   id: string
   url: string
+  pathname: string
   name: string
   size?: number
   mimeType?: string
+}
+
+interface UploadedFile {
+  id: string
+  url: string
+  pathname: string
+  name: string
+  size: number
+  preview: string
 }
 
 interface GoogleDriveDownloadResponse {
@@ -55,11 +84,19 @@ export function MediaUploadSystem({
   projectId,
   selectedMedia,
   onSelectionChange,
-  maxSelection
+  maxSelection,
+  postType = 'POST'
 }: MediaUploadSystemProps) {
   const [activeTab, setActiveTab] = useState('generations')
   const [isGoogleDriveModalOpen, setIsGoogleDriveModalOpen] = useState(false)
   const [_selectedGoogleDriveFiles, _setSelectedGoogleDriveFiles] = useState<GoogleDriveItem[]>([])
+
+  // Determine media mode based on post type
+  const mediaMode = useMemo(() => {
+    if (postType === 'REEL') return 'videos' // Only videos for reels
+    if (postType === 'STORY') return 'both' // Images and videos for stories
+    return 'images' // Images only for POST and CAROUSEL
+  }, [postType])
 
   // Use refs to avoid recreating callbacks
   const selectedMediaRef = useRef(selectedMedia)
@@ -74,8 +111,6 @@ export function MediaUploadSystem({
   // Mutation para download e upload de arquivos do Google Drive
   const downloadDriveMutation = useMutation<GoogleDriveDownloadResponse, Error, string[]>({
     mutationFn: async (fileIds) => {
-      // Simulação - em produção, implementar endpoint real
-      // POST /api/projects/{projectId}/google-drive/download
       return api.post(`/api/projects/${projectId}/google-drive/download`, { fileIds }) as Promise<GoogleDriveDownloadResponse>
     },
     onSuccess: (data) => {
@@ -84,6 +119,7 @@ export function MediaUploadSystem({
         id: file.id,
         type: 'google-drive' as const,
         url: file.url,
+        pathname: file.pathname,
         name: file.name,
         size: file.size,
         mimeType: file.mimeType,
@@ -126,10 +162,51 @@ export function MediaUploadSystem({
     }
   }
 
+  // Handler para upload local
+  const handleLocalUpload = useCallback((files: UploadedFile[]) => {
+    const newMedia: MediaItem[] = files.map(f => ({
+      id: f.id,
+      type: 'upload' as const,
+      url: f.url,
+      pathname: f.pathname,
+      name: f.name,
+      size: f.size,
+    }))
+
+    const otherMedia = selectedMedia.filter(m => m.type !== 'upload')
+    onSelectionChange([...otherMedia, ...newMedia])
+  }, [selectedMedia, onSelectionChange])
+
   // Handler para remover item
   const handleRemoveItem = (index: number) => {
     const newMedia = selectedMedia.filter((_, i) => i !== index)
     onSelectionChange(newMedia)
+  }
+
+  // Drag & Drop sensors
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // 8px de movimento antes de começar o drag
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
+
+  // Handler para reordenação via drag & drop
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+
+    if (over && active.id !== over.id) {
+      const oldIndex = selectedMedia.findIndex((item) => item.id === active.id)
+      const newIndex = selectedMedia.findIndex((item) => item.id === over.id)
+
+      const reorderedMedia = arrayMove(selectedMedia, oldIndex, newIndex)
+      onSelectionChange(reorderedMedia)
+      toast.success('Ordem atualizada')
+    }
   }
 
   const remainingSlots = maxSelection - selectedMedia.length
@@ -178,7 +255,7 @@ export function MediaUploadSystem({
             <span className="hidden sm:inline">Google Drive</span>
           </TabsTrigger>
 
-          <TabsTrigger value="upload" className="gap-2" disabled>
+          <TabsTrigger value="upload" className="gap-2">
             <UploadIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Upload</span>
           </TabsTrigger>
@@ -219,21 +296,24 @@ export function MediaUploadSystem({
 
         {/* Tab: Upload Direto */}
         <TabsContent value="upload" className="mt-4">
-          <Card className="p-8 text-center border-dashed">
-            <UploadIcon className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="font-semibold mb-2">Upload Direto</h3>
-            <p className="text-sm text-muted-foreground">
-              Funcionalidade em desenvolvimento
-            </p>
-          </Card>
+          <LocalFileUploader
+            onUploadComplete={handleLocalUpload}
+            maxFiles={remainingSlots}
+            mediaMode={mediaMode}
+          />
         </TabsContent>
       </Tabs>
 
-      {/* Preview dos Selecionados */}
+      {/* Preview dos Selecionados com Drag & Drop */}
       {selectedMedia.length > 0 && (
         <Card className="p-4 bg-muted/50">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="font-medium text-sm">Arquivos Selecionados</h4>
+            <div>
+              <h4 className="font-medium text-sm">Arquivos Selecionados</h4>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Arraste para reordenar
+              </p>
+            </div>
             <Button
               size="sm"
               variant="ghost"
@@ -243,49 +323,27 @@ export function MediaUploadSystem({
             </Button>
           </div>
 
-          <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-2">
-            {selectedMedia.map((item, index) => (
-              <div key={`${item.type}-${item.id}-${index}`} className="relative group">
-                <div className="aspect-square rounded-lg overflow-hidden border-2 border-primary bg-muted">
-                  <Image
-                    src={item.thumbnailUrl || item.url}
-                    alt={item.name}
-                    fill
-                    sizes="80px"
-                    className="object-cover"
-                    unoptimized
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={selectedMedia.map(item => item.id)}
+              strategy={rectSortingStrategy}
+            >
+              <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                {selectedMedia.map((item, index) => (
+                  <SortableMediaItem
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    onRemove={handleRemoveItem}
                   />
-
-                  {/* Remove button */}
-                  <button
-                    onClick={() => handleRemoveItem(index)}
-                    className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                  >
-                    <div className="w-8 h-8 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center">
-                      <X className="w-4 h-4" />
-                    </div>
-                  </button>
-
-                  {/* Order badge */}
-                  <div className="absolute -top-1 -right-1 w-6 h-6 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-lg">
-                    {index + 1}
-                  </div>
-
-                  {/* Type badge */}
-                  <div className="absolute bottom-1 left-1">
-                    <Badge variant="secondary" className="text-[10px] px-1 py-0">
-                      {item.type === 'generation' ? 'Criativo' :
-                       item.type === 'google-drive' ? 'Drive' : 'Upload'}
-                    </Badge>
-                  </div>
-                </div>
-
-                <p className="text-[10px] text-center mt-1 text-muted-foreground truncate" title={item.name}>
-                  {item.name}
-                </p>
+                ))}
               </div>
-            ))}
-          </div>
+            </SortableContext>
+          </DndContext>
         </Card>
       )}
 
@@ -293,7 +351,7 @@ export function MediaUploadSystem({
       <DesktopGoogleDriveModal
         open={isGoogleDriveModalOpen}
         onOpenChange={setIsGoogleDriveModalOpen}
-        mode="images"
+        mode={mediaMode}
         multiSelect={true}
         maxSelection={remainingSlots}
         selectedItems={_selectedGoogleDriveFiles}

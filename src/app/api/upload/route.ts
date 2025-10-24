@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
+import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
 export async function POST(request: Request) {
   const { userId } = await auth()
@@ -16,29 +17,61 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Verificar se é uma imagem
-    if (!file.type.startsWith('image/')) {
-      return NextResponse.json({ error: 'File must be an image' }, { status: 400 })
-    }
+    // Validate file type (images and videos)
+    const isImage = file.type.startsWith('image/')
+    const isVideo = file.type.startsWith('video/')
 
-    // Verificar tamanho do arquivo (max 25MB por padrão)
-    const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')
-    const maxBytes = Math.max(1, maxMb) * 1024 * 1024
-    if (file.size > maxBytes) {
+    if (!isImage && !isVideo) {
       return NextResponse.json(
-        { error: `Arquivo muito grande (máx ${maxMb}MB)` },
-        { status: 413 }
+        { error: 'Only images and videos are allowed' },
+        { status: 400 }
       )
     }
 
-    // Upload para Vercel Blob
-    const fileName = `upload-${Date.now()}-${file.name}`
-    const blob = await put(fileName, file, {
-      access: 'public',
-      contentType: file.type,
-    })
+    // Validate file size (max 50MB)
+    if (file.size > 50 * 1024 * 1024) {
+      return NextResponse.json(
+        { error: 'File too large (max 50MB)' },
+        { status: 400 }
+      )
+    }
 
-    return NextResponse.json({ url: blob.url })
+    // Convert file to buffer
+    const arrayBuffer = await file.arrayBuffer()
+    let buffer = Buffer.from(arrayBuffer)
+
+    // Auto-crop images to Instagram feed format (4:5 - 1080x1350)
+    if (isImage) {
+      try {
+        const imageInfo = await getImageInfo(buffer)
+        console.log(`📷 Original image: ${imageInfo.width}x${imageInfo.height} (ratio: ${imageInfo.ratio.toFixed(2)})`)
+
+        // Crop to 4:5 ratio for feed posts
+        buffer = await cropToInstagramFeed(buffer)
+        console.log('✂️ Image cropped to 1080x1350 (4:5 ratio)')
+      } catch (cropError) {
+        console.error('Crop error:', cropError)
+        // Continue with original buffer if crop fails
+        console.warn('⚠️ Using original image (crop failed)')
+      }
+    }
+
+    // Upload to Vercel Blob
+    const fileName = file.name.replace(/\.[^/.]+$/, '.jpg') // Ensure .jpg extension after crop
+    const blob = await put(
+      `posts/${userId}/${Date.now()}-${fileName}`,
+      buffer,
+      {
+        access: 'public',
+        addRandomSuffix: true,
+        contentType: isImage ? 'image/jpeg' : file.type,
+      }
+    )
+
+    return NextResponse.json({
+      url: blob.url,
+      pathname: blob.pathname,
+    })
   } catch (error) {
     console.error('Upload error:', error)
     return NextResponse.json(

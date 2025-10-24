@@ -44,12 +44,24 @@ export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
   const handleDateSelect = (selectedDate: Date | undefined) => {
     if (!selectedDate) return
 
+    // Create a new date in local timezone to avoid UTC issues
+    const localDate = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate())
+
     // Preserve time when changing date
     const [hours, minutes] = time.split(':').map(Number)
-    selectedDate.setHours(hours || 12, minutes || 0, 0, 0)
+    localDate.setHours(hours || 12, minutes || 0, 0, 0)
 
-    setDate(selectedDate)
-    onChange(selectedDate)
+    console.log('📅 SchedulePicker - Date selected:', {
+      selectedDate: selectedDate.toISOString(),
+      localDate: localDate.toISOString(),
+      localDateString: localDate.toString(),
+      time,
+      hours,
+      minutes
+    })
+
+    setDate(localDate)
+    onChange(localDate)
   }
 
   const handleTimeChange = (newTime: string) => {
@@ -60,6 +72,14 @@ export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
     const [hours, minutes] = newTime.split(':').map(Number)
     const newDate = new Date(date)
     newDate.setHours(hours, minutes, 0, 0)
+
+    console.log('⏰ SchedulePicker - Time changed:', {
+      newTime,
+      hours,
+      minutes,
+      newDate: newDate.toISOString(),
+      newDateString: newDate.toString()
+    })
 
     setDate(newDate)
     onChange(newDate)

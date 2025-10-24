@@ -28,6 +28,7 @@
     "db:studio": "prisma studio",
     "db:backup": "bash scripts/backup-configs.sh",
     "db:analyze": "npx tsx scripts/analyze-db.ts",
+    "cron:posts": "npx tsx scripts/run-cron.ts",
     "db:clean": "npx tsx scripts/clean-db.ts",
     "db:optimize-logs": "npx tsx scripts/optimize-logs.ts",
     "db:debug-org": "npx tsx scripts/debug-org-access.ts",
@@ -69,6 +70,7 @@
     "@radix-ui/react-toast": "^1.2.14",
     "@tanstack/react-query": "^5.82.0",
     "@upstash/vector": "^1.2.2",
+    "@vercel/blob": "^2.0.0",
     "ai": "^3.3.35",
     "class-variance-authority": "0.7.1",
     "clsx": "^2.1.1",
@@ -103,7 +105,6 @@
     "tailwind-merge": "^3.3.1",
     "tailwindcss-animate": "^1.0.7",
     "use-image": "^1.1.4",
-    "@vercel/blob": "^2.0.0",
     "zod": "^3.23.0"
   },
   "devDependencies": {
