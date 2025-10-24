@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
-import { ChevronDown, X } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MobileToolsDrawerProps {
@@ -53,21 +53,11 @@ export function MobileToolsDrawer({
         {/* Drag indicator - barra para indicar que pode arrastar */}
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
 
-        {/* Header com título e botão fechar */}
+        {/* Header com título - botão X já é renderizado automaticamente pelo SheetContent */}
         <SheetHeader className="flex-shrink-0 pb-4">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-lg font-semibold">
-              {title}
-            </SheetTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-          </div>
+          <SheetTitle className="text-lg font-semibold">
+            {title}
+          </SheetTitle>
         </SheetHeader>
 
         {/* Conteúdo scrollável */}
@@ -114,21 +104,11 @@ export function MobileToolsDrawerCompact({
         {/* Drag indicator */}
         <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
 
-        {/* Header */}
+        {/* Header - botão X já é renderizado automaticamente pelo SheetContent */}
         <SheetHeader className="flex-shrink-0 pb-4">
-          <div className="flex items-center justify-between">
-            <SheetTitle className="text-base font-semibold">
-              {title}
-            </SheetTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7"
-              onClick={() => onOpenChange(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
+          <SheetTitle className="text-base font-semibold">
+            {title}
+          </SheetTitle>
         </SheetHeader>
 
         {/* Conteúdo */}

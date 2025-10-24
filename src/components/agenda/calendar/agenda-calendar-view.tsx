@@ -4,12 +4,15 @@ import { useMemo, useState } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import { useIsMobile } from '@/hooks/use-media-query'
 import { CalendarHeader } from './calendar-header'
 import { CalendarGrid } from './calendar-grid'
 import { CalendarWeekView } from './calendar-week-view'
 import { CalendarDayView } from './calendar-day-view'
 import { PostPreviewModal } from '../post-actions/post-preview-modal'
 import { ChannelsSidebar } from '../channels-sidebar/channels-list'
+import { MobileAgendaListView } from '../mobile/mobile-agenda-list-view'
+import { MobileChannelsDrawer } from '../mobile/mobile-channels-drawer'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import type { SocialPost, Project, PostType } from '../../../../prisma/generated/client'
 
@@ -52,6 +55,7 @@ function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
 }
 
 export function AgendaCalendarView() {
+  const isMobile = useIsMobile()
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
@@ -59,6 +63,7 @@ export function AgendaCalendarView() {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
 
   // Fetch user projects (channels)
   const { data: projects } = useQuery<ProjectWithCounts[]>({
@@ -125,16 +130,28 @@ export function AgendaCalendarView() {
   }
 
   const postsList = (posts as SocialPost[]) || []
-  const shouldSelectProject = !selectedProjectId
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar de Canais */}
-      <ChannelsSidebar
-        projects={projectList}
-        selectedProjectId={selectedProjectId}
-        onSelectProject={setSelectedProjectId}
-      />
+      {/* Sidebar de Canais - APENAS DESKTOP */}
+      {!isMobile && (
+        <ChannelsSidebar
+          projects={projectList}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={setSelectedProjectId}
+        />
+      )}
+
+      {/* Drawer de Canais - APENAS MOBILE */}
+      {isMobile && (
+        <MobileChannelsDrawer
+          open={mobileDrawerOpen}
+          onOpenChange={setMobileDrawerOpen}
+          projects={projectList}
+          selectedProjectId={selectedProjectId}
+          onSelectProject={setSelectedProjectId}
+        />
+      )}
 
       {/* Área Principal */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -148,15 +165,22 @@ export function AgendaCalendarView() {
           postTypeFilter={postTypeFilter}
           onPostTypeFilterChange={setPostTypeFilter}
           onCreatePost={() => setIsComposerOpen(true)}
+          onOpenChannels={isMobile ? () => setMobileDrawerOpen(true) : undefined}
+          isMobile={isMobile}
         />
 
-        {/* Calendário */}
+        {/* Calendário/Lista */}
         <div className="flex-1 overflow-auto">
-          {shouldSelectProject ? (
-            <div className="h-full flex items-center justify-center text-center p-8 text-muted-foreground">
-              Selecione um canal na barra lateral para visualizar os agendamentos.
-            </div>
+          {/* MOBILE: Lista por dia */}
+          {isMobile ? (
+            <MobileAgendaListView
+              posts={postsList}
+              onPostClick={setSelectedPost}
+              onEditPost={handleEditPost}
+              isLoading={isLoading}
+            />
           ) : (
+            /* DESKTOP: Grid/Week/Day existentes */
             <>
               {viewMode === 'month' && (
                 <CalendarGrid

@@ -46,3 +46,30 @@ export function sortPostsByDate(posts: SocialPost[]): SocialPost[] {
     return dateA.getTime() - dateB.getTime()
   })
 }
+
+export function groupPostsByDay(posts: SocialPost[]) {
+  const grouped = new Map<string, { date: Date; posts: SocialPost[] }>()
+
+  posts.forEach(post => {
+    const dateKey = getPostDateKey(post)
+    if (!dateKey) return
+
+    const date = getPostDate(post)
+    if (!date) return
+
+    if (!grouped.has(dateKey)) {
+      grouped.set(dateKey, { date, posts: [] })
+    }
+
+    grouped.get(dateKey)!.posts.push(post)
+  })
+
+  // Converter para array e ordenar por data
+  return Array.from(grouped.values())
+    .sort((a, b) => a.date.getTime() - b.date.getTime())
+    .map(group => ({
+      ...group,
+      dateKey: group.date.toISOString().split('T')[0],
+      posts: sortPostsByDate(group.posts)
+    }))
+}

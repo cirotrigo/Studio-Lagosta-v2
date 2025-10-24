@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
@@ -49,8 +49,6 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useIsMobile } from '@/hooks/use-media-query'
 import { MobileToolsDrawer } from './mobile-tools-drawer'
-import { FloatingZoomControls } from './floating-zoom-controls'
-import { FloatingToolbarButton } from './floating-toolbar-button'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
@@ -387,105 +385,9 @@ function TemplateEditorContent() {
       </header>
 
       {/* Main Canvas Area - Full Screen */}
-      <main className="flex flex-1 overflow-hidden">
+      <main className="flex flex-1 overflow-hidden relative">
         <EditorCanvas />
       </main>
-
-      {/* Floating Controls - FORA do main para evitar z-index issues */}
-      {/* Compact Mobile Pages Bar - Fixed at bottom center */}
-      {pages.length > 1 && !mobileToolsOpen && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-[9999]
-                        bg-background/95 backdrop-blur-lg rounded-full shadow-xl
-                        px-3 py-2 flex items-center gap-2 border border-border/40"
-             style={{ pointerEvents: 'auto' }}>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            onClick={() => {
-              const currentIndex = pages.findIndex((p) => p.id === currentPageId)
-              if (currentIndex > 0) {
-                setCurrentPageId(pages[currentIndex - 1].id)
-              }
-            }}
-            disabled={pages.findIndex((p) => p.id === currentPageId) === 0}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-
-          <span className="text-xs font-medium px-2">
-            {pages.findIndex((p) => p.id === currentPageId) + 1} / {pages.length}
-          </span>
-
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            onClick={() => {
-              const currentIndex = pages.findIndex((p) => p.id === currentPageId)
-              if (currentIndex < pages.length - 1) {
-                setCurrentPageId(pages[currentIndex + 1].id)
-              }
-            }}
-            disabled={pages.findIndex((p) => p.id === currentPageId) === pages.length - 1}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            onClick={handleAddPage}
-            title="Adicionar página"
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-
-      {/* Floating Toolbar Button */}
-      <FloatingToolbarButton
-        isOpen={mobileToolsOpen}
-        onToggle={() => setMobileToolsOpen(!mobileToolsOpen)}
-        className="z-[9999]"
-      />
-
-      {/* Floating Zoom Controls */}
-      <FloatingZoomControls
-        zoom={zoom}
-        onZoomIn={() => {
-          // Aumentar zoom em 20%
-          const newZoom = Math.min(zoom * 1.2, 2) // Max 200%
-          setZoom(newZoom)
-        }}
-        onZoomOut={() => {
-          // Diminuir zoom em 20%
-          const newZoom = Math.max(zoom / 1.2, 0.1) // Min 10%
-          setZoom(newZoom)
-        }}
-        onZoomReset={() => {
-          // Reset para zoom que cabe na tela (calculado automaticamente)
-          // Forçar re-render do efeito de auto-zoom
-          setZoom(0.25)
-          setTimeout(() => {
-            // Trigger resize para recalcular
-            window.dispatchEvent(new Event('resize'))
-          }, 50)
-        }}
-        className="z-[9999]"
-      />
-
-      {/* Floating Save Creative Button */}
-      <Button
-        className="fixed bottom-20 right-20 z-[9999] h-12 px-4 rounded-full shadow-xl"
-        onClick={handleExport}
-        disabled={isExporting || isGeneratingMultiple}
-        style={{ pointerEvents: 'auto' }}
-      >
-        <Save className="mr-2 h-4 w-4" />
-        {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
-      </Button>
 
       {/* Mobile Tools Drawer */}
       <MobileToolsDrawer
@@ -803,6 +705,133 @@ function TemplateEditorContent() {
     return (
       <>
         {mobileEditorContent}
+
+        {/* Floating Controls - Renderizados com Portal fora da hierarquia do editor */}
+        {typeof window !== 'undefined' && createPortal(
+          <>
+            {/* Zoom Controls - Vertical na lateral direita */}
+            <div className="fixed bottom-24 right-4 z-[10000] flex flex-col gap-2">
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all"
+                onClick={() => {
+                  const newZoom = Math.min(zoom * 1.2, 2)
+                  setZoom(newZoom)
+                }}
+                aria-label="Aumentar zoom"
+              >
+                <ZoomIn className="h-5 w-5" />
+              </Button>
+
+              <button
+                className="h-12 w-12 rounded-full shadow-lg bg-background/95 backdrop-blur
+                           flex items-center justify-center text-xs font-semibold
+                           hover:bg-muted transition-colors active:scale-95"
+                onClick={() => {
+                  setZoom(0.25)
+                  setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+                }}
+                aria-label={`Zoom atual: ${Math.round(zoom * 100)}% (clique para resetar)`}
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+
+              <Button
+                size="icon"
+                variant="secondary"
+                className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all"
+                onClick={() => {
+                  const newZoom = Math.max(zoom / 1.2, 0.1)
+                  setZoom(newZoom)
+                }}
+                aria-label="Diminuir zoom"
+              >
+                <ZoomOut className="h-5 w-5" />
+              </Button>
+            </div>
+
+            {/* Bottom Toolbar - Ferramentas e Salvar */}
+            <div className="fixed bottom-4 left-4 right-4 z-[10000]">
+              <div className="flex items-center justify-between gap-3">
+                {/* Left: Ferramentas + Páginas */}
+                <div className="flex items-center gap-2">
+                  {/* Botão Ferramentas */}
+                  <Button
+                    size="icon"
+                    variant="default"
+                    className="h-14 w-14 rounded-full shadow-xl hover:shadow-2xl transition-all"
+                    onClick={() => setMobileToolsOpen(!mobileToolsOpen)}
+                    aria-label={mobileToolsOpen ? 'Fechar ferramentas' : 'Abrir ferramentas'}
+                  >
+                    {mobileToolsOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+                  </Button>
+
+                  {/* Pages Navigation (if multiple pages) */}
+                  {pages.length > 1 && !mobileToolsOpen && (
+                    <div className="bg-background/95 backdrop-blur-lg rounded-full shadow-xl px-3 py-2 flex items-center gap-2 border border-border/40">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          const currentIndex = pages.findIndex((p) => p.id === currentPageId)
+                          if (currentIndex > 0) {
+                            setCurrentPageId(pages[currentIndex - 1].id)
+                          }
+                        }}
+                        disabled={pages.findIndex((p) => p.id === currentPageId) === 0}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+
+                      <span className="text-xs font-medium px-2">
+                        {pages.findIndex((p) => p.id === currentPageId) + 1} / {pages.length}
+                      </span>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={() => {
+                          const currentIndex = pages.findIndex((p) => p.id === currentPageId)
+                          if (currentIndex < pages.length - 1) {
+                            setCurrentPageId(pages[currentIndex + 1].id)
+                          }
+                        }}
+                        disabled={pages.findIndex((p) => p.id === currentPageId) === pages.length - 1}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-8 w-8"
+                        onClick={handleAddPage}
+                        title="Adicionar página"
+                      >
+                        <Plus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Right: Save Creative Button */}
+                <Button
+                  className="h-14 px-6 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-base font-medium"
+                  onClick={handleExport}
+                  disabled={isExporting || isGeneratingMultiple}
+                >
+                  <Save className="mr-2 h-5 w-5" />
+                  {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar'}
+                </Button>
+              </div>
+            </div>
+          </>,
+          document.body
+        )}
+
         <GenerateCreativesModal
           open={showGenerateModal}
           onOpenChange={setShowGenerateModal}

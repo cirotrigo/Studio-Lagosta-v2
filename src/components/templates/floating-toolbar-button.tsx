@@ -34,7 +34,7 @@ export function FloatingToolbarButton({
       size="icon"
       variant="default"
       className={cn(
-        'fixed bottom-20 left-4',
+        'fixed bottom-20 left-4 z-[10000]',
         'h-14 w-14 rounded-full shadow-xl hover:shadow-2xl',
         'transition-all duration-300',
         isOpen && 'rotate-90',

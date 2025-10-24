@@ -18,8 +18,6 @@ export function useAgendaPosts({
   return useQuery({
     queryKey: ['agenda-posts', projectId, startDate.toISOString(), endDate.toISOString(), postType],
     queryFn: async () => {
-      if (!projectId) return []
-
       const params = new URLSearchParams({
         startDate: startDate.toISOString(),
         endDate: endDate.toISOString(),
@@ -29,9 +27,14 @@ export function useAgendaPosts({
         params.append('postType', postType)
       }
 
+      // Se projectId for null, busca posts de todos os projetos
+      if (!projectId) {
+        return api.get(`/api/posts/calendar?${params}`)
+      }
+
+      // Senão, busca posts do projeto específico
       return api.get(`/api/projects/${projectId}/posts/calendar?${params}`)
     },
-    enabled: !!projectId,
     staleTime: 30_000, // 30 seconds
   })
 }

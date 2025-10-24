@@ -61,7 +61,7 @@ export function FloatingZoomControls({
   return (
     <div
       className={cn(
-        'fixed bottom-20 right-4',
+        'fixed bottom-20 right-4 z-[10000]',
         'flex flex-col gap-2',
         className
       )}
