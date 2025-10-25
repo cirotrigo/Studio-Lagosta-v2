@@ -208,18 +208,25 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
           data: postData,
         })
 
-        toast.success('Post atualizado com sucesso!')
+        toast.success('✅ Post atualizado com sucesso!')
       } else {
         // Create new post
         await createPost.mutateAsync(postData)
 
-        toast.success(
-          data.scheduleType === 'IMMEDIATE'
-            ? 'Post enviado!'
-            : data.scheduleType === 'SCHEDULED'
-            ? 'Post agendado com sucesso!'
-            : 'Série recorrente criada com sucesso!'
-        )
+        if (data.scheduleType === 'IMMEDIATE') {
+          toast.success('✅ Post enviado com sucesso! Será publicado em instantes.')
+        } else if (data.scheduleType === 'SCHEDULED') {
+          const dateStr = data.scheduledDatetime?.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          })
+          toast.success(`✅ Post agendado para ${dateStr}!`)
+        } else {
+          toast.success('✅ Série recorrente criada com sucesso!')
+        }
       }
 
       onClose()
@@ -228,17 +235,52 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     } catch (error) {
       console.error('Error creating/updating post:', error)
 
+      // Check if it's an ApiError with status code
+      if (error && typeof error === 'object' && 'status' in error && 'message' in error) {
+        const apiError = error as { status: number; message: string }
+
+        // Handle specific error cases
+        if (apiError.status === 402 || apiError.message.includes('Insufficient credits') || apiError.message.includes('créditos insuficientes')) {
+          toast.error('❌ Créditos insuficientes para publicar este post. Por favor, adquira mais créditos.')
+          return
+        }
+
+        if (apiError.status === 400) {
+          toast.error(`❌ Erro de validação: ${apiError.message}`)
+          return
+        }
+
+        if (apiError.status === 404) {
+          toast.error('❌ Recurso não encontrado. Verifique se o projeto ainda existe.')
+          return
+        }
+
+        if (apiError.status === 500) {
+          toast.error('❌ Erro no servidor. Tente novamente em alguns instantes.')
+          return
+        }
+
+        toast.error(`❌ Erro: ${apiError.message}`)
+        return
+      }
+
       if (error instanceof Error) {
-        toast.error(`Erro: ${error.message}`)
+        // Check for specific error messages
+        if (error.message.includes('Insufficient credits') || error.message.includes('créditos insuficientes')) {
+          toast.error('❌ Créditos insuficientes para publicar este post. Por favor, adquira mais créditos.')
+          return
+        }
+
+        toast.error(`❌ Erro: ${error.message}`)
         return
       }
 
       if (error && typeof error === 'object' && 'details' in error) {
-        toast.error(`Erro de validação: ${JSON.stringify((error as { details: unknown }).details)}`)
+        toast.error(`❌ Erro de validação: ${JSON.stringify((error as { details: unknown }).details)}`)
         return
       }
 
-      toast.error('Erro ao processar post. Verifique os dados e tente novamente.')
+      toast.error('❌ Erro ao processar post. Verifique os dados e tente novamente.')
     }
   }
 

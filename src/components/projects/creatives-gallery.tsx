@@ -18,8 +18,9 @@ import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from './gallery-item'
 import { MemberFilter } from '../filters/member-filter'
-import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive } from 'lucide-react'
+import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 
 interface TemplateInfo {
   id: number
@@ -106,6 +107,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [onlyWithResult, setOnlyWithResult] = React.useState(true)
   const [preview, setPreview] = React.useState<PreviewState>(null)
   const [progressOverrides, setProgressOverrides] = React.useState<Record<string, ProgressOverride>>({})
+  const [isComposerOpen, setIsComposerOpen] = React.useState(false)
+  const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
 
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
     queryKey: ['generations', projectId, memberFilter],
@@ -496,6 +499,49 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     bulkDeleteMutation.mutate(Array.from(selectedIds))
   }, [selectedIds, bulkDeleteMutation])
 
+  const handleSchedule = React.useCallback((generation: GenerationRecord) => {
+    setSchedulingGeneration(generation)
+    setIsComposerOpen(true)
+  }, [])
+
+  const handleCloseComposer = React.useCallback(() => {
+    setIsComposerOpen(false)
+    setSchedulingGeneration(null)
+  }, [])
+
+  const composerInitialData = React.useMemo(() => {
+    if (!schedulingGeneration) return undefined
+
+    const dimensions = schedulingGeneration.template?.dimensions || '1080x1080'
+    const [widthStr, heightStr] = dimensions.split('x')
+    const width = parseInt(widthStr, 10) || 1080
+    const height = parseInt(heightStr, 10) || 1080
+    const aspectRatio = width / height
+
+    // Detect post type based on dimensions
+    let postType: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL' = 'POST'
+    if (aspectRatio < 0.7) {
+      // Vertical - Story (9:16)
+      postType = 'STORY'
+    } else {
+      // Feed or Square
+      postType = 'POST'
+    }
+
+    const meta = getGenerationMeta(schedulingGeneration)
+    const mediaUrl = meta.assetUrl ?? meta.displayUrl
+
+    if (!mediaUrl) return undefined
+
+    return {
+      postType,
+      mediaUrls: [mediaUrl],
+      generationIds: [schedulingGeneration.id],
+      caption: '',
+      scheduleType: 'SCHEDULED' as const,
+    } as Partial<PostFormData>
+  }, [schedulingGeneration, getGenerationMeta])
+
   const isEmpty = !isLoading && filtered.length === 0
 
   return (
@@ -676,6 +722,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}
+                onSchedule={() => handleSchedule(generation)}
                 onPreview={() => {
                   if (previewPayload) {
                     setPreview(previewPayload)
@@ -794,6 +841,16 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                             <Download className="mr-1 h-4 w-4" />
                             Baixar
                           </Button>
+                          {canDownload && (
+                            <Button
+                              size="sm"
+                              variant="default"
+                              onClick={() => handleSchedule(generation)}
+                            >
+                              <Calendar className="mr-1 h-4 w-4" />
+                              Agendar
+                            </Button>
+                          )}
                           {generation.googleDriveBackupUrl && (
                             <Button
                               size="sm"
@@ -849,6 +906,16 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Post Composer Modal for Scheduling */}
+      {composerInitialData && (
+        <PostComposer
+          projectId={projectId}
+          open={isComposerOpen}
+          onClose={handleCloseComposer}
+          initialData={composerInitialData}
+        />
+      )}
     </>
   )
 }

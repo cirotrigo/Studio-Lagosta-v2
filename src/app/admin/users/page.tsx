@@ -234,9 +234,9 @@ export default function UsersPage() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Confirmar sincronização</AlertDialogTitle>
-                <AlertDialogDescription>
-                  <div className="space-y-2 text-left">
-                    <p className="text-sm">Você está prestes a iniciar uma sincronização com os seguintes efeitos:</p>
+                <AlertDialogDescription asChild>
+                  <div className="space-y-2 text-left text-sm text-muted-foreground">
+                    <div>Você está prestes a iniciar uma sincronização com os seguintes efeitos:</div>
                     <ul className="list-disc pl-5 space-y-1">
                       {syncUsersOpt && (<li>Criar/atualizar usuários e garantir saldos (0 por padrão).</li>)}
                       {!syncUsersOpt && (<li>Não irá criar/atualizar usuários nem saldos.</li>)}

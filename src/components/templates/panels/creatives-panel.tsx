@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Trash2, Download, Loader2, ImageIcon } from 'lucide-react'
+import { Trash2, Download, Loader2, ImageIcon, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -15,20 +15,24 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
-import { useTemplateCreatives, useDeleteCreative } from '@/hooks/use-template-creatives'
+import { useTemplateCreatives, useDeleteCreative, type Creative } from '@/hooks/use-template-creatives'
 import { CreativesLightbox } from '../creatives-lightbox'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
+import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 
 interface CreativesPanelProps {
   templateId: number
+  projectId: number
 }
 
-export function CreativesPanel({ templateId }: CreativesPanelProps) {
+export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
   const { toast } = useToast()
   const { data: creatives = [], isLoading, error, refetch } = useTemplateCreatives(templateId)
   const deleteCreative = useDeleteCreative(templateId)
   const [creativeToDelete, setCreativeToDelete] = React.useState<string | null>(null)
+  const [isComposerOpen, setIsComposerOpen] = React.useState(false)
+  const [schedulingCreative, setSchedulingCreative] = React.useState<Creative | null>(null)
 
   // Debug logging
   React.useEffect(() => {
@@ -98,6 +102,46 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
       })
     }
   }, [toast])
+
+  const handleSchedule = React.useCallback((creative: Creative) => {
+    setSchedulingCreative(creative)
+    setIsComposerOpen(true)
+  }, [])
+
+  const handleCloseComposer = React.useCallback(() => {
+    setIsComposerOpen(false)
+    setSchedulingCreative(null)
+  }, [])
+
+  const composerInitialData = React.useMemo(() => {
+    if (!schedulingCreative) return undefined
+
+    const width = Number.isFinite(schedulingCreative.width) && schedulingCreative.width > 0 ? schedulingCreative.width : 1080
+    const height = Number.isFinite(schedulingCreative.height) && schedulingCreative.height > 0 ? schedulingCreative.height : 1920
+    const aspectRatio = width / height
+
+    // Detect post type based on dimensions
+    let postType: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL' = 'POST'
+    if (aspectRatio < 0.7) {
+      // Vertical - Story (9:16)
+      postType = 'STORY'
+    } else {
+      // Feed or Square
+      postType = 'POST'
+    }
+
+    const mediaUrl = schedulingCreative.resultUrl
+
+    if (!mediaUrl) return undefined
+
+    return {
+      postType,
+      mediaUrls: [mediaUrl],
+      generationIds: [schedulingCreative.id],
+      caption: '',
+      scheduleType: 'SCHEDULED' as const,
+    } as Partial<PostFormData>
+  }, [schedulingCreative])
 
   if (isLoading) {
     return (
@@ -215,6 +259,15 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
                       size="sm"
                       variant="outline"
                       className="h-7 w-7 p-0"
+                      onClick={() => handleSchedule(creative)}
+                      title="Agendar publicação"
+                    >
+                      <Calendar className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 w-7 p-0"
                       onClick={() =>
                         handleDownload(
                           creative.resultUrl,
@@ -272,6 +325,16 @@ export function CreativesPanel({ templateId }: CreativesPanelProps) {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Post Composer Modal for Scheduling */}
+      {composerInitialData && (
+        <PostComposer
+          projectId={projectId}
+          open={isComposerOpen}
+          onClose={handleCloseComposer}
+          initialData={composerInitialData}
+        />
+      )}
     </div>
   )
 }

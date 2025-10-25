@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2 } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -28,6 +28,7 @@ interface GalleryItemProps {
   onDelete: () => void
   onDriveOpen?: () => void
   onPreview?: () => void
+  onSchedule?: () => void
   index: number
   pswpWidth: number
   pswpHeight: number
@@ -55,6 +56,7 @@ export function GalleryItem({
   onDelete,
   onDriveOpen,
   onPreview,
+  onSchedule,
   index,
   pswpWidth,
   pswpHeight,
@@ -316,6 +318,21 @@ export function GalleryItem({
       {/* Botões de ação flutuantes (aparecem no hover) */}
       <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/90 via-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 z-10 pointer-events-none">
         <div className="flex items-center justify-center gap-2 pointer-events-auto">
+          {onSchedule && status === 'COMPLETED' && resolvedAssetUrl && (
+            <Button
+              size="sm"
+              variant="secondary"
+              className="flex-1 bg-primary/95 hover:bg-primary text-white font-medium shadow-lg"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onSchedule()
+              }}
+              title="Agendar publicação"
+            >
+              <Calendar className="h-4 w-4" />
+            </Button>
+          )}
           {hasDriveBackup && onDriveOpen && (
             <Button
               size="sm"
@@ -326,6 +343,7 @@ export function GalleryItem({
                 e.stopPropagation()
                 onDriveOpen()
               }}
+              title="Abrir no Google Drive"
             >
               <HardDrive className="h-4 w-4" />
             </Button>
@@ -344,6 +362,7 @@ export function GalleryItem({
               }
               onDownload()
             }}
+            title="Baixar criativo"
           >
             <Download className="h-4 w-4" />
           </Button>
@@ -356,6 +375,7 @@ export function GalleryItem({
               e.stopPropagation()
               onDelete()
             }}
+            title="Excluir criativo"
           >
             <Trash2 className="h-4 w-4" />
           </Button>

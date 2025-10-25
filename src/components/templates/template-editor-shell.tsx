@@ -513,7 +513,7 @@ function TemplateEditorContent() {
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
-            {activePanel === 'creatives' && <CreativesPanel templateId={templateId} />}
+            {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
             {activePanel === 'properties' && <PropertiesPanel />}
             {activePanel === 'layers' && <LayersPanelAdvanced />}
           </div>
@@ -667,7 +667,7 @@ function TemplateEditorContent() {
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
-              {activePanel === 'creatives' && <CreativesPanel templateId={templateId} />}
+              {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
               {activePanel === 'properties' && <PropertiesPanel />}
               {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>
