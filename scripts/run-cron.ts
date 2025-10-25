@@ -4,7 +4,18 @@
  * Usage: npm run cron:posts
  */
 
-const CRON_SECRET = process.env.CRON_SECRET || 'dev-secret-123'
+import { config } from 'dotenv'
+import { resolve } from 'path'
+
+// Load .env.local
+config({ path: resolve(process.cwd(), '.env.local') })
+
+const CRON_SECRET = process.env.CRON_SECRET
+if (!CRON_SECRET) {
+  console.error('❌ CRON_SECRET not found in environment variables')
+  console.error('💡 Make sure .env.local has CRON_SECRET defined')
+  process.exit(1)
+}
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3001'
 
 async function runCron() {
