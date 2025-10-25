@@ -278,8 +278,15 @@ export class PostScheduler {
         `Erro ao enviar: ${error instanceof Error ? error.message : 'Unknown'}`
       )
 
-      // Schedule retry
-      await this.scheduleRetry(postId)
+      // Only schedule retry if it's NOT an insufficient credits error
+      // (no point retrying if user has no credits)
+      const isInsufficientCredits = error instanceof Error && error.name === 'InsufficientCreditsError'
+      if (!isInsufficientCredits) {
+        await this.scheduleRetry(postId)
+        console.log(`🔄 Retry scheduled for post ${postId}`)
+      } else {
+        console.log(`💳 Post ${postId} failed due to insufficient credits - not scheduling retry`)
+      }
 
       throw error
     }

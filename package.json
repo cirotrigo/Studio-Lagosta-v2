@@ -29,6 +29,7 @@
     "db:backup": "bash scripts/backup-configs.sh",
     "db:analyze": "npx tsx scripts/analyze-db.ts",
     "cron:posts": "npx tsx scripts/run-cron.ts",
+    "cleanup:retries": "npx tsx scripts/cleanup-failed-retries.ts",
     "db:clean": "npx tsx scripts/clean-db.ts",
     "db:optimize-logs": "npx tsx scripts/optimize-logs.ts",
     "db:debug-org": "npx tsx scripts/debug-org-access.ts",

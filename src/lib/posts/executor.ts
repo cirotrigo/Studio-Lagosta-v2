@@ -43,6 +43,12 @@ export class PostExecutor {
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
           failureCount++
+
+          // Don't schedule retry if it's an insufficient credits error
+          const isInsufficientCredits = error instanceof Error && error.name === 'InsufficientCreditsError'
+          if (isInsufficientCredits) {
+            console.log(`💳 Post ${post.id} failed due to insufficient credits - retry already skipped by scheduler`)
+          }
         }
       }
 
@@ -95,6 +101,8 @@ export class PostExecutor {
             data: { status: RetryStatus.SUCCESS },
           })
         } catch (error) {
+          console.error(`❌ Retry ${retry.id} (attempt ${retry.attemptNumber}) failed:`, error)
+
           // Mark retry as failed
           await db.postRetry.update({
             where: { id: retry.id },
@@ -104,9 +112,18 @@ export class PostExecutor {
             },
           })
 
-          // Schedule next retry if still has attempts
-          if (retry.attemptNumber < 3) {
+          // Schedule next retry ONLY if:
+          // 1. Still has attempts left (max 3 attempts)
+          // 2. Error is NOT InsufficientCreditsError (no point retrying)
+          const isInsufficientCredits = error instanceof Error && error.name === 'InsufficientCreditsError'
+
+          if (retry.attemptNumber < 3 && !isInsufficientCredits) {
             await this.scheduler.scheduleRetry(retry.postId, retry.attemptNumber + 1)
+            console.log(`🔄 Scheduled retry ${retry.attemptNumber + 1}/3 for post ${retry.postId}`)
+          } else if (isInsufficientCredits) {
+            console.log(`💳 Post ${retry.postId} failed due to insufficient credits - not retrying`)
+          } else {
+            console.log(`⚠️ Post ${retry.postId} exceeded max retries (3)`)
           }
         }
       }
