@@ -111,7 +111,7 @@ export function MediaUploadSystem({
   // Mutation para download e upload de arquivos do Google Drive
   const downloadDriveMutation = useMutation<GoogleDriveDownloadResponse, Error, string[]>({
     mutationFn: async (fileIds) => {
-      return api.post(`/api/projects/${projectId}/google-drive/download`, { fileIds }) as Promise<GoogleDriveDownloadResponse>
+      return api.post(`/api/google-drive-download`, { projectId, fileIds }) as Promise<GoogleDriveDownloadResponse>
     },
     onSuccess: (data) => {
       // Adicionar arquivos baixados à seleção
