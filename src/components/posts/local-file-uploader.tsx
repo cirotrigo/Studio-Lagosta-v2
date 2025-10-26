@@ -53,7 +53,13 @@ export function LocalFileUploader({
         })
 
         if (!response.ok) {
-          throw new Error('Upload failed')
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+          console.error('Upload failed:', {
+            status: response.status,
+            statusText: response.statusText,
+            error: errorData
+          })
+          throw new Error(errorData.details || errorData.error || `Upload failed (${response.status})`)
         }
 
         const data = await response.json()
@@ -77,7 +83,8 @@ export function LocalFileUploader({
       toast.success(`${newFiles.length} arquivo(s) enviado(s)`)
     } catch (error) {
       console.error('Upload error:', error)
-      toast.error('Erro ao fazer upload')
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao fazer upload'
+      toast.error(errorMessage)
     } finally {
       setUploading(false)
     }

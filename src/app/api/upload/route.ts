@@ -6,16 +6,26 @@ import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 export async function POST(request: Request) {
   const { userId } = await auth()
   if (!userId) {
+    console.warn('[Upload] Unauthorized upload attempt')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
+
+  console.log('[Upload] Starting file upload for user:', userId)
 
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
 
     if (!file) {
+      console.warn('[Upload] No file provided in request')
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
+
+    console.log('[Upload] File details:', {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    })
 
     // Validate file type (images and videos)
     const isImage = file.type.startsWith('image/')
@@ -56,8 +66,20 @@ export async function POST(request: Request) {
       }
     }
 
+    // Check if Vercel Blob token is configured
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+    if (!blobToken || blobToken.trim() === '') {
+      console.error('[Upload] BLOB_READ_WRITE_TOKEN not configured')
+      return NextResponse.json(
+        { error: 'Upload service not configured' },
+        { status: 503 }
+      )
+    }
+
     // Upload to Vercel Blob
     const fileName = file.name.replace(/\.[^/.]+$/, '.jpg') // Ensure .jpg extension after crop
+    console.log('[Upload] Uploading to Vercel Blob...')
+
     const blob = await put(
       `posts/${userId}/${Date.now()}-${fileName}`,
       buffer,
@@ -68,14 +90,24 @@ export async function POST(request: Request) {
       }
     )
 
+    console.log('[Upload] Upload successful:', blob.url)
+
     return NextResponse.json({
       url: blob.url,
       pathname: blob.pathname,
     })
   } catch (error) {
-    console.error('Upload error:', error)
+    console.error('[Upload] Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
+    const errorMessage = error instanceof Error ? error.message : 'Failed to upload file'
     return NextResponse.json(
-      { error: 'Failed to upload file' },
+      {
+        error: 'Failed to upload file',
+        details: errorMessage
+      },
       { status: 500 }
     )
   }
