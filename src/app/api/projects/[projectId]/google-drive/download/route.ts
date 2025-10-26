@@ -9,6 +9,9 @@ import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
+export const dynamic = 'force-dynamic'
+
+console.log('[GoogleDrive Download Route] Module loaded')
 
 export async function POST(
   req: NextRequest,
