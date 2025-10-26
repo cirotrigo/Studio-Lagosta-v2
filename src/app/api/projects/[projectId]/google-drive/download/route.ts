@@ -7,6 +7,9 @@ import { google } from 'googleapis'
 import { put } from '@vercel/blob'
 import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string }> }
@@ -14,8 +17,11 @@ export async function POST(
   const { projectId: projectIdParam } = await params
 
   try {
+    console.log('[GoogleDrive Download] Starting download request for project:', projectIdParam)
+
     const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
+      console.warn('[GoogleDrive Download] Unauthorized request')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -50,9 +56,21 @@ export async function POST(
     const { fileIds } = await req.json()
 
     if (!fileIds || !Array.isArray(fileIds)) {
+      console.warn('[GoogleDrive Download] Invalid fileIds:', fileIds)
       return NextResponse.json(
         { error: 'fileIds array required' },
         { status: 400 }
+      )
+    }
+
+    console.log(`[GoogleDrive Download] Processing ${fileIds.length} file(s):`, fileIds)
+
+    // Check if Google Drive credentials are configured
+    if (!process.env.GOOGLE_DRIVE_CLIENT_ID || !process.env.GOOGLE_DRIVE_CLIENT_SECRET || !process.env.GOOGLE_DRIVE_REFRESH_TOKEN) {
+      console.error('[GoogleDrive Download] Missing Google Drive credentials')
+      return NextResponse.json(
+        { error: 'Google Drive not configured' },
+        { status: 503 }
       )
     }
 
@@ -88,7 +106,7 @@ export async function POST(
           { responseType: 'arraybuffer' }
         )
 
-        let buffer = Buffer.from(response.data as ArrayBuffer)
+        let buffer = Buffer.from(response.data as any)
         const mimeType = metadata.data.mimeType || ''
         const isImage = mimeType.startsWith('image/')
 
@@ -136,9 +154,17 @@ export async function POST(
       uploaded: uploadedFiles.length,
     })
   } catch (error) {
-    console.error('[GOOGLE_DRIVE_DOWNLOAD]', error)
+    console.error('[GoogleDrive Download] Error:', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
+    const errorMessage = error instanceof Error ? error.message : 'Download failed'
     return NextResponse.json(
-      { error: 'Download failed' },
+      {
+        error: 'Download failed',
+        details: errorMessage
+      },
       { status: 500 }
     )
   }

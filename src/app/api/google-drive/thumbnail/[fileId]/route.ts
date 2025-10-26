@@ -57,7 +57,15 @@ export async function GET(
       )
     }
 
-    console.error('[API] Failed to get Google Drive thumbnail', error)
-    return NextResponse.json({ error: 'Erro ao buscar thumbnail do Google Drive' }, { status: 502 })
+    console.error('[API] Failed to get Google Drive thumbnail', {
+      error: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
+
+    const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+    return NextResponse.json({
+      error: 'Erro ao buscar thumbnail do Google Drive',
+      details: errorMessage
+    }, { status: 502 })
   }
 }
