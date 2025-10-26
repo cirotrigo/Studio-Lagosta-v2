@@ -9,7 +9,7 @@ const heavyNodeModulesGlobs = [
   './node_modules/@esbuild/**/*',
   './node_modules/canvas/**/*',
   './node_modules/@napi-rs/canvas/**/*',
-  './node_modules/sharp/**/*',
+  // NOTE: sharp is needed for image processing - do NOT exclude it
   './node_modules/playwright/**/*',
   './node_modules/@playwright/**/*',
   './node_modules/axe-core/**/*',
