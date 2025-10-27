@@ -100,7 +100,7 @@
     "recharts": "^2.15.4",
     "rehype-highlight": "^7.0.2",
     "remark-gfm": "^4.0.0",
-    "sharp": "^0.33.5",
+    "sharp": "0.33.5",
     "sonner": "^2.0.6",
     "svix": "^1.70.0",
     "tailwind-merge": "^3.3.1",
