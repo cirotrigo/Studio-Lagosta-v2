@@ -4,6 +4,7 @@ import { useUser, useOrganization } from "@clerk/nextjs";
 import { useSetPageMetadata } from "@/contexts/page-metadata";
 import { useProjects } from "@/hooks/use-project";
 import { useOrganizationTimeline } from "@/hooks/use-organizations";
+import { useInstagramSummaries } from "@/hooks/use-instagram-analytics";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { Building2, Plus } from "lucide-react";
 import { UsageTrendChart } from "@/components/organizations/usage-trend-chart";
+import { InstagramMiniWidget } from "@/components/instagram/instagram-mini-widget";
+import { useMemo } from "react";
 
 export default function DashboardPage() {
   const { user } = useUser();
@@ -18,6 +21,10 @@ export default function DashboardPage() {
   const { data: projects, isLoading: projectsLoading } = useProjects();
   const { data: timelineData, isLoading: timelineLoading } =
     useOrganizationTimeline(organization?.id ?? null, { period: "30d" });
+
+  // Buscar resumos do Instagram para todos os projetos
+  const projectIds = useMemo(() => projects?.map(p => p.id) ?? [], [projects]);
+  const { data: instagramData } = useInstagramSummaries(projectIds);
 
   const hasOrganization = Boolean(organization);
 
@@ -65,9 +72,18 @@ export default function DashboardPage() {
           </div>
         ) : projects && projects.length > 0 ? (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {projects.map((project) => (
-              <ProjectCard key={project.id} project={project} />
-            ))}
+            {projects.map((project) => {
+              const instagramSummary = instagramData?.summaries.find(
+                s => s.projectId === project.id
+              );
+              return (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  instagramSummary={instagramSummary}
+                />
+              );
+            })}
           </div>
         ) : (
           <Card className="p-8 text-center border-dashed">
@@ -102,6 +118,7 @@ export default function DashboardPage() {
 
 function ProjectCard({
   project,
+  instagramSummary,
 }: {
   project: {
     id: number;
@@ -110,8 +127,14 @@ function ProjectCard({
     Logo?: Array<{ fileUrl: string }>;
     _count?: { Template: number; Generation: number };
   };
+  instagramSummary?: {
+    projectId: number;
+    hasInstagram: boolean;
+    data: any;
+  };
 }) {
   const projectLogo = project.Logo?.[0];
+  const hasInstagram = instagramSummary?.hasInstagram && instagramSummary?.data;
 
   return (
     <Link href={`/projects/${project.id}`}>
@@ -148,6 +171,11 @@ function ProjectCard({
             )}
           </div>
         </div>
+
+        {/* Instagram Mini Widget */}
+        {hasInstagram && (
+          <InstagramMiniWidget summary={instagramSummary.data} />
+        )}
       </Card>
     </Link>
   );

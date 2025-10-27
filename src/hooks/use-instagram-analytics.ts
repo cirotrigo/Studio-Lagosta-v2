@@ -73,3 +73,42 @@ export function useInstagramSettings(projectId: number) {
     updateSettings,
   }
 }
+
+export interface InstagramSummary {
+  username: string
+  feedsPublished: number
+  feedsGoal: number
+  feedsCompletionRate: number
+  storiesPublished: number
+  storiesGoal: number
+  storiesCompletionRate: number
+  overallCompletionRate: number
+  score: string
+  daysWithoutPost: number
+  alerts: Array<{
+    type: string
+    category: string
+    message: string
+    severity: string
+  }>
+}
+
+export interface InstagramSummaryResponse {
+  projectId: number
+  hasInstagram: boolean
+  data: InstagramSummary | null
+}
+
+export function useInstagramSummaries(projectIds: number[]) {
+  return useQuery<{ summaries: InstagramSummaryResponse[] }>({
+    queryKey: ['instagram-summaries', projectIds.sort().join(',')],
+    queryFn: () => {
+      if (projectIds.length === 0) {
+        return { summaries: [] }
+      }
+      return api.get(`/api/instagram/summaries?projectIds=${projectIds.join(',')}`)
+    },
+    staleTime: 2 * 60_000, // 2 minutes
+    enabled: projectIds.length > 0,
+  })
+}
