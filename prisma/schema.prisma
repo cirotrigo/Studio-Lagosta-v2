@@ -190,6 +190,13 @@ model Project {
   OrganizationUsage    OrganizationUsage[]
   SocialPost           SocialPost[] // Social media posts for this account
 
+  // Instagram Analytics
+  instagramStories       InstagramStory[]
+  instagramFeeds         InstagramFeed[]
+  instagramDailySummary  InstagramDailySummary[]
+  instagramWeeklyReports InstagramWeeklyReport[]
+  instagramGoalSettings  InstagramGoalSettings?
+
   @@index([status])
   @@index([userId])
   @@index([workspaceId])
@@ -214,6 +221,13 @@ model Organization {
   memberAnalytics OrganizationMemberAnalytics[]
   usageHistory    UsageHistory[]
   Prompt          Prompt[]
+
+  // Instagram Analytics
+  instagramStories       InstagramStory[]
+  instagramFeeds         InstagramFeed[]
+  instagramDailySummary  InstagramDailySummary[]
+  instagramWeeklyReports InstagramWeeklyReport[]
+  instagramGoalSettings  InstagramGoalSettings[]
 
   @@index([clerkOrgId])
   @@index([slug])
@@ -998,4 +1012,224 @@ model ChatMessage {
 
   @@index([conversationId])
   @@index([createdAt])
+}
+
+// =============================================================================
+// Instagram Analytics & Goal Tracking
+// =============================================================================
+
+enum InstagramMediaType {
+  IMAGE
+  VIDEO
+  CAROUSEL_ALBUM
+}
+
+model InstagramStory {
+  id                 String              @id @default(cuid())
+  projectId          Int
+  organizationId     String?
+
+  // Dados da mídia
+  mediaId            String              @unique
+  username           String
+  mediaType          InstagramMediaType
+  mediaUrl           String
+  thumbnailUrl       String?
+  caption            String?             @db.Text
+
+  // Timestamps
+  publishedAt        DateTime
+  capturedAt         DateTime
+
+  // Insights
+  impressions        Int                 @default(0)
+  reach              Int                 @default(0)
+  tapsForward        Int                 @default(0)
+  tapsBack           Int                 @default(0)
+  exits              Int                 @default(0)
+  replies            Int                 @default(0)
+
+  // Controle de contabilização
+  countedInGoal      Boolean             @default(true)
+
+  // Metadata
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  // Relations
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([username])
+  @@index([publishedAt])
+  @@index([countedInGoal])
+  @@index([username, publishedAt])
+}
+
+model InstagramFeed {
+  id                 String              @id @default(cuid())
+  projectId          Int
+  organizationId     String?
+
+  // Dados da mídia
+  mediaId            String              @unique
+  username           String
+  mediaType          InstagramMediaType
+  caption            String?             @db.Text
+  mediaUrl           String
+  thumbnailUrl       String?
+  permalink          String
+
+  // Timestamps
+  publishedAt        DateTime
+  capturedAt         DateTime
+
+  // Contadores públicos
+  likes              Int                 @default(0)
+  comments           Int                 @default(0)
+
+  // Insights
+  engagement         Int                 @default(0)
+  impressions        Int                 @default(0)
+  reach              Int                 @default(0)
+  saved              Int                 @default(0)
+
+  // Controle de contabilização
+  countedInGoal      Boolean             @default(true)
+
+  // Metadata
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  // Relations
+  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([username])
+  @@index([publishedAt])
+  @@index([countedInGoal])
+  @@index([permalink])
+  @@index([username, publishedAt])
+}
+
+model InstagramDailySummary {
+  id                    String          @id @default(cuid())
+  projectId             Int
+  organizationId        String?
+  username              String
+
+  // Data
+  date                  DateTime        @db.Date
+
+  // Metas
+  storiesGoal           Int             @default(3)
+
+  // Resultados
+  storiesPublished      Int             @default(0)
+  feedsPublished        Int             @default(0)
+
+  // Taxa de cumprimento (stories)
+  storiesCompletionRate Float           @default(0)
+  goalMet               Boolean         @default(false)
+
+  // Estatísticas
+  totalStoryReach       Int             @default(0)
+  totalStoryImpressions Int             @default(0)
+  totalFeedEngagement   Int             @default(0)
+
+  // Metadata
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  // Relations
+  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization          Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, date])
+  @@index([organizationId])
+  @@index([username])
+  @@index([date])
+  @@index([goalMet])
+}
+
+model InstagramWeeklyReport {
+  id                      String          @id @default(cuid())
+  projectId               Int
+  organizationId          String?
+  username                String
+
+  // Período
+  weekStart               DateTime        @db.Date
+  weekEnd                 DateTime        @db.Date
+  year                    Int
+  weekNumber              Int
+
+  // Metas
+  feedsGoal               Int             @default(4)
+  storiesGoal             Int             @default(21)
+
+  // Resultados
+  feedsPublished          Int             @default(0)
+  storiesPublished        Int             @default(0)
+
+  // Taxas de cumprimento
+  feedsCompletionRate     Float           @default(0)
+  storiesCompletionRate   Float           @default(0)
+  overallCompletionRate   Float           @default(0)
+
+  // Score (A, B, C, D, F)
+  score                   String          @db.Char(1)
+
+  // Estatísticas adicionais
+  daysWithoutPost         Int             @default(0)
+  bestPerformingFeedId    String?
+  totalEngagement         Int             @default(0)
+
+  // Dados completos em JSON
+  metricsJson             Json
+  alerts                  Json?
+
+  // Metadata
+  generatedAt             DateTime
+  createdAt               DateTime        @default(now())
+  updatedAt               DateTime        @updatedAt
+
+  // Relations
+  project                 Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization            Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, weekStart])
+  @@index([organizationId])
+  @@index([username])
+  @@index([weekStart])
+  @@index([score])
+  @@index([overallCompletionRate])
+}
+
+model InstagramGoalSettings {
+  id                  String          @id @default(cuid())
+  projectId           Int             @unique
+  organizationId      String?
+
+  // Metas configuráveis
+  weeklyFeedGoal      Int             @default(4)
+  dailyStoryGoal      Int             @default(3)
+
+  // Status
+  isActive            Boolean         @default(true)
+
+  // Metadata
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  // Relations
+  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization        Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([isActive])
 }
