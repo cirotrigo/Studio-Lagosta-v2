@@ -27,6 +27,15 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
   const time = formatPostTime(post)
   const { deletePost, duplicatePost } = usePostActions(post.projectId)
 
+  // Helper para detectar se é vídeo
+  const isVideoUrl = (url: string) => {
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
+    return videoExtensions.some(ext => url.toLowerCase().includes(ext))
+  }
+
+  const firstMediaUrl = post.mediaUrls?.[0]
+  const isVideo = firstMediaUrl ? isVideoUrl(firstMediaUrl) : false
+
   const handleDelete = async () => {
     if (!confirm('Tem certeza que deseja excluir este post?')) return
 
@@ -85,14 +94,30 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
         {/* Thumbnail */}
         {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
           <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-muted">
-            <Image
-              src={post.mediaUrls[0]}
-              alt={post.caption || 'Prévia do post'}
-              fill
-              sizes="64px"
-              className="object-cover"
-              unoptimized
-            />
+            {isVideo ? (
+              <video
+                src={post.mediaUrls[0]}
+                className="absolute inset-0 w-full h-full object-cover"
+                preload="metadata"
+                muted
+              />
+            ) : (
+              <Image
+                src={post.mediaUrls[0]}
+                alt={post.caption || 'Prévia do post'}
+                fill
+                sizes="64px"
+                className="object-cover"
+                unoptimized
+              />
+            )}
+
+            {/* Ícone de play para vídeos */}
+            {isVideo && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+                <Video className="w-5 h-5 text-white" />
+              </div>
+            )}
 
             {/* Badge de carrossel */}
             {post.postType === 'CAROUSEL' && post.mediaUrls.length > 1 && (

@@ -11,7 +11,8 @@ import {
   Plus,
   AlertCircle,
   Menu,
-  Filter
+  Filter,
+  ArrowRight
 } from 'lucide-react'
 import {
   Tooltip,
@@ -50,6 +51,8 @@ interface CalendarHeaderProps {
   onPostTypeFilterChange: (postType: PostType | 'ALL') => void
   onOpenChannels?: () => void
   isMobile?: boolean
+  nextScheduledDate?: Date | null
+  onGoToNextScheduled?: () => void
 }
 
 export function CalendarHeader({
@@ -62,7 +65,9 @@ export function CalendarHeader({
   postTypeFilter,
   onPostTypeFilterChange,
   onOpenChannels,
-  isMobile = false
+  isMobile = false,
+  nextScheduledDate,
+  onGoToNextScheduled
 }: CalendarHeaderProps) {
   const router = useRouter()
 
@@ -266,6 +271,34 @@ export function CalendarHeader({
           <Button variant="outline" size="sm" onClick={goToToday}>
             Hoje
           </Button>
+
+          {/* Botão Próximo Agendamento */}
+          {nextScheduledDate && onGoToNextScheduled && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={onGoToNextScheduled}
+                    className="gap-2"
+                  >
+                    <ArrowRight className="w-4 h-4" />
+                    Próximo
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="text-xs">
+                    Ir para {nextScheduledDate.toLocaleDateString('pt-BR', {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric'
+                    })}
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
 
           {/* Filtros */}

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
+import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useIsMobile } from '@/hooks/use-media-query'
@@ -97,6 +98,21 @@ export function AgendaCalendarView() {
 
   const selectedProject = projectList.find(p => p.id === selectedProjectId)
 
+  // Buscar próximo post agendado
+  const { data: nextScheduledData } = useNextScheduledPost(selectedProjectId)
+  const nextScheduledDate = nextScheduledData?.nextDate ? new Date(nextScheduledData.nextDate) : null
+
+  // Verificar se o próximo post está fora do range visível
+  const isNextScheduledOutOfRange = nextScheduledDate && (
+    nextScheduledDate < startDate || nextScheduledDate > endDate
+  )
+
+  const handleGoToNextScheduled = () => {
+    if (nextScheduledDate) {
+      setSelectedDate(nextScheduledDate)
+    }
+  }
+
   const handleEditPost = (post: SocialPost) => {
     setEditingPost(post)
     setIsComposerOpen(true)
@@ -167,6 +183,8 @@ export function AgendaCalendarView() {
           onCreatePost={() => setIsComposerOpen(true)}
           onOpenChannels={isMobile ? () => setMobileDrawerOpen(true) : undefined}
           isMobile={isMobile}
+          nextScheduledDate={isNextScheduledOutOfRange ? nextScheduledDate : null}
+          onGoToNextScheduled={handleGoToNextScheduled}
         />
 
         {/* Calendário/Lista */}

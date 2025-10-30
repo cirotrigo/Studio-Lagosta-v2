@@ -14,7 +14,9 @@ import {
   RefreshCw,
   Copy,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Play,
+  Video as VideoIcon
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -46,6 +48,16 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const mediaUrls = post.mediaUrls || []
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
   const isStory = post.postType === 'STORY'
+  const isReel = post.postType === 'REEL'
+
+  // Helper para detectar se é vídeo pela extensão da URL
+  const isVideoUrl = (url: string) => {
+    const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
+    return videoExtensions.some(ext => url.toLowerCase().includes(ext))
+  }
+
+  const currentMediaUrl = mediaUrls[currentImageIndex]
+  const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
 
   const handlePrevImage = () => {
     setCurrentImageIndex((prev) => (prev === 0 ? mediaUrls.length - 1 : prev - 1))
@@ -220,15 +232,36 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               >
-                <Image
-                  key={currentImageIndex}
-                  src={mediaUrls[currentImageIndex]}
-                  alt={post.caption || 'Prévia do post'}
-                  fill
-                  sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
-                  className="object-cover transition-opacity duration-300"
-                  unoptimized
-                />
+                {isCurrentMediaVideo ? (
+                  <>
+                    <video
+                      key={currentImageIndex}
+                      src={currentMediaUrl}
+                      className="absolute inset-0 w-full h-full object-cover"
+                      controls
+                      loop
+                      playsInline
+                      preload="metadata"
+                    >
+                      Seu navegador não suporta vídeos.
+                    </video>
+                    {/* Badge de vídeo */}
+                    <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md flex items-center gap-1">
+                      <VideoIcon className="w-3 h-3 text-white" />
+                      <span className="text-xs text-white font-medium">Vídeo</span>
+                    </div>
+                  </>
+                ) : (
+                  <Image
+                    key={currentImageIndex}
+                    src={currentMediaUrl || ''}
+                    alt={post.caption || 'Prévia do post'}
+                    fill
+                    sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
+                    className="object-cover transition-opacity duration-300"
+                    unoptimized
+                  />
+                )}
 
                 {/* Botões de navegação do carrossel */}
                 {isCarousel && (
@@ -278,9 +311,15 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   </Badge>
                 )}
 
-                {/* Badge de recorrente */}
-                {post.isRecurring && (
+                {/* Badge de recorrente - ajustado para não sobrepor badge de vídeo */}
+                {post.isRecurring && !isCurrentMediaVideo && (
                   <Badge className="absolute top-2 left-2" variant="secondary">
+                    <RefreshCw className="w-3 h-3 mr-1" />
+                    Recorrente
+                  </Badge>
+                )}
+                {post.isRecurring && isCurrentMediaVideo && (
+                  <Badge className="absolute bottom-2 left-2" variant="secondary">
                     <RefreshCw className="w-3 h-3 mr-1" />
                     Recorrente
                   </Badge>

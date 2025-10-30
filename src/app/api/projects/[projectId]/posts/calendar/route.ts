@@ -117,7 +117,7 @@ export async function GET(
     return NextResponse.json(allPosts)
 
   } catch (error) {
-    console.error('Error fetching calendar posts:', error)
+    console.error('[CALENDAR_POSTS_GET] Error fetching calendar posts:', error)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
