@@ -540,9 +540,16 @@ export function KonvaEditableText({
         // Não capturar Enter durante composição
         if (isComposingRef.current) return
 
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault()
-          handleDone()
+        if (e.key === 'Enter') {
+          if (e.shiftKey) {
+            // Shift+Enter: Quebra de linha (comportamento padrão do textarea)
+            // Não fazer nada, deixar o textarea processar
+            return
+          } else {
+            // Enter sem Shift: Confirma edição
+            e.preventDefault()
+            handleDone()
+          }
         }
       }
 
@@ -724,9 +731,16 @@ export function KonvaEditableText({
       // CRÍTICO: Não capturar Enter/Escape durante composição
       if (isComposingRef.current) return
 
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault()
-        finishEditing(true)
+      if (e.key === 'Enter') {
+        if (e.shiftKey) {
+          // Shift+Enter: Quebra de linha (comportamento padrão do textarea)
+          // Não fazer nada, deixar o textarea processar
+          return
+        } else {
+          // Enter sem Shift: Confirma edição
+          e.preventDefault()
+          finishEditing(true)
+        }
       }
       if (e.key === 'Escape') {
         e.preventDefault()
@@ -735,12 +749,10 @@ export function KonvaEditableText({
     }
 
     const handleBlur = () => {
-      // Esperar um pouco para composition finalizar
+      // Sempre confirmar ao perder foco, com pequeno delay para composition
       setTimeout(() => {
-        if (!isComposingRef.current) {
-          finishEditing(true)
-        }
-      }, 100)
+        finishEditing(true)
+      }, 50)
     }
 
     const handleTouchStart = (e: TouchEvent) => {
@@ -824,7 +836,7 @@ export function KonvaEditableText({
   React.useEffect(() => {
     if (!isEditing || isMobile) return // Skip para mobile (modal tem seus próprios botões)
 
-    const handleClick = (event: MouseEvent | TouchEvent) => {
+    const handleMouseDown = (event: MouseEvent) => {
       const textarea = textareaRef.current
       if (!textarea) return
 
@@ -837,14 +849,12 @@ export function KonvaEditableText({
 
     // Adicionar com delay para não capturar o clique que abriu
     const timer = setTimeout(() => {
-      window.addEventListener('click', handleClick)
-      window.addEventListener('touchstart', handleClick)
+      document.addEventListener('mousedown', handleMouseDown, true) // Use capture phase
     }, 100)
 
     return () => {
       clearTimeout(timer)
-      window.removeEventListener('click', handleClick)
-      window.removeEventListener('touchstart', handleClick)
+      document.removeEventListener('mousedown', handleMouseDown, true)
     }
   }, [isEditing, isMobile, finishEditing])
 
