@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { getUserFromClerkId } from '@/lib/auth-utils'
 
 /**
  * GET /api/projects/[projectId]/posts/next-scheduled
  * Retorna a data do próximo post agendado para o projeto
+ * Note: Mostra posts de todos os membros da organização
  */
 export async function GET(
   req: NextRequest,
@@ -18,15 +18,14 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const user = await getUserFromClerkId(clerkUserId)
     const projectId = parseInt(projectIdParam)
     const now = new Date()
 
     // Buscar o próximo post agendado (futuro)
+    // Note: Removed userId filter to show posts from all organization members
     const nextPost = await db.socialPost.findFirst({
       where: {
         projectId,
-        userId: user.id,
         status: { in: ['SCHEDULED', 'PROCESSING'] },
         scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
         scheduledDatetime: {

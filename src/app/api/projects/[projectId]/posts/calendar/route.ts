@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { getUserFromClerkId } from '@/lib/auth-utils'
 import type { PostType } from '../../../../../../../prisma/generated/client'
 
 export async function GET(
@@ -15,7 +14,8 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const user = await getUserFromClerkId(clerkUserId)
+    // Note: We don't need to get the user anymore since we removed userId filter
+    // This allows all organization members to see posts from the shared project
     const projectId = parseInt(projectIdParam)
 
     const { searchParams } = new URL(req.url)
@@ -32,10 +32,10 @@ export async function GET(
     }
 
     // Fetch regular scheduled and sent posts
+    // Note: Removed userId filter to allow all organization members to see posts
     const scheduledPosts = await db.socialPost.findMany({
       where: {
         projectId,
-        userId: user.id,
         scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
         ...(postType ? { postType } : {}),
         OR: [
@@ -68,10 +68,10 @@ export async function GET(
     })
 
     // Fetch active recurring posts
+    // Note: Removed userId filter to allow all organization members to see posts
     const recurringPosts = await db.socialPost.findMany({
       where: {
         projectId,
-        userId: user.id,
         scheduleType: 'RECURRING',
         status: { in: ['SCHEDULED', 'PROCESSING'] },
         ...(postType ? { postType } : {}),
