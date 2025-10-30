@@ -256,20 +256,20 @@ export class PostScheduler {
         webhookResponse = await response.text()
       }
 
-      // Update status and record which webhook was used
+      // Update status to PROCESSING (waiting for Buffer confirmation)
       await db.socialPost.update({
         where: { id: post.id },
         data: {
-          status: PostStatus.SENT,
-          sentAt: new Date(),
+          status: PostStatus.PROCESSING, // ⭐ Will be updated to SENT by confirmation webhook
+          sentAt: new Date(), // Timestamp when sent to Buffer
           webhookResponse: webhookResponse as Prisma.InputJsonValue,
           zapierWebhookUrl: webhookUrl, // Record which webhook was used
         },
       })
 
-      await this.createLog(post.id, PostLogEvent.SENT, 'Post enviado com sucesso')
+      await this.createLog(post.id, PostLogEvent.SENT, 'Post enviado para Buffer - aguardando confirmação')
 
-      console.log(`✅ Post ${post.id} enviado com sucesso!`)
+      console.log(`✅ Post ${post.id} enviado para Buffer com sucesso! Aguardando confirmação de publicação...`)
 
       return { success: true }
     } catch (error) {
