@@ -34,7 +34,7 @@ interface CreatePostData {
 }
 
 export class PostScheduler {
-  private zapierWebhookUrl = process.env.ZAPIER_WEBHOOK_URL || ''
+  private globalZapierWebhookUrl = process.env.ZAPIER_WEBHOOK_URL || ''
 
   async createPost(data: CreatePostData) {
     // Validate post type and media count
@@ -70,7 +70,7 @@ export class PostScheduler {
         recurringConfig: data.recurringConfig ? JSON.parse(JSON.stringify(data.recurringConfig)) : null,
         status: data.scheduleType === 'IMMEDIATE' ? PostStatus.PROCESSING : PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
-        zapierWebhookUrl: this.zapierWebhookUrl,
+        // zapierWebhookUrl will be set when sending to Zapier
       },
     })
 
@@ -117,18 +117,16 @@ export class PostScheduler {
 
   async sendToZapier(postId: string) {
     try {
-      if (!this.zapierWebhookUrl) {
-        throw new Error('Zapier webhook URL (ZAPIER_WEBHOOK_URL) não está configurada')
-      }
-
       const post = await db.socialPost.findUnique({
         where: { id: postId },
         include: {
           Project: {
             select: {
+              id: true,
               name: true,
               instagramAccountId: true,
               instagramUsername: true,
+              zapierWebhookUrl: true,
             },
           },
         },
@@ -136,6 +134,16 @@ export class PostScheduler {
 
       if (!post) {
         throw new Error('Post não encontrado')
+      }
+
+      // Determine which webhook URL to use: project-specific or global fallback
+      const webhookUrl = post.Project.zapierWebhookUrl || this.globalZapierWebhookUrl
+
+      if (!webhookUrl) {
+        throw new Error(
+          `No webhook URL configured for project "${post.Project.name}" (ID: ${post.projectId}) ` +
+          `and no global ZAPIER_WEBHOOK_URL found in environment variables`
+        )
       }
 
       // Validate that the project has Instagram configured
@@ -202,14 +210,18 @@ export class PostScheduler {
 
         // Metadata
         metadata: {
+          studio_post_id: post.id, // ⭐ For Buffer confirmation webhook
           post_id: post.id,
           project_id: post.projectId,
           project_name: post.Project.name,
           user_id: post.userId,
+          created_at: post.createdAt.toISOString(),
         },
       }
 
-      console.log(`🚀 Enviando post ${post.id} para Zapier...`)
+      console.log(`🚀 Enviando post ${post.id} para webhook...`)
+      console.log(`📍 Webhook URL: ${webhookUrl.substring(0, 50)}...`)
+      console.log(`📦 Project: ${post.Project.name} (ID: ${post.projectId})`)
       console.log('📦 Payload:', JSON.stringify(payload, null, 2))
 
       // Deduct credits BEFORE sending
@@ -224,7 +236,7 @@ export class PostScheduler {
       })
 
       // Send webhook
-      const response = await fetch(this.zapierWebhookUrl, {
+      const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -244,13 +256,14 @@ export class PostScheduler {
         webhookResponse = await response.text()
       }
 
-      // Update status
+      // Update status and record which webhook was used
       await db.socialPost.update({
         where: { id: post.id },
         data: {
           status: PostStatus.SENT,
           sentAt: new Date(),
           webhookResponse: webhookResponse as Prisma.InputJsonValue,
+          zapierWebhookUrl: webhookUrl, // Record which webhook was used
         },
       })
 
@@ -303,7 +316,6 @@ export class PostScheduler {
       mediaUrls: string[]
       altText: string[]
       firstComment: string | null
-      zapierWebhookUrl: string
       recurringConfig: {
         frequency: RecurrenceFrequency
         time: string
@@ -323,6 +335,7 @@ export class PostScheduler {
     )
 
     // Create child posts for each occurrence
+    // Note: zapierWebhookUrl will be determined at send time based on project config
     for (const occurrence of occurrences) {
       await db.socialPost.create({
         data: {
@@ -340,7 +353,6 @@ export class PostScheduler {
           status: PostStatus.SCHEDULED,
           isRecurring: true,
           originalScheduleType: ScheduleType.RECURRING,
-          zapierWebhookUrl: post.zapierWebhookUrl,
         },
       })
     }

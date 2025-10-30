@@ -9,7 +9,12 @@ export const runtime = 'nodejs'
 const updateInstagramSchema = z.object({
   instagramAccountId: z.string().trim().min(1).optional(),
   instagramUsername: z.string().trim().optional(),
-  instagramProfileUrl: z.string().url().optional().or(z.literal('')),
+  zapierWebhookUrl: z
+    .string()
+    .url()
+    .startsWith('https://hooks.zapier.com/')
+    .optional()
+    .or(z.literal('')),
 })
 
 export async function PATCH(
@@ -49,8 +54,8 @@ export async function PATCH(
 
     const dataToUpdate: {
       instagramAccountId?: string
-      instagramUsername?: string
-      instagramProfileUrl?: string | null
+      instagramUsername?: string | null
+      zapierWebhookUrl?: string | null
     } = {}
 
     if (parsed.data.instagramAccountId !== undefined) {
@@ -61,8 +66,8 @@ export async function PATCH(
       dataToUpdate.instagramUsername = parsed.data.instagramUsername || null
     }
 
-    if (parsed.data.instagramProfileUrl !== undefined) {
-      dataToUpdate.instagramProfileUrl = parsed.data.instagramProfileUrl || null
+    if (parsed.data.zapierWebhookUrl !== undefined) {
+      dataToUpdate.zapierWebhookUrl = parsed.data.zapierWebhookUrl || null
     }
 
     const updated = await db.project.update({
@@ -76,7 +81,7 @@ export async function PATCH(
         logoUrl: true,
         instagramAccountId: true,
         instagramUsername: true,
-        instagramProfileUrl: true,
+        zapierWebhookUrl: true,
         googleDriveFolderId: true,
         googleDriveFolderName: true,
         googleDriveImagesFolderId: true,

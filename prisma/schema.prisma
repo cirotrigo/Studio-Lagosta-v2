@@ -174,7 +174,7 @@ model Project {
   // Instagram account configuration
   instagramAccountId  String? @db.Text
   instagramUsername   String? @db.Text
-  instagramProfileUrl String? @db.Text
+  zapierWebhookUrl    String? @db.Text
 
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -905,6 +905,12 @@ model SocialPost {
   // Webhook integration
   webhookResponse  Json?
   zapierWebhookUrl String? // Specific Zapier URL for this post
+
+  // Buffer & Instagram tracking (for post validation and reporting)
+  publishedUrl       String? @db.Text // Instagram public URL (permalink)
+  instagramMediaId   String? @db.Text // Instagram media_id (service_update_id from Buffer)
+  bufferId           String? @db.Text // Buffer update ID
+  bufferSentAt       DateTime? // Timestamp from Buffer confirmation
 
   // Metadata
   isRecurring          Boolean       @default(false)

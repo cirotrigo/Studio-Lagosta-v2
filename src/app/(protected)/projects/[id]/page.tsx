@@ -475,7 +475,7 @@ return (
                   projectId={projectId}
                   instagramAccountId={projectDetails.instagramAccountId}
                   instagramUsername={projectDetails.instagramUsername}
-                  instagramProfileUrl={projectDetails.instagramProfileUrl}
+                  zapierWebhookUrl={projectDetails.zapierWebhookUrl}
                 />
 
                 {/* Google Drive Folders */}

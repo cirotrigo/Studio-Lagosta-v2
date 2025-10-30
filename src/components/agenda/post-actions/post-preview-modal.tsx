@@ -16,7 +16,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Play,
-  Video as VideoIcon
+  Video as VideoIcon,
+  ExternalLink
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -355,27 +356,51 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
           {/* Ações */}
           <div className="flex items-center gap-2 pt-4 border-t">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex-1"
-              onClick={() => setRescheduleOpen(true)}
-              disabled={post.status === 'SENT'}
-            >
-              <RefreshCw className="w-4 h-4 mr-2" />
-              Re-agendar
-            </Button>
+            {/* Botão "Ver no Instagram" - só aparece se post foi publicado e tem URL */}
+            {post.status === 'SENT' && post.publishedUrl && (
+              <Button
+                variant="default"
+                size="sm"
+                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
+                onClick={() => window.open(post.publishedUrl!, '_blank', 'noopener,noreferrer')}
+              >
+                <ExternalLink className="w-4 h-4 mr-2" />
+                Ver no Instagram
+              </Button>
+            )}
 
-            <Button
-              variant="default"
-              size="sm"
-              className="flex-1"
-              onClick={handlePublishNow}
-              disabled={publishNow.isPending || post.status === 'SENT'}
-            >
-              <Send className="w-4 h-4 mr-2" />
-              Publicar Agora
-            </Button>
+            {/* Se foi enviado mas é Story (sem URL) */}
+            {post.status === 'SENT' && !post.publishedUrl && post.postType === 'STORY' && (
+              <div className="flex-1 text-sm text-muted-foreground italic text-center py-2">
+                ✓ Story publicado (sem URL permanente)
+              </div>
+            )}
+
+            {/* Botões padrão para posts não enviados */}
+            {post.status !== 'SENT' && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setRescheduleOpen(true)}
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Re-agendar
+                </Button>
+
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="flex-1"
+                  onClick={handlePublishNow}
+                  disabled={publishNow.isPending}
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Publicar Agora
+                </Button>
+              </>
+            )}
 
             <Button
               variant="outline"

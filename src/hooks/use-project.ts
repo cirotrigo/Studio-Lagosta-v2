@@ -16,7 +16,7 @@ export interface ProjectResponse {
   logoUrl: string | null
   instagramAccountId: string | null
   instagramUsername: string | null
-  instagramProfileUrl: string | null
+  zapierWebhookUrl: string | null
   googleDriveFolderId: string | null
   googleDriveFolderName: string | null
   googleDriveImagesFolderId: string | null
