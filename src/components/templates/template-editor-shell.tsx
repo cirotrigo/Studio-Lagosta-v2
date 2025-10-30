@@ -154,6 +154,7 @@ function TemplateEditorContent() {
     templateId,
     name,
     setName,
+    type: templateType,
     design,
     dynamicFields,
     markSaved,
@@ -676,17 +677,54 @@ function TemplateEditorContent() {
 
         {/* Canvas Area */}
         <main className="flex flex-1 flex-col relative h-full">
-          {/* Fullscreen Exit Button */}
+          {/* Fullscreen Actions Menu - Right Side */}
           {isFullscreen && (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={toggleFullscreen}
-              className="absolute top-4 right-4 z-50 shadow-lg"
-            >
-              <Minimize2 className="mr-2 h-4 w-4" />
-              Sair da Tela Cheia
-            </Button>
+            <div className="absolute top-4 right-4 z-50 flex flex-col gap-2">
+              {/* Exit Fullscreen */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={toggleFullscreen}
+                className="h-10 w-10 shadow-lg bg-background/95 backdrop-blur-sm hover:bg-accent"
+                title="Sair da Tela Cheia (Esc)"
+              >
+                <Minimize2 className="h-4 w-4" />
+              </Button>
+
+              {/* Divider */}
+              <div className="h-px bg-border/40 my-1" />
+
+              {/* Save Template */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleSave}
+                disabled={isSaving || !dirty}
+                className="h-10 w-10 shadow-lg bg-background/95 backdrop-blur-sm hover:bg-accent"
+                title={isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Template Salvo'}
+              >
+                <Save className={`h-4 w-4 ${dirty ? 'text-orange-500' : ''}`} />
+              </Button>
+
+              {/* Save Creative */}
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleExport}
+                disabled={isExporting || isGeneratingMultiple}
+                className="h-10 w-10 shadow-lg bg-background/95 backdrop-blur-sm hover:bg-accent"
+                title={isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
+              >
+                <FileImage className="h-4 w-4" />
+              </Button>
+
+              {/* Video Export Queue (if visible) */}
+              {templateType === 'VIDEO' && (
+                <div className="shadow-lg rounded-md overflow-hidden">
+                  <VideoExportQueueButton />
+                </div>
+              )}
+            </div>
           )}
 
           <div className="flex-1 h-full overflow-hidden">
