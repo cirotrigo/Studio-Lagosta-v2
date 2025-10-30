@@ -744,7 +744,7 @@ export default function AIChatPage() {
               />
             </div>
             {mode === 'image' ? (
-              <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('image_generation')} créditos</span>
+              <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_image_generation')} créditos</span>
             ) : (
               <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_chat')} crédito</span>
             )}
@@ -766,7 +766,7 @@ export default function AIChatPage() {
                   hasUploadingAttachments ||
                   (mode === 'image' && readyAttachments.length === 0) ||
                   !input.trim() ||
-                  (mode === 'image' ? !canPerformOperation('image_generation') : !canPerformOperation('ai_chat'))
+                  (mode === 'image' ? !canPerformOperation('ai_image_generation') : !canPerformOperation('ai_chat'))
                 }
                 className="gap-2"
               >

@@ -11,7 +11,7 @@ export type OperationType =
   | "analyze_data"
   | "export_report"
   | "ai_chat"
-  | "image_generation"
+  | "ai_image_generation"
   | "video_export"
   | "creative_download";
 
@@ -21,7 +21,7 @@ const DEFAULT_UI_CREDIT_COSTS: Record<OperationType, number> = {
   analyze_data: 5,
   export_report: 2,
   ai_chat: 1,
-  image_generation: 5,
+  ai_image_generation: 5,
   video_export: 10,
   creative_download: 2,
 };
@@ -133,7 +133,7 @@ export function useCredits(): {
     const fc = settings?.featureCosts || {};
     // Align known features to UI operations
     if (typeof fc['ai_text_chat'] === 'number') base.ai_chat = Math.max(0, Math.floor(fc['ai_text_chat']));
-    if (typeof fc['ai_image_generation'] === 'number') base.image_generation = Math.max(0, Math.floor(fc['ai_image_generation']));
+    if (typeof fc['ai_image_generation'] === 'number') base.ai_image_generation = Math.max(0, Math.floor(fc['ai_image_generation']));
     if (typeof fc['video_export'] === 'number') base.video_export = Math.max(0, Math.floor(fc['video_export']));
     if (typeof fc['creative_download'] === 'number') base.creative_download = Math.max(0, Math.floor(fc['creative_download']));
     return base;

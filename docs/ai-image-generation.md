@@ -277,8 +277,11 @@ enum AIMode {
 
 ### Environment Variables
 
+**Obrigatórias**:
+
 ```env
-# Replicate API
+# Replicate API (OBRIGATÓRIA para geração de imagens)
+# Obtenha em: https://replicate.com/account/api-tokens
 REPLICATE_API_TOKEN=r8_***
 
 # Vercel Blob (upload de imagens)
@@ -287,6 +290,51 @@ BLOB_READ_WRITE_TOKEN=vercel_blob_***
 # URL da aplicação (para conversão de URLs relativas)
 NEXT_PUBLIC_APP_URL=https://studio-lagosta.com
 ```
+
+### Setup Passo a Passo
+
+1. **Criar conta no Replicate**
+   - Acesse [replicate.com](https://replicate.com)
+   - Crie uma conta gratuita ou faça login
+
+2. **Obter API Token**
+   - Vá para [Account Settings → API Tokens](https://replicate.com/account/api-tokens)
+   - Clique em "Create token"
+   - Copie o token (começa com `r8_`)
+
+3. **Configurar variável de ambiente**
+   - Adicione ao seu arquivo `.env`:
+   ```
+   REPLICATE_API_TOKEN=r8_seu_token_aqui
+   ```
+
+4. **Reiniciar servidor de desenvolvimento**
+   ```bash
+   npm run dev
+   ```
+
+### Validação da Configuração
+
+A API valida automaticamente se a `REPLICATE_API_TOKEN` está configurada antes de processar qualquer requisição. Se não estiver configurada, retorna:
+
+```json
+{
+  "error": "Geração de imagens não configurada. Entre em contato com o administrador.",
+  "status": 503
+}
+```
+
+### Troubleshooting
+
+**Erro: "Geração de imagens não configurada"**
+- ✅ Verifique se a variável `REPLICATE_API_TOKEN` existe no arquivo `.env`
+- ✅ Certifique-se de que o token começa com `r8_`
+- ✅ Reinicie o servidor após adicionar a variável
+
+**Erro: "Replicate API error"**
+- ✅ Verifique se o token é válido
+- ✅ Confirme que sua conta Replicate tem créditos
+- ✅ Verifique logs do servidor para detalhes do erro
 
 ### Custos de Créditos
 

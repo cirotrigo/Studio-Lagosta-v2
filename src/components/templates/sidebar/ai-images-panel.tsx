@@ -244,7 +244,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return
     }
 
-    if (!canPerformOperation('image_generation')) {
+    if (!canPerformOperation('ai_image_generation')) {
       toast({ variant: 'destructive', description: 'Créditos insuficientes' })
       return
     }
@@ -358,7 +358,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     window.open(url, '_blank')
   }
 
-  const cost = getCost('image_generation')
+  const cost = getCost('ai_image_generation')
 
   return (
     <Card className="p-4 space-y-4">
@@ -541,7 +541,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         </span>
         <Button
           onClick={handleGenerate}
-          disabled={!prompt.trim() || generateMutation.isPending || !canPerformOperation('image_generation')}
+          disabled={!prompt.trim() || generateMutation.isPending || !canPerformOperation('ai_image_generation')}
         >
           {generateMutation.isPending ? (
             <>

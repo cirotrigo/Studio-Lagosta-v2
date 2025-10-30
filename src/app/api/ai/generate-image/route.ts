@@ -21,6 +21,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Verificar se a chave da API do Replicate está configurada
+  if (!process.env.REPLICATE_API_TOKEN) {
+    console.error('[AI Generate] REPLICATE_API_TOKEN not configured')
+    return NextResponse.json(
+      { error: 'Geração de imagens não configurada. Entre em contato com o administrador.' },
+      { status: 503 }
+    )
+  }
+
   try {
     // 1. Validar input
     const rawBody = await request.json()
@@ -181,7 +190,7 @@ export async function POST(request: Request) {
     return NextResponse.json(aiImage)
 
   } catch (error) {
-    console.error('Generate image error:', error)
+    console.error('[AI Generate] Error:', error)
 
     // Erro de créditos
     if (error.message?.includes('créditos insuficientes') || error.message?.includes('insufficient credits')) {
@@ -199,8 +208,18 @@ export async function POST(request: Request) {
       )
     }
 
+    // Erro do Replicate (API error)
+    if (error.message?.includes('Replicate API error')) {
+      return NextResponse.json(
+        { error: 'Erro ao gerar imagem. Verifique sua configuração do Replicate.' },
+        { status: 500 }
+      )
+    }
+
+    // Erro genérico
+    const errorMessage = error instanceof Error ? error.message : 'Failed to generate image'
     return NextResponse.json(
-      { error: 'Failed to generate image' },
+      { error: errorMessage },
       { status: 500 }
     )
   }
