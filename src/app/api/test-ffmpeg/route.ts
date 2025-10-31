@@ -128,6 +128,32 @@ export async function GET() {
     varTaskContents = [`Error: ${error instanceof Error ? error.message : 'Unknown'}`]
   }
 
+  // Listar conteúdo de node_modules/ffmpeg-static (se existir)
+  let ffmpegStaticContents: string[] = []
+  try {
+    const ffmpegStaticPath = '/var/task/node_modules/ffmpeg-static'
+    if (existsSync(ffmpegStaticPath)) {
+      ffmpegStaticContents = readdirSync(ffmpegStaticPath)
+    } else {
+      ffmpegStaticContents = ['Directory does not exist']
+    }
+  } catch (error) {
+    ffmpegStaticContents = [`Error: ${error instanceof Error ? error.message : 'Unknown'}`]
+  }
+
+  // Listar conteúdo de .next/server/chunks (se existir)
+  let nextChunksContents: string[] = []
+  try {
+    const nextChunksPath = '/var/task/.next/server/chunks'
+    if (existsSync(nextChunksPath)) {
+      nextChunksContents = readdirSync(nextChunksPath).filter(f => f.includes('ffmpeg')).slice(0, 10)
+    } else {
+      nextChunksContents = ['Directory does not exist']
+    }
+  } catch (error) {
+    nextChunksContents = [`Error: ${error instanceof Error ? error.message : 'Unknown'}`]
+  }
+
   // Informações do ambiente
   const envInfo = {
     NODE_ENV: process.env.NODE_ENV,
@@ -145,7 +171,11 @@ export async function GET() {
     ffmpegStatic: staticInfo,
     installer: installerInfo,
     paths: results,
-    varTaskContents: varTaskContents.length > 0 ? varTaskContents : undefined,
+    directories: {
+      varTask: varTaskContents.length > 0 ? varTaskContents : undefined,
+      ffmpegStaticNodeModules: ffmpegStaticContents,
+      nextServerChunks: nextChunksContents,
+    },
     summary: {
       foundPaths: results.filter((r) => r.exists).map((r) => r.path),
       totalTested: results.length,
