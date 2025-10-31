@@ -68,13 +68,27 @@ export async function GET(
         templateName: true,
         resultUrl: true,
         createdAt: true,
+        VideoProcessingJob: {
+          select: {
+            thumbnailUrl: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
 
     console.log('[CREATIVES API] Found generations:', generations.length)
 
-    return NextResponse.json(generations)
+    // Map generations to include thumbnailUrl from VideoProcessingJob if available
+    const generationsWithThumbnails = generations.map((gen) => ({
+      id: gen.id,
+      templateName: gen.templateName,
+      resultUrl: gen.resultUrl,
+      thumbnailUrl: gen.VideoProcessingJob?.thumbnailUrl || null,
+      createdAt: gen.createdAt,
+    }))
+
+    return NextResponse.json(generationsWithThumbnails)
   } catch (error) {
     console.error('[CREATIVES API] Error fetching generations:', error)
     return NextResponse.json(

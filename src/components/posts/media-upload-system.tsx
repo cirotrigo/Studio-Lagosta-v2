@@ -54,6 +54,7 @@ interface Generation {
   id: string
   templateName: string
   resultUrl: string
+  thumbnailUrl?: string | null
   createdAt: string
 }
 
@@ -141,7 +142,7 @@ export function MediaUploadSystem({
         id: g.id,
         type: 'generation' as const,
         url: g.resultUrl,
-        thumbnailUrl: g.resultUrl,
+        thumbnailUrl: g.thumbnailUrl || g.resultUrl,
         name: g.templateName,
       }))
 

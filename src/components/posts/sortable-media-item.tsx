@@ -31,8 +31,12 @@ function isVideoFile(item: MediaItem): boolean {
   // Check mimeType first (most reliable)
   if (item.mimeType?.startsWith('video/')) return true
 
-  // Fallback to file extension check
+  // Check file URL extension
   const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.flv', '.m4v']
+  const url = item.url?.toLowerCase() || ''
+  if (videoExtensions.some(ext => url.includes(ext))) return true
+
+  // Fallback to file name extension check
   const fileName = item.name?.toLowerCase() || ''
   return videoExtensions.some(ext => fileName.endsWith(ext))
 }
@@ -79,17 +83,30 @@ export function SortableMediaItem({
       >
         {isVideo ? (
           <>
-            <video
-              src={`${item.url}#t=0.1`}
-              className="w-full h-full object-cover pointer-events-none"
-              muted
-              playsInline
-              preload="metadata"
-            />
+            {item.thumbnailUrl ? (
+              // Use thumbnail image if available (better performance)
+              <Image
+                src={item.thumbnailUrl}
+                alt={item.name}
+                fill
+                sizes="120px"
+                className="object-cover pointer-events-none"
+                unoptimized
+              />
+            ) : (
+              // Fallback to video element
+              <video
+                src={`${item.url}#t=0.1`}
+                className="w-full h-full object-cover pointer-events-none"
+                muted
+                playsInline
+                preload="metadata"
+              />
+            )}
             {/* Play icon overlay para vídeos */}
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-              <div className="bg-white/90 rounded-full p-2">
-                <Play className="w-6 h-6 text-black" fill="black" />
+              <div className="bg-white/90 rounded-full p-1">
+                <Play className="w-3 h-3 text-black" fill="black" />
               </div>
             </div>
           </>

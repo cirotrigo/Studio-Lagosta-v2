@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { Plus, FileText, Trash2, Edit, Copy, MoreVertical } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
@@ -35,6 +35,7 @@ import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
+import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -67,10 +68,13 @@ const TEMPLATE_TYPES = [
 export default function ProjectDetailPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const projectId = Number(params.id)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<string>('STORY')
   const queryClient = useQueryClient()
+
+  const activeTab = searchParams.get('tab') || 'templates'
 
   const {
     data: projectDetails,
@@ -222,11 +226,16 @@ return (
       </div>
     </div>
 
-    <Tabs defaultValue="templates" className="w-full max-w-full overflow-x-hidden">
+    <Tabs
+      value={activeTab}
+      onValueChange={(value) => router.push(`/projects/${projectId}?tab=${value}`)}
+      className="w-full max-w-full overflow-x-hidden"
+    >
         <TabsList>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
+          <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
@@ -451,6 +460,24 @@ return (
             </p>
           </div>
           <CreativesGallery projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="agenda" className="mt-6">
+          {isLoadingProject ? (
+            <Card className="p-6">
+              <Skeleton className="h-6 w-60" />
+              <Skeleton className="mt-4 h-96 w-full" />
+            </Card>
+          ) : projectDetails ? (
+            <ProjectAgendaView project={projectDetails} projectId={projectId} />
+          ) : (
+            <Card className="p-6">
+              <h4 className="text-base font-semibold">Não foi possível carregar a agenda</h4>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {projectError instanceof Error ? projectError.message : 'Tente atualizar a página e tente novamente.'}
+              </p>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">

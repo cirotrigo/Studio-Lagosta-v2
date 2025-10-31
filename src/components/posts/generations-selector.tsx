@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Image as ImageIcon, Check } from 'lucide-react'
+import { Image as ImageIcon, Check, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
 
@@ -14,7 +14,15 @@ interface Generation {
   id: string
   templateName: string
   resultUrl: string
+  thumbnailUrl?: string | null
   createdAt: string
+}
+
+// Helper to detect if a URL is a video
+function isVideoUrl(url: string): boolean {
+  const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.flv', '.m4v']
+  const lowerUrl = url.toLowerCase()
+  return videoExtensions.some(ext => lowerUrl.includes(ext))
 }
 
 interface GenerationsSelectorProps {
@@ -111,6 +119,8 @@ export function GenerationsSelector({
             const isSelected = selectedIds.includes(gen.id)
             const canSelect = selectedIds.length < maxSelection || isSelected
             const selectionIndex = selectedIds.indexOf(gen.id)
+            const isVideo = isVideoUrl(gen.resultUrl)
+            const displayUrl = isVideo && gen.thumbnailUrl ? gen.thumbnailUrl : gen.resultUrl
 
             return (
               <Card
@@ -125,13 +135,22 @@ export function GenerationsSelector({
                 {/* Thumbnail */}
                 <div className="relative aspect-square overflow-hidden bg-muted">
                   <Image
-                    src={gen.resultUrl}
+                    src={displayUrl}
                     alt={gen.templateName || 'Criativo selecionável'}
                     fill
                     sizes="(max-width: 768px) 45vw, 200px"
                     className="object-cover"
                     unoptimized
                   />
+
+                  {/* Video indicator */}
+                  {isVideo && !isSelected && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+                      <div className="bg-white/90 rounded-full p-2">
+                        <Play className="w-4 h-4 text-black" fill="black" />
+                      </div>
+                    </div>
+                  )}
 
                   {/* Selection indicator */}
                   {isSelected && (

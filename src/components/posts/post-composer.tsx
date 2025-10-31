@@ -11,10 +11,20 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { MediaUploadSystem } from './media-upload-system'
 import { SchedulePicker } from './schedule-picker'
-import { RecurringConfig, type RecurringConfigValue } from './recurring-config'
+import { RecurringConfig } from './recurring-config'
+
+// RecurringConfig value type (matching recurring-config.tsx)
+type RecurringConfigValue = {
+  frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
+  daysOfWeek?: number[]
+  time: string
+  endDate?: Date
+}
 import { toast } from 'sonner'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../prisma/generated/client'
 import { Calendar, Repeat, Zap } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api-client'
 
 // Base schema - caption is optional, we validate manually based on postType
 const postSchema = z.object({
@@ -59,6 +69,7 @@ interface PostComposerProps {
 export function PostComposer({ projectId, open, onClose, initialData, postId }: PostComposerProps) {
   const { createPost, updatePost } = useSocialPosts(projectId)
   const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
+  const [hasInitializedMedia, setHasInitializedMedia] = useState(false)
 
   const form = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
@@ -83,6 +94,19 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   // Calculate max media based on post type
   const maxMedia = postType === 'CAROUSEL' ? 10 : 1
 
+  // Fetch creatives to populate initial media selection
+  const { data: allCreatives } = useQuery<Array<{
+    id: string
+    templateName: string
+    resultUrl: string
+    thumbnailUrl?: string
+    createdAt: string
+  }>>({
+    queryKey: ['generations', projectId],
+    queryFn: () => api.get(`/api/projects/${projectId}/creatives`),
+    enabled: open && !!projectId,
+  })
+
   // Use ref to prevent recreating the callback
   const setSelectedMediaRef = useRef(setSelectedMedia)
   const formRef = useRef(form)
@@ -91,6 +115,38 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     setSelectedMediaRef.current = setSelectedMedia
     formRef.current = form
   }, [setSelectedMedia, form])
+
+  // Populate selectedMedia from initialData when dialog opens
+  useEffect(() => {
+    if (open && !hasInitializedMedia && initialData?.generationIds && initialData.generationIds.length > 0 && allCreatives) {
+      const initialMedia: MediaItem[] = initialData.generationIds
+        .map(genId => {
+          const creative = allCreatives.find(c => c.id === genId)
+          if (!creative) return null
+
+          return {
+            id: creative.id,
+            type: 'generation' as const,
+            url: creative.resultUrl,
+            thumbnailUrl: creative.thumbnailUrl || creative.resultUrl,
+            name: creative.templateName || 'Criativo',
+          } as MediaItem
+        })
+        .filter((item): item is MediaItem => item !== null)
+
+      if (initialMedia.length > 0) {
+        setSelectedMedia(initialMedia)
+        setHasInitializedMedia(true)
+      }
+    }
+  }, [open, hasInitializedMedia, initialData, allCreatives])
+
+  // Reset initialization flag when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setHasInitializedMedia(false)
+    }
+  }, [open])
 
   // Clear caption and firstComment when switching to STORY
   useEffect(() => {
