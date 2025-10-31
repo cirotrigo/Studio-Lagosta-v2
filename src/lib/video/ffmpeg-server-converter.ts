@@ -99,7 +99,10 @@ async function ensureFfmpegPath(): Promise<string> {
       process.env.FFMPEG_PATH,
       // Installer paths (ffmpeg-static or @ffmpeg-installer/ffmpeg)
       installerPath,
-      // Vercel-specific paths for ffmpeg-static
+      // Next.js build output paths (where Vercel bundles ffmpeg-static)
+      '/var/task/.next/server/chunks/ffmpeg',
+      '/var/task/.next/server/vendor-chunks/ffmpeg',
+      // Standard node_modules paths
       '/var/task/node_modules/ffmpeg-static/ffmpeg',
       '/var/task/node_modules/.bin/ffmpeg',
       // Other Vercel paths

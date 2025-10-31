@@ -31,6 +31,10 @@ const ffmpegGlobs = [
   './node_modules/@ffmpeg/**/*',
 ];
 
+const ffmpegStaticGlobs = [
+  './node_modules/ffmpeg-static/**/*',
+];
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -41,19 +45,20 @@ const nextConfig: NextConfig = {
   },
   // 禁用 Next.js 热重载，由 nodemon 处理重编译
   reactStrictMode: false,
-  serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg'],
+  serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'ffmpeg-static'],
 
   // Optimize tracing so Vercel functions stay below size limits
   outputFileTracingExcludes: {
     '*': [
       ...heavyNodeModulesGlobs,
-      ...ffmpegGlobs,
+      ...ffmpegGlobs, // Exclude old ffmpeg packages
       ...formatToolingGlobs,
     ],
   },
   outputFileTracingIncludes: {
-    // Keep ffmpeg binaries only for the video processing worker
-    '/api/video-processing/process': ffmpegGlobs,
+    // IMPORTANT: Keep ffmpeg-static binary for video processing
+    '/api/video-processing/process': ffmpegStaticGlobs,
+    '/api/test-ffmpeg': ffmpegStaticGlobs,
   },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe
