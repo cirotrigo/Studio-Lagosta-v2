@@ -14,35 +14,42 @@ O pacote `@ffmpeg-installer/ffmpeg` não funciona no ambiente serverless do Verc
 2. Os binários estáticos não são incluídos no build
 3. As funções serverless têm limitações de tamanho
 
-## Solução: FFmpeg Layer da Vercel
+## Solução: Configurar FFmpeg para Vercel
 
-O Vercel oferece uma camada (layer) oficial do FFmpeg que deve ser configurada no projeto.
+### ⚠️ Limitações do Vercel
 
-### Opção 1: Usar Layer Externa (Recomendado)
+O Vercel tem limitações importantes para FFmpeg:
+- **Limite de tamanho**: 50MB para funções serverless
+- **Limite de corpo**: 5MB para requisições (já resolvido com Vercel Blob)
+- **Tempo de execução**: Máximo de 300 segundos (já configurado)
 
-1. **Adicionar FFmpeg Layer ao projeto**:
-   - Acesse: https://vercel.com/integrations
-   - Procure por "FFmpeg" ou use layers de terceiros como:
-     - [vercel-ffmpeg](https://www.npmjs.com/package/@vercel/ffmpeg)
+### 🎯 Opção 1: Usar @ffmpeg-installer/ffmpeg (Já Instalado) ⭐
 
-2. **Instalar o pacote no projeto**:
-   ```bash
-   npm install @vercel/ffmpeg
+O pacote **já está instalado** no projeto (`@ffmpeg-installer/ffmpeg@1.1.0`).
+
+#### Passo 1: Verificar se funciona no Vercel
+
+O código já está preparado para buscar o FFmpeg do instalador automaticamente. Faça o deploy e verifique os logs.
+
+#### Passo 2: Se não funcionar automaticamente
+
+Adicione a variável de ambiente no Vercel:
+
+1. Acesse **Vercel Dashboard** → Seu Projeto → **Settings** → **Environment Variables**
+2. Adicione:
    ```
-
-3. **Atualizar o código** em `src/lib/video/ffmpeg-server-converter.ts`:
-   ```typescript
-   // No topo do arquivo
-   import { path as ffmpegPath } from '@vercel/ffmpeg'
-
-   // Na função ensureFfmpegPath(), adicionar como primeiro candidato:
-   const candidates = [
-     ffmpegPath, // FFmpeg da Vercel
-     process.env.FFMPEG_PATH,
-     installerPath,
-     // ... resto dos candidatos
-   ]
+   Nome: FFMPEG_PATH
+   Valor: /var/task/node_modules/@ffmpeg-installer/ffmpeg/ffmpeg
    ```
+3. Marque: **Production**, **Preview**, **Development**
+4. Clique em **Save**
+5. Faça **Redeploy** do projeto
+
+#### Passo 3: Verificar logs
+
+Após o deploy, ao tentar exportar um vídeo, verifique os logs do Vercel:
+- Procure por `[FFmpeg] Testando caminho:`
+- Veja qual caminho foi encontrado (se houver)
 
 ### Opção 2: Usar Variável de Ambiente
 
@@ -66,31 +73,53 @@ Se as opções acima não funcionarem, considere usar um serviço externo:
 3. **Railway.app** ou **Render.com** (suportam FFmpeg nativamente)
 4. **Serviços especializados**: Mux, Cloudinary, etc.
 
-## Verificação
+## 🧪 Verificação do FFmpeg
 
-Para verificar se o FFmpeg está disponível no Vercel:
+### Endpoint de Teste Criado
 
-1. Crie um endpoint de teste: `/api/test-ffmpeg`
-2. Use o código:
-   ```typescript
-   import { existsSync } from 'fs'
+Acesse o endpoint para verificar se o FFmpeg está disponível:
 
-   export async function GET() {
-     const paths = [
-       '/opt/bin/ffmpeg',
-       '/usr/bin/ffmpeg',
-       '/usr/local/bin/ffmpeg',
-       process.env.FFMPEG_PATH
-     ]
+```
+GET /api/test-ffmpeg
+```
 
-     const results = paths.map(path => ({
-       path,
-       exists: path ? existsSync(path) : false
-     }))
+Este endpoint retorna:
+- ✅ Lista de todos os caminhos testados
+- ✅ Quais caminhos existem no sistema
+- ✅ Informações do @ffmpeg-installer/ffmpeg
+- ✅ Variáveis de ambiente
+- ✅ Conteúdo do diretório /var/task
 
-     return Response.json({ results, env: process.env.FFMPEG_PATH })
+### Como Usar
+
+1. **Em desenvolvimento** (local):
+   ```bash
+   # Certifique-se de que o servidor está rodando
+   npm run dev
+
+   # Abra no navegador ou use curl:
+   curl http://localhost:3000/api/test-ffmpeg
+   ```
+
+2. **Em produção** (Vercel):
+   ```bash
+   # Acesse diretamente (requer autenticação se não estiver em dev)
+   https://seu-dominio.vercel.app/api/test-ffmpeg
+   ```
+
+3. **Interpretar resultados**:
+   ```json
+   {
+     "summary": {
+       "foundPaths": ["/caminho/encontrado"],
+       "totalTested": 8,
+       "totalFound": 1
+     }
    }
    ```
+
+   - Se `totalFound > 0`: FFmpeg está disponível! ✅
+   - Se `totalFound = 0`: Precisa configurar variável de ambiente ⚠️
 
 ## Status Atual
 

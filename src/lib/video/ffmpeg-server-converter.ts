@@ -33,7 +33,12 @@ let lastCandidatePaths: string[] = []
 
 async function resolveInstallerPath(): Promise<string | null> {
   try {
+    // Try to dynamically import the installer
     const installer = await import('@ffmpeg-installer/ffmpeg')
+
+    console.log('[FFmpeg] Installer loaded, checking for path...')
+
+    // Check all possible path locations
     const possible = [
       (installer as { path?: string }).path,
       (installer as { ffmpegPath?: string }).ffmpegPath,
@@ -41,13 +46,18 @@ async function resolveInstallerPath(): Promise<string | null> {
       (installer as { default?: { path?: string; ffmpegPath?: string } }).default?.ffmpegPath,
     ].filter(Boolean) as string[]
 
+    console.log('[FFmpeg] Possible installer paths:', possible)
+
     for (const candidate of possible) {
       if (candidate && existsSync(candidate)) {
+        console.log('[FFmpeg] ✅ Installer path validated:', candidate)
         return candidate
+      } else {
+        console.log('[FFmpeg] ❌ Installer path not found:', candidate)
       }
     }
   } catch (error) {
-    console.warn('[FFmpeg] Não foi possível carregar @ffmpeg-installer/ffmpeg dinamicamente:', error)
+    console.warn('[FFmpeg] ⚠️ Não foi possível carregar @ffmpeg-installer/ffmpeg:', error)
   }
   return null
 }
