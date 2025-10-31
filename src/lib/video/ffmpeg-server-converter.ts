@@ -90,12 +90,19 @@ async function ensureFfmpegPath(): Promise<string> {
 
   if (!attemptedResolution) {
     attemptedResolution = true
+
+    // Get path from installer (ffmpeg-static or @ffmpeg-installer)
     const installerPath = await resolveInstallerPath()
 
     const candidates = [
+      // Environment variable (highest priority for manual override)
       process.env.FFMPEG_PATH,
+      // Installer paths (ffmpeg-static or @ffmpeg-installer/ffmpeg)
       installerPath,
-      // Vercel-specific paths
+      // Vercel-specific paths for ffmpeg-static
+      '/var/task/node_modules/ffmpeg-static/ffmpeg',
+      '/var/task/node_modules/.bin/ffmpeg',
+      // Other Vercel paths
       '/opt/bin/ffmpeg',
       '/opt/ffmpeg/ffmpeg',
       '/var/task/ffmpeg',
@@ -109,38 +116,49 @@ async function ensureFfmpegPath(): Promise<string> {
 
     lastCandidatePaths = candidates
 
+    console.log('[FFmpeg] Iniciando busca por FFmpeg...')
+    console.log('[FFmpeg] Total de candidatos:', candidates.length)
+
     for (const candidate of candidates) {
       try {
-        console.log('[FFmpeg] Testando caminho:', candidate)
+        console.log('[FFmpeg] Testando:', candidate)
         if (candidate && existsSync(candidate)) {
           cachedFfmpegPath = candidate
-          console.log('[FFmpeg] ✅ Binário encontrado em:', candidate)
+          console.log('[FFmpeg] ✅ ENCONTRADO:', candidate)
           break
+        } else {
+          console.log('[FFmpeg] ❌ Não existe:', candidate)
         }
       } catch (error) {
-        console.warn('[FFmpeg] ❌ Falha ao testar caminho', candidate, error)
+        console.warn('[FFmpeg] ⚠️  Erro ao testar:', candidate, error)
       }
     }
 
     if (cachedFfmpegPath) {
-      console.log('[FFmpeg] Usando binário em:', cachedFfmpegPath)
+      console.log('[FFmpeg] 🎉 Usando binário em:', cachedFfmpegPath)
       if (!process.env.FFMPEG_PATH) {
         process.env.FFMPEG_PATH = cachedFfmpegPath
       }
     } else {
-      console.warn('[FFmpeg] ⚠️  Nenhum binário encontrado automaticamente.')
-      console.warn('[FFmpeg] Veja FFMPEG_VERCEL_SETUP.md para configurar no Vercel')
+      console.error('[FFmpeg] ❌ NENHUM BINÁRIO ENCONTRADO')
+      console.error('[FFmpeg] Candidatos testados:', lastCandidatePaths)
+      console.error('[FFmpeg] 📚 Veja FFMPEG_VERCEL_SETUP.md para instruções')
     }
   }
 
   if (!cachedFfmpegPath) {
-    throw new Error(
+    const errorMsg =
       `FFmpeg não encontrado. Candidatos testados: ${
-        lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
+        lastCandidatePaths.join(', ')
       }. ` +
-      `SOLUÇÃO: Configure a variável de ambiente FFMPEG_PATH ou instale uma FFmpeg Layer no Vercel. ` +
-      `Consulte FFMPEG_VERCEL_SETUP.md para mais detalhes.`,
-    )
+      `\n\nSOLUÇÃO IMEDIATA: Configure no Vercel Dashboard:\n` +
+      `1. Vá em Settings → Environment Variables\n` +
+      `2. Adicione: FFMPEG_PATH = /var/task/node_modules/ffmpeg-static/ffmpeg\n` +
+      `3. Marque Production, Preview, Development\n` +
+      `4. Redeploy o projeto\n\n` +
+      `Consulte FFMPEG_VERCEL_SETUP.md para mais detalhes.`
+
+    throw new Error(errorMsg)
   }
 
   return cachedFfmpegPath
