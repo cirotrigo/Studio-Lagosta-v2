@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTemplateCreatives, useDeleteCreative, type Creative } from '@/hooks/use-template-creatives'
 import { CreativesLightbox } from '../creatives-lightbox'
 import { formatDistanceToNow } from 'date-fns'
@@ -29,6 +30,7 @@ interface CreativesPanelProps {
 
 export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
   const { toast } = useToast()
+  const queryClient = useQueryClient()
   const { data: creatives = [], isLoading, error, refetch } = useTemplateCreatives(templateId)
   const deleteCreative = useDeleteCreative(templateId)
   const [creativeToDelete, setCreativeToDelete] = React.useState<string | null>(null)
@@ -69,8 +71,8 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
         },
       }))
 
-      // Adicionar criativo temporário à lista
-      refetch()
+      // Invalidar query para buscar o novo criativo
+      queryClient.invalidateQueries({ queryKey: ['template-creatives', templateId] })
     }
 
     const handleVideoProgress = (event: Event) => {
@@ -98,8 +100,10 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
         },
       }))
 
-      // Refetch para pegar o vídeo MP4 final
-      setTimeout(() => refetch(), 1000)
+      // Invalidar query para pegar o vídeo MP4 final
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['template-creatives', templateId] })
+      }, 1000)
     }
 
     const handleVideoFailed = (event: Event) => {
@@ -127,7 +131,7 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
       window.removeEventListener('video-export-completed', handleVideoCompleted)
       window.removeEventListener('video-export-failed', handleVideoFailed)
     }
-  }, [refetch])
+  }, [queryClient, templateId])
 
   const handleDelete = React.useCallback(async () => {
     if (!creativeToDelete) return
@@ -285,11 +289,12 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
                 ? '.png'
                 : '.jpg'
 
-            // Verificar progresso em tempo real
+            // Verificar progresso em tempo real (prioriza override, fallback para status do banco)
             const progressData = progressOverrides[creative.id]
-            const isProcessing = progressData?.status === 'PENDING' || progressData?.status === 'PROCESSING'
-            const currentProgress = progressData?.progress || 0
-            const hasFailed = progressData?.status === 'FAILED'
+            const effectiveStatus = progressData?.status || creative.status
+            const isProcessing = effectiveStatus === 'PENDING' || effectiveStatus === 'PROCESSING'
+            const currentProgress = progressData?.progress || (creative.status === 'PROCESSING' ? 50 : 0)
+            const hasFailed = effectiveStatus === 'FAILED'
 
             return (
               <div

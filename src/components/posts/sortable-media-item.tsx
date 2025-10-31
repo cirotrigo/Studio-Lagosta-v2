@@ -2,7 +2,7 @@
 
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, X } from 'lucide-react'
+import { GripVertical, X, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Image from 'next/image'
@@ -78,13 +78,21 @@ export function SortableMediaItem({
         )}
       >
         {isVideo ? (
-          <video
-            src={item.url}
-            className="w-full h-full object-cover pointer-events-none"
-            muted
-            playsInline
-            preload="metadata"
-          />
+          <>
+            <video
+              src={`${item.url}#t=0.1`}
+              className="w-full h-full object-cover pointer-events-none"
+              muted
+              playsInline
+              preload="metadata"
+            />
+            {/* Play icon overlay para vídeos */}
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+              <div className="bg-white/90 rounded-full p-2">
+                <Play className="w-6 h-6 text-black" fill="black" />
+              </div>
+            </div>
+          </>
         ) : (
           <Image
             src={item.thumbnailUrl || item.url}

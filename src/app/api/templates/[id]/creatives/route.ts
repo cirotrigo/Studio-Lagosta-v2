@@ -64,17 +64,20 @@ export async function GET(
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    // Buscar todos os criativos do template
+    // Buscar todos os criativos do template (COMPLETED e PROCESSING para mostrar progresso em tempo real)
     const creatives = await db.generation.findMany({
       where: {
         templateId,
-        status: 'COMPLETED',
+        status: {
+          in: ['COMPLETED', 'PROCESSING'],
+        },
       },
       orderBy: {
         createdAt: 'desc',
       },
       select: {
         id: true,
+        status: true,
         resultUrl: true,
         createdAt: true,
         templateName: true,
@@ -108,6 +111,7 @@ export async function GET(
 
       return {
         id: creative.id,
+        status: creative.status,
         resultUrl: creative.resultUrl ?? '',
         createdAt: creative.createdAt,
         templateName: creative.templateName ?? 'Criativo',
