@@ -64,9 +64,16 @@ async function ensureFfmpegPath(): Promise<string> {
     const candidates = [
       process.env.FFMPEG_PATH,
       installerPath,
+      // Vercel-specific paths
+      '/opt/bin/ffmpeg',
+      '/opt/ffmpeg/ffmpeg',
+      '/var/task/ffmpeg',
+      // Standard Unix paths
       '/usr/bin/ffmpeg',
       '/usr/local/bin/ffmpeg',
       '/opt/homebrew/bin/ffmpeg',
+      // Windows fallback (for local dev on Windows)
+      'C:\\ffmpeg\\bin\\ffmpeg.exe',
     ].filter(Boolean) as string[]
 
     lastCandidatePaths = candidates
@@ -76,10 +83,11 @@ async function ensureFfmpegPath(): Promise<string> {
         console.log('[FFmpeg] Testando caminho:', candidate)
         if (candidate && existsSync(candidate)) {
           cachedFfmpegPath = candidate
+          console.log('[FFmpeg] ✅ Binário encontrado em:', candidate)
           break
         }
       } catch (error) {
-        console.warn('[FFmpeg] Falha ao testar caminho', candidate, error)
+        console.warn('[FFmpeg] ❌ Falha ao testar caminho', candidate, error)
       }
     }
 
@@ -89,7 +97,8 @@ async function ensureFfmpegPath(): Promise<string> {
         process.env.FFMPEG_PATH = cachedFfmpegPath
       }
     } else {
-      console.warn('[FFmpeg] Nenhum binário encontrado automaticamente.')
+      console.warn('[FFmpeg] ⚠️  Nenhum binário encontrado automaticamente.')
+      console.warn('[FFmpeg] Veja FFMPEG_VERCEL_SETUP.md para configurar no Vercel')
     }
   }
 
@@ -97,7 +106,9 @@ async function ensureFfmpegPath(): Promise<string> {
     throw new Error(
       `FFmpeg não encontrado. Candidatos testados: ${
         lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
-      }`,
+      }. ` +
+      `SOLUÇÃO: Configure a variável de ambiente FFMPEG_PATH ou instale uma FFmpeg Layer no Vercel. ` +
+      `Consulte FFMPEG_VERCEL_SETUP.md para mais detalhes.`,
     )
   }
 

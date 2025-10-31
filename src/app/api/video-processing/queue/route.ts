@@ -55,6 +55,7 @@ export async function POST(request: Request) {
 
     console.log('[Queue Video] Iniciando enfileiramento:', {
       clerkUserId,
+      orgId,
       templateId: body.templateId,
       projectId: body.projectId,
       videoName: body.videoName,
@@ -69,6 +70,13 @@ export async function POST(request: Request) {
     })
 
     // Validate project access: owner OR organization member
+    console.log('[Queue Video] Validando acesso ao projeto:', {
+      projectId: body.projectId,
+      clerkUserId,
+      userId: user.id,
+      orgId,
+    })
+
     const project = await db.project.findFirst({
       where: {
         id: body.projectId,
@@ -76,13 +84,15 @@ export async function POST(request: Request) {
           // Direct ownership
           { userId: clerkUserId },
           { userId: user.id },
-          // Shared with organization
+          // Shared with organization (need to query through organization.clerkOrgId)
           ...(orgId
             ? [
                 {
                   organizationProjects: {
                     some: {
-                      organizationId: orgId,
+                      organization: {
+                        clerkOrgId: orgId,
+                      },
                     },
                   },
                 },
@@ -90,10 +100,54 @@ export async function POST(request: Request) {
             : []),
         ],
       },
-      select: { id: true, userId: true, name: true },
+      select: {
+        id: true,
+        userId: true,
+        name: true,
+        organizationProjects: {
+          select: {
+            organizationId: true,
+            sharedBy: true,
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              }
+            }
+          }
+        }
+      },
+    })
+
+    console.log('[Queue Video] Resultado da validação:', {
+      found: !!project,
+      project: project ? {
+        id: project.id,
+        userId: project.userId,
+        orgProjects: project.organizationProjects,
+      } : null,
     })
 
     if (!project) {
+      // Let's also check if the project exists at all
+      const projectExists = await db.project.findUnique({
+        where: { id: body.projectId },
+        select: {
+          id: true,
+          userId: true,
+          organizationProjects: {
+            select: {
+              organizationId: true,
+            }
+          }
+        },
+      })
+
+      console.log('[Queue Video] Projeto existe?', {
+        exists: !!projectExists,
+        details: projectExists,
+      })
+
       return NextResponse.json(
         { error: 'Projeto não encontrado ou acesso negado' },
         { status: 404 }
