@@ -32,11 +32,31 @@ let attemptedResolution = false
 let lastCandidatePaths: string[] = []
 
 async function resolveInstallerPath(): Promise<string | null> {
+  // Try ffmpeg-static first (better for serverless)
   try {
-    // Try to dynamically import the installer
+    const ffmpegStatic = await import('ffmpeg-static')
+    const staticPath = typeof ffmpegStatic === 'string'
+      ? ffmpegStatic
+      : (ffmpegStatic as { default?: string }).default
+
+    if (staticPath) {
+      console.log('[FFmpeg] ffmpeg-static path found:', staticPath)
+      if (existsSync(staticPath)) {
+        console.log('[FFmpeg] ✅ ffmpeg-static binary validated')
+        return staticPath
+      } else {
+        console.log('[FFmpeg] ❌ ffmpeg-static path not accessible:', staticPath)
+      }
+    }
+  } catch (error) {
+    console.warn('[FFmpeg] ⚠️ ffmpeg-static não disponível:', error)
+  }
+
+  // Fallback to @ffmpeg-installer/ffmpeg
+  try {
     const installer = await import('@ffmpeg-installer/ffmpeg')
 
-    console.log('[FFmpeg] Installer loaded, checking for path...')
+    console.log('[FFmpeg] Trying @ffmpeg-installer/ffmpeg...')
 
     // Check all possible path locations
     const possible = [
@@ -57,8 +77,9 @@ async function resolveInstallerPath(): Promise<string | null> {
       }
     }
   } catch (error) {
-    console.warn('[FFmpeg] ⚠️ Não foi possível carregar @ffmpeg-installer/ffmpeg:', error)
+    console.warn('[FFmpeg] ⚠️ @ffmpeg-installer/ffmpeg não disponível:', error)
   }
+
   return null
 }
 

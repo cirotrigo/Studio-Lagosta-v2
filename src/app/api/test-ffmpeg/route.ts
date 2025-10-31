@@ -54,7 +54,38 @@ export async function GET() {
     }
   }
 
-  // Tentar carregar @ffmpeg-installer/ffmpeg
+  // Tentar carregar ffmpeg-static (prioritário para serverless)
+  let staticInfo: {
+    loaded: boolean
+    path?: string
+    error?: string
+  } = { loaded: false }
+
+  try {
+    const ffmpegStatic = await import('ffmpeg-static')
+    const staticPath = typeof ffmpegStatic === 'string'
+      ? ffmpegStatic
+      : (ffmpegStatic as { default?: string }).default
+
+    staticInfo = {
+      loaded: true,
+      path: staticPath,
+    }
+
+    if (staticPath) {
+      results.push({
+        path: `${staticPath} (from ffmpeg-static)`,
+        exists: existsSync(staticPath),
+      })
+    }
+  } catch (error) {
+    staticInfo = {
+      loaded: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+
+  // Tentar carregar @ffmpeg-installer/ffmpeg (fallback)
   let installerInfo: {
     loaded: boolean
     path?: string
@@ -76,7 +107,7 @@ export async function GET() {
 
     if (installerPath) {
       results.push({
-        path: `${installerPath} (from installer)`,
+        path: `${installerPath} (from @ffmpeg-installer)`,
         exists: existsSync(installerPath),
       })
     }
@@ -111,6 +142,7 @@ export async function GET() {
   return NextResponse.json({
     timestamp: new Date().toISOString(),
     environment: envInfo,
+    ffmpegStatic: staticInfo,
     installer: installerInfo,
     paths: results,
     varTaskContents: varTaskContents.length > 0 ? varTaskContents : undefined,
@@ -118,6 +150,9 @@ export async function GET() {
       foundPaths: results.filter((r) => r.exists).map((r) => r.path),
       totalTested: results.length,
       totalFound: results.filter((r) => r.exists).length,
+      recommendation: results.filter((r) => r.exists).length > 0
+        ? '✅ FFmpeg disponível!'
+        : '⚠️ FFmpeg não encontrado. Configure FFMPEG_PATH no Vercel.',
     },
   })
 }

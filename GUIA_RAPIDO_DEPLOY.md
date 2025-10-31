@@ -7,10 +7,13 @@
 - ✅ Agora usa `organization.clerkOrgId` corretamente
 - ✅ Logs detalhados adicionados
 
-### 2. FFmpeg no Vercel
-- ✅ Código atualizado com mais caminhos de busca
+### 2. FFmpeg no Vercel ⭐ NOVO
+- ✅ **Instalado `ffmpeg-static`** - Pacote otimizado para serverless
+- ✅ Código prioriza `ffmpeg-static` sobre `@ffmpeg-installer/ffmpeg`
+- ✅ Fallback automático entre pacotes
 - ✅ Logs mais informativos
 - ✅ Endpoint de teste criado (`/api/test-ffmpeg`)
+- ✅ **Testado localmente** - FFmpeg disponível!
 
 ---
 
