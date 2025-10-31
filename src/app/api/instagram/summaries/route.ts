@@ -91,24 +91,28 @@ export async function GET(request: NextRequest) {
           weekEnd.setUTCDate(weekEnd.getUTCDate() + 7)
 
           const [feedsCount, storiesCount] = await Promise.all([
-            db.instagramFeed.count({
+            // Count SENT posts (POST, CAROUSEL, REEL) as Feeds
+            db.socialPost.count({
               where: {
                 projectId: project.id,
-                publishedAt: {
+                status: 'SENT',
+                postType: { in: ['POST', 'CAROUSEL', 'REEL'] },
+                sentAt: {
                   gte: currentWeekStart,
                   lt: weekEnd,
                 },
-                countedInGoal: true,
               },
             }),
-            db.instagramStory.count({
+            // Count SENT stories
+            db.socialPost.count({
               where: {
                 projectId: project.id,
-                publishedAt: {
+                status: 'SENT',
+                postType: 'STORY',
+                sentAt: {
                   gte: currentWeekStart,
                   lt: weekEnd,
                 },
-                countedInGoal: true,
               },
             }),
           ])
