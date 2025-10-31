@@ -4,6 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { Trash2, Download, Loader2, ImageIcon, Calendar } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Progress } from '@/components/ui/progress'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,9 +43,90 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
     console.log('[CreativesPanel] creatives:', creatives)
   }, [templateId, isLoading, error, creatives])
 
+  // State para rastrear progresso em tempo real
+  const [progressOverrides, setProgressOverrides] = React.useState<Record<string, {
+    progress: number
+    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+    errorMessage?: string | null
+  }>>({})
+
   // Refetch ao montar o componente para garantir dados atualizados
   React.useEffect(() => {
     refetch()
+  }, [refetch])
+
+  // Escutar eventos de exportação de vídeo
+  React.useEffect(() => {
+    const handleVideoQueued = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (!detail || !detail.generationId) return
+
+      setProgressOverrides((prev) => ({
+        ...prev,
+        [detail.generationId]: {
+          progress: detail.progress || 0,
+          status: detail.status || 'PENDING',
+        },
+      }))
+
+      // Adicionar criativo temporário à lista
+      refetch()
+    }
+
+    const handleVideoProgress = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (!detail || !detail.generationId) return
+
+      setProgressOverrides((prev) => ({
+        ...prev,
+        [detail.generationId]: {
+          progress: detail.progress || prev[detail.generationId]?.progress || 0,
+          status: detail.status || 'PROCESSING',
+        },
+      }))
+    }
+
+    const handleVideoCompleted = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (!detail || !detail.generationId) return
+
+      setProgressOverrides((prev) => ({
+        ...prev,
+        [detail.generationId]: {
+          progress: 100,
+          status: 'COMPLETED',
+        },
+      }))
+
+      // Refetch para pegar o vídeo MP4 final
+      setTimeout(() => refetch(), 1000)
+    }
+
+    const handleVideoFailed = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (!detail || !detail.generationId) return
+
+      setProgressOverrides((prev) => ({
+        ...prev,
+        [detail.generationId]: {
+          progress: prev[detail.generationId]?.progress || 0,
+          status: 'FAILED',
+          errorMessage: detail.errorMessage,
+        },
+      }))
+    }
+
+    window.addEventListener('video-export-queued', handleVideoQueued)
+    window.addEventListener('video-export-progress', handleVideoProgress)
+    window.addEventListener('video-export-completed', handleVideoCompleted)
+    window.addEventListener('video-export-failed', handleVideoFailed)
+
+    return () => {
+      window.removeEventListener('video-export-queued', handleVideoQueued)
+      window.removeEventListener('video-export-progress', handleVideoProgress)
+      window.removeEventListener('video-export-completed', handleVideoCompleted)
+      window.removeEventListener('video-export-failed', handleVideoFailed)
+    }
   }, [refetch])
 
   const handleDelete = React.useCallback(async () => {
@@ -203,6 +285,12 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
                 ? '.png'
                 : '.jpg'
 
+            // Verificar progresso em tempo real
+            const progressData = progressOverrides[creative.id]
+            const isProcessing = progressData?.status === 'PENDING' || progressData?.status === 'PROCESSING'
+            const currentProgress = progressData?.progress || 0
+            const hasFailed = progressData?.status === 'FAILED'
+
             return (
               <div
                 key={creative.id}
@@ -239,6 +327,32 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
                     />
                   )}
                 </a>
+
+                {/* Barra de progresso (se está processando) */}
+                {isProcessing && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <Loader2 className="mb-2 h-8 w-8 animate-spin text-white" />
+                    <div className="w-3/4 space-y-1">
+                      <Progress value={currentProgress} className="h-2" />
+                      <p className="text-center text-xs text-white">
+                        {currentProgress < 20 ? 'Preparando...' :
+                         currentProgress < 50 ? 'Processando...' :
+                         currentProgress < 80 ? 'Convertendo...' :
+                         'Finalizando...'}
+                        {' '}({currentProgress}%)
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Erro (se falhou) */}
+                {hasFailed && (
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-destructive/90 backdrop-blur-sm">
+                    <p className="text-center text-xs text-white px-2">
+                      ❌ Falha no processamento
+                    </p>
+                  </div>
+                )}
 
                 {/* Info e ações */}
                 <div className="space-y-2 p-3">
