@@ -68,12 +68,26 @@ export async function POST(request: Request) {
       organizationId: orgId ?? undefined,
     })
 
+    // Validate project access: owner OR organization member
     const project = await db.project.findFirst({
       where: {
         id: body.projectId,
         OR: [
+          // Direct ownership
           { userId: clerkUserId },
           { userId: user.id },
+          // Shared with organization
+          ...(orgId
+            ? [
+                {
+                  organizationProjects: {
+                    some: {
+                      organizationId: orgId,
+                    },
+                  },
+                },
+              ]
+            : []),
         ],
       },
       select: { id: true, userId: true, name: true },
@@ -81,7 +95,7 @@ export async function POST(request: Request) {
 
     if (!project) {
       return NextResponse.json(
-        { error: 'Projeto não encontrado ou não pertence ao usuário' },
+        { error: 'Projeto não encontrado ou acesso negado' },
         { status: 404 }
       )
     }
