@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Text } from 'react-konva'
+import { Text, Rect, Path, Group } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
 
@@ -1044,42 +1044,144 @@ export function KonvaEditableText({
     shapeRef,
   ])
 
+  // Calculate background dimensions if background effect is enabled
+  const backgroundPadding = layer.effects?.background?.enabled ? (layer.effects.background.padding || 10) : 0
+
+  // Curved text effect - render each character along an arc
+  const isCurvedText = layer.effects?.curved?.enabled && layer.effects.curved.curvature !== 0
+  const curvedTextElements = React.useMemo(() => {
+    if (!isCurvedText || !displayText) return null
+
+    const curvature = layer.effects?.curved?.curvature || 0
+    const chars = displayText.split('')
+    const fontSize = layer.style?.fontSize ?? 16
+    const width = layer.size?.width ?? 240
+
+    // Calculate radius based on curvature (in degrees)
+    // More curvature = tighter curve (smaller radius)
+    const curvatureRadians = (curvature * Math.PI) / 180
+    const radius = curvatureRadians !== 0 ? width / (2 * Math.sin(Math.abs(curvatureRadians) / 2)) : 1000
+
+    // Center point for the arc
+    const centerX = width / 2
+    const centerY = curvature > 0 ? -radius : radius
+
+    return chars.map((char, i) => {
+      // Calculate position along the arc for each character
+      const charAngle = (curvatureRadians * (i - chars.length / 2)) / chars.length
+      const x = centerX + radius * Math.sin(charAngle)
+      const y = centerY + radius * (1 - Math.cos(charAngle))
+      const rotation = (charAngle * 180) / Math.PI
+
+      return (
+        <Text
+          key={`curved-char-${i}`}
+          x={x}
+          y={y}
+          rotation={rotation}
+          text={char}
+          fontSize={fontSize}
+          fontFamily={layer.style?.fontFamily ?? 'Inter'}
+          fontStyle={layer.style?.fontStyle ?? 'normal'}
+          fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
+          fill={layer.style?.color ?? '#000000'}
+          stroke={
+            layer.effects?.stroke?.enabled
+              ? layer.effects.stroke.strokeColor
+              : undefined
+          }
+          strokeWidth={
+            layer.effects?.stroke?.enabled
+              ? layer.effects.stroke.strokeWidth
+              : undefined
+          }
+          shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
+          shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
+          shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
+          shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
+          shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
+          filters={filters}
+          blurRadius={layer.effects?.blur?.enabled ? layer.effects.blur.blurRadius : 0}
+          listening={false}
+          perfectDrawEnabled={true}
+          imageSmoothingEnabled={true}
+        />
+      )
+    })
+  }, [isCurvedText, displayText, layer.effects, layer.style, layer.size?.width, filters])
+
   return (
-    <Text
-      key={layer.id}
-      {...commonProps}
-      ref={shapeRef as React.RefObject<Konva.Text>}
-      text={displayText}
-      width={layer.size?.width ?? 240}
-      height={layer.size?.height ?? 120}
-      fontSize={layer.style?.fontSize ?? 16}
-      fontFamily={layer.style?.fontFamily ?? 'Inter'}
-      fontStyle={layer.style?.fontStyle ?? 'normal'}
-      fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
-      fill={layer.style?.color ?? '#000000'}
-      align={layer.style?.textAlign ?? 'left'}
-      padding={6}
-      lineHeight={layer.style?.lineHeight ?? 1.2}
-      letterSpacing={layer.style?.letterSpacing ?? 0}
-      wrap="word"
-      ellipsis={false}
-      listening={commonProps.listening && !isEditing}
-      draggable={commonProps.draggable && !isEditing}
-      visible={!isEditing}
-      perfectDrawEnabled={true}
-      imageSmoothingEnabled={true}
-      stroke={layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined}
-      strokeWidth={layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.width : undefined}
-      shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
-      shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
-      shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
-      shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
-      shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
-      filters={filters}
-      blurRadius={layer.effects?.blur?.enabled ? layer.effects.blur.blurRadius : 0}
-      onDblClick={handleDblClick}
-      onDblTap={handleDblClick}
-      onTap={handleTap}
-    />
+    <>
+      {/* Background Effect */}
+      {layer.effects?.background?.enabled && !isCurvedText && (
+        <Rect
+          x={(layer.position?.x ?? 0) - backgroundPadding}
+          y={(layer.position?.y ?? 0) - backgroundPadding}
+          width={(layer.size?.width ?? 240) + (backgroundPadding * 2)}
+          height={(layer.size?.height ?? 120) + (backgroundPadding * 2)}
+          fill={layer.effects.background.backgroundColor}
+          listening={false}
+        />
+      )}
+
+      {/* Render curved text if curved effect is enabled */}
+      {isCurvedText ? (
+        <Group
+          {...commonProps}
+          ref={shapeRef as any}
+          listening={commonProps.listening && !isEditing}
+          draggable={commonProps.draggable && !isEditing}
+          visible={!isEditing}
+        >
+          {curvedTextElements}
+        </Group>
+      ) : (
+        /* Render normal text if curved effect is disabled */
+        <Text
+          key={layer.id}
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Text>}
+          text={displayText}
+          width={layer.size?.width ?? 240}
+          height={layer.size?.height ?? 120}
+        fontSize={layer.style?.fontSize ?? 16}
+        fontFamily={layer.style?.fontFamily ?? 'Inter'}
+        fontStyle={layer.style?.fontStyle ?? 'normal'}
+        fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
+        fill={layer.style?.color ?? '#000000'}
+        align={layer.style?.textAlign ?? 'left'}
+        padding={6}
+        lineHeight={layer.style?.lineHeight ?? 1.2}
+        letterSpacing={layer.style?.letterSpacing ?? 0}
+        wrap="word"
+        ellipsis={false}
+        listening={commonProps.listening && !isEditing}
+        draggable={commonProps.draggable && !isEditing}
+        visible={!isEditing}
+        perfectDrawEnabled={true}
+        imageSmoothingEnabled={true}
+        stroke={
+          layer.effects?.stroke?.enabled
+            ? layer.effects.stroke.strokeColor
+            : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined)
+        }
+        strokeWidth={
+          layer.effects?.stroke?.enabled
+            ? layer.effects.stroke.strokeWidth
+            : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.width : undefined)
+        }
+        shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
+        shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
+        shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
+        shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
+        shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
+        filters={filters}
+        blurRadius={layer.effects?.blur?.enabled ? layer.effects.blur.blurRadius : 0}
+        onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
+        onTap={handleTap}
+      />
+      )}
+    </>
   )
 }

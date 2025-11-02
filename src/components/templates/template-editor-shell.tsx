@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
-import { PropertiesPanel } from './properties-panel'
+import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
 import { TextToolsPanel } from './panels/text-panel'
 import { ImagesPanelContent } from './panels/images-panel'
@@ -145,7 +145,8 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'properties' | 'layers' | 'ai-images' | 'creatives' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'creatives' | null
+type RightPanel = 'properties' | 'effects' | 'layers' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -176,6 +177,7 @@ function TemplateEditorContent() {
 
   const isMobile = useIsMobile()
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
+  const [activeRightPanel, setActiveRightPanel] = React.useState<RightPanel>(null)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
@@ -311,6 +313,10 @@ function TemplateEditorContent() {
     setActivePanel((current) => (current === panel ? null : panel))
   }, [])
 
+  const toggleRightPanel = React.useCallback((panel: RightPanel) => {
+    setActiveRightPanel((current) => (current === panel ? null : panel))
+  }, [])
+
   const toggleFullscreen = React.useCallback(() => {
     setIsFullscreen((prev) => !prev)
     if (!isFullscreen) {
@@ -399,14 +405,6 @@ function TemplateEditorContent() {
         {/* Tool selection buttons */}
         <div className="grid grid-cols-3 gap-2 p-4">
           <Button
-            variant={activePanel === 'layers' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('layers')}
-          >
-            <Layers2 className="h-5 w-5" />
-            <span className="text-xs">Layers</span>
-          </Button>
-          <Button
             variant={activePanel === 'text' ? 'default' : 'outline'}
             className="h-16 flex flex-col gap-1"
             onClick={() => setActivePanel('text')}
@@ -478,14 +476,6 @@ function TemplateEditorContent() {
             <FileImage className="h-5 w-5" />
             <span className="text-xs">Criativos</span>
           </Button>
-          <Button
-            variant={activePanel === 'properties' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('properties')}
-          >
-            <Settings className="h-5 w-5" />
-            <span className="text-xs">Propriedades</span>
-          </Button>
         </div>
 
         {/* Tool Panel Content */}
@@ -502,8 +492,6 @@ function TemplateEditorContent() {
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
                 {activePanel === 'creatives' && 'Criativos'}
-                {activePanel === 'properties' && 'Propriedades'}
-                {activePanel === 'layers' && 'Camadas'}
               </h3>
             </div>
             {activePanel === 'text' && <TextToolsPanel />}
@@ -515,8 +503,6 @@ function TemplateEditorContent() {
             {activePanel === 'gradients' && <GradientsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
             {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
-            {activePanel === 'properties' && <PropertiesPanel />}
-            {activePanel === 'layers' && <LayersPanelAdvanced />}
           </div>
         )}
       </MobileToolsDrawer>
@@ -562,12 +548,6 @@ function TemplateEditorContent() {
       <div className="flex flex-1 overflow-hidden">
         {/* Vertical Icon Toolbar - Always Visible */}
         <aside className="flex w-16 flex-shrink-0 flex-col border-r border-border/40 bg-card">
-          <ToolbarButton
-            icon={<Layers2 className="h-5 w-5" />}
-            label="Layers"
-            active={activePanel === 'layers'}
-            onClick={() => togglePanel('layers')}
-          />
           <ToolbarButton
             icon={<TypeIcon className="h-5 w-5" />}
             label="Texto"
@@ -616,33 +596,25 @@ function TemplateEditorContent() {
             active={activePanel === 'ai-images'}
             onClick={() => togglePanel('ai-images')}
           />
+          <div className="flex-1" />
           <ToolbarButton
             icon={<FileImage className="h-5 w-5" />}
             label="Criativos"
             active={activePanel === 'creatives'}
             onClick={() => togglePanel('creatives')}
           />
-          <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
             label="Templates"
             active={activePanel === 'templates'}
             onClick={() => togglePanel('templates')}
           />
-          <ToolbarButton
-            icon={<Settings className="h-5 w-5" />}
-            label="Propriedades"
-            active={activePanel === 'properties'}
-            onClick={() => togglePanel('properties')}
-          />
         </aside>
 
         {/* Expandable Side Panel */}
         {activePanel && (
-          <aside className={`flex flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg ${
-            activePanel === 'layers' ? 'w-[420px]' : 'w-80'
-          }`}>
-            <div className="border-b border-border/40 p-4">
+          <aside className="flex w-80 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg overflow-hidden">
+            <div className="flex-shrink-0 border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {activePanel === 'templates' && 'Templates'}
                 {activePanel === 'text' && 'Texto & Fontes'}
@@ -654,11 +626,9 @@ function TemplateEditorContent() {
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
                 {activePanel === 'creatives' && 'Criativos'}
-                {activePanel === 'properties' && 'Propriedades'}
-                {activePanel === 'layers' && 'Camadas'}
               </h2>
             </div>
-            <div className={`flex-1 overflow-hidden ${activePanel === 'layers' || activePanel === 'properties' ? '' : 'overflow-y-auto p-4'}`}>
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
               {activePanel === 'templates' && <EditorSidebar />}
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
@@ -669,8 +639,6 @@ function TemplateEditorContent() {
               {activePanel === 'gradients' && <GradientsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
               {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
-              {activePanel === 'properties' && <PropertiesPanel />}
-              {activePanel === 'layers' && <LayersPanelAdvanced />}
             </div>
           </aside>
         )}
@@ -734,6 +702,48 @@ function TemplateEditorContent() {
           {/* Bottom Pages Bar - Polotno Style */}
           <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setIsPagesBarCollapsed(!isPagesBarCollapsed)} />
         </main>
+
+        {/* Right Side Panel with Expandable Content */}
+        {activeRightPanel && (
+          <aside className={`flex flex-shrink-0 flex-col border-l border-border/40 bg-card shadow-lg overflow-hidden ${
+            activeRightPanel === 'layers' ? 'w-[420px]' : 'w-80'
+          }`}>
+            <div className="flex-shrink-0 border-b border-border/40 p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                {activeRightPanel === 'properties' && 'Propriedades'}
+                {activeRightPanel === 'effects' && 'Efeitos'}
+                {activeRightPanel === 'layers' && 'Camadas'}
+              </h2>
+            </div>
+            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' ? '' : 'overflow-y-auto p-4'}`}>
+              {activeRightPanel === 'properties' && <PropertiesPanel />}
+              {activeRightPanel === 'effects' && <EffectsPanel />}
+              {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
+            </div>
+          </aside>
+        )}
+
+        {/* Right Vertical Icon Toolbar - Always Visible */}
+        <aside className="flex w-16 flex-shrink-0 flex-col border-l border-border/40 bg-card">
+          <ToolbarButton
+            icon={<Settings className="h-5 w-5" />}
+            label="Propriedades"
+            active={activeRightPanel === 'properties'}
+            onClick={() => toggleRightPanel('properties')}
+          />
+          <ToolbarButton
+            icon={<Sparkles className="h-5 w-5" />}
+            label="Efeitos"
+            active={activeRightPanel === 'effects'}
+            onClick={() => toggleRightPanel('effects')}
+          />
+          <ToolbarButton
+            icon={<Layers2 className="h-5 w-5" />}
+            label="Camadas"
+            active={activeRightPanel === 'layers'}
+            onClick={() => toggleRightPanel('layers')}
+          />
+        </aside>
       </div>
     </div>
   )

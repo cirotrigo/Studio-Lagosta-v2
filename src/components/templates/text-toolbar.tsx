@@ -20,7 +20,6 @@ import {
   AlignCenter,
   AlignRight,
   Type,
-  Sparkles,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -53,10 +52,9 @@ import {
 interface TextToolbarProps {
   selectedLayer: Layer
   onUpdateLayer: (id: string, updates: Partial<Layer>) => void
-  onEffectsClick?: () => void
 }
 
-export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: TextToolbarProps) {
+export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) {
   const templateEditor = useTemplateEditor()
   const { projectId } = templateEditor
   const fontManager = React.useMemo(() => getFontManager(), [])
@@ -503,21 +501,6 @@ export function TextToolbar({ selectedLayer, onUpdateLayer, onEffectsClick }: Te
           <span className="text-xs text-muted-foreground w-8">{Math.round(opacity * 100)}%</span>
         </div>
 
-        {/* Effects Button */}
-        {onEffectsClick && (
-          <div className="flex-shrink-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 gap-1"
-              onClick={onEffectsClick}
-              title="Efeitos de texto"
-            >
-              <Sparkles className="h-4 w-4" />
-              <span className="text-xs">Effects</span>
-            </Button>
-          </div>
-        )}
       </div>
     </div>
   )
