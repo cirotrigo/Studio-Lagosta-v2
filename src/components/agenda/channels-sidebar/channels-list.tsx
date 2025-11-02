@@ -12,9 +12,9 @@ import {
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
 import { Search, Instagram, AlertCircle } from 'lucide-react'
-import type { Project } from '../../../../prisma/generated/client'
+import type { ProjectResponse } from '@/hooks/use-project'
 
-type ProjectWithCounts = Project & { scheduledPostCount?: number }
+type ProjectWithCounts = ProjectResponse & { scheduledPostCount?: number }
 
 interface ChannelsSidebarProps {
   projects: ProjectWithCounts[]

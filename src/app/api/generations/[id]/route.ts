@@ -87,7 +87,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // Verificar acesso ao projeto considerando organizações
     const project = await fetchProjectWithShares(generation.projectId)
 
-    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

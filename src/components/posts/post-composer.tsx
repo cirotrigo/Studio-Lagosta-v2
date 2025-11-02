@@ -14,10 +14,10 @@ import { SchedulePicker } from './schedule-picker'
 import { RecurringConfig } from './recurring-config'
 
 // RecurringConfig value type (matching recurring-config.tsx)
-type RecurringConfigValue = {
+export type RecurringConfigValue = {
   frequency: 'DAILY' | 'WEEKLY' | 'MONTHLY'
-  daysOfWeek?: number[]
   time: string
+  daysOfWeek?: number[]
   endDate?: Date
 }
 import { toast } from 'sonner'
@@ -560,7 +560,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
               {scheduleType === 'RECURRING' && (
                 <div className="ml-9 pl-3 border-l-2">
                   <RecurringConfig
-                    value={recurringConfig ?? undefined}
+                    value={recurringConfig as RecurringConfigValue | undefined}
                     onChange={handleRecurringConfigChange}
                   />
                 </div>

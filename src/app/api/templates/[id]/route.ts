@@ -60,7 +60,7 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -96,7 +96,7 @@ export async function PUT(
   }
 
   // Verificar se o usuário tem permissão de escrita no projeto
-  if (!hasProjectWriteAccess(existing.Project, { userId, orgId, orgRole })) {
+  if (!hasProjectWriteAccess(existing.Project, { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
@@ -132,7 +132,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -168,7 +168,7 @@ export async function DELETE(
   }
 
   // Verificar se o usuário tem permissão de escrita no projeto
-  if (!hasProjectWriteAccess(existing.Project, { userId, orgId, orgRole })) {
+  if (!hasProjectWriteAccess(existing.Project, { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 

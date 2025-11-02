@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { PostType, ScheduleType, PostStatus, PublishType } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
-import type { Prisma } from '@prisma/client'
 
 // GET: Fetch individual post
 export async function GET(
@@ -108,10 +107,6 @@ export async function PUT(
       !hasProjectWriteAccess(project, {
         userId: clerkUserId,
         orgId,
-        orgRole:
-          typeof sessionClaims?.org_role === 'string'
-            ? (sessionClaims.org_role as string)
-            : undefined,
       })
     ) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
@@ -227,10 +222,6 @@ export async function DELETE(
       !hasProjectWriteAccess(project, {
         userId: clerkUserId,
         orgId,
-        orgRole:
-          typeof sessionClaims?.org_role === 'string'
-            ? (sessionClaims.org_role as string)
-            : undefined,
       })
     ) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })

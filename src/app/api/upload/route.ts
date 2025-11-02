@@ -48,7 +48,7 @@ export async function POST(request: Request) {
 
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer()
-    let buffer = Buffer.from(arrayBuffer)
+    let buffer: Buffer = Buffer.from(arrayBuffer)
 
     // Auto-crop images to Instagram feed format (4:5 - 1080x1350)
     if (isImage) {
@@ -57,7 +57,8 @@ export async function POST(request: Request) {
         console.log(`📷 Original image: ${imageInfo.width}x${imageInfo.height} (ratio: ${imageInfo.ratio.toFixed(2)})`)
 
         // Crop to 4:5 ratio for feed posts
-        buffer = await cropToInstagramFeed(buffer)
+        const croppedBuffer = await cropToInstagramFeed(buffer)
+        buffer = croppedBuffer
         console.log('✂️ Image cropped to 1080x1350 (4:5 ratio)')
       } catch (cropError) {
         console.error('Crop error:', cropError)

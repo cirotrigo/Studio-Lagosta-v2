@@ -140,7 +140,7 @@ export async function GET(req: Request) {
  * Cria um novo template
  */
 export async function POST(req: Request) {
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -174,7 +174,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

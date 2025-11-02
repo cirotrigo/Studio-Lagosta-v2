@@ -16,7 +16,7 @@ export async function PATCH(
   const { projectId, logoId } = await params
   const projectIdNum = Number(projectId)
   const logoIdNum = Number(logoId)
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -36,7 +36,7 @@ export async function PATCH(
 
   // Verificar acesso ao projeto considerando organizações
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+  if (!hasProjectWriteAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 
@@ -70,7 +70,7 @@ export async function DELETE(
   const { projectId, logoId } = await params
   const projectIdNum = Number(projectId)
   const logoIdNum = Number(logoId)
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
 
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
@@ -90,7 +90,7 @@ export async function DELETE(
 
   // Verificar acesso ao projeto considerando organizações
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+  if (!hasProjectWriteAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
   }
 

@@ -11,6 +11,9 @@
       "@/*": [
         "./src/*"
       ],
+      "@prisma/client": [
+        "./prisma/generated/client"
+      ],
       "@plan-maestro/mcp-toolkit": [
         "../../packages/mcp-toolkit/index.ts"
       ],

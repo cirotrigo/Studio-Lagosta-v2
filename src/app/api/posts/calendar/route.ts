@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import { PostType } from '@prisma/client'
 
 /**
  * GET /api/posts/calendar
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
           gte: new Date(startDate),
           lte: new Date(endDate),
         },
-        ...(postType && postType !== 'ALL' ? { postType } : {}),
+        ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
       },
       include: {
         Project: {
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
         projectId: { in: allProjectIds },
         scheduleType: 'RECURRING',
         status: { in: ['SCHEDULED', 'PROCESSING'] },
-        ...(postType && postType !== 'ALL' ? { postType } : {}),
+        ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
       },
       include: {
         Project: {

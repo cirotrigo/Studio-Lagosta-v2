@@ -9,7 +9,8 @@ import { CalendarWeekView } from '@/components/agenda/calendar/calendar-week-vie
 import { CalendarDayView } from '@/components/agenda/calendar/calendar-day-view'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
-import type { SocialPost, Project, PostType } from '../../../prisma/generated/client'
+import type { SocialPost, PostType } from '../../../prisma/generated/client'
+import type { ProjectResponse } from '@/hooks/use-project'
 
 type ViewMode = 'month' | 'week' | 'day'
 type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
@@ -93,7 +94,7 @@ function getDayRange(date: Date) {
 }
 
 interface ProjectAgendaViewProps {
-  project: Project
+  project: ProjectResponse
   projectId: number
 }
 
@@ -170,7 +171,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
       }
     : undefined
 
-  const postsArray = posts || []
+  const postsArray = (posts as SocialPost[] | undefined) || []
 
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)]">

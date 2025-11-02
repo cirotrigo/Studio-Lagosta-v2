@@ -36,7 +36,8 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
-import type { Project, PostType } from '../../../../prisma/generated/client'
+import type { PostType } from '../../../../prisma/generated/client'
+import type { ProjectResponse } from '@/hooks/use-project'
 
 type ViewMode = 'month' | 'week' | 'day'
 
@@ -45,7 +46,7 @@ interface CalendarHeaderProps {
   onDateChange: (date: Date) => void
   viewMode: ViewMode
   onViewModeChange: (mode: ViewMode) => void
-  selectedProject?: Project
+  selectedProject?: ProjectResponse
   onCreatePost?: () => void
   postTypeFilter: PostType | 'ALL'
   onPostTypeFilterChange: (postType: PostType | 'ALL') => void

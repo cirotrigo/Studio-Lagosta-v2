@@ -12,9 +12,9 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { Search, Instagram, AlertCircle } from 'lucide-react'
-import type { Project } from '../../../../prisma/generated/client'
+import type { ProjectResponse } from '@/hooks/use-project'
 
-type ProjectWithCounts = Project & { scheduledPostCount?: number }
+type ProjectWithCounts = ProjectResponse & { scheduledPostCount?: number }
 
 interface MobileChannelsDrawerProps {
   open: boolean

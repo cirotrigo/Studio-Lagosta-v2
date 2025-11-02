@@ -109,7 +109,7 @@ export async function GET(
       where: {
         ...whereClause,
         userId: { isSet: true },
-      },
+      } as any, // Type assertion to avoid circular reference error in complex Prisma queries
       by: ['userId'],
       _count: true,
     })

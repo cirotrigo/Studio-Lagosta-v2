@@ -15,10 +15,11 @@ import { ChannelsSidebar } from '../channels-sidebar/channels-list'
 import { MobileAgendaListView } from '../mobile/mobile-agenda-list-view'
 import { MobileChannelsDrawer } from '../mobile/mobile-channels-drawer'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
-import type { SocialPost, Project, PostType } from '../../../../prisma/generated/client'
+import type { SocialPost, PostType } from '../../../../prisma/generated/client'
+import type { ProjectResponse } from '@/hooks/use-project'
 
 type ViewMode = 'month' | 'week' | 'day'
-type ProjectWithCounts = Project & { scheduledPostCount: number }
+type ProjectWithCounts = ProjectResponse & { scheduledPostCount: number }
 type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
 
 const RECURRENCE_FREQUENCIES: ReadonlyArray<RecurringFormValue['frequency']> = ['DAILY', 'WEEKLY', 'MONTHLY']

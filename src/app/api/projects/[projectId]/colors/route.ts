@@ -39,7 +39,7 @@ export async function POST(
 ) {
   const { projectId } = await params
   const projectIdNum = Number(projectId)
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -49,7 +49,7 @@ export async function POST(
   }
 
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!project || !hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+  if (!project || !hasProjectWriteAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

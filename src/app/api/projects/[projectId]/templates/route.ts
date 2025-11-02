@@ -57,7 +57,7 @@ export async function POST(
   }
 
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!hasProjectWriteAccess(project, { userId: authData.userId, orgId: authData.orgId, orgRole: authData.orgRole })) {
+  if (!hasProjectWriteAccess(project, { userId: authData.userId, orgId: authData.orgId })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

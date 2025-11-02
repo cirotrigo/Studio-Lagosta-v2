@@ -23,6 +23,10 @@ export interface ProjectResponse {
   googleDriveImagesFolderName: string | null
   googleDriveVideosFolderId: string | null
   googleDriveVideosFolderName: string | null
+  makeWebhookAnalyzeUrl: string | null
+  makeWebhookCreativeUrl: string | null
+  userId: string
+  workspaceId: number | null
   createdAt: string
   updatedAt: string
   organizationShares?: ProjectShareInfo[]

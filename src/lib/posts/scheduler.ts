@@ -1,7 +1,7 @@
 import { db } from '@/lib/db'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
-import type { Prisma } from '@prisma/client'
 import {
+  Prisma,
   PostType,
   ScheduleType,
   RecurrenceFrequency,

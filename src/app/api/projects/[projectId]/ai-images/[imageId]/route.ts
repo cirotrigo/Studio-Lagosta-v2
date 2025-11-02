@@ -12,7 +12,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ projectId: string; imageId: string }> }
 ) {
-  const { userId, orgId, orgRole } = await auth()
+  const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
@@ -27,7 +27,7 @@ export async function DELETE(
   try {
     // Verificar acesso ao projeto considerando organizações
     const project = await fetchProjectWithShares(projectIdNum)
-    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 

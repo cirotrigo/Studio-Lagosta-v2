@@ -12,7 +12,7 @@ export const maxDuration = 30 // 30 segundos para thumbnail
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { userId, orgId, orgRole } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -38,7 +38,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // Verificar acesso ao projeto considerando organizações
     const project = await fetchProjectWithShares(template.projectId)
-    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

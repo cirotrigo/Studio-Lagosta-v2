@@ -13,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { userId, orgId, orgRole } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -43,7 +43,7 @@ export async function POST(
     // Verificar acesso ao projeto considerando organizações
     const project = await fetchProjectWithShares(original.projectId)
 
-    if (!hasProjectWriteAccess(project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado para duplicar este template' }, { status: 403 })
     }
 

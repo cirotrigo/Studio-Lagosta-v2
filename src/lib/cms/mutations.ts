@@ -1,5 +1,5 @@
 import { db } from '@/lib/db'
-import type { Prisma } from '@prisma/client'
+import type { Prisma } from '../../../prisma/generated/client'
 
 type CMSPageStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 type CMSSectionType = 'HERO' | 'BENTO_GRID' | 'FAQ' | 'AI_STARTER' | 'PRICING' | 'CTA' | 'CUSTOM'

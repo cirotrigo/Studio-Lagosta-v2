@@ -232,7 +232,6 @@ export function EditorCanvas() {
               onUpdateLayer={(id, updates) => {
                 updateLayer(id, (layer) => ({ ...layer, ...updates }))
               }}
-              onEffectsClick={handleEffectsClick}
             />
           )}
         </div>

@@ -46,7 +46,7 @@ export function usePostStatusPolling({
   intervalMs = 10000, // 10 seconds
 }: UsePostStatusPollingOptions) {
   const queryClient = useQueryClient()
-  const intervalRef = useRef<NodeJS.Timeout>()
+  const intervalRef = useRef<NodeJS.Timeout | undefined>(undefined)
   const attemptsRef = useRef(0)
 
   useEffect(() => {

@@ -74,10 +74,6 @@ export async function POST(
       !hasProjectWriteAccess(project, {
         userId: clerkUserId,
         orgId,
-        orgRole:
-          typeof sessionClaims?.org_role === 'string'
-            ? (sessionClaims.org_role as string)
-            : undefined,
       })
     ) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })

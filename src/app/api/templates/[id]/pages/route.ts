@@ -84,7 +84,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { userId, orgId, orgRole } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -117,7 +117,7 @@ export async function POST(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(template.Project, { userId, orgId, orgRole })) {
+    if (!hasProjectWriteAccess(template.Project, { userId, orgId })) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
