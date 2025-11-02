@@ -262,7 +262,49 @@ export async function exportVideoWithLayers(
     onProgress?.({ phase: 'preparing', progress: 40 })
 
     // Criar stream do canvas offscreen
-    const stream = offscreenCanvas.captureStream(fps)
+    const canvasStream = offscreenCanvas.captureStream(fps)
+
+    // Tentar adicionar o áudio do vídeo original ao stream
+    let stream = canvasStream
+    try {
+      // Verificar se o vídeo tem áudio (usando type assertion para propriedades específicas do navegador)
+      const videoWithAudioProps = videoElement as HTMLVideoElement & {
+        mozHasAudio?: boolean
+        webkitAudioDecodedByteCount?: number
+      }
+
+      const videoHasAudio = videoWithAudioProps.mozHasAudio !== undefined
+        ? videoWithAudioProps.mozHasAudio
+        : videoWithAudioProps.webkitAudioDecodedByteCount !== undefined
+          ? videoWithAudioProps.webkitAudioDecodedByteCount > 0
+          : true // Assume que tem áudio por padrão
+
+      if (videoHasAudio) {
+        // Criar AudioContext para capturar áudio do vídeo
+        const audioContext = new AudioContext()
+        const source = audioContext.createMediaElementSource(videoElement)
+        const destination = audioContext.createMediaStreamDestination()
+
+        // Conectar o áudio do vídeo ao destination (mantém o áudio original)
+        source.connect(destination)
+        // Também conectar ao destino padrão para o usuário ouvir durante a exportação
+        source.connect(audioContext.destination)
+
+        // Combinar stream de vídeo (canvas) com stream de áudio (vídeo original)
+        const audioTracks = destination.stream.getAudioTracks()
+        const videoTracks = canvasStream.getVideoTracks()
+
+        stream = new MediaStream([...videoTracks, ...audioTracks])
+
+        console.log('[Video Export] Áudio do vídeo original adicionado ao stream')
+      } else {
+        console.log('[Video Export] Vídeo não possui áudio')
+      }
+    } catch (error) {
+      console.warn('[Video Export] Não foi possível adicionar áudio ao stream:', error)
+      // Continuar sem áudio se falhar
+      stream = canvasStream
+    }
 
     // Configurar MediaRecorder
     const mediaRecorder = new MediaRecorder(stream, {

@@ -115,9 +115,9 @@ export async function convertWebMToMP4(
         '-c:a',
         audioCodec,
         ...(audioCodec === 'aac'
-          ? ['-b:a', '128k']
+          ? ['-b:a', '192k', '-ar', '48000', '-ac', '2']
           : audioCodec === 'libmp3lame'
-            ? ['-b:a', '192k']
+            ? ['-b:a', '192k', '-ar', '48000', '-ac', '2']
             : []),
         'output.mp4',
       ])
