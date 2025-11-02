@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
@@ -26,6 +26,7 @@ import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportQueueButton } from './video-export-queue-button'
+import { TemplateAIChat } from './template-ai-chat'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -146,7 +147,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 }
 
 type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'creatives' | null
-type RightPanel = 'properties' | 'effects' | 'layers' | null
+type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -713,12 +714,14 @@ function TemplateEditorContent() {
                 {activeRightPanel === 'properties' && 'Propriedades'}
                 {activeRightPanel === 'effects' && 'Efeitos'}
                 {activeRightPanel === 'layers' && 'Camadas'}
+                {activeRightPanel === 'chat' && 'Chat com IA'}
               </h2>
             </div>
-            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' ? '' : 'overflow-y-auto p-4'}`}>
+            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' || activeRightPanel === 'chat' ? '' : 'overflow-y-auto p-4'}`}>
               {activeRightPanel === 'properties' && <PropertiesPanel />}
               {activeRightPanel === 'effects' && <EffectsPanel />}
               {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
+              {activeRightPanel === 'chat' && <TemplateAIChat />}
             </div>
           </aside>
         )}
@@ -742,6 +745,12 @@ function TemplateEditorContent() {
             label="Camadas"
             active={activeRightPanel === 'layers'}
             onClick={() => toggleRightPanel('layers')}
+          />
+          <ToolbarButton
+            icon={<MessageSquare className="h-5 w-5" />}
+            label="Chat"
+            active={activeRightPanel === 'chat'}
+            onClick={() => toggleRightPanel('chat')}
           />
         </aside>
       </div>
