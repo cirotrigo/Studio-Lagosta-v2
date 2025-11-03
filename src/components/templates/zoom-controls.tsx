@@ -56,6 +56,7 @@ export function ZoomControls({
   className,
   showOnMobile = true,
 }: ZoomControlsProps) {
+  const [isHovered, setIsHovered] = React.useState(false)
   const zoomPercentage = Math.round(zoom * 100)
 
   const handleZoomIn = () => {
@@ -79,114 +80,109 @@ export function ZoomControls({
     <TooltipProvider delayDuration={300}>
       <div
         className={cn(
-          'fixed bottom-6 left-1/2 z-50 -translate-x-1/2',
-          'flex items-center gap-1 rounded-full border border-border bg-background/95 p-1.5 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80',
+          'absolute bottom-20 right-4 z-50',
+          'flex flex-col items-center gap-1.5 rounded-2xl border border-border/40 bg-background/70 p-1.5 shadow-xl backdrop-blur-xl',
+          'transition-all duration-300',
+          isHovered ? 'bg-background/90 scale-105' : 'bg-background/70',
           !showOnMobile && 'hidden md:flex',
           className
         )}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
       >
-        {/* Zoom Out */}
+        {/* Zoom In */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full"
-              onClick={handleZoomOut}
-              disabled={!canZoomOut}
+            <button
+              className={cn(
+                'h-9 w-9 rounded-full flex items-center justify-center',
+                'transition-all duration-200 active:scale-95',
+                canZoomIn
+                  ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
+                  : 'text-muted-foreground/30 cursor-not-allowed'
+              )}
+              onClick={handleZoomIn}
+              disabled={!canZoomIn}
             >
-              <ZoomOut className="h-4 w-4" />
-              <span className="sr-only">Diminuir zoom</span>
-            </Button>
+              <ZoomIn className="h-4 w-4" />
+              <span className="sr-only">Aumentar zoom</span>
+            </button>
           </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>Diminuir zoom</p>
-            <p className="text-xs text-muted-foreground">Ctrl + -</p>
+          <TooltipContent side="left" className="text-xs">
+            <p>Aumentar zoom</p>
+            <p className="text-[10px] text-muted-foreground">Ctrl + +</p>
           </TooltipContent>
         </Tooltip>
 
         {/* Zoom Percentage */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-9 min-w-[4rem] rounded-full px-3 text-xs font-medium tabular-nums"
+            <button
+              className={cn(
+                'h-7 w-9 rounded-full flex items-center justify-center',
+                'text-[10px] font-semibold tabular-nums',
+                'text-foreground/70 hover:text-foreground hover:bg-accent/50',
+                'transition-all duration-200 active:scale-95'
+              )}
               onClick={handleReset}
             >
               {zoomPercentage}%
-            </Button>
+            </button>
           </TooltipTrigger>
-          <TooltipContent side="top">
+          <TooltipContent side="left" className="text-xs">
             <p>Resetar para 100%</p>
-            <p className="text-xs text-muted-foreground">Ctrl + 0</p>
+            <p className="text-[10px] text-muted-foreground">Ctrl + 0</p>
           </TooltipContent>
         </Tooltip>
 
-        {/* Zoom In */}
+        {/* Zoom Out */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9 rounded-full"
-              onClick={handleZoomIn}
-              disabled={!canZoomIn}
+            <button
+              className={cn(
+                'h-9 w-9 rounded-full flex items-center justify-center',
+                'transition-all duration-200 active:scale-95',
+                canZoomOut
+                  ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
+                  : 'text-muted-foreground/30 cursor-not-allowed'
+              )}
+              onClick={handleZoomOut}
+              disabled={!canZoomOut}
             >
-              <ZoomIn className="h-4 w-4" />
-              <span className="sr-only">Aumentar zoom</span>
-            </Button>
+              <ZoomOut className="h-4 w-4" />
+              <span className="sr-only">Diminuir zoom</span>
+            </button>
           </TooltipTrigger>
-          <TooltipContent side="top">
-            <p>Aumentar zoom</p>
-            <p className="text-xs text-muted-foreground">Ctrl + +</p>
+          <TooltipContent side="left" className="text-xs">
+            <p>Diminuir zoom</p>
+            <p className="text-[10px] text-muted-foreground">Ctrl + -</p>
           </TooltipContent>
         </Tooltip>
 
-        {/* Separator */}
+        {/* Separator + Fit to Screen */}
         {onFitToScreen && (
-          <div className="mx-1 h-6 w-px bg-border" />
-        )}
-
-        {/* Fit to Screen */}
-        {onFitToScreen && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-full"
-                onClick={onFitToScreen}
-              >
-                <Maximize2 className="h-4 w-4" />
-                <span className="sr-only">Ajustar à tela</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p>Ajustar à tela</p>
-              <p className="text-xs text-muted-foreground">Centraliza e ajusta zoom</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-
-        {/* Reset View (apenas se zoom != 1) */}
-        {zoom !== 1 && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 rounded-full"
-                onClick={handleReset}
-              >
-                <RotateCcw className="h-4 w-4" />
-                <span className="sr-only">Resetar visualização</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <p>Resetar para 100%</p>
-            </TooltipContent>
-          </Tooltip>
+          <>
+            <div className="my-0.5 h-px w-5 bg-border/40" />
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={cn(
+                    'h-9 w-9 rounded-full flex items-center justify-center',
+                    'text-foreground/80 hover:text-foreground hover:bg-accent/50',
+                    'transition-all duration-200 active:scale-95'
+                  )}
+                  onClick={onFitToScreen}
+                >
+                  <Maximize2 className="h-4 w-4" />
+                  <span className="sr-only">Ajustar à tela</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="text-xs">
+                <p>Ajustar à tela</p>
+                <p className="text-[10px] text-muted-foreground">Reset zoom e centralizar</p>
+              </TooltipContent>
+            </Tooltip>
+          </>
         )}
       </div>
     </TooltipProvider>
@@ -194,7 +190,8 @@ export function ZoomControls({
 }
 
 /**
- * Versão compacta para mobile
+ * Versão compacta e minimalista para mobile
+ * Design ultra-clean com opacidade reduzida e interações suaves
  */
 export function ZoomControlsMobile({
   zoom,
@@ -203,6 +200,7 @@ export function ZoomControlsMobile({
   maxZoom = 5,
   className,
 }: Omit<ZoomControlsProps, 'onFitToScreen' | 'showOnMobile'>) {
+  const [isHovered, setIsHovered] = React.useState(false)
   const zoomPercentage = Math.round(zoom * 100)
 
   const handleZoomIn = () => {
@@ -216,7 +214,7 @@ export function ZoomControlsMobile({
   }
 
   const handleReset = () => {
-    onZoomChange(1)
+    onZoomChange(0.25) // Reset para fit-to-screen no mobile
   }
 
   const canZoomIn = zoom < maxZoom
@@ -225,42 +223,64 @@ export function ZoomControlsMobile({
   return (
     <div
       className={cn(
-        'fixed bottom-4 right-4 z-50',
-        'flex flex-col items-center gap-2 rounded-2xl border border-border bg-background/95 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/80',
+        'fixed bottom-24 right-3 z-[10000]',
+        'flex flex-col items-center gap-1.5 rounded-2xl border border-border/40 bg-background/70 p-1.5 shadow-xl backdrop-blur-xl',
+        'transition-all duration-300',
+        isHovered ? 'bg-background/90 scale-105' : 'bg-background/70',
         className
       )}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onTouchStart={() => setIsHovered(true)}
+      onTouchEnd={() => setTimeout(() => setIsHovered(false), 2000)}
     >
       {/* Zoom In */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-10 w-10 rounded-full"
+      <button
+        className={cn(
+          'h-9 w-9 rounded-full flex items-center justify-center',
+          'transition-all duration-200',
+          'active:scale-95',
+          canZoomIn
+            ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
+            : 'text-muted-foreground/30 cursor-not-allowed'
+        )}
         onClick={handleZoomIn}
         disabled={!canZoomIn}
+        aria-label="Aumentar zoom"
       >
-        <ZoomIn className="h-5 w-5" />
-      </Button>
+        <ZoomIn className="h-4 w-4" />
+      </button>
 
       {/* Zoom Percentage - clicável para reset */}
-      <Button
-        variant="ghost"
-        size="sm"
-        className="h-8 w-10 rounded-full p-0 text-xs font-medium tabular-nums"
+      <button
+        className={cn(
+          'h-7 w-9 rounded-full flex items-center justify-center',
+          'text-[10px] font-semibold tabular-nums',
+          'text-foreground/70 hover:text-foreground hover:bg-accent/50',
+          'transition-all duration-200 active:scale-95'
+        )}
         onClick={handleReset}
+        aria-label={`Zoom: ${zoomPercentage}% (toque para ajustar)`}
       >
         {zoomPercentage}%
-      </Button>
+      </button>
 
       {/* Zoom Out */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-10 w-10 rounded-full"
+      <button
+        className={cn(
+          'h-9 w-9 rounded-full flex items-center justify-center',
+          'transition-all duration-200',
+          'active:scale-95',
+          canZoomOut
+            ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
+            : 'text-muted-foreground/30 cursor-not-allowed'
+        )}
         onClick={handleZoomOut}
         disabled={!canZoomOut}
+        aria-label="Diminuir zoom"
       >
-        <ZoomOut className="h-5 w-5" />
-      </Button>
+        <ZoomOut className="h-4 w-4" />
+      </button>
     </div>
   )
 }

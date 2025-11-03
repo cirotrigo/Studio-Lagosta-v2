@@ -27,6 +27,7 @@ import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportQueueButton } from './video-export-queue-button'
 import { TemplateAIChat } from './template-ai-chat'
+import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -146,8 +147,8 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'creatives' | null
-type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | null
+type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -469,14 +470,6 @@ function TemplateEditorContent() {
             <Wand2 className="h-5 w-5" />
             <span className="text-xs">IA ✨</span>
           </Button>
-          <Button
-            variant={activePanel === 'creatives' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('creatives')}
-          >
-            <FileImage className="h-5 w-5" />
-            <span className="text-xs">Criativos</span>
-          </Button>
         </div>
 
         {/* Tool Panel Content */}
@@ -492,7 +485,6 @@ function TemplateEditorContent() {
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
-                {activePanel === 'creatives' && 'Criativos'}
               </h3>
             </div>
             {activePanel === 'text' && <TextToolsPanel />}
@@ -503,7 +495,6 @@ function TemplateEditorContent() {
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
-            {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
           </div>
         )}
       </MobileToolsDrawer>
@@ -599,12 +590,6 @@ function TemplateEditorContent() {
           />
           <div className="flex-1" />
           <ToolbarButton
-            icon={<FileImage className="h-5 w-5" />}
-            label="Criativos"
-            active={activePanel === 'creatives'}
-            onClick={() => togglePanel('creatives')}
-          />
-          <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
             label="Templates"
             active={activePanel === 'templates'}
@@ -626,7 +611,6 @@ function TemplateEditorContent() {
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
-                {activePanel === 'creatives' && 'Criativos'}
               </h2>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
@@ -639,7 +623,6 @@ function TemplateEditorContent() {
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
-              {activePanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
             </div>
           </aside>
         )}
@@ -696,8 +679,20 @@ function TemplateEditorContent() {
             </div>
           )}
 
-          <div className="flex-1 h-full overflow-hidden">
+          <div className="flex-1 h-full overflow-hidden relative">
             <EditorCanvas />
+
+            {/* Zoom Controls - Desktop minimalista */}
+            <ZoomControls
+              zoom={zoom}
+              onZoomChange={setZoom}
+              minZoom={0.1}
+              maxZoom={5}
+              onFitToScreen={() => {
+                setZoom(1)
+                setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+              }}
+            />
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}
@@ -715,19 +710,27 @@ function TemplateEditorContent() {
                 {activeRightPanel === 'effects' && 'Efeitos'}
                 {activeRightPanel === 'layers' && 'Camadas'}
                 {activeRightPanel === 'chat' && 'Chat com IA'}
+                {activeRightPanel === 'creatives' && 'Criativos'}
               </h2>
             </div>
-            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' || activeRightPanel === 'chat' ? '' : 'overflow-y-auto p-4'}`}>
+            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' || activeRightPanel === 'chat' || activeRightPanel === 'creatives' ? '' : 'overflow-y-auto p-4'}`}>
               {activeRightPanel === 'properties' && <PropertiesPanel />}
               {activeRightPanel === 'effects' && <EffectsPanel />}
               {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
               {activeRightPanel === 'chat' && <TemplateAIChat />}
+              {activeRightPanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
             </div>
           </aside>
         )}
 
         {/* Right Vertical Icon Toolbar - Always Visible */}
         <aside className="flex w-16 flex-shrink-0 flex-col border-l border-border/40 bg-card">
+          <ToolbarButton
+            icon={<FileImage className="h-5 w-5" />}
+            label="Criativos"
+            active={activeRightPanel === 'creatives'}
+            onClick={() => toggleRightPanel('creatives')}
+          />
           <ToolbarButton
             icon={<Settings className="h-5 w-5" />}
             label="Propriedades"
@@ -766,47 +769,19 @@ function TemplateEditorContent() {
         {/* Floating Controls - Renderizados com Portal fora da hierarquia do editor */}
         {typeof window !== 'undefined' && createPortal(
           <>
-            {/* Zoom Controls - Vertical na lateral direita */}
-            <div className="fixed bottom-24 right-4 z-[10000] flex flex-col gap-2">
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all"
-                onClick={() => {
-                  const newZoom = Math.min(zoom * 1.2, 2)
-                  setZoom(newZoom)
-                }}
-                aria-label="Aumentar zoom"
-              >
-                <ZoomIn className="h-5 w-5" />
-              </Button>
-
-              <button
-                className="h-12 w-12 rounded-full shadow-lg bg-background/95 backdrop-blur
-                           flex items-center justify-center text-xs font-semibold
-                           hover:bg-muted transition-colors active:scale-95"
-                onClick={() => {
-                  setZoom(0.25)
+            {/* Zoom Controls - Componente minimalista otimizado */}
+            <ZoomControlsMobile
+              zoom={zoom}
+              onZoomChange={(newZoom) => {
+                setZoom(newZoom)
+                // Trigger resize event para ajustar canvas
+                if (newZoom === 0.25) {
                   setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
-                }}
-                aria-label={`Zoom atual: ${Math.round(zoom * 100)}% (clique para resetar)`}
-              >
-                {Math.round(zoom * 100)}%
-              </button>
-
-              <Button
-                size="icon"
-                variant="secondary"
-                className="h-12 w-12 rounded-full shadow-lg hover:shadow-xl transition-all"
-                onClick={() => {
-                  const newZoom = Math.max(zoom / 1.2, 0.1)
-                  setZoom(newZoom)
-                }}
-                aria-label="Diminuir zoom"
-              >
-                <ZoomOut className="h-5 w-5" />
-              </Button>
-            </div>
+                }
+              }}
+              minZoom={0.1}
+              maxZoom={2}
+            />
 
             {/* Bottom Toolbar - Ferramentas e Salvar */}
             <div className="fixed bottom-4 left-4 right-4 z-[10000]">
