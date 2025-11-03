@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
 import { PostComposer } from '@/components/posts/post-composer'
@@ -278,16 +278,24 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
 
                           {/* Content */}
                           <div className="flex-1 min-w-0">
-                            {/* Horário em destaque */}
+                            {/* Dia da semana e horário em destaque */}
                             <div className="text-sm font-bold group-hover:text-primary transition-colors">
-                              {post.scheduledDatetime && new Date(post.scheduledDatetime).toLocaleTimeString('pt-BR', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {post.scheduledDatetime && (() => {
+                                const date = new Date(post.scheduledDatetime)
+                                const dayOfWeek = date.toLocaleDateString('pt-BR', { weekday: 'long' })
+                                const time = date.toLocaleTimeString('pt-BR', {
+                                  hour: '2-digit',
+                                  minute: '2-digit'
+                                })
+                                // Capitalizar primeira letra do dia
+                                const capitalizedDay = dayOfWeek.charAt(0).toUpperCase() + dayOfWeek.slice(1)
+                                return `${capitalizedDay} às ${time}`
+                              })()}
                             </div>
 
-                            {/* Tipo de post */}
-                            <div className="mt-1">
+                            {/* Tipo de post e Status */}
+                            <div className="mt-1 flex items-center gap-1.5">
+                              {/* Badge de tipo */}
                               <span className={cn(
                                 'inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold uppercase tracking-wide',
                                 post.postType === 'STORY' && 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
@@ -297,6 +305,32 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
                               )}>
                                 {postTypeLabel}
                               </span>
+
+                              {/* Status indicator */}
+                              {post.status === 'SCHEDULED' && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-500/20 text-orange-600 dark:text-orange-400">
+                                  <Clock className="h-2.5 w-2.5" />
+                                  <span className="text-[9px] font-semibold uppercase">Programado</span>
+                                </span>
+                              )}
+                              {post.status === 'SENT' && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-600 dark:text-green-400">
+                                  <CheckCircle2 className="h-2.5 w-2.5" />
+                                  <span className="text-[9px] font-semibold uppercase">Postado</span>
+                                </span>
+                              )}
+                              {post.status === 'FAILED' && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-red-500/20 text-red-600 dark:text-red-400">
+                                  <XCircle className="h-2.5 w-2.5" />
+                                  <span className="text-[9px] font-semibold uppercase">Falhou</span>
+                                </span>
+                              )}
+                              {post.status === 'PROCESSING' && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400">
+                                  <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                                  <span className="text-[9px] font-semibold uppercase">Processando</span>
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
