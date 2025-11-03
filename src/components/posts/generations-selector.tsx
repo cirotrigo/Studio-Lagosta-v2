@@ -19,7 +19,8 @@ interface Generation {
 }
 
 // Helper to detect if a URL is a video
-function isVideoUrl(url: string): boolean {
+function isVideoUrl(url: string | null | undefined): boolean {
+  if (!url) return false
   const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.flv', '.m4v']
   const lowerUrl = url.toLowerCase()
   return videoExtensions.some(ext => lowerUrl.includes(ext))
@@ -121,6 +122,11 @@ export function GenerationsSelector({
             const selectionIndex = selectedIds.indexOf(gen.id)
             const isVideo = isVideoUrl(gen.resultUrl)
             const displayUrl = isVideo && gen.thumbnailUrl ? gen.thumbnailUrl : gen.resultUrl
+
+            // Skip if no valid URL
+            if (!displayUrl) {
+              return null
+            }
 
             return (
               <Card
