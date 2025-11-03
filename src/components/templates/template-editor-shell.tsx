@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar } from 'lucide-react'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
@@ -28,6 +28,7 @@ import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportQueueButton } from './video-export-queue-button'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
+import { AgendaPanel } from './panels/agenda-panel'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
@@ -148,7 +149,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 }
 
 type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | null
-type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | null
+type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | 'agenda' | null
 
 function TemplateEditorContent() {
   const { toast } = useToast()
@@ -711,14 +712,16 @@ function TemplateEditorContent() {
                 {activeRightPanel === 'layers' && 'Camadas'}
                 {activeRightPanel === 'chat' && 'Chat com IA'}
                 {activeRightPanel === 'creatives' && 'Criativos'}
+                {activeRightPanel === 'agenda' && 'Agenda'}
               </h2>
             </div>
-            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' || activeRightPanel === 'chat' || activeRightPanel === 'creatives' ? '' : 'overflow-y-auto p-4'}`}>
+            <div className={`flex-1 min-h-0 ${activeRightPanel === 'layers' || activeRightPanel === 'chat' || activeRightPanel === 'creatives' || activeRightPanel === 'agenda' ? '' : 'overflow-y-auto p-4'}`}>
               {activeRightPanel === 'properties' && <PropertiesPanel />}
               {activeRightPanel === 'effects' && <EffectsPanel />}
               {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
               {activeRightPanel === 'chat' && <TemplateAIChat />}
               {activeRightPanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
+              {activeRightPanel === 'agenda' && <AgendaPanel projectId={projectId} />}
             </div>
           </aside>
         )}
@@ -732,10 +735,10 @@ function TemplateEditorContent() {
             onClick={() => toggleRightPanel('creatives')}
           />
           <ToolbarButton
-            icon={<Settings className="h-5 w-5" />}
-            label="Propriedades"
-            active={activeRightPanel === 'properties'}
-            onClick={() => toggleRightPanel('properties')}
+            icon={<Calendar className="h-5 w-5" />}
+            label="Agenda"
+            active={activeRightPanel === 'agenda'}
+            onClick={() => toggleRightPanel('agenda')}
           />
           <ToolbarButton
             icon={<Sparkles className="h-5 w-5" />}
@@ -754,6 +757,13 @@ function TemplateEditorContent() {
             label="Chat"
             active={activeRightPanel === 'chat'}
             onClick={() => toggleRightPanel('chat')}
+          />
+          <div className="flex-1" />
+          <ToolbarButton
+            icon={<Settings className="h-5 w-5" />}
+            label="Propriedades"
+            active={activeRightPanel === 'properties'}
+            onClick={() => toggleRightPanel('properties')}
           />
         </aside>
       </div>
