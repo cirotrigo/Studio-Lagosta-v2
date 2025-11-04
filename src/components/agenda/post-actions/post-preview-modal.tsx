@@ -27,6 +27,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { usePostActions } from '@/hooks/use-post-actions'
+import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { RescheduleDialog } from './reschedule-dialog'
 import { toast } from 'sonner'
 import { getPostDate } from '../calendar/calendar-utils'
@@ -44,7 +45,30 @@ interface PostPreviewModalProps {
 export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewModalProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
+  const [isPolling, setIsPolling] = useState(false)
   const { publishNow, deletePost, duplicatePost } = usePostActions(post.projectId)
+
+  // Poll for post status updates after publishing
+  usePostStatusPolling({
+    postId: post.id,
+    enabled: isPolling && post.status === 'POSTING',
+    onSuccess: (publishedUrl, postType) => {
+      setIsPolling(false)
+      toast.success('Post confirmado como publicado!', {
+        description: publishedUrl ? 'Visualize no Instagram' : undefined,
+        action: publishedUrl ? {
+          label: 'Ver Post',
+          onClick: () => window.open(publishedUrl, '_blank')
+        } : undefined
+      })
+    },
+    onFailure: (errorMessage) => {
+      setIsPolling(false)
+      toast.error('Falha ao publicar', {
+        description: errorMessage
+      })
+    }
+  })
 
   const mediaUrls = post.mediaUrls || []
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
@@ -121,7 +145,10 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const handlePublishNow = async () => {
     try {
       await publishNow.mutateAsync(post.id)
-      toast.success('Post publicado com sucesso!')
+      toast.success('Post enviado! Aguardando confirmação...', {
+        description: 'O status será atualizado automaticamente'
+      })
+      setIsPolling(true) // Start polling for status updates
       onClose()
     } catch (_error) {
       toast.error('Erro ao publicar post')
