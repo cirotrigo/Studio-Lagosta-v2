@@ -138,7 +138,7 @@ export function MediaUploadSystem({
       return api.post(`/api/google-drive-download`, { projectId, fileIds }) as Promise<GoogleDriveDownloadResponse>
     },
     onSuccess: (data) => {
-      // Adicionar arquivos baixados à seleção
+      // Convert downloaded files to MediaItem format
       const newMedia: MediaItem[] = data.files.map((file) => ({
         id: file.id,
         type: 'google-drive' as const,
@@ -148,7 +148,11 @@ export function MediaUploadSystem({
         size: file.size,
         mimeType: file.mimeType,
       }))
-      onSelectionChange([...selectedMedia, ...newMedia])
+
+      // Keep non-google-drive media and replace all google-drive media with the new list
+      // This prevents duplicates when downloading multiple times
+      const otherMedia = selectedMedia.filter(m => m.type !== 'google-drive')
+      onSelectionChange([...otherMedia, ...newMedia])
       toast.success(`${data.uploaded} arquivo(s) preparado(s)`)
     },
     onError: (error) => {
@@ -211,6 +215,7 @@ export function MediaUploadSystem({
 
   // Handler para upload local
   const handleLocalUpload = useCallback((files: UploadedFile[]) => {
+    // Convert uploaded files to MediaItem format
     const newMedia: MediaItem[] = files.map(f => ({
       id: f.id,
       type: 'upload' as const,
@@ -220,6 +225,8 @@ export function MediaUploadSystem({
       size: f.size,
     }))
 
+    // Keep non-upload media and replace all upload media with the new list
+    // This prevents duplicates since LocalFileUploader sends the complete list
     const otherMedia = selectedMedia.filter(m => m.type !== 'upload')
     onSelectionChange([...otherMedia, ...newMedia])
   }, [selectedMedia, onSelectionChange])
