@@ -14,53 +14,40 @@ export async function GET() {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
   }
 
-  const ownedProjects = await db.project.findMany({
-    where: { userId },
-    include: {
-      _count: {
-        select: { Template: true, Generation: true },
-      },
-      Logo: {
-        where: { isProjectLogo: true },
-        take: 1,
-      },
-      organizationProjects: {
-        include: {
-          organization: {
-            select: {
-              clerkOrgId: true,
-              name: true,
-            },
-          },
-        },
-      },
-    },
-    orderBy: { updatedAt: 'desc' },
-  })
-
-  let sharedProjects: typeof ownedProjects = []
-
-  if (orgId) {
-    sharedProjects = await db.project.findMany({
-      where: {
-        organizationProjects: {
-          some: {
-            organization: {
-              clerkOrgId: orgId,
-            },
-          },
-        },
-      },
-      include: {
+  // Parallel fetching for owned and shared projects
+  const [ownedProjects, sharedProjects] = await Promise.all([
+    // Owned projects query
+    db.project.findMany({
+      where: { userId },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        logoUrl: true,
+        googleDriveFolderId: true,
+        googleDriveFolderName: true,
+        instagramAccountId: true,
+        instagramUsername: true,
+        createdAt: true,
+        updatedAt: true,
+        userId: true,
+        workspaceId: true,
         _count: {
           select: { Template: true, Generation: true },
         },
         Logo: {
           where: { isProjectLogo: true },
           take: 1,
+          select: {
+            id: true,
+            fileUrl: true,
+          },
         },
         organizationProjects: {
-          include: {
+          select: {
+            defaultCanEdit: true,
+            sharedAt: true,
             organization: {
               select: {
                 clerkOrgId: true,
@@ -71,62 +58,73 @@ export async function GET() {
         },
       },
       orderBy: { updatedAt: 'desc' },
-    })
-  }
+    }),
 
+    // Shared projects query (only if orgId exists)
+    orgId ? db.project.findMany({
+      where: {
+        organizationProjects: {
+          some: {
+            organization: {
+              clerkOrgId: orgId,
+            },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        description: true,
+        status: true,
+        logoUrl: true,
+        googleDriveFolderId: true,
+        googleDriveFolderName: true,
+        instagramAccountId: true,
+        instagramUsername: true,
+        createdAt: true,
+        updatedAt: true,
+        userId: true,
+        workspaceId: true,
+        _count: {
+          select: { Template: true, Generation: true },
+        },
+        Logo: {
+          where: { isProjectLogo: true },
+          take: 1,
+          select: {
+            id: true,
+            fileUrl: true,
+          },
+        },
+        organizationProjects: {
+          select: {
+            defaultCanEdit: true,
+            sharedAt: true,
+            organization: {
+              select: {
+                clerkOrgId: true,
+                name: true,
+              },
+            },
+          },
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+    }) : Promise.resolve([]),
+  ])
+
+  // Combine and deduplicate projects
   const ownedIds = new Set(ownedProjects.map((project) => project.id))
   const combined = [...ownedProjects, ...sharedProjects.filter((project) => !ownedIds.has(project.id))]
 
-  const projectIds = combined.map((project) => project.id)
-  const now = new Date()
-
-  // Count scheduled posts: future scheduled posts OR active recurring posts
-  // For recurring posts, we need to fetch and check the endDate from JSON
-  const allScheduledPosts = projectIds.length === 0
-    ? []
-    : await db.socialPost.findMany({
-        where: {
-          projectId: { in: projectIds },
-          status: { in: ['SCHEDULED', 'PROCESSING'] },
-        },
-        select: {
-          projectId: true,
-          scheduleType: true,
-          scheduledDatetime: true,
-          recurringConfig: true,
-        },
-      })
-
-  // Filter posts based on schedule type
-  const activePosts = allScheduledPosts.filter(post => {
-    // For non-recurring posts, check if scheduled time is in the future
-    if (post.scheduleType !== 'RECURRING') {
-      return post.scheduledDatetime && post.scheduledDatetime >= now
-    }
-
-    // For recurring posts, check if they're still active (no endDate or endDate in future)
-    if (post.recurringConfig && typeof post.recurringConfig === 'object') {
-      const config = post.recurringConfig as { endDate?: string }
-      if (!config.endDate) return true // No end date = always active
-      const endDate = new Date(config.endDate)
-      return endDate >= now
-    }
-
-    return false
-  })
-
-  // Group by projectId
-  const countsMap = activePosts.reduce<Record<number, number>>((acc, post) => {
-    acc[post.projectId] = (acc[post.projectId] || 0) + 1
-    return acc
-  }, {})
-
+  // OPTIMIZATION: Return projects immediately without scheduled post counts
+  // Scheduled post counts can be fetched separately on-demand via /api/projects/scheduled-counts
   const response = combined.map((project) => {
     const { organizationProjects, ...rest } = project
 
     return {
       ...rest,
-      scheduledPostCount: countsMap[project.id] ?? 0,
+      scheduledPostCount: 0, // Default to 0, fetch separately if needed
       organizationShares: organizationProjects.map((share) => ({
         organizationId: share.organization.clerkOrgId,
         organizationName: share.organization.name,

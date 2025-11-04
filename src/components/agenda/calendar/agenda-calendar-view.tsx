@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
+import { useScheduledPostCounts } from '@/hooks/use-scheduled-counts'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useIsMobile } from '@/hooks/use-media-query'
@@ -68,10 +69,22 @@ export function AgendaCalendarView() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
 
   // Fetch user projects (channels)
-  const { data: projects } = useQuery<ProjectWithCounts[]>({
+  const { data: projectsData } = useQuery<ProjectResponse[]>({
     queryKey: ['projects'],
     queryFn: () => api.get('/api/projects'),
   })
+
+  // Fetch scheduled post counts separately for performance
+  const { data: scheduledCounts } = useScheduledPostCounts()
+
+  // Merge projects with scheduled counts
+  const projects = useMemo<ProjectWithCounts[]>(() => {
+    if (!projectsData) return []
+    return projectsData.map(project => ({
+      ...project,
+      scheduledPostCount: scheduledCounts?.[project.id] ?? 0,
+    }))
+  }, [projectsData, scheduledCounts])
 
   // Determine date range based on view mode
   const { startDate, endDate } = useMemo(() => {

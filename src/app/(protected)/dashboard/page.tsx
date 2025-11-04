@@ -11,9 +11,33 @@ import { Button } from "@/components/ui/button";
 import Image from "next/image";
 import Link from "next/link";
 import { Building2, Plus } from "lucide-react";
-import { UsageTrendChart } from "@/components/organizations/usage-trend-chart";
-import { InstagramMiniWidget } from "@/components/instagram/instagram-mini-widget";
 import { useMemo } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy load heavy components
+const UsageTrendChart = dynamic(
+  () => import("@/components/organizations/usage-trend-chart").then(mod => ({ default: mod.UsageTrendChart })),
+  {
+    loading: () => <ChartSkeleton />,
+    ssr: false
+  }
+);
+
+const InstagramMiniWidget = dynamic(
+  () => import("@/components/instagram/instagram-mini-widget").then(mod => ({ default: mod.InstagramMiniWidget })),
+  {
+    loading: () => <div className="mt-2 h-16 animate-pulse bg-muted/50 rounded" />,
+    ssr: false
+  }
+);
+
+function ChartSkeleton() {
+  return (
+    <Card className="p-4">
+      <Skeleton className="h-[300px] w-full" />
+    </Card>
+  );
+}
 
 export default function DashboardPage() {
   const { user } = useUser();

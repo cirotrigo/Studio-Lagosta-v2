@@ -47,6 +47,29 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
   serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'ffmpeg-static'],
 
+  // Performance optimizations
+  experimental: {
+    optimizePackageImports: [
+      '@radix-ui/react-dialog',
+      '@radix-ui/react-dropdown-menu',
+      '@radix-ui/react-select',
+      '@radix-ui/react-accordion',
+      '@radix-ui/react-tabs',
+      '@radix-ui/react-popover',
+      'lucide-react',
+      'recharts',
+      'framer-motion',
+    ],
+    webpackMemoryOptimizations: true,
+  },
+
+  // Compiler optimizations
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error', 'warn'],
+    } : false,
+  },
+
   // Optimize tracing so Vercel functions stay below size limits
   outputFileTracingExcludes: {
     '*': [
@@ -127,6 +150,38 @@ const nextConfig: NextConfig = {
         config.externals.push('@napi-rs/canvas');
         config.externals.push('canvas');
       }
+    }
+
+    // Fix HMR issues with Tailwind v4 CSS extraction
+    if (dev && !isServer) {
+      config.optimization = {
+        ...config.optimization,
+        runtimeChunk: 'single',
+        splitChunks: {
+          ...config.optimization?.splitChunks,
+          cacheGroups: {
+            ...config.optimization?.splitChunks?.cacheGroups,
+            styles: {
+              name: 'styles',
+              type: 'css/mini-extract',
+              chunks: 'all',
+              enforce: true,
+            },
+          },
+        },
+      };
+    }
+
+    // Reduce webpack cache serialization size
+    if (dev) {
+      const originalCache = config.cache;
+      config.cache = originalCache === false ? false : {
+        type: 'filesystem',
+        compression: 'gzip',
+        maxMemoryGenerations: 3,
+        maxAge: 1000 * 60 * 60 * 24, // 1 day
+        ...(typeof originalCache === 'object' ? originalCache : {}),
+      };
     }
 
     return config;

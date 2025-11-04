@@ -200,6 +200,8 @@ model Project {
   @@index([status])
   @@index([userId])
   @@index([workspaceId])
+  @@index([userId, updatedAt(sort: Desc)])
+  @@index([updatedAt(sort: Desc)])
 }
 
 model Organization {
@@ -934,6 +936,9 @@ model SocialPost {
   @@index([status])
   @@index([scheduledDatetime])
   @@index([createdAt])
+  @@index([projectId, status])
+  @@index([status, scheduledDatetime])
+  @@index([scheduleType])
   @@index([generationId])
   @@index([parentPostId])
 }
