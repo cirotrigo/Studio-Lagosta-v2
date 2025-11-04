@@ -53,6 +53,11 @@ export function LocalFileUploader({
         })
 
         if (!response.ok) {
+          // Handle 413 Payload Too Large error specifically
+          if (response.status === 413) {
+            throw new Error(`A imagem "${file.name}" é muito grande. Reduza o tamanho e tente novamente.`)
+          }
+
           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
           console.error('Upload failed:', {
             status: response.status,
