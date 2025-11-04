@@ -5,6 +5,7 @@ import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credit
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { put } from '@vercel/blob'
 import { hasProjectWriteAccess } from '@/lib/projects/access'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 
@@ -135,6 +136,34 @@ export async function POST(
     })
 
     console.log('[TEMPLATE_EXPORT] Generation saved:', generation.id)
+
+    // Backup automático para Google Drive (ARTES LAGOSTA)
+    if (template.Project.googleDriveFolderId && googleDriveService.isEnabled()) {
+      try {
+        console.log('[TEMPLATE_EXPORT] Starting Google Drive backup...')
+        const backup = await googleDriveService.uploadCreativeToArtesLagosta(
+          buffer,
+          template.Project.googleDriveFolderId,
+          template.Project.name,
+        )
+
+        // Atualizar geração com informações do backup
+        await db.generation.update({
+          where: { id: generation.id },
+          data: {
+            googleDriveFileId: backup.fileId,
+            googleDriveBackupUrl: backup.publicUrl,
+          },
+        })
+
+        console.log('✅ Backup Drive concluído:', backup.fileId)
+      } catch (backupError) {
+        console.warn('⚠️ Backup Drive falhou (não afeta a geração):', backupError)
+        // Não retornar erro - backup é opcional
+      }
+    } else {
+      console.log('[TEMPLATE_EXPORT] Google Drive backup skipped (not configured or disabled)')
+    }
 
     return NextResponse.json({
       success: true,
