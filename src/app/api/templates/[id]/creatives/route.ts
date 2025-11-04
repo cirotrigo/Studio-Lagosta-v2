@@ -83,6 +83,7 @@ export async function GET(
         templateName: true,
         projectName: true,
         fieldValues: true,
+        templateId: true,
         Template: {
           select: {
             dimensions: true,

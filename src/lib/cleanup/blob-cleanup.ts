@@ -27,7 +27,7 @@ export async function cleanupExpiredBlobs(): Promise<CleanupStats> {
     // 1. Buscar posts elegíveis para cleanup
     const posts = await db.socialPost.findMany({
       where: {
-        status: PostStatus.SENT,
+        status: PostStatus.POSTED,
         blobPathnames: { isEmpty: false },
         OR: [
           // Feed posts: sentAt + 7 dias
@@ -59,7 +59,7 @@ export async function cleanupExpiredBlobs(): Promise<CleanupStats> {
       where: {
         postType: 'STORY',
         isRecurring: true,
-        status: PostStatus.SENT,
+        status: PostStatus.POSTED,
         blobPathnames: { isEmpty: false },
       },
       select: {

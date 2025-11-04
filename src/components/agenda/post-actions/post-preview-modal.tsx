@@ -341,14 +341,15 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
             <Badge
               variant={
                 post.status === 'SCHEDULED' ? 'default' :
-                post.status === 'SENT' ? 'secondary' :
+                post.status === 'POSTING' ? 'default' :
+                post.status === 'POSTED' ? 'secondary' :
                 post.status === 'FAILED' ? 'destructive' :
                 'outline'
               }
             >
               {post.status === 'SCHEDULED' && 'Agendado'}
-              {post.status === 'PROCESSING' && 'Processando'}
-              {post.status === 'SENT' && 'Enviado'}
+              {post.status === 'POSTING' && 'Postando...'}
+              {post.status === 'POSTED' && 'Postado'}
               {post.status === 'FAILED' && 'Falhou'}
               {post.status === 'DRAFT' && 'Rascunho'}
             </Badge>
@@ -356,28 +357,15 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
           {/* Ações */}
           <div className="flex items-center gap-2 pt-4 border-t">
-            {/* Botão "Ver no Instagram" - só aparece se post foi publicado e tem URL */}
-            {post.status === 'SENT' && post.publishedUrl && (
-              <Button
-                variant="default"
-                size="sm"
-                className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
-                onClick={() => window.open(post.publishedUrl!, '_blank', 'noopener,noreferrer')}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                Ver no Instagram
-              </Button>
-            )}
-
-            {/* Se foi enviado mas é Story (sem URL) */}
-            {post.status === 'SENT' && !post.publishedUrl && post.postType === 'STORY' && (
-              <div className="flex-1 text-sm text-muted-foreground italic text-center py-2">
-                ✓ Story publicado (sem URL permanente)
+            {/* Mensagem quando post foi publicado */}
+            {post.status === 'POSTED' && (
+              <div className="flex-1 text-sm text-green-600 dark:text-green-400 italic text-center py-2 bg-green-50 dark:bg-green-950/20 rounded-md">
+                ✓ Post publicado com sucesso!
               </div>
             )}
 
             {/* Botões padrão para posts não enviados */}
-            {post.status !== 'SENT' && (
+            {post.status !== 'POSTED' && post.status !== 'POSTING' && (
               <>
                 <Button
                   variant="outline"
@@ -406,7 +394,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               variant="outline"
               size="sm"
               onClick={handleEdit}
-              disabled={!onEdit || post.status === 'SENT'}
+              disabled={!onEdit || post.status === 'POSTED' || post.status === 'POSTING'}
             >
               <Edit className="w-4 h-4 mr-2" />
               Editar

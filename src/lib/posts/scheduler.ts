@@ -68,7 +68,7 @@ export class PostScheduler {
         scheduleType: data.scheduleType,
         scheduledDatetime,
         recurringConfig: data.recurringConfig ? JSON.parse(JSON.stringify(data.recurringConfig)) : null,
-        status: data.scheduleType === 'IMMEDIATE' ? PostStatus.PROCESSING : PostStatus.SCHEDULED,
+        status: data.scheduleType === 'IMMEDIATE' ? PostStatus.POSTING : PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
         // zapierWebhookUrl will be set when sending to Zapier
       },
@@ -256,12 +256,11 @@ export class PostScheduler {
         webhookResponse = await response.text()
       }
 
-      // Update status to PROCESSING (waiting for Buffer confirmation)
+      // Update status to POSTING (waiting for Buffer confirmation)
       await db.socialPost.update({
         where: { id: post.id },
         data: {
-          status: PostStatus.PROCESSING, // ⭐ Will be updated to SENT by confirmation webhook
-          sentAt: new Date(), // Timestamp when sent to Buffer
+          status: PostStatus.POSTING, // ⭐ Will be updated to POSTED by confirmation webhook
           webhookResponse: webhookResponse as Prisma.InputJsonValue,
           zapierWebhookUrl: webhookUrl, // Record which webhook was used
         },

@@ -48,7 +48,7 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
   // State para rastrear progresso em tempo real
   const [progressOverrides, setProgressOverrides] = React.useState<Record<string, {
     progress: number
-    status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED'
+    status: 'PENDING' | 'POSTING' | 'COMPLETED' | 'FAILED'
     errorMessage?: string | null
   }>>({})
 
@@ -83,7 +83,7 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
         ...prev,
         [detail.generationId]: {
           progress: detail.progress || prev[detail.generationId]?.progress || 0,
-          status: detail.status || 'PROCESSING',
+          status: detail.status || 'POSTING',
         },
       }))
     }
@@ -292,8 +292,8 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
             // Verificar progresso em tempo real (prioriza override, fallback para status do banco)
             const progressData = progressOverrides[creative.id]
             const effectiveStatus = progressData?.status || creative.status
-            const isProcessing = effectiveStatus === 'PENDING' || effectiveStatus === 'PROCESSING'
-            const currentProgress = progressData?.progress || (creative.status === 'PROCESSING' ? 50 : 0)
+            const isProcessing = effectiveStatus === 'PENDING' || effectiveStatus === 'POSTING'
+            const currentProgress = progressData?.progress || (creative.status === 'POSTING' ? 50 : 0)
             const hasFailed = effectiveStatus === 'FAILED'
 
             return (

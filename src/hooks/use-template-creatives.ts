@@ -12,7 +12,7 @@ export interface CreativeFieldValues {
 
 export interface Creative {
   id: string
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  status: 'POSTING' | 'COMPLETED' | 'FAILED'
   resultUrl: string
   createdAt: string
   templateName: string

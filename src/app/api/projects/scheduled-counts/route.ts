@@ -52,7 +52,7 @@ export async function GET() {
   const allScheduledPosts = await db.socialPost.findMany({
     where: {
       projectId: { in: allProjectIds },
-      status: { in: ['SCHEDULED', 'PROCESSING'] },
+      status: { in: ['SCHEDULED', 'POSTING'] },
     },
     select: {
       projectId: true,

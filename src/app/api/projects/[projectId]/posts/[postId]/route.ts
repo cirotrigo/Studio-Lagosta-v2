@@ -155,7 +155,7 @@ export async function PUT(
 
     // If changing to IMMEDIATE, set status to PROCESSING
     if (scheduleType === 'IMMEDIATE') {
-      updateData.status = PostStatus.PROCESSING
+      updateData.status = PostStatus.POSTING
     }
 
     // Update post

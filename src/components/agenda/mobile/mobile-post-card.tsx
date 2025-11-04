@@ -60,9 +60,9 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
     switch (post.status) {
       case 'SCHEDULED':
         return 'border-primary/40 bg-primary/5'
-      case 'PROCESSING':
+      case 'POSTING':
         return 'border-yellow-500/40 bg-yellow-500/5'
-      case 'SENT':
+      case 'POSTED':
         return 'border-green-500/40 bg-green-500/5'
       case 'FAILED':
         return 'border-red-500/40 bg-red-500/5'
@@ -166,7 +166,7 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
               <Eye className="w-4 h-4 mr-2" />
               Ver detalhes
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={onEdit} disabled={post.status === 'SENT'}>
+            <DropdownMenuItem onClick={onEdit} disabled={post.status === 'POSTED' || post.status === 'POSTING'}>
               <Edit className="w-4 h-4 mr-2" />
               Editar post
             </DropdownMenuItem>

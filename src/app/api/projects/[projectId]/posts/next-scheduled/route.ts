@@ -26,7 +26,7 @@ export async function GET(
     const nextPost = await db.socialPost.findFirst({
       where: {
         projectId,
-        status: { in: ['SCHEDULED', 'PROCESSING'] },
+        status: { in: ['SCHEDULED', 'POSTING'] },
         scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
         scheduledDatetime: {
           gte: now,

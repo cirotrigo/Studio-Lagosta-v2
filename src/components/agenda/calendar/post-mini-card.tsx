@@ -41,9 +41,9 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
     switch (post.status) {
       case 'SCHEDULED':
         return 'bg-primary/10 border-primary/40 hover:bg-primary/20'
-      case 'PROCESSING':
+      case 'POSTING':
         return 'bg-yellow-500/10 border-yellow-500/40 hover:bg-yellow-500/20'
-      case 'SENT':
+      case 'POSTED':
         return 'bg-green-500/10 border-green-500/40 hover:bg-green-500/20'
       case 'FAILED':
         return 'bg-red-500/10 border-red-500/40 hover:bg-red-500/20'

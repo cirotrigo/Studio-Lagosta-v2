@@ -18,7 +18,7 @@ interface GalleryItemProps {
   templateType: 'STORY' | 'FEED' | 'SQUARE'
   selected: boolean
   hasDriveBackup?: boolean
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED' | 'PENDING'
+  status: 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
   progress?: number
   errorMessage?: string | null
   isVideo?: boolean
@@ -77,7 +77,7 @@ export function GalleryItem({
     return VIDEO_EXTENSIONS.some((ext) => candidate.endsWith(ext))
   }, [resolvedAssetUrl, effectiveDisplayUrl, isVideo])
 
-  const showProgress = status === 'PROCESSING' || status === 'PENDING'
+  const showProgress = status === 'POSTING' || status === 'PENDING'
   const clampedProgress =
     typeof progress === 'number' ? Math.max(0, Math.min(100, Math.round(progress))) : undefined
   const showFailure = status === 'FAILED'

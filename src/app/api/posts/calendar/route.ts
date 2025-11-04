@@ -94,7 +94,7 @@ export async function GET(request: NextRequest) {
       where: {
         projectId: { in: allProjectIds },
         scheduleType: 'RECURRING',
-        status: { in: ['SCHEDULED', 'PROCESSING'] },
+        status: { in: ['SCHEDULED', 'POSTING'] },
         ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
       },
       include: {

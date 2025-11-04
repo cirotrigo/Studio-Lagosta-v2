@@ -48,7 +48,7 @@ export async function GET(
           },
           {
             // Already sent posts in the period
-            status: 'SENT',
+            status: 'POSTED',
             sentAt: {
               gte: new Date(startDate),
               lte: new Date(endDate),
@@ -73,7 +73,7 @@ export async function GET(
       where: {
         projectId,
         scheduleType: 'RECURRING',
-        status: { in: ['SCHEDULED', 'PROCESSING'] },
+        status: { in: ['SCHEDULED', 'POSTING'] },
         ...(postType ? { postType } : {}),
       },
       include: {

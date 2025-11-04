@@ -33,7 +33,7 @@ interface TemplateInfo {
 
 interface GenerationRecord {
   id: string
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  status: 'POSTING' | 'COMPLETED' | 'FAILED'
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
@@ -62,7 +62,7 @@ interface GenerationsResponse {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Todos os status' },
   { value: 'COMPLETED', label: 'Concluídos' },
-  { value: 'PROCESSING', label: 'Processando' },
+  { value: 'POSTING', label: 'Processando' },
   { value: 'FAILED', label: 'Falharam' },
 ]
 

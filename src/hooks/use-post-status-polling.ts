@@ -4,7 +4,7 @@ import { api } from '@/lib/api-client'
 
 interface PostStatusResponse {
   id: string
-  status: 'DRAFT' | 'SCHEDULED' | 'PROCESSING' | 'SENT' | 'FAILED'
+  status: 'DRAFT' | 'SCHEDULED' | 'POSTING' | 'POSTED' | 'FAILED'
   publishedUrl: string | null
   instagramMediaId: string | null
   bufferId: string | null
@@ -68,7 +68,7 @@ export function usePostStatusPolling({
       try {
         const status = await api.get<PostStatusResponse>(`/api/posts/${postId}/status`)
 
-        if (status.status === 'SENT') {
+        if (status.status === 'POSTED') {
           // ✅ Post published successfully
           console.log(`✅ Post ${postId} published successfully!`, {
             publishedUrl: status.publishedUrl,

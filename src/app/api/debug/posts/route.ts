@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       total: posts.length,
-      active: postsWithDebug.filter(p => p.isActive && ['SCHEDULED', 'PROCESSING'].includes(p.status)).length,
+      active: postsWithDebug.filter(p => p.isActive && ['SCHEDULED', 'POSTING'].includes(p.status)).length,
       posts: postsWithDebug,
     })
   } catch (error) {

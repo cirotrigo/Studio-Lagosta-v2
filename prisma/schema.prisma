@@ -837,8 +837,8 @@ enum PostType {
 enum PostStatus {
   DRAFT
   SCHEDULED
-  PROCESSING
-  SENT
+  POSTING    // Enviado para Buffer/Zapier, aguardando confirmação
+  POSTED     // Confirmado pelo webhook como publicado
   FAILED
 }
 

@@ -313,7 +313,7 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
                                   <span className="text-[9px] font-semibold uppercase">Programado</span>
                                 </span>
                               )}
-                              {post.status === 'SENT' && (
+                              {post.status === 'POSTED' && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-600 dark:text-green-400">
                                   <CheckCircle2 className="h-2.5 w-2.5" />
                                   <span className="text-[9px] font-semibold uppercase">Postado</span>
@@ -325,7 +325,7 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
                                   <span className="text-[9px] font-semibold uppercase">Falhou</span>
                                 </span>
                               )}
-                              {post.status === 'PROCESSING' && (
+                              {post.status === 'POSTING' && (
                                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-blue-500/20 text-blue-600 dark:text-blue-400">
                                   <Loader2 className="h-2.5 w-2.5 animate-spin" />
                                   <span className="text-[9px] font-semibold uppercase">Processando</span>

@@ -31,7 +31,7 @@ interface TemplateInfo {
 
 interface GenerationRecord {
   id: string
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
+  status: 'POSTING' | 'COMPLETED' | 'FAILED'
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
@@ -60,7 +60,7 @@ interface GenerationsResponse {
 const STATUS_OPTIONS = [
   { value: 'all', label: 'Todos os status' },
   { value: 'COMPLETED', label: 'Concluídos' },
-  { value: 'PROCESSING', label: 'Processando' },
+  { value: 'POSTING', label: 'Processando' },
   { value: 'FAILED', label: 'Falharam' },
 ]
 
@@ -197,7 +197,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       setProgressOverrides((prev) => {
         const previous = prev[generationId]
         const nextStatus: ProgressOverride['status'] =
-          (typeof detail.status === 'string' ? detail.status : previous?.status ?? 'PROCESSING') as ProgressOverride['status']
+          (typeof detail.status === 'string' ? detail.status : previous?.status ?? 'POSTING') as ProgressOverride['status']
         const nextProgress =
           typeof detail.progress === 'number'
             ? Math.max(0, Math.min(100, detail.progress))

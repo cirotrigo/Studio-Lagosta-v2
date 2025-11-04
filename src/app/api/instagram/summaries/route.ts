@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
             db.socialPost.count({
               where: {
                 projectId: project.id,
-                status: 'SENT',
+                status: 'POSTED',
                 postType: { in: ['POST', 'CAROUSEL', 'REEL'] },
                 sentAt: {
                   gte: currentWeekStart,
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
             db.socialPost.count({
               where: {
                 projectId: project.id,
-                status: 'SENT',
+                status: 'POSTED',
                 postType: 'STORY',
                 sentAt: {
                   gte: currentWeekStart,

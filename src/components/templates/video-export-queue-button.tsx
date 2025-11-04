@@ -401,7 +401,7 @@ export function VideoExportQueueButton() {
               },
             })
           )
-        } else if (job.status === 'PROCESSING') {
+        } else if (job.status === 'POSTING') {
           // Atualizar progresso
           console.log('[VideoExportQueue] Processando... Progresso:', job.progress)
         }
