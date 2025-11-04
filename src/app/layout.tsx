@@ -21,6 +21,7 @@ const montserrat = Montserrat({
 
 export const metadata: Metadata = {
   ...siteMetadata,
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
   // Prevenir cache agressivo
   other: {
     'Cache-Control': 'no-cache, no-store, must-revalidate',
