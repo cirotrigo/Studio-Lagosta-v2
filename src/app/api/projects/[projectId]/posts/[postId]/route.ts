@@ -153,9 +153,11 @@ export async function PUT(
       ...(publishType !== undefined && { publishType: publishType as PublishType }),
     }
 
-    // If changing to IMMEDIATE, set status to PROCESSING
+    // If changing to IMMEDIATE, set status to POSTING and clear error fields
     if (scheduleType === 'IMMEDIATE') {
       updateData.status = PostStatus.POSTING
+      updateData.errorMessage = null
+      updateData.failedAt = null
     }
 
     // Update post

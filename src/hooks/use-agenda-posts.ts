@@ -15,7 +15,7 @@ export function useAgendaPosts({
   endDate,
   postType = 'ALL',
 }: UseAgendaPostsParams) {
-  return useQuery({
+  const query = useQuery({
     queryKey: ['agenda-posts', projectId, startDate.toISOString(), endDate.toISOString(), postType],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -36,5 +36,16 @@ export function useAgendaPosts({
       return api.get(`/api/projects/${projectId}/posts/calendar?${params}`)
     },
     staleTime: 30_000, // 30 seconds
+    // Refetch a cada 5 segundos se houver posts sendo publicados
+    refetchInterval: (query) => {
+      const data = query.state.data as any
+      if (!data) return false
+
+      // Verifica se há algum post com status POSTING
+      const hasPostingPosts = data.some((post: any) => post.status === 'POSTING')
+      return hasPostingPosts ? 5000 : false // 5 segundos
+    },
   })
+
+  return query
 }

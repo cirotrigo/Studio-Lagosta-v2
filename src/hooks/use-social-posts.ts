@@ -43,6 +43,15 @@ export function useSocialPosts(projectId: number) {
     queryKey: ['social-posts', projectId],
     queryFn: () => api.get(`/api/projects/${projectId}/posts`),
     staleTime: 30_000, // 30 seconds
+    // Refetch a cada 5 segundos se houver posts sendo publicados
+    refetchInterval: (query) => {
+      const data = query.state.data as any
+      if (!data) return false
+
+      // Verifica se há algum post com status POSTING
+      const hasPostingPosts = data.some((post: any) => post.status === 'POSTING')
+      return hasPostingPosts ? 5000 : false // 5 segundos
+    },
   })
 
   // Get single post

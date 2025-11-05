@@ -36,6 +36,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import Image from 'next/image'
 import type { PostType } from '../../../../prisma/generated/client'
 import type { ProjectResponse } from '@/hooks/use-project'
 
@@ -133,10 +134,24 @@ export function CalendarHeader({
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Avatar do projeto */}
                 <div className={cn(
-                  "rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold ring-2 ring-border",
-                  isMobile ? "w-8 h-8 text-xs" : "w-10 h-10"
+                  "rounded-full flex items-center justify-center text-white font-bold ring-2 ring-border overflow-hidden relative",
+                  isMobile ? "w-8 h-8 text-xs" : "w-10 h-10",
+                  (selectedProject.logoUrl || (selectedProject as any).Logo?.[0]?.fileUrl)
+                    ? "bg-white"
+                    : "bg-gradient-to-br from-pink-500 to-purple-500"
                 )}>
-                  {selectedProject.name.substring(0, 2).toUpperCase()}
+                  {(selectedProject.logoUrl || (selectedProject as any).Logo?.[0]?.fileUrl) ? (
+                    <Image
+                      src={selectedProject.logoUrl || (selectedProject as any).Logo![0].fileUrl}
+                      alt={selectedProject.name}
+                      fill
+                      sizes={isMobile ? "32px" : "40px"}
+                      className="object-contain p-1"
+                      unoptimized
+                    />
+                  ) : (
+                    selectedProject.name.substring(0, 2).toUpperCase()
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">

@@ -127,6 +127,16 @@ export class PostScheduler {
               instagramAccountId: true,
               instagramUsername: true,
               zapierWebhookUrl: true,
+              organizationProjects: {
+                select: {
+                  organization: {
+                    select: {
+                      clerkOrgId: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
             },
           },
         },
@@ -146,10 +156,8 @@ export class PostScheduler {
         )
       }
 
-      // Validate that the project has Instagram configured
-      if (!post.Project.instagramAccountId) {
-        throw new Error('Instagram account not configured for this project')
-      }
+      // Instagram account ID is sent to Buffer for identification
+      // Buffer will validate and return error if needed
 
       const postAuthor = await db.user.findUnique({
         where: { id: post.userId },
@@ -225,6 +233,8 @@ export class PostScheduler {
       console.log('📦 Payload:', JSON.stringify(payload, null, 2))
 
       // Deduct credits BEFORE sending
+      const organizationId = post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
+      console.log('[SCHEDULER] Organization ID:', organizationId)
       await deductCreditsForFeature({
         clerkUserId: postAuthor.clerkId,
         feature: 'social_media_post',
@@ -233,6 +243,8 @@ export class PostScheduler {
           postType: post.postType,
           projectId: post.projectId,
         },
+        organizationId,
+        projectId: post.projectId,
       })
 
       // Send webhook
@@ -428,5 +440,58 @@ export class PostScheduler {
         metadata: metadata as Prisma.InputJsonValue | undefined,
       },
     })
+  }
+
+  /**
+   * Check for posts stuck in POSTING status for more than 10 minutes
+   * and mark them as FAILED
+   */
+  async checkStuckPosts() {
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
+
+    // Find posts that have been in POSTING status for more than 10 minutes
+    const stuckPosts = await db.socialPost.findMany({
+      where: {
+        status: PostStatus.POSTING,
+        updatedAt: {
+          lt: tenMinutesAgo,
+        },
+      },
+    })
+
+    if (stuckPosts.length === 0) {
+      console.log('✅ No stuck posts found')
+      return { updated: 0 }
+    }
+
+    console.log(`⚠️ Found ${stuckPosts.length} stuck posts, updating to FAILED...`)
+
+    // Update all stuck posts to FAILED
+    const result = await db.socialPost.updateMany({
+      where: {
+        id: {
+          in: stuckPosts.map((p) => p.id),
+        },
+      },
+      data: {
+        status: PostStatus.FAILED,
+        errorMessage: 'Post travado em POSTING por mais de 10 minutos - webhook de confirmação não recebido',
+        failedAt: new Date(),
+      },
+    })
+
+    // Create logs for each stuck post
+    await Promise.all(
+      stuckPosts.map((post) =>
+        this.createLog(
+          post.id,
+          PostLogEvent.FAILED,
+          'Post travado em POSTING - marcado como FAILED automaticamente'
+        )
+      )
+    )
+
+    console.log(`✅ Updated ${result.count} stuck posts to FAILED`)
+    return { updated: result.count }
   }
 }

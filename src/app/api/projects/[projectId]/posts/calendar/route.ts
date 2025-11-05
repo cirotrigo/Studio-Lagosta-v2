@@ -64,6 +64,22 @@ export async function GET(
             resultUrl: true,
           },
         },
+        Project: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            Logo: {
+              where: {
+                isProjectLogo: true,
+              },
+              select: {
+                fileUrl: true,
+              },
+              take: 1,
+            },
+          },
+        },
       },
     })
 
@@ -82,6 +98,22 @@ export async function GET(
             id: true,
             templateName: true,
             resultUrl: true,
+          },
+        },
+        Project: {
+          select: {
+            id: true,
+            name: true,
+            logoUrl: true,
+            Logo: {
+              where: {
+                isProjectLogo: true,
+              },
+              select: {
+                fileUrl: true,
+              },
+              take: 1,
+            },
           },
         },
       },

@@ -28,6 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { usePostActions } from '@/hooks/use-post-actions'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
+import { useProject } from '@/hooks/use-project'
 import { RescheduleDialog } from './reschedule-dialog'
 import { toast } from 'sonner'
 import { getPostDate } from '../calendar/calendar-utils'
@@ -47,6 +48,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
   const { publishNow, deletePost, duplicatePost } = usePostActions(post.projectId)
+  const { data: project } = useProject(post.projectId)
 
   // Poll for post status updates after publishing
   usePostStatusPolling({
@@ -145,13 +147,19 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const handlePublishNow = async () => {
     try {
       await publishNow.mutateAsync(post.id)
-      toast.success('Post enviado! Aguardando confirmação...', {
+      const message = post.status === 'FAILED'
+        ? 'Tentando novamente! Aguardando confirmação...'
+        : 'Post enviado! Aguardando confirmação...'
+      toast.success(message, {
         description: 'O status será atualizado automaticamente'
       })
       setIsPolling(true) // Start polling for status updates
       onClose()
     } catch (_error) {
-      toast.error('Erro ao publicar post')
+      const errorMessage = post.status === 'FAILED'
+        ? 'Erro ao tentar novamente'
+        : 'Erro ao publicar post'
+      toast.error(errorMessage)
     }
   }
 
@@ -239,10 +247,37 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
             </div>
 
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
-                PR
-              </div>
-              <span className="font-semibold text-sm">Project</span>
+              {project ? (
+                <>
+                  <div className={cn(
+                    "w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs overflow-hidden",
+                    (project.logoUrl || (project as any).Logo?.[0]?.fileUrl)
+                      ? "bg-white border-2 border-border"
+                      : "bg-gradient-to-br from-pink-500 to-purple-500"
+                  )}>
+                    {(project.logoUrl || (project as any).Logo?.[0]?.fileUrl) ? (
+                      <Image
+                        src={project.logoUrl || (project as any).Logo![0].fileUrl}
+                        alt={project.name}
+                        width={32}
+                        height={32}
+                        className="object-contain p-0.5"
+                        unoptimized
+                      />
+                    ) : (
+                      project.name.substring(0, 2).toUpperCase()
+                    )}
+                  </div>
+                  <span className="font-semibold text-sm">{project.instagramUsername || project.name}</span>
+                </>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+                    ...
+                  </div>
+                  <span className="font-semibold text-sm">Carregando...</span>
+                </>
+              )}
             </div>
           </div>
 
@@ -412,7 +447,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   disabled={publishNow.isPending}
                 >
                   <Send className="w-4 h-4 mr-2" />
-                  Publicar Agora
+                  {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar Agora'}
                 </Button>
               </>
             )}

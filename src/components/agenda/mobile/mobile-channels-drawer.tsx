@@ -12,9 +12,16 @@ import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/utils'
 import { Search, Instagram, AlertCircle } from 'lucide-react'
+import Image from 'next/image'
 import type { ProjectResponse } from '@/hooks/use-project'
 
-type ProjectWithCounts = ProjectResponse & { scheduledPostCount?: number }
+type ProjectWithCounts = ProjectResponse & {
+  scheduledPostCount?: number
+  Logo?: Array<{
+    id: number
+    fileUrl: string
+  }>
+}
 
 interface MobileChannelsDrawerProps {
   open: boolean
@@ -99,6 +106,7 @@ export function MobileChannelsDrawer({
                 const isSelected = selectedProjectId === project.id
                 const postCount = project.scheduledPostCount ?? 0
                 const hasInstagram = Boolean(project.instagramAccountId)
+                const logoUrl = project.logoUrl || project.Logo?.[0]?.fileUrl
 
                 return (
                   <button
@@ -114,11 +122,23 @@ export function MobileChannelsDrawer({
                   >
                     <div
                       className={cn(
-                        'w-12 h-12 rounded-full bg-gradient-to-br flex items-center justify-center text-white font-bold flex-shrink-0 relative',
-                        hasInstagram ? 'from-pink-500 to-purple-500' : 'from-gray-400 to-gray-500'
+                        'w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 relative overflow-hidden',
+                        logoUrl ? 'bg-white border-2 border-border' : 'bg-gradient-to-br text-white font-bold',
+                        !logoUrl && (hasInstagram ? 'from-pink-500 to-purple-500' : 'from-gray-400 to-gray-500')
                       )}
                     >
-                      {project.name.substring(0, 2).toUpperCase()}
+                      {logoUrl ? (
+                        <Image
+                          src={logoUrl}
+                          alt={project.name}
+                          fill
+                          sizes="48px"
+                          className="object-contain p-1"
+                          unoptimized
+                        />
+                      ) : (
+                        project.name.substring(0, 2).toUpperCase()
+                      )}
                       {!hasInstagram && (
                         <div className="absolute -top-1 -right-1 w-4 h-4 bg-amber-500 rounded-full flex items-center justify-center">
                           <AlertCircle className="w-3 h-3 text-white" />

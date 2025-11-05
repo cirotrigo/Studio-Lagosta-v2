@@ -16,6 +16,16 @@ export async function fetchProjectWithShares(projectId: number) {
           },
         },
       },
+      Logo: {
+        where: {
+          isProjectLogo: true,
+        },
+        select: {
+          id: true,
+          fileUrl: true,
+        },
+        take: 1,
+      },
     },
   })
 }

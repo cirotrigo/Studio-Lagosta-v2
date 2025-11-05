@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy } from 'lucide-react'
+import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from '../calendar/calendar-utils'
@@ -18,7 +18,16 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 interface MobilePostCardProps {
-  post: SocialPost
+  post: SocialPost & {
+    Project?: {
+      id: number
+      name: string
+      logoUrl?: string | null
+      Logo?: Array<{
+        fileUrl: string
+      }>
+    }
+  }
   onPreview: () => void
   onEdit: () => void
 }
@@ -125,6 +134,20 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                 {post.mediaUrls.length}
               </Badge>
             )}
+
+            {/* Logo do Projeto */}
+            {(post.Project?.logoUrl || post.Project?.Logo?.[0]?.fileUrl) && (
+              <div className="absolute bottom-1 left-1 w-5 h-5 rounded-full overflow-hidden bg-white/90 border border-border/50">
+                <Image
+                  src={post.Project.logoUrl || post.Project.Logo![0].fileUrl}
+                  alt={post.Project.name}
+                  fill
+                  sizes="20px"
+                  className="object-contain p-0.5"
+                  unoptimized
+                />
+              </div>
+            )}
           </div>
         )}
 
@@ -143,6 +166,26 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
 
             {post.isRecurring && (
               <RefreshCw className="w-3 h-3 text-muted-foreground" />
+            )}
+
+            {/* Badge de Status - Publicando/Publicado/Falhou */}
+            {post.status === 'POSTING' && (
+              <Badge className="text-xs bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>Publicando</span>
+              </Badge>
+            )}
+            {post.status === 'POSTED' && (
+              <Badge className="text-xs bg-green-500 text-white hover:bg-green-500 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Publicado</span>
+              </Badge>
+            )}
+            {post.status === 'FAILED' && (
+              <Badge className="text-xs bg-red-500 text-white hover:bg-red-500 flex items-center gap-1">
+                <XCircle className="w-3 h-3" />
+                <span>Falhou</span>
+              </Badge>
             )}
           </div>
 

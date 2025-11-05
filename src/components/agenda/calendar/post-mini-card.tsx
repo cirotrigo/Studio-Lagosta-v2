@@ -1,14 +1,23 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostMiniCardProps {
-  post: SocialPost
+  post: SocialPost & {
+    Project?: {
+      id: number
+      name: string
+      logoUrl?: string | null
+      Logo?: Array<{
+        fileUrl: string
+      }>
+    }
+  }
   onClick: () => void
 }
 
@@ -101,17 +110,51 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
               {post.mediaUrls.length}
             </Badge>
           )}
+
+          {/* Logo do Projeto */}
+          {(post.Project?.logoUrl || post.Project?.Logo?.[0]?.fileUrl) && (
+            <div className="absolute bottom-0.5 left-0.5 w-4 h-4 rounded-full overflow-hidden bg-white/90 border border-border/50">
+              <Image
+                src={post.Project.logoUrl || post.Project.Logo![0].fileUrl}
+                alt={post.Project.name}
+                fill
+                sizes="16px"
+                className="object-contain p-0.5"
+                unoptimized
+              />
+            </div>
+          )}
         </div>
       )}
 
       {/* Info */}
       <div className="flex-1 min-w-0 text-left">
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 flex-wrap">
           <Badge variant="secondary" className="h-4 px-1 text-[10px]">
             <span className="mr-0.5">⏰</span> {time}
           </Badge>
           {getIcon()}
           {post.isRecurring && <RefreshCw className="w-3 h-3 text-muted-foreground" />}
+
+          {/* Badge de Status - Publicando/Publicado/Falhou */}
+          {post.status === 'POSTING' && (
+            <Badge className="h-4 px-1 text-[10px] bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-0.5">
+              <Loader2 className="w-2.5 h-2.5 animate-spin" />
+              <span>Publicando</span>
+            </Badge>
+          )}
+          {post.status === 'POSTED' && (
+            <Badge className="h-4 px-1 text-[10px] bg-green-500 text-white hover:bg-green-500 flex items-center gap-0.5">
+              <CheckCircle2 className="w-2.5 h-2.5" />
+              <span>Publicado</span>
+            </Badge>
+          )}
+          {post.status === 'FAILED' && (
+            <Badge className="h-4 px-1 text-[10px] bg-red-500 text-white hover:bg-red-500 flex items-center gap-0.5">
+              <XCircle className="w-2.5 h-2.5" />
+              <span>Falhou</span>
+            </Badge>
+          )}
         </div>
       </div>
     </button>

@@ -84,6 +84,16 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             instagramUsername: true,
+            logoUrl: true,
+            Logo: {
+              where: {
+                isProjectLogo: true,
+              },
+              select: {
+                fileUrl: true,
+              },
+              take: 1,
+            },
           },
         },
       },
@@ -103,6 +113,16 @@ export async function GET(request: NextRequest) {
             id: true,
             name: true,
             instagramUsername: true,
+            logoUrl: true,
+            Logo: {
+              where: {
+                isProjectLogo: true,
+              },
+              select: {
+                fileUrl: true,
+              },
+              take: 1,
+            },
           },
         },
       },
