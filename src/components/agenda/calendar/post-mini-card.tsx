@@ -65,13 +65,13 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
     <button
       onClick={onClick}
       className={cn(
-        'w-full flex items-center gap-2 p-1.5 rounded border transition-all hover:scale-105 hover:shadow-md',
+        'w-full flex items-center gap-1.5 sm:gap-2 p-1 sm:p-1.5 rounded border transition-all hover:scale-105 hover:shadow-md',
         getStatusColor()
       )}
     >
       {/* Thumbnail */}
       {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
-        <div className="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
+        <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
           {isVideo ? (
             <video
               src={post.mediaUrls[0]}
@@ -99,21 +99,21 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
 
           {/* Badge de Story */}
           {post.postType === 'STORY' && (
-            <Badge className="absolute top-0.5 left-0.5 text-[8px] px-1 py-0 h-auto leading-tight">
+            <Badge className="absolute top-0.5 left-0.5 text-[7px] sm:text-[8px] px-0.5 sm:px-1 py-0 h-auto leading-tight">
               Story
             </Badge>
           )}
 
           {/* Badge de carrossel */}
           {post.postType === 'CAROUSEL' && post.mediaUrls.length > 1 && (
-            <Badge className="absolute top-0.5 right-0.5 text-[8px] px-1 py-0 h-auto leading-tight">
+            <Badge className="absolute top-0.5 right-0.5 text-[7px] sm:text-[8px] px-0.5 sm:px-1 py-0 h-auto leading-tight">
               {post.mediaUrls.length}
             </Badge>
           )}
 
           {/* Logo do Projeto */}
           {(post.Project?.logoUrl || post.Project?.Logo?.[0]?.fileUrl) && (
-            <div className="absolute bottom-0.5 left-0.5 w-4 h-4 rounded-full overflow-hidden bg-white/90 border border-border/50">
+            <div className="absolute bottom-0.5 left-0.5 w-3 h-3 sm:w-4 sm:h-4 rounded-full overflow-hidden bg-white/90 border border-border/50">
               <Image
                 src={post.Project.logoUrl || post.Project.Logo![0].fileUrl}
                 alt={post.Project.name}
@@ -138,21 +138,24 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
 
           {/* Badge de Status - Publicando/Publicado/Falhou */}
           {post.status === 'POSTING' && (
-            <Badge className="h-4 px-1 text-[10px] bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-0.5">
-              <Loader2 className="w-2.5 h-2.5 animate-spin" />
-              <span>Publicando</span>
+            <Badge className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-0.5">
+              <Loader2 className="w-2 h-2 sm:w-2.5 sm:h-2.5 animate-spin" />
+              <span className="hidden sm:inline">Publicando</span>
+              <span className="sm:hidden">⏳</span>
             </Badge>
           )}
           {post.status === 'POSTED' && (
-            <Badge className="h-4 px-1 text-[10px] bg-green-500 text-white hover:bg-green-500 flex items-center gap-0.5">
-              <CheckCircle2 className="w-2.5 h-2.5" />
-              <span>Publicado</span>
+            <Badge className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-green-500 text-white hover:bg-green-500 flex items-center gap-0.5">
+              <CheckCircle2 className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+              <span className="hidden sm:inline">Publicado</span>
+              <span className="sm:hidden">✓</span>
             </Badge>
           )}
           {post.status === 'FAILED' && (
-            <Badge className="h-4 px-1 text-[10px] bg-red-500 text-white hover:bg-red-500 flex items-center gap-0.5">
-              <XCircle className="w-2.5 h-2.5" />
-              <span>Falhou</span>
+            <Badge className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-red-500 text-white hover:bg-red-500 flex items-center gap-0.5">
+              <XCircle className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+              <span className="hidden sm:inline">Falhou</span>
+              <span className="sm:hidden">✕</span>
             </Badge>
           )}
         </div>

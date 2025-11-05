@@ -170,20 +170,20 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
 
             {/* Badge de Status - Publicando/Publicado/Falhou */}
             {post.status === 'POSTING' && (
-              <Badge className="text-xs bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
+              <Badge className="text-[10px] sm:text-xs bg-yellow-500 text-white hover:bg-yellow-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                <Loader2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-spin" />
                 <span>Publicando</span>
               </Badge>
             )}
             {post.status === 'POSTED' && (
-              <Badge className="text-xs bg-green-500 text-white hover:bg-green-500 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
+              <Badge className="text-[10px] sm:text-xs bg-green-500 text-white hover:bg-green-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                <CheckCircle2 className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>Publicado</span>
               </Badge>
             )}
             {post.status === 'FAILED' && (
-              <Badge className="text-xs bg-red-500 text-white hover:bg-red-500 flex items-center gap-1">
-                <XCircle className="w-3 h-3" />
+              <Badge className="text-[10px] sm:text-xs bg-red-500 text-white hover:bg-red-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                <XCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>Falhou</span>
               </Badge>
             )}

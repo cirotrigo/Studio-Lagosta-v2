@@ -38,20 +38,20 @@ export function CalendarDayCell({
   return (
     <div
       className={cn(
-        'relative bg-background p-2 transition-all duration-300 ease-in-out',
+        'relative bg-background p-1.5 sm:p-2 transition-all duration-300 ease-in-out',
         !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
         isToday && 'ring-2 ring-inset ring-primary',
         isExpanded
           ? 'min-h-[280px] z-20 shadow-2xl rounded-lg border border-primary/30 bg-card'
-          : 'min-h-[120px] hover:bg-muted/10'
+          : 'min-h-[100px] sm:min-h-[120px] hover:bg-muted/10'
       )}
     >
       {/* Número do dia */}
-      <div className="flex items-center justify-between mb-2 sticky top-0 bg-inherit z-10 pb-1">
+      <div className="flex items-center justify-between mb-1 sm:mb-2 sticky top-0 bg-inherit z-10 pb-0.5 sm:pb-1">
         <span
           className={cn(
-            'text-sm font-medium transition-all',
-            isToday && 'flex items-center justify-center w-6 h-6 rounded-full bg-primary text-primary-foreground',
+            'text-xs sm:text-sm font-medium transition-all',
+            isToday && 'flex items-center justify-center w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-primary text-primary-foreground',
             !isCurrentMonth && 'text-muted-foreground'
           )}
         >
@@ -61,7 +61,7 @@ export function CalendarDayCell({
         {/* Badge de total de posts */}
         {posts.length > 0 && (
           <span className={cn(
-            "text-xs font-medium px-1.5 py-0.5 rounded-full transition-all",
+            "text-[10px] sm:text-xs font-medium px-1 sm:px-1.5 py-0.5 rounded-full transition-all",
             posts.length > 3
               ? "bg-primary/20 text-primary ring-1 ring-primary/30"
               : "bg-muted text-muted-foreground"
@@ -93,8 +93,8 @@ export function CalendarDayCell({
             setIsExpanded(!isExpanded)
           }}
           className={cn(
-            "w-full mt-2 py-1.5 px-2 rounded-md text-xs font-medium",
-            "transition-all duration-200 flex items-center justify-center gap-1",
+            "w-full mt-1.5 sm:mt-2 py-1 sm:py-1.5 px-1.5 sm:px-2 rounded-md text-[10px] sm:text-xs font-medium",
+            "transition-all duration-200 flex items-center justify-center gap-0.5 sm:gap-1",
             "bg-primary/10 hover:bg-primary/20 text-primary",
             "border border-primary/30 hover:border-primary/50",
             "hover:shadow-md active:scale-95"
@@ -102,13 +102,15 @@ export function CalendarDayCell({
         >
           {isExpanded ? (
             <>
-              <ChevronUp className="w-3 h-3" />
-              Ver menos
+              <ChevronUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+              <span className="hidden sm:inline">Ver menos</span>
+              <span className="sm:hidden">Menos</span>
             </>
           ) : (
             <>
-              <ChevronDown className="w-3 h-3" />
-              Ver mais ({posts.length - 3})
+              <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+              <span className="hidden sm:inline">Ver mais ({posts.length - 3})</span>
+              <span className="sm:hidden">+{posts.length - 3}</span>
             </>
           )}
         </button>

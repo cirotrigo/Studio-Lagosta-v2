@@ -67,6 +67,7 @@ export function AgendaCalendarView() {
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true) // Sidebar colapsada por padrão
 
   // Fetch user projects (channels)
   const { data: projectsData } = useQuery<ProjectResponse[]>({
@@ -177,6 +178,8 @@ export function AgendaCalendarView() {
           projects={projectList}
           selectedProjectId={selectedProjectId}
           onSelectProject={setSelectedProjectId}
+          isCollapsed={isSidebarCollapsed}
+          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
         />
       )}
 
