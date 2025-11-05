@@ -142,8 +142,16 @@ export function AgendaCalendarView() {
     if (!editingPost) return undefined
 
     const recurringConfig = parseRecurringConfig(editingPost.recurringConfig)
-    const scheduledDate =
-      editingPost.scheduledDatetime ? new Date(editingPost.scheduledDatetime) : undefined
+
+    // Ensure scheduledDatetime is a valid Date object or undefined
+    let scheduledDate: Date | undefined = undefined
+    if (editingPost.scheduledDatetime) {
+      const tempDate = new Date(editingPost.scheduledDatetime)
+      // Validate the date
+      if (!isNaN(tempDate.getTime())) {
+        scheduledDate = tempDate
+      }
+    }
 
     return {
       postType: editingPost.postType,

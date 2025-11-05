@@ -118,21 +118,47 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
   // Populate selectedMedia from initialData when dialog opens
   useEffect(() => {
-    if (open && !hasInitializedMedia && initialData?.generationIds && initialData.generationIds.length > 0 && allCreatives) {
-      const initialMedia: MediaItem[] = initialData.generationIds
-        .map(genId => {
-          const creative = allCreatives.find(c => c.id === genId)
-          if (!creative) return null
+    if (open && !hasInitializedMedia && initialData?.mediaUrls && initialData.mediaUrls.length > 0) {
+      const initialMedia: MediaItem[] = []
 
-          return {
-            id: creative.id,
-            type: 'generation' as const,
-            url: creative.resultUrl,
-            thumbnailUrl: creative.thumbnailUrl || creative.resultUrl,
-            name: creative.templateName || 'Criativo',
-          } as MediaItem
-        })
-        .filter((item): item is MediaItem => item !== null)
+      // First, try to match with creatives if we have generationIds
+      if (initialData.generationIds && initialData.generationIds.length > 0 && allCreatives) {
+        const mediaFromGenerations = initialData.generationIds
+          .map(genId => {
+            const creative = allCreatives.find(c => c.id === genId)
+            if (!creative) return null
+
+            return {
+              id: creative.id,
+              type: 'generation' as const,
+              url: creative.resultUrl,
+              thumbnailUrl: creative.thumbnailUrl || creative.resultUrl,
+              name: creative.templateName || 'Criativo',
+            } as MediaItem
+          })
+          .filter((item): item is MediaItem => item !== null)
+
+        initialMedia.push(...mediaFromGenerations)
+      }
+
+      // For any remaining mediaUrls that weren't matched (uploads, Google Drive, etc.)
+      const unmatchedUrls = initialData.mediaUrls.filter(url =>
+        !initialMedia.some(media => media.url === url)
+      )
+
+      // Add unmatched URLs as upload type
+      unmatchedUrls.forEach((url, index) => {
+        // Determine if it's a video
+        const isVideo = url.includes('.mp4') || url.includes('.mov') || url.includes('.avi')
+
+        initialMedia.push({
+          id: `existing-${index}-${Date.now()}`,
+          type: 'upload' as const,
+          url: url,
+          thumbnailUrl: url,
+          name: isVideo ? `Video ${index + 1}` : `Imagem ${index + 1}`,
+        } as MediaItem)
+      })
 
       if (initialMedia.length > 0) {
         setSelectedMedia(initialMedia)
@@ -148,16 +174,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     }
   }, [open])
 
-  // Clear caption and firstComment when switching to STORY
-  useEffect(() => {
-    if (postType === 'STORY') {
-      form.setValue('caption', '')
-      form.setValue('firstComment', '')
-      // Clear any caption errors
-      form.clearErrors('caption')
-      form.clearErrors('firstComment')
-    }
-  }, [postType, form])
+  // Note: Stories can have captions and first comments, so we don't clear them anymore
 
   // Memoize the recurring config onChange to prevent infinite loops
   const handleRecurringConfigChange = useCallback((config: RecurringConfigValue | undefined) => {
@@ -251,7 +268,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
           endDate: data.recurringConfig.endDate?.toISOString(),
         } : undefined,
         altText: data.altText,
-        firstComment: data.postType === 'STORY' ? undefined : data.firstComment, // No first comment for stories
+        firstComment: data.firstComment,
         publishType: data.publishType as PublishType,
       }
 
@@ -413,46 +430,42 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
             />
           </div>
 
-          {/* Legenda - Hidden for Stories */}
-          {postType !== 'STORY' && (
-            <div>
-              <Label htmlFor="caption" className="text-base font-semibold">
-                Legenda
-              </Label>
-              <Textarea
-                id="caption"
-                {...form.register('caption')}
-                placeholder="Escreva sua legenda..."
-                rows={5}
-                maxLength={2200}
-                className="mt-2 resize-none"
-              />
-              <div className="flex justify-between mt-1">
-                <p className="text-xs text-muted-foreground">
-                  Máximo de 2.200 caracteres
-                </p>
-                <p className="text-xs font-medium">
-                  {caption?.length || 0}/2200
-                </p>
-              </div>
+          {/* Legenda */}
+          <div>
+            <Label htmlFor="caption" className="text-base font-semibold">
+              {postType === 'STORY' ? 'Texto do Story (Opcional)' : 'Legenda'}
+            </Label>
+            <Textarea
+              id="caption"
+              {...form.register('caption')}
+              placeholder={postType === 'STORY' ? 'Adicione texto que aparecerá no story...' : 'Escreva sua legenda...'}
+              rows={5}
+              maxLength={2200}
+              className="mt-2 resize-none"
+            />
+            <div className="flex justify-between mt-1">
+              <p className="text-xs text-muted-foreground">
+                {postType === 'STORY' ? 'Texto opcional para exibir no story' : 'Máximo de 2.200 caracteres'}
+              </p>
+              <p className="text-xs font-medium">
+                {caption?.length || 0}/2200
+              </p>
             </div>
-          )}
+          </div>
 
-          {/* Primeiro Comentário (Opcional) - Hidden for Stories */}
-          {postType !== 'STORY' && (
-            <div>
-              <Label htmlFor="firstComment" className="text-base font-semibold">
-                Primeiro Comentário (Opcional)
-              </Label>
-              <Textarea
-                id="firstComment"
-                {...form.register('firstComment')}
-                placeholder="Adicione um comentário que será postado automaticamente..."
-                rows={2}
-                className="mt-2 resize-none"
-              />
-            </div>
-          )}
+          {/* Primeiro Comentário (Opcional) */}
+          <div>
+            <Label htmlFor="firstComment" className="text-base font-semibold">
+              Primeiro Comentário (Opcional)
+            </Label>
+            <Textarea
+              id="firstComment"
+              {...form.register('firstComment')}
+              placeholder="Adicione um comentário que será postado automaticamente..."
+              rows={2}
+              className="mt-2 resize-none"
+            />
+          </div>
 
           {/* Tipo de Publicação */}
           <div>

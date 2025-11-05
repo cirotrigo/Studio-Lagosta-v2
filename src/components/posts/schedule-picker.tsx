@@ -23,7 +23,7 @@ export function SchedulePicker({ value, onChange }: SchedulePickerProps) {
 
   // Initialize time from value
   useEffect(() => {
-    if (value) {
+    if (value && value instanceof Date && !isNaN(value.getTime())) {
       const hours = value.getHours().toString().padStart(2, '0')
       const minutes = value.getMinutes().toString().padStart(2, '0')
       setTime(`${hours}:${minutes}`)
