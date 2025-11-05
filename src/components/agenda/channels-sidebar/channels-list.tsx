@@ -68,9 +68,9 @@ export function ChannelsSidebar({
         </div>
 
         <ScrollArea className="flex-1">
-          <div className="p-2 space-y-2">
-            {/* Botão "Todos os canais" */}
-            <TooltipProvider>
+          <TooltipProvider>
+            <div className="p-2 space-y-2">
+              {/* Botão "Todos os canais" */}
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -103,18 +103,16 @@ export function ChannelsSidebar({
                   </p>
                 </TooltipContent>
               </Tooltip>
-            </TooltipProvider>
 
-            {/* Lista de projetos */}
-            {projects.map((project) => {
-              const postCount = project.scheduledPostCount ?? 0
-              const isSelected = selectedProjectId === project.id
-              const hasInstagram = Boolean(project.instagramAccountId)
-              const logoUrl = project.logoUrl || project.Logo?.[0]?.fileUrl
+              {/* Lista de projetos */}
+              {projects.map((project) => {
+                const postCount = project.scheduledPostCount ?? 0
+                const isSelected = selectedProjectId === project.id
+                const hasInstagram = Boolean(project.instagramAccountId)
+                const logoUrl = project.logoUrl || project.Logo?.[0]?.fileUrl
 
-              return (
-                <TooltipProvider key={project.id}>
-                  <Tooltip>
+                return (
+                  <Tooltip key={project.id}>
                     <TooltipTrigger asChild>
                       <button
                         onClick={() => onSelectProject(project.id)}
@@ -174,10 +172,16 @@ export function ChannelsSidebar({
                       </p>
                     </TooltipContent>
                   </Tooltip>
-                </TooltipProvider>
-              )
-            })}
-          </div>
+                )
+              })}
+
+              {filteredProjects.length === 0 && (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Nenhum canal encontrado
+                </div>
+              )}
+            </div>
+          </TooltipProvider>
         </ScrollArea>
       </div>
     )

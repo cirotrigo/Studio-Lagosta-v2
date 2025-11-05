@@ -199,7 +199,7 @@ export default function ProjectsPage() {
                         <div className="relative h-16 w-16 overflow-hidden rounded-xl bg-muted ring-2 ring-border/40 transition-all duration-300 group-hover:ring-primary/40">
                           <Image
                             src={projectLogo.fileUrl}
-                            alt={projectLogo.name}
+                            alt={projectLogo.name || project.name || 'Logo do projeto'}
                             fill
                             sizes="64px"
                             className="object-cover"
