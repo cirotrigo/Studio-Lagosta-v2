@@ -51,6 +51,10 @@ interface CalendarHeaderProps {
   onCreatePost?: () => void
   postTypeFilter: PostType | 'ALL'
   onPostTypeFilterChange: (postType: PostType | 'ALL') => void
+  statusFilter: 'ALL' | 'FAILED' | 'POSTING'
+  onStatusFilterChange: (status: 'ALL' | 'FAILED' | 'POSTING') => void
+  timingFilter: 'ALL' | 'UPCOMING' | 'OVERDUE'
+  onTimingFilterChange: (timing: 'ALL' | 'UPCOMING' | 'OVERDUE') => void
   onOpenChannels?: () => void
   isMobile?: boolean
   nextScheduledDate?: Date | null
@@ -66,6 +70,10 @@ export function CalendarHeader({
   onCreatePost,
   postTypeFilter,
   onPostTypeFilterChange,
+  statusFilter,
+  onStatusFilterChange,
+  timingFilter,
+  onTimingFilterChange,
   onOpenChannels,
   isMobile = false,
   nextScheduledDate,
@@ -336,6 +344,34 @@ export function CalendarHeader({
                 <SelectItem value="CAROUSEL">Carrossel</SelectItem>
               </SelectContent>
             </Select>
+
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => onStatusFilterChange(value as 'ALL' | 'FAILED' | 'POSTING')}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos os status</SelectItem>
+                <SelectItem value="FAILED">Falhou</SelectItem>
+                <SelectItem value="POSTING">Processando</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              value={timingFilter}
+              onValueChange={(value) => onTimingFilterChange(value as 'ALL' | 'UPCOMING' | 'OVERDUE')}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Timing" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="ALL">Todos</SelectItem>
+                <SelectItem value="UPCOMING">Próximos</SelectItem>
+                <SelectItem value="OVERDUE">Atrasados</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
       )}
@@ -381,7 +417,10 @@ export function CalendarHeader({
                 <Filter className="w-4 h-4" />
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
+            <DropdownMenuContent align="end" className="w-56">
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
+                Formato
+              </div>
               <DropdownMenuItem onClick={() => onPostTypeFilterChange('ALL')}>
                 Todos os formatos
               </DropdownMenuItem>
@@ -396,6 +435,32 @@ export function CalendarHeader({
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onPostTypeFilterChange('CAROUSEL')}>
                 Carrossel
+              </DropdownMenuItem>
+
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">
+                Status
+              </div>
+              <DropdownMenuItem onClick={() => onStatusFilterChange('ALL')}>
+                Todos os status
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStatusFilterChange('FAILED')}>
+                Falhou
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStatusFilterChange('POSTING')}>
+                Processando
+              </DropdownMenuItem>
+
+              <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">
+                Timing
+              </div>
+              <DropdownMenuItem onClick={() => onTimingFilterChange('ALL')}>
+                Todos
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onTimingFilterChange('UPCOMING')}>
+                Próximos
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onTimingFilterChange('OVERDUE')}>
+                Atrasados
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>

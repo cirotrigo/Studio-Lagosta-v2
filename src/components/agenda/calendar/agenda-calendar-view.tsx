@@ -66,6 +66,8 @@ export function AgendaCalendarView() {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
+  const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true) // Sidebar colapsada por padrão
 
@@ -110,6 +112,36 @@ export function AgendaCalendarView() {
     endDate,
     postType: postTypeFilter,
   })
+
+  // Apply status and timing filters client-side
+  const filteredPosts = useMemo(() => {
+    if (!posts) return []
+
+    let filtered = posts as SocialPost[]
+    const now = new Date()
+
+    // Apply status filter
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter(post => post.status === statusFilter)
+    }
+
+    // Apply timing filter
+    if (timingFilter !== 'ALL') {
+      filtered = filtered.filter(post => {
+        if (!post.scheduledDatetime) return false
+        const scheduledDate = new Date(post.scheduledDatetime)
+
+        if (timingFilter === 'UPCOMING') {
+          return scheduledDate > now && post.status === 'SCHEDULED'
+        } else if (timingFilter === 'OVERDUE') {
+          return scheduledDate < now && post.status === 'SCHEDULED'
+        }
+        return true
+      })
+    }
+
+    return filtered
+  }, [posts, statusFilter, timingFilter])
 
   const selectedProject = projectList.find(p => p.id === selectedProjectId)
 
@@ -170,8 +202,6 @@ export function AgendaCalendarView() {
     }
   }, [editingPost])
 
-  const postsList = (posts as SocialPost[]) || []
-
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar de Canais - APENAS DESKTOP */}
@@ -207,6 +237,10 @@ export function AgendaCalendarView() {
           selectedProject={selectedProject}
           postTypeFilter={postTypeFilter}
           onPostTypeFilterChange={setPostTypeFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          timingFilter={timingFilter}
+          onTimingFilterChange={setTimingFilter}
           onCreatePost={() => setIsComposerOpen(true)}
           onOpenChannels={isMobile ? () => setMobileDrawerOpen(true) : undefined}
           isMobile={isMobile}
@@ -219,7 +253,7 @@ export function AgendaCalendarView() {
           {/* MOBILE: Lista por dia */}
           {isMobile ? (
             <MobileAgendaListView
-              posts={postsList}
+              posts={filteredPosts}
               onPostClick={setSelectedPost}
               onEditPost={handleEditPost}
               isLoading={isLoading}
@@ -229,7 +263,7 @@ export function AgendaCalendarView() {
             <>
               {viewMode === 'month' && (
                 <CalendarGrid
-                  posts={postsList}
+                  posts={filteredPosts}
                   selectedDate={selectedDate}
                   onPostClick={setSelectedPost}
                   isLoading={isLoading}
@@ -238,7 +272,7 @@ export function AgendaCalendarView() {
 
               {viewMode === 'week' && (
                 <CalendarWeekView
-                  posts={postsList}
+                  posts={filteredPosts}
                   selectedDate={selectedDate}
                   onPostClick={setSelectedPost}
                   isLoading={isLoading}
@@ -247,7 +281,7 @@ export function AgendaCalendarView() {
 
               {viewMode === 'day' && (
                 <CalendarDayView
-                  posts={postsList}
+                  posts={filteredPosts}
                   selectedDate={selectedDate}
                   onPostClick={setSelectedPost}
                   isLoading={isLoading}

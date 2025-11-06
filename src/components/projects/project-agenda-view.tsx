@@ -105,6 +105,8 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
+  const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
 
   // Determine date range based on view mode
   const { startDate, endDate } = useMemo(() => {
@@ -127,6 +129,36 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
     endDate,
     postType: postTypeFilter,
   })
+
+  // Apply status and timing filters client-side
+  const filteredPosts = useMemo(() => {
+    if (!posts) return []
+
+    let filtered = posts as SocialPost[]
+    const now = new Date()
+
+    // Apply status filter
+    if (statusFilter !== 'ALL') {
+      filtered = filtered.filter(post => post.status === statusFilter)
+    }
+
+    // Apply timing filter
+    if (timingFilter !== 'ALL') {
+      filtered = filtered.filter(post => {
+        if (!post.scheduledDatetime) return false
+        const scheduledDate = new Date(post.scheduledDatetime)
+
+        if (timingFilter === 'UPCOMING') {
+          return scheduledDate > now && post.status === 'SCHEDULED'
+        } else if (timingFilter === 'OVERDUE') {
+          return scheduledDate < now && post.status === 'SCHEDULED'
+        }
+        return true
+      })
+    }
+
+    return filtered
+  }, [posts, statusFilter, timingFilter])
 
   const { data: nextScheduledData } = useNextScheduledPost(projectId)
   const nextScheduledDate = nextScheduledData?.nextDate ? new Date(nextScheduledData.nextDate) : null
@@ -171,8 +203,6 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
       }
     : undefined
 
-  const postsArray = (posts as SocialPost[] | undefined) || []
-
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)]">
       <CalendarHeader
@@ -184,6 +214,10 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
         onCreatePost={handleCreatePost}
         postTypeFilter={postTypeFilter}
         onPostTypeFilterChange={setPostTypeFilter}
+        statusFilter={statusFilter}
+        onStatusFilterChange={setStatusFilter}
+        timingFilter={timingFilter}
+        onTimingFilterChange={setTimingFilter}
         nextScheduledDate={nextScheduledDate}
         onGoToNextScheduled={handleGoToNextScheduled}
       />
@@ -192,7 +226,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
         {viewMode === 'month' && (
           <CalendarGrid
             selectedDate={selectedDate}
-            posts={postsArray}
+            posts={filteredPosts}
             isLoading={isLoading}
             onPostClick={handlePostClick}
           />
@@ -200,7 +234,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
         {viewMode === 'week' && (
           <CalendarWeekView
             selectedDate={selectedDate}
-            posts={postsArray}
+            posts={filteredPosts}
             isLoading={isLoading}
             onPostClick={handlePostClick}
           />
@@ -208,7 +242,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
         {viewMode === 'day' && (
           <CalendarDayView
             selectedDate={selectedDate}
-            posts={postsArray}
+            posts={filteredPosts}
             isLoading={isLoading}
             onPostClick={handlePostClick}
           />
