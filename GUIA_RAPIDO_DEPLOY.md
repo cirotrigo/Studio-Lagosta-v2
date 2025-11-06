@@ -51,7 +51,7 @@ npm run deploy:vercel
 ```
 
 Ou via dashboard:
-1. Acesse https://vercel.com/dashboard
+1. Acesse https://vercel.com/studio
 2. Vá no projeto Studio Lagosta v2
 3. Clique em "Deployments"
 4. Se não houver deploy automático, clique em "Redeploy"

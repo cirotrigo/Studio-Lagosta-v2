@@ -42,7 +42,7 @@ export interface InstagramSettings {
 export function useInstagramDashboard(projectId: number) {
   return useQuery<InstagramDashboardData>({
     queryKey: ['instagram-dashboard', projectId],
-    queryFn: () => api.get(`/api/instagram/${projectId}/dashboard`),
+    queryFn: () => api.get(`/api/instagram/${projectId}/studio`),
     staleTime: 60_000, // 1 minute
     enabled: !!projectId,
   })

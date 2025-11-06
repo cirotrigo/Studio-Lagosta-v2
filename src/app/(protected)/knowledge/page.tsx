@@ -39,7 +39,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 
 export default function OrgKnowledgePage() {
   usePageConfig('Base de Conhecimento', 'Colabore com conhecimento compartilhado da organização', [
-    { label: 'Início', href: '/dashboard' },
+    { label: 'Início', href: '/studio' },
     { label: 'Base de Conhecimento' },
   ])
 

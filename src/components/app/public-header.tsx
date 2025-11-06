@@ -89,7 +89,7 @@ export function PublicHeader() {
                   <Button
                     asChild
                     size="sm">
-                    <Link href="/dashboard">
+                    <Link href="/studio">
                       <span>Ir para o Studio</span>
                     </Link>
                   </Button>

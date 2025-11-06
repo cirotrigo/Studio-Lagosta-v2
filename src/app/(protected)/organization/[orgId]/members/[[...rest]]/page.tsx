@@ -16,7 +16,7 @@ export default function OrganizationMembersPage() {
     title: "Membros da organização",
     description: "Convide pessoas, defina cargos e acompanhe a equipe pela interface do Clerk.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações", href: "/organization" },
       { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Membros" },

@@ -4,10 +4,10 @@ Soluções para problemas comuns durante desenvolvimento e produção.
 
 ---
 
-## 🔄 "Ainda redireciona para /dashboard quando logado"
+## 🔄 "Ainda redireciona para /studio quando logado"
 
 ### Problema
-Você está logado, acessa `http://localhost:3000` ou `www.lagostacriativa.com.br`, mas é redirecionado automaticamente para `/dashboard`.
+Você está logado, acessa `http://localhost:3000` ou `www.lagostacriativa.com.br`, mas é redirecionado automaticamente para `/studio`.
 
 ### Causa
 O servidor dev ainda está rodando o código antigo em cache.
@@ -116,7 +116,7 @@ NEXT_PUBLIC_APP_URL="http://localhost:3000"
 
 #### 2. Pegar chaves do Clerk
 
-1. Acesse: [clerk.com/dashboard](https://dashboard.clerk.com)
+1. Acesse: [clerk.com/studio](https://studio.clerk.com)
 2. Selecione seu projeto
 3. Vá em: **API Keys**
 4. Copie as chaves de **Development**

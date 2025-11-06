@@ -91,7 +91,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                           createOrganizationMode={createMode}
                           afterCreateOrganizationUrl="/organization/:id"
                           afterSelectOrganizationUrl="/organization/:id"
-                          afterSelectPersonalUrl="/dashboard"
+                          afterSelectPersonalUrl="/studio"
                           appearance={{
                             elements: {
                               rootBox: "w-full rounded-md border border-border/40 bg-background/60 px-3 py-2 text-sm",
@@ -131,7 +131,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
         </div>
 
         {/* Brand (mobile) */}
-        <Link href="/dashboard" className="flex items-center gap-2 md:hidden">
+        <Link href="/studio" className="flex items-center gap-2 md:hidden">
           <DynamicLogo className="h-7 w-7" />
           {isSiteConfigLoading ? (
             <div className="h-4 w-24 animate-pulse rounded bg-muted" />
@@ -163,7 +163,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                 createOrganizationMode={createMode}
                 afterCreateOrganizationUrl="/organization/:id"
                 afterSelectOrganizationUrl="/organization/:id"
-                afterSelectPersonalUrl="/dashboard"
+                afterSelectPersonalUrl="/studio"
                 appearance={{
                   elements: {
                     rootBox: "rounded-md border border-border/40 bg-background/70 px-3 py-1.5 text-sm transition-colors hover:border-primary/40 neon-border",

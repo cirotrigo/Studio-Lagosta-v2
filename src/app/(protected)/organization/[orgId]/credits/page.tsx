@@ -42,7 +42,7 @@ export default function OrganizationCreditsPage() {
     title: "Créditos da organização",
     description: "Acompanhe o saldo disponível, histórico de consumo e recargas de créditos compartilhados.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações", href: "/organization" },
       { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Créditos" },

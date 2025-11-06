@@ -57,7 +57,7 @@ const STATIC_IMAGE_MODELS_OPENROUTER: { id: string; label: string }[] = [
 
 export default function AIChatPage() {
   usePageConfig('Chat com IA', 'Converse com diferentes LLMs via provedores selecionáveis.', [
-    { label: 'Início', href: '/dashboard' },
+    { label: 'Início', href: '/studio' },
     { label: 'Chat com IA' },
   ])
 

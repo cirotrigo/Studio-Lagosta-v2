@@ -11,7 +11,7 @@ export function BreadcrumbNav() {
 
   return (
     <nav aria-label="Breadcrumb" className="flex items-center space-x-1 text-sm text-muted-foreground">
-      <Link href="/dashboard" className="hover:text-foreground transition-colors">
+      <Link href="/studio" className="hover:text-foreground transition-colors">
         Início
       </Link>
       {segments.length > 0 && segments[0] !== "home" && (

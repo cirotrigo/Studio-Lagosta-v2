@@ -24,7 +24,7 @@ export default function OrganizationProjectsPage() {
     title: "Projetos da organização",
     description: "Visualize e gerencie os projetos compartilhados com a sua equipe.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações", href: "/organization" },
       { label: organization?.name ?? "Organização", href: `/organization/${orgId}` },
       { label: "Projetos" },

@@ -160,7 +160,7 @@ CLERK_SECRET_KEY=sk_live_...
 
 ### 6️⃣ Configurar Clerk
 
-No [Clerk Dashboard](https://dashboard.clerk.com):
+No [Clerk Dashboard](https://studio.clerk.com):
 
 #### 6.1 Adicionar Domínio
 
@@ -179,8 +179,8 @@ No [Clerk Dashboard](https://dashboard.clerk.com):
 Sign-in URL: https://www.lagostacriativa.com.br/sign-in
 Sign-up URL: https://www.lagostacriativa.com.br/sign-up
 Home URL: https://www.lagostacriativa.com.br
-After sign-in URL: https://www.lagostacriativa.com.br/dashboard
-After sign-up URL: https://www.lagostacriativa.com.br/dashboard
+After sign-in URL: https://www.lagostacriativa.com.br/studio
+After sign-up URL: https://www.lagostacriativa.com.br/studio
 ```
 
 ---
@@ -218,7 +218,7 @@ www.lagostacriativa.com.br. 300 IN CNAME cname.vercel-dns.com.
 
 ### Teste 4: Autenticação
 1. Fazer login
-2. Ir para: `/dashboard`
+2. Ir para: `/studio`
 3. Verificar: App funciona normalmente
 
 ### Teste 5: Header Inteligente
@@ -423,7 +423,7 @@ Domains:
 
 Paths:
 - Sign-in: /sign-in
-- After sign-in: /dashboard
+- After sign-in: /studio
 ```
 
 ---

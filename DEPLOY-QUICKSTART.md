@@ -20,7 +20,7 @@ npm run deploy:check
 **Escolha uma opção:**
 
 **A) Vercel Postgres** (Recomendado)
-- Vá em https://vercel.com/dashboard
+- Vá em https://vercel.com/studio
 - Storage → Create → Postgres
 - Copie a `DATABASE_URL`
 
@@ -72,7 +72,7 @@ No dashboard da Vercel, vá em **Settings → Environment Variables**:
 # Database
 DATABASE_URL=postgresql://user:pass@host:5432/db
 
-# Clerk (pegue em https://dashboard.clerk.com)
+# Clerk (pegue em https://studio.clerk.com)
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 CLERK_WEBHOOK_SECRET=whsec_...
@@ -80,8 +80,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 # URLs
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio
 NEXT_PUBLIC_APP_URL=https://SEU-APP.vercel.app
 
 # Blob Storage (crie em Vercel Dashboard)

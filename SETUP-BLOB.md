@@ -16,7 +16,7 @@ Isso significa que você precisa configurar o token do Vercel Blob.
 ### Opção 1: Usando Vercel (Recomendado para produção)
 
 1. **Acesse o Vercel Dashboard**
-   - Vá para https://vercel.com/dashboard
+   - Vá para https://vercel.com/studio
    - Selecione seu projeto
 
 2. **Crie um Blob Store**
@@ -79,7 +79,7 @@ Para desenvolvimento local, a melhor opção é:
    ```
 
 3. **Crie o Blob Storage**
-   - Acesse https://vercel.com/dashboard
+   - Acesse https://vercel.com/studio
    - Selecione seu projeto
    - Vá em "Storage" → "Create" → "Blob"
    - Copie o token gerado

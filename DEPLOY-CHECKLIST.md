@@ -49,8 +49,8 @@ Use este checklist para garantir que não esqueceu nada no deploy.
 - [ ] `CLERK_WEBHOOK_SECRET` - Clerk (configurar depois)
 - [ ] `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`
 - [ ] `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`
-- [ ] `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard`
-- [ ] `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard`
+- [ ] `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio`
+- [ ] `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio`
 - [ ] `NEXT_PUBLIC_APP_URL` - https://seu-app.vercel.app
 - [ ] `BLOB_READ_WRITE_TOKEN` - Vercel Blob
 - [ ] `ADMIN_EMAILS` - Seu email
@@ -141,7 +141,7 @@ Use este checklist para garantir que não esqueceu nada no deploy.
 
 ### Dashboard
 
-- [ ] `/dashboard` acessível
+- [ ] `/studio` acessível
 - [ ] Pode criar projeto
 - [ ] Upload de logo funciona
 - [ ] Upload de elementos funciona

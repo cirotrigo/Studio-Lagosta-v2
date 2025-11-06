@@ -287,8 +287,8 @@ Guia detalhado para Clerk, banco, deploy na Vercel e uso de agentes.
 - URLs do Clerk (padrões do template):
   - `NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in`
   - `NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard`
-  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio`
+  - `NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio`
 - Banco: `DATABASE_URL=postgresql://user:password@host:5432/saas_template`
 - App: `NEXT_PUBLIC_APP_URL=http://localhost:3000`
 - Stripe (opcional): `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY`

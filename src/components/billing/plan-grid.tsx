@@ -87,7 +87,7 @@ export function PlanGrid({ plans }: PlanGridProps) {
               <CheckoutButton
                 planId={tier.plan.clerkId}
                 planPeriod={planPeriod}
-                newSubscriptionRedirectUrl="/dashboard"
+                newSubscriptionRedirectUrl="/studio"
                 checkoutProps={{
                   appearance: {
                     elements: {

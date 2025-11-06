@@ -21,7 +21,7 @@ The frontend is built with Next.js 15 App Router, React 19, and TypeScript, prov
 
 #### Server Components (Default)
 ```tsx
-// app/(protected)/dashboard/page.tsx
+// app/(protected)/studio/page.tsx
 export default async function DashboardPage() {
   // Can directly fetch data
   const data = await fetchDashboardData();
@@ -40,7 +40,7 @@ export default async function DashboardPage() {
 
 import { usePageConfig } from "@/hooks/use-page-config";
 
-// app/(protected)/dashboard/page.tsx
+// app/(protected)/studio/page.tsx
 export default function DashboardPage() {
   const { user } = useUser();
   
@@ -340,7 +340,7 @@ app/
 │   └── layout.tsx         # Public layout
 ├── (protected)/
 │   ├── dashboard/
-│   │   └── page.tsx       # /dashboard
+│   │   └── page.tsx       # /studio
 │   ├── billing/
 │   │   └── page.tsx       # /billing
 │   ├── profile/
@@ -365,7 +365,7 @@ export default function BillingPage() {
     title: "Billing & Subscription",
     description: "Manage your credits and plan",
     breadcrumbs: [
-      { label: "Home", href: "/dashboard" },
+      { label: "Home", href: "/studio" },
       { label: "Billing" }
     ]
   });
@@ -390,7 +390,7 @@ function Component() {
   const router = useRouter();
   
   const handleClick = () => {
-    router.push('/dashboard');
+    router.push('/studio');
   };
   
   return <button onClick={handleClick}>Go to Dashboard</button>;
@@ -399,7 +399,7 @@ function Component() {
 // Link component
 import Link from 'next/link';
 
-<Link href="/dashboard">Dashboard</Link>
+<Link href="/studio">Dashboard</Link>
 ```
 
 ## Data Fetching
@@ -535,7 +535,7 @@ const geistSans = Geist({
 ```tsx
 <nav aria-label="Main navigation">
   <ul>
-    <li><a href="/dashboard">Dashboard</a></li>
+    <li><a href="/studio">Dashboard</a></li>
   </ul>
 </nav>
 ```
@@ -616,7 +616,7 @@ test('renders button with text', () => {
 ### Integration Testing
 
 ```tsx
-// __tests__/dashboard.test.tsx
+// __tests__/studio.test.tsx
 test('displays user data after loading', async () => {
   render(<Dashboard />);
   

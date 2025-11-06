@@ -51,7 +51,7 @@ export default function OrganizationDashboardPage() {
       ? "Visão geral da sua equipe, créditos e atividades compartilhadas."
       : "Selecione uma organização ativa para visualizar o dashboard de equipe.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações", href: "/organization" },
       { label: organization?.name ?? "Detalhes" },
     ],

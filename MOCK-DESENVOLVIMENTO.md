@@ -52,7 +52,7 @@ Quando o mock estiver ativo, você verá warnings no console:
 
 Quando for para produção, **VOCÊ DEVE** configurar o Vercel Blob:
 
-1. Acesse https://vercel.com/dashboard
+1. Acesse https://vercel.com/studio
 2. Vá para "Storage" → "Create Database" → "Blob"
 3. Copie o `BLOB_READ_WRITE_TOKEN`
 4. Adicione no `.env.local` (desenvolvimento) ou nas variáveis de ambiente do Vercel (produção)

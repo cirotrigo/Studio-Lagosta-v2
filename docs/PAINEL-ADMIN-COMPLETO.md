@@ -628,7 +628,7 @@ export default async function AdminLayout({ children }) {
   }
 
   if (!(await isAdmin(userId))) {
-    redirect('/dashboard')
+    redirect('/studio')
   }
 
   return (

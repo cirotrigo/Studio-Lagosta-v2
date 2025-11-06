@@ -23,7 +23,7 @@ export function PlanHeaderActions({
         size="sm"
         asChild
       >
-        <a href="https://dashboard.clerk.com" target="_blank" rel="noreferrer" className="flex items-center gap-2">
+        <a href="https://studio.clerk.com" target="_blank" rel="noreferrer" className="flex items-center gap-2">
           <ExternalLink className="h-4 w-4" />
           Clerk Dashboard
         </a>

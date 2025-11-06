@@ -7,7 +7,7 @@ import {
   Activity
 } from "lucide-react";
 import { MrrBarChart, ArrBarChart, ChurnLineChart } from "@/components/charts/revenue-charts";
-import { useDashboard } from "@/hooks/use-dashboard";
+import { useDashboard } from "@/hooks/use-studio";
 
 export default function AdminDashboard() {
   const { data: stats, isLoading, error } = useDashboard();

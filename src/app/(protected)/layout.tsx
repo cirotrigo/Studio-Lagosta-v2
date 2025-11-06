@@ -98,7 +98,7 @@ export default function ProtectedLayout({
                 />
                 <div className="glass-panel border-border/40 bg-card/30 p-6">
                   {/* Mostrar ContextIndicator apenas no dashboard */}
-                  {pathname === '/dashboard' && <ContextIndicator />}
+                  {pathname === '/studio' && <ContextIndicator />}
                   <PageHeader />
                   {children}
                 </div>

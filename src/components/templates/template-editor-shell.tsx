@@ -190,7 +190,7 @@ function TemplateEditorContent() {
     `${name || 'Editor de Template'}`,
     'Monte e ajuste o layout visual do template com preview em tempo real.',
     [
-      { label: 'Dashboard', href: '/dashboard' },
+      { label: 'Dashboard', href: '/studio' },
       { label: 'Projetos', href: '/projects' },
       { label: `Projeto`, href: `/projects/${projectId}` },
       { label: name || 'Editor' },

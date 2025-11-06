@@ -30,7 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   const { userId } = await auth()
   if (!userId || !(await isAdmin(userId))) {
-    redirect("/dashboard")
+    redirect("/studio")
   }
 
   return (

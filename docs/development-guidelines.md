@@ -120,7 +120,7 @@ export default function MyPage() {
   
   // With custom breadcrumbs
   usePageConfig("Title", "Description", [
-    { label: "Home", href: "/dashboard" },
+    { label: "Home", href: "/studio" },
     { label: "Current Page" }
   ]);
   

@@ -27,7 +27,7 @@ export default function PromptsPage() {
     title: 'Meus Prompts',
     description: 'Gerencie seus prompts reutilizáveis para geração de imagens',
     breadcrumbs: [
-      { label: 'Início', href: '/dashboard' },
+      { label: 'Início', href: '/studio' },
       { label: 'Prompts' },
     ],
   })

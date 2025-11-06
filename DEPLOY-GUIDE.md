@@ -90,7 +90,7 @@ git push origin main
 
 **Passos:**
 
-1. Acesse https://vercel.com/dashboard
+1. Acesse https://vercel.com/studio
 2. Vá em **Storage** → **Create Database** → **Postgres**
 3. Nome: `studio-lagosta-db`
 4. Região: `US East` (mais próxima do Brasil)
@@ -202,7 +202,7 @@ DATABASE_URL=postgresql://user:pass@host:5432/database
 # ☝️ Cole a URL que você copiou do Neon/Vercel/Supabase
 
 # ===== CLERK AUTHENTICATION =====
-# Pegue em https://dashboard.clerk.com → API Keys
+# Pegue em https://studio.clerk.com → API Keys
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
 CLERK_SECRET_KEY=sk_test_...
 
@@ -212,8 +212,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 # URLs do Clerk
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio
 
 # ===== APP =====
 NEXT_PUBLIC_APP_URL=https://seu-app.vercel.app
@@ -297,7 +297,7 @@ psql "sua-database-url" < schema.sql
 
 **Como configurar:**
 
-1. Acesse https://dashboard.clerk.com
+1. Acesse https://studio.clerk.com
 2. Selecione sua aplicação
 3. Vá em **Webhooks** → **Add Endpoint**
 4. Configure:
@@ -350,7 +350,7 @@ psql "sua-database-url" < schema.sql
 ✅ CreditBalance criado automaticamente
 
 # 4. Dashboard
-✅ /dashboard acessível
+✅ /studio acessível
 ✅ Pode criar projeto
 ✅ Upload de logo funciona (precisa de BLOB_READ_WRITE_TOKEN)
 

@@ -25,7 +25,7 @@ export default function MyPage() {
     title: "Título da Página",
     description: "Descrição da página",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Minha Página" }
     ],
     showBreadcrumbs: true // opcional, padrão é true
@@ -46,7 +46,7 @@ usePageConfig("Título", "Descrição");
 
 // Com breadcrumbs
 usePageConfig("Título", "Descrição", [
-  { label: "Início", href: "/dashboard" },
+  { label: "Início", href: "/studio" },
   { label: "Página Atual" }
 ]);
 
@@ -92,7 +92,7 @@ export default function ProfilePage() {
     title: "Configurações de Perfil",
     description: "Gerencie suas informações pessoais",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Perfil" }
     ]
   });

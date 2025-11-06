@@ -656,7 +656,7 @@ src/hooks/use-post-actions.ts       - Ações de posts (publicar, reagendar)
 ### Páginas
 ```
 src/app/(protected)/agenda/page.tsx    - Página principal Agenda
-src/app/(protected)/dashboard/page.tsx - Lista de projetos
+src/app/(protected)/studio/page.tsx - Lista de projetos
 ```
 
 ### Banco de Dados

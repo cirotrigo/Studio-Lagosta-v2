@@ -70,7 +70,7 @@ export default function OrganizationAnalyticsPage() {
     title: organization?.name ? `${organization.name} · Analytics` : "Analytics da organização",
     description: "Acompanhe o desempenho da equipe e entenda quais recursos consomem mais créditos.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações", href: "/organization" },
       { label: organization?.name ?? "Organização", href: `/organization/${orgIdParam}` },
       { label: "Analytics" },

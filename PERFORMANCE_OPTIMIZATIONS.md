@@ -74,7 +74,7 @@ export async function GET(req: Request, { params }: { params: { id: string } }) 
 
 **Solução: Server-Side Parallel Fetching**
 ```typescript
-// src/app/(protected)/dashboard/page.tsx
+// src/app/(protected)/studio/page.tsx
 // Mova para Server Component e use parallel fetching
 
 export default async function DashboardPage() {
@@ -103,7 +103,7 @@ export default async function DashboardPage() {
 
 **Solução: Lazy Load Components Pesados**
 ```typescript
-// src/app/(protected)/dashboard/page.tsx
+// src/app/(protected)/studio/page.tsx
 import dynamic from 'next/dynamic';
 
 // Lazy load charts e widgets

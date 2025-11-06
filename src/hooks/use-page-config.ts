@@ -12,7 +12,7 @@ import { useSetPageMetadata, PageMetadata } from "@/contexts/page-metadata";
  * 
  * // Com breadcrumbs customizados
  * usePageConfig("Perfil", "Gerencie seu perfil", [
- *   { label: "Início", href: "/dashboard" },
+ *   { label: "Início", href: "/studio" },
  *   { label: "Perfil" }
  * ]);
  * 

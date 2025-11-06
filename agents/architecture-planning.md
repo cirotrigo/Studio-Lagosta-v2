@@ -8,7 +8,7 @@ Context
 
 Deliverables (paste in PR description or `docs/architecture.md`)
 - Problem & Goals: 2–3 bullets with outcomes and non-goals.
-- User Flows: Primary flow(s) with URL map (e.g., `/dashboard/...`). Sketch components reused/added. For protected routes, specify page metadata (title, description, breadcrumbs).
+- User Flows: Primary flow(s) with URL map (e.g., `/studio/...`). Sketch components reused/added. For protected routes, specify page metadata (title, description, breadcrumbs).
 - Data Model Impact: New/changed Prisma models/fields, relations, indexes, and cascade rules.
 - API Surface: New/changed endpoints with method, path, request/response examples, errors. For credit-gated features, specify the feature key (e.g., `ai_text_chat` or `ai_image_generation`) and expected cost.
   - For AI usage, define keys and costs explicitly and ensure `OperationType` enums exist and are mapped.

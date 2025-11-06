@@ -22,7 +22,7 @@ Out of scope for this document: Clerk/Stripe webhook flows (covered by backend i
 ## 3. Automated Coverage (Playwright)
 | Area | Scenario | Entry Point | Notes |
 | --- | --- | --- | --- |
-| Dashboard | Metric cards + charts render and respect mocked data | `tests/e2e/admin-dashboard.spec.ts` | API responses stubbed (`/api/admin/dashboard`). |
+| Dashboard | Metric cards + charts render and respect mocked data | `tests/e2e/admin-dashboard.spec.ts` | API responses stubbed (`/api/admin/studio`). |
 | Users | Search, credit prompt, invite flow, tabs | `tests/e2e/admin-users.spec.ts` | Handles `window.prompt` for credit update and invitation toasts. |
 | Credits | Aggregated cards, search, adjust via modal | `tests/e2e/admin-credits.spec.ts` | Verifies toast feedback and table update. |
 | Usage | Filters (type/search), JSON dialog | `tests/e2e/admin-usage.spec.ts` | CSV export kept manual; mocks keep fixtures small. |

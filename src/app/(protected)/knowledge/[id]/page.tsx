@@ -38,7 +38,7 @@ export default function KnowledgeDetailPage() {
     entry?.title || 'Carregando...',
     'Detalhes da entrada de conhecimento',
     [
-      { label: 'Início', href: '/dashboard' },
+      { label: 'Início', href: '/studio' },
       { label: 'Base de Conhecimento', href: '/knowledge' },
       { label: entry?.title || 'Detalhes' },
     ]

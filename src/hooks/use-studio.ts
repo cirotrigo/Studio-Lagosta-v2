@@ -22,7 +22,7 @@ export interface DashboardStats {
 export function useDashboard() {
   return useQuery<DashboardStats>({
     queryKey: ['admin-dashboard'],
-    queryFn: () => api.get('/api/admin/dashboard'),
+    queryFn: () => api.get('/api/admin/studio'),
     staleTime: 2 * 60_000, // 2 minutes
     gcTime: 10 * 60_000, // 10 minutes
   });

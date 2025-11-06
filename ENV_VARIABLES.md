@@ -20,7 +20,7 @@ DATABASE_URL="postgresql://user:password@host:5432/database?sslmode=require"
 NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY="pk_test_..."
 CLERK_SECRET_KEY="sk_test_..."
 ```
-- **Onde conseguir:** [clerk.com/dashboard](https://dashboard.clerk.com) → Seu projeto → API Keys
+- **Onde conseguir:** [clerk.com/studio](https://studio.clerk.com) → Seu projeto → API Keys
 - **Importante:** Use as chaves de **Production** para o domínio real
 
 ### App URL

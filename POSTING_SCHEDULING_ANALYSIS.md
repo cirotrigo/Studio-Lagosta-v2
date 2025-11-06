@@ -656,7 +656,7 @@ src/hooks/use-post-actions.ts       - Post actions (publish, reschedule)
 ### Pages
 ```
 src/app/(protected)/agenda/page.tsx    - Agenda main page
-src/app/(protected)/dashboard/page.tsx - Project list
+src/app/(protected)/studio/page.tsx - Project list
 ```
 
 ### Database

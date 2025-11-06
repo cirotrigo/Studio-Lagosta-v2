@@ -23,7 +23,7 @@ vercel login
 ### 2. Crie um Blob Storage
 
 **Opção A: Via Dashboard (Mais Fácil)**
-1. Acesse https://vercel.com/dashboard
+1. Acesse https://vercel.com/studio
 2. Crie um projeto novo ou selecione um existente
 3. Vá em **Storage** → **Create** → **Blob**
 4. Dê um nome (ex: `studio-lagosta-blob`)

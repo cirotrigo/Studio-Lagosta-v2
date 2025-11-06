@@ -41,7 +41,7 @@ Criados três endpoints de webhook para receber dados do Boost.space:
 ### Fase 3: Endpoints da API (Acesso a Dados)
 Criados dois endpoints para o frontend buscar dados:
 
-4. ✅ **[GET /api/instagram/[projectId]/dashboard/route.ts](src/app/api/instagram/[projectId]/dashboard/route.ts)**
+4. ✅ **[GET /api/instagram/[projectId]/studio/route.ts](src/app/api/instagram/[projectId]/studio/route.ts)**
    - Retorna dados completos do dashboard para um projeto
    - Inclui relatório da semana atual, resumos diários, stories/feeds recentes
    - Implementa autenticação e controle de acesso ao projeto

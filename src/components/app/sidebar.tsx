@@ -31,7 +31,7 @@ type SidebarProps = {
 };
 
 export const navigationItems = [
-  { name: "Painel", href: "/dashboard", icon: Home },
+  { name: "Painel", href: "/studio", icon: Home },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
   { name: "Agenda", href: "/agenda", icon: Calendar },
   { name: "Organização", href: "/organization", icon: Building2 },

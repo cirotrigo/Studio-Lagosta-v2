@@ -21,7 +21,7 @@ O servidor estará disponível em: `http://localhost:3000`
 
 1. Acesse: `http://localhost:3000`
 2. Faça login ou crie uma conta via Clerk
-3. Você será redirecionado para `/dashboard`
+3. Você será redirecionado para `/studio`
 
 ## 📁 Rotas Disponíveis
 
@@ -29,7 +29,7 @@ O servidor estará disponível em: `http://localhost:3000`
 
 | Rota | Descrição |
 |------|-----------|
-| `/dashboard` | Dashboard principal |
+| `/studio` | Dashboard principal |
 | `/projects` | **Lista de projetos** |
 | `/projects/[id]` | **Detalhes do projeto com templates** |
 | `/templates/[id]/editor` | **Editor visual de templates** |

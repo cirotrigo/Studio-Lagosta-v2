@@ -20,7 +20,7 @@ export default function BillingPage() {
     title: "Cobrança e Assinatura",
     description: "Gerencie seus créditos, plano e histórico de uso",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Cobrança" }
     ]
   });

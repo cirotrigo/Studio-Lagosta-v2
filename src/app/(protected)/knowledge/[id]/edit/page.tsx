@@ -43,7 +43,7 @@ export default function KnowledgeEditPage() {
     `Editar: ${entry?.title || 'Carregando...'}`,
     'Editar entrada de conhecimento',
     [
-      { label: 'Início', href: '/dashboard' },
+      { label: 'Início', href: '/studio' },
       { label: 'Base de Conhecimento', href: '/knowledge' },
       { label: entry?.title || 'Carregando...', href: `/knowledge/${id}` },
       { label: 'Editar' },

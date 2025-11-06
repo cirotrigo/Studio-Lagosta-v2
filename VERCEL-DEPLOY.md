@@ -16,7 +16,7 @@ Antes de fazer o deploy, você precisa ter:
 
 **Opção A: Vercel Postgres (Recomendado)**
 
-1. Acesse https://vercel.com/dashboard
+1. Acesse https://vercel.com/studio
 2. Vá em **Storage** → **Create Database** → **Postgres**
 3. Escolha um nome (ex: `studio-lagosta-db`)
 4. Clique em **Create**
@@ -37,7 +37,7 @@ Antes de fazer o deploy, você precisa ter:
 
 ### 2. Configurar Clerk
 
-1. Acesse https://dashboard.clerk.com
+1. Acesse https://studio.clerk.com
 2. Crie uma aplicação (se não tiver)
 3. Vá em **API Keys** e copie:
    - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`
@@ -95,8 +95,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 # Clerk URLs
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio
 
 # App
 NEXT_PUBLIC_APP_URL=https://SEU-DOMINIO.vercel.app

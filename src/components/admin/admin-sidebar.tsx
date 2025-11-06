@@ -140,7 +140,7 @@ export function AdminSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton asChild tooltip="Voltar ao App">
-              <Link href="/dashboard">
+              <Link href="/studio">
                 <span>Voltar ao App</span>
               </Link>
             </SidebarMenuButton>

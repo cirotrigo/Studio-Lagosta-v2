@@ -59,7 +59,7 @@ console.log('My User ID:', userId)
 ```
 
 **Opção B: Clerk Dashboard**
-1. [clerk.com/dashboard](https://dashboard.clerk.com)
+1. [clerk.com/studio](https://studio.clerk.com)
 2. Selecione seu projeto
 3. Vá em **Users**
 4. Clique no seu usuário
@@ -107,7 +107,7 @@ Environment: Production, Preview, Development
 ### Teste 1: Acesso Negado
 1. Faça login com um usuário **que não está na lista**
 2. Acesse: `/admin`
-3. **Esperado:** Redireciona para `/dashboard`
+3. **Esperado:** Redireciona para `/studio`
 
 ### Teste 2: Acesso Permitido
 1. Faça login com um usuário **que está na lista**
@@ -133,7 +133,7 @@ console.log('ADMIN_EMAILS:', process.env.ADMIN_EMAILS)
 console.log('ADMIN_USER_IDS:', process.env.ADMIN_USER_IDS)
 ```
 
-### "Redireciona para /dashboard"
+### "Redireciona para /studio"
 
 **Causa:** Email/UserID não está na lista de admins.
 
@@ -176,7 +176,7 @@ Para remover acesso de alguém:
 1. Edite `.env.local` / Vercel env vars
 2. Remova o email/ID da lista
 3. Reinicie servidor / Redeploy
-4. Usuário será redirecionado para `/dashboard` ao tentar acessar `/admin`
+4. Usuário será redirecionado para `/studio` ao tentar acessar `/admin`
 
 ---
 

@@ -85,7 +85,7 @@
 
 **Solução:**
 - Removido `<ProjectShareControls>` da página de projeto
-- ContextIndicator apenas no `/dashboard`
+- ContextIndicator apenas no `/studio`
 - Interface mais limpa e focada
 
 **Arquivos:**
@@ -276,7 +276,7 @@ git push origin main
 Se encontrar problemas após deploy:
 
 1. **Verificar logs Vercel:**
-   - https://vercel.com/dashboard
+   - https://vercel.com/studio
 
 2. **Debug console:**
    - Safari: ⌘ + Option + C

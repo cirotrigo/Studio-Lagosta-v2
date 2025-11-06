@@ -10,7 +10,7 @@ Após seguir este checklist:
 
 ✅ Site funcionando em **www.lagostacriativa.com.br**
 ✅ Landing page pública acessível por todos (logados ou não)
-✅ App protegido por autenticação em `/dashboard`
+✅ App protegido por autenticação em `/studio`
 ✅ HTTPS/SSL configurado
 ✅ Header inteligente (detecta se está logado e mostra botão do Studio)
 
@@ -113,14 +113,14 @@ No Vercel Dashboard → Settings → Environment Variables:
 
 #### 4.2 Clerk Domain Configuration
 
-No [Clerk Dashboard](https://dashboard.clerk.com):
+No [Clerk Dashboard](https://studio.clerk.com):
 
 - [ ] **Domains** → Add domain: `www.lagostacriativa.com.br`
 - [ ] **Paths** → Atualizar URLs:
   - Sign-in: `https://www.lagostacriativa.com.br/sign-in`
   - Sign-up: `https://www.lagostacriativa.com.br/sign-up`
-  - After sign-in: `https://www.lagostacriativa.com.br/dashboard`
-  - After sign-up: `https://www.lagostacriativa.com.br/dashboard`
+  - After sign-in: `https://www.lagostacriativa.com.br/studio`
+  - After sign-up: `https://www.lagostacriativa.com.br/studio`
 
 ---
 
@@ -152,7 +152,7 @@ git push origin main
 ##### Teste 2: Autenticação
 - [ ] Clicar em "Cadastre-se"
 - [ ] Criar conta ou fazer login
-- [ ] Verificar: Redirecionou para `/dashboard`
+- [ ] Verificar: Redirecionou para `/studio`
 - [ ] Verificar: Sidebar e topbar aparecem
 
 ##### Teste 3: Landing Page Quando Logado
@@ -160,7 +160,7 @@ git push origin main
 - [ ] Verificar: Landing page carrega normalmente (não redireciona)
 - [ ] Verificar: Header mostra "Ir para o Studio" ao invés de "Entrar"
 - [ ] Clicar em "Ir para o Studio"
-- [ ] Verificar: Vai para `/dashboard`
+- [ ] Verificar: Vai para `/studio`
 
 ##### Teste 4: Projetos
 - [ ] Criar um novo projeto

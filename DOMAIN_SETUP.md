@@ -7,7 +7,7 @@ Este guia mostra como configurar o domínio **www.lagostacriativa.com.br** para 
 Depois da configuração:
 
 - **www.lagostacriativa.com.br** → Landing page de marketing (acessível por todos)
-- **www.lagostacriativa.com.br/dashboard** → Aplicação Studio (requer autenticação)
+- **www.lagostacriativa.com.br/studio** → Aplicação Studio (requer autenticação)
 - Header inteligente: mostra "Ir para o Studio" quando usuário está logado
 
 ---
@@ -120,7 +120,7 @@ NEXT_PUBLIC_APP_URL=https://www.lagostacriativa.com.br
 
 ### 4.2 No Clerk (Autenticação)
 
-1. Acesse [clerk.com/dashboard](https://dashboard.clerk.com)
+1. Acesse [clerk.com/studio](https://studio.clerk.com)
 2. Selecione seu projeto
 3. Vá em **Domains**
 4. Adicione o novo domínio:
@@ -129,8 +129,8 @@ NEXT_PUBLIC_APP_URL=https://www.lagostacriativa.com.br
 5. Atualize as URLs de redirect:
    - **Sign-in URL**: `https://www.lagostacriativa.com.br/sign-in`
    - **Sign-up URL**: `https://www.lagostacriativa.com.br/sign-up`
-   - **After sign-in URL**: `https://www.lagostacriativa.com.br/dashboard`
-   - **After sign-up URL**: `https://www.lagostacriativa.com.br/dashboard`
+   - **After sign-in URL**: `https://www.lagostacriativa.com.br/studio`
+   - **After sign-up URL**: `https://www.lagostacriativa.com.br/studio`
 
 ### 4.3 Fazer Redeploy
 
@@ -158,14 +158,14 @@ Você deve ver:
 
 1. Clique em "Cadastre-se" ou "Entrar"
 2. Faça login com sua conta
-3. Deve ser redirecionado para: `https://www.lagostacriativa.com.br/dashboard`
+3. Deve ser redirecionado para: `https://www.lagostacriativa.com.br/studio`
 
 ### 5.3 Testar Landing Page Quando Logado
 
 1. Estando logado, acesse: `https://www.lagostacriativa.com.br`
 2. A landing page deve carregar normalmente (não redireciona)
 3. No header, deve aparecer o botão "Ir para o Studio" ao invés de "Entrar"
-4. Clique em "Ir para o Studio" e verifique se vai para `/dashboard`
+4. Clique em "Ir para o Studio" e verifique se vai para `/studio`
 
 ---
 
@@ -254,7 +254,7 @@ Para monitorar erros em produção:
 Seu domínio customizado está configurado! Agora você tem:
 
 ✅ Landing page profissional em www.lagostacriativa.com.br (acessível por todos)
-✅ Aplicação Studio protegida por autenticação em /dashboard
+✅ Aplicação Studio protegida por autenticação em /studio
 ✅ HTTPS/SSL configurado automaticamente
 ✅ Header dinâmico que mostra "Ir para o Studio" quando logado
 

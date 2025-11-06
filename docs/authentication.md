@@ -26,8 +26,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 # Clerk URLs (customize as needed)
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio
 ```
 
 ### Root Layout Setup
@@ -76,7 +76,7 @@ export default clerkMiddleware(async (auth, request) => {
     // Redirect authenticated users from home to dashboard
     const authResult = await auth();
     if (authResult.userId && request.nextUrl.pathname === "/") {
-      const url = new URL("/dashboard", request.url);
+      const url = new URL("/studio", request.url);
       return NextResponse.redirect(url);
     }
     return NextResponse.next();
@@ -101,7 +101,7 @@ export const config = {
 - Marketing pages
 
 #### Protected Routes (`/app/(protected)/`)
-- Dashboard (`/dashboard`)
+- Dashboard (`/studio`)
 - User profile (`/profile`)
 - Billing (`/billing`)
 - Settings
@@ -235,7 +235,7 @@ export async function GET() {
 ### Server Components
 
 ```tsx
-// app/(protected)/dashboard/page.tsx
+// app/(protected)/studio/page.tsx
 import { auth } from '@clerk/nextjs/server';
 import { redirect } from 'next/navigation';
 
@@ -435,7 +435,7 @@ export default function SignInPage() {
             card: "bg-white shadow-lg"
           }
         }}
-        redirectUrl="/dashboard"
+        redirectUrl="/studio"
       />
     </div>
   );
@@ -458,7 +458,7 @@ export default function SignUpPage() {
             card: "bg-white shadow-lg"
           }
         }}
-        redirectUrl="/dashboard"
+        redirectUrl="/studio"
       />
     </div>
   );
@@ -505,7 +505,7 @@ export default function SignInPage() {
   return (
     <SignIn 
       appearance={clerkTheme}
-      redirectUrl="/dashboard"
+      redirectUrl="/studio"
     />
   );
 }

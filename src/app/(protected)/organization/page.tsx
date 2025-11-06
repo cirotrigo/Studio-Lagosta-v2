@@ -20,7 +20,7 @@ export default function OrganizationLandingPage() {
     title: "Organizações",
     description: "Gerencie suas equipes e alternância de contexto de trabalho.",
     breadcrumbs: [
-      { label: "Início", href: "/dashboard" },
+      { label: "Início", href: "/studio" },
       { label: "Organizações" },
     ],
   })
@@ -68,7 +68,7 @@ export default function OrganizationLandingPage() {
 
           <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
-            <Link href="/dashboard">
+            <Link href="/studio">
               Voltar ao painel pessoal
             </Link>
           </Button>

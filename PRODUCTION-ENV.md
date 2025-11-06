@@ -12,7 +12,7 @@ CLERK_WEBHOOK_SECRET=whsec_...
 ```
 
 **Como obter:**
-1. Acesse [Clerk Dashboard](https://dashboard.clerk.com)
+1. Acesse [Clerk Dashboard](https://studio.clerk.com)
 2. Selecione seu projeto de produção
 3. API Keys → Copie as chaves de **Production**
 

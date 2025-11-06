@@ -114,7 +114,7 @@ Stories: ████████ 21/21
 ```
 
 ### 4. Integração no Dashboard
-**Arquivo**: `src/app/(protected)/dashboard/page.tsx`
+**Arquivo**: `src/app/(protected)/studio/page.tsx`
 
 **Modificações:**
 - Hook `useInstagramSummaries` busca dados para todos os projetos
@@ -243,13 +243,13 @@ WHERE id = 1;
 
 ### Modificados
 1. ✅ `src/hooks/use-instagram-analytics.ts` - Adicionado hook `useInstagramSummaries`
-2. ✅ `src/app/(protected)/dashboard/page.tsx` - Integração do widget nos cards
+2. ✅ `src/app/(protected)/studio/page.tsx` - Integração do widget nos cards
 
 ---
 
 ## 🎯 Resultado Final
 
-Agora quando você acessar o dashboard (`/dashboard`):
+Agora quando você acessar o dashboard (`/studio`):
 
 ✅ **Todos os cards de projetos mostram**:
 - Logo e nome do projeto (como antes)

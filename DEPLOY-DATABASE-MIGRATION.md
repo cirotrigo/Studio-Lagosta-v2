@@ -51,7 +51,7 @@ Migrar toda a estrutura e dados para um banco de produção na Vercel/Neon/Supab
 #### A) Vercel Postgres (Mais Fácil)
 
 ```bash
-# 1. Acesse https://vercel.com/dashboard
+# 1. Acesse https://vercel.com/studio
 # 2. Seu Projeto → Storage → Create → Postgres
 # 3. Nome: studio-lagosta-db
 # 4. Região: US East (mais próxima)
@@ -120,8 +120,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 # URLs do Clerk
 NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
 NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
-NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/dashboard
-NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/dashboard
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/studio
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/studio
 
 # App URL
 NEXT_PUBLIC_APP_URL=https://seu-app.vercel.app

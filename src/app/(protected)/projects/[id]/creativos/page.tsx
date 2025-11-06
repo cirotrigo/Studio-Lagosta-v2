@@ -208,7 +208,7 @@ export default function ProjectCreativesPage() {
     'Galeria de Criativos',
     'Visualize e baixe todos os criativos exportados através do editor Konva.',
     [
-      { label: 'Dashboard', href: '/dashboard' },
+      { label: 'Dashboard', href: '/studio' },
       { label: 'Projetos', href: '/projects' },
       isValidProject ? { label: `Projeto ${projectId}`, href: `/projects/${projectId}` } : undefined,
       { label: 'Criativos' },
