@@ -153,9 +153,7 @@ export default function ProjectDetailPage() {
   }
 
   const handleDelete = (id: number, name: string) => {
-    if (confirm(`Tem certeza que deseja deletar o template "${name}"?`)) {
-      deleteMutation.mutate(id)
-    }
+    deleteMutation.mutate(id)
   }
 
 const handleDuplicate = (id: number, name: string) => {

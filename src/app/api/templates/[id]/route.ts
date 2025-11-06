@@ -173,6 +173,12 @@ export async function DELETE(
   }
 
   try {
+    // Primeiro, excluir todas as gerações relacionadas ao template
+    await db.generation.deleteMany({
+      where: { templateId: templateId },
+    })
+
+    // Depois, excluir o template (as páginas serão excluídas automaticamente via cascade)
     await db.template.delete({
       where: { id: templateId },
     })

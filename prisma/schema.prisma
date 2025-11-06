@@ -87,7 +87,7 @@ model Generation {
   googleDriveFileId    String?
   googleDriveBackupUrl String?
   Project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Template             Template            @relation(fields: [templateId], references: [id])
+  Template             Template            @relation(fields: [templateId], references: [id], onDelete: Cascade)
   VideoProcessingJob   VideoProcessingJob? @relation("GenerationVideoJob")
   socialPosts          SocialPost[] // Posts that use this creative
 
