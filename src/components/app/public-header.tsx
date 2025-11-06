@@ -8,10 +8,12 @@ import { cn } from '@/lib/utils'
 import { site } from '@/lib/brand-config'
 import { useMenuByLocation } from '@/hooks/use-public-menu'
 import { DynamicLogo } from '@/components/app/dynamic-logo'
+import { useAuth } from '@clerk/nextjs'
 
 export function PublicHeader() {
   const [menuState, setMenuState] = React.useState(false)
   const [isScrolled, setIsScrolled] = React.useState(false)
+  const { isSignedIn, isLoaded } = useAuth()
 
   // Fetch menu from CMS
   const { data: menuData } = useMenuByLocation('header')
@@ -82,31 +84,45 @@ export function PublicHeader() {
                 </ul>
               </div>
               <div className="flex w-full flex-col space-y-3 sm:flex-row sm:gap-3 sm:space-y-0 md:w-fit">
-                <Button
-                  asChild
-                  variant="outline"
-                  size="sm"
-                  className={cn(isScrolled && 'lg:hidden')}>
-                  <Link href="/sign-in">
-                    <span>Entrar</span>
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className={cn(isScrolled && 'lg:hidden')}>
-                  <Link href="/sign-up">
-                    <span>Cadastre-se</span>
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  size="sm"
-                  className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
-                  <Link href="/sign-up">
-                    <span>Comece Agora</span>
-                  </Link>
-                </Button>
+                {isLoaded && isSignedIn ? (
+                  // Show Dashboard button for logged users
+                  <Button
+                    asChild
+                    size="sm">
+                    <Link href="/dashboard">
+                      <span>Ir para o Studio</span>
+                    </Link>
+                  </Button>
+                ) : (
+                  // Show Login/Signup buttons for guests
+                  <>
+                    <Button
+                      asChild
+                      variant="outline"
+                      size="sm"
+                      className={cn(isScrolled && 'lg:hidden')}>
+                      <Link href="/sign-in">
+                        <span>Entrar</span>
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      size="sm"
+                      className={cn(isScrolled && 'lg:hidden')}>
+                      <Link href="/sign-up">
+                        <span>Cadastre-se</span>
+                      </Link>
+                    </Button>
+                    <Button
+                      asChild
+                      size="sm"
+                      className={cn(isScrolled ? 'lg:inline-flex' : 'hidden')}>
+                      <Link href="/sign-up">
+                        <span>Comece Agora</span>
+                      </Link>
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
           </div>
