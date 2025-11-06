@@ -49,21 +49,46 @@ export function usePostActions(projectId: number) {
 
   // Duplicate post
   const duplicatePost = useMutation({
-    mutationFn: async (postId: string) => {
+    mutationFn: async ({
+      postId,
+      scheduledDatetime,
+    }: {
+      postId: string
+      scheduledDatetime?: string // Optional custom datetime
+    }) => {
       const post = await api.get<SocialPost>(`/api/projects/${projectId}/posts/${postId}`)
 
-      return api.post(`/api/projects/${projectId}/posts`, {
+      // Use mediaUrls directly from the post (supports all post types including uploads)
+      // Only use generationId if mediaUrls are not available
+      const payload: any = {
         postType: post.postType,
         caption: post.caption,
-        generationIds: post.generationId ? [post.generationId] : [],
         scheduleType: 'SCHEDULED' as const,
-        scheduledDatetime: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        altText: post.altText,
-        firstComment: post.firstComment,
-      })
+        scheduledDatetime: scheduledDatetime || new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Custom or tomorrow
+        altText: post.altText || [],
+        firstComment: post.firstComment || undefined,
+        publishType: post.publishType || 'DIRECT',
+      }
+
+      // Prioritize mediaUrls (works for all post types)
+      if (post.mediaUrls && post.mediaUrls.length > 0) {
+        payload.mediaUrls = post.mediaUrls
+        // Still link to generation if available
+        if (post.generationId) {
+          payload.generationIds = [post.generationId]
+        }
+      } else if (post.generationId) {
+        // Fallback to generationId if no mediaUrls
+        payload.generationIds = [post.generationId]
+      } else {
+        throw new Error('Post has no media URLs or generation ID to duplicate')
+      }
+
+      return api.post(`/api/projects/${projectId}/posts`, payload)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['social-posts', projectId] })
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts'] })
     },
   })
 

@@ -30,6 +30,7 @@ import { usePostActions } from '@/hooks/use-post-actions'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { useProject } from '@/hooks/use-project'
 import { RescheduleDialog } from './reschedule-dialog'
+import { DuplicateDialog } from './duplicate-dialog'
 import { toast } from 'sonner'
 import { getPostDate } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
@@ -45,9 +46,10 @@ interface PostPreviewModalProps {
 
 export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewModalProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
+  const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
-  const { publishNow, deletePost, duplicatePost } = usePostActions(post.projectId)
+  const { publishNow, deletePost } = usePostActions(post.projectId)
   const { data: project } = useProject(post.projectId)
 
   // Poll for post status updates after publishing
@@ -195,14 +197,8 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
     }
   }
 
-  const handleDuplicate = async () => {
-    try {
-      await duplicatePost.mutateAsync(post.id)
-      toast.success('Post duplicado com sucesso!')
-      onClose()
-    } catch (_error) {
-      toast.error('Erro ao duplicar post')
-    }
+  const handleDuplicate = () => {
+    setDuplicateOpen(true)
   }
 
   const handleEdit = () => {
@@ -525,6 +521,13 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
         post={post}
         open={rescheduleOpen}
         onClose={() => setRescheduleOpen(false)}
+      />
+
+      {/* Dialog de Duplicação */}
+      <DuplicateDialog
+        post={post}
+        open={duplicateOpen}
+        onClose={() => setDuplicateOpen(false)}
       />
     </>
   )

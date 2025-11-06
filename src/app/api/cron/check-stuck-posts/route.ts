@@ -1,28 +1,26 @@
-import { NextResponse } from 'next/server'
-import { auth } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { PostScheduler } from '@/lib/posts/scheduler'
 
 /**
- * POST /api/posts/check-stuck
+ * GET /api/cron/check-stuck-posts
  * Check for posts stuck in POSTING status and mark them as FAILED
- * This endpoint can be called by a cron job
+ * This endpoint is called by Vercel Cron every 10 minutes
  */
-export async function POST() {
+export async function GET(req: NextRequest) {
   try {
-    const { userId } = await auth()
-
-    // Allow unauthenticated requests from cron jobs
-    // but you can add a secret token check here if needed
-    if (!userId) {
-      // Check for a secret token in headers for cron jobs
-      // const token = headers().get('x-cron-secret')
-      // if (token !== process.env.CRON_SECRET) {
-      //   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-      // }
+    // Verify cron authentication (Vercel Cron secret)
+    const authHeader = req.headers.get('authorization')
+    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+      console.error('❌ Check stuck posts: Unauthorized - invalid CRON_SECRET')
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    console.log('🔍 Checking for stuck posts...')
 
     const scheduler = new PostScheduler()
     const result = await scheduler.checkStuckPosts()
+
+    console.log(`✅ Check complete. Updated ${result.updated} stuck posts.`)
 
     return NextResponse.json({
       success: true,

@@ -19,13 +19,26 @@ export const runtime = 'nodejs'
  * - sent_at: Unix timestamp (opcional, para registro preciso)
  */
 export async function POST(req: NextRequest) {
+  const timestamp = new Date().toISOString()
+  console.log('\n' + '='.repeat(80))
+  console.log(`📥 BUFFER WEBHOOK RECEIVED at ${timestamp}`)
+  console.log('='.repeat(80))
+
   try {
     // 1. Validate webhook secret
     const secret = req.headers.get('x-webhook-secret')
-    if (secret !== process.env.BUFFER_WEBHOOK_SECRET) {
+    const expectedSecret = process.env.BUFFER_WEBHOOK_SECRET
+
+    console.log('🔐 Validating webhook secret...')
+    console.log(`   Received secret: ${secret ? secret.substring(0, 10) + '...' : 'NONE'}`)
+    console.log(`   Expected secret: ${expectedSecret ? expectedSecret.substring(0, 10) + '...' : 'NOT SET'}`)
+
+    if (secret !== expectedSecret) {
       console.error('❌ Buffer webhook: Invalid secret')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    console.log('✅ Secret validated successfully')
 
     // 2. Parse payload
     const payload = await req.json()
@@ -34,6 +47,7 @@ export async function POST(req: NextRequest) {
       buffer_update_id,
       sent_at,
       message,
+      metadata,
     } = payload
 
     console.log('📩 Buffer webhook received:', {
@@ -41,6 +55,7 @@ export async function POST(req: NextRequest) {
       buffer_update_id,
       sent_at,
       message,
+      metadata,
     })
 
     // 3. Validate required fields
@@ -49,44 +64,78 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing success field' }, { status: 400 })
     }
 
-    // 4. Find the most recent POSTING post
-    // Busca pelo último post que está aguardando confirmação
-    const post = await db.socialPost.findFirst({
-      where: {
-        status: 'POSTING',
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        status: true,
-        postType: true,
-        createdAt: true,
-        Project: {
-          select: {
-            id: true,
-            name: true,
+    // 4. Find the post - prioritize metadata.studio_post_id if available
+    let post
+    const postId = metadata?.studio_post_id || metadata?.post_id
+
+    if (postId) {
+      console.log(`🔍 Looking for post by ID from metadata: ${postId}`)
+      post = await db.socialPost.findUnique({
+        where: { id: postId },
+        select: {
+          id: true,
+          status: true,
+          postType: true,
+          createdAt: true,
+          Project: {
+            select: {
+              id: true,
+              name: true,
+            },
           },
         },
-      },
-    })
+      })
+
+      if (post && post.status !== 'POSTING') {
+        console.warn(`⚠️ Post ${postId} found but status is ${post.status}, not POSTING`)
+      }
+    }
+
+    // Fallback: Find the most recent POSTING post if no ID provided or post not found
+    if (!post) {
+      console.log('🔍 No post ID in metadata or post not found, using fallback: most recent POSTING post')
+      post = await db.socialPost.findFirst({
+        where: {
+          status: 'POSTING',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        select: {
+          id: true,
+          status: true,
+          postType: true,
+          createdAt: true,
+          Project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+      })
+    }
 
     if (!post) {
       console.error('❌ Buffer webhook: No POSTING post found')
       return NextResponse.json(
         {
           error: 'No pending post found',
-          hint: 'Post may have already been processed or does not exist'
+          hint: 'Post may have already been processed or does not exist',
+          received_post_id: postId,
         },
         { status: 404 }
       )
     }
 
-    console.log(`📍 Found post: ${post.id} from project ${post.Project.name}`)
+    console.log(`📍 Found post: ${post.id} from project ${post.Project.name} (status: ${post.status})`)
 
     // 5. Handle failed posts (success = false)
     if (success === false) {
+      console.log('💥 Processing FAILED post...')
+      console.log(`   Post ID: ${post.id}`)
+      console.log(`   Error message: ${message || 'No error message provided'}`)
+
       await db.socialPost.update({
         where: { id: post.id },
         data: {
@@ -98,7 +147,10 @@ export async function POST(req: NextRequest) {
       })
 
       console.log(`❌ Post ${post.id} marked as FAILED`)
+      console.log(`   Project: ${post.Project.name}`)
       console.log(`   Error: ${message}`)
+      console.log('='.repeat(80) + '\n')
+
       return NextResponse.json({
         success: true,
         message: 'Post marked as failed',
@@ -107,6 +159,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 6. Handle successful posts (success = true)
+    console.log('✨ Processing SUCCESSFUL post...')
+    console.log(`   Post ID: ${post.id}`)
+    console.log(`   Buffer ID: ${buffer_update_id || 'Not provided'}`)
+    console.log(`   Sent at: ${sent_at ? new Date(sent_at * 1000).toISOString() : 'Using current time'}`)
+
     await db.socialPost.update({
       where: { id: post.id },
       data: {
@@ -118,6 +175,9 @@ export async function POST(req: NextRequest) {
     })
 
     console.log(`✅ Post ${post.id} confirmed as POSTED`)
+    console.log(`   Project: ${post.Project.name}`)
+    console.log(`   Type: ${post.postType}`)
+    console.log('='.repeat(80) + '\n')
 
     // 7. Return success response
     return NextResponse.json({
@@ -127,7 +187,13 @@ export async function POST(req: NextRequest) {
       projectName: post.Project.name,
     })
   } catch (error) {
-    console.error('❌ Buffer webhook error:', error)
+    console.error('\n' + '!'.repeat(80))
+    console.error('❌ BUFFER WEBHOOK ERROR')
+    console.error('!'.repeat(80))
+    console.error('Error:', error)
+    console.error('Stack:', error instanceof Error ? error.stack : 'No stack trace')
+    console.error('!'.repeat(80) + '\n')
+
     return NextResponse.json(
       {
         error: 'Internal server error',

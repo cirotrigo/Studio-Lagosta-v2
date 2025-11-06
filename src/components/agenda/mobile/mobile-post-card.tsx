@@ -58,8 +58,8 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
 
   const handleDuplicate = async () => {
     try {
-      await duplicatePost.mutateAsync(post.id)
-      toast.success('Post duplicado com sucesso!')
+      await duplicatePost.mutateAsync({ postId: post.id })
+      toast.success('Post duplicado para amanhã!')
     } catch (_error) {
       toast.error('Erro ao duplicar post')
     }
