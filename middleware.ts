@@ -21,14 +21,8 @@ export default clerkMiddleware(async (auth, req) => {
   const { userId, sessionClaims } = await auth()
   const { pathname } = req.nextUrl
 
-  // Allow public routes
+  // Allow public routes (logged users can also access public pages)
   if (isPublicRoute(req)) {
-    // If user is logged in and visiting homepage, redirect to dashboard
-    if (userId && pathname === '/') {
-      const dashboardUrl = new URL('/dashboard', req.url)
-      return NextResponse.redirect(dashboardUrl)
-    }
-
     return NextResponse.next()
   }
 
