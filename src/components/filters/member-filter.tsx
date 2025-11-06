@@ -26,6 +26,7 @@ interface MemberData {
   imageUrl?: string
   name: string
   totalItems: number
+  totalItemsFromAnalytics: number
 }
 
 export function MemberFilter({
@@ -68,10 +69,14 @@ export function MemberFilter({
             (m) => m.publicUserData.userId === member.clerkId
           )
 
-          // Usar contagem real da lista de itens se disponível
-          const totalItems = items.length > 0
-            ? (itemCountsByMember[member.clerkId] || 0)
-            : (member.stats.imageGenerations + member.stats.videoGenerations)
+          // CORREÇÃO: Sempre usar estatísticas do analytics para contagem total
+          // Usar itemCountsByMember apenas para exibição quando um membro está selecionado
+          const totalItemsFromAnalytics = member.stats.imageGenerations + member.stats.videoGenerations
+          const currentFilterCount = itemCountsByMember[member.clerkId] || 0
+
+          // Usar analytics para determinar se o membro deve aparecer
+          // Mas mostrar a contagem filtrada se houver filtro ativo (value não é null)
+          const displayCount = value !== null ? currentFilterCount : totalItemsFromAnalytics
 
           return {
             clerkId: member.clerkId,
@@ -79,18 +84,20 @@ export function MemberFilter({
             name: clerkMember?.publicUserData.firstName
               ? `${clerkMember.publicUserData.firstName} ${clerkMember.publicUserData.lastName || ''}`.trim()
               : clerkMember?.publicUserData.identifier || member.name || member.email || 'Usuário',
-            totalItems,
+            totalItems: displayCount,
+            totalItemsFromAnalytics, // Manter para decisão de filtro
           }
         })
 
-        setMembersData(enrichedMembers.filter(m => m.totalItems > 0))
+        // Filtrar baseado nas estatísticas do analytics, não nos items atuais
+        setMembersData(enrichedMembers.filter(m => m.totalItemsFromAnalytics > 0))
       } catch (error) {
         console.error('Error fetching members data:', error)
       }
     }
 
     fetchMembersData()
-  }, [organization, members, items.length, itemCountsByMember])
+  }, [organization, members, items.length, itemCountsByMember, value])
 
   if (isLoading || !organizationId || disabled) {
     return null
