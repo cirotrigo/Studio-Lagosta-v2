@@ -37,45 +37,90 @@ export function MemberFilter({
   items = [],
 }: MemberFilterProps) {
   const { organization } = useOrganization()
-  const { data: analyticsData, isLoading } = useOrganizationMemberAnalytics(organizationId)
+  // Usar período de 90 dias para capturar mais membros
+  const { data: analyticsData, isLoading } = useOrganizationMemberAnalytics(organizationId, { period: '90d' })
   const [membersData, setMembersData] = React.useState<MemberData[]>([])
+
+  // Cache local para items - previne perda de dados quando items fica vazio temporariamente
+  const itemsCache = React.useRef<Generation[]>([])
+
+  const stableItems = React.useMemo(() => {
+    if (items.length > 0) {
+      itemsCache.current = items
+      console.log('[MemberFilter] Updated items cache:', items.length)
+      return items
+    }
+    console.log('[MemberFilter] Using cached items:', itemsCache.current.length)
+    return itemsCache.current
+  }, [items])
 
   const members = React.useMemo(
     () => analyticsData?.members ?? [],
     [analyticsData?.members]
   )
 
-  // Contar itens por membro na lista atual
+  // Contar itens por membro na lista atual (usando cache estável)
   const itemCountsByMember = React.useMemo(() => {
     const counts: Record<string, number> = {}
-    items.forEach((item) => {
+    stableItems.forEach((item) => {
       if (item.createdBy) {
         counts[item.createdBy] = (counts[item.createdBy] || 0) + 1
       }
     })
+    console.log('[MemberFilter] Item counts calculated from stable items:', Object.keys(counts).length, 'unique creators')
     return counts
-  }, [items])
+  }, [stableItems])
 
   // Buscar dados dos membros do Clerk
   React.useEffect(() => {
-    if (!organization || members.length === 0) return
+    if (!organization) {
+      console.log('[MemberFilter] No organization, skipping')
+      return
+    }
+
+    // Não atualizar se não temos dados mínimos necessários
+    if (members.length === 0 && items.length === 0) {
+      console.log('[MemberFilter] No members and no items, waiting for data')
+      return
+    }
 
     const fetchMembersData = async () => {
+      console.log('[MemberFilter] Starting fetchMembersData', {
+        membersCount: members.length,
+        itemsCount: stableItems.length,
+        uniqueCreators: Object.keys(itemCountsByMember).length,
+        value
+      })
+
       try {
         const membershipList = await organization.getMemberships()
+        console.log('[MemberFilter] Clerk memberships:', membershipList.data.length)
 
-        const enrichedMembers = members.map((member) => {
+        // Criar um mapa de membros do analytics
+        const analyticsMap = new Map(
+          members.map((m) => [m.clerkId, m])
+        )
+
+        // Encontrar membros únicos que têm items mas não estão nos analytics
+        const membersFromItems = new Set<string>()
+        stableItems.forEach((item) => {
+          if (item.createdBy && !analyticsMap.has(item.createdBy)) {
+            membersFromItems.add(item.createdBy)
+          }
+        })
+
+        console.log('[MemberFilter] Members from analytics:', members.map(m => m.clerkId.substring(0, 8)))
+        console.log('[MemberFilter] Members missing from analytics:', Array.from(membersFromItems).map(id => id.substring(0, 8)))
+        console.log('[MemberFilter] All creators in items:', Object.keys(itemCountsByMember).map(id => ({ id: id.substring(0, 8), count: itemCountsByMember[id] })))
+
+        // Enriquecer membros do analytics
+        const enrichedAnalyticsMembersRaw = members.map((member) => {
           const clerkMember = membershipList.data.find(
             (m) => m.publicUserData.userId === member.clerkId
           )
 
-          // CORREÇÃO: Sempre usar estatísticas do analytics para contagem total
-          // Usar itemCountsByMember apenas para exibição quando um membro está selecionado
           const totalItemsFromAnalytics = member.stats.imageGenerations + member.stats.videoGenerations
           const currentFilterCount = itemCountsByMember[member.clerkId] || 0
-
-          // Usar analytics para determinar se o membro deve aparecer
-          // Mas mostrar a contagem filtrada se houver filtro ativo (value não é null)
           const displayCount = value !== null ? currentFilterCount : totalItemsFromAnalytics
 
           return {
@@ -85,21 +130,86 @@ export function MemberFilter({
               ? `${clerkMember.publicUserData.firstName} ${clerkMember.publicUserData.lastName || ''}`.trim()
               : clerkMember?.publicUserData.identifier || member.name || member.email || 'Usuário',
             totalItems: displayCount,
-            totalItemsFromAnalytics, // Manter para decisão de filtro
+            totalItemsFromAnalytics,
           }
         })
 
-        // Filtrar baseado nas estatísticas do analytics, não nos items atuais
-        setMembersData(enrichedMembers.filter(m => m.totalItemsFromAnalytics > 0))
+        console.log('[MemberFilter] Analytics members BEFORE filter:', enrichedAnalyticsMembersRaw.map(m => ({
+          name: m.name,
+          clerkId: m.clerkId.substring(0, 8),
+          totalItemsFromAnalytics: m.totalItemsFromAnalytics,
+          willBeFiltered: m.totalItemsFromAnalytics <= 0
+        })))
+
+        const enrichedAnalyticsMembers = enrichedAnalyticsMembersRaw.filter(m => m.totalItemsFromAnalytics > 0)
+
+        // Adicionar membros que aparecem nos items mas não nos analytics (criativos antigos)
+        const additionalMembers: MemberData[] = []
+        for (const clerkId of membersFromItems) {
+          const clerkMember = membershipList.data.find(
+            (m) => m.publicUserData.userId === clerkId
+          )
+
+          const itemCount = itemCountsByMember[clerkId] || 0
+
+          if (itemCount > 0) {
+            additionalMembers.push({
+              clerkId,
+              imageUrl: clerkMember?.publicUserData.imageUrl,
+              name: clerkMember?.publicUserData.firstName
+                ? `${clerkMember.publicUserData.firstName} ${clerkMember.publicUserData.lastName || ''}`.trim()
+                : clerkMember?.publicUserData.identifier || 'Usuário',
+              totalItems: itemCount,
+              totalItemsFromAnalytics: itemCount, // Usar contagem dos items como fallback
+            })
+          }
+        }
+
+        // Combinar e ordenar por totalItems
+        const allMembers = [...enrichedAnalyticsMembers, ...additionalMembers]
+          .sort((a, b) => b.totalItemsFromAnalytics - a.totalItemsFromAnalytics)
+
+        console.log('[MemberFilter] Enriched analytics members BEFORE filter:', enrichedAnalyticsMembers.map(m => ({
+          name: m.name,
+          clerkId: m.clerkId.substring(0, 8),
+          totalItemsFromAnalytics: m.totalItemsFromAnalytics,
+          displayCount: m.totalItems
+        })))
+
+        console.log('[MemberFilter] Final result:', {
+          analyticsCount: enrichedAnalyticsMembers.length,
+          additionalCount: additionalMembers.length,
+          totalCount: allMembers.length,
+          members: allMembers.map(m => ({
+            name: m.name,
+            clerkId: m.clerkId.substring(0, 8),
+            count: m.totalItems,
+            fromAnalytics: enrichedAnalyticsMembers.some(am => am.clerkId === m.clerkId)
+          }))
+        })
+
+        setMembersData(allMembers)
       } catch (error) {
         console.error('Error fetching members data:', error)
       }
     }
 
     fetchMembersData()
-  }, [organization, members, items.length, itemCountsByMember, value])
+  }, [organization, members, stableItems, itemCountsByMember, value])
+
+  console.log('[MemberFilter] Render:', {
+    isLoading,
+    organizationId,
+    disabled,
+    membersDataCount: membersData.length,
+    hasAnalyticsData: !!analyticsData,
+    itemsCount: items.length,
+    stableItemsCount: stableItems.length,
+    usingCache: items.length === 0 && stableItems.length > 0
+  })
 
   if (isLoading || !organizationId || disabled) {
+    console.log('[MemberFilter] Returning null (loading or disabled)')
     return null
   }
 
@@ -112,15 +222,15 @@ export function MemberFilter({
   }
 
   return (
-    <Card className="p-2">
-      <div className="flex items-center gap-2">
+    <Card className="p-2 overflow-x-auto">
+      <div className="flex items-center gap-2 min-w-min">
         {/* Botão "Todos" */}
         <button
           onClick={() => onChange(null)}
           className={cn(
             'relative flex items-center justify-center h-10 w-10 rounded-full transition-all',
             'hover:ring-2 hover:ring-primary hover:scale-105',
-            'group',
+            'group flex-shrink-0',
             value === null
               ? 'ring-2 ring-primary bg-primary/10'
               : 'bg-muted hover:bg-muted/80'
@@ -146,7 +256,7 @@ export function MemberFilter({
             key={member.clerkId}
             onClick={() => onChange(member.clerkId)}
             className={cn(
-              'relative group',
+              'relative group flex-shrink-0',
               'transition-all hover:scale-105',
               value === member.clerkId && 'scale-110'
             )}

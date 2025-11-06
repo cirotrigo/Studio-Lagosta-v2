@@ -225,6 +225,7 @@ export default function ProjectCreativesPage() {
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
 
+  // Query principal (com filtro aplicado)
   const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
     queryKey: ['generations', projectId, memberFilter],
     enabled: isValidProject,
@@ -237,6 +238,46 @@ export default function ProjectCreativesPage() {
     },
     staleTime: 10_000,
   })
+
+  // Query separada para buscar TODOS os criativos (para o MemberFilter)
+  const { data: allGenerationsData, isLoading: isLoadingAll } = useQuery<GenerationsResponse>({
+    queryKey: ['generations', projectId, 'all'],
+    enabled: isValidProject,
+    queryFn: () => {
+      console.log('[Creativos] Fetching ALL generations for member filter')
+      const params = new URLSearchParams({ page: '1', pageSize: '1000' })
+      return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
+    },
+    staleTime: 30_000, // Cache mais longo pois é só para contagem
+  })
+
+  // Cachear dados de todos os criativos para evitar que fiquem vazios durante navegação
+  const allGenerationsCache = React.useRef<GenerationRecord[]>([])
+
+  React.useEffect(() => {
+    if (allGenerationsData && allGenerationsData.generations.length > 0) {
+      allGenerationsCache.current = allGenerationsData.generations
+      console.log('[Creativos] All generations loaded:', {
+        total: allGenerationsData.generations.length,
+        uniqueCreators: new Set(allGenerationsData.generations.map(g => g.createdBy)).size,
+        creators: Array.from(new Set(allGenerationsData.generations.map(g => g.createdBy))).map(id => ({
+          id: id?.substring(0, 8),
+          count: allGenerationsData.generations.filter(g => g.createdBy === id).length
+        }))
+      })
+    }
+  }, [allGenerationsData])
+
+  // Usar dados cacheados ou dados atuais (nunca vazio)
+  const stableGenerations = React.useMemo(() => {
+    const current = allGenerationsData?.generations || []
+    const result = current.length > 0 ? current : allGenerationsCache.current
+    console.log('[Creativos] Using generations:', {
+      fromCache: current.length === 0,
+      count: result.length
+    })
+    return result
+  }, [allGenerationsData])
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/generations/${id}`),
@@ -520,14 +561,21 @@ export default function ProjectCreativesPage() {
               ))}
             </SelectContent>
           </Select>
-          {organization && (
-            <MemberFilter
-              organizationId={organization.id}
-              value={memberFilter}
-              onChange={setMemberFilter}
-              items={data?.generations || []}
-            />
-          )}
+          {organization && stableGenerations.length > 0 && (() => {
+            console.log('[Creativos] Rendering MemberFilter with:', {
+              organizationId: organization.id,
+              itemsCount: stableGenerations.length,
+              currentFilter: memberFilter
+            })
+            return (
+              <MemberFilter
+                organizationId={organization.id}
+                value={memberFilter}
+                onChange={setMemberFilter}
+                items={stableGenerations}
+              />
+            )
+          })()}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
             <label htmlFor="only-result">Somente com arquivo</label>
