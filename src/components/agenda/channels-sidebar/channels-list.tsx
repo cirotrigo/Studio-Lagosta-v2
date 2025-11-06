@@ -140,7 +140,9 @@ export function ChannelsSidebar({
                                 sizes="40px"
                                 className="object-contain p-1"
                                 loading="lazy"
-                                quality={75}
+                                quality={65} // OPTIMIZED: Reduced from 75 for sidebar logos
+                                placeholder="blur"
+                                blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
                                 unoptimized={isExternalImage(logoUrl)}
                               />
                             ) : (
@@ -276,7 +278,9 @@ export function ChannelsSidebar({
                             sizes="40px"
                             className="object-contain p-1"
                             loading="lazy"
-                            quality={75}
+                            quality={65} // OPTIMIZED: Reduced from 75 for sidebar logos
+                            placeholder="blur"
+                            blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
                             unoptimized={isExternalImage(logoUrl)}
                           />
                         ) : (

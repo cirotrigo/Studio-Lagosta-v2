@@ -115,7 +115,9 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                 sizes="64px"
                 className="object-cover"
                 loading="lazy"
-                quality={60}
+                quality={55} // OPTIMIZED: Reduced from 60 for mobile thumbnails
+                placeholder="blur"
+                blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
                 unoptimized={isExternalImage(post.mediaUrls[0])}
               />
             )}
@@ -137,7 +139,9 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                   sizes="20px"
                   className="object-contain p-0.5"
                   loading="lazy"
-                  quality={75}
+                  quality={60} // OPTIMIZED: Reduced from 75 for small logos
+                  placeholder="blur"
+                  blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
                   unoptimized={isExternalImage(post.Project.logoUrl || post.Project.Logo![0].fileUrl)}
                 />
               </div>

@@ -77,6 +77,26 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const isStory = post.postType === 'STORY'
   const isReel = post.postType === 'REEL'
 
+  // OPTIMIZED: Preload next and previous images for carousel
+  useEffect(() => {
+    if (!isCarousel || mediaUrls.length <= 1) return
+
+    const nextIndex = (currentImageIndex + 1) % mediaUrls.length
+    const prevIndex = currentImageIndex === 0 ? mediaUrls.length - 1 : currentImageIndex - 1
+
+    // Preload next image
+    if (mediaUrls[nextIndex] && !isVideoUrl(mediaUrls[nextIndex])) {
+      const img = new window.Image()
+      img.src = mediaUrls[nextIndex]
+    }
+
+    // Preload previous image
+    if (mediaUrls[prevIndex] && !isVideoUrl(mediaUrls[prevIndex])) {
+      const img = new window.Image()
+      img.src = mediaUrls[prevIndex]
+    }
+  }, [currentImageIndex, mediaUrls, isCarousel])
+
   // Helper para detectar se é vídeo pela extensão da URL
   const isVideoUrl = (url: string) => {
     const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
@@ -262,8 +282,10 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                         width={32}
                         height={32}
                         className="object-contain p-0.5"
-                        loading="lazy"
-                        quality={75}
+                        priority // OPTIMIZED: Logo loads with priority
+                        quality={70} // OPTIMIZED: Reduced from 75
+                        placeholder="blur"
+                        blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
                         unoptimized={isExternalImage(project.logoUrl || (project as any).Logo![0].fileUrl)}
                       />
                     ) : (
@@ -324,8 +346,11 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                     fill
                     sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
                     className="object-cover transition-opacity duration-300"
-                    loading="lazy"
-                    quality={75}
+                    priority={currentImageIndex === 0} // OPTIMIZED: Priority for first image
+                    loading={currentImageIndex === 0 ? undefined : "lazy"}
+                    quality={80} // OPTIMIZED: Increased to 80 for preview (was 75)
+                    placeholder="blur"
+                    blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
                     unoptimized={isExternalImage(currentMediaUrl || '')}
                   />
                 )}

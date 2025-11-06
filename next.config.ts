@@ -135,6 +135,14 @@ const nextConfig: NextConfig = {
         hostname: 'drive.google.com',
       },
     ],
+    // OPTIMIZED: Image optimization settings
+    formats: ['image/avif', 'image/webp'], // Use modern formats for better compression
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840], // Standard device sizes
+    imageSizes: [16, 32, 48, 64, 96, 128, 256, 384], // Image sizes for different use cases
+    minimumCacheTTL: 60 * 60 * 24 * 30, // 30 days cache (reduced from 60 for better updates)
+    dangerouslyAllowSVG: true,
+    contentDispositionType: 'attachment',
+    contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
   },
   webpack: (config, { dev, isServer }) => {
     // Configure path aliases

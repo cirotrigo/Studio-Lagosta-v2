@@ -83,10 +83,12 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               src={post.mediaUrls[0]}
               alt={post.caption || 'Prévia do post'}
               fill
-              sizes="40px"
+              sizes="(max-width: 640px) 32px, 40px" // OPTIMIZED: Responsive sizes
               className="object-cover"
               loading="lazy"
-              quality={60}
+              quality={50} // OPTIMIZED: Reduced from 60 for small thumbnails
+              placeholder="blur"
+              blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
               unoptimized={isExternalImage(post.mediaUrls[0])}
             />
           )}
@@ -115,7 +117,9 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
                 sizes="16px"
                 className="object-contain p-0.5"
                 loading="lazy"
-                quality={75}
+                quality={60} // OPTIMIZED: Reduced from 75 for tiny logos
+                placeholder="blur"
+                blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
                 unoptimized={isExternalImage(post.Project.logoUrl || post.Project.Logo![0].fileUrl)}
               />
             </div>
