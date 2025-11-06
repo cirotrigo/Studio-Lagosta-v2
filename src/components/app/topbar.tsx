@@ -23,7 +23,7 @@ type TopbarProps = {
 
 export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { data: creationLimits } = useOrganizationCreationLimits();
-  const { data: siteConfig } = useSiteConfig();
+  const { data: siteConfig, isLoading: isSiteConfigLoading } = useSiteConfig();
   const config = siteConfig || site;
   const createMode: "modal" | "navigation" = "modal";
   const creationReminder =
@@ -58,7 +58,11 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
               <SheetHeader className="p-4 text-left">
                 <div className="flex items-center gap-2">
                   <DynamicLogo className="h-8 w-8" />
-                  <SheetTitle>{config.shortName || config.name}</SheetTitle>
+                  {isSiteConfigLoading ? (
+                    <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+                  ) : (
+                    <SheetTitle>{config.shortName || config.name}</SheetTitle>
+                  )}
                 </div>
               </SheetHeader>
               <nav className="flex flex-col gap-1 p-2">
@@ -129,7 +133,11 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
         {/* Brand (mobile) */}
         <Link href="/dashboard" className="flex items-center gap-2 md:hidden">
           <DynamicLogo className="h-7 w-7" />
-          <span className="text-sm font-semibold">{config.shortName || config.name}</span>
+          {isSiteConfigLoading ? (
+            <div className="h-4 w-24 animate-pulse rounded bg-muted" />
+          ) : (
+            <span className="text-sm font-semibold">{config.shortName || config.name}</span>
+          )}
         </Link>
 
         <div className="hidden items-center gap-2 md:flex">

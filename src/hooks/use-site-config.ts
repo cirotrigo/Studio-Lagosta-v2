@@ -37,7 +37,7 @@ export function useSiteConfig() {
             dark: '/logo-dark.svg',
           },
           icons: {
-            favicon: '/favicon.ico',
+            favicon: '/favicon.svg',
           }
         }
       }

@@ -31,9 +31,9 @@ export const site = {
     dark: '/logo-dark.svg',
   } as LogoPaths,
   icons: {
-    favicon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
-    shortcut: '/favicon-16x16.png',
+    favicon: '/favicon.svg',
+    apple: undefined,
+    shortcut: undefined,
   } as IconPaths,
   socials: {
     twitter: '@aicodersacademy',

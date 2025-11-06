@@ -3,7 +3,6 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { useSiteConfig } from '@/hooks/use-site-config'
-import { site } from '@/lib/brand-config'
 
 interface DynamicLogoProps {
   /** Se true, usa a logo completa (com texto). Se false, usa apenas o ícone */
@@ -13,10 +12,15 @@ interface DynamicLogoProps {
 }
 
 export function DynamicLogo({ useFull = false, className }: DynamicLogoProps) {
-  const { data: siteConfig } = useSiteConfig()
+  const { data: siteConfig, isLoading } = useSiteConfig()
 
-  // Se não tiver configuração carregada, usa fallback
-  const config = siteConfig || site
+  // Não renderiza nada até carregar para evitar flash de conteúdo antigo
+  if (isLoading || !siteConfig) {
+    const skeletonClasses = useFull ? className || 'h-12' : className || 'size-9'
+    return <div className={`${skeletonClasses} animate-pulse rounded bg-muted`} />
+  }
+
+  const config = siteConfig
 
   // Para logo completa
   if (useFull) {

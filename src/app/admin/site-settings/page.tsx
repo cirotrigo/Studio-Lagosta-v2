@@ -46,7 +46,7 @@ export default function SiteSettingsPage() {
     logoDark: '/logo-dark.svg',
     logoFullLight: '',
     logoFullDark: '',
-    favicon: '/favicon.ico',
+    favicon: '/favicon.svg',
     appleIcon: '',
     metaTitle: '',
     metaDesc: '',
@@ -572,12 +572,12 @@ export default function SiteSettingsPage() {
                         id="favicon"
                         value={formData.favicon}
                         onChange={(e) => setFormData({ ...formData, favicon: e.target.value })}
-                        placeholder="/favicon.ico"
+                        placeholder="/favicon.svg"
                       />
                       <input
                         ref={faviconInputRef}
                         type="file"
-                        accept="image/x-icon,image/png"
+                        accept="image/x-icon,image/png,image/svg+xml"
                         className="hidden"
                         onChange={(e) => {
                           const file = e.target.files?.[0]
@@ -606,7 +606,7 @@ export default function SiteSettingsPage() {
                     </div>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    Tamanho recomendado: 32×32px (ICO ou PNG). Ícone da aba do navegador.
+                    Tamanho recomendado: 32×32px (SVG, ICO ou PNG). Ícone da aba do navegador.
                   </p>
                 </div>
 

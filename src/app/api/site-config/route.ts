@@ -25,7 +25,7 @@ export async function GET() {
         dark: '/logo-dark.svg',
       },
       icons: {
-        favicon: '/favicon.ico',
+        favicon: '/favicon.svg',
       }
     })
   }

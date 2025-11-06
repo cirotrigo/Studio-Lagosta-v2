@@ -7,7 +7,7 @@ import { QueryProvider } from "@/components/providers/query-provider";
 import {
   ClerkProvider,
 } from "@clerk/nextjs";
-import { siteMetadata } from "@/lib/brand-config";
+import { getSiteSettings } from "@/lib/site-settings";
 import { AnalyticsPixels } from "@/components/analytics/pixels";
 
 // Família Montserrat com todos os pesos necessários
@@ -20,16 +20,40 @@ const montserrat = Montserrat({
   preload: true,
 });
 
-export const metadata: Metadata = {
-  ...siteMetadata,
-  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
-  // Prevenir cache agressivo
-  other: {
-    'Cache-Control': 'no-cache, no-store, must-revalidate',
-    'Pragma': 'no-cache',
-    'Expires': '0',
-  },
-};
+// Metadata dinâmica que busca do banco de dados
+export async function generateMetadata(): Promise<Metadata> {
+  const settings = await getSiteSettings();
+
+  return {
+    title: settings.metaTitle || settings.siteName,
+    description: settings.metaDesc || settings.description,
+    keywords: settings.keywords,
+    authors: [{ name: 'Lagosta Criativa (Ciro Trigo)' }],
+    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+    openGraph: {
+      title: settings.metaTitle || settings.siteName,
+      description: settings.metaDesc || settings.description,
+      url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+      siteName: settings.siteName,
+      images: settings.ogImage ? [{ url: settings.ogImage }] : undefined,
+      type: 'website',
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: settings.metaTitle || settings.siteName,
+      description: settings.metaDesc || settings.description,
+    },
+    icons: {
+      icon: settings.favicon,
+      apple: settings.appleIcon || undefined,
+    },
+    other: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    },
+  };
+}
 
 export const viewport: Viewport = {
   width: 'device-width',

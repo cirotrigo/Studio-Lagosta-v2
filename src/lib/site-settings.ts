@@ -52,7 +52,7 @@ export async function getSiteSettings(): Promise<SiteSettings> {
       logoDark: '/logo-dark.svg',
       logoFullLight: null,
       logoFullDark: null,
-      favicon: '/favicon.ico',
+      favicon: '/favicon.svg',
       appleIcon: null,
       metaTitle: null,
       metaDesc: null,
