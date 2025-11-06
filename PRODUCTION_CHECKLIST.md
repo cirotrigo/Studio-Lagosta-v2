@@ -9,11 +9,10 @@ Guia rápido para colocar o Studio Lagosta no ar com domínio customizado.
 Após seguir este checklist:
 
 ✅ Site funcionando em **www.lagostacriativa.com.br**
-✅ Landing page pública para marketing
-✅ App protegido por autenticação
-✅ Redirecionamento automático para usuários logados
+✅ Landing page pública acessível por todos (logados ou não)
+✅ App protegido por autenticação em `/dashboard`
 ✅ HTTPS/SSL configurado
-✅ Header inteligente (detecta se está logado)
+✅ Header inteligente (detecta se está logado e mostra botão do Studio)
 
 ---
 
@@ -156,10 +155,12 @@ git push origin main
 - [ ] Verificar: Redirecionou para `/dashboard`
 - [ ] Verificar: Sidebar e topbar aparecem
 
-##### Teste 3: Redirecionamento Automático
+##### Teste 3: Landing Page Quando Logado
 - [ ] Estando logado, acessar: `https://www.lagostacriativa.com.br`
-- [ ] Verificar: Redireciona automaticamente para `/dashboard`
-- [ ] Verificar: Header mostra "Ir para o Studio"
+- [ ] Verificar: Landing page carrega normalmente (não redireciona)
+- [ ] Verificar: Header mostra "Ir para o Studio" ao invés de "Entrar"
+- [ ] Clicar em "Ir para o Studio"
+- [ ] Verificar: Vai para `/dashboard`
 
 ##### Teste 4: Projetos
 - [ ] Criar um novo projeto
