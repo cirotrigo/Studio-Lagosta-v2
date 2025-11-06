@@ -17,13 +17,13 @@ const isPublicRoute = createRouteMatcher([
   '/[slug]', // Single level dynamic pages
 ])
 
-// Define admin routes (require special permissions)
+// Define admin routes (require authentication only - detailed checks in layout)
 const isAdminRoute = createRouteMatcher([
   '/admin(.*)',
 ])
 
 export default clerkMiddleware(async (auth, req) => {
-  const { userId, sessionClaims } = await auth()
+  const { userId } = await auth()
   const { pathname } = req.nextUrl
 
   // Allow public routes (logged users can also access public pages)
@@ -31,21 +31,15 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next()
   }
 
-  // Protect admin routes
+  // Protect admin routes - require authentication (role check happens in admin layout)
   if (isAdminRoute(req)) {
-    const metadata = sessionClaims?.metadata as { role?: string } | undefined
-    const role = metadata?.role
-
     if (!userId) {
       const signInUrl = new URL('/sign-in', req.url)
       signInUrl.searchParams.set('redirect_url', pathname)
       return NextResponse.redirect(signInUrl)
     }
-
-    if (role !== 'admin') {
-      const dashboardUrl = new URL('/dashboard', req.url)
-      return NextResponse.redirect(dashboardUrl)
-    }
+    // Let the admin layout handle the actual admin permission check
+    return NextResponse.next()
   }
 
   // For all other protected routes, require authentication
