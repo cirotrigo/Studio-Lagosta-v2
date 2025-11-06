@@ -10,7 +10,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 import { Search, Instagram, AlertCircle } from 'lucide-react'
 import Image from 'next/image'
 import type { ProjectResponse } from '@/hooks/use-project'
@@ -134,7 +134,9 @@ export function MobileChannelsDrawer({
                           fill
                           sizes="48px"
                           className="object-contain p-1"
-                          unoptimized
+                          loading="lazy"
+                          quality={75}
+                          unoptimized={isExternalImage(logoUrl)}
                         />
                       ) : (
                         project.name.substring(0, 2).toUpperCase()

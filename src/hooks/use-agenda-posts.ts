@@ -35,15 +35,17 @@ export function useAgendaPosts({
       // Senão, busca posts do projeto específico
       return api.get(`/api/projects/${projectId}/posts/calendar?${params}`)
     },
-    staleTime: 30_000, // 30 seconds
-    // Refetch a cada 5 segundos se houver posts sendo publicados
+    staleTime: 2 * 60_000, // OPTIMIZED: Increased to 2 minutes for better caching
+    gcTime: 5 * 60_000, // OPTIMIZED: Cache for 5 minutes
+    refetchOnWindowFocus: true, // Refetch when user returns to tab
+    // OPTIMIZED: Reduced refetch frequency
     refetchInterval: (query) => {
       const data = query.state.data as any
       if (!data) return false
 
       // Verifica se há algum post com status POSTING
       const hasPostingPosts = data.some((post: any) => post.status === 'POSTING')
-      return hasPostingPosts ? 5000 : false // 5 segundos
+      return hasPostingPosts ? 10000 : false // OPTIMIZED: Increased to 10 seconds (was 5)
     },
   })
 

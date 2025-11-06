@@ -2,9 +2,10 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
+import { memo } from 'react'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostMiniCardProps {
@@ -21,7 +22,8 @@ interface PostMiniCardProps {
   onClick: () => void
 }
 
-export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
+// OPTIMIZED: Memoize component to prevent re-renders
+export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMiniCardProps) {
   const time = formatPostTime(post)
 
   // Helper para detectar se é vídeo
@@ -73,12 +75,9 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
       {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
         <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
           {isVideo ? (
-            <video
-              src={post.mediaUrls[0]}
-              className="absolute inset-0 w-full h-full object-cover"
-              preload="metadata"
-              muted
-            />
+            <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
+              <Video className="w-4 h-4 text-muted-foreground" />
+            </div>
           ) : (
             <Image
               src={post.mediaUrls[0]}
@@ -86,15 +85,10 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
               fill
               sizes="40px"
               className="object-cover"
-              unoptimized
+              loading="lazy"
+              quality={60}
+              unoptimized={isExternalImage(post.mediaUrls[0])}
             />
-          )}
-
-          {/* Ícone de play para vídeos */}
-          {isVideo && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-              <Video className="w-4 h-4 text-white" />
-            </div>
           )}
 
           {/* Badge de Story */}
@@ -120,7 +114,9 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
                 fill
                 sizes="16px"
                 className="object-contain p-0.5"
-                unoptimized
+                loading="lazy"
+                quality={75}
+                unoptimized={isExternalImage(post.Project.logoUrl || post.Project.Logo![0].fileUrl)}
               />
             </div>
           )}
@@ -162,4 +158,4 @@ export function PostMiniCard({ post, onClick }: PostMiniCardProps) {
       </div>
     </button>
   )
-}
+})

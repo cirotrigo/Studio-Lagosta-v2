@@ -33,6 +33,7 @@ export async function GET(
 
     // Fetch regular scheduled and sent posts
     // Note: Removed userId filter to allow all organization members to see posts
+    // OPTIMIZATION: Limit results, optimize includes, and use indexed fields
     const scheduledPosts = await db.socialPost.findMany({
       where: {
         projectId,
@@ -56,7 +57,29 @@ export async function GET(
           },
         ],
       },
-      include: {
+      select: {
+        // Only select needed fields instead of full include
+        id: true,
+        projectId: true,
+        generationId: true,
+        userId: true,
+        postType: true,
+        caption: true,
+        mediaUrls: true,
+        altText: true,
+        firstComment: true,
+        publishType: true,
+        scheduleType: true,
+        scheduledDatetime: true,
+        recurringConfig: true,
+        status: true,
+        sentAt: true,
+        failedAt: true,
+        errorMessage: true,
+        publishedUrl: true,
+        instagramMediaId: true,
+        createdAt: true,
+        updatedAt: true,
         Generation: {
           select: {
             id: true,
@@ -81,10 +104,15 @@ export async function GET(
           },
         },
       },
+      orderBy: {
+        scheduledDatetime: 'asc',
+      },
+      take: 500, // Limit to prevent performance issues
     })
 
     // Fetch active recurring posts
     // Note: Removed userId filter to allow all organization members to see posts
+    // OPTIMIZATION: Use select instead of include, add limit
     const recurringPosts = await db.socialPost.findMany({
       where: {
         projectId,
@@ -92,7 +120,29 @@ export async function GET(
         status: { in: ['SCHEDULED', 'POSTING'] },
         ...(postType ? { postType } : {}),
       },
-      include: {
+      select: {
+        // Only select needed fields
+        id: true,
+        projectId: true,
+        generationId: true,
+        userId: true,
+        postType: true,
+        caption: true,
+        mediaUrls: true,
+        altText: true,
+        firstComment: true,
+        publishType: true,
+        scheduleType: true,
+        scheduledDatetime: true,
+        recurringConfig: true,
+        status: true,
+        sentAt: true,
+        failedAt: true,
+        errorMessage: true,
+        publishedUrl: true,
+        instagramMediaId: true,
+        createdAt: true,
+        updatedAt: true,
         Generation: {
           select: {
             id: true,
@@ -117,6 +167,7 @@ export async function GET(
           },
         },
       },
+      take: 100, // Limit recurring posts
     })
 
     // Filter and expand recurring posts

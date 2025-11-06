@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, memo } from 'react'
 import { CalendarDayCell } from './calendar-day-cell'
 import { Skeleton } from '@/components/ui/skeleton'
 import { getPostDateKey, createDateKey } from './calendar-utils'
@@ -13,7 +13,8 @@ interface CalendarGridProps {
   isLoading: boolean
 }
 
-export function CalendarGrid({
+// OPTIMIZED: Memoize component to prevent unnecessary re-renders
+export const CalendarGrid = memo(function CalendarGrid({
   posts,
   selectedDate,
   onPostClick,
@@ -80,7 +81,7 @@ export function CalendarGrid({
       </div>
     </div>
   )
-}
+})
 
 // Helper para gerar dias do calendário
 function generateCalendarDays(date: Date) {

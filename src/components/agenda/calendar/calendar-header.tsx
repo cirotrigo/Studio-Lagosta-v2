@@ -35,7 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import type { PostType } from '../../../../prisma/generated/client'
 import type { ProjectResponse } from '@/hooks/use-project'
@@ -147,7 +147,9 @@ export function CalendarHeader({
                       fill
                       sizes={isMobile ? "32px" : "40px"}
                       className="object-contain p-1"
-                      unoptimized
+                      loading="lazy"
+                      quality={75}
+                      unoptimized={isExternalImage(selectedProject.logoUrl || (selectedProject as any).Logo![0].fileUrl)}
                     />
                   ) : (
                     selectedProject.name.substring(0, 2).toUpperCase()

@@ -68,6 +68,7 @@ export async function GET(request: NextRequest) {
     ]
 
     // Fetch regular scheduled posts
+    // OPTIMIZATION: Use select instead of include, add limit and ordering
     const scheduledPosts = await db.socialPost.findMany({
       where: {
         projectId: { in: allProjectIds },
@@ -78,7 +79,28 @@ export async function GET(request: NextRequest) {
         },
         ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        projectId: true,
+        generationId: true,
+        userId: true,
+        postType: true,
+        caption: true,
+        mediaUrls: true,
+        altText: true,
+        firstComment: true,
+        publishType: true,
+        scheduleType: true,
+        scheduledDatetime: true,
+        recurringConfig: true,
+        status: true,
+        sentAt: true,
+        failedAt: true,
+        errorMessage: true,
+        publishedUrl: true,
+        instagramMediaId: true,
+        createdAt: true,
+        updatedAt: true,
         Project: {
           select: {
             id: true,
@@ -97,9 +119,14 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+      orderBy: {
+        scheduledDatetime: 'asc',
+      },
+      take: 500, // Limit to prevent loading too many posts
     })
 
     // Fetch active recurring posts (they don't have scheduledDatetime in range)
+    // OPTIMIZATION: Use select instead of include, add limit
     const recurringPosts = await db.socialPost.findMany({
       where: {
         projectId: { in: allProjectIds },
@@ -107,7 +134,28 @@ export async function GET(request: NextRequest) {
         status: { in: ['SCHEDULED', 'POSTING'] },
         ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
       },
-      include: {
+      select: {
+        id: true,
+        projectId: true,
+        generationId: true,
+        userId: true,
+        postType: true,
+        caption: true,
+        mediaUrls: true,
+        altText: true,
+        firstComment: true,
+        publishType: true,
+        scheduleType: true,
+        scheduledDatetime: true,
+        recurringConfig: true,
+        status: true,
+        sentAt: true,
+        failedAt: true,
+        errorMessage: true,
+        publishedUrl: true,
+        instagramMediaId: true,
+        createdAt: true,
+        updatedAt: true,
         Project: {
           select: {
             id: true,
@@ -126,6 +174,7 @@ export async function GET(request: NextRequest) {
           },
         },
       },
+      take: 100, // Limit recurring posts
     })
 
     // Filter and expand recurring posts to show their next occurrence in the date range

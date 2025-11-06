@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { withRetry } from '@/lib/db-utils'
 import { getPlanLimitsForUser } from '@/lib/organizations/limits'
 
 export async function GET() {
@@ -11,16 +12,30 @@ export async function GET() {
     }
 
     const limits = await getPlanLimitsForUser(userId)
-    const activeOwnedCount = await db.organization.count({
-      where: {
-        ownerClerkId: userId,
-        isActive: true,
-      },
-    })
 
-    const totalOwnedCount = await db.organization.count({
-      where: { ownerClerkId: userId },
-    })
+    // Use retry logic for database queries
+    const [activeOwnedCount, totalOwnedCount] = await withRetry(
+      async () => {
+        return await Promise.all([
+          db.organization.count({
+            where: {
+              ownerClerkId: userId,
+              isActive: true,
+            },
+          }),
+          db.organization.count({
+            where: { ownerClerkId: userId },
+          }),
+        ])
+      },
+      {
+        maxRetries: 3,
+        delayMs: 500,
+        onRetry: (attempt, error) => {
+          console.log(`[Org Limits] Retry attempt ${attempt} due to:`, error.message)
+        },
+      }
+    )
 
     const canCreate =
       limits.allowOrgCreation &&

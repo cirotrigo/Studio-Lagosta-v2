@@ -941,6 +941,11 @@ model SocialPost {
   @@index([scheduleType])
   @@index([generationId])
   @@index([parentPostId])
+  // Performance indexes for calendar queries
+  @@index([projectId, scheduledDatetime])
+  @@index([projectId, status, scheduleType])
+  @@index([projectId, scheduleType, status])
+  @@index([status, scheduleType, scheduledDatetime])
 }
 
 model PostRetry {

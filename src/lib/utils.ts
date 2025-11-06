@@ -18,3 +18,21 @@ export function generateApiKey(): string {
 
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 34)}`
 }
+
+/**
+ * Check if an image URL is from an external storage service
+ * External images should use unoptimized to avoid Next.js optimization timeouts
+ */
+export function isExternalImage(src: string): boolean {
+  if (!src) return false
+
+  const externalDomains = [
+    'blob.vercel-storage.com',
+    'public.blob.vercel-storage.com',
+    'googleusercontent.com',
+    'drive.google.com',
+    'unsplash.com',
+  ]
+
+  return externalDomains.some(domain => src.includes(domain))
+}

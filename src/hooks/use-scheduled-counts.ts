@@ -10,8 +10,9 @@ export function useScheduledPostCounts() {
   return useQuery<Record<number, number>>({
     queryKey: ['scheduled-post-counts'],
     queryFn: () => api.get<Record<number, number>>('/api/projects/scheduled-counts'),
-    staleTime: 2 * 60 * 1000, // 2 minutes (more frequent updates for scheduled posts)
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    refetchOnWindowFocus: true, // Refetch when user returns to tab
+    staleTime: 5 * 60 * 1000, // 5 minutes - reduced frequency for better performance
+    gcTime: 10 * 60 * 1000, // 10 minutes
+    refetchOnWindowFocus: false, // Disabled to reduce unnecessary requests
+    refetchInterval: false, // No automatic polling
   })
 }

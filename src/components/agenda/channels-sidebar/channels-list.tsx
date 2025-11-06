@@ -10,7 +10,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 import { Search, Instagram, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Image from 'next/image'
@@ -139,7 +139,9 @@ export function ChannelsSidebar({
                                 fill
                                 sizes="40px"
                                 className="object-contain p-1"
-                                unoptimized
+                                loading="lazy"
+                                quality={75}
+                                unoptimized={isExternalImage(logoUrl)}
                               />
                             ) : (
                               project.name.substring(0, 2).toUpperCase()
@@ -273,7 +275,9 @@ export function ChannelsSidebar({
                             fill
                             sizes="40px"
                             className="object-contain p-1"
-                            unoptimized
+                            loading="lazy"
+                            quality={75}
+                            unoptimized={isExternalImage(logoUrl)}
                           />
                         ) : (
                           project.name.substring(0, 2).toUpperCase()

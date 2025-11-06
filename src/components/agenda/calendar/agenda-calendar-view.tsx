@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useState, memo, useCallback } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
 import { useScheduledPostCounts } from '@/hooks/use-scheduled-counts'
@@ -122,24 +122,26 @@ export function AgendaCalendarView() {
     nextScheduledDate < startDate || nextScheduledDate > endDate
   )
 
-  const handleGoToNextScheduled = () => {
+  // OPTIMIZED: Memoize callbacks to prevent re-renders
+  const handleGoToNextScheduled = useCallback(() => {
     if (nextScheduledDate) {
       setSelectedDate(nextScheduledDate)
     }
-  }
+  }, [nextScheduledDate])
 
-  const handleEditPost = (post: SocialPost) => {
+  const handleEditPost = useCallback((post: SocialPost) => {
     setEditingPost(post)
     setIsComposerOpen(true)
-  }
+  }, [])
 
-  const handleCloseComposer = () => {
+  const handleCloseComposer = useCallback(() => {
     setIsComposerOpen(false)
     setEditingPost(null)
-  }
+  }, [])
 
   // Convert SocialPost to PostFormData format for editing
-  const getInitialData = (): Partial<PostFormData> | undefined => {
+  // OPTIMIZED: Memoize to prevent recalculation on every render
+  const getInitialData = useMemo((): Partial<PostFormData> | undefined => {
     if (!editingPost) return undefined
 
     const recurringConfig = parseRecurringConfig(editingPost.recurringConfig)
@@ -166,7 +168,7 @@ export function AgendaCalendarView() {
       firstComment: editingPost.firstComment ?? '',
       publishType: (editingPost.publishType ?? 'DIRECT') as PostFormData['publishType'],
     }
-  }
+  }, [editingPost])
 
   const postsList = (posts as SocialPost[]) || []
 
@@ -272,7 +274,7 @@ export function AgendaCalendarView() {
           projectId={selectedProjectId}
           open={isComposerOpen}
           onClose={handleCloseComposer}
-          initialData={getInitialData()}
+          initialData={getInitialData}
           postId={editingPost?.id}
         />
       )}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { withRetry } from '@/lib/db-utils'
 
 export const runtime = 'nodejs'
 export const maxDuration = 10
@@ -48,43 +49,75 @@ export async function GET() {
 
   const now = new Date()
 
-  // Count scheduled posts: future scheduled posts OR active recurring posts
-  const allScheduledPosts = await db.socialPost.findMany({
-    where: {
-      projectId: { in: allProjectIds },
-      status: { in: ['SCHEDULED', 'POSTING'] },
+  // Use retry logic for database queries to handle Neon cold starts
+  const [nonRecurringCounts, recurringPosts] = await withRetry(
+    async () => {
+      return await Promise.all([
+        // Count future scheduled posts (non-recurring) using groupBy for performance
+        db.socialPost.groupBy({
+          by: ['projectId'],
+          where: {
+            projectId: { in: allProjectIds },
+            status: { in: ['SCHEDULED', 'POSTING'] },
+            scheduleType: { not: 'RECURRING' },
+            scheduledDatetime: { gte: now },
+          },
+          _count: {
+            id: true,
+          },
+        }),
+        // For recurring posts, fetch and filter by endDate
+        db.socialPost.findMany({
+          where: {
+            projectId: { in: allProjectIds },
+            status: { in: ['SCHEDULED', 'POSTING'] },
+            scheduleType: 'RECURRING',
+          },
+          select: {
+            projectId: true,
+            recurringConfig: true,
+          },
+        }),
+      ])
     },
-    select: {
-      projectId: true,
-      scheduleType: true,
-      scheduledDatetime: true,
-      recurringConfig: true,
-    },
-  })
-
-  // Filter posts based on schedule type
-  const activePosts = allScheduledPosts.filter(post => {
-    // For non-recurring posts, check if scheduled time is in the future
-    if (post.scheduleType !== 'RECURRING') {
-      return post.scheduledDatetime && post.scheduledDatetime >= now
+    {
+      maxRetries: 3,
+      delayMs: 500,
     }
+  )
 
-    // For recurring posts, check if they're still active (no endDate or endDate in future)
+  // Filter recurring posts by endDate and group by project
+  const activeRecurringByProject = recurringPosts.reduce<Record<number, number>>((acc, post) => {
     if (post.recurringConfig && typeof post.recurringConfig === 'object') {
       const config = post.recurringConfig as { endDate?: string }
-      if (!config.endDate) return true // No end date = always active
-      const endDate = new Date(config.endDate)
-      return endDate >= now
+      if (!config.endDate) {
+        // No end date = always active
+        acc[post.projectId] = (acc[post.projectId] || 0) + 1
+      } else {
+        const endDate = new Date(config.endDate)
+        if (endDate >= now) {
+          acc[post.projectId] = (acc[post.projectId] || 0) + 1
+        }
+      }
     }
-
-    return false
-  })
-
-  // Group by projectId
-  const countsMap = activePosts.reduce<Record<number, number>>((acc, post) => {
-    acc[post.projectId] = (acc[post.projectId] || 0) + 1
     return acc
   }, {})
+
+  // Combine counts from both queries
+  const countsMap: Record<number, number> = {}
+
+  // Add non-recurring counts
+  for (const item of nonRecurringCounts) {
+    if (item.projectId) {
+      countsMap[item.projectId] = item._count.id
+    }
+  }
+
+  // Add recurring counts
+  for (const [projectId, count] of Object.entries(activeRecurringByProject)) {
+    const id = parseInt(projectId)
+    countsMap[id] = (countsMap[id] || 0) + count
+  }
 
   return NextResponse.json(countsMap)
 }

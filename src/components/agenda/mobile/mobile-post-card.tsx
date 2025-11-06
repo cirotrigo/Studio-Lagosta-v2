@@ -3,7 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from '../calendar/calendar-utils'
 import { usePostActions } from '@/hooks/use-post-actions'
@@ -104,12 +104,9 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
         {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
           <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded bg-muted">
             {isVideo ? (
-              <video
-                src={post.mediaUrls[0]}
-                className="absolute inset-0 w-full h-full object-cover"
-                preload="metadata"
-                muted
-              />
+              <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
+                <Video className="w-6 h-6 text-muted-foreground" />
+              </div>
             ) : (
               <Image
                 src={post.mediaUrls[0]}
@@ -117,15 +114,10 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                 fill
                 sizes="64px"
                 className="object-cover"
-                unoptimized
+                loading="lazy"
+                quality={60}
+                unoptimized={isExternalImage(post.mediaUrls[0])}
               />
-            )}
-
-            {/* Ícone de play para vídeos */}
-            {isVideo && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                <Video className="w-5 h-5 text-white" />
-              </div>
             )}
 
             {/* Badge de carrossel */}
@@ -144,7 +136,9 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                   fill
                   sizes="20px"
                   className="object-contain p-0.5"
-                  unoptimized
+                  loading="lazy"
+                  quality={75}
+                  unoptimized={isExternalImage(post.Project.logoUrl || post.Project.Logo![0].fileUrl)}
                 />
               </div>
             )}

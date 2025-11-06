@@ -34,7 +34,7 @@ import { toast } from 'sonner'
 import { getPostDate } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
-import { cn } from '@/lib/utils'
+import { cn, isExternalImage } from '@/lib/utils'
 
 interface PostPreviewModalProps {
   post: SocialPost
@@ -262,7 +262,9 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                         width={32}
                         height={32}
                         className="object-contain p-0.5"
-                        unoptimized
+                        loading="lazy"
+                        quality={75}
+                        unoptimized={isExternalImage(project.logoUrl || (project as any).Logo![0].fileUrl)}
                       />
                     ) : (
                       project.name.substring(0, 2).toUpperCase()
@@ -322,7 +324,9 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                     fill
                     sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
                     className="object-cover transition-opacity duration-300"
-                    unoptimized
+                    loading="lazy"
+                    quality={75}
+                    unoptimized={isExternalImage(currentMediaUrl || '')}
                   />
                 )}
 
