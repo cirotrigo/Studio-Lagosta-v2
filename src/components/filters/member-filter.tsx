@@ -47,10 +47,8 @@ export function MemberFilter({
   const stableItems = React.useMemo(() => {
     if (items.length > 0) {
       itemsCache.current = items
-      console.log('[MemberFilter] Updated items cache:', items.length)
       return items
     }
-    console.log('[MemberFilter] Using cached items:', itemsCache.current.length)
     return itemsCache.current
   }, [items])
 
@@ -67,34 +65,19 @@ export function MemberFilter({
         counts[item.createdBy] = (counts[item.createdBy] || 0) + 1
       }
     })
-    console.log('[MemberFilter] Item counts calculated from stable items:', Object.keys(counts).length, 'unique creators')
     return counts
   }, [stableItems])
 
   // Buscar dados dos membros do Clerk
   React.useEffect(() => {
-    if (!organization) {
-      console.log('[MemberFilter] No organization, skipping')
-      return
-    }
+    if (!organization) return
 
     // Não atualizar se não temos dados mínimos necessários
-    if (members.length === 0 && items.length === 0) {
-      console.log('[MemberFilter] No members and no items, waiting for data')
-      return
-    }
+    if (members.length === 0 && stableItems.length === 0) return
 
     const fetchMembersData = async () => {
-      console.log('[MemberFilter] Starting fetchMembersData', {
-        membersCount: members.length,
-        itemsCount: stableItems.length,
-        uniqueCreators: Object.keys(itemCountsByMember).length,
-        value
-      })
-
       try {
         const membershipList = await organization.getMemberships()
-        console.log('[MemberFilter] Clerk memberships:', membershipList.data.length)
 
         // Criar um mapa de membros do analytics
         const analyticsMap = new Map(
@@ -108,10 +91,6 @@ export function MemberFilter({
             membersFromItems.add(item.createdBy)
           }
         })
-
-        console.log('[MemberFilter] Members from analytics:', members.map(m => m.clerkId.substring(0, 8)))
-        console.log('[MemberFilter] Members missing from analytics:', Array.from(membersFromItems).map(id => id.substring(0, 8)))
-        console.log('[MemberFilter] All creators in items:', Object.keys(itemCountsByMember).map(id => ({ id: id.substring(0, 8), count: itemCountsByMember[id] })))
 
         // Enriquecer membros do analytics
         const enrichedAnalyticsMembersRaw = members.map((member) => {
@@ -133,13 +112,6 @@ export function MemberFilter({
             totalItemsFromAnalytics,
           }
         })
-
-        console.log('[MemberFilter] Analytics members BEFORE filter:', enrichedAnalyticsMembersRaw.map(m => ({
-          name: m.name,
-          clerkId: m.clerkId.substring(0, 8),
-          totalItemsFromAnalytics: m.totalItemsFromAnalytics,
-          willBeFiltered: m.totalItemsFromAnalytics <= 0
-        })))
 
         const enrichedAnalyticsMembers = enrichedAnalyticsMembersRaw.filter(m => m.totalItemsFromAnalytics > 0)
 
@@ -169,25 +141,6 @@ export function MemberFilter({
         const allMembers = [...enrichedAnalyticsMembers, ...additionalMembers]
           .sort((a, b) => b.totalItemsFromAnalytics - a.totalItemsFromAnalytics)
 
-        console.log('[MemberFilter] Enriched analytics members BEFORE filter:', enrichedAnalyticsMembers.map(m => ({
-          name: m.name,
-          clerkId: m.clerkId.substring(0, 8),
-          totalItemsFromAnalytics: m.totalItemsFromAnalytics,
-          displayCount: m.totalItems
-        })))
-
-        console.log('[MemberFilter] Final result:', {
-          analyticsCount: enrichedAnalyticsMembers.length,
-          additionalCount: additionalMembers.length,
-          totalCount: allMembers.length,
-          members: allMembers.map(m => ({
-            name: m.name,
-            clerkId: m.clerkId.substring(0, 8),
-            count: m.totalItems,
-            fromAnalytics: enrichedAnalyticsMembers.some(am => am.clerkId === m.clerkId)
-          }))
-        })
-
         setMembersData(allMembers)
       } catch (error) {
         console.error('Error fetching members data:', error)
@@ -197,19 +150,7 @@ export function MemberFilter({
     fetchMembersData()
   }, [organization, members, stableItems, itemCountsByMember, value])
 
-  console.log('[MemberFilter] Render:', {
-    isLoading,
-    organizationId,
-    disabled,
-    membersDataCount: membersData.length,
-    hasAnalyticsData: !!analyticsData,
-    itemsCount: items.length,
-    stableItemsCount: stableItems.length,
-    usingCache: items.length === 0 && stableItems.length > 0
-  })
-
   if (isLoading || !organizationId || disabled) {
-    console.log('[MemberFilter] Returning null (loading or disabled)')
     return null
   }
 
