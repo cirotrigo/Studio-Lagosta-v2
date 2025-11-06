@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   '/sign-up(.*)',
   '/api/health(.*)',
   '/api/webhooks(.*)',
+  '/api/cron(.*)', // Allow Vercel Cron jobs (authenticated via Bearer token in route handler)
   '/google-drive-callback(.*)',
   // CMS dynamic pages (catch-all for non-protected routes)
   '/about(.*)',
