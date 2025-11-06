@@ -9,7 +9,12 @@ const isPublicRoute = createRouteMatcher([
   '/api/health(.*)',
   '/api/webhooks(.*)',
   '/google-drive-callback(.*)',
-  '/(.*)', // Dynamic CMS pages
+  // CMS dynamic pages (catch-all for non-protected routes)
+  '/about(.*)',
+  '/pricing(.*)',
+  '/contact(.*)',
+  '/blog(.*)',
+  '/[slug]', // Single level dynamic pages
 ])
 
 // Define admin routes (require special permissions)
