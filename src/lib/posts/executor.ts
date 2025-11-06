@@ -16,7 +16,7 @@ export class PostExecutor {
       const windowEnd = new Date(now.getTime() + 60000) // +1 minute
 
       // Find posts scheduled for this time window
-      const postsToSend = await db.socialPost.findMany({
+      const postsInWindow = await db.socialPost.findMany({
         where: {
           status: PostStatus.SCHEDULED,
           scheduledDatetime: {
@@ -26,17 +26,47 @@ export class PostExecutor {
         },
       })
 
+      // CATCH-UP: Find overdue posts (scheduled in the past but not sent)
+      // Limit to last 6 hours to avoid processing very old posts
+      const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000)
+      const overduePosts = await db.socialPost.findMany({
+        where: {
+          status: PostStatus.SCHEDULED,
+          scheduledDatetime: {
+            gte: sixHoursAgo,
+            lt: windowStart, // Before the current window
+          },
+        },
+        take: 5, // Process max 5 overdue posts per execution
+        orderBy: {
+          scheduledDatetime: 'asc', // Oldest first
+        },
+      })
+
+      // Combine both lists
+      const postsToSend = [...postsInWindow, ...overduePosts]
+
       if (postsToSend.length === 0) {
-        return { processed: 0 }
+        return { processed: 0, catchUp: 0 }
       }
 
-      console.log(`📨 Encontrados ${postsToSend.length} posts para enviar`)
+      if (overduePosts.length > 0) {
+        console.log(`⏰ CATCH-UP: Encontrados ${overduePosts.length} posts atrasados`)
+      }
+      console.log(`📨 Total de ${postsToSend.length} posts para enviar (${postsInWindow.length} na janela, ${overduePosts.length} atrasados)`)
 
       let successCount = 0
       let failureCount = 0
+      let catchUpCount = 0
 
       // Send each post
       for (const post of postsToSend) {
+        const isOverdue = post.scheduledDatetime < windowStart
+        if (isOverdue) {
+          catchUpCount++
+          console.log(`⏰ Processando post atrasado: ${post.id} (agendado para ${post.scheduledDatetime.toISOString()})`)
+        }
+
         try {
           await this.scheduler.sendToZapier(post.id)
           successCount++
@@ -52,9 +82,14 @@ export class PostExecutor {
         }
       }
 
-      console.log(`✅ Enviados: ${successCount} | ❌ Falhas: ${failureCount}`)
+      console.log(`✅ Enviados: ${successCount} | ❌ Falhas: ${failureCount} | ⏰ Catch-up: ${catchUpCount}`)
 
-      return { processed: postsToSend.length, success: successCount, failed: failureCount }
+      return {
+        processed: postsToSend.length,
+        success: successCount,
+        failed: failureCount,
+        catchUp: catchUpCount
+      }
     } catch (error) {
       console.error('Erro no cron job:', error)
       throw error
