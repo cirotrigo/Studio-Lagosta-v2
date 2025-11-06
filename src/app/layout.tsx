@@ -10,11 +10,11 @@ import {
 import { siteMetadata } from "@/lib/brand-config";
 import { AnalyticsPixels } from "@/components/analytics/pixels";
 
-// Família Montserrat otimizada (apenas pesos essenciais)
+// Família Montserrat com todos os pesos necessários
 const montserrat = Montserrat({
   variable: "--font-montserrat",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"], // Regular, Medium, Semibold, Bold
+  weight: ["100", "300", "400", "500", "600", "700", "800", "900"], // Thin, Light, Regular, Medium, SemiBold, Bold, ExtraBold, Black
   style: ["normal"],
   display: "swap",
   preload: true,
