@@ -22,37 +22,71 @@ const montserrat = Montserrat({
 
 // Metadata dinâmica que busca do banco de dados
 export async function generateMetadata(): Promise<Metadata> {
-  const settings = await getSiteSettings();
+  try {
+    const settings = await getSiteSettings();
 
-  return {
-    title: settings.metaTitle || settings.siteName,
-    description: settings.metaDesc || settings.description,
-    keywords: settings.keywords,
-    authors: [{ name: 'Lagosta Criativa (Ciro Trigo)' }],
-    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
-    openGraph: {
+    return {
       title: settings.metaTitle || settings.siteName,
       description: settings.metaDesc || settings.description,
-      url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      siteName: settings.siteName,
-      images: settings.ogImage ? [{ url: settings.ogImage }] : undefined,
-      type: 'website',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: settings.metaTitle || settings.siteName,
-      description: settings.metaDesc || settings.description,
-    },
-    icons: {
-      icon: settings.favicon,
-      apple: settings.appleIcon || undefined,
-    },
-    other: {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-    },
-  };
+      keywords: settings.keywords,
+      authors: [{ name: 'Lagosta Criativa (Ciro Trigo)' }],
+      metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+      openGraph: {
+        title: settings.metaTitle || settings.siteName,
+        description: settings.metaDesc || settings.description,
+        url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        siteName: settings.siteName,
+        images: settings.ogImage ? [{ url: settings.ogImage }] : undefined,
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: settings.metaTitle || settings.siteName,
+        description: settings.metaDesc || settings.description,
+      },
+      icons: {
+        icon: settings.favicon,
+        apple: settings.appleIcon || undefined,
+      },
+      other: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    };
+  } catch (error) {
+    // Fallback to default metadata if database fails
+    console.error('Failed to load site settings for metadata:', error);
+
+    return {
+      title: 'Studio Lagosta',
+      description: 'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
+      keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS'],
+      authors: [{ name: 'Lagosta Criativa (Ciro Trigo)' }],
+      metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'),
+      openGraph: {
+        title: 'Studio Lagosta',
+        description: 'Template Next.js pronto para produção pela AI Coders Academy',
+        url: process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+        siteName: 'Studio Lagosta',
+        images: [{ url: '/og-image.png' }],
+        type: 'website',
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: 'Studio Lagosta',
+        description: 'Template Next.js pronto para produção pela AI Coders Academy',
+      },
+      icons: {
+        icon: '/favicon.svg',
+      },
+      other: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0',
+      },
+    };
+  }
 }
 
 export const viewport: Viewport = {

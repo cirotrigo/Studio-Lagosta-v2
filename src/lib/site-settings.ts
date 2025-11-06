@@ -31,50 +31,63 @@ export type SiteSettings = {
 }
 
 /**
+ * Get default settings fallback
+ */
+function getDefaultSettings(): SiteSettings {
+  return {
+    id: 'default',
+    siteName: 'Studio Lagosta',
+    shortName: 'Studio Lagosta',
+    description:
+      'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
+    logoLight: '/logo-light.svg',
+    logoDark: '/logo-dark.svg',
+    logoFullLight: null,
+    logoFullDark: null,
+    favicon: '/favicon.svg',
+    appleIcon: null,
+    metaTitle: null,
+    metaDesc: null,
+    ogImage: '/og-image.png',
+    keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS'],
+    supportEmail: 'suporte@aicoders.academy',
+    twitter: '@aicodersacademy',
+    facebook: null,
+    instagram: null,
+    linkedin: null,
+    github: null,
+    gtmId: null,
+    gaId: null,
+    facebookPixelId: null,
+    isActive: true,
+    updatedBy: 'system',
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+}
+
+/**
  * Get active site settings
- * Returns default settings if none found
+ * Returns default settings if none found or on error
  */
 export async function getSiteSettings(): Promise<SiteSettings> {
-  const settings = await db.siteSettings.findFirst({
-    where: { isActive: true },
-    orderBy: { updatedAt: 'desc' },
-  })
+  try {
+    const settings = await db.siteSettings.findFirst({
+      where: { isActive: true },
+      orderBy: { updatedAt: 'desc' },
+    })
 
-  if (!settings) {
-    // Return default settings
-    return {
-      id: 'default',
-      siteName: 'Studio Lagosta',
-      shortName: 'Studio Lagosta',
-      description:
-        'Template Next.js pronto para produção pela AI Coders Academy: autenticação, banco de dados, pagamentos e sistema de créditos incluídos.',
-      logoLight: '/logo-light.svg',
-      logoDark: '/logo-dark.svg',
-      logoFullLight: null,
-      logoFullDark: null,
-      favicon: '/favicon.svg',
-      appleIcon: null,
-      metaTitle: null,
-      metaDesc: null,
-      ogImage: '/og-image.png',
-      keywords: ['SaaS', 'Next.js', 'TypeScript', 'Clerk', 'Prisma', 'Tailwind CSS'],
-      supportEmail: 'suporte@aicoders.academy',
-      twitter: '@aicodersacademy',
-      facebook: null,
-      instagram: null,
-      linkedin: null,
-      github: null,
-      gtmId: null,
-      gaId: null,
-      facebookPixelId: null,
-      isActive: true,
-      updatedBy: 'system',
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    if (!settings) {
+      // Return default settings if none found in database
+      return getDefaultSettings()
     }
-  }
 
-  return settings
+    return settings
+  } catch (error) {
+    console.error('Error fetching site settings from database:', error)
+    // Return default settings on database error
+    return getDefaultSettings()
+  }
 }
 
 /**

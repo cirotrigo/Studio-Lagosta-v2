@@ -7,8 +7,10 @@ import * as React from "react"
 export function AnalyticsPixels() {
   const { gtmId, gaMeasurementId, facebookPixelId } = site.analytics
   const [enabled, setEnabled] = React.useState(false)
+  const [mounted, setMounted] = React.useState(false)
 
   React.useEffect(() => {
+    setMounted(true)
     const hasConsent = document.cookie.split(";").some((c) => c.trim().startsWith("cookie_consent=1"))
     setEnabled(hasConsent)
     const onAccept = () => setEnabled(true)
@@ -16,7 +18,8 @@ export function AnalyticsPixels() {
     return () => window.removeEventListener('cookie-consent-accepted', onAccept)
   }, [])
 
-  if (!enabled) return null
+  // Prevent hydration mismatch by not rendering until mounted
+  if (!mounted || !enabled) return null
 
   return (
     <>
