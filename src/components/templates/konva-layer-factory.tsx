@@ -8,6 +8,7 @@ import useImage from 'use-image'
 import type { Layer } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaEditableText } from './konva-editable-text'
+import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 
@@ -51,7 +52,8 @@ function hexToRgba(hex: string, opacity: number): string {
  * KonvaLayerFactory - Factory pattern para renderizar diferentes tipos de camadas.
  *
  * Tipos suportados:
- * - text: Texto com formatação completa (fonte, cor, alinhamento)
+ * - text: Texto com formatação única (fonte, cor, alinhamento)
+ * - rich-text: Texto com múltiplos estilos (cores, fontes diferentes na mesma frase)
  * - image/logo/element: Imagens com filtros Konva (blur, brightness, contrast, grayscale, sepia, invert)
  * - gradient/gradient2: Gradientes lineares e radiais
  * - shape: Formas geométricas (rectangle, circle, triangle, star, arrow, line)
@@ -282,6 +284,16 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
           borderWidth={borderWidth}
           onChange={onChange}
           stageRef={stageRef}
+        />
+      )
+
+    case 'rich-text':
+      return (
+        <KonvaMultiStyledText
+          layer={layer}
+          shapeRef={shapeRef as unknown as React.RefObject<Konva.Group>}
+          commonProps={commonProps}
+          onChange={onChange}
         />
       )
 
