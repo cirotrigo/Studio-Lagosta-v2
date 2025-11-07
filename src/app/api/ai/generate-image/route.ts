@@ -5,6 +5,9 @@ import { db } from '@/lib/db'
 import { validateCreditsForFeature, deductCreditsForFeature } from '@/lib/credits/deduct'
 import { put } from '@vercel/blob'
 
+export const runtime = 'nodejs'
+export const maxDuration = 120 // 2 minutes for AI image generation
+
 const generateImageSchema = z.object({
   projectId: z.number(),
   prompt: z.string().min(1, 'Prompt é obrigatório'),
