@@ -9,7 +9,7 @@ import { db } from '@/lib/db'
  */
 export async function GET(req: NextRequest) {
   try {
-    const searchParams = req.searchParams
+    const searchParams = req.nextUrl.searchParams
     const postId = searchParams.get('postId')
     const success = searchParams.get('success') !== 'false' // Default true
 
