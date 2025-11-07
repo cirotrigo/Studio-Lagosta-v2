@@ -3,13 +3,14 @@
 import * as React from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { TemplateEditorContext } from '@/contexts/template-editor-context'
 
 interface ColorPickerProps {
   label: string
   value: string
   onChange: (color: string) => void
   disabled?: boolean
+  projectId?: number  // Opcional: se não fornecido, pega do context
 }
 
 interface BrandColor {
@@ -22,8 +23,13 @@ interface BrandColor {
  * Simple color picker component with text input and native color picker
  * Includes brand colors palette
  */
-export function ColorPicker({ label, value, onChange, disabled }: ColorPickerProps) {
-  const { projectId } = useTemplateEditor()
+export function ColorPicker({ label, value, onChange, disabled, projectId: projectIdProp }: ColorPickerProps) {
+  // Try to get context without throwing (returns null if not in provider)
+  const context = React.useContext(TemplateEditorContext)
+
+  // Use projectId from prop if provided, otherwise from context
+  // If neither available, brand colors won't load (graceful degradation)
+  const projectId = projectIdProp ?? context?.projectId
   const [localValue, setLocalValue] = React.useState(value)
   const [brandColors, setBrandColors] = React.useState<BrandColor[]>([])
 

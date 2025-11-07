@@ -83,14 +83,26 @@ export function RichTextEditorModal({
     all: string[]
   }>(() => fontManager.getAvailableFonts(projectId))
 
-  // Estado dos controles de estilo
-  const [currentColor, setCurrentColor] = React.useState('#000000')
+  // Estado dos controles de estilo - inicializar com valores do layer
+  const [currentColor, setCurrentColor] = React.useState(
+    layer.style?.color ?? '#000000'
+  )
   const [currentFont, setCurrentFont] = React.useState(
     layer.style?.fontFamily ?? 'Inter'
   )
   const [currentFontSize, setCurrentFontSize] = React.useState(
     layer.style?.fontSize ?? 16
   )
+
+  // Estilo base do layer para preview
+  const baseStyle = React.useMemo(() => ({
+    fontFamily: layer.style?.fontFamily ?? 'Inter',
+    fontSize: layer.style?.fontSize ?? 16,
+    color: layer.style?.color ?? '#000000',
+    textAlign: layer.style?.textAlign ?? 'left',
+    lineHeight: layer.style?.lineHeight ?? 1.2,
+    letterSpacing: layer.style?.letterSpacing ?? 0,
+  }), [layer.style])
 
   // Atualizar lista de fontes
   React.useEffect(() => {
@@ -103,90 +115,206 @@ export function RichTextEditorModal({
     const textarea = textareaRef.current
     if (!textarea) return
 
+    // Usar setTimeout para garantir que a seleção está completa
+    setTimeout(() => {
+      const start = textarea.selectionStart
+      const end = textarea.selectionEnd
+      const selectedText = content.substring(start, end)
+
+      console.log('✂️ Seleção capturada:', { start, end, selectedText })
+
+      setSelection({ start, end, selectedText })
+
+      // Detectar estilo atual na seleção (se houver)
+      if (start !== end && styles.length > 0) {
+        const styleAtSelection = styles.find(
+          (s) => s.start <= start && s.end >= end
+        )
+        if (styleAtSelection) {
+          if (styleAtSelection.fill) setCurrentColor(styleAtSelection.fill)
+          if (styleAtSelection.fontFamily) setCurrentFont(styleAtSelection.fontFamily)
+          if (styleAtSelection.fontSize) setCurrentFontSize(styleAtSelection.fontSize)
+        }
+      }
+    }, 0)
+  }, [content, styles])
+
+  // Aplicar estilo ao trecho selecionado
+  // Aceita selection como parâmetro para evitar usar state stale
+  const applyStyle = React.useCallback(
+    (styleUpdate: Partial<RichTextStyle>, currentSelection: SelectionState) => {
+      if (currentSelection.start === currentSelection.end) {
+        // Nada selecionado
+        console.warn('⚠️ Tentou aplicar estilo sem seleção')
+        return
+      }
+
+      console.log('🎨 Aplicando estilo:', {
+        range: `${currentSelection.start}-${currentSelection.end}`,
+        texto: currentSelection.selectedText,
+        estilo: styleUpdate,
+      })
+
+      setStyles((prevStyles) => {
+        // Encontrar estilo existente na mesma range exata
+        const existingStyleIndex = prevStyles.findIndex(
+          (s) => s.start === currentSelection.start && s.end === currentSelection.end
+        )
+
+        if (existingStyleIndex !== -1) {
+          // Merge com estilo existente (acumular propriedades)
+          const existingStyle = prevStyles[existingStyleIndex]
+          const mergedStyle: RichTextStyle = {
+            ...existingStyle,
+            ...styleUpdate,
+            start: currentSelection.start,
+            end: currentSelection.end,
+          }
+
+          console.log('🔀 Fazendo merge de estilos:', {
+            existente: existingStyle,
+            novo: styleUpdate,
+            resultado: mergedStyle,
+          })
+
+          // Substituir o estilo existente
+          const newStyles = [...prevStyles]
+          newStyles[existingStyleIndex] = mergedStyle
+          return newStyles
+        } else {
+          // Criar novo estilo
+          const newStyle: RichTextStyle = {
+            start: currentSelection.start,
+            end: currentSelection.end,
+            ...styleUpdate,
+          }
+
+          // Remover estilos que se sobrepõem completamente
+          const filteredStyles = prevStyles.filter(
+            (s) =>
+              s.end <= currentSelection.start || s.start >= currentSelection.end
+          )
+
+          return [...filteredStyles, newStyle]
+        }
+      })
+    },
+    []
+  )
+
+  // Atualizar seleção imediatamente antes de aplicar estilo
+  const refreshSelection = React.useCallback(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return selection
+
     const start = textarea.selectionStart
     const end = textarea.selectionEnd
     const selectedText = content.substring(start, end)
 
-    setSelection({ start, end, selectedText })
+    const newSelection = { start, end, selectedText }
+    setSelection(newSelection)
 
-    // Detectar estilo atual na seleção (se houver)
-    if (start !== end && styles.length > 0) {
-      const styleAtSelection = styles.find(
-        (s) => s.start <= start && s.end >= end
-      )
-      if (styleAtSelection) {
-        if (styleAtSelection.fill) setCurrentColor(styleAtSelection.fill)
-        if (styleAtSelection.fontFamily) setCurrentFont(styleAtSelection.fontFamily)
-        if (styleAtSelection.fontSize) setCurrentFontSize(styleAtSelection.fontSize)
-      }
-    }
-  }, [content, styles])
+    // Log detalhado para debug
+    const context = 5
+    const beforeContext = content.substring(Math.max(0, start - context), start)
+    const afterContext = content.substring(end, Math.min(content.length, end + context))
 
-  // Aplicar estilo ao trecho selecionado
-  const applyStyle = React.useCallback(
-    (styleUpdate: Partial<RichTextStyle>) => {
-      if (selection.start === selection.end) {
-        // Nada selecionado
-        return
-      }
-
-      const newStyle: RichTextStyle = {
-        start: selection.start,
-        end: selection.end,
-        ...styleUpdate,
-      }
-
-      // Adicionar ou merge com estilos existentes
-      setStyles((prevStyles) => {
-        // Remover estilos sobrepostos
-        const filteredStyles = prevStyles.filter(
-          (s) =>
-            s.end <= selection.start || s.start >= selection.end
-        )
-
-        return [...filteredStyles, newStyle]
-      })
-    },
-    [selection]
-  )
+    console.log('🔄 Seleção atualizada:', {
+      start,
+      end,
+      length: end - start,
+      selectedText: `"${selectedText}"`,
+      context: `...${beforeContext}[${selectedText}]${afterContext}...`,
+      indices: `[${start}:${end}]`,
+      charAtStart: `content[${start}] = "${content[start]}"`,
+      charBeforeStart: start > 0 ? `content[${start - 1}] = "${content[start - 1]}"` : 'início do texto',
+      charAtEnd: end < content.length ? `content[${end}] = "${content[end]}"` : 'fim do texto',
+    })
+    return newSelection
+  }, [content, selection])
 
   // Handlers de estilo
   const handleApplyColor = () => {
-    applyStyle({ fill: currentColor })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ fill: currentColor }, currentSelection)
   }
 
   const handleApplyFont = () => {
-    applyStyle({ fontFamily: currentFont })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ fontFamily: currentFont }, currentSelection)
   }
 
   const handleApplyFontSize = () => {
-    applyStyle({ fontSize: currentFontSize })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    console.log('🔤 Aplicando fontSize:', currentFontSize)
+    applyStyle({ fontSize: currentFontSize }, currentSelection)
   }
 
   const handleToggleBold = () => {
-    applyStyle({ fontStyle: 'bold' })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ fontStyle: 'bold' }, currentSelection)
   }
 
   const handleToggleItalic = () => {
-    applyStyle({ fontStyle: 'italic' })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ fontStyle: 'italic' }, currentSelection)
   }
 
   const handleToggleUnderline = () => {
-    applyStyle({ textDecoration: 'underline' })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ textDecoration: 'underline' }, currentSelection)
   }
 
   const handleToggleStrikethrough = () => {
-    applyStyle({ textDecoration: 'line-through' })
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado')
+      return
+    }
+    applyStyle({ textDecoration: 'line-through' }, currentSelection)
   }
 
   // Remover estilos do trecho selecionado
   const handleRemoveStyles = () => {
-    if (selection.start === selection.end) return
+    const currentSelection = refreshSelection()
+    if (currentSelection.start === currentSelection.end) {
+      console.warn('⚠️ Nenhum texto selecionado para remover estilos')
+      return
+    }
+
+    console.log('🗑️ Removendo estilos da seleção:', {
+      range: `${currentSelection.start}-${currentSelection.end}`,
+      texto: currentSelection.selectedText,
+    })
 
     setStyles((prevStyles) =>
       prevStyles.filter(
         (s) =>
-          s.end <= selection.start || s.start >= selection.end
+          s.end <= currentSelection.start || s.start >= currentSelection.end
       )
     )
   }
@@ -239,6 +367,7 @@ export function RichTextEditorModal({
                     label="Cor do Texto"
                     value={currentColor}
                     onChange={setCurrentColor}
+                    projectId={projectId}
                   />
                   <Button
                     className="w-full mt-2"
@@ -377,32 +506,41 @@ export function RichTextEditorModal({
             </p>
           </div>
 
-          {/* Editor e Preview em duas colunas */}
-          <div className="flex-1 grid grid-cols-2 gap-4 overflow-hidden">
-            {/* Coluna Esquerda: Textarea */}
-            <div className="flex flex-col gap-2 overflow-hidden">
+          {/* Editor e Preview */}
+          <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+            {/* Textarea */}
+            <div className="flex flex-col gap-2">
               <Label>Editar Texto</Label>
               <textarea
                 ref={textareaRef}
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 onSelect={handleSelectionChange}
-                onBlur={handleSelectionChange}
-                className="flex-1 w-full p-4 border rounded resize-none font-mono text-sm"
+                onMouseUp={handleSelectionChange}
+                onKeyUp={handleSelectionChange}
+                className="w-full p-3 border rounded resize-none font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Digite o texto aqui..."
+                rows={4}
                 spellCheck={false}
               />
               <p className="text-xs text-muted-foreground">
-                {styles.length} estilo{styles.length !== 1 ? 's' : ''} aplicado{styles.length !== 1 ? 's' : ''}
+                Selecione um trecho acima e use a barra de ferramentas para aplicar estilos
               </p>
             </div>
 
-            {/* Coluna Direita: Preview */}
-            <div className="flex flex-col gap-2 overflow-hidden">
+            {/* Preview */}
+            <div className="flex-1 flex flex-col gap-2 overflow-hidden min-h-0">
               <Label>Preview</Label>
-              <div className="flex-1 border rounded p-4 overflow-auto bg-muted/20">
-                <RichTextPreview content={content} styles={styles} />
+              <div className="flex-1 border rounded p-6 overflow-auto bg-muted/10 min-h-0">
+                <RichTextPreview
+                  content={content}
+                  styles={styles}
+                  baseStyle={baseStyle}
+                />
               </div>
+              <p className="text-xs text-muted-foreground">
+                {styles.length} estilo{styles.length !== 1 ? 's' : ''} aplicado{styles.length !== 1 ? 's' : ''}
+              </p>
             </div>
           </div>
         </div>
@@ -426,9 +564,17 @@ export function RichTextEditorModal({
 interface RichTextPreviewProps {
   content: string
   styles: RichTextStyle[]
+  baseStyle: {
+    fontFamily: string
+    fontSize: number
+    color: string
+    textAlign: string
+    lineHeight: number
+    letterSpacing: number
+  }
 }
 
-function RichTextPreview({ content, styles }: RichTextPreviewProps) {
+function RichTextPreview({ content, styles, baseStyle }: RichTextPreviewProps) {
   if (!content) {
     return (
       <p className="text-muted-foreground text-sm italic">
@@ -437,9 +583,23 @@ function RichTextPreview({ content, styles }: RichTextPreviewProps) {
     )
   }
 
-  // Se não há estilos, mostrar texto simples
+  // Se não há estilos, mostrar texto simples com estilo base
   if (styles.length === 0) {
-    return <p className="whitespace-pre-wrap">{content}</p>
+    return (
+      <div
+        className="whitespace-pre-wrap"
+        style={{
+          fontFamily: baseStyle.fontFamily,
+          fontSize: `${baseStyle.fontSize}px`,
+          color: baseStyle.color,
+          textAlign: baseStyle.textAlign as any,
+          lineHeight: baseStyle.lineHeight,
+          letterSpacing: `${baseStyle.letterSpacing}px`,
+        }}
+      >
+        {content}
+      </div>
+    )
   }
 
   // Ordenar estilos por posição
@@ -479,20 +639,34 @@ function RichTextPreview({ content, styles }: RichTextPreviewProps) {
   }
 
   return (
-    <div className="whitespace-pre-wrap leading-relaxed">
+    <div
+      className="whitespace-pre-wrap"
+      style={{
+        fontFamily: baseStyle.fontFamily,
+        fontSize: `${baseStyle.fontSize}px`,
+        color: baseStyle.color,
+        textAlign: baseStyle.textAlign as any,
+        lineHeight: baseStyle.lineHeight,
+        letterSpacing: `${baseStyle.letterSpacing}px`,
+      }}
+    >
       {segments.map((segment, index) => {
         if (!segment.style) {
+          // Texto sem estilo customizado - herda do container
           return <span key={index}>{segment.text}</span>
         }
 
+        // Texto com estilo customizado - override sobre o base
         const style: React.CSSProperties = {
-          color: segment.style.fill,
-          fontFamily: segment.style.fontFamily,
+          color: segment.style.fill ?? baseStyle.color,
+          fontFamily: segment.style.fontFamily ?? baseStyle.fontFamily,
           fontSize: segment.style.fontSize ? `${segment.style.fontSize}px` : undefined,
           fontWeight: segment.style.fontStyle?.includes('bold') ? 'bold' : undefined,
           fontStyle: segment.style.fontStyle?.includes('italic') ? 'italic' : undefined,
           textDecoration: segment.style.textDecoration,
-          letterSpacing: segment.style.letterSpacing ? `${segment.style.letterSpacing}px` : undefined,
+          letterSpacing: segment.style.letterSpacing !== undefined
+            ? `${segment.style.letterSpacing}px`
+            : undefined,
         }
 
         return (

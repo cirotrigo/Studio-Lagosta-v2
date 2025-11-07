@@ -23,6 +23,8 @@ export interface TextStyleSegment {
   y?: number
   width?: number
   height?: number
+  // Marcador para forçar quebra de linha manual (\n)
+  forceLineBreak?: boolean
 }
 
 /**

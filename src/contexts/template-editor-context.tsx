@@ -100,7 +100,7 @@ export interface ExportRecord {
   createdAt: number
 }
 
-const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
+export const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
 
 // Detectar mobile para zoom inicial
 const getDefaultZoom = () => {
