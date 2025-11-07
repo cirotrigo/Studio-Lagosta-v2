@@ -215,7 +215,7 @@ type TimelineResponse = {
 
 export function useOrganizationTimeline(
   orgId: string | null,
-  params: { period?: string } = { period: '30d' }
+  params: { period?: string; startDate?: string; endDate?: string } = { period: '30d' }
 ) {
   return useQuery({
     queryKey: orgId
@@ -224,6 +224,8 @@ export function useOrganizationTimeline(
     queryFn: () => {
       const search = new URLSearchParams()
       if (params.period) search.set('period', params.period)
+      if (params.startDate) search.set('startDate', params.startDate)
+      if (params.endDate) search.set('endDate', params.endDate)
       const query = search.toString()
       const url = `/api/organizations/${orgId}/analytics/timeline${query ? `?${query}` : ''}`
       return api.get<TimelineResponse>(url)

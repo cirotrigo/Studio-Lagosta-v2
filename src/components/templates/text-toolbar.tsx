@@ -20,6 +20,7 @@ import {
   AlignCenter,
   AlignRight,
   Type,
+  Wand2,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -283,6 +284,16 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
+  const handleConvertToRichText = () => {
+    if (selectedLayer.type === 'text') {
+      onUpdateLayer(selectedLayer.id, {
+        type: 'rich-text',
+        richTextStyles: [], // Inicializar vazio
+      })
+      forceRedraw() // ⚡ FORÇAR REDESENHO
+    }
+  }
+
   return (
     <div className="flex-shrink-0 border-b border-border/40 bg-card shadow-sm">
       <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
@@ -500,6 +511,22 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           />
           <span className="text-xs text-muted-foreground w-8">{Math.round(opacity * 100)}%</span>
         </div>
+
+        {/* Convert to Rich Text */}
+        {selectedLayer.type === 'text' && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5"
+              onClick={handleConvertToRichText}
+              title="Converter para Rich Text (múltiplas cores/fontes)"
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+              <span className="text-xs">Rich Text</span>
+            </Button>
+          </div>
+        )}
 
       </div>
     </div>

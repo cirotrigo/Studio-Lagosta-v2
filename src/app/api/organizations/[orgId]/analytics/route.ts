@@ -88,9 +88,7 @@ export async function GET(
         orderBy: { _sum: { credits: 'desc' } },
       }),
       db.organizationUsage.findMany({
-        where: {
-          organizationId: organization.id,
-        },
+        where: whereClause,
         orderBy: { createdAt: 'desc' },
         take: 10,
         select: {

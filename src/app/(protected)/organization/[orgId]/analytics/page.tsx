@@ -63,7 +63,13 @@ export default function OrganizationAnalyticsPage() {
   )
   const timelineQuery = useOrganizationTimeline(
     isActiveOrganization ? organization.id : null,
-    { period: period === 'custom' && customDateRange?.from && customDateRange?.to ? '30d' : period },
+    period === 'custom' && customDateRange?.from && customDateRange?.to
+      ? {
+          period: 'custom',
+          startDate: customDateRange.from.toISOString(),
+          endDate: customDateRange.to.toISOString(),
+        }
+      : { period },
   )
 
   useSetPageMetadata({

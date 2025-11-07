@@ -5,22 +5,29 @@ import { requireOrganizationMembership, OrganizationAccessError } from '@/lib/or
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Analytics queries can be heavy with large datasets
 
-type Period = '7d' | '30d' | '90d'
+type Period = '7d' | '30d' | '90d' | 'custom'
 
-function getPeriodDates(period: Period) {
+function getPeriodDates(period: Period, customStart?: string, customEnd?: string) {
   const end = new Date()
   const start = new Date()
 
-  switch (period) {
-    case '7d':
-      start.setDate(start.getDate() - 7)
-      break
-    case '30d':
-      start.setDate(start.getDate() - 30)
-      break
-    case '90d':
-      start.setDate(start.getDate() - 90)
-      break
+  if (period === 'custom' && customStart && customEnd) {
+    start.setTime(new Date(customStart).getTime())
+    end.setTime(new Date(customEnd).getTime())
+  } else {
+    switch (period) {
+      case '7d':
+        start.setDate(start.getDate() - 7)
+        break
+      case '30d':
+        start.setDate(start.getDate() - 30)
+        break
+      case '90d':
+        start.setDate(start.getDate() - 90)
+        break
+      default:
+        start.setDate(start.getDate() - 30)
+    }
   }
 
   start.setHours(0, 0, 0, 0)
@@ -48,8 +55,10 @@ export async function GET(
 
     const url = new URL(req.url)
     const period = (url.searchParams.get('period') || '30d') as Period
+    const startDate = url.searchParams.get('startDate')
+    const endDate = url.searchParams.get('endDate')
 
-    const { start, end } = getPeriodDates(period)
+    const { start, end } = getPeriodDates(period, startDate || undefined, endDate || undefined)
 
     // Get organization to access its ID
     const organization = await db.organization.findUnique({
