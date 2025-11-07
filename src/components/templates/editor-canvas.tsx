@@ -10,7 +10,6 @@ import { ImageToolbar } from './image-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
 import { ZoomControls } from './zoom-controls'
-import { RichTextEditButton } from './rich-text-edit-button'
 
 const KonvaEditorStage = dynamic(
   () => import('./konva-editor-stage').then((mod) => mod.KonvaEditorStage),
@@ -271,6 +270,18 @@ export function EditorCanvas() {
             onMoveBackward={moveSelectedBackward}
             onAlignToCanvasCenterH={alignSelectedToCanvasCenterH}
             onAlignToCanvasCenterV={alignSelectedToCanvasCenterV}
+            selectedLayerType={selectedLayer?.type}
+            onConvertToRichText={
+              selectedLayer?.type === 'text'
+                ? () => {
+                    updateLayer(selectedLayer.id, (layer) => ({
+                      ...layer,
+                      type: 'rich-text' as const,
+                      richTextStyles: [],
+                    }))
+                  }
+                : undefined
+            }
           />
         </div>
       </div>
@@ -281,11 +292,6 @@ export function EditorCanvas() {
         <div className="flex-1 h-full w-full">
           <KonvaEditorStage />
         </div>
-
-        {/* Rich Text Edit Button - ícone de lápis flutuante */}
-        {isAnyTextSelected && selectedLayer && (
-          <RichTextEditButton selectedLayer={selectedLayer} />
-        )}
 
         {/* Effects Panel - lateral direito */}
         {isEffectsPanelOpen && isTextSelected && (

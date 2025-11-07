@@ -337,180 +337,185 @@ export function RichTextEditorModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Editor de Rich Text</DialogTitle>
+      <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader className="border-b pb-4">
+          <DialogTitle className="text-xl font-semibold">Editor de Rich Text</DialogTitle>
+          <p className="text-sm text-muted-foreground mt-1">
+            {selection.start === selection.end
+              ? 'Selecione um trecho de texto para aplicar estilos personalizados'
+              : `"${selection.selectedText}" selecionado (${selection.end - selection.start} caracteres)`}
+          </p>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col gap-4 overflow-hidden">
-          {/* Toolbar de Estilos */}
-          <div className="border-b pb-4">
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Cor do Texto */}
-              <Popover>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="gap-2"
-                    disabled={selection.start === selection.end}
-                  >
-                    <div
-                      className="w-4 h-4 rounded border"
-                      style={{ backgroundColor: currentColor }}
+        <div className="flex-1 flex flex-col gap-6 overflow-hidden py-2">
+          {/* Toolbar de Estilos - Reorganizada e Centralizada */}
+          <div className="bg-muted/50 dark:bg-muted/20 rounded-lg p-4 border">
+            <div className="flex flex-col gap-3">
+              {/* Linha 1: Texto e Fonte */}
+              <div className="flex items-center justify-center gap-2 flex-wrap">
+                {/* Cor do Texto */}
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="gap-2 h-9"
+                      disabled={selection.start === selection.end}
+                    >
+                      <div
+                        className="w-4 h-4 rounded border border-border"
+                        style={{ backgroundColor: currentColor }}
+                      />
+                      Cor
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-80">
+                    <ColorPicker
+                      label="Cor do Texto"
+                      value={currentColor}
+                      onChange={setCurrentColor}
+                      projectId={projectId}
                     />
-                    Cor
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-80">
-                  <ColorPicker
-                    label="Cor do Texto"
-                    value={currentColor}
-                    onChange={setCurrentColor}
-                    projectId={projectId}
-                  />
-                  <Button
-                    className="w-full mt-2"
-                    size="sm"
-                    onClick={handleApplyColor}
-                  >
-                    Aplicar Cor
-                  </Button>
-                </PopoverContent>
-              </Popover>
+                    <Button
+                      className="w-full mt-2"
+                      size="sm"
+                      onClick={handleApplyColor}
+                    >
+                      Aplicar Cor
+                    </Button>
+                  </PopoverContent>
+                </Popover>
 
-              {/* Fonte */}
-              <Select value={currentFont} onValueChange={setCurrentFont}>
-                <SelectTrigger className="w-[180px] h-9">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="max-h-[300px]">
-                  {availableFonts.system.length > 0 && (
-                    <>
-                      <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                        Sistema
-                      </div>
-                      {availableFonts.system.map((font) => (
-                        <SelectItem key={font} value={font}>
-                          <span style={{ fontFamily: font }}>{font}</span>
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                  {availableFonts.custom.length > 0 && (
-                    <>
-                      <div className="mt-2 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                        Minhas Fontes
-                      </div>
-                      {availableFonts.custom.map((font) => (
-                        <SelectItem key={font} value={font}>
-                          <span style={{ fontFamily: font }}>{font}</span>
-                        </SelectItem>
-                      ))}
-                    </>
-                  )}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleApplyFont}
-                disabled={selection.start === selection.end}
-              >
-                Aplicar Fonte
-              </Button>
-
-              {/* Tamanho da Fonte */}
-              <div className="flex items-center gap-1">
-                <Type className="h-4 w-4 text-muted-foreground" />
-                <Input
-                  type="number"
-                  min={8}
-                  max={200}
-                  value={currentFontSize}
-                  onChange={(e) => setCurrentFontSize(Number(e.target.value))}
-                  className="w-20 h-9"
-                />
+                {/* Fonte */}
+                <Select value={currentFont} onValueChange={setCurrentFont}>
+                  <SelectTrigger className="w-[160px] h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px]">
+                    {availableFonts.system.length > 0 && (
+                      <>
+                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
+                          Sistema
+                        </div>
+                        {availableFonts.system.map((font) => (
+                          <SelectItem key={font} value={font}>
+                            <span style={{ fontFamily: font }}>{font}</span>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                    {availableFonts.custom.length > 0 && (
+                      <>
+                        <div className="mt-2 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
+                          Minhas Fontes
+                        </div>
+                        {availableFonts.custom.map((font) => (
+                          <SelectItem key={font} value={font}>
+                            <span style={{ fontFamily: font }}>{font}</span>
+                          </SelectItem>
+                        ))}
+                      </>
+                    )}
+                  </SelectContent>
+                </Select>
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleApplyFontSize}
+                  className="h-9"
+                  onClick={handleApplyFont}
                   disabled={selection.start === selection.end}
                 >
                   Aplicar
                 </Button>
+
+                {/* Tamanho da Fonte */}
+                <div className="flex items-center gap-1.5">
+                  <Type className="h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="number"
+                    min={8}
+                    max={200}
+                    value={currentFontSize}
+                    onChange={(e) => setCurrentFontSize(Number(e.target.value))}
+                    className="w-16 h-9"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-9"
+                    onClick={handleApplyFontSize}
+                    disabled={selection.start === selection.end}
+                  >
+                    Aplicar
+                  </Button>
+                </div>
               </div>
 
-              <div className="h-6 w-px bg-border" />
+              {/* Linha 2: Formatação e Ações */}
+              <div className="flex items-center justify-center gap-2">
+                {/* Estilos de Texto */}
+                <div className="flex items-center gap-1 bg-background rounded-md p-1 border">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 h-8 p-0"
+                    onClick={handleToggleBold}
+                    disabled={selection.start === selection.end}
+                    title="Negrito"
+                  >
+                    <Bold className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 h-8 p-0"
+                    onClick={handleToggleItalic}
+                    disabled={selection.start === selection.end}
+                    title="Itálico"
+                  >
+                    <Italic className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 h-8 p-0"
+                    onClick={handleToggleUnderline}
+                    disabled={selection.start === selection.end}
+                    title="Sublinhado"
+                  >
+                    <Underline className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-8 h-8 p-0"
+                    onClick={handleToggleStrikethrough}
+                    disabled={selection.start === selection.end}
+                    title="Tachado"
+                  >
+                    <Strikethrough className="h-4 w-4" />
+                  </Button>
+                </div>
 
-              {/* Estilos de Texto */}
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-9 p-0"
-                onClick={handleToggleBold}
-                disabled={selection.start === selection.end}
-                title="Negrito"
-              >
-                <Bold className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-9 p-0"
-                onClick={handleToggleItalic}
-                disabled={selection.start === selection.end}
-                title="Itálico"
-              >
-                <Italic className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-9 p-0"
-                onClick={handleToggleUnderline}
-                disabled={selection.start === selection.end}
-                title="Sublinhado"
-              >
-                <Underline className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="w-9 p-0"
-                onClick={handleToggleStrikethrough}
-                disabled={selection.start === selection.end}
-                title="Tachado"
-              >
-                <Strikethrough className="h-4 w-4" />
-              </Button>
-
-              <div className="h-6 w-px bg-border" />
-
-              {/* Remover Estilos */}
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleRemoveStyles}
-                disabled={!hasStylesInSelection}
-              >
-                Remover Estilos
-              </Button>
+                {/* Remover Estilos */}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  className="h-9"
+                  onClick={handleRemoveStyles}
+                  disabled={!hasStylesInSelection}
+                >
+                  Limpar Estilos
+                </Button>
+              </div>
             </div>
-
-            {/* Instruções */}
-            <p className="text-xs text-muted-foreground mt-2">
-              {selection.start === selection.end
-                ? 'Selecione um trecho de texto para aplicar estilos'
-                : `Trecho selecionado: "${selection.selectedText}" (${selection.end - selection.start} caracteres)`}
-            </p>
           </div>
 
-          {/* Editor e Preview */}
-          <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+          {/* Editor e Preview - Layout Vertical */}
+          <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
             {/* Textarea */}
             <div className="flex flex-col gap-2">
-              <Label>Editar Texto</Label>
+              <Label className="text-sm font-medium">Editar Texto</Label>
               <textarea
                 ref={textareaRef}
                 value={content}
@@ -518,39 +523,38 @@ export function RichTextEditorModal({
                 onSelect={handleSelectionChange}
                 onMouseUp={handleSelectionChange}
                 onKeyUp={handleSelectionChange}
-                className="w-full p-3 border rounded resize-none font-mono text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full h-16 p-3 border rounded-md resize-none font-mono text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
                 placeholder="Digite o texto aqui..."
-                rows={4}
                 spellCheck={false}
               />
-              <p className="text-xs text-muted-foreground">
-                Selecione um trecho acima e use a barra de ferramentas para aplicar estilos
-              </p>
             </div>
 
             {/* Preview */}
             <div className="flex-1 flex flex-col gap-2 overflow-hidden min-h-0">
-              <Label>Preview</Label>
-              <div className="flex-1 border rounded p-6 overflow-auto bg-muted/10 min-h-0">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Preview</Label>
+                <p className="text-xs text-muted-foreground">
+                  {styles.length} estilo{styles.length !== 1 ? 's' : ''} aplicado{styles.length !== 1 ? 's' : ''}
+                </p>
+              </div>
+              <div className="flex-1 border rounded-md p-6 overflow-auto bg-slate-900 dark:bg-slate-950 min-h-0">
                 <RichTextPreview
                   content={content}
                   styles={styles}
                   baseStyle={baseStyle}
+                  originalWidth={layer.size?.width ?? 240}
                 />
               </div>
-              <p className="text-xs text-muted-foreground">
-                {styles.length} estilo{styles.length !== 1 ? 's' : ''} aplicado{styles.length !== 1 ? 's' : ''}
-              </p>
             </div>
           </div>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+        <DialogFooter className="border-t pt-4 gap-2">
+          <Button variant="outline" onClick={onClose} className="min-w-[100px]">
             Cancelar
           </Button>
-          <Button onClick={handleSave}>
-            Salvar
+          <Button onClick={handleSave} className="min-w-[100px]">
+            Salvar Alterações
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -572,9 +576,37 @@ interface RichTextPreviewProps {
     lineHeight: number
     letterSpacing: number
   }
+  originalWidth?: number // Largura original da caixa de texto
 }
 
-function RichTextPreview({ content, styles, baseStyle }: RichTextPreviewProps) {
+function RichTextPreview({ content, styles, baseStyle, originalWidth }: RichTextPreviewProps) {
+  const containerRef = React.useRef<HTMLDivElement>(null)
+  const [scale, setScale] = React.useState(1)
+
+  // Calcular scale baseado na largura disponível
+  React.useEffect(() => {
+    if (!originalWidth || !containerRef.current) {
+      setScale(1)
+      return
+    }
+
+    const containerWidth = containerRef.current.clientWidth
+    // Subtrair padding (6px de cada lado = 12px total) do container preview
+    const availableWidth = containerWidth - 48 // 24px padding de cada lado
+
+    if (availableWidth > 0 && originalWidth > 0) {
+      // Calcular scale para que a largura seja similar
+      const calculatedScale = Math.min(1, availableWidth / originalWidth)
+      setScale(calculatedScale)
+    }
+  }, [originalWidth])
+
+  // Aplicar scale nos estilos
+  const scaledBaseStyle = {
+    ...baseStyle,
+    fontSize: baseStyle.fontSize * scale,
+    letterSpacing: baseStyle.letterSpacing * scale,
+  }
   if (!content) {
     return (
       <p className="text-muted-foreground text-sm italic">
@@ -587,14 +619,16 @@ function RichTextPreview({ content, styles, baseStyle }: RichTextPreviewProps) {
   if (styles.length === 0) {
     return (
       <div
+        ref={containerRef}
         className="whitespace-pre-wrap"
         style={{
-          fontFamily: baseStyle.fontFamily,
-          fontSize: `${baseStyle.fontSize}px`,
-          color: baseStyle.color,
-          textAlign: baseStyle.textAlign as any,
-          lineHeight: baseStyle.lineHeight,
-          letterSpacing: `${baseStyle.letterSpacing}px`,
+          fontFamily: scaledBaseStyle.fontFamily,
+          fontSize: `${scaledBaseStyle.fontSize}px`,
+          color: scaledBaseStyle.color,
+          textAlign: scaledBaseStyle.textAlign as any,
+          lineHeight: scaledBaseStyle.lineHeight,
+          letterSpacing: `${scaledBaseStyle.letterSpacing}px`,
+          width: originalWidth ? `${originalWidth * scale}px` : 'auto',
         }}
       >
         {content}
@@ -640,14 +674,16 @@ function RichTextPreview({ content, styles, baseStyle }: RichTextPreviewProps) {
 
   return (
     <div
+      ref={containerRef}
       className="whitespace-pre-wrap"
       style={{
-        fontFamily: baseStyle.fontFamily,
-        fontSize: `${baseStyle.fontSize}px`,
-        color: baseStyle.color,
-        textAlign: baseStyle.textAlign as any,
-        lineHeight: baseStyle.lineHeight,
-        letterSpacing: `${baseStyle.letterSpacing}px`,
+        fontFamily: scaledBaseStyle.fontFamily,
+        fontSize: `${scaledBaseStyle.fontSize}px`,
+        color: scaledBaseStyle.color,
+        textAlign: scaledBaseStyle.textAlign as any,
+        lineHeight: scaledBaseStyle.lineHeight,
+        letterSpacing: `${scaledBaseStyle.letterSpacing}px`,
+        width: originalWidth ? `${originalWidth * scale}px` : 'auto',
       }}
     >
       {segments.map((segment, index) => {
@@ -656,16 +692,16 @@ function RichTextPreview({ content, styles, baseStyle }: RichTextPreviewProps) {
           return <span key={index}>{segment.text}</span>
         }
 
-        // Texto com estilo customizado - override sobre o base
+        // Texto com estilo customizado - override sobre o base (com scale aplicado)
         const style: React.CSSProperties = {
-          color: segment.style.fill ?? baseStyle.color,
-          fontFamily: segment.style.fontFamily ?? baseStyle.fontFamily,
-          fontSize: segment.style.fontSize ? `${segment.style.fontSize}px` : undefined,
+          color: segment.style.fill ?? scaledBaseStyle.color,
+          fontFamily: segment.style.fontFamily ?? scaledBaseStyle.fontFamily,
+          fontSize: segment.style.fontSize ? `${segment.style.fontSize * scale}px` : undefined,
           fontWeight: segment.style.fontStyle?.includes('bold') ? 'bold' : undefined,
           fontStyle: segment.style.fontStyle?.includes('italic') ? 'italic' : undefined,
           textDecoration: segment.style.textDecoration,
           letterSpacing: segment.style.letterSpacing !== undefined
-            ? `${segment.style.letterSpacing}px`
+            ? `${segment.style.letterSpacing * scale}px`
             : undefined,
         }
 

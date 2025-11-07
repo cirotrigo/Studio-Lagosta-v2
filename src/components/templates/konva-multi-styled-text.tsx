@@ -56,6 +56,7 @@ export function KonvaMultiStyledText({
   projectId = 0,
 }: KonvaMultiStyledTextProps) {
   const [modalOpen, setModalOpen] = React.useState(false)
+  const [isHovering, setIsHovering] = React.useState(false) // Hover state
 
   // DEBUG: Log quando componente é montado
   React.useEffect(() => {
@@ -316,6 +317,8 @@ export function KonvaMultiStyledText({
       onDragStart={commonProps.onDragStart}
       onDragMove={commonProps.onDragMove}
       onTransformEnd={commonProps.onTransformEnd}
+      onMouseEnter={() => setIsHovering(true)}
+      onMouseLeave={() => setIsHovering(false)}
     >
       {/* Retângulo invisível para garantir área clicável */}
       <Rect
@@ -326,6 +329,20 @@ export function KonvaMultiStyledText({
         fill="transparent"
         listening={true}
       />
+
+      {/* Hover Border - Borda azul semi-transparente ao passar o mouse */}
+      {isHovering && (
+        <Rect
+          x={0}
+          y={0}
+          width={boxWidth}
+          height={boxHeight}
+          stroke="rgba(59, 130, 246, 0.5)" // Azul com 50% de opacidade
+          strokeWidth={2}
+          dash={[8, 4]} // Linha tracejada
+          listening={false}
+        />
+      )}
 
       {/* Renderizar segments de texto */}
       {layout.segments.map((segment, index) => (

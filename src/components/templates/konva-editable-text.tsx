@@ -76,6 +76,7 @@ export function KonvaEditableText({
   const textareaRef = React.useRef<HTMLTextAreaElement | null>(null)
   const [editingState, setEditingState] = React.useState<TextEditingState | null>(null)
   const isComposingRef = React.useRef(false) // Para acentuação/IME
+  const [isHovering, setIsHovering] = React.useState(false) // Hover state
 
   // Mobile: Detectar duplo tap manualmente
   const lastTapTimeRef = React.useRef<number>(0)
@@ -1124,6 +1125,20 @@ export function KonvaEditableText({
         />
       )}
 
+      {/* Hover Border - Borda azul semi-transparente ao passar o mouse */}
+      {isHovering && !isEditing && (
+        <Rect
+          x={0}
+          y={0}
+          width={layer.size?.width ?? 240}
+          height={layer.size?.height ?? 120}
+          stroke="rgba(59, 130, 246, 0.5)" // Azul com 50% de opacidade
+          strokeWidth={2}
+          dash={[8, 4]} // Linha tracejada
+          listening={false}
+        />
+      )}
+
       {/* Render curved text if curved effect is enabled */}
       {isCurvedText ? (
         <Group
@@ -1132,6 +1147,8 @@ export function KonvaEditableText({
           listening={commonProps.listening && !isEditing}
           draggable={commonProps.draggable && !isEditing}
           visible={!isEditing}
+          onMouseEnter={() => setIsHovering(true)}
+          onMouseLeave={() => setIsHovering(false)}
         >
           {curvedTextElements}
         </Group>
@@ -1180,6 +1197,8 @@ export function KonvaEditableText({
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
         onTap={handleTap}
+        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={() => setIsHovering(false)}
       />
       )}
     </>

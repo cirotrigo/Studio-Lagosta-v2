@@ -15,6 +15,7 @@ import {
   SendToBack,
   ArrowUp,
   ArrowDown,
+  Palette,
 } from 'lucide-react'
 import {
   Tooltip,
@@ -43,6 +44,9 @@ interface AlignmentToolbarProps {
   onAlignToCanvasCenterH: () => void
   onAlignToCanvasCenterV: () => void
   className?: string
+  // Rich Text conversion
+  selectedLayerType?: 'text' | 'rich-text' | 'image' | 'logo' | 'element' | string
+  onConvertToRichText?: () => void
 }
 
 export function AlignmentToolbar({
@@ -63,11 +67,14 @@ export function AlignmentToolbar({
   onAlignToCanvasCenterH,
   onAlignToCanvasCenterV,
   className,
+  selectedLayerType,
+  onConvertToRichText,
 }: AlignmentToolbarProps) {
   const alignDisabled = disabled || selectedCount < 2
   const distributeDisabled = disabled || selectedCount < 3
   const orderDisabled = disabled || selectedCount === 0
   const canvasAlignDisabled = disabled || selectedCount === 0
+  const showRichTextButton = selectedLayerType === 'text' && selectedCount === 1
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -346,6 +353,32 @@ export function AlignmentToolbar({
             </TooltipContent>
           </Tooltip>
         </div>
+
+        {/* Rich Text Conversion - só aparece para texto simples */}
+        {showRichTextButton && onConvertToRichText && (
+          <>
+            <Separator orientation="vertical" className="h-6" />
+            <div className="flex items-center gap-0.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onConvertToRichText}
+                    className="h-8 w-8 p-0"
+                  >
+                    <Palette className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p>Converter para Rich Text</p>
+                  <p className="text-xs text-muted-foreground">Permite múltiplas cores/fontes</p>
+                  <p className="text-xs text-muted-foreground">Duplo-clique no texto para editar</p>
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </>
+        )}
       </div>
     </TooltipProvider>
   )

@@ -487,7 +487,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
         </div>
 
         {/* Opacidade */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Label className="text-xs text-muted-foreground whitespace-nowrap">Opacidade:</Label>
           <Slider
             value={[opacity]}
