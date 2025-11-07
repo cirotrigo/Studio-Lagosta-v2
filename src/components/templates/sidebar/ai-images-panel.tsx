@@ -244,6 +244,11 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return
     }
 
+    if (!projectId) {
+      toast({ variant: 'destructive', description: 'Erro: projeto não identificado' })
+      return
+    }
+
     if (!canPerformOperation('ai_image_generation')) {
       toast({ variant: 'destructive', description: 'Créditos insuficientes' })
       return
