@@ -82,8 +82,6 @@ const nextConfig: NextConfig = {
     // IMPORTANT: Keep ffmpeg-static binary for video processing
     '/api/video-processing/process': ffmpegStaticGlobs,
     '/api/test-ffmpeg': ffmpegStaticGlobs,
-    // Ensure AI image generation route is included in deployment
-    '/api/ai/generate-image': ['**/*'],
   },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe
