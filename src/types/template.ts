@@ -12,6 +12,7 @@ export interface CanvasConfig {
 
 export type LayerType =
   | 'text'
+  | 'rich-text' // Texto com múltiplos estilos (cores, fontes) na mesma frase
   | 'image'
   | 'gradient'
   | 'gradient2'
@@ -63,6 +64,8 @@ export interface Layer {
     playbackRate?: number
     objectFit?: 'cover' | 'contain' | 'fill'
   }
+  // Rich text support - estilos aplicados a trechos específicos do texto
+  richTextStyles?: RichTextStyle[]
   [key: string]: unknown
 }
 
@@ -117,6 +120,35 @@ export interface BorderStyle {
   width: number
   color: string
   radius: number
+}
+
+/**
+ * Rich Text Style - Define estilos aplicados a trechos específicos de texto
+ * Permite múltiplas cores, fontes e formatações na mesma frase
+ */
+export interface RichTextStyle {
+  // Posição do trecho no texto (índices de caractere)
+  start: number
+  end: number
+
+  // Estilos de texto
+  fontFamily?: string
+  fontSize?: number
+  fill?: string
+  fontStyle?: 'normal' | 'italic' | 'bold' | 'bold italic'
+  textDecoration?: 'none' | 'underline' | 'line-through'
+  letterSpacing?: number
+
+  // Efeitos inline
+  stroke?: {
+    color: string
+    width: number
+  }
+  shadow?: {
+    color: string
+    blur: number
+    offset: { x: number; y: number }
+  }
 }
 
 export interface TextboxConfig {

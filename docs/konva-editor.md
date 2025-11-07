@@ -50,7 +50,8 @@ interface DesignData {
 ### Layer Types
 ```typescript
 type LayerType =
-  | 'text'
+  | 'text'        // Texto simples (um estilo único)
+  | 'rich-text'   // Texto com formatação rica (múltiplas cores/fontes)
   | 'image'
   | 'logo'
   | 'element'
@@ -58,6 +59,7 @@ type LayerType =
   | 'icon'
   | 'gradient'
   | 'gradient2'
+  | 'video'
 
 interface Layer {
   id: string
@@ -72,8 +74,61 @@ interface Layer {
   style: LayerStyle
   content?: string // Para textos
   fileUrl?: string // Para imagens/logos
+  richTextStyles?: RichTextStyle[] // Para rich-text (estilos por trecho)
 }
 ```
+
+### Rich Text Support
+
+O editor suporta **texto com formatação rica**, permitindo múltiplas cores, fontes e estilos na mesma frase.
+
+**Diferença entre `text` e `rich-text`:**
+- **`text`**: Estilo único aplicado a todo o texto (comportamento atual)
+- **`rich-text`**: Cada palavra/trecho pode ter cor, fonte e formatação diferentes
+
+**Estrutura de dados:**
+```typescript
+interface RichTextStyle {
+  start: number  // Posição inicial no texto (índice)
+  end: number    // Posição final no texto (índice)
+
+  // Estilos do trecho
+  fontFamily?: string
+  fontSize?: number
+  fill?: string
+  fontStyle?: 'normal' | 'italic' | 'bold' | 'bold italic'
+  textDecoration?: 'none' | 'underline' | 'line-through'
+  letterSpacing?: number
+
+  // Efeitos inline
+  stroke?: { color: string; width: number }
+  shadow?: { color: string; blur: number; offset: { x: number; y: number } }
+}
+
+// Exemplo de layer com rich text
+{
+  id: "layer-123",
+  type: "rich-text",
+  content: "Hello World",
+  richTextStyles: [
+    { start: 0, end: 5, fill: "#FF0000", fontFamily: "Arial" },      // "Hello" vermelho
+    { start: 6, end: 11, fill: "#0000FF", fontFamily: "Times" }      // "World" azul
+  ]
+}
+```
+
+**Conversão de texto simples para rich text:**
+```typescript
+// Usuário clica em "✨ Converter para Rich Text" na toolbar
+updateLayer(layerId, {
+  type: 'rich-text',
+  richTextStyles: [] // Inicialmente vazio (estilo base aplicado)
+})
+```
+
+**Documentação completa:**
+- Ver `/prompts/plano-texto-konva.md` para plano de implementação detalhado
+- Ver `src/types/rich-text.ts` para tipos completos
 
 ### Layer Styles
 ```typescript
