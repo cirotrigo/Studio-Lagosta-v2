@@ -24,7 +24,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
-import { Bold, Italic, Underline, Strikethrough, Type } from 'lucide-react'
+import { Bold, Italic, Underline, Strikethrough, Type, XIcon } from 'lucide-react'
 import type { Layer, RichTextStyle } from '@/types/template'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -337,7 +337,10 @@ export function RichTextEditorModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-5xl max-h-[85vh] overflow-hidden flex flex-col">
+      <DialogContent
+        className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] overflow-hidden flex flex-col"
+        style={{ zIndex: 10001 }}
+      >
         <DialogHeader className="border-b pb-4">
           <DialogTitle className="text-xl font-semibold">Editor de Rich Text</DialogTitle>
           <p className="text-sm text-muted-foreground mt-1">
