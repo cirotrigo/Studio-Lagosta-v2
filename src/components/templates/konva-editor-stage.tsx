@@ -43,6 +43,7 @@ const MAX_ZOOM = 5
 
 export function KonvaEditorStage() {
   const {
+    projectId,
     design,
     selectedLayerIds,
     selectLayer,
@@ -894,6 +895,7 @@ export function KonvaEditorStage() {
                 onDragMove={(event) => handleLayerDragMove(event, layer)}
                 onDragEnd={handleLayerDragEnd}
                 stageRef={stageRef}
+                projectId={projectId}
               />
             ))}
             <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />

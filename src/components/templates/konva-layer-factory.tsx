@@ -80,6 +80,7 @@ interface KonvaLayerFactoryProps {
   onDragEnd?: () => void
   disableInteractions?: boolean
   stageRef?: React.RefObject<Konva.Stage | null>
+  projectId?: number
 }
 
 interface CommonProps {
@@ -100,7 +101,7 @@ interface CommonProps {
   onTransformEnd: (event: KonvaEventObject<Event>) => void
 }
 
-export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, stageRef }: KonvaLayerFactoryProps) {
+export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, stageRef, projectId = 0 }: KonvaLayerFactoryProps) {
   const shapeRef = React.useRef<Konva.Shape | null>(null)
   const dragStateRef = React.useRef<{ startX: number; startY: number; hasMoved: boolean } | null>(null)
 
@@ -294,6 +295,7 @@ export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDra
           shapeRef={shapeRef as unknown as React.RefObject<Konva.Group>}
           commonProps={commonProps}
           onChange={onChange}
+          projectId={projectId}
         />
       )
 

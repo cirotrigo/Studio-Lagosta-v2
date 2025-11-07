@@ -6,6 +6,7 @@ import { Group, Text } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer, LayerStyle, RichTextStyle } from '@/types/template'
 import type { TextStyleSegment, RichTextRenderOptions, LayoutResult } from '@/types/rich-text'
+import { RichTextEditorModal } from './modals/rich-text-editor-modal'
 
 /**
  * KonvaMultiStyledText - Componente para renderizar texto com múltiplos estilos
@@ -43,6 +44,7 @@ interface KonvaMultiStyledTextProps {
     onTransformEnd: (event: KonvaEventObject<Event>) => void
   }
   onChange: (updates: Partial<Layer>) => void
+  projectId?: number
 }
 
 export function KonvaMultiStyledText({
@@ -50,7 +52,26 @@ export function KonvaMultiStyledText({
   shapeRef,
   commonProps,
   onChange,
+  projectId = 0,
 }: KonvaMultiStyledTextProps) {
+  const [modalOpen, setModalOpen] = React.useState(false)
+
+  // Handler para duplo-clique - abre modal de edição
+  const handleDblClick = React.useCallback(() => {
+    setModalOpen(true)
+  }, [])
+
+  // Handler para salvar mudanças do modal
+  const handleSaveFromModal = React.useCallback(
+    (content: string, styles: RichTextStyle[]) => {
+      onChange({
+        content,
+        richTextStyles: styles,
+      })
+    },
+    [onChange]
+  )
+
   // Parsear rich text styles em segments
   const segments = React.useMemo(() => {
     return parseRichTextSegments(
@@ -77,36 +98,49 @@ export function KonvaMultiStyledText({
   }, [segments, layer.size, layer.style])
 
   return (
-    <Group
-      {...commonProps}
-      ref={shapeRef as any}
-      width={layout.bounds.width}
-      height={layout.bounds.height}
-    >
-      {layout.segments.map((segment, index) => (
-        <Text
-          key={`segment-${index}-${segment.start}`}
-          x={segment.x ?? 0}
-          y={segment.y ?? 0}
-          text={segment.text}
-          fontSize={segment.style.fontSize}
-          fontFamily={segment.style.fontFamily}
-          fontStyle={segment.style.fontStyle}
-          fill={segment.style.fill}
-          textDecoration={segment.style.textDecoration}
-          letterSpacing={segment.style.letterSpacing ?? 0}
-          stroke={segment.style.stroke?.color}
-          strokeWidth={segment.style.stroke?.width}
-          shadowColor={segment.style.shadow?.color}
-          shadowBlur={segment.style.shadow?.blur}
-          shadowOffsetX={segment.style.shadow?.offset.x}
-          shadowOffsetY={segment.style.shadow?.offset.y}
-          listening={false} // Eventos no Group pai
-          perfectDrawEnabled={true}
-          imageSmoothingEnabled={true}
-        />
-      ))}
-    </Group>
+    <>
+      <Group
+        {...commonProps}
+        ref={shapeRef as any}
+        width={layout.bounds.width}
+        height={layout.bounds.height}
+        onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
+      >
+        {layout.segments.map((segment, index) => (
+          <Text
+            key={`segment-${index}-${segment.start}`}
+            x={segment.x ?? 0}
+            y={segment.y ?? 0}
+            text={segment.text}
+            fontSize={segment.style.fontSize}
+            fontFamily={segment.style.fontFamily}
+            fontStyle={segment.style.fontStyle}
+            fill={segment.style.fill}
+            textDecoration={segment.style.textDecoration}
+            letterSpacing={segment.style.letterSpacing ?? 0}
+            stroke={segment.style.stroke?.color}
+            strokeWidth={segment.style.stroke?.width}
+            shadowColor={segment.style.shadow?.color}
+            shadowBlur={segment.style.shadow?.blur}
+            shadowOffsetX={segment.style.shadow?.offset.x}
+            shadowOffsetY={segment.style.shadow?.offset.y}
+            listening={false} // Eventos no Group pai
+            perfectDrawEnabled={true}
+            imageSmoothingEnabled={true}
+          />
+        ))}
+      </Group>
+
+      {/* Modal de edição */}
+      <RichTextEditorModal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        layer={layer}
+        projectId={projectId}
+        onSave={handleSaveFromModal}
+      />
+    </>
   )
 }
 
