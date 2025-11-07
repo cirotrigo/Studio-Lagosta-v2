@@ -20,10 +20,19 @@ const montserrat = Montserrat({
   preload: true,
 });
 
+// Force dynamic rendering to prevent metadata from being cached at build time
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Metadata dinâmica que busca do banco de dados
 export async function generateMetadata(): Promise<Metadata> {
   try {
     const settings = await getSiteSettings();
+
+    // Add cache busting parameter to favicon to force browser refresh
+    const cacheBuster = settings.updatedAt ? new Date(settings.updatedAt).getTime() : Date.now();
+    const faviconUrl = `${settings.favicon}?v=${cacheBuster}`;
+    const appleIconUrl = settings.appleIcon ? `${settings.appleIcon}?v=${cacheBuster}` : undefined;
 
     return {
       title: settings.metaTitle || settings.siteName,
@@ -45,8 +54,8 @@ export async function generateMetadata(): Promise<Metadata> {
         description: settings.metaDesc || settings.description,
       },
       icons: {
-        icon: settings.favicon,
-        apple: settings.appleIcon || undefined,
+        icon: faviconUrl,
+        apple: appleIconUrl,
       },
       other: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -78,7 +87,7 @@ export async function generateMetadata(): Promise<Metadata> {
         description: 'Template Next.js pronto para produção pela AI Coders Academy',
       },
       icons: {
-        icon: '/favicon.svg',
+        icon: `/favicon.svg?v=${Date.now()}`,
       },
       other: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
