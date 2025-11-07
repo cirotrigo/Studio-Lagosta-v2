@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
+export const bodyBytesLimit = 50 * 1024 * 1024 // 50MB for font uploads
 
 export async function GET(
   _req: Request,

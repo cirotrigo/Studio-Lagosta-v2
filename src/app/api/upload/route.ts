@@ -3,6 +3,10 @@ import { NextResponse } from 'next/server'
 import { put } from '@vercel/blob'
 import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
+// Configure body size limit for file uploads (50MB)
+export const runtime = 'nodejs'
+export const bodyBytesLimit = 50 * 1024 * 1024 // 50MB
+
 export async function POST(request: Request) {
   const { userId } = await auth()
   if (!userId) {

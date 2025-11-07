@@ -4,6 +4,10 @@ import { put } from '@vercel/blob'
 import { createMedia } from '@/lib/cms/mutations'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 
+// Configure body size limit for file uploads (50MB)
+export const runtime = 'nodejs'
+export const bodyBytesLimit = 50 * 1024 * 1024 // 50MB
+
 /**
  * POST /api/cms/media/upload
  * Upload a new media file
@@ -27,11 +31,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 })
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024 // 10MB
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024 // 50MB
     if (file.size > maxSize) {
       return NextResponse.json(
-        { error: 'File size exceeds 10MB limit' },
+        { error: 'File size exceeds 50MB limit' },
         { status: 400 }
       )
     }
