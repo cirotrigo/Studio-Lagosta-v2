@@ -237,13 +237,14 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
     <>
       <Dialog open={open} onOpenChange={onClose}>
         <DialogContent className={cn(
-          "max-h-[90vh] overflow-y-auto",
+          "max-h-[90vh] overflow-hidden flex flex-col",
           isStory ? "max-w-sm" : "max-w-md"
         )}>
           <VisuallyHidden>
             <DialogTitle>Preview do Post</DialogTitle>
           </VisuallyHidden>
 
+          <div className="overflow-y-auto flex-1 space-y-4">
           {/* Header */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -487,7 +488,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               Editar
             </Button>
 
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="icon">
                   <MoreHorizontal className="w-4 h-4" />
@@ -512,6 +513,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          </div>
           </div>
         </DialogContent>
       </Dialog>
