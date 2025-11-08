@@ -131,6 +131,9 @@ export async function PUT(
       altText,
       firstComment,
       publishType,
+      mediaUrls,
+      generationIds,
+      blobPathnames,
     } = body
 
     // Prepare update data
@@ -151,6 +154,11 @@ export async function PUT(
       ...(altText !== undefined && { altText }),
       ...(firstComment !== undefined && { firstComment }),
       ...(publishType !== undefined && { publishType: publishType as PublishType }),
+      ...(mediaUrls !== undefined && { mediaUrls }),
+      ...(generationIds !== undefined && {
+        generationId: generationIds && generationIds.length > 0 ? generationIds[0] : null
+      }),
+      ...(blobPathnames !== undefined && { blobPathnames }),
     }
 
     // If changing to IMMEDIATE, set status to POSTING and clear error fields

@@ -33,6 +33,9 @@ interface UpdatePostData {
   altText?: string[]
   firstComment?: string | null
   publishType?: PublishType
+  mediaUrls?: string[]
+  generationIds?: string[]
+  blobPathnames?: string[]
 }
 
 export function useSocialPosts(projectId: number) {

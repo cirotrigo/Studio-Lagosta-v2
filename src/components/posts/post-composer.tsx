@@ -117,6 +117,36 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     formRef.current = form
   }, [setSelectedMedia, form])
 
+  // Reset form with initialData when dialog opens for editing
+  useEffect(() => {
+    if (open && initialData) {
+      form.reset({
+        postType: initialData.postType || 'POST',
+        caption: initialData.caption || '',
+        mediaUrls: initialData.mediaUrls || [],
+        generationIds: initialData.generationIds || [],
+        scheduleType: initialData.scheduleType || 'IMMEDIATE',
+        scheduledDatetime: initialData.scheduledDatetime,
+        recurringConfig: initialData.recurringConfig,
+        altText: initialData.altText || [],
+        firstComment: initialData.firstComment || '',
+        publishType: initialData.publishType || 'DIRECT',
+      })
+    } else if (open && !initialData) {
+      // Reset to defaults when creating new post
+      form.reset({
+        postType: 'POST',
+        caption: '',
+        mediaUrls: [],
+        generationIds: [],
+        scheduleType: 'IMMEDIATE',
+        altText: [],
+        firstComment: '',
+        publishType: 'DIRECT',
+      })
+    }
+  }, [open, initialData, form])
+
   // Populate selectedMedia from initialData when dialog opens
   useEffect(() => {
     if (open && !hasInitializedMedia && initialData?.mediaUrls && initialData.mediaUrls.length > 0) {
@@ -168,10 +198,11 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     }
   }, [open, hasInitializedMedia, initialData, allCreatives])
 
-  // Reset initialization flag when dialog closes
+  // Reset initialization flag and clear media when dialog closes
   useEffect(() => {
     if (!open) {
       setHasInitializedMedia(false)
+      setSelectedMedia([])
     }
   }, [open])
 
