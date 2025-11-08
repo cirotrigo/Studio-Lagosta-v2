@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card'
 import { UploadIcon, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import Image from 'next/image'
+import { upload } from '@vercel/blob/client'
 
 interface UploadedFile {
   id: string
@@ -43,41 +44,30 @@ export function LocalFileUploader({
       const newFiles: UploadedFile[] = []
 
       for (const file of acceptedFiles) {
-        // 1. Upload to Vercel Blob (without crop)
-        const formData = new FormData()
-        formData.append('file', file, file.name)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          // Handle 413 Payload Too Large error specifically
-          if (response.status === 413) {
-            throw new Error(`A imagem "${file.name}" é muito grande. Reduza o tamanho e tente novamente.`)
-          }
-
-          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
-          console.error('Upload failed:', {
-            status: response.status,
-            statusText: response.statusText,
-            error: errorData
-          })
-          throw new Error(errorData.details || errorData.error || `Upload failed (${response.status})`)
+        // Validate file size (max 50MB)
+        if (file.size > 50 * 1024 * 1024) {
+          throw new Error(`O arquivo "${file.name}" é muito grande. O tamanho máximo é 50MB.`)
         }
 
-        const data = await response.json()
+        // 1. Upload directly to Vercel Blob using client-side upload
+        console.log('[Upload] Starting direct upload for:', file.name)
+
+        const blob = await upload(file.name, file, {
+          access: 'public',
+          handleUploadUrl: '/api/upload/signed-url',
+        })
+
+        console.log('[Upload] Upload successful:', blob.url)
 
         // 2. Create preview
         const preview = URL.createObjectURL(file)
 
         newFiles.push({
           id: crypto.randomUUID(),
-          url: data.url,
-          pathname: data.pathname,
+          url: blob.url,
+          pathname: blob.pathname,
           name: file.name,
-          size: file.size, // Use original file size
+          size: file.size,
           preview,
         })
       }
