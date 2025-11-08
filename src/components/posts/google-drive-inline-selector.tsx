@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Check, ArrowLeft } from 'lucide-react'
+import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Check, ArrowLeft, Eye, Plus } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -12,6 +12,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { useGoogleDriveItems } from '@/hooks/use-google-drive'
 import type { GoogleDriveItem, GoogleDriveBrowserMode } from '@/types/google-drive'
 import { cn } from '@/lib/utils'
+import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 
 interface FolderBreadcrumb {
   id: string
@@ -72,6 +73,13 @@ export function GoogleDriveInlineSelector({
     if (!driveQuery.data?.pages) return []
     return driveQuery.data.pages.flatMap((page) => page.items)
   }, [driveQuery.data])
+
+  // Initialize PhotoSwipe after items are calculated - must be called before any JSX returns
+  usePhotoSwipe({
+    gallerySelector: '#google-drive-inline-gallery',
+    childSelector: 'a[data-pswp-src]',
+    dependencies: [items.length],
+  })
 
   const queryError = driveQuery.isError
     ? driveQuery.error instanceof Error
@@ -337,7 +345,7 @@ interface ItemsGridProps {
 
 function ItemsGrid({ items, mode, selectedItems, onItemToggle }: ItemsGridProps) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div id="google-drive-inline-gallery" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
       {items.map((item) => {
         const isFolder = item.kind === 'folder'
         const isSelected = selectedItems.some(i => i.id === item.id)
@@ -370,6 +378,7 @@ interface ItemCardProps {
 function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemCardProps) {
   const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
   const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
+  const [imageDimensions, setImageDimensions] = React.useState({ width: 1600, height: 1600 })
 
   // Generate thumbnail URLs with fallback chain
   const thumbnailSources = React.useMemo(() => {
@@ -412,86 +421,161 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
     }
   }, [currentSrc, thumbnailSources])
 
-  const handleImageLoad = React.useCallback(() => {
+  const handleImageLoad = React.useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     setImageState('loaded')
+    // Obter dimensões reais da imagem
+    const img = e.currentTarget
+    if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      })
+    }
   }, [])
 
+  const fullImageSrc = `/api/google-drive/image/${item.id}`
+
   return (
-    <Card
-      className={cn(
-        'relative cursor-pointer transition-all overflow-hidden border-2',
-        isSelected ? 'border-primary ring-2 ring-primary/20 shadow-lg' : 'border-transparent hover:border-primary/50',
-      )}
-      onClick={onClick}
-    >
-      {/* Thumbnail / Icon */}
-      <div className="relative aspect-square w-full bg-muted">
-        {isFolder ? (
-          <div className="flex h-full items-center justify-center">
-            <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
-          </div>
-        ) : currentSrc ? (
-          <>
-            {/* Loading skeleton */}
-            {imageState === 'loading' && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            )}
+    <div className="group relative">
+      <Card
+        className={cn(
+          'relative transition-all overflow-hidden border-2',
+          isSelected ? 'border-primary ring-2 ring-primary/20 shadow-lg' : 'border-transparent hover:border-primary/50',
+        )}
+      >
+        {/* Thumbnail / Icon */}
+        <div className="relative aspect-square w-full bg-muted">
+          {isFolder ? (
+            <button
+              onClick={onClick}
+              className="flex h-full w-full items-center justify-center focus:outline-none"
+            >
+              <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
+            </button>
+          ) : currentSrc ? (
+            <>
+              {/* PhotoSwipe link wrapper */}
+              <a
+                href={fullImageSrc}
+                data-pswp-src={fullImageSrc}
+                data-pswp-width={imageDimensions.width.toString()}
+                data-pswp-height={imageDimensions.height.toString()}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block w-full h-full relative"
+                onClick={(e) => {
+                  if (imageState !== 'loaded') {
+                    e.preventDefault()
+                  }
+                  e.stopPropagation()
+                }}
+              >
+                {/* Loading skeleton */}
+                {imageState === 'loading' && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                )}
 
-            {/* Actual image */}
-            <Image
-              src={currentSrc}
-              alt={item.name}
-              fill
-              sizes="(max-width: 768px) 45vw, 200px"
-              className={cn(
-                'object-cover transition-opacity duration-200',
-                imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                {/* Actual image */}
+                <Image
+                  src={currentSrc}
+                  alt={item.name}
+                  fill
+                  sizes="(max-width: 768px) 45vw, 200px"
+                  className={cn(
+                    'object-cover transition-opacity duration-200',
+                    imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                  )}
+                  onError={handleImageError}
+                  onLoad={handleImageLoad}
+                />
+
+                {/* Error state */}
+                {imageState === 'error' && (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                    <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+                    <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+                  </div>
+                )}
+              </a>
+
+              {/* Hover overlay with buttons (only for images, not folders) */}
+              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
+                  {/* Add to selection button */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onClick()
+                    }}
+                    className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
+                    title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
+                  >
+                    <Plus className={cn("h-5 w-5", isSelected && "rotate-45")} />
+                  </button>
+
+                  {/* View in lightbox button */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      // Trigger PhotoSwipe by dispatching click event on the link
+                      const card = e.currentTarget.closest('.group')
+                      const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                      if (link) {
+                        console.log('👁️ Eye button clicked, dispatching click on link:', link.href)
+                        // Dispatch a real click event that PhotoSwipe will intercept
+                        const clickEvent = new MouseEvent('click', {
+                          bubbles: true,
+                          cancelable: true,
+                          view: window
+                        })
+                        link.dispatchEvent(clickEvent)
+                      }
+                    }}
+                    className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
+                    title="Visualizar em tela cheia"
+                    disabled={imageState !== 'loaded'}
+                  >
+                    <Eye className="h-5 w-5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Selection indicators for files only */}
+              {isSelected && (
+                <>
+                  {/* Check icon */}
+                  <div className="absolute top-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg z-10">
+                    <Check className="w-5 h-5" />
+                  </div>
+
+                  {/* Selection number */}
+                  <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold shadow-lg z-10">
+                    {selectionIndex + 1}
+                  </div>
+
+                  {/* Overlay */}
+                  <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
+                </>
               )}
-              onError={handleImageError}
-              onLoad={handleImageLoad}
-            />
-
-            {/* Error state */}
-            {imageState === 'error' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-                <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="flex h-full items-center justify-center">
-            <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-          </div>
-        )}
-
-        {/* Selection indicators for files only */}
-        {isSelected && !isFolder && (
-          <>
-            {/* Check icon */}
-            <div className="absolute top-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg z-10">
-              <Check className="w-5 h-5" />
+            </>
+          ) : (
+            <div className="flex h-full items-center justify-center">
+              <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
             </div>
+          )}
+        </div>
 
-            {/* Selection number */}
-            <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold shadow-lg z-10">
-              {selectionIndex + 1}
-            </div>
-
-            {/* Overlay */}
-            <div className="absolute inset-0 bg-primary/10" />
-          </>
-        )}
-      </div>
-
-      {/* File name */}
-      <div className="p-2 bg-gradient-to-t from-black/60 to-transparent absolute bottom-0 left-0 right-0">
-        <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
-          {item.name}
-        </p>
-      </div>
-    </Card>
+        {/* File name */}
+        <div className="p-2 bg-gradient-to-t from-black/60 to-transparent absolute bottom-0 left-0 right-0 pointer-events-none">
+          <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
+            {item.name}
+          </p>
+        </div>
+      </Card>
+    </div>
   )
 }

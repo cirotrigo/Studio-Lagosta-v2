@@ -12,6 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { MediaUploadSystem } from './media-upload-system'
 import { SchedulePicker } from './schedule-picker'
 import { RecurringConfig } from './recurring-config'
+import { isPhotoSwipeOpen, wasPhotoSwipeJustClosed } from '@/hooks/use-photoswipe'
 
 // RecurringConfig value type (matching recurring-config.tsx)
 export type RecurringConfigValue = {
@@ -357,14 +358,32 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     }
   }
 
-  const handleClose = () => {
+  const handleClose = useCallback(() => {
+    // Prevenir fechamento do Dialog se PhotoSwipe estiver aberto ou acabou de fechar
+    if (isPhotoSwipeOpen() || wasPhotoSwipeJustClosed()) {
+      console.log('🛡️ PostComposer: Close prevented because PhotoSwipe is open or just closed')
+      return
+    }
+
     onClose()
     form.reset()
     setSelectedMedia([])
-  }
+  }, [onClose, form])
+
+  // Handler para onOpenChange do Dialog que verifica PhotoSwipe
+  const handleDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      // Se está tentando fechar, verificar PhotoSwipe
+      if (isPhotoSwipeOpen() || wasPhotoSwipeJustClosed()) {
+        console.log('🛡️ PostComposer: Dialog close prevented because PhotoSwipe is open or just closed')
+        return
+      }
+      handleClose()
+    }
+  }, [handleClose])
 
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>

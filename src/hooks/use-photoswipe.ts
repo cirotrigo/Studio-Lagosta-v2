@@ -4,6 +4,19 @@ import { useEffect, useRef } from 'react'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import 'photoswipe/style.css'
 
+// Global flag to track if PhotoSwipe is open (accessible to all components)
+let isPhotoSwipeOpenGlobal = false
+// Flag to track if PhotoSwipe just processed ESC key (prevents modal from closing)
+let photoSwipeJustClosedWithEsc = false
+
+export function isPhotoSwipeOpen(): boolean {
+  return isPhotoSwipeOpenGlobal
+}
+
+export function wasPhotoSwipeJustClosed(): boolean {
+  return photoSwipeJustClosedWithEsc
+}
+
 interface PhotoSwipeItem {
   src: string
   width: number
@@ -169,6 +182,28 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
       // Event listeners para debug e funcionalidade
       lightboxRef.current.on('beforeOpen', () => {
         console.log('✅ PhotoSwipe: Opening lightbox')
+        isPhotoSwipeOpenGlobal = true
+        photoSwipeJustClosedWithEsc = false
+      })
+
+      lightboxRef.current.on('close', () => {
+        console.log('✅ PhotoSwipe: Closed')
+
+        // Marcar que PhotoSwipe acabou de fechar (pode ter sido ESC)
+        // Isso previne que o Dialog feche logo em seguida
+        if (isPhotoSwipeOpenGlobal) {
+          photoSwipeJustClosedWithEsc = true
+          console.log('🛡️ PhotoSwipe: Marked as just closed to prevent modal from closing')
+        }
+
+        isPhotoSwipeOpenGlobal = false
+
+        // Após um delay, limpar a flag de "acabou de fechar"
+        // Isso permite que ESC funcione normalmente no Dialog depois
+        setTimeout(() => {
+          photoSwipeJustClosedWithEsc = false
+          console.log('🛡️ PhotoSwipe: Just-closed flag cleared')
+        }, 100)
       })
 
       lightboxRef.current.on('uiRegister', () => {
@@ -177,10 +212,6 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
 
       lightboxRef.current.on('change', () => {
         console.log('✅ PhotoSwipe: Slide changed')
-      })
-
-      lightboxRef.current.on('close', () => {
-        console.log('✅ PhotoSwipe: Closed')
       })
 
       // Debug: verificar se está capturando cliques

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
+import { isPhotoSwipeOpen, wasPhotoSwipeJustClosed } from '@/hooks/use-photoswipe'
 import {
   Send,
   Edit,
@@ -233,9 +234,21 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
     }
   }
 
+  // Handler para onOpenChange do Dialog que verifica PhotoSwipe
+  const handleDialogOpenChange = useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      // Se está tentando fechar, verificar PhotoSwipe
+      if (isPhotoSwipeOpen() || wasPhotoSwipeJustClosed()) {
+        console.log('🛡️ PostPreviewModal: Dialog close prevented because PhotoSwipe is open or just closed')
+        return
+      }
+      onClose()
+    }
+  }, [onClose])
+
   return (
     <>
-      <Dialog open={open} onOpenChange={onClose}>
+      <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent className={cn(
           "max-h-[90vh] overflow-hidden flex flex-col",
           isStory ? "max-w-sm" : "max-w-md"

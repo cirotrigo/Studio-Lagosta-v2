@@ -9,7 +9,8 @@ import { cn } from '@/lib/utils'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import type { SocialPost } from '../../../../prisma/generated/client'
-import type { RecurringFormValue } from '@/components/posts/recurring-form'
+
+type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
 
 interface AgendaPanelProps {
   projectId: number
@@ -59,8 +60,9 @@ function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
   const c = config as any
   return {
     frequency: c.frequency || 'DAILY',
-    interval: c.interval || 1,
-    daysOfWeek: c.daysOfWeek || [],
+    time: c.time || '09:00',
+    daysOfWeek: c.daysOfWeek,
+    endDate: c.endDate ? new Date(c.endDate) : undefined,
   }
 }
 

@@ -34,7 +34,8 @@ export function formatCurrency(amountCents: number, currency?: string | null) {
     return '-'
   }
   const normalizedCurrency = (currency || 'USD').toUpperCase()
-  return (amountCents / 100).toLocaleString(undefined, {
+  // Usar locale fixo 'en-US' para evitar problemas de hydration entre servidor e cliente
+  return (amountCents / 100).toLocaleString('en-US', {
     style: 'currency',
     currency: normalizedCurrency
   })

@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage } from 'lucide-react'
+import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Eye, Plus } from 'lucide-react'
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -15,6 +15,7 @@ import type { GoogleDriveItem, GoogleDriveBrowserMode } from '@/types/google-dri
 import { cn } from '@/lib/utils'
 import { useUpdateProjectSettings, type UpdateProjectSettingsInput } from '@/hooks/use-project'
 import { useToast } from '@/hooks/use-toast'
+import { usePhotoSwipe, isPhotoSwipeOpen, wasPhotoSwipeJustClosed } from '@/hooks/use-photoswipe'
 
 interface FolderBreadcrumb {
   id: string
@@ -209,6 +210,11 @@ export function DesktopGoogleDriveModal({
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        // Não fechar se PhotoSwipe estiver aberto ou acabou de fechar
+        if (isPhotoSwipeOpen() || wasPhotoSwipeJustClosed()) {
+          console.log('🛡️ GoogleDriveModal: ESC ignored because PhotoSwipe is open or just closed')
+          return
+        }
         onOpenChange(false)
       } else if (event.key === 'Enter' && selected) {
         event.preventDefault()
@@ -241,8 +247,22 @@ export function DesktopGoogleDriveModal({
   const isFetchingMore = driveQuery.isFetchingNextPage
   const emptyState = !isLoading && items.length === 0
 
+  // Handler para onOpenChange do Dialog que verifica PhotoSwipe
+  const handleDialogOpenChange = React.useCallback((isOpen: boolean) => {
+    if (!isOpen) {
+      // Se está tentando fechar, verificar PhotoSwipe
+      if (isPhotoSwipeOpen() || wasPhotoSwipeJustClosed()) {
+        console.log('🛡️ GoogleDriveModal: Dialog close prevented because PhotoSwipe is open or just closed')
+        return
+      }
+      onOpenChange(false)
+    } else {
+      onOpenChange(true)
+    }
+  }, [onOpenChange])
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
         className="max-w-[1000px] h-[700px] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80vh] sm:max-w-[95vw] sm:h-[85vh]"
       >
@@ -480,8 +500,15 @@ interface ItemsGridProps {
 }
 
 function ItemsGrid({ items, mode, selected, multiSelected, multiSelect, onItemClick, onItemDoubleClick }: ItemsGridProps) {
+  // Initialize PhotoSwipe for lightbox functionality
+  usePhotoSwipe({
+    gallerySelector: '#google-drive-gallery',
+    childSelector: 'a[data-pswp-src]',
+    dependencies: [items.length],
+  })
+
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div id="google-drive-gallery" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
       {items.map((item) => {
         const isFolder = item.kind === 'folder'
 
@@ -499,6 +526,7 @@ function ItemsGrid({ items, mode, selected, multiSelected, multiSelect, onItemCl
             key={item.id}
             item={item}
             isSelected={isSelected}
+            multiSelect={multiSelect}
             onClick={() => onItemClick(item)}
             onDoubleClick={() => onItemDoubleClick(item)}
           />
@@ -512,14 +540,16 @@ function ItemsGrid({ items, mode, selected, multiSelected, multiSelect, onItemCl
 interface ItemCardProps {
   item: GoogleDriveItem
   isSelected: boolean
+  multiSelect: boolean
   onClick: () => void
   onDoubleClick: () => void
 }
 
-function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
+function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: ItemCardProps) {
   const isFolder = item.kind === 'folder'
   const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
   const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
+  const [imageDimensions, setImageDimensions] = React.useState({ width: 1600, height: 1600 })
 
   // Generate thumbnail URLs with fallback chain
   const thumbnailSources = React.useMemo(() => {
@@ -567,57 +597,131 @@ function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
     }
   }, [currentSrc, thumbnailSources, item.name])
 
-  const handleImageLoad = React.useCallback(() => {
+  const handleImageLoad = React.useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     setImageState('loaded')
+    // Obter dimensões reais da imagem
+    const img = e.currentTarget
+    if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      })
+    }
   }, [])
 
+  const fullImageSrc = `/api/google-drive/image/${item.id}`
+
   return (
-    <button
-      onClick={onClick}
-      onDoubleClick={onDoubleClick}
-      className={cn(
-        'group relative flex flex-col overflow-hidden rounded-lg border-2 text-left transition-all',
-        'hover:scale-105 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
-        isSelected
-          ? 'border-primary shadow-[0_0_0_1px_var(--primary)]'
-          : 'border-border/40 hover:border-primary/40',
-      )}
+    <div className="group relative flex flex-col overflow-hidden rounded-lg border-2 transition-all hover:shadow-lg focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2"
+      style={{
+        borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
+      }}
     >
       {/* Thumbnail / Icon */}
       <div className="relative aspect-square w-full bg-muted">
         {isFolder ? (
-          <div className="flex h-full items-center justify-center">
+          <button
+            onClick={onClick}
+            onDoubleClick={onDoubleClick}
+            className="flex h-full w-full items-center justify-center focus:outline-none"
+          >
             <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
-          </div>
+          </button>
         ) : currentSrc ? (
           <>
-            {/* Loading skeleton */}
-            {imageState === 'loading' && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-              </div>
-            )}
-
-            {/* Actual image */}
-            <Image
-              src={currentSrc}
-              alt={item.name}
-              fill
-              sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
-              className={cn(
-                'object-cover transition-opacity duration-200',
-                imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+            {/* PhotoSwipe link wrapper */}
+            <a
+              href={fullImageSrc}
+              data-pswp-src={fullImageSrc}
+              data-pswp-width={imageDimensions.width.toString()}
+              data-pswp-height={imageDimensions.height.toString()}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full h-full relative"
+              onClick={(e) => {
+                // Prevenir navegação para não interferir com PhotoSwipe
+                if (imageState !== 'loaded') {
+                  e.preventDefault()
+                }
+              }}
+            >
+              {/* Loading skeleton */}
+              {imageState === 'loading' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
               )}
-              onError={handleImageError}
-              onLoad={handleImageLoad}
-            />
 
-            {/* Error state */}
-            {imageState === 'error' && (
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-                <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+              {/* Actual image */}
+              <Image
+                src={currentSrc}
+                alt={item.name}
+                fill
+                sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                className={cn(
+                  'object-cover transition-opacity duration-200',
+                  imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                )}
+                onError={handleImageError}
+                onLoad={handleImageLoad}
+              />
+
+              {/* Error state */}
+              {imageState === 'error' && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+                  <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+                  <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+                </div>
+              )}
+            </a>
+
+            {/* Hover overlay with buttons (only for images, not folders) */}
+            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
+                {/* Add to selection button */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onClick()
+                  }}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
+                  title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
+                >
+                  <Plus className={cn("h-5 w-5", isSelected && "rotate-45")} />
+                </button>
+
+                {/* View in lightbox button */}
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    // Trigger PhotoSwipe by dispatching click event on the link
+                    const card = e.currentTarget.closest('.group')
+                    const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                    if (link) {
+                      console.log('👁️ Eye button clicked, dispatching click on link:', link.href)
+                      // Dispatch a real click event that PhotoSwipe will intercept
+                      const clickEvent = new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                      })
+                      link.dispatchEvent(clickEvent)
+                    }
+                  }}
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
+                  title="Visualizar em tela cheia"
+                  disabled={imageState !== 'loaded'}
+                >
+                  <Eye className="h-5 w-5" />
+                </button>
               </div>
+            </div>
+
+            {/* Selection indicator */}
+            {isSelected && (
+              <div className="absolute inset-0 bg-primary/10 ring-2 ring-inset ring-primary pointer-events-none" />
             )}
           </>
         ) : (
@@ -625,20 +729,15 @@ function ItemCard({ item, isSelected, onClick, onDoubleClick }: ItemCardProps) {
             <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
           </div>
         )}
-
-        {/* Selection indicator */}
-        {isSelected && (
-          <div className="absolute inset-0 bg-primary/10 ring-2 ring-inset ring-primary" />
-        )}
       </div>
 
       {/* File name */}
-      <div className="relative bg-gradient-to-t from-black/60 to-transparent p-2 -mt-12 pt-12">
+      <div className="relative bg-gradient-to-t from-black/60 to-transparent p-2 -mt-12 pt-12 pointer-events-none">
         <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
           {item.name}
         </p>
       </div>
-    </button>
+    </div>
   )
 }
 

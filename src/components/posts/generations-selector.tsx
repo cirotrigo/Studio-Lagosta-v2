@@ -1,14 +1,16 @@
 'use client'
 
+import * as React from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
-import { Image as ImageIcon, Check, Play } from 'lucide-react'
+import { Image as ImageIcon, Check, Play, Eye, Plus } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
+import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 
 interface Generation {
   id: string
@@ -46,6 +48,13 @@ export function GenerationsSelector({
 
   // Ensure generations is always an array
   const generationsList = Array.isArray(generations) ? generations : []
+
+  // Initialize PhotoSwipe - must be called before any conditional returns
+  usePhotoSwipe({
+    gallerySelector: '#generations-gallery',
+    childSelector: 'a[data-pswp-src]',
+    dependencies: [generationsList.length],
+  })
 
   const handleToggle = (generation: Generation) => {
     const isSelected = selectedIds.includes(generation.id)
@@ -115,7 +124,7 @@ export function GenerationsSelector({
       </div>
 
       <ScrollArea className="h-[400px] rounded-lg border p-3">
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div id="generations-gallery" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           {generationsList.map((gen) => {
             const isSelected = selectedIds.includes(gen.id)
             const canSelect = selectedIds.length < maxSelection || isSelected
@@ -129,67 +138,16 @@ export function GenerationsSelector({
             }
 
             return (
-              <Card
+              <GenerationCard
                 key={gen.id}
-                className={cn(
-                  'relative cursor-pointer transition-all overflow-hidden border-2',
-                  isSelected ? 'border-primary ring-2 ring-primary/20 shadow-lg' : 'border-transparent hover:border-primary/50',
-                  !canSelect && 'opacity-50 cursor-not-allowed'
-                )}
-                onClick={() => canSelect && handleToggle(gen)}
-              >
-                {/* Thumbnail */}
-                <div className="relative aspect-square overflow-hidden bg-muted">
-                  <Image
-                    src={displayUrl}
-                    alt={gen.templateName || 'Criativo selecionável'}
-                    fill
-                    sizes="(max-width: 768px) 45vw, 200px"
-                    className="object-cover"
-                    unoptimized
-                  />
-
-                  {/* Video indicator */}
-                  {isVideo && !isSelected && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-                      <div className="bg-white/90 rounded-full p-2">
-                        <Play className="w-4 h-4 text-black" fill="black" />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Selection indicator */}
-                  {isSelected && (
-                    <>
-                      {/* Check icon */}
-                      <div className="absolute top-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg">
-                        <Check className="w-5 h-5" />
-                      </div>
-
-                      {/* Selection number */}
-                      <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold shadow-lg">
-                        {selectionIndex + 1}
-                      </div>
-
-                      {/* Overlay */}
-                      <div className="absolute inset-0 bg-primary/10" />
-                    </>
-                  )}
-                </div>
-
-                {/* Info */}
-                <div className="p-2 bg-gradient-to-t from-black/60 to-transparent absolute bottom-0 left-0 right-0">
-                  <p className="text-xs font-medium text-white line-clamp-1" title={gen.templateName}>
-                    {gen.templateName}
-                  </p>
-                  <p className="text-xs text-white/70">
-                    {new Date(gen.createdAt).toLocaleDateString('pt-BR', {
-                      day: '2-digit',
-                      month: 'short'
-                    })}
-                  </p>
-                </div>
-              </Card>
+                generation={gen}
+                isSelected={isSelected}
+                canSelect={canSelect}
+                selectionIndex={selectionIndex}
+                isVideo={isVideo}
+                displayUrl={displayUrl}
+                onToggle={handleToggle}
+              />
             )
           })}
         </div>
@@ -200,6 +158,160 @@ export function GenerationsSelector({
           Limite de {maxSelection} {maxSelection === 1 ? 'criativo atingido' : 'criativos atingido'}
         </p>
       )}
+    </div>
+  )
+}
+
+// GenerationCard Component
+interface GenerationCardProps {
+  generation: Generation
+  isSelected: boolean
+  canSelect: boolean
+  selectionIndex: number
+  isVideo: boolean
+  displayUrl: string
+  onToggle: (gen: Generation) => void
+}
+
+function GenerationCard({
+  generation,
+  isSelected,
+  canSelect,
+  selectionIndex,
+  isVideo,
+  displayUrl,
+  onToggle
+}: GenerationCardProps) {
+  const [imageDimensions, setImageDimensions] = React.useState({ width: 1600, height: 1600 })
+
+  const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
+    const img = e.currentTarget
+    if (img.naturalWidth && img.naturalHeight) {
+      setImageDimensions({
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      })
+    }
+  }
+
+  return (
+    <div className="group relative">
+      <Card
+        className={cn(
+          'relative transition-all overflow-hidden border-2',
+          isSelected ? 'border-primary ring-2 ring-primary/20 shadow-lg' : 'border-transparent hover:border-primary/50',
+          !canSelect && 'opacity-50'
+        )}
+      >
+        {/* Thumbnail */}
+        <div className="relative aspect-square overflow-hidden bg-muted">
+          {/* PhotoSwipe link wrapper */}
+          <a
+            href={generation.resultUrl}
+            data-pswp-src={generation.resultUrl}
+            data-pswp-width={imageDimensions.width.toString()}
+            data-pswp-height={imageDimensions.height.toString()}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full h-full relative"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Image
+              src={displayUrl}
+              alt={generation.templateName || 'Criativo selecionável'}
+              fill
+              sizes="(max-width: 768px) 45vw, 200px"
+              className="object-cover"
+              unoptimized
+              onLoad={handleImageLoad}
+            />
+          </a>
+
+          {/* Video indicator */}
+          {isVideo && !isSelected && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
+              <div className="bg-white/90 rounded-full p-2">
+                <Play className="w-4 h-4 text-black" fill="black" />
+              </div>
+            </div>
+          )}
+
+          {/* Hover overlay with buttons */}
+          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
+              {/* Add to selection button */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  if (canSelect) onToggle(generation)
+                }}
+                disabled={!canSelect}
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed"
+                title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
+              >
+                <Plus className={cn("h-5 w-5", isSelected && "rotate-45")} />
+              </button>
+
+              {/* View in lightbox button */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  // Trigger PhotoSwipe by dispatching click event on the link
+                  const card = e.currentTarget.closest('.group')
+                  const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                  if (link) {
+                    console.log('👁️ Eye button clicked, dispatching click on link:', link.href)
+                    // Dispatch a real click event that PhotoSwipe will intercept
+                    const clickEvent = new MouseEvent('click', {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window
+                    })
+                    link.dispatchEvent(clickEvent)
+                  }
+                }}
+                className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
+                title="Visualizar em tela cheia"
+              >
+                <Eye className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Selection indicator */}
+          {isSelected && (
+            <>
+              {/* Check icon */}
+              <div className="absolute top-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg z-10">
+                <Check className="w-5 h-5" />
+              </div>
+
+              {/* Selection number */}
+              <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold shadow-lg z-10">
+                {selectionIndex + 1}
+              </div>
+
+              {/* Overlay */}
+              <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
+            </>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="p-2 bg-gradient-to-t from-black/60 to-transparent absolute bottom-0 left-0 right-0 pointer-events-none">
+          <p className="text-xs font-medium text-white line-clamp-1" title={generation.templateName}>
+            {generation.templateName}
+          </p>
+          <p className="text-xs text-white/70">
+            {new Date(generation.createdAt).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: 'short'
+            })}
+          </p>
+        </div>
+      </Card>
     </div>
   )
 }
