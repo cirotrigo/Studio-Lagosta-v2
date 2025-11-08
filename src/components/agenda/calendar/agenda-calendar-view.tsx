@@ -163,6 +163,7 @@ export function AgendaCalendarView() {
 
   const handleEditPost = useCallback((post: SocialPost) => {
     setEditingPost(post)
+    setSelectedProjectId(post.projectId) // Garantir que o projeto correto está selecionado
     setIsComposerOpen(true)
   }, [])
 

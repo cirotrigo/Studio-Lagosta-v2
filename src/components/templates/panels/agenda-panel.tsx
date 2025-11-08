@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
-import { PostComposer } from '@/components/posts/post-composer'
+import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import type { SocialPost } from '../../../../prisma/generated/client'
+import type { RecurringFormValue } from '@/components/posts/recurring-form'
 
 interface AgendaPanelProps {
   projectId: number
@@ -53,11 +54,22 @@ function getCalendarDays(date: Date) {
   return days
 }
 
+function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
+  if (!config || typeof config !== 'object') return undefined
+  const c = config as any
+  return {
+    frequency: c.frequency || 'DAILY',
+    interval: c.interval || 1,
+    daysOfWeek: c.daysOfWeek || [],
+  }
+}
+
 export function AgendaPanel({ projectId }: AgendaPanelProps) {
   const [selectedDate, setSelectedDate] = React.useState(new Date())
   const [currentMonth, setCurrentMonth] = React.useState(new Date())
   const [selectedPost, setSelectedPost] = React.useState<SocialPost | null>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
+  const [editingPost, setEditingPost] = React.useState<SocialPost | null>(null)
 
   const startDate = React.useMemo(() => getMonthStart(currentMonth), [currentMonth])
   const endDate = React.useMemo(() => getMonthEnd(currentMonth), [currentMonth])
@@ -111,6 +123,43 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
     setCurrentMonth(new Date())
     setSelectedDate(new Date())
   }
+
+  const handleEditPost = React.useCallback((post: SocialPost) => {
+    setEditingPost(post)
+    setIsComposerOpen(true)
+  }, [])
+
+  const handleCloseComposer = React.useCallback(() => {
+    setIsComposerOpen(false)
+    setEditingPost(null)
+  }, [])
+
+  const getInitialData = React.useMemo((): Partial<PostFormData> | undefined => {
+    if (!editingPost) return undefined
+
+    const recurringConfig = parseRecurringConfig(editingPost.recurringConfig)
+
+    let scheduledDate: Date | undefined = undefined
+    if (editingPost.scheduledDatetime) {
+      const tempDate = new Date(editingPost.scheduledDatetime)
+      if (!isNaN(tempDate.getTime())) {
+        scheduledDate = tempDate
+      }
+    }
+
+    return {
+      postType: editingPost.postType,
+      caption: editingPost.caption || '',
+      mediaUrls: editingPost.mediaUrls ?? [],
+      generationIds: editingPost.generationId ? [editingPost.generationId] : [],
+      scheduleType: editingPost.scheduleType,
+      scheduledDatetime: scheduledDate,
+      recurringConfig,
+      altText: editingPost.altText ?? [],
+      firstComment: editingPost.firstComment ?? '',
+      publishType: (editingPost.publishType ?? 'DIRECT') as PostFormData['publishType'],
+    }
+  }, [editingPost])
 
   const monthName = currentMonth.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
 
@@ -362,10 +411,7 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
           post={selectedPost}
           open={!!selectedPost}
           onClose={() => setSelectedPost(null)}
-          onEdit={() => {
-            // Edit functionality can be added here if needed
-            setSelectedPost(null)
-          }}
+          onEdit={handleEditPost}
         />
       )}
 
@@ -374,7 +420,9 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
         <PostComposer
           projectId={projectId}
           open={isComposerOpen}
-          onClose={() => setIsComposerOpen(false)}
+          onClose={handleCloseComposer}
+          initialData={getInitialData}
+          postId={editingPost?.id}
         />
       )}
     </div>
