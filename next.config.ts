@@ -61,6 +61,10 @@ const nextConfig: NextConfig = {
       'framer-motion',
     ],
     webpackMemoryOptimizations: true,
+    // Increase body size limit for uploads (100MB)
+    serverActions: {
+      bodySizeLimit: '100mb',
+    },
   },
 
   // Compiler optimizations

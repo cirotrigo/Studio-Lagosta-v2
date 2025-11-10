@@ -12,7 +12,7 @@ import { useProject } from '@/hooks/use-project'
 import type { GoogleDriveItem } from '@/types/google-drive'
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
-const MAX_VIDEO_SIZE = 60 * 1024 * 1024 // 60MB
+const MAX_VIDEO_SIZE = 100 * 1024 * 1024 // 100MB
 
 interface BreadcrumbItem {
   id: string
@@ -209,7 +209,7 @@ export function VideosPanel() {
       if (file.size > MAX_VIDEO_SIZE) {
         toast({
           title: 'Arquivo muito grande',
-          description: 'O vídeo deve ter no máximo 60MB.',
+          description: 'O vídeo deve ter no máximo 100MB.',
           variant: 'destructive',
         })
         return
@@ -218,9 +218,38 @@ export function VideosPanel() {
       setIsUploading(true)
       setIsApplying(true)
       try {
-        const videoUrl = URL.createObjectURL(file)
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          throw new Error(errorText || 'Falha no upload do vídeo')
+        }
+
+        const result = (await response.json()) as { url?: string }
+        if (!result.url) {
+          throw new Error('Resposta inválida do servidor')
+        }
+
         const baseName = file.name.replace(/\.[^/.]+$/, '')
-        insertVideoLayer(videoUrl, baseName)
+        insertVideoLayer(result.url, baseName)
+
+        toast({
+          title: 'Upload concluído',
+          description: 'O vídeo foi enviado com sucesso.',
+        })
+      } catch (error) {
+        console.error('[VideosPanel] Upload failed:', error)
+        toast({
+          title: 'Erro no upload',
+          description: error instanceof Error ? error.message : 'Não foi possível enviar o vídeo.',
+          variant: 'destructive',
+        })
       } finally {
         setIsUploading(false)
         setIsApplying(false)
