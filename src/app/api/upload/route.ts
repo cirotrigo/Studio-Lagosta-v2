@@ -4,6 +4,7 @@ import { put } from '@vercel/blob'
 import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60 // Maximum execution time in seconds
 
 export async function POST(request: Request) {
   const { userId } = await auth()

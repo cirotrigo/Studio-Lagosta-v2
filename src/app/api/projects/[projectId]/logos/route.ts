@@ -5,6 +5,7 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60 // Maximum execution time in seconds
 
 export async function GET(
   _req: Request,

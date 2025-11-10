@@ -5,6 +5,7 @@ import { createMedia } from '@/lib/cms/mutations'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 
 export const runtime = 'nodejs'
+export const maxDuration = 60 // Maximum execution time in seconds
 
 /**
  * POST /api/cms/media/upload
