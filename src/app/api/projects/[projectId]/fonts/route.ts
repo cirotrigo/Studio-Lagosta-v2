@@ -78,7 +78,7 @@ export async function POST(
     )
   }
 
-  const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')
+  const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '100')
   const maxBytes = Math.max(1, maxMb) * 1024 * 1024
   if (file.size > maxBytes) {
     return NextResponse.json({ error: `Arquivo muito grande (máx ${maxMb}MB)` }, { status: 413 })

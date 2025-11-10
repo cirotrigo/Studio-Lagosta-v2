@@ -37,8 +37,8 @@ export async function POST(request: Request): Promise<NextResponse> {
             userId,
             uploadedAt: new Date().toISOString(),
           }),
-          // Maximum file size: 50MB
-          maximumSizeInBytes: 50 * 1024 * 1024,
+          // Maximum file size: 100MB
+          maximumSizeInBytes: 100 * 1024 * 1024,
         }
       },
       onUploadCompleted: async ({ blob, tokenPayload }) => {

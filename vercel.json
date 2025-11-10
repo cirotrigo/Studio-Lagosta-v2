@@ -7,23 +7,23 @@
     },
     "app/api/upload/route.ts": {
       "maxDuration": 120,
-      "maxRequestBodySize": 52428800
+      "maxRequestBodySize": 104857600
     },
     "app/api/cms/media/upload/route.ts": {
       "maxDuration": 120,
-      "maxRequestBodySize": 52428800
+      "maxRequestBodySize": 104857600
     },
     "app/api/projects/[projectId]/elements/route.ts": {
       "maxDuration": 120,
-      "maxRequestBodySize": 52428800
+      "maxRequestBodySize": 104857600
     },
     "app/api/projects/[projectId]/fonts/route.ts": {
       "maxDuration": 120,
-      "maxRequestBodySize": 52428800
+      "maxRequestBodySize": 104857600
     },
     "app/api/projects/[projectId]/logos/route.ts": {
       "maxDuration": 120,
-      "maxRequestBodySize": 52428800
+      "maxRequestBodySize": 104857600
     },
     "app/api/video-processing/process/route.ts": {
       "maxDuration": 300
