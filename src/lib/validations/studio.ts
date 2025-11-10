@@ -8,7 +8,7 @@ export const canvasConfigSchema = z.object({
 
 export const layerSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['text', 'image', 'gradient', 'gradient2', 'logo', 'element', 'shape', 'icon']),
+  type: z.enum(['text', 'image', 'gradient', 'gradient2', 'logo', 'element', 'shape', 'icon', 'video']),
   name: z.string().min(1),
   visible: z.boolean().default(true),
   locked: z.boolean().default(false),
@@ -22,10 +22,14 @@ export const layerSchema = z.object({
   textboxConfig: z.record(z.string(), z.any()).optional(),
   logoId: z.number().optional(),
   elementId: z.number().optional(),
-  fileUrl: z.string().url().optional(),
+  fileUrl: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
+    z.string().url().optional()
+  ),
   parentId: z.string().nullable().optional(),
   effects: z.record(z.string(), z.any()).optional(),
   metadata: z.record(z.string(), z.any()).optional(),
+  videoMetadata: z.record(z.string(), z.any()).optional(),
 })
 
 export const designDataSchema = z.object({
