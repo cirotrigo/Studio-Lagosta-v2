@@ -55,6 +55,38 @@ export async function POST(
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
+  const contentType = req.headers.get('content-type') ?? ''
+
+  // Suporta JSON (client-side upload) ou FormData (server-side upload)
+  if (contentType.includes('application/json')) {
+    // Client-side upload: recebe URL já carregada
+    const body = (await req.json().catch(() => null)) as { url?: string; fontFamily?: string; name?: string } | null
+    const url = body?.url?.trim()
+    const fontFamily = body?.fontFamily?.trim()
+
+    if (!url) {
+      return NextResponse.json({ error: 'URL inválida para a fonte' }, { status: 400 })
+    }
+    if (!fontFamily) {
+      return NextResponse.json({ error: 'fontFamily é obrigatório' }, { status: 400 })
+    }
+
+    const name = body?.name?.trim() || fontFamily
+
+    const font = await db.customFont.create({
+      data: {
+        name,
+        fontFamily,
+        fileUrl: url,
+        projectId: projectIdNum,
+        uploadedBy: userId,
+      },
+    })
+
+    return NextResponse.json(font, { status: 201 })
+  }
+
+  // Server-side upload: recebe arquivo via FormData
   const form = await req.formData()
   const file = form.get('file') as File | null
   const fontFamily = (form.get('fontFamily') as string | null)?.trim()

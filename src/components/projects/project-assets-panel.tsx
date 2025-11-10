@@ -11,6 +11,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { Download, Trash2, Upload, HardDrive, Loader2, Plus } from 'lucide-react'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -148,6 +149,7 @@ function LogoSection({
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const { upload: uploadToBlob, isUploading: isBlobUploading } = useBlobUpload()
 
   const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false)
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
@@ -165,15 +167,22 @@ function LogoSection({
 
   const uploadLogo = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData()
-      formData.append('file', file)
+      // Client-side upload direto ao Vercel Blob
+      const fileUrl = await uploadToBlob(file)
+
+      // Criar registro no banco com a URL do Vercel Blob
       const response = await fetch(`/api/projects/${projectId}/logos`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: fileUrl,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+        }),
       })
+
       if (!response.ok) {
         const message = await response.text()
-        throw new Error(message || 'Falha no upload do logo')
+        throw new Error(message || 'Falha ao salvar logo')
       }
       return response.json()
     },
@@ -465,6 +474,7 @@ function ElementSection({
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const { upload: uploadToBlob, isUploading: isBlobUploading } = useBlobUpload()
   const [showCategories, setShowCategories] = React.useState(false)
   const [isUploadDialogOpen, setIsUploadDialogOpen] = React.useState(false)
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
@@ -482,15 +492,23 @@ function ElementSection({
 
   const uploadElement = useMutation({
     mutationFn: async (file: File) => {
-      const formData = new FormData()
-      formData.append('file', file)
+      // Client-side upload direto ao Vercel Blob
+      const fileUrl = await uploadToBlob(file)
+
+      // Criar registro no banco com a URL do Vercel Blob
       const response = await fetch(`/api/projects/${projectId}/elements`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: fileUrl,
+          name: file.name.replace(/\.[^/.]+$/, ''),
+          category: null,
+        }),
       })
+
       if (!response.ok) {
         const message = await response.text()
-        throw new Error(message || 'Falha no upload do elemento')
+        throw new Error(message || 'Falha ao salvar elemento')
       }
       return response.json()
     },
@@ -778,6 +796,7 @@ function ElementSection({
 function FontSection({ projectId }: { projectId: number }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
+  const { upload: uploadToBlob, isUploading: isBlobUploading } = useBlobUpload()
   const [open, setOpen] = React.useState(false)
   const [fontFile, setFontFile] = React.useState<File | null>(null)
   const [fontFamily, setFontFamily] = React.useState('')
@@ -793,17 +812,23 @@ function FontSection({ projectId }: { projectId: number }) {
 
   const uploadFont = useMutation({
     mutationFn: async ({ file, family, name }: { file: File; family: string; name?: string }) => {
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('fontFamily', family)
-      if (name) formData.append('name', name)
+      // Client-side upload direto ao Vercel Blob
+      const fileUrl = await uploadToBlob(file)
+
+      // Criar registro no banco com a URL do Vercel Blob
       const response = await fetch(`/api/projects/${projectId}/fonts`, {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          url: fileUrl,
+          fontFamily: family,
+          name: name || family,
+        }),
       })
+
       if (!response.ok) {
         const message = await response.text()
-        throw new Error(message || 'Falha no upload da fonte')
+        throw new Error(message || 'Falha ao salvar fonte')
       }
       return response.json()
     },

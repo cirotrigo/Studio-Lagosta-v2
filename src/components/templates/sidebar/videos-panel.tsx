@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useProject } from '@/hooks/use-project'
+import { useBlobUpload } from '@/hooks/use-blob-upload'
 import type { GoogleDriveItem } from '@/types/google-drive'
 
 const ALLOWED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/quicktime']
@@ -27,11 +28,12 @@ export function VideosPanel() {
   const [driveItems, setDriveItems] = React.useState<GoogleDriveItem[]>([])
   const [breadcrumbs, setBreadcrumbs] = React.useState<BreadcrumbItem[]>([])
   const [isLoadingDrive, setIsLoadingDrive] = React.useState(false)
-  const [isUploading, setIsUploading] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
   const [isApplying, setIsApplying] = React.useState(false)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+
+  const { upload: uploadToBlob, isUploading, progress } = useBlobUpload()
 
   const driveFolderId =
     project?.googleDriveVideosFolderId ??
@@ -215,29 +217,13 @@ export function VideosPanel() {
         return
       }
 
-      setIsUploading(true)
       setIsApplying(true)
       try {
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        })
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          throw new Error(errorText || 'Falha no upload do vídeo')
-        }
-
-        const result = (await response.json()) as { url?: string }
-        if (!result.url) {
-          throw new Error('Resposta inválida do servidor')
-        }
+        // Upload direto ao Vercel Blob (client-side) - sem limite de 4.5MB
+        const videoUrl = await uploadToBlob(file)
 
         const baseName = file.name.replace(/\.[^/.]+$/, '')
-        insertVideoLayer(result.url, baseName)
+        insertVideoLayer(videoUrl, baseName)
 
         toast({
           title: 'Upload concluído',
@@ -251,11 +237,10 @@ export function VideosPanel() {
           variant: 'destructive',
         })
       } finally {
-        setIsUploading(false)
         setIsApplying(false)
       }
     },
-    [insertVideoLayer, toast],
+    [insertVideoLayer, toast, uploadToBlob],
   )
 
   const handleFileChange = React.useCallback(
