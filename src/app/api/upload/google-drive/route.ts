@@ -48,14 +48,6 @@ export async function POST(req: Request) {
 
     const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
 
-    const buffer = await streamToBuffer(stream)
-
-    const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '25')
-    const maxBytes = Math.max(1, maxMb) * 1024 * 1024
-    if (buffer.length > maxBytes) {
-      return NextResponse.json({ error: `Arquivo muito grande (máx ${maxMb}MB)` }, { status: 413 })
-    }
-
     const originalName = name ?? `arquivo-${fileId}`
     const safeName = sanitizeFileName(originalName)
     const ext = safeName.includes('.') ? safeName.split('.').pop()?.toLowerCase() : undefined
@@ -63,6 +55,14 @@ export async function POST(req: Request) {
 
     const token = process.env.BLOB_READ_WRITE_TOKEN
     if (!token || token.trim() === '') {
+      // Fallback: converter para buffer e retornar data URL
+      const buffer = await streamToBuffer(stream)
+      const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '100')
+      const maxBytes = Math.max(1, maxMb) * 1024 * 1024
+      if (buffer.length > maxBytes) {
+        return NextResponse.json({ error: `Arquivo muito grande (máx ${maxMb}MB)` }, { status: 413 })
+      }
+
       const base64 = buffer.toString('base64')
       const dataUrl = `data:${mimeType ?? 'application/octet-stream'};base64,${base64}`
       return NextResponse.json({
@@ -74,7 +74,8 @@ export async function POST(req: Request) {
       })
     }
 
-    const uploaded = await put(key, buffer, {
+    // Upload direto do stream ao Vercel Blob (sem limite de tamanho!)
+    const uploaded = await put(key, stream as any, {
       access: 'public',
       token,
       contentType: mimeType ?? (ext ? `image/${ext}` : undefined),
@@ -91,7 +92,7 @@ export async function POST(req: Request) {
           pathname: uploaded.pathname,
           name: originalName,
           contentType: mimeType ?? null,
-          size: buffer.length,
+          size: 0, // Size não disponível no streaming mode
         },
       })
     } catch (error) {
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
       url: uploaded.url,
       pathname: uploaded.pathname,
       contentType: mimeType ?? null,
-      size: buffer.length,
+      size: 0, // Size não disponível no streaming mode
       name: originalName,
     })
   } catch (error) {
