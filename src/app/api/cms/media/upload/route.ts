@@ -4,9 +4,7 @@ import { put } from '@vercel/blob'
 import { createMedia } from '@/lib/cms/mutations'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 
-// Configure body size limit for file uploads (50MB)
 export const runtime = 'nodejs'
-export const bodyBytesLimit = 50 * 1024 * 1024 // 50MB
 
 /**
  * POST /api/cms/media/upload

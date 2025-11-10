@@ -80,8 +80,8 @@ export function TemplatesPanel() {
   const isFetching = isLoading || isRefetching
 
   return (
-    <div className="flex h-full min-h-[400px] flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
-      <div className="flex flex-col gap-3">
+    <div className="flex h-full flex-col gap-3 rounded-lg border border-border/40 bg-card/60 p-4 shadow-sm">
+      <div className="flex flex-shrink-0 flex-col gap-3">
         <div className="flex items-center gap-2">
           <Input
             value={search}
@@ -118,7 +118,7 @@ export function TemplatesPanel() {
         </div>
       </div>
 
-      <ScrollArea className="flex-1">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="grid gap-3 pr-3 md:grid-cols-2">
           {isLoading &&
             Array.from({ length: 6 }).map((_, index) => (
