@@ -123,7 +123,18 @@ export async function PUT(
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Failed to update template', error)
+    console.error('Failed to update template:', error)
+
+    // Se for erro do Zod, retornar detalhes
+    if (error && typeof error === 'object' && 'issues' in error) {
+      const zodError = error as { issues: Array<{ path: string[]; message: string }> }
+      console.error('Validation errors:', JSON.stringify(zodError.issues, null, 2))
+      return NextResponse.json({
+        error: 'Dados inválidos',
+        details: zodError.issues
+      }, { status: 400 })
+    }
+
     return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
   }
 }

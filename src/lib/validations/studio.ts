@@ -119,7 +119,10 @@ export const updateTemplateSchema = z.object({
   name: z.string().trim().min(1).optional(),
   designData: designDataSchema.optional(),
   dynamicFields: z.array(z.record(z.string(), z.any())).optional(),
-  thumbnailUrl: z.string().url().nullable().optional(),
+  thumbnailUrl: z.preprocess(
+    (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
+    z.string().url().nullable().optional()
+  ),
 })
 
 export const createGenerationSchema = z.object({

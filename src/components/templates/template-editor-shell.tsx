@@ -236,17 +236,19 @@ function TemplateEditorContent() {
         thumbnailUrl = await generateThumbnail(300)
       }
 
-      const payload = {
-        id: templateId,
-        data: {
-          name,
-          designData: design,
-          dynamicFields,
-          thumbnailUrl: thumbnailUrl || undefined,
-        },
+      const templateData = {
+        name,
+        designData: design,
+        dynamicFields,
+        thumbnailUrl: thumbnailUrl || undefined,
       }
 
-      console.log('[TemplateEditor] Salvando template com design:', JSON.stringify(design, null, 2))
+      const payload = {
+        id: templateId,
+        data: templateData,
+      }
+
+      console.log('[TemplateEditor] Salvando template com payload:', JSON.stringify(templateData, null, 2))
 
       const saved = await updateTemplate(payload)
       markSaved(saved)
@@ -261,7 +263,11 @@ function TemplateEditorContent() {
           : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
     } catch (_error) {
-      console.error('[TemplateEditor] Falha ao salvar template', _error)
+      console.error('[TemplateEditor] Falha ao salvar template:', _error)
+      console.error('[TemplateEditor] Design data:', JSON.stringify(design, null, 2))
+      if (_error && typeof _error === 'object' && 'details' in _error) {
+        console.error('[TemplateEditor] Validation errors:', _error.details)
+      }
 
       // Remover toast de loading
       loadingToast.dismiss?.()
