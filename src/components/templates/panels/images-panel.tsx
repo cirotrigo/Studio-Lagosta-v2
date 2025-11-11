@@ -330,69 +330,70 @@ export function ImagesPanelContent() {
         </TabsList>
 
         {/* Google Drive Tab - First */}
-        <TabsContent value="drive" className="mt-4 space-y-3">
-          {/* Navigation Header */}
-          <div className="space-y-2">
-            {/* Back Button */}
-            {breadcrumbs.length > 1 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={navigateBack}
-                className="h-8 w-full justify-start"
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Voltar
-              </Button>
-            )}
+        <TabsContent value="drive" className="mt-2 space-y-2">
+          {/* Navigation Header - Compact */}
+          {breadcrumbs.length > 0 && (
+            <div className="flex items-center gap-2">
+              {breadcrumbs.length > 1 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={navigateBack}
+                  className="h-7 w-7 p-0 flex-shrink-0"
+                  title="Voltar"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                </Button>
+              )}
 
-            {/* Breadcrumbs */}
-            <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-              {breadcrumbs.map((crumb, index) => (
-                <React.Fragment key={crumb.id}>
-                  {index > 0 && <ChevronRight className="h-3 w-3" />}
-                  <button
-                    onClick={() => navigateToFolder(crumb.id, crumb.name)}
-                    className={`truncate max-w-[100px] hover:text-foreground ${
-                      index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
-                    }`}
-                    title={crumb.name}
-                  >
-                    {crumb.name}
-                  </button>
-                </React.Fragment>
-              ))}
+              {/* Breadcrumbs */}
+              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground min-w-0">
+                {breadcrumbs.map((crumb, index) => (
+                  <React.Fragment key={crumb.id}>
+                    {index > 0 && <ChevronRight className="h-3 w-3 flex-shrink-0" />}
+                    <button
+                      onClick={() => navigateToFolder(crumb.id, crumb.name)}
+                      className={`truncate max-w-[100px] hover:text-foreground ${
+                        index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
+                      }`}
+                      title={crumb.name}
+                    >
+                      {crumb.name}
+                    </button>
+                  </React.Fragment>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Files/Folders Grid */}
           {!driveFolderId ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12">
-              <HardDrive className="mb-3 h-12 w-12 text-muted-foreground/50" />
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+              <HardDrive className="mb-2 h-10 w-10 text-muted-foreground/50" />
               <p className="text-sm font-medium text-muted-foreground">
                 Google Drive não configurado
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Configure uma pasta do Google Drive nas configurações do projeto
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Configure nas configurações do projeto
               </p>
             </div>
           ) : isLoadingDrive ? (
-            <div className="flex items-center justify-center py-12">
+            <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : driveItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-12">
-              <FolderOpen className="mb-3 h-12 w-12 text-muted-foreground/50" />
+            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+              <FolderOpen className="mb-2 h-10 w-10 text-muted-foreground/50" />
               <p className="text-sm font-medium text-muted-foreground">
                 Pasta vazia
               </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Nenhum arquivo ou pasta encontrado
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Nenhum arquivo encontrado
               </p>
             </div>
           ) : (
-            <ScrollArea className="h-[450px]">
-              <div className="grid grid-cols-2 gap-3">
+            <ScrollArea className="h-[520px]">
+              <div className="grid grid-cols-3 gap-2">
                 {driveItems.map((item) => {
                   const isFolder = item.kind === 'folder'
                   return (
@@ -437,20 +438,21 @@ export function ImagesPanelContent() {
 
               {/* Load More Button */}
               {nextPageToken && (
-                <div className="mt-4 flex justify-center">
+                <div className="mt-3 flex justify-center">
                   <Button
                     variant="outline"
+                    size="sm"
                     onClick={loadMoreItems}
                     disabled={isLoadingMore || isApplyingMedia}
-                    className="w-full"
+                    className="w-full h-8 text-xs"
                   >
                     {isLoadingMore ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
                         Carregando...
                       </>
                     ) : (
-                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length} fotos carregadas)`
+                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length})`
                     )}
                   </Button>
                 </div>
@@ -460,13 +462,13 @@ export function ImagesPanelContent() {
         </TabsContent>
 
         {/* Upload Tab - Second with Drag & Drop */}
-        <TabsContent value="upload" className="mt-4 space-y-4">
+        <TabsContent value="upload" className="mt-2">
           <div
             onDragEnter={handleDragEnter}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`cursor-pointer rounded-lg border-2 border-dashed p-8 text-center transition ${
+            className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition ${
               isDragging
                 ? 'border-primary bg-primary/10'
                 : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
@@ -478,28 +480,21 @@ export function ImagesPanelContent() {
             }}
           >
             {isUploading ? (
-              <div className="flex flex-col items-center justify-center py-8">
+              <div className="flex flex-col items-center justify-center">
                 <Loader2 className="mb-3 h-12 w-12 animate-spin text-primary" />
                 <p className="text-sm font-medium text-foreground">Enviando imagem...</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-8">
+              <div className="flex flex-col items-center justify-center">
                 <Upload className="mb-3 h-12 w-12 text-muted-foreground/50" />
                 <p className="mb-1 text-sm font-medium text-foreground">
-                  {isDragging ? 'Solte a imagem aqui' : 'Arraste uma imagem ou clique para selecionar'}
+                  {isDragging ? 'Solte a imagem aqui' : 'Arraste uma imagem ou clique'}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  PNG, JPG, GIF até 10MB
+                  PNG, JPG, GIF até 100MB
                 </p>
               </div>
             )}
-          </div>
-
-          <div className="rounded-lg border border-border/40 bg-muted/20 p-4">
-            <p className="text-xs text-muted-foreground">
-              <strong>Dica:</strong> A imagem será ajustada automaticamente para preencher todo o canvas.
-              Você pode redimensioná-la depois usando as ferramentas de transformação.
-            </p>
           </div>
         </TabsContent>
       </Tabs>
