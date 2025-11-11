@@ -28,6 +28,8 @@ export function ImagesPanelContent() {
   const [breadcrumbs, setBreadcrumbs] = React.useState<BreadcrumbItem[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [isApplyingMedia, setIsApplyingMedia] = React.useState(false)
+  const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(undefined)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
 
   const { upload: uploadToBlob, isUploading } = useBlobUpload()
 
@@ -66,13 +68,30 @@ export function ImagesPanelContent() {
   )
 
   // Load Google Drive files
-  const loadDriveFiles = React.useCallback(async (folderId: string, folderName?: string) => {
-    setIsLoadingDrive(true)
-    console.log('[ImagesPanel] Loading Drive files from folder:', folderId, folderName)
+  const loadDriveFiles = React.useCallback(async (folderId: string, folderName?: string, pageToken?: string) => {
+    const isLoadingMore = Boolean(pageToken)
+
+    if (isLoadingMore) {
+      setIsLoadingMore(true)
+    } else {
+      setIsLoadingDrive(true)
+      setDriveItems([]) // Clear items on fresh load
+      setNextPageToken(undefined)
+    }
+
+    console.log('[ImagesPanel] Loading Drive files from folder:', folderId, folderName, 'pageToken:', pageToken)
 
     try {
-      // Fetch both folders and images in one call
-      const url = `/api/google-drive/files?folderId=${folderId}&mode=images`
+      // Build URL with pagination support
+      const params = new URLSearchParams({
+        folderId,
+        mode: 'images',
+      })
+      if (pageToken) {
+        params.append('pageToken', pageToken)
+      }
+
+      const url = `/api/google-drive/files?${params.toString()}`
       console.log('[ImagesPanel] Fetching:', url)
 
       const response = await fetch(url)
@@ -87,15 +106,18 @@ export function ImagesPanelContent() {
       const data = await response.json()
       console.log('[ImagesPanel] Received data:', data)
 
-      // The API returns 'items', not 'files'
+      // The API returns 'items' and 'nextPageToken'
       const items = data.items || []
-      console.log('[ImagesPanel] Items count:', items.length)
+      const newNextPageToken = data.nextPageToken
+      console.log('[ImagesPanel] Items count:', items.length, 'nextPageToken:', newNextPageToken)
 
-      if (items.length > 0) {
+      if (items.length > 0 && !isLoadingMore) {
         console.log('[ImagesPanel] First item:', items[0])
       }
 
-      setDriveItems(items)
+      // Append items if loading more, otherwise replace
+      setDriveItems(prev => isLoadingMore ? [...prev, ...items] : items)
+      setNextPageToken(newNextPageToken)
     } catch (_error) {
       console.error('[ImagesPanel] Failed to load Drive files', _error)
       toast({
@@ -103,8 +125,16 @@ export function ImagesPanelContent() {
         description: _error instanceof Error ? _error.message : 'Não foi possível carregar os arquivos do Google Drive.',
         variant: 'destructive',
       })
+      if (!isLoadingMore) {
+        setDriveItems([])
+        setNextPageToken(undefined)
+      }
     } finally {
-      setIsLoadingDrive(false)
+      if (isLoadingMore) {
+        setIsLoadingMore(false)
+      } else {
+        setIsLoadingDrive(false)
+      }
     }
   }, [toast])
 
@@ -130,6 +160,14 @@ export function ImagesPanelContent() {
     const previousFolder = breadcrumbs[breadcrumbs.length - 2]
     navigateToFolder(previousFolder.id, previousFolder.name)
   }, [breadcrumbs, navigateToFolder])
+
+  // Load more items (pagination)
+  const loadMoreItems = React.useCallback(() => {
+    const currentFolder = breadcrumbs[breadcrumbs.length - 1]
+    if (currentFolder && nextPageToken) {
+      loadDriveFiles(currentFolder.id, currentFolder.name, nextPageToken)
+    }
+  }, [breadcrumbs, nextPageToken, loadDriveFiles])
 
   // Load Drive files on mount
   React.useEffect(() => {
@@ -396,6 +434,27 @@ export function ImagesPanelContent() {
                   )
                 })}
               </div>
+
+              {/* Load More Button */}
+              {nextPageToken && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={loadMoreItems}
+                    disabled={isLoadingMore || isApplyingMedia}
+                    className="w-full"
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length} fotos carregadas)`
+                    )}
+                  </Button>
+                </div>
+              )}
             </ScrollArea>
           )}
         </TabsContent>

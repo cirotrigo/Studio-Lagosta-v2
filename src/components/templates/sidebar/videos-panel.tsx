@@ -30,6 +30,8 @@ export function VideosPanel() {
   const [isLoadingDrive, setIsLoadingDrive] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
   const [isApplying, setIsApplying] = React.useState(false)
+  const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(undefined)
+  const [isLoadingMore, setIsLoadingMore] = React.useState(false)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -74,18 +76,58 @@ export function VideosPanel() {
   )
 
   const loadDriveFiles = React.useCallback(
-    async (folderId: string) => {
+    async (folderId: string, folderName?: string, pageToken?: string) => {
       if (!folderId) return
-      setIsLoadingDrive(true)
+
+      const isLoadingMore = Boolean(pageToken)
+
+      if (isLoadingMore) {
+        setIsLoadingMore(true)
+      } else {
+        setIsLoadingDrive(true)
+        setDriveItems([]) // Clear items on fresh load
+        setNextPageToken(undefined)
+      }
+
+      console.log('[VideosPanel] Loading Drive files from folder:', folderId, folderName, 'pageToken:', pageToken)
+
       try {
-        const params = new URLSearchParams({ mode: 'videos', folderId })
-        const response = await fetch(`/api/google-drive/files?${params.toString()}`)
-        if (!response.ok) {
-          const message = await response.text()
-          throw new Error(message || 'Falha ao carregar arquivos do Google Drive')
+        // Build URL with pagination support
+        const params = new URLSearchParams({
+          folderId,
+          mode: 'videos',
+        })
+        if (pageToken) {
+          params.append('pageToken', pageToken)
         }
-        const payload = (await response.json()) as { items?: GoogleDriveItem[] }
-        setDriveItems(payload.items ?? [])
+
+        const url = `/api/google-drive/files?${params.toString()}`
+        console.log('[VideosPanel] Fetching:', url)
+
+        const response = await fetch(url)
+        console.log('[VideosPanel] Response status:', response.status)
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('[VideosPanel] API Error:', errorText)
+          throw new Error('Falha ao carregar arquivos do Drive')
+        }
+
+        const data = await response.json()
+        console.log('[VideosPanel] Received data:', data)
+
+        // The API returns 'items' and 'nextPageToken'
+        const items = data.items || []
+        const newNextPageToken = data.nextPageToken
+        console.log('[VideosPanel] Items count:', items.length, 'nextPageToken:', newNextPageToken)
+
+        if (items.length > 0 && !isLoadingMore) {
+          console.log('[VideosPanel] First item:', items[0])
+        }
+
+        // Append items if loading more, otherwise replace
+        setDriveItems(prev => isLoadingMore ? [...prev, ...items] : items)
+        setNextPageToken(newNextPageToken)
       } catch (_error) {
         console.error('[VideosPanel] Failed to load Drive files', _error)
         toast({
@@ -93,8 +135,16 @@ export function VideosPanel() {
           description: _error instanceof Error ? _error.message : 'Não foi possível carregar os arquivos do Google Drive.',
           variant: 'destructive',
         })
+        if (!isLoadingMore) {
+          setDriveItems([])
+          setNextPageToken(undefined)
+        }
       } finally {
-        setIsLoadingDrive(false)
+        if (isLoadingMore) {
+          setIsLoadingMore(false)
+        } else {
+          setIsLoadingDrive(false)
+        }
       }
     },
     [toast],
@@ -109,7 +159,7 @@ export function VideosPanel() {
         }
         return [...prev, { id: folderId, name: folderName }]
       })
-      void loadDriveFiles(folderId)
+      void loadDriveFiles(folderId, folderName)
     },
     [loadDriveFiles],
   )
@@ -126,15 +176,23 @@ export function VideosPanel() {
       return next
     })
     if (target) {
-      void loadDriveFiles(target.id)
+      void loadDriveFiles(target.id, target.name)
     }
   }, [loadDriveFiles])
+
+  // Load more items (pagination)
+  const loadMoreItems = React.useCallback(() => {
+    const currentFolder = breadcrumbs[breadcrumbs.length - 1]
+    if (currentFolder && nextPageToken) {
+      loadDriveFiles(currentFolder.id, currentFolder.name, nextPageToken)
+    }
+  }, [breadcrumbs, nextPageToken, loadDriveFiles])
 
   React.useEffect(() => {
     if (driveFolderId) {
       const initialName = driveFolderName ?? 'Pasta do projeto'
       setBreadcrumbs([{ id: driveFolderId, name: initialName }])
-      void loadDriveFiles(driveFolderId)
+      void loadDriveFiles(driveFolderId, initialName)
     } else {
       setBreadcrumbs([])
       setDriveItems([])
@@ -413,6 +471,27 @@ export function VideosPanel() {
                   )
                 })}
               </div>
+
+              {/* Load More Button */}
+              {nextPageToken && (
+                <div className="mt-4 flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={loadMoreItems}
+                    disabled={isLoadingMore || isApplying}
+                    className="w-full"
+                  >
+                    {isLoadingMore ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Carregando...
+                      </>
+                    ) : (
+                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length} vídeos carregados)`
+                    )}
+                  </Button>
+                </div>
+              )}
             </ScrollArea>
           )}
         </TabsContent>
