@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Upload, HardDrive, Loader2, FolderOpen, Image as ImageIcon, ChevronRight, ArrowLeft, Folder } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
+import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useProject } from '@/hooks/use-project'
 import type { GoogleDriveItem } from '@/types/google-drive'
 
@@ -21,13 +22,14 @@ export function ImagesPanelContent() {
   const { toast } = useToast()
   const { data: project } = useProject(projectId)
 
-  const [isUploading, setIsUploading] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
   const [driveItems, setDriveItems] = React.useState<GoogleDriveItem[]>([])
   const [isLoadingDrive, setIsLoadingDrive] = React.useState(false)
   const [breadcrumbs, setBreadcrumbs] = React.useState<BreadcrumbItem[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const [isApplyingMedia, setIsApplyingMedia] = React.useState(false)
+
+  const { upload: uploadToBlob, isUploading } = useBlobUpload()
 
   const canvasWidth = design.canvas.width
   const canvasHeight = design.canvas.height
@@ -146,24 +148,16 @@ export function ImagesPanelContent() {
   // File upload
   const uploadFile = React.useCallback(
     async (file: File) => {
-      setIsUploading(true)
       setIsApplyingMedia(true)
       try {
-        const formData = new FormData()
-        formData.append('file', file)
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
+        // Client-side upload direto ao Vercel Blob
+        const url = await uploadToBlob(file)
+        insertImageLayer(url, file.name)
+
+        toast({
+          title: 'Upload concluído',
+          description: 'A imagem foi enviada com sucesso.',
         })
-        if (!response.ok) {
-          const message = await response.text()
-          throw new Error(message || 'Falha ao enviar a imagem')
-        }
-        const payload = (await response.json()) as { url?: string; name?: string }
-        if (!payload.url) {
-          throw new Error('Resposta inválida do servidor de upload')
-        }
-        insertImageLayer(payload.url, payload.name ?? file.name)
       } catch (_error) {
         console.error('[ImagesPanel] Upload failed', _error)
         toast({
@@ -172,11 +166,10 @@ export function ImagesPanelContent() {
           variant: 'destructive',
         })
       } finally {
-        setIsUploading(false)
         setIsApplyingMedia(false)
       }
     },
-    [insertImageLayer, toast],
+    [insertImageLayer, toast, uploadToBlob],
   )
 
   const handleFileChange = React.useCallback(
