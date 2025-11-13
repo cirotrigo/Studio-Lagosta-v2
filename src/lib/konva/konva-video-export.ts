@@ -394,7 +394,94 @@ export async function exportVideoWithLayers(
     try {
       const audioContext = new AudioContext()
 
-      if (audioSource === 'mute') {
+      if (audioSource === 'mix' && audioConfig?.musicId) {
+        // Caso 4: Mixar áudio original + música da biblioteca
+        console.log('[Video Export] Mixando áudio original + música da biblioteca')
+        onProgress?.({ phase: 'preparing', progress: 45 })
+
+        // 1. Capturar áudio original do vídeo
+        const clonedVideoForOriginal = document.createElement('video')
+        clonedVideoForOriginal.src = videoElement.src
+        clonedVideoForOriginal.crossOrigin = 'anonymous'
+        clonedVideoForOriginal.muted = false
+
+        await new Promise<void>((resolve, reject) => {
+          clonedVideoForOriginal.addEventListener('loadedmetadata', () => resolve(), { once: true })
+          clonedVideoForOriginal.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo clone')), { once: true })
+          clonedVideoForOriginal.load()
+          setTimeout(() => reject(new Error('Timeout ao carregar vídeo clone')), 10000)
+        })
+
+        // @ts-expect-error - captureStream exists
+        const originalStream = clonedVideoForOriginal.captureStream() as MediaStream
+        const originalAudioTracks = originalStream.getAudioTracks()
+
+        if (originalAudioTracks.length === 0) {
+          throw new Error('Vídeo não possui áudio original para mixar')
+        }
+
+        // 2. Carregar música da biblioteca
+        console.log('[Video Export] Carregando música da biblioteca:', audioConfig.musicId)
+        const musicResponse = await fetch(`/api/biblioteca-musicas/${audioConfig.musicId}`)
+        if (!musicResponse.ok) {
+          throw new Error('Falha ao buscar informações da música')
+        }
+        const musicData = await musicResponse.json()
+        const musicArrayBuffer = await loadAudioFromUrl(musicData.blobUrl)
+
+        // 3. Processar música (volume, fade, trim)
+        const processedMusicBuffer = await createProcessedAudioBuffer(
+          audioContext,
+          musicArrayBuffer,
+          {
+            ...audioConfig,
+            volume: audioConfig.volumeMusic || 60, // Volume da música
+          },
+          videoDuration
+        )
+
+        // 4. Criar nós de áudio no AudioContext
+        const musicSource = audioContext.createBufferSource()
+        musicSource.buffer = processedMusicBuffer
+
+        const originalSource = audioContext.createMediaStreamSource(
+          new MediaStream(originalAudioTracks)
+        )
+
+        // 5. Criar gain nodes para controlar volume individual
+        const originalGain = audioContext.createGain()
+        originalGain.gain.value = (audioConfig.volumeOriginal || 80) / 100
+
+        const musicGain = audioContext.createGain()
+        musicGain.gain.value = (audioConfig.volumeMusic || 60) / 100
+
+        // 6. Conectar ao destination
+        const destination = audioContext.createMediaStreamDestination()
+
+        originalSource.connect(originalGain)
+        originalGain.connect(destination)
+
+        musicSource.connect(musicGain)
+        musicGain.connect(destination)
+
+        // 7. Iniciar reprodução da música
+        musicSource.start(0)
+
+        // 8. Posicionar vídeo clone e NÃO reproduzir ainda
+        clonedVideoForOriginal.currentTime = 0
+        console.log('[Video Export] Mix preparado - aguardando início da gravação...')
+
+        // 9. Combinar stream de vídeo com stream de áudio mixado
+        const audioTracks = destination.stream.getAudioTracks()
+        const videoTracks = canvasStream.getVideoTracks()
+        stream = new MediaStream([...videoTracks, ...audioTracks])
+
+        // Manter referência do clone para sincronização
+        // @ts-expect-error - propriedade customizada
+        stream._clonedVideoElement = clonedVideoForOriginal
+
+        console.log('[Video Export] Mix de áudio criado com sucesso')
+      } else if (audioSource === 'mute') {
         // Caso 1: Vídeo mudo - criar track silenciosa
         console.log('[Video Export] Criando vídeo sem áudio (mudo)')
         const silentTrack = createSilentAudioTrack(audioContext)

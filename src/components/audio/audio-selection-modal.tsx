@@ -52,32 +52,24 @@ const GENEROS = [
   'Todos',
   'Rock',
   'Pop',
-  'Electronic',
+  'Eletrônico',
   'Hip Hop',
   'Jazz',
-  'Classical',
-  'Ambient',
-  'Indie',
-  'Folk',
-  'R&B',
-  'Country',
-  'Latin',
+  'Samba',
+  'Bossa',
+  'Pagode',
+  'Chorinho',
+  'Ambiente',
 ];
 
 const HUMORES = [
   'Todos',
   'Feliz',
   'Triste',
-  'Energético',
   'Calmo',
   'Motivacional',
   'Romântico',
-  'Sombrio',
-  'Edificante',
-  'Melancólico',
-  'Épico',
-  'Relaxante',
-  'Intenso',
+  'Energético',
 ];
 
 export function AudioSelectionModal({
@@ -120,6 +112,8 @@ export function AudioSelectionModal({
 
   // Estado dos controles de áudio
   const [volume, setVolume] = useState(currentConfig?.volume || 80);
+  const [volumeOriginal, setVolumeOriginal] = useState(currentConfig?.volumeOriginal || 80);
+  const [volumeMusic, setVolumeMusic] = useState(currentConfig?.volumeMusic || 60);
   const [fadeIn, setFadeIn] = useState(currentConfig?.fadeIn || false);
   const [fadeOut, setFadeOut] = useState(currentConfig?.fadeOut || false);
   const [fadeInDuration, setFadeInDuration] = useState(currentConfig?.fadeInDuration || 0.5);
@@ -134,10 +128,12 @@ export function AudioSelectionModal({
   const handleConfirm = () => {
     const config: AudioConfig = {
       source: audioSource,
-      musicId: audioSource === 'library' ? musicaSelecionada : undefined,
+      musicId: audioSource === 'library' || audioSource === 'mix' ? musicaSelecionada : undefined,
       startTime,
       endTime,
-      volume,
+      volume: audioSource === 'mix' ? volumeMusic : volume,
+      volumeOriginal: audioSource === 'mix' ? volumeOriginal : undefined,
+      volumeMusic: audioSource === 'mix' ? volumeMusic : undefined,
       fadeIn,
       fadeOut,
       fadeInDuration,
@@ -155,7 +151,7 @@ export function AudioSelectionModal({
     setProjetoFiltro('Todos');
   };
 
-  const isValid = audioSource === 'mute' || audioSource === 'original' || musicaSelecionada;
+  const isValid = audioSource === 'mute' || audioSource === 'original' || (audioSource === 'library' && musicaSelecionada) || (audioSource === 'mix' && musicaSelecionada);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -186,6 +182,15 @@ export function AudioSelectionModal({
                   Música da Biblioteca
                 </Label>
               </div>
+              <div className="flex items-center space-x-2 rounded-lg border p-3 bg-blue-50/50 border-blue-200">
+                <RadioGroupItem value="mix" id="mix" />
+                <Label htmlFor="mix" className="flex-1 cursor-pointer">
+                  <div className="flex flex-col gap-1">
+                    <span>Mixar Áudio Original + Música da Biblioteca</span>
+                    <span className="text-xs text-gray-600">Combine os dois áudios com controles independentes</span>
+                  </div>
+                </Label>
+              </div>
               <div className="flex items-center space-x-2 rounded-lg border p-3">
                 <RadioGroupItem value="mute" id="mute" />
                 <Label htmlFor="mute" className="flex-1 cursor-pointer">
@@ -195,8 +200,8 @@ export function AudioSelectionModal({
             </RadioGroup>
           </div>
 
-          {/* ETAPA 2: Escolher Música (apenas se fonte = biblioteca) */}
-          {audioSource === 'library' && (
+          {/* ETAPA 2: Escolher Música (apenas se fonte = biblioteca ou mix) */}
+          {(audioSource === 'library' || audioSource === 'mix') && (
             <>
               {/* Busca e Filtros */}
               <div className="space-y-3">
@@ -313,25 +318,66 @@ export function AudioSelectionModal({
                     Configurações de Áudio
                   </h3>
                   <div className="space-y-4 rounded-lg border p-4">
-                    {/* Volume */}
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="flex items-center gap-2">
-                          <Volume2 className="h-4 w-4" />
-                          Volume
-                        </Label>
-                        <span className="text-sm text-gray-600">{volume}%</span>
-                      </div>
-                      <Slider
-                        value={[volume]}
-                        onValueChange={(value) => setVolume(value[0])}
-                        min={0}
-                        max={100}
-                        step={1}
-                      />
-                    </div>
+                    {/* Volumes Separados para Mix */}
+                    {audioSource === 'mix' ? (
+                      <div className="space-y-4">
+                        {/* Volume Áudio Original */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="flex items-center gap-2">
+                              <Volume2 className="h-4 w-4" />
+                              Volume Áudio Original
+                            </Label>
+                            <span className="text-sm text-gray-600">{volumeOriginal}%</span>
+                          </div>
+                          <Slider
+                            value={[volumeOriginal]}
+                            onValueChange={(value) => setVolumeOriginal(value[0])}
+                            min={0}
+                            max={100}
+                            step={1}
+                          />
+                        </div>
 
-                    {/* Fade In/Out */}
+                        {/* Volume Música */}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <Label className="flex items-center gap-2">
+                              <Music className="h-4 w-4" />
+                              Volume Música
+                            </Label>
+                            <span className="text-sm text-gray-600">{volumeMusic}%</span>
+                          </div>
+                          <Slider
+                            value={[volumeMusic]}
+                            onValueChange={(value) => setVolumeMusic(value[0])}
+                            min={0}
+                            max={100}
+                            step={1}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* Volume único para library */
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="flex items-center gap-2">
+                            <Volume2 className="h-4 w-4" />
+                            Volume
+                          </Label>
+                          <span className="text-sm text-gray-600">{volume}%</span>
+                        </div>
+                        <Slider
+                          value={[volume]}
+                          onValueChange={(value) => setVolume(value[0])}
+                          min={0}
+                          max={100}
+                          step={1}
+                        />
+                      </div>
+                    )}
+
+                    {/* Fade In/Out (aplicado à música em ambos os casos) */}
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <div className="flex items-center space-x-2">

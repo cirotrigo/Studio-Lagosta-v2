@@ -21,32 +21,23 @@ import { useToast } from '@/hooks/use-toast';
 const GENEROS = [
   'Rock',
   'Pop',
-  'Electronic',
+  'Eletrônico',
   'Hip Hop',
   'Jazz',
-  'Classical',
-  'Ambient',
-  'Indie',
-  'Folk',
-  'R&B',
-  'Country',
-  'Latin',
-  'Outro',
+  'Samba',
+  'Bossa',
+  'Pagode',
+  'Chorinho',
+  'Ambiente',
 ];
 
 const HUMORES = [
   'Feliz',
   'Triste',
-  'Energético',
   'Calmo',
   'Motivacional',
   'Romântico',
-  'Sombrio',
-  'Edificante',
-  'Melancólico',
-  'Épico',
-  'Relaxante',
-  'Intenso',
+  'Energético',
 ];
 
 export default function EnviarMusicaPage() {
@@ -182,11 +173,11 @@ export default function EnviarMusicaPage() {
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Upload de Arquivo */}
-        <div className="space-y-2">
-          <Label htmlFor="arquivo">
+        <div className="space-y-2 rounded-lg border p-6 bg-white shadow-sm">
+          <Label htmlFor="arquivo" className="text-base font-semibold">
             Arquivo de Áudio <span className="text-red-500">*</span>
           </Label>
-          <div className="flex items-center gap-4">
+          <div className="flex flex-col gap-4">
             <Input
               id="arquivo"
               type="file"
@@ -196,9 +187,14 @@ export default function EnviarMusicaPage() {
               required
             />
             {arquivo && (
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Music className="h-4 w-4" />
-                {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
+              <div className="flex items-center justify-between rounded-md bg-green-50 p-3 border border-green-200">
+                <div className="flex items-center gap-2 text-sm text-green-700">
+                  <Music className="h-4 w-4" />
+                  <span className="font-medium">{arquivo.name}</span>
+                </div>
+                <span className="text-sm text-green-600">
+                  {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
+                </span>
               </div>
             )}
           </div>
@@ -207,40 +203,49 @@ export default function EnviarMusicaPage() {
           </p>
         </div>
 
-        {/* Nome */}
-        <div className="space-y-2">
-          <Label htmlFor="nome">
-            Nome da Faixa <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="nome"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-            placeholder="Summer Vibes"
-            required
-          />
+        {/* Informações Básicas */}
+        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
+          <h3 className="text-base font-semibold text-gray-900">Informações Básicas</h3>
+
+          {/* Nome */}
+          <div className="space-y-2">
+            <Label htmlFor="nome">
+              Nome da Faixa <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+              placeholder="Summer Vibes"
+              required
+            />
+          </div>
+
+          {/* Artista */}
+          <div className="space-y-2">
+            <Label htmlFor="artista">Artista</Label>
+            <Input
+              id="artista"
+              value={artista}
+              onChange={(e) => setArtista(e.target.value)}
+              placeholder="John Doe"
+            />
+          </div>
         </div>
 
-        {/* Artista */}
-        <div className="space-y-2">
-          <Label htmlFor="artista">Artista</Label>
-          <Input
-            id="artista"
-            value={artista}
-            onChange={(e) => setArtista(e.target.value)}
-            placeholder="John Doe"
-          />
-        </div>
+        {/* Classificação */}
+        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
+          <h3 className="text-base font-semibold text-gray-900">Classificação</h3>
 
-        {/* Gênero e Humor */}
-        <div className="grid grid-cols-2 gap-4">
+          {/* Gênero e Humor */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="genero">Gênero</Label>
             <Select value={genero} onValueChange={setGenero}>
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o gênero" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px] overflow-y-auto">
                 {GENEROS.map((g) => (
                   <SelectItem key={g} value={g}>
                     {g}
@@ -256,7 +261,7 @@ export default function EnviarMusicaPage() {
               <SelectTrigger>
                 <SelectValue placeholder="Selecione o humor" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px] overflow-y-auto">
                 {HUMORES.map((h) => (
                   <SelectItem key={h} value={h}>
                     {h}
@@ -265,49 +270,59 @@ export default function EnviarMusicaPage() {
               </SelectContent>
             </Select>
           </div>
+          </div>
         </div>
 
-        {/* Projeto e Duração */}
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="projectId">Projeto Vinculado</Label>
-            <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
-              <SelectTrigger>
-                <SelectValue placeholder="Sem projeto (música global)" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">Sem projeto (música global)</SelectItem>
-                {projetos.map((projeto) => (
-                  <SelectItem key={projeto.id} value={projeto.id.toString()}>
-                    {projeto.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <p className="text-sm text-gray-500">
-              Músicas globais ficam disponíveis para todos os projetos
-            </p>
-          </div>
+        {/* Vinculação e Metadados */}
+        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
+          <h3 className="text-base font-semibold text-gray-900">Vinculação e Metadados</h3>
 
+          {/* Projeto */}
           <div className="space-y-2">
-            <Label htmlFor="duracao">
-              Duração (segundos) <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="duracao"
-              type="number"
-              value={duracao || ''}
-              onChange={(e) => setDuracao(parseFloat(e.target.value))}
-              placeholder="180"
-              min="1"
-              step="0.1"
-              required
-              disabled={extraindo}
-            />
-            {extraindo && (
-              <p className="text-sm text-gray-500">Extraindo metadados...</p>
-            )}
-          </div>
+          <Label htmlFor="projectId">Projeto Vinculado</Label>
+          <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+            <SelectTrigger>
+              <SelectValue placeholder="Sem projeto (música global)" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px] overflow-y-auto">
+              <SelectItem value="none">Sem projeto (música global)</SelectItem>
+              {projetos.map((projeto) => (
+                <SelectItem key={projeto.id} value={projeto.id.toString()}>
+                  {projeto.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-sm text-gray-500">
+            Músicas globais ficam disponíveis para todos os projetos
+          </p>
+        </div>
+
+        {/* Duração */}
+        <div className="space-y-2">
+          <Label htmlFor="duracao">
+            Duração (segundos) <span className="text-red-500">*</span>
+          </Label>
+          <Input
+            id="duracao"
+            type="number"
+            value={duracao || ''}
+            onChange={(e) => setDuracao(parseFloat(e.target.value))}
+            placeholder="180"
+            min="1"
+            step="0.1"
+            required
+            disabled={extraindo}
+          />
+          {extraindo && (
+            <p className="text-sm text-gray-500">Extraindo metadados...</p>
+          )}
+          {duracao > 0 && (
+            <p className="text-sm text-green-600">
+              ✓ {Math.floor(duracao / 60)}:{String(Math.floor(duracao % 60)).padStart(2, '0')} min
+            </p>
+          )}
+        </div>
         </div>
 
         {/* Submit Buttons */}
