@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const artista = formData.get('artista') as string | null;
     const genero = formData.get('genero') as string | null;
     const humor = formData.get('humor') as string | null;
-    const bpm = formData.get('bpm') as string | null;
+    const projectId = formData.get('projectId') as string | null;
     const duracao = formData.get('duracao') as string;
 
     if (!arquivo || !nome || !duracao) {
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
         artist: artista,
         genre: genero,
         mood: humor,
-        bpm: bpm ? parseInt(bpm) : null,
+        projectId: projectId ? parseInt(projectId) : null,
         duration: parseFloat(duracao),
         blobUrl: blob.url,
         blobSize: arquivo.size,

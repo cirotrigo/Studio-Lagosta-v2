@@ -44,7 +44,6 @@ export default function EditarMusicaPage({ params }: { params: Promise<{ id: str
   const [artista, setArtista] = useState('');
   const [genero, setGenero] = useState('');
   const [humor, setHumor] = useState('');
-  const [bpm, setBpm] = useState('');
 
   useEffect(() => {
     if (musica) {
@@ -52,7 +51,6 @@ export default function EditarMusicaPage({ params }: { params: Promise<{ id: str
       setArtista(musica.artist || '');
       setGenero(musica.genre || '');
       setHumor(musica.mood || '');
-      setBpm(musica.bpm?.toString() || '');
     }
   }, [musica]);
 
@@ -74,7 +72,6 @@ export default function EditarMusicaPage({ params }: { params: Promise<{ id: str
         artista: artista || undefined,
         genero: genero || undefined,
         humor: humor || undefined,
-        bpm: bpm ? parseInt(bpm) : undefined,
       });
 
       toast({
@@ -189,20 +186,6 @@ export default function EditarMusicaPage({ params }: { params: Promise<{ id: str
               </SelectContent>
             </Select>
           </div>
-        </div>
-
-        {/* BPM */}
-        <div className="space-y-2">
-          <Label htmlFor="bpm">BPM (Batidas Por Minuto)</Label>
-          <Input
-            id="bpm"
-            type="number"
-            value={bpm}
-            onChange={(e) => setBpm(e.target.value)}
-            placeholder="120"
-            min="1"
-            max="300"
-          />
         </div>
 
         {/* Botões */}

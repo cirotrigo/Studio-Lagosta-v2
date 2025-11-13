@@ -11,10 +11,10 @@ export interface FaixaMusica {
   blobSize: number;
   genre: string | null;
   mood: string | null;
-  bpm: number | null;
   isActive: boolean;
   isPublic: boolean;
   thumbnailUrl: string | null;
+  projectId: number | null;
   createdAt: string;
   updatedAt: string;
   createdBy: string | null;
@@ -26,6 +26,7 @@ export interface FiltrosMusica {
   humor?: string;
   duracaoMinima?: number;
   duracaoMaxima?: number;
+  projectId?: number; // Filtro por projeto
 }
 
 export interface CriarMusicaData {
@@ -34,8 +35,8 @@ export interface CriarMusicaData {
   artista?: string;
   genero?: string;
   humor?: string;
-  bpm?: number;
   duracao: number;
+  projectId?: number; // Projeto vinculado
 }
 
 export interface AtualizarMusicaData {
@@ -43,10 +44,10 @@ export interface AtualizarMusicaData {
   artista?: string;
   genero?: string;
   humor?: string;
-  bpm?: number;
   ativo?: boolean;
   publico?: boolean;
   thumbnailUrl?: string;
+  projectId?: number;
 }
 
 // Chaves de Query
@@ -96,6 +97,7 @@ export function useBuscaMusicas(filtros?: FiltrosMusica) {
       if (filtros?.humor) params.append('humor', filtros.humor);
       if (filtros?.duracaoMinima) params.append('duracaoMinima', filtros.duracaoMinima.toString());
       if (filtros?.duracaoMaxima) params.append('duracaoMaxima', filtros.duracaoMaxima.toString());
+      if (filtros?.projectId) params.append('projectId', filtros.projectId.toString());
 
       const queryString = params.toString();
       return api.get(`/api/biblioteca-musicas/buscar${queryString ? `?${queryString}` : ''}`);
@@ -120,7 +122,7 @@ export function useEnviarMusica() {
       if (data.artista) formData.append('artista', data.artista);
       if (data.genero) formData.append('genero', data.genero);
       if (data.humor) formData.append('humor', data.humor);
-      if (data.bpm) formData.append('bpm', data.bpm.toString());
+      if (data.projectId) formData.append('projectId', data.projectId.toString());
 
       const response = await fetch('/api/biblioteca-musicas', {
         method: 'POST',

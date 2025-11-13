@@ -20,7 +20,8 @@ import {
 } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { useBibliotecaMusicas } from '@/hooks/use-music-library';
+import { useBuscaMusicas } from '@/hooks/use-music-library';
+import { useProjects } from '@/hooks/use-project';
 import { Search, Volume2, X, Music, PlayCircle, CheckCircle2 } from 'lucide-react';
 import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
@@ -84,8 +85,6 @@ export function AudioSelectionModal({
   currentConfig,
   onConfirm,
 }: AudioSelectionModalProps) {
-  const { data: musicas = [], isLoading } = useBibliotecaMusicas();
-
   // Estado da fonte de áudio
   const [audioSource, setAudioSource] = useState<AudioConfig['source']>(
     currentConfig?.source || 'library'
@@ -95,6 +94,18 @@ export function AudioSelectionModal({
   const [busca, setBusca] = useState('');
   const [generoFiltro, setGeneroFiltro] = useState('Todos');
   const [humorFiltro, setHumorFiltro] = useState('Todos');
+  const [projetoFiltro, setProjetoFiltro] = useState<string>('Todos');
+
+  // Buscar músicas com filtros
+  const { data: musicas = [], isLoading } = useBuscaMusicas({
+    busca: busca || undefined,
+    genero: generoFiltro !== 'Todos' ? generoFiltro : undefined,
+    humor: humorFiltro !== 'Todos' ? humorFiltro : undefined,
+    projectId: projetoFiltro !== 'Todos' ? parseInt(projetoFiltro) : undefined,
+  });
+
+  // Buscar lista de projetos para filtro
+  const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
 
   // Estado da música selecionada
   const [musicaSelecionada, setMusicaSelecionada] = useState<number | undefined>(
@@ -118,25 +129,6 @@ export function AudioSelectionModal({
     [musicas, musicaSelecionada]
   );
 
-  // Músicas filtradas
-  const musicasFiltradas = useMemo(() => {
-    return musicas.filter((musica) => {
-      // Filtro de busca
-      const buscaMatch =
-        !busca ||
-        musica.name.toLowerCase().includes(busca.toLowerCase()) ||
-        musica.artist?.toLowerCase().includes(busca.toLowerCase());
-
-      // Filtro de gênero
-      const generoMatch = generoFiltro === 'Todos' || musica.genre === generoFiltro;
-
-      // Filtro de humor
-      const humorMatch = humorFiltro === 'Todos' || musica.mood === humorFiltro;
-
-      return buscaMatch && generoMatch && humorMatch;
-    });
-  }, [musicas, busca, generoFiltro, humorFiltro]);
-
   const handleConfirm = () => {
     const config: AudioConfig = {
       source: audioSource,
@@ -158,6 +150,7 @@ export function AudioSelectionModal({
     setBusca('');
     setGeneroFiltro('Todos');
     setHumorFiltro('Todos');
+    setProjetoFiltro('Todos');
   };
 
   const isValid = audioSource === 'mute' || audioSource === 'original' || musicaSelecionada;
@@ -222,6 +215,20 @@ export function AudioSelectionModal({
 
                   {/* Filtros */}
                   <div className="flex flex-wrap gap-2">
+                    <Select value={projetoFiltro} onValueChange={setProjetoFiltro} disabled={isLoadingProjetos}>
+                      <SelectTrigger className="w-[180px]">
+                        <SelectValue placeholder="Projeto" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Todos">Todos os Projetos</SelectItem>
+                        {projetos.map((projeto) => (
+                          <SelectItem key={projeto.id} value={projeto.id.toString()}>
+                            {projeto.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
                     <Select value={generoFiltro} onValueChange={setGeneroFiltro}>
                       <SelectTrigger className="w-[150px]">
                         <SelectValue placeholder="Gênero" />
@@ -248,7 +255,7 @@ export function AudioSelectionModal({
                       </SelectContent>
                     </Select>
 
-                    {(busca || generoFiltro !== 'Todos' || humorFiltro !== 'Todos') && (
+                    {(busca || generoFiltro !== 'Todos' || humorFiltro !== 'Todos' || projetoFiltro !== 'Todos') && (
                       <Button
                         variant="outline"
                         size="sm"
@@ -362,14 +369,14 @@ export function AudioSelectionModal({
                   <div className="flex items-center justify-center py-12">
                     <div className="text-gray-500">Carregando músicas...</div>
                   </div>
-                ) : musicasFiltradas.length === 0 ? (
+                ) : musicas.length === 0 ? (
                   <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-12">
                     <Music className="h-12 w-12 text-gray-400" />
                     <p className="mt-2 text-sm text-gray-600">Nenhuma música encontrada</p>
                   </div>
                 ) : (
                   <div className="grid max-h-96 grid-cols-2 gap-3 overflow-y-auto rounded-lg border p-4 md:grid-cols-3">
-                    {musicasFiltradas.map((musica) => (
+                    {musicas.map((musica) => (
                       <MusicCard
                         key={musica.id}
                         musica={musica}

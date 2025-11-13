@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 /**
  * GET /api/biblioteca-musicas/buscar
  * Buscar e filtrar biblioteca de músicas
- * Query params: busca, genero, humor, duracaoMinima, duracaoMaxima
+ * Query params: busca, genero, humor, duracaoMinima, duracaoMaxima, projectId
  */
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
     const humor = searchParams.get('humor');
     const duracaoMinima = searchParams.get('duracaoMinima');
     const duracaoMaxima = searchParams.get('duracaoMaxima');
+    const projectId = searchParams.get('projectId');
 
     const faixasMusica = await db.musicLibrary.findMany({
       where: {
@@ -40,6 +41,15 @@ export async function GET(req: NextRequest) {
           genero ? { genre: genero } : {},
           // Filtro de humor
           humor ? { mood: humor } : {},
+          // Filtro de projeto: se especificado, mostrar músicas do projeto OU globais
+          projectId
+            ? {
+                OR: [
+                  { projectId: parseInt(projectId) },
+                  { projectId: null }, // Músicas globais
+                ],
+              }
+            : {},
           // Filtros de duração
           duracaoMinima ? { duration: { gte: parseFloat(duracaoMinima) } } : {},
           duracaoMaxima ? { duration: { lte: parseFloat(duracaoMaxima) } } : {},

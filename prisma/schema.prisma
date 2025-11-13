@@ -189,6 +189,7 @@ model Project {
   organizationProjects OrganizationProject[]
   OrganizationUsage    OrganizationUsage[]
   SocialPost           SocialPost[] // Social media posts for this account
+  musicLibrary         MusicLibrary[] @relation("ProjectMusicLibrary")
 
   // Instagram Analytics
   instagramStories       InstagramStory[]
@@ -1275,10 +1276,13 @@ model MusicLibrary {
   blobSize    Int      // tamanho em bytes
   genre       String?  // Rock, Pop, Electronic, etc.
   mood        String?  // Happy, Sad, Energetic, Calm, etc.
-  bpm         Int?     // batidas por minuto
   isActive    Boolean  @default(true)
   isPublic    Boolean  @default(true) // futuro: músicas privadas por usuário
   thumbnailUrl String? // capa/artwork da música
+
+  // Vinculação com projeto (opcional - músicas globais não têm projeto)
+  projectId   Int?
+  project     Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
 
   // Metadados
   createdAt   DateTime @default(now())
@@ -1288,7 +1292,8 @@ model MusicLibrary {
   // Relação com vídeos gerados (audit trail)
   usedInVideos VideoProcessingJob[]
 
-  @@index([isActive, isPublic])
+  @@index([projectId])
   @@index([genre])
   @@index([mood])
+  @@index([isActive, isPublic])
 }

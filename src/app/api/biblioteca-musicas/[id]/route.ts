@@ -66,7 +66,7 @@ export async function PATCH(
     }
 
     const body = await req.json();
-    const { nome, artista, genero, humor, bpm, ativo, publico, thumbnailUrl } = body;
+    const { nome, artista, genero, humor, ativo, publico, thumbnailUrl, projectId } = body;
 
     const musicaAtualizada = await db.musicLibrary.update({
       where: { id: musicaId },
@@ -75,10 +75,10 @@ export async function PATCH(
         artist: artista,
         genre: genero,
         mood: humor,
-        bpm: bpm ? parseInt(bpm) : null,
         isActive: ativo,
         isPublic: publico,
         thumbnailUrl,
+        projectId: projectId !== undefined ? projectId : undefined,
       },
     });
 

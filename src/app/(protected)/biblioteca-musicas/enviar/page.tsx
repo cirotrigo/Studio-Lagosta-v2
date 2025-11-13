@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEnviarMusica } from '@/hooks/use-music-library';
+import { useProjects } from '@/hooks/use-project';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,13 +53,14 @@ export default function EnviarMusicaPage() {
   const router = useRouter();
   const { toast } = useToast();
   const enviarMusica = useEnviarMusica();
+  const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
 
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [nome, setNome] = useState('');
   const [artista, setArtista] = useState('');
   const [genero, setGenero] = useState('');
   const [humor, setHumor] = useState('');
-  const [bpm, setBpm] = useState('');
+  const [projectId, setProjectId] = useState<string>(''); // '' = sem projeto (música global)
   const [duracao, setDuracao] = useState(0);
   const [extraindo, setExtraindo] = useState(false);
 
@@ -141,7 +143,7 @@ export default function EnviarMusicaPage() {
         artista: artista || undefined,
         genero: genero || undefined,
         humor: humor || undefined,
-        bpm: bpm ? parseInt(bpm) : undefined,
+        projectId: projectId ? parseInt(projectId) : undefined,
         duracao,
       });
 
@@ -265,19 +267,26 @@ export default function EnviarMusicaPage() {
           </div>
         </div>
 
-        {/* BPM e Duração */}
+        {/* Projeto e Duração */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="bpm">BPM (Batidas Por Minuto)</Label>
-            <Input
-              id="bpm"
-              type="number"
-              value={bpm}
-              onChange={(e) => setBpm(e.target.value)}
-              placeholder="120"
-              min="1"
-              max="300"
-            />
+            <Label htmlFor="projectId">Projeto Vinculado</Label>
+            <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+              <SelectTrigger>
+                <SelectValue placeholder="Sem projeto (música global)" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">Sem projeto (música global)</SelectItem>
+                {projetos.map((projeto) => (
+                  <SelectItem key={projeto.id} value={projeto.id.toString()}>
+                    {projeto.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-sm text-gray-500">
+              Músicas globais ficam disponíveis para todos os projetos
+            </p>
           </div>
 
           <div className="space-y-2">
