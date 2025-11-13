@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import { Download, Loader2, Film, AlertCircle } from 'lucide-react'
+import { Download, Loader2, Film, AlertCircle, Music } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -22,6 +22,7 @@ import {
   checkVideoExportSupport,
   type VideoExportProgress,
 } from '@/lib/konva/konva-video-export'
+import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import Konva from 'konva'
 
 export function VideoExportButton() {
@@ -30,10 +31,26 @@ export function VideoExportButton() {
   const { toast } = useToast()
   const { canPerformOperation, getCost, refresh: refreshCredits, credits } = useCredits()
 
+  const videoLayer = design.layers.find((layer) => layer.type === 'video')
+  const hasVideo = !!videoLayer
+
   const [isOpen, setIsOpen] = React.useState(false)
   const [isExporting, setIsExporting] = React.useState(false)
   const [exportProgress, setExportProgress] = React.useState<VideoExportProgress | null>(null)
   const [exportFormat, setExportFormat] = React.useState<'webm' | 'mp4'>('mp4')
+
+  // Estados para configuração de áudio
+  const [isAudioModalOpen, setIsAudioModalOpen] = React.useState(false)
+  const [audioConfig, setAudioConfig] = React.useState<AudioConfig>({
+    source: 'original',
+    startTime: 0,
+    endTime: videoLayer?.videoMetadata?.duration || 10,
+    volume: 80,
+    fadeIn: false,
+    fadeOut: false,
+    fadeInDuration: 0.5,
+    fadeOutDuration: 0.5,
+  })
 
   // Refs para acessar selectedLayerIds e setZoom dentro da função de exportação
   const selectedLayerIdsRef = React.useRef<string[]>(editorContext.selectedLayerIds)
@@ -44,9 +61,6 @@ export function VideoExportButton() {
   React.useEffect(() => {
     selectedLayerIdsRef.current = editorContext.selectedLayerIds
   }, [editorContext.selectedLayerIds])
-
-  const videoLayer = design.layers.find((layer) => layer.type === 'video')
-  const hasVideo = !!videoLayer
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
@@ -281,6 +295,32 @@ export function VideoExportButton() {
               </RadioGroup>
             </div>
 
+            {/* Configuração de Áudio */}
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">Configuração de Áudio</Label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAudioModalOpen(true)}
+                  className="gap-2"
+                >
+                  <Music className="h-4 w-4" />
+                  Configurar
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground space-y-1">
+                <p>• Fonte: {
+                  audioConfig.source === 'original' ? 'Áudio Original do Vídeo' :
+                  audioConfig.source === 'library' ? 'Música da Biblioteca' :
+                  'Sem Áudio (Mudo)'
+                }</p>
+                {audioConfig.source === 'library' && audioConfig.musicId && (
+                  <p>• Volume: {audioConfig.volume}%</p>
+                )}
+              </div>
+            </div>
+
             {/* Configurações */}
             <div className="space-y-2 rounded-lg bg-muted p-4">
               <p className="text-sm font-medium">Configurações:</p>
@@ -344,6 +384,21 @@ export function VideoExportButton() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Seleção de Áudio */}
+      <AudioSelectionModal
+        open={isAudioModalOpen}
+        onOpenChange={setIsAudioModalOpen}
+        videoDuration={videoLayer?.videoMetadata?.duration || 10}
+        currentConfig={audioConfig}
+        onConfirm={(config) => {
+          setAudioConfig(config)
+          toast({
+            title: 'Configuração de áudio salva',
+            description: 'As configurações de áudio serão aplicadas na exportação',
+          })
+        }}
+      />
     </>
   )
 }

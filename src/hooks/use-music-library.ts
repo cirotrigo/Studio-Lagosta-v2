@@ -125,6 +125,7 @@ export function useEnviarMusica() {
       const response = await fetch('/api/biblioteca-musicas', {
         method: 'POST',
         body: formData,
+        credentials: 'include',
       });
 
       if (!response.ok) {
