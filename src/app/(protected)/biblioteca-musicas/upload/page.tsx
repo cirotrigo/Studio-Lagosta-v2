@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { useUploadMusic } from '@/hooks/use-music-library';
+import { useEnviarMusica } from '@/hooks/use-music-library';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -48,19 +48,19 @@ const MOODS = [
   'Intense',
 ];
 
-export default function UploadMusicPage() {
+export default function EnviarMusicaPage() {
   const router = useRouter();
   const { toast } = useToast();
-  const uploadMusic = useUploadMusic();
+  const enviarMusica = useEnviarMusica();
 
-  const [file, setFile] = useState<File | null>(null);
-  const [name, setName] = useState('');
-  const [artist, setArtist] = useState('');
-  const [genre, setGenre] = useState('');
-  const [mood, setMood] = useState('');
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [nome, setNome] = useState('');
+  const [artista, setArtista] = useState('');
+  const [genero, setGenero] = useState('');
+  const [humor, setHumor] = useState('');
   const [bpm, setBpm] = useState('');
-  const [duration, setDuration] = useState(0);
-  const [isExtracting, setIsExtracting] = useState(false);
+  const [duracao, setDuracao] = useState(0);
+  const [extraindo, setExtraindo] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -86,23 +86,23 @@ export default function UploadMusicPage() {
       return;
     }
 
-    setFile(selectedFile);
+    setArquivo(selectedFile);
 
     // Auto-fill name from filename if not set
-    if (!name) {
+    if (!nome) {
       const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
-      setName(fileName);
+      setNome(fileName);
     }
 
     // Extract duration
-    setIsExtracting(true);
+    setExtraindo(true);
     try {
       const audio = new Audio();
       audio.src = URL.createObjectURL(selectedFile);
 
       await new Promise((resolve, reject) => {
         audio.addEventListener('loadedmetadata', () => {
-          setDuration(audio.duration);
+          setDuracao(audio.duration);
           URL.revokeObjectURL(audio.src);
           resolve(true);
         });
@@ -118,14 +118,14 @@ export default function UploadMusicPage() {
         variant: 'default',
       });
     } finally {
-      setIsExtracting(false);
+      setExtraindo(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!file || !name || !duration) {
+    if (!arquivo || !nome || !duracao) {
       toast({
         title: 'Missing required fields',
         description: 'Please fill in all required fields',
@@ -135,14 +135,14 @@ export default function UploadMusicPage() {
     }
 
     try {
-      await uploadMusic.mutateAsync({
-        file,
-        name,
-        artist: artist || undefined,
-        genre: genre || undefined,
-        mood: mood || undefined,
+      await enviarMusica.mutateAsync({
+        arquivo,
+        nome,
+        artista: artista || undefined,
+        genero: genero || undefined,
+        humor: humor || undefined,
         bpm: bpm ? parseInt(bpm) : undefined,
-        duration,
+        duracao,
       });
 
       toast({
@@ -150,7 +150,7 @@ export default function UploadMusicPage() {
         description: 'Music uploaded successfully',
       });
 
-      router.push('/admin/music-library');
+      router.push('/biblioteca-musicas');
     } catch (error) {
       console.error('Upload error:', error);
       toast({
@@ -165,15 +165,15 @@ export default function UploadMusicPage() {
     <div className="container mx-auto max-w-2xl px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <Link href="/admin/music-library">
+        <Link href="/biblioteca-musicas">
           <Button variant="ghost" className="mb-4">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Library
+            Voltar para Biblioteca
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold">Upload Music</h1>
+        <h1 className="text-3xl font-bold">Enviar Música</h1>
         <p className="mt-2 text-gray-600">
-          Add a new music track to the library
+          Adicione uma nova faixa de música à biblioteca
         </p>
       </div>
 
@@ -303,17 +303,17 @@ export default function UploadMusicPage() {
 
         {/* Submit Buttons */}
         <div className="flex gap-4 pt-4">
-          <Link href="/admin/music-library" className="flex-1">
+          <Link href="/biblioteca-musicas" className="flex-1">
             <Button type="button" variant="outline" className="w-full">
-              Cancel
+              Cancelar
             </Button>
           </Link>
           <Button
             type="submit"
             className="flex-1"
-            disabled={uploadMusic.isPending || !file}
+            disabled={enviarMusica.isPending || !arquivo}
           >
-            {uploadMusic.isPending ? (
+            {enviarMusica.isPending ? (
               <>
                 <Upload className="mr-2 h-4 w-4 animate-spin" />
                 Uploading...
