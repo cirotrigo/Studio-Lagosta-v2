@@ -115,6 +115,16 @@ export function useEnviarMusica() {
 
   return useMutation({
     mutationFn: async (data: CriarMusicaData) => {
+      console.log('📤 Enviando música:', {
+        nome: data.nome,
+        artista: data.artista,
+        genero: data.genero,
+        humor: data.humor,
+        projectId: data.projectId,
+        duracao: data.duracao,
+        tamanhoArquivo: data.arquivo.size,
+      });
+
       const formData = new FormData();
       formData.append('arquivo', data.arquivo);
       formData.append('nome', data.nome);
@@ -130,12 +140,29 @@ export function useEnviarMusica() {
         credentials: 'include',
       });
 
+      console.log('📥 Resposta da API:', {
+        status: response.status,
+        ok: response.ok,
+      });
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.erro || 'Falha ao enviar música');
+        let errorMessage = 'Falha ao enviar música';
+        try {
+          const error = await response.json();
+          errorMessage = error.erro || errorMessage;
+          console.error('❌ Erro da API:', error);
+        } catch (e) {
+          console.error('❌ Erro ao parsear resposta:', e);
+          const text = await response.text();
+          console.error('❌ Resposta do servidor:', text);
+          errorMessage = `Erro ${response.status}: ${text.substring(0, 100)}`;
+        }
+        throw new Error(errorMessage);
       }
 
-      return response.json();
+      const result = await response.json();
+      console.log('✅ Música enviada com sucesso:', result);
+      return result;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: chavesMusica.listas() });

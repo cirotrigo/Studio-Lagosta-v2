@@ -25,7 +25,7 @@ import { GradientsPanel } from './sidebar/gradients-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
-import { VideoExportQueueButton } from './video-export-queue-button'
+import { VideoExportButton } from './video-export-button'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { AgendaPanel } from './panels/agenda-panel'
@@ -535,7 +535,7 @@ function TemplateEditorContent() {
             <Save className="mr-2 h-4 w-4" />
             {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
           </Button>
-          <VideoExportQueueButton />
+          <VideoExportButton />
           <Button size="sm" variant="outline" onClick={toggleFullscreen}>
             <Maximize2 className="mr-2 h-4 w-4" />
             Tela Cheia
@@ -677,10 +677,10 @@ function TemplateEditorContent() {
                 <FileImage className="h-4 w-4" />
               </Button>
 
-              {/* Video Export Queue (if visible) */}
+              {/* Video Export Button (if visible) */}
               {templateType === 'VIDEO' && (
                 <div className="shadow-lg rounded-md overflow-hidden">
-                  <VideoExportQueueButton />
+                  <VideoExportButton />
                 </div>
               )}
             </div>
