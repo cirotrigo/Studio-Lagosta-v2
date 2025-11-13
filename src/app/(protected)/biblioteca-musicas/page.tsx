@@ -6,15 +6,48 @@ import { useBibliotecaMusicas, useDeletarMusica, type FaixaMusica } from '@/hook
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Music, Plus, Search, Trash2, Edit } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 export default function BibliotecaMusicasPage() {
   const { data: faixasMusica, isLoading } = useBibliotecaMusicas();
+  const deletarMusica = useDeletarMusica();
+  const { toast } = useToast();
   const [termoBusca, setTermoBusca] = useState('');
+  const [musicaParaDeletar, setMusicaParaDeletar] = useState<FaixaMusica | null>(null);
 
   const faixasFiltradas = faixasMusica?.filter((faixa) =>
     faixa.name.toLowerCase().includes(termoBusca.toLowerCase()) ||
     faixa.artist?.toLowerCase().includes(termoBusca.toLowerCase())
   );
+
+  const handleDeletar = async () => {
+    if (!musicaParaDeletar) return;
+
+    try {
+      await deletarMusica.mutateAsync(musicaParaDeletar.id);
+      toast({
+        title: 'Música excluída',
+        description: `"${musicaParaDeletar.name}" foi excluída com sucesso.`,
+      });
+      setMusicaParaDeletar(null);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao excluir',
+        description: 'Não foi possível excluir a música. Tente novamente.',
+      });
+    }
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -52,11 +85,18 @@ export default function BibliotecaMusicasPage() {
                   <p className="font-medium">{faixa.name}</p>
                   <p className="text-sm text-gray-500">{faixa.artist || 'Sem artista'}</p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex items-center gap-2">
                   <audio src={faixa.blobUrl} controls className="h-8" />
                   <Link href={`/biblioteca-musicas/${faixa.id}/editar`}>
                     <Button size="sm" variant="ghost"><Edit className="h-4 w-4" /></Button>
                   </Link>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setMusicaParaDeletar(faixa)}
+                  >
+                    <Trash2 className="h-4 w-4 text-red-500" />
+                  </Button>
                 </div>
               </div>
             ))}
@@ -68,6 +108,29 @@ export default function BibliotecaMusicasPage() {
           </div>
         )}
       </div>
+
+      {/* Dialog de confirmação de exclusão */}
+      <AlertDialog open={!!musicaParaDeletar} onOpenChange={(open) => !open && setMusicaParaDeletar(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar exclusão</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja excluir a música "{musicaParaDeletar?.name}"?
+              Esta ação não pode ser desfeita.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeletar}
+              className="bg-red-500 hover:bg-red-600"
+              disabled={deletarMusica.isPending}
+            >
+              {deletarMusica.isPending ? 'Excluindo...' : 'Excluir'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

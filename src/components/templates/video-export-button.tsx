@@ -27,7 +27,7 @@ import Konva from 'konva'
 
 export function VideoExportButton() {
   const editorContext = useTemplateEditor()
-  const { design, zoom } = editorContext
+  const { design, zoom, templateId, projectId } = editorContext
   const { toast } = useToast()
   const { canPerformOperation, getCost, refresh: refreshCredits, credits } = useCredits()
 
@@ -41,10 +41,11 @@ export function VideoExportButton() {
 
   // Estados para configuração de áudio
   const [isAudioModalOpen, setIsAudioModalOpen] = React.useState(false)
+  const [videoDuration, setVideoDuration] = React.useState<number | null>(null)
   const [audioConfig, setAudioConfig] = React.useState<AudioConfig>({
     source: 'original',
     startTime: 0,
-    endTime: videoLayer?.videoMetadata?.duration || 10,
+    endTime: 10, // Será atualizado quando a duração real for detectada
     volume: 80,
     fadeIn: false,
     fadeOut: false,
@@ -61,6 +62,122 @@ export function VideoExportButton() {
   React.useEffect(() => {
     selectedLayerIdsRef.current = editorContext.selectedLayerIds
   }, [editorContext.selectedLayerIds])
+
+  // Obter duração real do vídeo através do Konva Stage
+  React.useEffect(() => {
+    if (!videoLayer) {
+      console.log('[Video Export] ❌ videoLayer não existe')
+      return
+    }
+
+    console.log('[Video Export] 🔍 Iniciando detecção de duração do vídeo...')
+    console.log('[Video Export] VideoLayer ID:', videoLayer.id)
+    console.log('[Video Export] VideoLayer fileUrl:', videoLayer.fileUrl)
+
+    let attempts = 0
+    const maxAttempts = 30
+    const retryDelay = 300
+
+    const findAndUpdateDuration = () => {
+      attempts++
+      console.log(`[Video Export] 🔎 Tentativa ${attempts}/${maxAttempts}`)
+
+      // Buscar o vídeo através do Konva Stage
+      const findVideoFromKonva = (): HTMLVideoElement | null => {
+        // Tentar encontrar o stage Konva
+        const stages = (Konva as typeof Konva).stages
+        console.log('[Video Export] 📦 Konva.stages disponíveis:', stages?.length || 0)
+
+        if (!stages || stages.length === 0) {
+          console.log('[Video Export] ⚠️ Nenhum Konva Stage encontrado')
+          return null
+        }
+
+        // Procurar em todos os stages
+        for (const stage of stages) {
+          // Buscar o Image node com o ID do videoLayer
+          const imageNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
+
+          if (imageNode) {
+            console.log('[Video Export] 🎯 Konva Image node encontrado:', videoLayer.id)
+
+            // Pegar o elemento de vídeo HTML do Konva Image
+            const videoElement = imageNode.image() as HTMLVideoElement
+
+            if (videoElement && videoElement.tagName === 'VIDEO') {
+              console.log('[Video Export] ✅ Elemento de vídeo obtido do Konva Image:', {
+                src: videoElement.src?.substring(0, 50) + '...',
+                duration: videoElement.duration,
+                readyState: videoElement.readyState,
+              })
+              return videoElement
+            } else {
+              console.log('[Video Export] ⚠️ Image node não contém vídeo válido')
+            }
+          }
+        }
+
+        console.log('[Video Export] ❌ Vídeo não encontrado em nenhum Konva Stage')
+        return null
+      }
+
+      const videoElement = findVideoFromKonva()
+
+      if (!videoElement) {
+        if (attempts < maxAttempts) {
+          console.log(`[Video Export] ⏳ Aguardando ${retryDelay}ms antes da próxima tentativa...`)
+          setTimeout(findAndUpdateDuration, retryDelay)
+        } else {
+          console.error('[Video Export] ❌ Elemento de vídeo não encontrado após', maxAttempts, 'tentativas')
+        }
+        return
+      }
+
+      const updateDuration = () => {
+        console.log('[Video Export] 📊 Atualizando duração...')
+        console.log('[Video Export] Duration:', videoElement.duration)
+        console.log('[Video Export] ReadyState:', videoElement.readyState)
+
+        if (videoElement.duration && Number.isFinite(videoElement.duration) && videoElement.duration > 0) {
+          const realDuration = videoElement.duration
+          console.log('[Video Export] ✅✅✅ DURAÇÃO REAL DETECTADA:', realDuration.toFixed(2), 'segundos')
+          setVideoDuration(realDuration)
+
+          setAudioConfig(prev => {
+            console.log('[Video Export] Atualizando audioConfig.endTime de', prev.endTime, 'para', realDuration)
+            return {
+              ...prev,
+              endTime: realDuration,
+            }
+          })
+        } else if (attempts < maxAttempts) {
+          console.log(`[Video Export] ⚠️ Vídeo sem duração válida (${videoElement.duration}), tentando novamente...`)
+          setTimeout(findAndUpdateDuration, retryDelay)
+        } else {
+          console.error('[Video Export] ❌ Não foi possível obter duração válida após', maxAttempts, 'tentativas')
+        }
+      }
+
+      // Se já está carregado
+      if (videoElement.readyState >= 1) {
+        console.log('[Video Export] 📺 Vídeo já está carregado (readyState >= 1)')
+        updateDuration()
+      } else {
+        console.log('[Video Export] ⏳ Aguardando evento loadedmetadata...')
+        videoElement.addEventListener('loadedmetadata', () => {
+          console.log('[Video Export] 🎬 Evento loadedmetadata disparado!')
+          updateDuration()
+        }, { once: true })
+        setTimeout(findAndUpdateDuration, retryDelay)
+      }
+    }
+
+    // Iniciar busca com delay para dar tempo do Konva renderizar
+    setTimeout(() => {
+      console.log('[Video Export] 🚀 Iniciando busca através do Konva Stage...')
+      findAndUpdateDuration()
+    }, 1000) // 1 segundo de delay inicial para garantir que o Konva renderizou
+  }, [videoLayer])
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
@@ -141,20 +258,95 @@ export function VideoExportButton() {
           fps: 30,
           format: exportFormat,
           quality: 0.8,
+          audioConfig: audioConfig, // Pass audio configuration
         },
         (progress) => {
           setExportProgress(progress)
         }
       )
 
-      // 3. Confirmar exportação e deduzir créditos
+      // 3. Gerar thumbnail do primeiro frame do vídeo
+      setExportProgress({ phase: 'finalizing', progress: 90 })
+      console.log('[Video Export] Gerando thumbnail...')
+
+      let thumbnailBlob: Blob | null = null
+      try {
+        // Criar vídeo temporário para capturar primeiro frame
+        const videoUrl = URL.createObjectURL(blob)
+        const videoEl = document.createElement('video')
+        videoEl.src = videoUrl
+        videoEl.muted = true
+
+        await new Promise<void>((resolve, reject) => {
+          videoEl.addEventListener('loadeddata', () => resolve(), { once: true })
+          videoEl.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo')), { once: true })
+        })
+
+        // Capturar primeiro frame
+        const canvas = document.createElement('canvas')
+        canvas.width = videoEl.videoWidth
+        canvas.height = videoEl.videoHeight
+        const ctx = canvas.getContext('2d')
+
+        if (ctx) {
+          ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height)
+          thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
+            canvas.toBlob(
+              (b) => (b ? resolve(b) : reject(new Error('Falha ao gerar thumbnail'))),
+              'image/jpeg',
+              0.8
+            )
+          })
+        }
+
+        URL.revokeObjectURL(videoUrl)
+        console.log('[Video Export] Thumbnail gerado:', thumbnailBlob?.size, 'bytes')
+      } catch (error) {
+        console.warn('[Video Export] Falha ao gerar thumbnail:', error)
+        // Continuar sem thumbnail se falhar
+      }
+
+      // 4. Fazer upload do vídeo para Vercel Blob e salvar em Criativos
+      setExportProgress({ phase: 'finalizing', progress: 95 })
+
+      const fileName = `videos/${design.name || 'video'}-${Date.now()}.${exportFormat}`
+      const formData = new FormData()
+      formData.append('video', blob, fileName)
+      if (thumbnailBlob) {
+        formData.append('thumbnail', thumbnailBlob, 'thumbnail.jpg')
+      }
+      formData.append('templateId', templateId.toString())
+      formData.append('projectId', projectId.toString())
+      formData.append('fileName', fileName)
+
+      // Calcular duração real do vídeo exportado
+      const exportedDuration = audioConfig?.source === 'library'
+        ? (audioConfig.endTime - audioConfig.startTime)
+        : (videoDuration || videoLayer.videoMetadata?.duration || 10)
+      console.log('[Video Export] Duração do vídeo exportado:', exportedDuration, 'segundos')
+      formData.append('duration', exportedDuration.toString())
+
+      const saveResponse = await fetch('/api/export/video/save', {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!saveResponse.ok) {
+        const error = await saveResponse.json()
+        throw new Error(error.error || 'Falha ao salvar vídeo')
+      }
+
+      const saveResult = await saveResponse.json()
+      console.log('[Video Export] Vídeo salvo com sucesso:', saveResult.generation.id)
+
+      // 4. Confirmar exportação e deduzir créditos
       try {
         const confirmResponse = await fetch('/api/export/video/confirm', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             layerId: videoLayer.id,
-            duration: videoLayer.videoMetadata?.duration || 10,
+            duration: exportedDuration,
             fileSize: blob.size,
           }),
         })
@@ -162,29 +354,17 @@ export function VideoExportButton() {
         if (!confirmResponse.ok) {
           const error = await confirmResponse.json()
           console.warn('Falha ao confirmar exportação:', error)
-          // Continuar mesmo se a confirmação falhar (já temos o vídeo)
         }
       } catch (confirmError) {
         console.error('Erro ao confirmar exportação:', confirmError)
-        // Não bloquear o download do vídeo por erro na confirmação
       }
-
-      // 4. Download do vídeo
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `${design.name || 'video'}-${Date.now()}.${exportFormat}`
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
 
       // 5. Atualizar saldo de créditos
       await refreshCredits()
 
       toast({
         title: 'Vídeo exportado com sucesso!',
-        description: `${creditCost} créditos foram deduzidos do seu saldo.`,
+        description: `Vídeo disponível na aba Criativos. ${creditCost} créditos foram deduzidos.`,
       })
 
       setIsOpen(false)
@@ -389,7 +569,7 @@ export function VideoExportButton() {
       <AudioSelectionModal
         open={isAudioModalOpen}
         onOpenChange={setIsAudioModalOpen}
-        videoDuration={videoLayer?.videoMetadata?.duration || 10}
+        videoDuration={videoDuration || 10}
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)

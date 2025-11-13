@@ -1,11 +1,13 @@
 import Konva from 'konva'
 import type { Layer, DesignData } from '@/types/template'
+import type { AudioConfig } from '@/components/audio/audio-selection-modal'
 
 export interface VideoExportOptions {
   fps?: number // Frames por segundo (padrão: 30)
   duration?: number // Duração em segundos
   format?: 'webm' | 'mp4' // Formato de saída
   quality?: number // Qualidade (0-1)
+  audioConfig?: AudioConfig // Configuração de áudio (padrão: áudio original)
 }
 
 export interface VideoExportProgress {
@@ -142,6 +144,119 @@ function restoreStageState(
 }
 
 /**
+ * Carrega áudio de uma URL e retorna o ArrayBuffer
+ */
+async function loadAudioFromUrl(url: string): Promise<ArrayBuffer> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Falha ao carregar áudio: ${response.statusText}`)
+  }
+  return response.arrayBuffer()
+}
+
+/**
+ * Cria um AudioBuffer processado com volume, fade e trim
+ */
+async function createProcessedAudioBuffer(
+  audioContext: AudioContext,
+  arrayBuffer: ArrayBuffer,
+  audioConfig: AudioConfig,
+  videoDuration: number
+): Promise<AudioBuffer> {
+  // Decodificar áudio
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+  // Calcular duração do trecho selecionado
+  const { startTime, endTime, volume, fadeIn, fadeOut, fadeInDuration, fadeOutDuration } = audioConfig
+  const selectedDuration = endTime - startTime
+  const outputDuration = Math.min(selectedDuration, videoDuration)
+
+  // Criar novo buffer para o áudio processado
+  const processedBuffer = audioContext.createBuffer(
+    audioBuffer.numberOfChannels,
+    Math.ceil(outputDuration * audioBuffer.sampleRate),
+    audioBuffer.sampleRate
+  )
+
+  // Copiar e processar cada canal
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const inputData = audioBuffer.getChannelData(channel)
+    const outputData = processedBuffer.getChannelData(channel)
+
+    // Índices de início e fim no buffer original
+    const startSample = Math.floor(startTime * audioBuffer.sampleRate)
+    const samplesToProcess = outputData.length
+
+    for (let i = 0; i < samplesToProcess; i++) {
+      const inputIndex = startSample + i
+      if (inputIndex >= inputData.length) {
+        outputData[i] = 0 // Silêncio se ultrapassar o áudio original
+        continue
+      }
+
+      let sample = inputData[inputIndex]
+
+      // Aplicar volume (0-100 para 0-1)
+      sample *= volume / 100
+
+      // Aplicar fade in
+      if (fadeIn && i < fadeInDuration * audioBuffer.sampleRate) {
+        const fadeProgress = i / (fadeInDuration * audioBuffer.sampleRate)
+        sample *= fadeProgress
+      }
+
+      // Aplicar fade out
+      if (fadeOut && i > samplesToProcess - fadeOutDuration * audioBuffer.sampleRate) {
+        const fadeProgress =
+          (samplesToProcess - i) / (fadeOutDuration * audioBuffer.sampleRate)
+        sample *= fadeProgress
+      }
+
+      outputData[i] = sample
+    }
+  }
+
+  return processedBuffer
+}
+
+/**
+ * Cria um MediaStream com áudio processado
+ */
+function createAudioStreamFromBuffer(
+  audioContext: AudioContext,
+  audioBuffer: AudioBuffer
+): MediaStreamAudioDestinationNode {
+  const source = audioContext.createBufferSource()
+  source.buffer = audioBuffer
+
+  const destination = audioContext.createMediaStreamDestination()
+  source.connect(destination)
+
+  // Iniciar reprodução
+  source.start(0)
+
+  return destination
+}
+
+/**
+ * Cria uma track de áudio silenciosa
+ */
+function createSilentAudioTrack(audioContext: AudioContext): MediaStreamTrack {
+  const oscillator = audioContext.createOscillator()
+  const gainNode = audioContext.createGain()
+  const destination = audioContext.createMediaStreamDestination()
+
+  // Volume zero = silêncio
+  gainNode.gain.value = 0
+
+  oscillator.connect(gainNode)
+  gainNode.connect(destination)
+  oscillator.start()
+
+  return destination.stream.getAudioTracks()[0]
+}
+
+/**
  * Exporta o vídeo com todas as layers sobrepostas usando MediaRecorder API
  * IMPORTANTE: Requer funções do React Context para limpar seleção e zoom
  *
@@ -165,7 +280,7 @@ export async function exportVideoWithLayers(
   options: VideoExportOptions = {},
   onProgress?: (progress: VideoExportProgress) => void
 ): Promise<Blob> {
-  const { fps = 30, duration, format = 'webm', quality = 0.8 } = options
+  const { fps = 30, duration, format = 'webm', quality = 0.8, audioConfig } = options
 
   onProgress?.({ phase: 'preparing', progress: 0 })
 
@@ -201,8 +316,16 @@ export async function exportVideoWithLayers(
     }
 
     // Calcular duração do vídeo
-    const videoDuration =
-      duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
+    // Se usar música da biblioteca, usar duração do trecho selecionado
+    // Caso contrário, usar duração total do vídeo
+    let videoDuration: number
+    if (audioConfig?.source === 'library' && audioConfig.startTime !== undefined && audioConfig.endTime !== undefined) {
+      videoDuration = audioConfig.endTime - audioConfig.startTime
+      console.log(`[Video Export] Usando duração do trecho selecionado da música: ${videoDuration}s (${audioConfig.startTime}s - ${audioConfig.endTime}s)`)
+    } else {
+      videoDuration = duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
+      console.log(`[Video Export] Usando duração total do vídeo: ${videoDuration}s`)
+    }
 
     // Posicionar vídeo no início e garantir que o primeiro frame está renderizado
     videoElement.currentTime = 0
@@ -264,44 +387,88 @@ export async function exportVideoWithLayers(
     // Criar stream do canvas offscreen
     const canvasStream = offscreenCanvas.captureStream(fps)
 
-    // Tentar adicionar o áudio do vídeo original ao stream
+    // Processar áudio de acordo com audioConfig
     let stream = canvasStream
+    const audioSource = audioConfig?.source || 'original'
+
     try {
-      // Verificar se o vídeo tem áudio (usando type assertion para propriedades específicas do navegador)
-      const videoWithAudioProps = videoElement as HTMLVideoElement & {
-        mozHasAudio?: boolean
-        webkitAudioDecodedByteCount?: number
-      }
+      const audioContext = new AudioContext()
 
-      const videoHasAudio = videoWithAudioProps.mozHasAudio !== undefined
-        ? videoWithAudioProps.mozHasAudio
-        : videoWithAudioProps.webkitAudioDecodedByteCount !== undefined
-          ? videoWithAudioProps.webkitAudioDecodedByteCount > 0
-          : true // Assume que tem áudio por padrão
-
-      if (videoHasAudio) {
-        // Criar AudioContext para capturar áudio do vídeo
-        const audioContext = new AudioContext()
-        const source = audioContext.createMediaElementSource(videoElement)
-        const destination = audioContext.createMediaStreamDestination()
-
-        // Conectar o áudio do vídeo ao destination (mantém o áudio original)
-        source.connect(destination)
-        // Também conectar ao destino padrão para o usuário ouvir durante a exportação
-        source.connect(audioContext.destination)
-
-        // Combinar stream de vídeo (canvas) com stream de áudio (vídeo original)
-        const audioTracks = destination.stream.getAudioTracks()
+      if (audioSource === 'mute') {
+        // Caso 1: Vídeo mudo - criar track silenciosa
+        console.log('[Video Export] Criando vídeo sem áudio (mudo)')
+        const silentTrack = createSilentAudioTrack(audioContext)
         const videoTracks = canvasStream.getVideoTracks()
+        stream = new MediaStream([...videoTracks, silentTrack])
+      } else if (audioSource === 'library' && audioConfig?.musicId) {
+        // Caso 2: Música da biblioteca
+        console.log('[Video Export] Carregando música da biblioteca:', audioConfig.musicId)
+        onProgress?.({ phase: 'preparing', progress: 45 })
 
+        // Buscar informações da música
+        const musicResponse = await fetch(`/api/biblioteca-musicas/${audioConfig.musicId}`)
+        if (!musicResponse.ok) {
+          throw new Error('Falha ao buscar informações da música')
+        }
+        const musicData = await musicResponse.json()
+
+        // Carregar áudio da biblioteca
+        const musicArrayBuffer = await loadAudioFromUrl(musicData.blobUrl)
+
+        // Processar áudio (volume, fade, trim)
+        const processedAudioBuffer = await createProcessedAudioBuffer(
+          audioContext,
+          musicArrayBuffer,
+          audioConfig,
+          videoDuration
+        )
+
+        // Criar stream de áudio processado
+        const audioDestination = createAudioStreamFromBuffer(audioContext, processedAudioBuffer)
+
+        // Combinar stream de vídeo com áudio processado
+        const audioTracks = audioDestination.stream.getAudioTracks()
+        const videoTracks = canvasStream.getVideoTracks()
         stream = new MediaStream([...videoTracks, ...audioTracks])
 
-        console.log('[Video Export] Áudio do vídeo original adicionado ao stream')
+        console.log('[Video Export] Música da biblioteca adicionada com sucesso')
       } else {
-        console.log('[Video Export] Vídeo não possui áudio')
+        // Caso 3: Áudio original do vídeo (padrão)
+        console.log('[Video Export] Usando áudio original do vídeo')
+
+        // Verificar se o vídeo tem áudio
+        const videoWithAudioProps = videoElement as HTMLVideoElement & {
+          mozHasAudio?: boolean
+          webkitAudioDecodedByteCount?: number
+        }
+
+        const videoHasAudio = videoWithAudioProps.mozHasAudio !== undefined
+          ? videoWithAudioProps.mozHasAudio
+          : videoWithAudioProps.webkitAudioDecodedByteCount !== undefined
+            ? videoWithAudioProps.webkitAudioDecodedByteCount > 0
+            : true // Assume que tem áudio por padrão
+
+        if (videoHasAudio) {
+          const source = audioContext.createMediaElementSource(videoElement)
+          const destination = audioContext.createMediaStreamDestination()
+
+          // Conectar o áudio do vídeo ao destination
+          source.connect(destination)
+          // Também conectar ao destino padrão para o usuário ouvir durante a exportação
+          source.connect(audioContext.destination)
+
+          // Combinar stream de vídeo com stream de áudio
+          const audioTracks = destination.stream.getAudioTracks()
+          const videoTracks = canvasStream.getVideoTracks()
+          stream = new MediaStream([...videoTracks, ...audioTracks])
+
+          console.log('[Video Export] Áudio original do vídeo adicionado ao stream')
+        } else {
+          console.log('[Video Export] Vídeo não possui áudio')
+        }
       }
     } catch (error) {
-      console.warn('[Video Export] Não foi possível adicionar áudio ao stream:', error)
+      console.warn('[Video Export] Erro ao processar áudio:', error)
       // Continuar sem áudio se falhar
       stream = canvasStream
     }
