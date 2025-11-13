@@ -27,11 +27,13 @@ import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
 
 export interface AudioConfig {
-  source: 'original' | 'library' | 'mute';
+  source: 'original' | 'library' | 'mute' | 'mix';
   musicId?: number;
   startTime: number;
   endTime: number;
   volume: number;
+  volumeOriginal?: number; // Volume do áudio original quando source = 'mix'
+  volumeMusic?: number; // Volume da música quando source = 'mix'
   fadeIn: boolean;
   fadeOut: boolean;
   fadeInDuration: number;

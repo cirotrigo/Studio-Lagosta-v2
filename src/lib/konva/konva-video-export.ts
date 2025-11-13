@@ -435,36 +435,65 @@ export async function exportVideoWithLayers(
       } else {
         // Caso 3: Áudio original do vídeo (padrão)
         console.log('[Video Export] Usando áudio original do vídeo')
+        console.log('[Video Export] URL do vídeo:', videoElement.src?.substring(0, 100))
 
-        // Verificar se o vídeo tem áudio
-        const videoWithAudioProps = videoElement as HTMLVideoElement & {
-          mozHasAudio?: boolean
-          webkitAudioDecodedByteCount?: number
-        }
+        try {
+          // Estratégia: Criar um vídeo clone para capturar áudio sem interferir no original
+          const clonedVideo = document.createElement('video')
+          clonedVideo.src = videoElement.src
+          clonedVideo.crossOrigin = 'anonymous'
+          clonedVideo.muted = false // Importante: não mutar o clone
 
-        const videoHasAudio = videoWithAudioProps.mozHasAudio !== undefined
-          ? videoWithAudioProps.mozHasAudio
-          : videoWithAudioProps.webkitAudioDecodedByteCount !== undefined
-            ? videoWithAudioProps.webkitAudioDecodedByteCount > 0
-            : true // Assume que tem áudio por padrão
+          console.log('[Video Export] Aguardando carregamento do vídeo clone...')
 
-        if (videoHasAudio) {
-          const source = audioContext.createMediaElementSource(videoElement)
-          const destination = audioContext.createMediaStreamDestination()
+          // Aguardar vídeo clone carregar
+          await new Promise<void>((resolve, reject) => {
+            clonedVideo.addEventListener('loadedmetadata', () => {
+              console.log('[Video Export] ✅ Vídeo clone carregado')
+              resolve()
+            }, { once: true })
 
-          // Conectar o áudio do vídeo ao destination
-          source.connect(destination)
-          // Também conectar ao destino padrão para o usuário ouvir durante a exportação
-          source.connect(audioContext.destination)
+            clonedVideo.addEventListener('error', (e) => {
+              console.error('[Video Export] ❌ Erro ao carregar vídeo clone:', e)
+              reject(new Error('Falha ao carregar vídeo clone'))
+            }, { once: true })
 
-          // Combinar stream de vídeo com stream de áudio
-          const audioTracks = destination.stream.getAudioTracks()
-          const videoTracks = canvasStream.getVideoTracks()
-          stream = new MediaStream([...videoTracks, ...audioTracks])
+            clonedVideo.load()
 
-          console.log('[Video Export] Áudio original do vídeo adicionado ao stream')
-        } else {
-          console.log('[Video Export] Vídeo não possui áudio')
+            // Timeout de segurança
+            setTimeout(() => reject(new Error('Timeout ao carregar vídeo clone')), 10000)
+          })
+
+          // Tentar capturar stream do clone
+          // @ts-expect-error - captureStream() existe em navegadores modernos
+          const cloneStream = clonedVideo.captureStream() as MediaStream
+          const audioTracks = cloneStream.getAudioTracks()
+
+          console.log('[Video Export] Audio tracks encontradas:', audioTracks.length)
+
+          if (audioTracks.length > 0) {
+            console.log('[Video Export] ✅ Áudio original capturado com sucesso')
+
+            // Posicionar clone no início mas NÃO reproduzir ainda
+            clonedVideo.currentTime = 0
+            clonedVideo.muted = false
+            console.log('[Video Export] Clone posicionado em 0s, aguardando início da gravação...')
+
+            // Combinar stream de vídeo (do canvas) com áudio (do clone)
+            const videoTracks = canvasStream.getVideoTracks()
+            stream = new MediaStream([...videoTracks, ...audioTracks])
+
+            // Manter referência do clone para sincronização durante a gravação
+            // @ts-expect-error - adicionar propriedade customizada
+            stream._clonedVideoElement = clonedVideo
+          } else {
+            console.log('[Video Export] ⚠️ Vídeo não possui faixas de áudio')
+            stream = canvasStream
+          }
+        } catch (error) {
+          console.error('[Video Export] ❌ Erro ao capturar áudio original:', error)
+          console.log('[Video Export] Continuando sem áudio')
+          stream = canvasStream
         }
       }
     } catch (error) {
@@ -518,11 +547,32 @@ export async function exportVideoWithLayers(
       }
     }
 
+    // Reproduzir vídeo clone simultaneamente (se existir) para capturar áudio
+    // @ts-expect-error - propriedade customizada
+    const clonedVideo = stream._clonedVideoElement as HTMLVideoElement | undefined
+    if (clonedVideo) {
+      try {
+        await clonedVideo.play()
+        console.log('[Video Export] 🎵 Clone iniciado - áudio sendo capturado')
+      } catch (error) {
+        console.warn('[Video Export] Erro ao reproduzir clone (áudio pode não funcionar):', error)
+      }
+    }
+
     // Loop de animação para copiar o stage para o canvas offscreen frame por frame
     let animationId: number | null = null
     const startTime = Date.now()
 
     const animationLoop = () => {
+      // Sincronizar tempo do clone com o vídeo original (se existir)
+      if (clonedVideo && !clonedVideo.paused) {
+        const timeDiff = Math.abs(clonedVideo.currentTime - videoElement.currentTime)
+        // Se diferença > 0.1s, ressincronizar
+        if (timeDiff > 0.1) {
+          clonedVideo.currentTime = videoElement.currentTime
+          console.log('[Video Export] 🔄 Clone ressincronizado:', videoElement.currentTime.toFixed(2), 's')
+        }
+      }
       // 1. Forçar redraw do stage para atualizar com frame atual do vídeo
       videoNode.getLayer()?.batchDraw()
       stage.batchDraw()
@@ -561,6 +611,14 @@ export async function exportVideoWithLayers(
         }
 
         videoElement.pause()
+
+        // Parar vídeo clone se existir
+        // @ts-expect-error - propriedade customizada
+        const clonedVideo = stream._clonedVideoElement as HTMLVideoElement | undefined
+        if (clonedVideo) {
+          clonedVideo.pause()
+          console.log('[Video Export] Vídeo clone pausado')
+        }
 
         // Aguardar um pouco antes de parar para garantir que último frame foi capturado
         setTimeout(() => {
