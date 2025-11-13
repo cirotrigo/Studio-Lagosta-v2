@@ -14,6 +14,7 @@ import {
   MessageSquare,
   Building2,
   Calendar,
+  Music,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,7 @@ export const navigationItems = [
   { name: "Painel", href: "/studio", icon: Home },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
   { name: "Agenda", href: "/agenda", icon: Calendar },
+  { name: "Biblioteca de Músicas", href: "/biblioteca-musicas", icon: Music },
   { name: "Organização", href: "/organization", icon: Building2 },
   { name: "Prompts", href: "/prompts", icon: MessageSquare },
   { name: "Base de Conhecimento", href: "/knowledge", icon: BookOpen },
