@@ -815,12 +815,24 @@ model VideoProcessingJob {
   generationId    String?     @unique
   generation      Generation? @relation("GenerationVideoJob", fields: [generationId], references: [id])
 
+  // Audio configuration
+  audioSource     String? // 'original' | 'music' | 'none'
+  musicId         Int? // FK para MusicLibrary
+  music           MusicLibrary? @relation(fields: [musicId], references: [id])
+  musicStartTime  Float? // Início do trecho selecionado (segundos)
+  musicEndTime    Float? // Fim do trecho selecionado (segundos)
+  audioVolume     Float? @default(1.0) // 0.0 a 1.0
+  audioFadeIn     Float? // duração do fade in (segundos)
+  audioFadeOut    Float? // duração do fade out (segundos)
+  audioLoop       Boolean? @default(false) // se música deve fazer loop
+
   @@index([userId])
   @@index([clerkUserId])
   @@index([status])
   @@index([createdAt])
   @@index([templateId])
   @@index([projectId])
+  @@index([musicId])
 }
 
 // =============================================================================
@@ -1248,4 +1260,35 @@ model InstagramGoalSettings {
 
   @@index([organizationId])
   @@index([isActive])
+}
+
+// =============================================================================
+// Music Library for Video Exports
+// =============================================================================
+
+model MusicLibrary {
+  id          Int      @id @default(autoincrement())
+  name        String
+  artist      String?
+  duration    Float    // duração em segundos
+  blobUrl     String   // URL do arquivo no Vercel Blob
+  blobSize    Int      // tamanho em bytes
+  genre       String?  // Rock, Pop, Electronic, etc.
+  mood        String?  // Happy, Sad, Energetic, Calm, etc.
+  bpm         Int?     // batidas por minuto
+  isActive    Boolean  @default(true)
+  isPublic    Boolean  @default(true) // futuro: músicas privadas por usuário
+  thumbnailUrl String? // capa/artwork da música
+
+  // Metadados
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?  // admin que fez upload
+
+  // Relação com vídeos gerados (audit trail)
+  usedInVideos VideoProcessingJob[]
+
+  @@index([isActive, isPublic])
+  @@index([genre])
+  @@index([mood])
 }

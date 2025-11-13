@@ -1,5 +1,30 @@
 # Plano de Implementação: Biblioteca de Música para Exportação de Vídeos
 
+## 🎯 Resumo Executivo
+
+Este documento apresenta o planejamento completo para implementar uma **biblioteca de música** integrada ao editor de vídeos, inspirada na interface intuitiva do **Instagram Stories/Reels**.
+
+### Principais Features:
+- ✅ **3 opções de áudio**: Original, Música da Biblioteca, ou Sem Áudio
+- 📊 **Timeline interativa com waveform** visual (estilo Instagram)
+- ✂️ **Trim handles arrastáveis** para selecionar trecho exato da música
+- 🔁 **Loop inteligente** quando música é menor que vídeo
+- ✂️ **Corte automático** quando música é maior que vídeo
+- 🎛️ **Controles de volume** e fade in/out
+- 🎵 **Galeria de músicas** com preview, busca e filtros
+- 📱 **UX mobile-first** adaptada para desktop
+
+### Estimativa: 3-4 semanas (5 sprints)
+
+### Diferencial vs Instagram:
+- Desktop-first com precisão de mouse/teclado
+- Waveform visual completo
+- Zoom da timeline para ajustes precisos
+- Detecção inteligente de refrão (IA/heurística)
+- Preview em tempo real com sincronização
+
+---
+
 ## 📊 Situação Atual
 
 ### ✅ O que já funciona:
@@ -158,62 +183,260 @@ src/app/admin/music-library/
 
 ---
 
-### **Fase 3: Seletor de Música no Editor** (Prioridade: MÉDIA)
+### **Fase 3: Seletor de Música no Editor** (Prioridade: ALTA)
 
-#### 3.1 Modal de Seleção de Áudio
+#### 3.1 Modal de Seleção de Áudio com Timeline Interativa
 
 **Componente:** `src/components/templates/modals/audio-selection-modal.tsx`
 
-**Features:**
-- 🎚️ Opções de áudio:
+**Inspiração:** Interface do Instagram Stories/Reels com melhorias para desktop
+
+**Features principais:**
+- 🎚️ **Opções de áudio** (Radio buttons):
   - ✅ **Áudio Original** (padrão)
   - 🎵 **Música da Biblioteca**
   - 🔇 **Sem Áudio**
-- 🎵 Galeria de músicas com:
-  - Preview de áudio (play/pause)
-  - Filtros por gênero e mood
-  - Busca por nome/artista
-  - Visualização de duração
-  - Indicador de compatibilidade de duração com o vídeo
-- 🎛️ Controle de volume (slider 0-100%)
-- 👁️ Preview visual da forma de onda (opcional)
 
-**Layout sugerido:**
+- 🎵 **Galeria de músicas** com grid cards:
+  - Preview de áudio (play/pause inline)
+  - Capa/artwork da música
+  - Nome, artista, duração
+  - Tags de gênero e mood (badges coloridos)
+  - Indicador visual de compatibilidade com vídeo
+  - Filtros por gênero, mood e duração
+  - Busca por nome/artista em tempo real
+
+- 📊 **Timeline de Ajuste (estilo Instagram)**:
+  - **Waveform visual** da música selecionada
+  - **Trim handles** (alças de corte) arrastáveis nas extremidades
+  - **Frame box** visual destacando o trecho selecionado
+  - **Snap points** para precisão (início, fim, beats principais)
+  - **Feedback háptico** (se disponível no navegador)
+  - **Preview em tempo real** ao arrastar os handles
+  - **Indicador de duração** do trecho selecionado
+  - **Loop visual** quando música é menor que vídeo
+  - **Zoom da timeline** para ajustes precisos
+
+- 🎛️ **Controles adicionais**:
+  - Volume (slider 0-100%) com ícone de speaker
+  - Fade in/out (toggles opcionais)
+  - Botão "Iniciar do refrão" (IA/heurística)
+  - Reset para seleção inicial
+
+**Layout detalhado (Modal de 2 etapas):**
+
 ```
-┌─────────────────────────────────────┐
-│  Opções de Áudio                    │
-│  ○ Áudio Original do Vídeo          │
-│  ● Música da Biblioteca             │
-│  ○ Sem Áudio                        │
-├─────────────────────────────────────┤
-│  [Buscar músicas...]                │
-│  [Rock ▼] [Energetic ▼] [Duração ▼]│
-├─────────────────────────────────────┤
-│  ┌───────────────────────────────┐  │
-│  │ 🎵 Summer Vibes                │  │
-│  │ Artist: John Doe               │  │
-│  │ [▶] 2:34 | Rock | Energetic   │  │
-│  └───────────────────────────────┘  │
-│  ┌───────────────────────────────┐  │
-│  │ 🎵 Night Drive                 │  │
-│  │ Artist: Jane Smith             │  │
-│  │ [▶] 3:12 | Electronic | Calm  │  │
-│  └───────────────────────────────┘  │
-├─────────────────────────────────────┤
-│  Volume: [────●───────] 80%         │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  🎵 Adicionar Música ao Vídeo                     [X]     │
+├──────────────────────────────────────────────────────────┤
+│                                                            │
+│  ETAPA 1: SELECIONAR FONTE DE ÁUDIO                       │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  ○ Áudio Original do Vídeo                         │   │
+│  │  ● Música da Biblioteca                            │   │
+│  │  ○ Sem Áudio (Mudo)                                │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  ETAPA 2: ESCOLHER MÚSICA                                 │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  [🔍 Buscar músicas...]                            │   │
+│  │  [Todos ▼] [Mood ▼] [Duração ▼]  [Limpar filtros] │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  ┌──────────────────────────────────────────────────────┐ │
+│  │ 🎵 MÚSICA SELECIONADA                               │ │
+│  │ ┌──────────────┐  Summer Vibes                      │ │
+│  │ │   [Album     │  John Doe · Rock                   │ │
+│  │ │    Art]      │  2:34  [🔁 Loop] ✓ Compatível      │ │
+│  │ └──────────────┘  [▶ Play]  [✓ Usando esta]        │ │
+│  └──────────────────────────────────────────────────────┘ │
+│                                                            │
+│  📊 AJUSTAR TRECHO DA MÚSICA                              │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  Vídeo: 0:00 ──────────────────────────── 0:30    │   │
+│  │                                                      │   │
+│  │  [|────📊📊📊📊📊📊📊📊📊📊────|]  ← Waveform   │   │
+│  │   ▲                              ▲                  │   │
+│  │ Início                          Fim                 │   │
+│  │   (arraste para ajustar)                            │   │
+│  │                                                      │   │
+│  │  Trecho: 0:15 → 0:45 (30s)     [Refrão] [Reset]   │   │
+│  │                                                      │   │
+│  │  ⚠️ Música é maior que vídeo - será cortada        │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  🎛️ CONFIGURAÇÕES DE ÁUDIO                                │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  Volume:  🔊 [──────●────] 80%                     │   │
+│  │  Fade In:  ○ Ativado (0.5s)                        │   │
+│  │  Fade Out: ○ Ativado (0.5s)                        │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  GALERIA DE MÚSICAS                                       │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │ Grid com scroll:                                    │   │
+│  │                                                      │   │
+│  │ ┌──────┐ ┌──────┐ ┌──────┐ ┌──────┐               │   │
+│  │ │ 🎵   │ │ 🎵   │ │ 🎵   │ │ 🎵   │               │   │
+│  │ │Album │ │Album │ │Album │ │Album │               │   │
+│  │ │ Art  │ │ Art  │ │ Art  │ │ Art  │               │   │
+│  │ │      │ │      │ │      │ │      │               │   │
+│  │ │Summer│ │Night │ │Happy │ │Chill │               │   │
+│  │ │Vibes │ │Drive │ │Days  │ │Beats │               │   │
+│  │ │2:34  │ │3:12  │ │1:45⚠│ │4:20⚠│               │   │
+│  │ │[▶]✓ │ │[▶]  │ │[▶]  │ │[▶]  │               │   │
+│  │ └──────┘ └──────┘ └──────┘ └──────┘               │   │
+│  │                                                      │   │
+│  │ Legenda:                                            │   │
+│  │ ✓ = Selecionada | ⚠️ = Duração incompatível        │   │
+│  └────────────────────────────────────────────────────┘   │
+│                                                            │
+│  [Cancelar]                    [Confirmar e Continuar]    │
+└──────────────────────────────────────────────────────────┘
 ```
 
-#### 3.2 Integração com Botões de Exportação
+#### 3.2 Componentes de Timeline Interativa
+
+**Biblioteca recomendada:** [Wavesurfer.js](https://wavesurfer.xyz/) com Regions plugin
+
+**Componentes necessários:**
+
+```typescript
+// src/components/templates/audio-timeline/
+├── AudioWaveformTimeline.tsx   // Timeline principal com waveform
+├── TrimHandle.tsx              // Alças de corte arrastáveis
+├── PlayheadIndicator.tsx       // Indicador de posição de reprodução
+├── LoopIndicator.tsx           // Indicador visual de loop
+├── SnapPointMarkers.tsx        // Marcadores de snap points
+├── DurationDisplay.tsx         // Display de duração selecionada
+└── TimelineZoomControls.tsx    // Controles de zoom da timeline
+```
+
+**Pacotes NPM necessários:**
+```json
+{
+  "dependencies": {
+    "wavesurfer.js": "^7.8.0",           // Timeline e waveform
+    "wavesurfer-regions": "^7.8.0",      // Seleção de trechos
+    "react-use": "^17.5.1",               // Hooks utilitários (useAudio, etc)
+    "music-metadata-browser": "^2.5.10"   // Metadados de áudio
+  }
+}
+```
+
+#### 3.3 Funcionalidades Avançadas da Timeline
+
+**1. Detecção Inteligente de Refrão:**
+- Analisar padrões de volume e repetição
+- Sugerir automaticamente o trecho mais "popular" da música
+- Botão "Iniciar do Refrão" com IA/heurística
+
+**2. Snap Points Inteligentes:**
+- Snap para início/fim do vídeo
+- Snap para beats detectados (se BPM disponível)
+- Snap para silêncios/pausas na música
+- Feedback visual + haptic feedback
+
+**3. Visualizações de Compatibilidade:**
+```
+Música MENOR que vídeo:
+  Música: [████────]
+  Vídeo:  [████████]
+  Status: 🔁 Música vai se repetir 2x
+
+Música MAIOR que vídeo:
+  Música: [████████████]
+  Vídeo:  [████]
+  Status: ✂️ Música será cortada em 0:30
+
+Música IGUAL ao vídeo:
+  Música: [████████]
+  Vídeo:  [████████]
+  Status: ✓ Duração perfeita!
+```
+
+**4. Preview em Tempo Real:**
+- Reproduzir trecho ao arrastar trim handles
+- Preview de loop visual
+- Sincronização com preview do vídeo (opcional)
+
+**5. Gestos e Interações:**
+- **Arrastar handles**: Ajustar início/fim
+- **Click na timeline**: Mover playhead
+- **Scroll/pinch**: Zoom da timeline
+- **Double-click**: Reset para duração total
+- **Space**: Play/pause do preview
+- **Teclas ←/→**: Ajuste fino (frame by frame)
+
+#### 3.4 Estados e Validações
+
+**Estados visuais:**
+- ✓ **Compatível**: Música e vídeo têm durações similares (±5s)
+- 🔁 **Loop necessário**: Música menor que vídeo
+- ✂️ **Corte necessário**: Música maior que vídeo
+- ⚠️ **Muito curta**: Música muito menor (>50% diferença)
+- ⚠️ **Muito longa**: Música muito maior (>50% diferença)
+
+**Validações:**
+- Mínimo de 5 segundos de música selecionada
+- Máximo igual à duração total da música
+- Avisar se trecho selecionado não cobre todo o vídeo
+- Confirmar se usuário quer cortar música no meio
+
+#### 3.5 UX Inspirada no Instagram - Fluxo Completo
+
+**Fluxo do usuário:**
+
+1. **Usuário clica em "Exportar Vídeo"**
+2. **Modal abre com 3 opções** (Original / Biblioteca / Sem áudio)
+3. **Usuário seleciona "Música da Biblioteca"**
+4. **Galeria de músicas aparece** com filtros e busca
+5. **Usuário clica em uma música** → Card destaca e preview toca
+6. **Timeline interativa aparece** com waveform completo
+7. **Sistema sugere automaticamente** o refrão (se detectado)
+8. **Usuário arrasta trim handles** para ajustar o trecho
+   - Feedback visual em tempo real
+   - Preview de áudio ao arrastar
+   - Snap points facilitam alinhamento
+9. **Usuário ajusta volume** (se necessário)
+10. **Usuário confirma** → Modal fecha e exportação inicia
+
+**Diferenciais vs Instagram:**
+- ✅ Desktop-first com suporte a mouse/teclado
+- ✅ Zoom da timeline para ajustes precisos
+- ✅ Waveform visual completo (Instagram só mostra barras simplificadas)
+- ✅ Preview em tempo real com sincronização
+- ✅ Indicadores visuais de loop/corte
+- ✅ Sugestão inteligente de refrão
+- ✅ Salvar preferências para reuso
+
+#### 3.6 Integração com Botões de Exportação
 
 **Arquivos a modificar:**
 - `src/components/templates/video-export-button.tsx`
 - `src/components/templates/video-export-queue-button.tsx`
 
 **Mudanças:**
-- Adicionar botão/link para abrir modal de seleção de áudio
-- Exibir áudio selecionado antes da exportação
+- Adicionar botão "🎵 Selecionar Música" antes do botão de exportação
+- Exibir resumo do áudio selecionado:
+  - Badge com tipo de áudio (Original / Música / Mudo)
+  - Nome da música se selecionada
+  - Trecho selecionado (ex: "0:15 - 0:45")
+- Botão de edição para reabrir modal de seleção
 - Salvar preferência de áudio no state do editor
+- Passar configuração de áudio para função de exportação
+
+**Preview visual:**
+```typescript
+// Antes da exportação, mostrar card com resumo:
+┌────────────────────────────────────────┐
+│ 🎵 Áudio: Música da Biblioteca         │
+│ "Summer Vibes" - John Doe              │
+│ Trecho: 0:15 → 0:45 (30s)             │
+│ Volume: 80% | Loop: Sim               │
+│ [Editar Música]                        │
+└────────────────────────────────────────┘
+```
 
 ---
 
@@ -234,10 +457,19 @@ export interface VideoExportOptions {
   // NOVO: Opções de áudio
   audioConfig?: {
     source: 'original' | 'music' | 'none'
+
+    // Para música da biblioteca:
     musicUrl?: string        // URL do áudio da biblioteca
+    musicStartTime?: number  // Início do trecho selecionado (segundos)
+    musicEndTime?: number    // Fim do trecho selecionado (segundos)
+
+    // Controles de áudio:
     volume?: number          // 0.0 - 1.0
     fadeIn?: number          // duração do fade in (segundos)
     fadeOut?: number         // duração do fade out (segundos)
+
+    // Comportamento de loop/corte:
+    loopIfShorter?: boolean  // Loop automático se música for menor que vídeo
   }
 }
 ```
@@ -247,53 +479,220 @@ export interface VideoExportOptions {
 1. **Áudio Original** (já implementado):
    - Manter código atual que captura áudio do vídeo
 
-2. **Música da Biblioteca**:
+2. **Música da Biblioteca com Trim + Loop**:
    - Criar elemento `<audio>` com URL da música
+   - **Posicionar no trecho selecionado** (`currentTime = musicStartTime`)
    - Usar `AudioContext` para processar a música
    - Sincronizar reprodução da música com a gravação do vídeo
    - Aplicar controle de volume
-   - Looping automático se música for menor que vídeo
-   - Cortar música se for maior que vídeo
+   - **Implementar loop inteligente** se música for menor que vídeo
+   - **Cortar automaticamente** se música for maior que vídeo
+   - Aplicar fade in/out se configurado
 
 3. **Sem Áudio**:
    - Não adicionar tracks de áudio ao MediaStream
    - Apenas stream de vídeo (canvas)
 
-**Pseudocódigo:**
+**Implementação detalhada com Trim + Loop:**
 
 ```typescript
-async function setupAudioStream(
+async function setupAudioStreamWithTrim(
   videoElement: HTMLVideoElement,
-  audioConfig: AudioConfig
-): Promise<MediaStreamAudioTrack[]> {
+  videoDuration: number,
+  audioConfig: AudioConfig,
+  audioContext: AudioContext
+): Promise<{
+  tracks: MediaStreamAudioTrack[]
+  cleanup: () => void
+}> {
 
   if (audioConfig.source === 'none') {
-    return [] // Sem áudio
+    return { tracks: [], cleanup: () => {} }
   }
 
-  const audioContext = new AudioContext()
   let sourceNode: AudioNode
+  let audioElement: HTMLAudioElement | null = null
+  let loopInterval: NodeJS.Timeout | null = null
 
   if (audioConfig.source === 'original') {
     // Código atual - capturar do vídeo
     sourceNode = audioContext.createMediaElementSource(videoElement)
-  } else if (audioConfig.source === 'music') {
-    // NOVO - carregar música da biblioteca
-    const audioElement = new Audio(audioConfig.musicUrl)
+  }
+  else if (audioConfig.source === 'music') {
+    // NOVO - carregar música da biblioteca com TRIM
+    audioElement = new Audio(audioConfig.musicUrl)
+    audioElement.crossOrigin = 'anonymous' // Para evitar CORS
+
+    // Calcular duração do trecho selecionado
+    const musicStartTime = audioConfig.musicStartTime ?? 0
+    const musicEndTime = audioConfig.musicEndTime ?? audioElement.duration
+    const selectedDuration = musicEndTime - musicStartTime
+
+    // Posicionar no início do trecho selecionado
+    audioElement.currentTime = musicStartTime
+
+    // Aguardar carregar
+    await new Promise((resolve) => {
+      if (audioElement!.readyState >= 2) {
+        resolve(true)
+      } else {
+        audioElement!.addEventListener('canplay', () => resolve(true), { once: true })
+      }
+    })
+
     await audioElement.play()
+
+    // LÓGICA DE LOOP: Se música for menor que vídeo
+    if (selectedDuration < videoDuration && audioConfig.loopIfShorter) {
+      console.log('[Audio Export] Loop habilitado - música menor que vídeo')
+
+      // Monitorar tempo e fazer loop no trecho selecionado
+      loopInterval = setInterval(() => {
+        if (audioElement!.currentTime >= musicEndTime) {
+          console.log('[Audio Export] Voltando para início do trecho:', musicStartTime)
+          audioElement!.currentTime = musicStartTime
+        }
+      }, 100) // Verificar a cada 100ms
+
+      // Alternativa: usar evento 'timeupdate'
+      audioElement.addEventListener('timeupdate', function loopHandler() {
+        if (audioElement!.currentTime >= musicEndTime - 0.05) {
+          audioElement!.currentTime = musicStartTime
+        }
+      })
+    }
+
+    // LÓGICA DE CORTE: Se música for maior que vídeo
+    if (selectedDuration > videoDuration) {
+      console.log('[Audio Export] Corte habilitado - música maior que vídeo')
+
+      // Pausar música quando vídeo terminar
+      setTimeout(() => {
+        audioElement?.pause()
+      }, videoDuration * 1000)
+    }
+
     sourceNode = audioContext.createMediaElementSource(audioElement)
   }
 
-  // Aplicar controle de volume
+  // Aplicar controle de volume com GainNode
   const gainNode = audioContext.createGain()
   gainNode.gain.value = audioConfig.volume ?? 1.0
 
+  // FADE IN: Gradualmente aumentar volume do 0 para o valor configurado
+  if (audioConfig.fadeIn && audioConfig.fadeIn > 0) {
+    const fadeInDuration = audioConfig.fadeIn
+    gainNode.gain.setValueAtTime(0, audioContext.currentTime)
+    gainNode.gain.linearRampToValueAtTime(
+      audioConfig.volume ?? 1.0,
+      audioContext.currentTime + fadeInDuration
+    )
+  }
+
+  // FADE OUT: Gradualmente diminuir volume no final do vídeo
+  if (audioConfig.fadeOut && audioConfig.fadeOut > 0) {
+    const fadeOutStart = videoDuration - audioConfig.fadeOut
+    const fadeOutEnd = videoDuration
+
+    setTimeout(() => {
+      gainNode.gain.linearRampToValueAtTime(
+        0,
+        audioContext.currentTime + audioConfig.fadeOut!
+      )
+    }, fadeOutStart * 1000)
+  }
+
+  // Conectar nodes
   sourceNode.connect(gainNode)
 
   const destination = audioContext.createMediaStreamDestination()
   gainNode.connect(destination)
 
-  return destination.stream.getAudioTracks()
+  // Conectar ao output padrão para o usuário ouvir durante exportação
+  gainNode.connect(audioContext.destination)
+
+  // Função de cleanup para parar loops e liberar recursos
+  const cleanup = () => {
+    if (loopInterval) {
+      clearInterval(loopInterval)
+    }
+    if (audioElement) {
+      audioElement.pause()
+      audioElement.src = ''
+    }
+  }
+
+  return {
+    tracks: destination.stream.getAudioTracks(),
+    cleanup
+  }
+}
+```
+
+**Desafios técnicos do Trim + Loop:**
+
+1. **Precisão do Loop:**
+   - `currentTime` não é 100% preciso (pode ter drift de ~50ms)
+   - Solução: Verificar tempo a cada 100ms e ajustar
+   - Alternativa: Pré-processar áudio criando buffer duplicado
+
+2. **Sincronização Áudio/Vídeo:**
+   - Áudio e vídeo podem dessincronizar durante gravação longa
+   - Solução: Usar timestamps do AudioContext para sincronização precisa
+   - Monitorar `videoElement.currentTime` e `audioElement.currentTime`
+
+3. **Gap no Loop:**
+   - Pode haver pequeno silêncio entre loops
+   - Solução: Usar Web Audio API com AudioBufferSourceNode
+   - Pre-carregar trecho em buffer e fazer loop seamless
+
+**Implementação alternativa com AudioBuffer (loop perfeito):**
+
+```typescript
+// Para loop sem gaps, usar AudioBufferSourceNode
+async function createLoopedAudioBuffer(
+  audioContext: AudioContext,
+  audioUrl: string,
+  startTime: number,
+  endTime: number,
+  videoDuration: number
+): Promise<AudioBufferSourceNode> {
+
+  // 1. Carregar áudio completo
+  const response = await fetch(audioUrl)
+  const arrayBuffer = await response.arrayBuffer()
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+  // 2. Extrair trecho selecionado (trim)
+  const sampleRate = audioBuffer.sampleRate
+  const startSample = Math.floor(startTime * sampleRate)
+  const endSample = Math.floor(endTime * sampleRate)
+  const selectedLength = endSample - startSample
+
+  const selectedBuffer = audioContext.createBuffer(
+    audioBuffer.numberOfChannels,
+    selectedLength,
+    sampleRate
+  )
+
+  // Copiar dados do trecho selecionado
+  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+    const sourceData = audioBuffer.getChannelData(channel)
+    const destData = selectedBuffer.getChannelData(channel)
+
+    for (let i = 0; i < selectedLength; i++) {
+      destData[i] = sourceData[startSample + i]
+    }
+  }
+
+  // 3. Criar source node com loop
+  const source = audioContext.createBufferSource()
+  source.buffer = selectedBuffer
+  source.loop = true // Loop perfeito sem gaps!
+  source.loopStart = 0
+  source.loopEnd = selectedBuffer.duration
+
+  return source
 }
 ```
 
@@ -422,6 +821,139 @@ setAudioVolume(volume: number): void
 3. **Transcodificação Server-Side:**
    - Converter todas as músicas para formato otimizado
    - Múltiplas resoluções (128kbps, 256kbps)
+
+---
+
+## 🎨 Inspiração: Interface do Instagram
+
+### Como o Instagram implementa a seleção de música:
+
+**1. Seleção de Música (Instagram Stories/Reels):**
+- Sticker de música abre biblioteca com busca
+- Preview de áudio ao clicar em cada música
+- Começa automaticamente do **refrão** da música
+- Limite de 15 segundos para Stories, até 90s para Reels
+
+**2. Timeline de Ajuste:**
+- **Slider horizontal** com forma de onda simplificada
+- **Alças de corte** nas extremidades (trim handles)
+- **Frame box visual** destacando o trecho selecionado
+- Arraste intuitivo com feedback tátil (mobile)
+- Duração é exibida em tempo real
+
+**3. Características da UX:**
+- ✅ **Simplicidade**: Interface minimalista focada na tarefa
+- ✅ **Feedback imediato**: Preview toca ao selecionar música
+- ✅ **Smart defaults**: Começa do refrão automaticamente
+- ✅ **Visual claro**: Waveform mostra estrutura da música
+- ✅ **Gestos naturais**: Arrastar é intuitivo no mobile
+
+### Melhorias implementadas neste plano:
+
+**1. Desktop-First com Precisão:**
+- Suporte a mouse para ajustes mais precisos
+- Zoom da timeline para edição detalhada
+- Atalhos de teclado (Space, ←/→, etc)
+- Trim handles maiores para melhor usabilidade
+
+**2. Waveform Completo:**
+- Instagram: Barras simplificadas
+- Nossa solução: Waveform real usando Wavesurfer.js
+- Melhor visualização da estrutura da música
+- Identificação visual de beats e silêncios
+
+**3. Controles Avançados:**
+- Volume ajustável (Instagram não tem)
+- Fade in/out opcional
+- Loop visual quando música repete
+- Indicadores de compatibilidade (⚠️ muito curta, ✂️ será cortada)
+
+**4. Inteligência Adicional:**
+- Detecção de refrão com IA/heurística
+- Snap points em beats detectados
+- Sugestão automática do melhor trecho
+- Preview sincronizado com vídeo
+
+**5. Gerenciamento Profissional:**
+- Biblioteca organizada por gênero e mood
+- Filtros e busca avançada
+- Upload de músicas pelo admin
+- Estatísticas de uso
+
+### Fluxo comparativo:
+
+| Etapa | Instagram | Nossa Solução |
+|-------|-----------|---------------|
+| 1. Abrir seleção | Tap no sticker música | Click em "🎵 Selecionar Música" |
+| 2. Escolher música | Scroll + busca | Grid cards + filtros + busca |
+| 3. Preview | Toca automaticamente do refrão | Preview ao clicar + sugestão de refrão |
+| 4. Ajustar trecho | Slider com alças | Timeline com waveform + zoom |
+| 5. Confirmar | Tap em "Concluído" | "Confirmar e Continuar" |
+| 6. Volume | Não disponível | Slider 0-100% |
+| 7. Loop/Corte | Automático (sem feedback) | Visual com indicadores claros |
+
+### Elementos visuais adaptados:
+
+**Do Instagram:**
+- ✅ Radio buttons para tipo de áudio
+- ✅ Grid de músicas com preview inline
+- ✅ Timeline horizontal com alças
+- ✅ Frame box destacando seleção
+- ✅ Badges de duração
+
+**Adicionados:**
+- ⭐ Waveform visual detalhado
+- ⭐ Zoom da timeline
+- ⭐ Snap points visuais
+- ⭐ Indicadores de loop/corte
+- ⭐ Controles de volume e fade
+- ⭐ Botão "Refrão" inteligente
+
+### Biblioteca recomendada para implementação:
+
+**[Wavesurfer.js](https://wavesurfer.xyz/) v7.8.0**
+- Waveform renderizado em Canvas/SVG
+- Plugin Regions para trim handles
+- Plugin Timeline para marcadores de tempo
+- Suporte a zoom e scroll
+- API simples e bem documentada
+- Performance otimizada
+
+**Exemplo de uso:**
+```typescript
+import WaveSurfer from 'wavesurfer.js'
+import RegionsPlugin from 'wavesurfer.js/dist/plugins/regions'
+
+const wavesurfer = WaveSurfer.create({
+  container: '#waveform',
+  waveColor: '#ddd',
+  progressColor: '#3b82f6',
+  height: 80,
+  plugins: [
+    RegionsPlugin.create({
+      dragSelection: true, // Permite criar regiões arrastando
+    })
+  ]
+})
+
+// Carregar música
+await wavesurfer.load(musicUrl)
+
+// Criar região (trecho selecionado)
+const region = wavesurfer.registerPlugin(RegionsPlugin.create())
+region.addRegion({
+  start: 15, // segundos
+  end: 45,   // segundos
+  color: 'rgba(59, 130, 246, 0.3)',
+  drag: true,
+  resize: true
+})
+
+// Ouvir mudanças
+region.on('region-updated', (region) => {
+  console.log('Novo trecho:', region.start, '-', region.end)
+})
+```
 
 ---
 
