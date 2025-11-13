@@ -17,7 +17,7 @@ import {
 import { ArrowLeft, Upload, Music } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
-const GENRES = [
+const GENEROS = [
   'Rock',
   'Pop',
   'Electronic',
@@ -30,22 +30,22 @@ const GENRES = [
   'R&B',
   'Country',
   'Latin',
-  'Other',
+  'Outro',
 ];
 
-const MOODS = [
-  'Happy',
-  'Sad',
-  'Energetic',
-  'Calm',
-  'Motivational',
-  'Romantic',
-  'Dark',
-  'Uplifting',
-  'Melancholic',
-  'Epic',
-  'Chill',
-  'Intense',
+const HUMORES = [
+  'Feliz',
+  'Triste',
+  'Energético',
+  'Calmo',
+  'Motivacional',
+  'Romântico',
+  'Sombrio',
+  'Edificante',
+  'Melancólico',
+  'Épico',
+  'Relaxante',
+  'Intenso',
 ];
 
 export default function EnviarMusicaPage() {
@@ -66,21 +66,21 @@ export default function EnviarMusicaPage() {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Validate file type
+    // Validar tipo de arquivo
     if (!selectedFile.type.startsWith('audio/')) {
       toast({
-        title: 'Invalid file type',
-        description: 'Please select an audio file',
+        title: 'Tipo de arquivo inválido',
+        description: 'Por favor, selecione um arquivo de áudio',
         variant: 'destructive',
       });
       return;
     }
 
-    // Validate file size (max 50MB)
+    // Validar tamanho do arquivo (max 50MB)
     if (selectedFile.size > 50 * 1024 * 1024) {
       toast({
-        title: 'File too large',
-        description: 'Maximum file size is 50MB',
+        title: 'Arquivo muito grande',
+        description: 'Tamanho máximo é 50MB',
         variant: 'destructive',
       });
       return;
@@ -111,10 +111,10 @@ export default function EnviarMusicaPage() {
         });
       });
     } catch (error) {
-      console.error('Error extracting metadata:', error);
+      console.error('Erro ao extrair metadados:', error);
       toast({
-        title: 'Warning',
-        description: 'Could not extract audio duration. Please enter manually.',
+        title: 'Aviso',
+        description: 'Não foi possível extrair a duração do áudio. Por favor, insira manualmente.',
         variant: 'default',
       });
     } finally {
@@ -127,8 +127,8 @@ export default function EnviarMusicaPage() {
 
     if (!arquivo || !nome || !duracao) {
       toast({
-        title: 'Missing required fields',
-        description: 'Please fill in all required fields',
+        title: 'Campos obrigatórios ausentes',
+        description: 'Por favor, preencha todos os campos obrigatórios',
         variant: 'destructive',
       });
       return;
@@ -146,16 +146,16 @@ export default function EnviarMusicaPage() {
       });
 
       toast({
-        title: 'Success',
-        description: 'Music uploaded successfully',
+        title: 'Sucesso',
+        description: 'Música enviada com sucesso',
       });
 
       router.push('/biblioteca-musicas');
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Erro no upload:', error);
       toast({
-        title: 'Upload failed',
-        description: error instanceof Error ? error.message : 'Failed to upload music',
+        title: 'Falha no envio',
+        description: error instanceof Error ? error.message : 'Falha ao enviar música',
         variant: 'destructive',
       });
     }
@@ -179,67 +179,67 @@ export default function EnviarMusicaPage() {
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* File Upload */}
+        {/* Upload de Arquivo */}
         <div className="space-y-2">
-          <Label htmlFor="file">
-            Audio File <span className="text-red-500">*</span>
+          <Label htmlFor="arquivo">
+            Arquivo de Áudio <span className="text-red-500">*</span>
           </Label>
           <div className="flex items-center gap-4">
             <Input
-              id="file"
+              id="arquivo"
               type="file"
               accept="audio/*"
               onChange={handleFileChange}
               className="flex-1"
               required
             />
-            {file && (
+            {arquivo && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Music className="h-4 w-4" />
-                {(file.size / (1024 * 1024)).toFixed(2)} MB
+                {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
               </div>
             )}
           </div>
           <p className="text-sm text-gray-500">
-            Supported formats: MP3, WAV, OGG, AAC, M4A (max 50MB)
+            Formatos suportados: MP3, WAV, OGG, AAC, M4A (max 50MB)
           </p>
         </div>
 
-        {/* Name */}
+        {/* Nome */}
         <div className="space-y-2">
-          <Label htmlFor="name">
-            Track Name <span className="text-red-500">*</span>
+          <Label htmlFor="nome">
+            Nome da Faixa <span className="text-red-500">*</span>
           </Label>
           <Input
-            id="name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
+            id="nome"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
             placeholder="Summer Vibes"
             required
           />
         </div>
 
-        {/* Artist */}
+        {/* Artista */}
         <div className="space-y-2">
-          <Label htmlFor="artist">Artist</Label>
+          <Label htmlFor="artista">Artista</Label>
           <Input
-            id="artist"
-            value={artist}
-            onChange={(e) => setArtist(e.target.value)}
+            id="artista"
+            value={artista}
+            onChange={(e) => setArtista(e.target.value)}
             placeholder="John Doe"
           />
         </div>
 
-        {/* Genre and Mood */}
+        {/* Gênero e Humor */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="genre">Genre</Label>
-            <Select value={genre} onValueChange={setGenre}>
+            <Label htmlFor="genero">Gênero</Label>
+            <Select value={genero} onValueChange={setGenero}>
               <SelectTrigger>
-                <SelectValue placeholder="Select genre" />
+                <SelectValue placeholder="Selecione o gênero" />
               </SelectTrigger>
               <SelectContent>
-                {GENRES.map((g) => (
+                {GENEROS.map((g) => (
                   <SelectItem key={g} value={g}>
                     {g}
                   </SelectItem>
@@ -249,15 +249,15 @@ export default function EnviarMusicaPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="mood">Mood</Label>
-            <Select value={mood} onValueChange={setMood}>
+            <Label htmlFor="humor">Humor</Label>
+            <Select value={humor} onValueChange={setHumor}>
               <SelectTrigger>
-                <SelectValue placeholder="Select mood" />
+                <SelectValue placeholder="Selecione o humor" />
               </SelectTrigger>
               <SelectContent>
-                {MOODS.map((m) => (
-                  <SelectItem key={m} value={m}>
-                    {m}
+                {HUMORES.map((h) => (
+                  <SelectItem key={h} value={h}>
+                    {h}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -265,10 +265,10 @@ export default function EnviarMusicaPage() {
           </div>
         </div>
 
-        {/* BPM and Duration */}
+        {/* BPM e Duração */}
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label htmlFor="bpm">BPM (Beats Per Minute)</Label>
+            <Label htmlFor="bpm">BPM (Batidas Por Minuto)</Label>
             <Input
               id="bpm"
               type="number"
@@ -281,22 +281,22 @@ export default function EnviarMusicaPage() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="duration">
-              Duration (seconds) <span className="text-red-500">*</span>
+            <Label htmlFor="duracao">
+              Duração (segundos) <span className="text-red-500">*</span>
             </Label>
             <Input
-              id="duration"
+              id="duracao"
               type="number"
-              value={duration || ''}
-              onChange={(e) => setDuration(parseFloat(e.target.value))}
+              value={duracao || ''}
+              onChange={(e) => setDuracao(parseFloat(e.target.value))}
               placeholder="180"
               min="1"
               step="0.1"
               required
-              disabled={isExtracting}
+              disabled={extraindo}
             />
-            {isExtracting && (
-              <p className="text-sm text-gray-500">Extracting metadata...</p>
+            {extraindo && (
+              <p className="text-sm text-gray-500">Extraindo metadados...</p>
             )}
           </div>
         </div>
@@ -316,12 +316,12 @@ export default function EnviarMusicaPage() {
             {enviarMusica.isPending ? (
               <>
                 <Upload className="mr-2 h-4 w-4 animate-spin" />
-                Uploading...
+                Enviando...
               </>
             ) : (
               <>
                 <Upload className="mr-2 h-4 w-4" />
-                Upload Music
+                Enviar Música
               </>
             )}
           </Button>
