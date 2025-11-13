@@ -60,7 +60,7 @@ export default function EnviarMusicaPage() {
   const [artista, setArtista] = useState('');
   const [genero, setGenero] = useState('');
   const [humor, setHumor] = useState('');
-  const [projectId, setProjectId] = useState<string>(''); // '' = sem projeto (música global)
+  const [projectId, setProjectId] = useState<string>('none'); // 'none' = sem projeto (música global)
   const [duracao, setDuracao] = useState(0);
   const [extraindo, setExtraindo] = useState(false);
 
@@ -143,7 +143,7 @@ export default function EnviarMusicaPage() {
         artista: artista || undefined,
         genero: genero || undefined,
         humor: humor || undefined,
-        projectId: projectId ? parseInt(projectId) : undefined,
+        projectId: projectId !== 'none' ? parseInt(projectId) : undefined,
         duracao,
       });
 
@@ -276,7 +276,7 @@ export default function EnviarMusicaPage() {
                 <SelectValue placeholder="Sem projeto (música global)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Sem projeto (música global)</SelectItem>
+                <SelectItem value="none">Sem projeto (música global)</SelectItem>
                 {projetos.map((projeto) => (
                   <SelectItem key={projeto.id} value={projeto.id.toString()}>
                     {projeto.name}
