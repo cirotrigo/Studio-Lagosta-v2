@@ -85,6 +85,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Criar job de separação automático
+    try {
+      await db.musicStemJob.create({
+        data: {
+          musicId: faixaMusica.id,
+          status: 'pending',
+          progress: 0,
+        },
+      });
+      console.log(`[Biblioteca Músicas] Created stem job for music ${faixaMusica.id}`);
+    } catch (error) {
+      console.error('[Biblioteca Músicas] Failed to create stem job:', error);
+      // Não falhar o upload se a criação do job falhar
+    }
+
     return NextResponse.json(faixaMusica, { status: 201 });
   } catch (error) {
     console.error('[Biblioteca Músicas POST]', error);

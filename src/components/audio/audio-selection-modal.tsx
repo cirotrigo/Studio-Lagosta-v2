@@ -22,13 +22,18 @@ import { Slider } from '@/components/ui/slider';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useBuscaMusicas } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
-import { Search, Volume2, X, Music, PlayCircle, CheckCircle2 } from 'lucide-react';
+import { useMusicStemStatus } from '@/hooks/use-music-stem';
+import { Search, Volume2, X, Music, PlayCircle, CheckCircle2, Drum } from 'lucide-react';
 import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
+import { MusicStemProgress } from './music-stem-progress';
+
+export type AudioVersion = 'original' | 'percussion';
 
 export interface AudioConfig {
   source: 'original' | 'library' | 'mute' | 'mix';
   musicId?: number;
+  audioVersion?: AudioVersion; // original ou percussion
   startTime: number;
   endTime: number;
   volume: number;
@@ -106,6 +111,14 @@ export function AudioSelectionModal({
     currentConfig?.musicId
   );
 
+  // Estado da versão de áudio (original vs percussion)
+  const [audioVersion, setAudioVersion] = useState<AudioVersion>(
+    currentConfig?.audioVersion || 'original'
+  );
+
+  // Buscar status dos stems da música selecionada
+  const { data: stemStatus } = useMusicStemStatus(musicaSelecionada);
+
   // Estado da timeline
   const [startTime, setStartTime] = useState(currentConfig?.startTime || 0);
   const [endTime, setEndTime] = useState(currentConfig?.endTime || videoDuration);
@@ -129,6 +142,7 @@ export function AudioSelectionModal({
     const config: AudioConfig = {
       source: audioSource,
       musicId: audioSource === 'library' || audioSource === 'mix' ? musicaSelecionada : undefined,
+      audioVersion: audioSource === 'library' || audioSource === 'mix' ? audioVersion : undefined,
       startTime,
       endTime,
       volume: audioSource === 'mix' ? volumeMusic : volume,
@@ -290,6 +304,65 @@ export function AudioSelectionModal({
                     videoDuration={videoDuration}
                     onSelect={() => {}}
                   />
+
+                  {/* Progresso do Stem (se estiver processando) */}
+                  {stemStatus && (!stemStatus.hasPercussionStem || stemStatus.job) && (
+                    <MusicStemProgress musicId={musicaAtual.id} />
+                  )}
+
+                  {/* Escolha da versão (original ou percussion) */}
+                  <div className="space-y-2">
+                    <Label>Versão da Música</Label>
+                    <Select
+                      value={audioVersion}
+                      onValueChange={(v: AudioVersion) => setAudioVersion(v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Escolha a versão" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="original">
+                          <div className="flex items-center justify-between w-full gap-3">
+                            <div className="flex items-center gap-2">
+                              <Music className="h-4 w-4" />
+                              <span>Música Completa (Original)</span>
+                            </div>
+                            <span className="text-xs text-green-600">✓ Disponível</span>
+                          </div>
+                        </SelectItem>
+                        <SelectItem
+                          value="percussion"
+                          disabled={!stemStatus?.hasPercussionStem}
+                        >
+                          <div className="flex items-center justify-between w-full gap-3">
+                            <div className="flex items-center gap-2">
+                              <Drum className="h-4 w-4" />
+                              <span>Apenas Percussão (Bateria)</span>
+                            </div>
+                            {stemStatus?.hasPercussionStem ? (
+                              <span className="text-xs text-green-600">✓ Disponível</span>
+                            ) : stemStatus?.job?.status === 'processing' ? (
+                              <span className="text-xs text-amber-600">
+                                🔄 {stemStatus.job.progress}%
+                              </span>
+                            ) : (
+                              <span className="text-xs text-gray-500">🔄 Processando...</span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+
+                    {/* Info box: Música original disponível imediatamente */}
+                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
+                      <p className="text-sm text-blue-800">
+                        💡 <strong>A música original está disponível imediatamente.</strong>
+                        {!stemStatus?.hasPercussionStem && (
+                          <> A versão apenas com percussão estará pronta em alguns minutos.</>
+                        )}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               )}
 

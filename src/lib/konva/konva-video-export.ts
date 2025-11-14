@@ -427,7 +427,23 @@ export async function exportVideoWithLayers(
           throw new Error('Falha ao buscar informações da música')
         }
         const musicData = await musicResponse.json()
-        const musicArrayBuffer = await loadAudioFromUrl(musicData.blobUrl)
+
+        // Determinar qual URL usar baseado na versão selecionada (original vs percussion)
+        const audioVersion = audioConfig.audioVersion || 'original'
+        let audioUrl: string
+
+        if (audioVersion === 'percussion') {
+          if (!musicData.hasPercussionStem || !musicData.percussionUrl) {
+            throw new Error('A versão de percussão não está disponível ainda. Por favor, aguarde o processamento.')
+          }
+          audioUrl = musicData.percussionUrl
+          console.log('[Video Export] Usando versão de percussão:', audioUrl)
+        } else {
+          audioUrl = musicData.blobUrl
+          console.log('[Video Export] Usando versão original:', audioUrl)
+        }
+
+        const musicArrayBuffer = await loadAudioFromUrl(audioUrl)
 
         // 3. Processar música (volume, fade, trim)
         const processedMusicBuffer = await createProcessedAudioBuffer(
@@ -499,8 +515,23 @@ export async function exportVideoWithLayers(
         }
         const musicData = await musicResponse.json()
 
+        // Determinar qual URL usar baseado na versão selecionada (original vs percussion)
+        const audioVersion = audioConfig.audioVersion || 'original'
+        let audioUrl: string
+
+        if (audioVersion === 'percussion') {
+          if (!musicData.hasPercussionStem || !musicData.percussionUrl) {
+            throw new Error('A versão de percussão não está disponível ainda. Por favor, aguarde o processamento.')
+          }
+          audioUrl = musicData.percussionUrl
+          console.log('[Video Export] Usando versão de percussão:', audioUrl)
+        } else {
+          audioUrl = musicData.blobUrl
+          console.log('[Video Export] Usando versão original:', audioUrl)
+        }
+
         // Carregar áudio da biblioteca
-        const musicArrayBuffer = await loadAudioFromUrl(musicData.blobUrl)
+        const musicArrayBuffer = await loadAudioFromUrl(audioUrl)
 
         // Processar áudio (volume, fade, trim)
         const processedAudioBuffer = await createProcessedAudioBuffer(

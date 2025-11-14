@@ -1280,6 +1280,12 @@ model MusicLibrary {
   isPublic    Boolean  @default(true) // futuro: músicas privadas por usuário
   thumbnailUrl String? // capa/artwork da música
 
+  // Percussion stem (apenas percussão)
+  percussionUrl     String?   // URL do stem de percussão
+  percussionSize    Int?      // Tamanho do arquivo de percussão
+  hasPercussionStem Boolean   @default(false)
+  stemsProcessedAt  DateTime?
+
   // Vinculação com projeto (opcional - músicas globais não têm projeto)
   projectId   Int?
   project     Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
@@ -1292,8 +1298,44 @@ model MusicLibrary {
   // Relação com vídeos gerados (audit trail)
   usedInVideos VideoProcessingJob[]
 
+  // Relação com job de processamento
+  stemJob     MusicStemJob?
+
   @@index([projectId])
   @@index([genre])
   @@index([mood])
   @@index([isActive, isPublic])
+  @@index([hasPercussionStem])
+}
+
+// =============================================================================
+// Music Stem Separation Jobs (MVSEP Integration)
+// =============================================================================
+
+model MusicStemJob {
+  id             Int      @id @default(autoincrement())
+  musicId        Int      @unique // Um job por música
+  music          MusicLibrary @relation(fields: [musicId], references: [id], onDelete: Cascade)
+
+  // Status do job
+  status         String   @default("pending") // pending, processing, completed, failed
+  progress       Int      @default(0) // 0-100
+
+  // MVSEP API
+  mvsepJobHash   String?  // Hash retornado pela API
+  mvsepStatus    String?  // waiting, processing, done, failed
+
+  // Resultado
+  percussionBlobUrl String? // URL temporária antes de mover para MusicLibrary
+  error          String?  @db.Text
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  startedAt      DateTime? // Quando começou o processamento MVSEP
+  completedAt    DateTime? // Quando finalizou tudo
+
+  @@index([status])
+  @@index([mvsepJobHash])
+  @@index([createdAt])
 }

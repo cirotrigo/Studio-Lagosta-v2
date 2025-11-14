@@ -3,9 +3,11 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useBibliotecaMusicas, useDeletarMusica, type FaixaMusica } from '@/hooks/use-music-library';
+import { useMusicStemStatus } from '@/hooks/use-music-stem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Music, Plus, Search, Trash2, Edit } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Music, Plus, Search, Trash2, Edit, Drum, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -17,6 +19,54 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+
+// Componente auxiliar para exibir badges de stem
+function MusicStemBadge({ musicId }: { musicId: number }) {
+  const { data: stemStatus } = useMusicStemStatus(musicId);
+
+  if (!stemStatus) return null;
+
+  // Stem completo e disponível
+  if (stemStatus.hasPercussionStem) {
+    return (
+      <Badge variant="secondary" className="text-xs">
+        <Drum className="h-3 w-3 mr-1" />
+        Stems
+      </Badge>
+    );
+  }
+
+  // Processando
+  if (stemStatus.job?.status === 'processing') {
+    return (
+      <Badge variant="outline" className="text-xs">
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+        {stemStatus.job.progress}%
+      </Badge>
+    );
+  }
+
+  // Pendente
+  if (stemStatus.job?.status === 'pending') {
+    return (
+      <Badge variant="outline" className="text-xs text-gray-500">
+        <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+        Na fila
+      </Badge>
+    );
+  }
+
+  // Falhou
+  if (stemStatus.job?.status === 'failed') {
+    return (
+      <Badge variant="destructive" className="text-xs">
+        Erro
+      </Badge>
+    );
+  }
+
+  return null;
+}
 
 export default function BibliotecaMusicasPage() {
   const { data: faixasMusica, isLoading } = useBibliotecaMusicas();
@@ -81,8 +131,11 @@ export default function BibliotecaMusicasPage() {
           <div className="grid gap-4">
             {faixasFiltradas.map((faixa) => (
               <div key={faixa.id} className="flex items-center justify-between border-b pb-4">
-                <div>
-                  <p className="font-medium">{faixa.name}</p>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-medium">{faixa.name}</p>
+                    <MusicStemBadge musicId={faixa.id} />
+                  </div>
                   <p className="text-sm text-gray-500">{faixa.artist || 'Sem artista'}</p>
                 </div>
                 <div className="flex items-center gap-2">
