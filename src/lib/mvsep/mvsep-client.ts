@@ -274,29 +274,55 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     console.log(`[MVSEP] All file keys:`, files.map(f => Object.keys(f)))
 
     // Try to find instrumental stem
+    // MVSEP retorna 2 arquivos: vocals e instrumental
+    // Precisamos pegar o que NÃO é vocals
+
+    // Primeiro, tentar filtrar EXCLUINDO vocals
+    const nonVocalStems = files.filter((file) => {
+      const name = getFileName(file).toLowerCase()
+      // Excluir arquivos que são claramente vocais
+      const isVocals = name.includes('vocal') || name.includes('voice') || name.includes('voz')
+      return !isVocals
+    })
+
+    // Ou procurar por palavras que indicam instrumental
     const instrumentalStems = files.filter((file) => {
-      const name = getFileName(file)
+      const name = getFileName(file).toLowerCase()
       return (
-        name.toLowerCase().includes('instrumental') ||
-        name.toLowerCase().includes('instrum') ||
-        name.toLowerCase().includes('no_vocals') ||
-        name.toLowerCase().includes('no vocals')
+        name.includes('instrumental') ||
+        name.includes('instrum') ||
+        name.includes('no_vocal') ||
+        name.includes('no vocal') ||
+        name.includes('music') ||
+        name.includes('backing')
       )
     })
 
-    if (!instrumentalStems || instrumentalStems.length === 0) {
-      // Fallback: pegar o primeiro stem disponível
-      const firstFile = files[0]
-      const firstName = getFileName(firstFile)
-      console.warn('[MVSEP] No instrumental-specific stem found, using first available:', firstName)
-      await processStem(job, firstFile)
+    // Escolher qual usar
+    let stemToUse: any
+    let stemName: string
+
+    if (instrumentalStems.length > 0) {
+      stemToUse = instrumentalStems[0]
+      stemName = getFileName(stemToUse)
+      console.log(`[MVSEP] ✅ Found instrumental stem by name:`, stemName)
+    } else if (nonVocalStems.length > 0) {
+      stemToUse = nonVocalStems[0]
+      stemName = getFileName(stemToUse)
+      console.log(`[MVSEP] ✅ Using non-vocal stem:`, stemName)
+    } else if (files.length >= 2) {
+      // Fallback: pegar o SEGUNDO arquivo (geralmente instrumental)
+      stemToUse = files[1]
+      stemName = getFileName(stemToUse)
+      console.warn('[MVSEP] ⚠️  Using second file (likely instrumental):', stemName)
     } else {
-      // Pegar o primeiro stem instrumental
-      const instrumentalStem = instrumentalStems[0]
-      const instrumentalName = getFileName(instrumentalStem)
-      console.log(`[MVSEP] Found ${instrumentalStems.length} instrumental stems, using:`, instrumentalName)
-      await processStem(job, instrumentalStem)
+      // Último recurso: primeiro arquivo
+      stemToUse = files[0]
+      stemName = getFileName(stemToUse)
+      console.warn('[MVSEP] ⚠️  Using first file (may be vocals!):', stemName)
     }
+
+    await processStem(job, stemToUse)
   } catch (error) {
     console.error('[MVSEP] ❌ Failed to download/save stem:', error)
     console.error('[MVSEP] Error stack:', error instanceof Error ? error.stack : 'No stack')
