@@ -49,7 +49,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
       url: job.music.blobUrl, // URL pública do Vercel Blob
       separation_type: 37, // DrumSep - Type 37 (percussion separation)
       output_format: 'mp3', // MP3 320kbps
-      remote_type: 'other', // URL genérica
+      remote_type: 'url', // URL direta (não 'other' que é inválido)
     }
 
     console.log('[MVSEP] Request to MVSEP API:', {

@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       url: music.blobUrl,
       separation_type: 37,
       output_format: 'mp3',
-      remote_type: 'other',
+      remote_type: 'url',
     }
 
     logs.push('[TEST] Calling MVSEP API...')
