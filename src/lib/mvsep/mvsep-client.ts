@@ -243,16 +243,20 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     // MVSEP retorna array de stems
     // Para DrumSep (Type 37), procuramos o stem de drums/percussion
     console.log(`[MVSEP] Looking for drum stems in ${files.length} files...`)
+    console.log(`[MVSEP] File names:`, files.map(f => f.name || 'NO_NAME'))
+    console.log(`[MVSEP] File URLs:`, files.map(f => f.url || 'NO_URL'))
+
     const drumStems = files.filter(
       (r) =>
-        r.name.toLowerCase().includes('drum') || r.name.toLowerCase().includes('percussion')
+        r.name &&
+        (r.name.toLowerCase().includes('drum') || r.name.toLowerCase().includes('percussion'))
     )
 
     if (!drumStems || drumStems.length === 0) {
       // Fallback: pegar o primeiro stem disponível
-      console.warn('[MVSEP] No drum-specific stem found, using first available:', files[0].name)
-      const drumStem = files[0]
-      await processStem(job, drumStem)
+      const firstFile = files[0]
+      console.warn('[MVSEP] No drum-specific stem found, using first available:', firstFile?.name || 'unnamed')
+      await processStem(job, firstFile)
     } else {
       // Pegar o primeiro stem de drums (geralmente é o combinado)
       console.log(`[MVSEP] Found ${drumStems.length} drum stems, using:`, drumStems[0].name)
