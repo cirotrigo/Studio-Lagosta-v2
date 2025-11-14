@@ -22,11 +22,17 @@ interface MvsepCreateResponse {
 }
 
 interface MvsepStatusResponse {
+  success: boolean
   status: 'waiting' | 'processing' | 'done' | 'failed'
-  results?: Array<{
-    name: string
-    url: string
-  }>
+  data?: {
+    files?: Array<{
+      name: string
+      url: string
+    }>
+    algorithm?: string
+    output_format?: string
+    date?: string
+  }
   message?: string
 }
 
@@ -178,20 +184,21 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
 
     // Se completou, baixar o stem
     if (mvsepStatus === 'done') {
-      console.log(`[MVSEP] Job ${job.id} is DONE! Checking for results...`)
-      console.log(`[MVSEP] data.results:`, JSON.stringify(data.results, null, 2))
+      console.log(`[MVSEP] Job ${job.id} is DONE! Checking for files...`)
+      console.log(`[MVSEP] data.data:`, JSON.stringify(data.data, null, 2))
+      console.log(`[MVSEP] data.data?.files:`, JSON.stringify(data.data?.files, null, 2))
 
-      if (!data.results) {
-        console.error(`[MVSEP] Job ${job.id} is done but has no results!`)
+      if (!data.data?.files || data.data.files.length === 0) {
+        console.error(`[MVSEP] Job ${job.id} is done but has no files!`)
         await db.musicStemJob.update({
           where: { id: job.id },
           data: {
             status: 'failed',
-            error: 'MVSEP completed but returned no results',
+            error: 'MVSEP completed but returned no files',
           },
         })
       } else {
-        console.log(`[MVSEP] Found ${data.results.length} results, downloading stem...`)
+        console.log(`[MVSEP] Found ${data.data.files.length} files, downloading stem...`)
         await downloadAndSaveStem(job, data)
       }
     }
@@ -219,7 +226,7 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
 async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusResponse) {
   try {
     console.log(`[MVSEP] ⬇️  Starting download for job ${job.id}`)
-    console.log(`[MVSEP] Results array:`, JSON.stringify(mvsepResult.results, null, 2))
+    console.log(`[MVSEP] Files array:`, JSON.stringify(mvsepResult.data?.files, null, 2))
 
     await db.musicStemJob.update({
       where: { id: job.id },
@@ -227,22 +234,24 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     })
     console.log(`[MVSEP] Updated progress to 70%`)
 
-    if (!mvsepResult.results || mvsepResult.results.length === 0) {
+    if (!mvsepResult.data?.files || mvsepResult.data.files.length === 0) {
       throw new Error('No stems found in result')
     }
 
+    const files = mvsepResult.data.files
+
     // MVSEP retorna array de stems
     // Para DrumSep (Type 37), procuramos o stem de drums/percussion
-    console.log(`[MVSEP] Looking for drum stems in ${mvsepResult.results.length} results...`)
-    const drumStems = mvsepResult.results.filter(
+    console.log(`[MVSEP] Looking for drum stems in ${files.length} files...`)
+    const drumStems = files.filter(
       (r) =>
         r.name.toLowerCase().includes('drum') || r.name.toLowerCase().includes('percussion')
     )
 
     if (!drumStems || drumStems.length === 0) {
       // Fallback: pegar o primeiro stem disponível
-      console.warn('[MVSEP] No drum-specific stem found, using first available:', mvsepResult.results[0].name)
-      const drumStem = mvsepResult.results[0]
+      console.warn('[MVSEP] No drum-specific stem found, using first available:', files[0].name)
+      const drumStem = files[0]
       await processStem(job, drumStem)
     } else {
       // Pegar o primeiro stem de drums (geralmente é o combinado)
