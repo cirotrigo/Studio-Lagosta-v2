@@ -12,8 +12,12 @@ const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9W
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 interface MvsepCreateResponse {
-  status: 'success' | 'error'
-  hash?: string
+  success: boolean
+  data?: {
+    hash: string
+    link: string
+  }
+  errors?: string[]
   message?: string
 }
 
@@ -84,8 +88,8 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
       throw new Error(`Invalid JSON response from MVSEP: ${responseText.substring(0, 200)}`)
     }
 
-    if (!response.ok || data.status === 'error') {
-      const errorMsg = data.message || 'MVSEP API error'
+    if (!response.ok || !data.success) {
+      const errorMsg = data.errors?.join(', ') || data.message || 'MVSEP API error'
       console.error('[MVSEP] API returned error:', {
         status: response.status,
         statusText: response.statusText,
@@ -94,7 +98,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
       throw new Error(errorMsg)
     }
 
-    if (!data.hash) {
+    if (!data.data?.hash) {
       console.error('[MVSEP] No hash in response. Full data:', JSON.stringify(data, null, 2))
       throw new Error('MVSEP did not return a job hash')
     }
@@ -103,13 +107,13 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
     await db.musicStemJob.update({
       where: { id: job.id },
       data: {
-        mvsepJobHash: data.hash,
+        mvsepJobHash: data.data.hash,
         mvsepStatus: 'waiting',
         progress: 20,
       },
     })
 
-    console.log(`[MVSEP] Job created successfully:`, data.hash)
+    console.log(`[MVSEP] Job created successfully:`, data.data.hash)
   } catch (error) {
     console.error('[MVSEP] Failed to start separation:', error)
 
