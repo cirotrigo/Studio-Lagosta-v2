@@ -25,13 +25,21 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       body,
       request,
       onBeforeGenerateToken: async (pathname) => {
-        // Validar permissões antes de gerar token
-        // pathname será algo como: "videos/export-123.mp4"
+        if (!pathname.startsWith('videos/')) {
+          console.warn('[UPLOAD_URL] Invalid pathname attempt:', pathname, 'user:', userId)
+          throw new Error('Invalid pathname')
+        }
 
         console.log('[UPLOAD_URL] Generating upload token for:', pathname, 'user:', userId)
 
         return {
-          allowedContentTypes: ['video/mp4', 'video/webm', 'video/quicktime'],
+          allowedContentTypes: [
+            'video/mp4',
+            'video/webm',
+            'video/quicktime',
+            'image/jpeg',
+            'image/png',
+          ],
           maximumSizeInBytes: 500 * 1024 * 1024, // 500MB max
           tokenPayload: JSON.stringify({
             userId,

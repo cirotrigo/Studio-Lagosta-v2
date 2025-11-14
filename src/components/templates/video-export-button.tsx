@@ -24,6 +24,7 @@ import {
 } from '@/lib/konva/konva-video-export'
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import Konva from 'konva'
+import { upload } from '@vercel/blob/client'
 
 export function VideoExportButton() {
   const editorContext = useTemplateEditor()
@@ -312,40 +313,26 @@ export function VideoExportButton() {
       const fileName = `videos/${design.name || 'video'}-${Date.now()}.${exportFormat}`
       console.log('[Video Export] Iniciando upload direto para Vercel Blob...', fileName, blob.size, 'bytes')
 
-      // 4.1. Obter URL de upload assinada
-      const uploadUrlResponse = await fetch('/api/export/video/upload-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: blob.type,
-          pathname: fileName,
-        }),
-      })
+      let videoUrl: string
+      try {
+        const videoUpload = await upload(fileName, blob, {
+          access: 'public',
+          contentType: blob.type,
+          handleUploadUrl: '/api/export/video/upload-url',
+          onUploadProgress: ({ percentage }) => {
+            setExportProgress({
+              phase: 'finalizing',
+              progress: 90 + Math.min((percentage / 100) * 5, 5),
+            })
+          },
+        })
 
-      if (!uploadUrlResponse.ok) {
-        throw new Error('Falha ao obter URL de upload')
+        videoUrl = videoUpload.url
+        console.log('[Video Export] Vídeo enviado para Vercel Blob:', videoUrl)
+      } catch (uploadError) {
+        console.error('[Video Export] Falha no upload do vídeo:', uploadError)
+        throw new Error('Falha ao enviar o vídeo para o armazenamento')
       }
-
-      const { url: uploadUrl } = await uploadUrlResponse.json()
-      console.log('[Video Export] URL de upload obtida:', uploadUrl)
-
-      // 4.2. Fazer upload direto do vídeo para Vercel Blob
-      setExportProgress({ phase: 'finalizing', progress: 93 })
-      const uploadResponse = await fetch(uploadUrl, {
-        method: 'PUT',
-        body: blob,
-        headers: {
-          'Content-Type': blob.type,
-        },
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Falha no upload: ${uploadResponse.statusText}`)
-      }
-
-      const uploadResult = await uploadResponse.json()
-      const videoUrl = uploadResult.url
-      console.log('[Video Export] Vídeo enviado para Vercel Blob:', videoUrl)
 
       // 4.3. Upload do thumbnail (se existe)
       let thumbnailUrl: string | undefined
@@ -353,28 +340,23 @@ export function VideoExportButton() {
         setExportProgress({ phase: 'finalizing', progress: 95 })
         const thumbnailFileName = fileName.replace(/\.[^/.]+$/, '_thumb.jpg')
 
-        const thumbUploadUrlResponse = await fetch('/api/export/video/upload-url', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'image/jpeg',
-            pathname: thumbnailFileName,
-          }),
-        })
-
-        if (thumbUploadUrlResponse.ok) {
-          const { url: thumbUploadUrl } = await thumbUploadUrlResponse.json()
-          const thumbUploadResponse = await fetch(thumbUploadUrl, {
-            method: 'PUT',
-            body: thumbnailBlob,
-            headers: { 'Content-Type': 'image/jpeg' },
+        try {
+          const thumbUpload = await upload(thumbnailFileName, thumbnailBlob, {
+            access: 'public',
+            contentType: 'image/jpeg',
+            handleUploadUrl: '/api/export/video/upload-url',
+            onUploadProgress: ({ percentage }) => {
+              setExportProgress({
+                phase: 'finalizing',
+                progress: 95 + Math.min((percentage / 100) * 2, 2),
+              })
+            },
           })
 
-          if (thumbUploadResponse.ok) {
-            const thumbResult = await thumbUploadResponse.json()
-            thumbnailUrl = thumbResult.url
-            console.log('[Video Export] Thumbnail enviado:', thumbnailUrl)
-          }
+          thumbnailUrl = thumbUpload.url
+          console.log('[Video Export] Thumbnail enviado:', thumbnailUrl)
+        } catch (thumbError) {
+          console.warn('[Video Export] Falha ao enviar thumbnail. Continuando sem thumbnail.', thumbError)
         }
       }
 
