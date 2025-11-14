@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { extractYoutubeId } from '@/lib/youtube/utils'
 
 const youtubeDownloadSchema = z.object({
   youtubeUrl: z.string().url(),
@@ -93,21 +94,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     )
   }
-}
-
-function extractYoutubeId(url: string) {
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)/,
-    /youtube\.com\/embed\/([^&\n?#]+)/,
-    /youtube\.com\/v\/([^&\n?#]+)/,
-  ]
-
-  for (const pattern of patterns) {
-    const match = url.match(pattern)
-    if (match && match[1]) {
-      return match[1]
-    }
-  }
-
-  return null
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEnviarMusica } from '@/hooks/use-music-library';
@@ -16,8 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Upload, Music, Download } from 'lucide-react';
+import { ArrowLeft, Upload, Music, Download, Image as ImageIcon } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { isYoutubeUrl } from '@/lib/youtube/utils';
 
 const GENEROS = [
   'Rock',
@@ -61,7 +62,13 @@ export default function EnviarMusicaPage() {
   const [extraindo, setExtraindo] = useState(false);
 
   const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [debouncedYoutubeUrl, setDebouncedYoutubeUrl] = useState('');
   const [aceitouTermos, setAceitouTermos] = useState(false);
+  const [youtubeMetadataStatus, setYoutubeMetadataStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+  const [youtubeMetadataMessage, setYoutubeMetadataMessage] = useState<string | null>(null);
+  const [youtubeMetadataThumb, setYoutubeMetadataThumb] = useState<string | null>(null);
+  const [nomeManual, setNomeManual] = useState(false);
+  const [artistaManual, setArtistaManual] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -205,6 +212,95 @@ export default function EnviarMusicaPage() {
     }
   };
 
+  useEffect(() => {
+    if (uploadMode !== 'youtube') return;
+    const handler = setTimeout(() => {
+      setDebouncedYoutubeUrl(youtubeUrl.trim());
+    }, 600);
+    return () => clearTimeout(handler);
+  }, [youtubeUrl, uploadMode]);
+
+  useEffect(() => {
+    if (uploadMode !== 'youtube') return;
+    setNomeManual(false);
+    setArtistaManual(false);
+  }, [debouncedYoutubeUrl, uploadMode]);
+
+  useEffect(() => {
+    if (uploadMode === 'youtube') return;
+    setDebouncedYoutubeUrl('');
+    setYoutubeMetadataStatus('idle');
+    setYoutubeMetadataMessage(null);
+    setYoutubeMetadataThumb(null);
+    setNomeManual(false);
+    setArtistaManual(false);
+  }, [uploadMode]);
+
+  useEffect(() => {
+    if (uploadMode !== 'youtube') return;
+    const url = debouncedYoutubeUrl;
+
+    if (!url) {
+      setYoutubeMetadataStatus('idle');
+      setYoutubeMetadataMessage(null);
+      setYoutubeMetadataThumb(null);
+      return;
+    }
+
+    if (!isYoutubeUrl(url)) {
+      setYoutubeMetadataStatus('error');
+      setYoutubeMetadataMessage('Informe um link válido do YouTube.');
+      setYoutubeMetadataThumb(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setYoutubeMetadataStatus('loading');
+    setYoutubeMetadataMessage(null);
+
+    fetch(`/api/biblioteca-musicas/youtube/metadata?url=${encodeURIComponent(url)}`, {
+      signal: controller.signal,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error('Não foi possível obter as informações do vídeo.');
+        }
+        return res.json();
+      })
+      .then((data) => {
+        setYoutubeMetadataStatus('success');
+        setYoutubeMetadataThumb(data.thumbnail || null);
+        if (!nomeManual && data.title) {
+          setNome(data.title);
+        }
+        if (!artistaManual && data.author) {
+          setArtista(data.author);
+        }
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setYoutubeMetadataStatus('error');
+        setYoutubeMetadataMessage(error.message);
+        setYoutubeMetadataThumb(null);
+      });
+
+    return () => controller.abort();
+  }, [debouncedYoutubeUrl, uploadMode, nomeManual, artistaManual]);
+
+  const handleNomeInput = (value: string) => {
+    setNome(value);
+    if (uploadMode === 'youtube') {
+      setNomeManual(true);
+    }
+  };
+
+  const handleArtistaInput = (value: string) => {
+    setArtista(value);
+    if (uploadMode === 'youtube') {
+      setArtistaManual(true);
+    }
+  };
+
   const renderInformacoesBasicas = (requireNome: boolean) => (
     <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
       <h3 className="text-base font-semibold text-gray-900">Informações Básicas</h3>
@@ -215,7 +311,7 @@ export default function EnviarMusicaPage() {
         <Input
           id="nome"
           value={nome}
-          onChange={(e) => setNome(e.target.value)}
+          onChange={(e) => handleNomeInput(e.target.value)}
           placeholder="Summer Vibes"
           required={requireNome}
         />
@@ -225,7 +321,7 @@ export default function EnviarMusicaPage() {
         <Input
           id="artista"
           value={artista}
-          onChange={(e) => setArtista(e.target.value)}
+          onChange={(e) => handleArtistaInput(e.target.value)}
           placeholder="John Doe"
         />
       </div>
@@ -427,6 +523,31 @@ export default function EnviarMusicaPage() {
               required
             />
             <p className="text-sm text-gray-500">Cole o link completo do vídeo do YouTube</p>
+            {youtubeMetadataStatus === 'loading' && (
+              <p className="text-sm text-blue-600">Buscando informações do vídeo...</p>
+            )}
+            {youtubeMetadataStatus === 'error' && youtubeMetadataMessage && (
+              <p className="text-sm text-red-600">{youtubeMetadataMessage}</p>
+            )}
+            {youtubeMetadataStatus === 'success' && (
+              <div className="mt-2 flex gap-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+                {youtubeMetadataThumb ? (
+                  <img
+                    src={youtubeMetadataThumb}
+                    alt="Thumbnail do vídeo"
+                    className="h-12 w-12 rounded object-cover"
+                  />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded bg-blue-100">
+                    <ImageIcon className="h-5 w-5 text-blue-500" />
+                  </div>
+                )}
+                <div>
+                  <p>Preenchemos automaticamente os campos com as informações do vídeo.</p>
+                  {nome && <p className="mt-1 font-semibold text-blue-950">{nome}</p>}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-lg border-2 border-red-300 bg-red-50 p-6">
