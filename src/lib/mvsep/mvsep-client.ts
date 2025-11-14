@@ -70,8 +70,19 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
 
     console.log('[MVSEP] Response status:', response.status, response.statusText)
 
-    const data = (await response.json()) as MvsepCreateResponse
-    console.log('[MVSEP] Response data:', data)
+    // Ler resposta como texto primeiro para debug
+    const responseText = await response.text()
+    console.log('[MVSEP] Raw response text:', responseText)
+
+    // Tentar fazer parse do JSON
+    let data: MvsepCreateResponse
+    try {
+      data = JSON.parse(responseText) as MvsepCreateResponse
+      console.log('[MVSEP] Parsed response data:', JSON.stringify(data, null, 2))
+    } catch (parseError) {
+      console.error('[MVSEP] Failed to parse JSON response:', parseError)
+      throw new Error(`Invalid JSON response from MVSEP: ${responseText.substring(0, 200)}`)
+    }
 
     if (!response.ok || data.status === 'error') {
       const errorMsg = data.message || 'MVSEP API error'
@@ -84,6 +95,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
     }
 
     if (!data.hash) {
+      console.error('[MVSEP] No hash in response. Full data:', JSON.stringify(data, null, 2))
       throw new Error('MVSEP did not return a job hash')
     }
 
