@@ -15,11 +15,26 @@ interface CreativesLightboxProps {
 export function CreativesLightbox({ galleryId, children }: CreativesLightboxProps) {
   const lightboxRef = React.useRef<PhotoSwipeLightbox | null>(null)
   const itemCount = React.Children.count(children)
+  const activeVideosRef = React.useRef(new Set<HTMLVideoElement>())
 
   React.useEffect(() => {
     if (lightboxRef.current) {
       lightboxRef.current.destroy()
       lightboxRef.current = null
+    }
+
+    const stopActiveVideos = () => {
+      activeVideosRef.current.forEach((video) => {
+        try {
+          video.pause()
+          video.currentTime = 0
+          video.removeAttribute('src')
+          video.load()
+        } catch {
+          // ignore
+        }
+      })
+      activeVideosRef.current.clear()
     }
 
     const hasItems =
@@ -83,6 +98,7 @@ export function CreativesLightbox({ galleryId, children }: CreativesLightboxProp
       videoEl.style.width = '100%'
       videoEl.style.height = '100%'
       videoEl.style.objectFit = 'contain'
+      activeVideosRef.current.add(videoEl)
 
       const wrapper = document.createElement('div')
       wrapper.style.width = '100%'
@@ -92,18 +108,14 @@ export function CreativesLightbox({ galleryId, children }: CreativesLightboxProp
       content.element = wrapper
     })
 
-    lightbox.on('close', () => {
-      const videos = document.querySelectorAll<HTMLVideoElement>(`#${galleryId} video`)
-      videos.forEach((video) => {
-        video.pause()
-        video.currentTime = 0
-      })
-    })
+    lightbox.on('close', stopActiveVideos)
+    lightbox.on('contentDestroy', stopActiveVideos)
 
     lightbox.init()
     lightboxRef.current = lightbox
 
     return () => {
+      stopActiveVideos()
       if (lightboxRef.current) {
         lightboxRef.current.destroy()
         lightboxRef.current = null
