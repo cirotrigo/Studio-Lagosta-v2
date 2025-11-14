@@ -14,11 +14,20 @@ export const maxDuration = 120 // 2 minutes
 
 export async function GET(req: NextRequest) {
   try {
-    // Verificar autenticação do cron job (Vercel Cron envia via header)
+    // Verificar autenticação via Authorization header ou query param
     const authHeader = req.headers.get('authorization')
-    const expectedAuth = `Bearer ${process.env.CRON_SECRET}`
+    const { searchParams } = new URL(req.url)
+    const secretParam = searchParams.get('secret')
 
-    if (authHeader !== expectedAuth) {
+    const expectedAuth = `Bearer ${process.env.CRON_SECRET}`
+    const expectedSecret = process.env.CRON_SECRET
+
+    const isAuthorized =
+      authHeader === expectedAuth ||
+      secretParam === expectedSecret ||
+      req.headers.get('x-vercel-cron') === '1' // Header enviado pelo Vercel Cron
+
+    if (!isAuthorized) {
       console.warn('[CRON] Unauthorized attempt to access process-music-stems')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
