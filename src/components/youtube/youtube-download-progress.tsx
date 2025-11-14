@@ -1,17 +1,27 @@
 'use client'
 
-import Link from 'next/link'
-import { Loader2, CheckCircle2, XCircle, Music } from 'lucide-react'
+import { useEffect, useRef } from 'react'
+import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
-import { Button } from '@/components/ui/button'
 import { useYoutubeDownloadStatus } from '@/hooks/use-youtube-download'
+import { useQueryClient } from '@tanstack/react-query'
+import { chavesMusica } from '@/hooks/use-music-library'
 
 interface YoutubeDownloadProgressProps {
   jobId: number
 }
 
 export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps) {
+  const queryClient = useQueryClient()
   const { data: job, isLoading } = useYoutubeDownloadStatus(jobId)
+  const hasInvalidated = useRef(false)
+
+  useEffect(() => {
+    if (!job || job.status !== 'completed' || !job.music) return
+    if (hasInvalidated.current) return
+    queryClient.invalidateQueries({ queryKey: chavesMusica.listas() })
+    hasInvalidated.current = true
+  }, [job, queryClient])
 
   if (isLoading || !job) {
     return (
@@ -41,29 +51,23 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
   if (job.status === 'completed' && job.music) {
     return (
       <div className="rounded-lg border border-green-200 bg-green-50 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
-            <div>
-              <p className="text-sm font-semibold text-green-900">Download concluído!</p>
-              <p className="text-sm text-green-800">{job.music.name}</p>
-              {job.music.stemJob && job.music.stemJob.status === 'processing' && (
-                <div className="mt-2">
-                  <p className="text-xs text-green-800">Processando separação de percussão...</p>
-                  <Progress className="mt-1 h-1.5" value={job.music.stemJob.progress} />
-                </div>
-              )}
-              {job.music.hasPercussionStem && (
-                <p className="mt-1 text-xs text-green-700">✓ Percussão disponível</p>
-              )}
-            </div>
+        <div className="flex items-start gap-3">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 text-green-600" />
+          <div>
+            <p className="text-sm font-semibold text-green-900">Download concluído!</p>
+            <p className="text-sm text-green-800">
+              "{job.music.name}" foi adicionada à biblioteca automaticamente.
+            </p>
+            {job.music.stemJob && job.music.stemJob.status === 'processing' && (
+              <div className="mt-2">
+                <p className="text-xs text-green-800">Processando separação de percussão...</p>
+                <Progress className="mt-1 h-1.5" value={job.music.stemJob.progress} />
+              </div>
+            )}
+            {job.music.hasPercussionStem && (
+              <p className="mt-1 text-xs text-green-700">✓ Percussão disponível</p>
+            )}
           </div>
-          <Link href={`/biblioteca-musicas/${job.music.id}`}>
-            <Button size="sm" variant="outline">
-              <Music className="mr-2 h-4 w-4" />
-              Ver música
-            </Button>
-          </Link>
         </div>
       </div>
     )
