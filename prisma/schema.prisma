@@ -1286,10 +1286,6 @@ model MusicLibrary {
   hasPercussionStem Boolean   @default(false)
   stemsProcessedAt  DateTime?
 
-  // Fonte externa (YouTube/SoundCloud)
-  sourceType String?  // 'upload', 'youtube', 'soundcloud', 'url'
-  sourceUrl  String?  // URL original do YouTube/SoundCloud (se aplicável)
-
   // Vinculação com projeto (opcional - músicas globais não têm projeto)
   projectId   Int?
   project     Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
