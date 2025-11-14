@@ -6,6 +6,7 @@ import { fetchFile } from '@ffmpeg/util'
  */
 let ffmpegInstance: FFmpeg | null = null
 let isLoaded = false
+let ffmpegProgressCallback: ((progressRatio: number) => void) | null = null
 
 /**
  * Inicializa e carrega o FFmpeg.wasm
@@ -26,6 +27,7 @@ async function loadFFmpeg(): Promise<FFmpeg> {
 
     ffmpegInstance.on('progress', ({ progress, time }) => {
       console.log('[FFmpeg Progress]', `${(progress * 100).toFixed(2)}%`, `Time: ${time}`)
+      ffmpegProgressCallback?.(progress)
     })
   }
 
@@ -95,9 +97,9 @@ export async function convertWebMToMP4(
         '-c:v',
         'libx264',
         '-preset',
-        'medium',
+        'fast',
         '-crf',
-        '18',
+        '20',
         '-profile:v',
         'high',
         '-level',
@@ -110,12 +112,6 @@ export async function convertWebMToMP4(
         '60',
         '-bf',
         '2',
-        '-b:v',
-        '0',
-        '-maxrate',
-        '12M',
-        '-bufsize',
-        '24M',
         '-c:a',
         audioCodec,
         ...(audioCodec === 'aac'
@@ -125,6 +121,12 @@ export async function convertWebMToMP4(
             : []),
         'output.mp4',
       ])
+    }
+
+    const previousProgressCallback = ffmpegProgressCallback
+    ffmpegProgressCallback = (ratio) => {
+      const mapped = 30 + Math.min(ratio * 50, 50)
+      onProgress?.(mapped)
     }
 
     try {
@@ -139,6 +141,8 @@ export async function convertWebMToMP4(
         await cleanupOutputFile()
         await runConversion('copy')
       }
+    } finally {
+      ffmpegProgressCallback = previousProgressCallback
     }
 
     onProgress?.(80)
