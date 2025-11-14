@@ -44,24 +44,42 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
     })
 
     // Enviar para MVSEP API
+    const requestBody = {
+      api_token: MVSEP_API_KEY,
+      url: job.music.blobUrl, // URL pública do Vercel Blob
+      separation_type: 37, // DrumSep - Type 37 (percussion separation)
+      output_format: 'mp3', // MP3 320kbps
+      remote_type: 'other', // URL genérica
+    }
+
+    console.log('[MVSEP] Request to MVSEP API:', {
+      endpoint: `${MVSEP_API_URL}/separation/create`,
+      musicUrl: job.music.blobUrl,
+      separation_type: 37,
+      hasApiKey: !!MVSEP_API_KEY,
+    })
+
     const response = await fetch(`${MVSEP_API_URL}/separation/create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        api_token: MVSEP_API_KEY,
-        url: job.music.blobUrl, // URL pública do Vercel Blob
-        separation_type: 37, // DrumSep - Type 37 (percussion separation)
-        output_format: 'mp3', // MP3 320kbps
-        remote_type: 'other', // URL genérica
-      }),
+      body: JSON.stringify(requestBody),
     })
 
+    console.log('[MVSEP] Response status:', response.status, response.statusText)
+
     const data = (await response.json()) as MvsepCreateResponse
+    console.log('[MVSEP] Response data:', data)
 
     if (!response.ok || data.status === 'error') {
-      throw new Error(data.message || 'MVSEP API error')
+      const errorMsg = data.message || 'MVSEP API error'
+      console.error('[MVSEP] API returned error:', {
+        status: response.status,
+        statusText: response.statusText,
+        responseData: data,
+      })
+      throw new Error(errorMsg)
     }
 
     if (!data.hash) {
