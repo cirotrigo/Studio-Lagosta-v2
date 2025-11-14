@@ -3,6 +3,10 @@ import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/db';
 import { put } from '@vercel/blob';
 
+// Configuração de runtime para suportar uploads maiores
+export const runtime = 'nodejs'
+export const maxDuration = 120 // 2 minutos
+
 /**
  * GET /api/biblioteca-musicas
  * Listar todas as faixas de música ativas

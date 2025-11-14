@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api-client';
+import { upload } from '@vercel/blob/client';
 
 // Tipos
 export interface FaixaMusica {
@@ -109,13 +110,14 @@ export function useBuscaMusicas(filtros?: FiltrosMusica) {
 
 /**
  * Fazer upload de uma nova faixa de música
+ * Usa upload direto para Vercel Blob para contornar limite de 4.5MB do Next.js
  */
 export function useEnviarMusica() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (data: CriarMusicaData) => {
-      console.log('📤 Enviando música:', {
+      console.log('📤 Enviando música (upload direto):', {
         nome: data.nome,
         artista: data.artista,
         genero: data.genero,
@@ -125,31 +127,48 @@ export function useEnviarMusica() {
         tamanhoArquivo: data.arquivo.size,
       });
 
-      const formData = new FormData();
-      formData.append('arquivo', data.arquivo);
-      formData.append('nome', data.nome);
-      formData.append('duracao', data.duracao.toString());
-      if (data.artista) formData.append('artista', data.artista);
-      if (data.genero) formData.append('genero', data.genero);
-      if (data.humor) formData.append('humor', data.humor);
-      if (data.projectId) formData.append('projectId', data.projectId.toString());
+      // Passo 1: Upload direto para Vercel Blob (sem passar pelo Next.js)
+      const fileName = `musicas/${Date.now()}-${data.arquivo.name}`;
+      console.log('📤 Fazendo upload para Vercel Blob:', fileName);
 
-      const response = await fetch('/api/biblioteca-musicas', {
+      const blob = await upload(fileName, data.arquivo, {
+        access: 'public',
+        handleUploadUrl: '/api/biblioteca-musicas/upload-url',
+      });
+
+      console.log('✅ Upload concluído:', blob.url);
+
+      // Passo 2: Salvar metadados no banco de dados
+      console.log('📤 Salvando metadados no banco...');
+
+      const response = await fetch('/api/biblioteca-musicas/confirm', {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          blobUrl: blob.url,
+          blobSize: data.arquivo.size,
+          name: data.nome,
+          artist: data.artista,
+          genre: data.genero,
+          mood: data.humor,
+          projectId: data.projectId,
+          duration: data.duracao,
+        }),
         credentials: 'include',
       });
 
-      console.log('📥 Resposta da API:', {
+      console.log('📥 Resposta da API confirm:', {
         status: response.status,
         ok: response.ok,
       });
 
       if (!response.ok) {
-        let errorMessage = 'Falha ao enviar música';
+        let errorMessage = 'Falha ao salvar música no banco';
         try {
           const error = await response.json();
-          errorMessage = error.erro || errorMessage;
+          errorMessage = error.error || errorMessage;
           console.error('❌ Erro da API:', error);
         } catch (e) {
           console.error('❌ Erro ao parsear resposta:', e);
@@ -161,7 +180,7 @@ export function useEnviarMusica() {
       }
 
       const result = await response.json();
-      console.log('✅ Música enviada com sucesso:', result);
+      console.log('✅ Música salva com sucesso:', result);
       return result;
     },
     onSuccess: () => {

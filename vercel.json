@@ -11,6 +11,9 @@
     "app/api/cms/media/upload/route.ts": {
       "maxDuration": 120
     },
+    "app/api/biblioteca-musicas/route.ts": {
+      "maxDuration": 120
+    },
     "app/api/projects/[projectId]/elements/route.ts": {
       "maxDuration": 120
     },
