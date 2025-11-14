@@ -29,6 +29,7 @@ const GENEROS = [
   'Samba',
   'Bossa',
   'Pagode',
+  'Sertanejo',
   'Chorinho',
   'Ambiente',
 ];
