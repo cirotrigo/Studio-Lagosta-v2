@@ -76,7 +76,7 @@ export async function convertWebMToMP4(
     console.log('[convertWebMToMP4] Escrevendo arquivo input.webm...')
     await ffmpeg.writeFile('input.webm', await fetchFile(webmBlob))
 
-    // 3. Executar conversão com FFmpeg garantindo frame rate constante
+    // 3. Executar conversão com FFmpeg priorizando qualidade e compatibilidade
     onProgress?.(30)
     console.log('[convertWebMToMP4] Executando conversão...')
 
@@ -95,23 +95,27 @@ export async function convertWebMToMP4(
         '-c:v',
         'libx264',
         '-preset',
-        'fast',
+        'medium',
         '-crf',
-        '23',
-        '-vf',
-        'fps=30',
-        '-r',
-        '30',
-        '-vsync',
-        'cfr',
+        '18',
+        '-profile:v',
+        'high',
+        '-level',
+        '4.1',
         '-pix_fmt',
         'yuv420p',
-        '-profile:v',
-        'baseline',
-        '-level',
-        '3.0',
         '-movflags',
         'faststart',
+        '-g',
+        '60',
+        '-bf',
+        '2',
+        '-b:v',
+        '0',
+        '-maxrate',
+        '12M',
+        '-bufsize',
+        '24M',
         '-c:a',
         audioCodec,
         ...(audioCodec === 'aac'

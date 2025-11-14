@@ -280,7 +280,15 @@ export async function exportVideoWithLayers(
   options: VideoExportOptions = {},
   onProgress?: (progress: VideoExportProgress) => void
 ): Promise<Blob> {
-  const { fps = 30, duration, format = 'webm', quality = 0.8, audioConfig } = options
+  const {
+    fps: requestedFps = 30,
+    duration,
+    format = 'webm',
+    quality: requestedQuality = 0.8,
+    audioConfig,
+  } = options
+  const normalizedQuality = Math.min(Math.max(requestedQuality, 0.5), 1)
+  const captureFps = Math.min(60, Math.max(24, Math.round(requestedFps)))
 
   onProgress?.({ phase: 'preparing', progress: 0 })
 
@@ -385,7 +393,15 @@ export async function exportVideoWithLayers(
     onProgress?.({ phase: 'preparing', progress: 40 })
 
     // Criar stream do canvas offscreen
-    const canvasStream = offscreenCanvas.captureStream(fps)
+    const canvasStream = offscreenCanvas.captureStream(captureFps)
+    const primaryCanvasTrack = canvasStream.getVideoTracks()[0]
+    if (primaryCanvasTrack && 'contentHint' in primaryCanvasTrack) {
+      try {
+        ;(primaryCanvasTrack as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion'
+      } catch {
+        // Alguns navegadores (Safari) não permitem definir o hint — ignorar nesses casos
+      }
+    }
 
     // Processar áudio de acordo com audioConfig
     let stream = canvasStream
@@ -621,9 +637,13 @@ export async function exportVideoWithLayers(
     }
 
     // Configurar MediaRecorder
+    const targetVideoBitrate = Math.round(
+      Math.min(12_000_000, Math.max(6_000_000, normalizedQuality * 10_000_000))
+    )
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: finalMimeType,
-      videoBitsPerSecond: quality * 5_000_000, // 5 Mbps max
+      videoBitsPerSecond: targetVideoBitrate,
+      audioBitsPerSecond: 256_000,
     })
 
     const chunks: Blob[] = []
