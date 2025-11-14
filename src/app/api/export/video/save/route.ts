@@ -5,6 +5,8 @@ import { put } from '@vercel/blob'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutos para upload de vídeos grandes
+// @ts-ignore - Next.js 15 experimental feature for large file uploads
+export const experimental_bodySizeLimit = '100mb' // Allow uploads up to 100MB
 
 /**
  * POST /api/export/video/save
