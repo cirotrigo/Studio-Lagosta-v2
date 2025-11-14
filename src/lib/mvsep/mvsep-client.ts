@@ -57,9 +57,9 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
     // Criar FormData para upload multipart
     const formData = new FormData()
     formData.append('api_token', MVSEP_API_KEY)
-    formData.append('file', audioBlob, 'audio.mp3')
-    formData.append('separation_type', '37')
-    formData.append('output_format', 'mp3')
+    formData.append('audiofile', audioBlob, 'audio.mp3')
+    formData.append('sep_type', '37') // DrumSep
+    formData.append('output_format', '0') // 0 = mp3 320kbps
 
     console.log('[MVSEP] Uploading file to MVSEP via multipart...')
 
