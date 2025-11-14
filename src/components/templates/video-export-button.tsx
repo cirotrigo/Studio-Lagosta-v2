@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { Download, Loader2, Film, AlertCircle, Music } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { useAuth } from '@clerk/nextjs'
 import {
   Dialog,
   DialogContent,
@@ -12,8 +13,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Progress } from '@/components/ui/progress'
-import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Badge } from '@/components/ui/badge'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
@@ -21,16 +22,39 @@ import {
   exportVideoWithLayers,
   checkVideoExportSupport,
   type VideoExportProgress,
+  generateVideoThumbnail,
 } from '@/lib/konva/konva-video-export'
 import { AudioSelectionModal, type AudioConfig } from '@/components/audio/audio-selection-modal'
 import Konva from 'konva'
 import { upload } from '@vercel/blob/client'
+import { createId } from '@/lib/id'
+
+const sanitizeFileName = (name: string) =>
+  name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'video'
+
+const generateUploadPath = (clerkUserId: string, videoName: string) => {
+  const randomSuffix = createId()
+  return `video-processing/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.webm`
+}
+
+const generateThumbnailUploadPath = (clerkUserId: string, videoName: string) => {
+  const randomSuffix = createId()
+  return `video-thumbnails/${clerkUserId}/${Date.now()}-${randomSuffix}-${sanitizeFileName(videoName)}.jpg`
+}
+
+async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
+  const response = await fetch(dataUrl)
+  return await response.blob()
+}
 
 export function VideoExportButton() {
   const editorContext = useTemplateEditor()
   const { design, zoom, templateId, projectId } = editorContext
+  const designName =
+    typeof (design as { name?: string }).name === 'string' ? (design as { name?: string }).name! : 'Sem título'
   const { toast } = useToast()
-  const { canPerformOperation, getCost, refresh: refreshCredits, credits } = useCredits()
+  const { userId: clerkUserId } = useAuth()
+  const { canPerformOperation, getCost, credits } = useCredits()
 
   const videoLayer = design.layers.find((layer) => layer.type === 'video')
   const hasVideo = !!videoLayer
@@ -186,6 +210,94 @@ export function VideoExportButton() {
   // Verificar suporte do navegador
   const browserSupport = React.useMemo(() => checkVideoExportSupport(), [])
 
+  const pollJobStatus = React.useCallback(
+    (jobId: string, initialGenerationId?: string, projectIdParam?: number) => {
+      console.log('[VideoExportQueue] Iniciando polling para job:', jobId)
+      let pollCount = 0
+      const maxPolls = 60
+      let linkedGenerationId = initialGenerationId
+
+      const interval = setInterval(async () => {
+        pollCount++
+        if (pollCount > maxPolls) {
+          clearInterval(interval)
+          toast({
+            variant: 'destructive',
+            title: 'Processamento em andamento',
+            description: 'O MP4 continua em processamento. Verifique a aba Criativos em instantes.',
+          })
+          return
+        }
+
+        try {
+          const response = await fetch(`/api/video-processing/status/${jobId}`)
+          if (!response.ok) {
+            console.error('[VideoExportQueue] Erro na resposta:', response.status)
+            clearInterval(interval)
+            return
+          }
+
+          const job = await response.json()
+          const currentGenerationId: string | undefined =
+            (typeof job?.generationId === 'string' ? job.generationId : undefined) ?? linkedGenerationId
+          linkedGenerationId = currentGenerationId
+
+          const resolvedProgress =
+            typeof job.progress === 'number'
+              ? job.progress
+              : job.status === 'COMPLETED'
+                ? 100
+                : job.status === 'FAILED'
+                  ? 100
+                  : 0
+
+          const detail = {
+            jobId,
+            generationId: currentGenerationId ?? null,
+            projectId: projectIdParam,
+            progress: resolvedProgress,
+            status: job.status,
+            mp4ResultUrl: job.mp4ResultUrl,
+            thumbnailUrl: job.thumbnailUrl,
+          }
+
+          window.dispatchEvent(new CustomEvent('video-export-progress', { detail }))
+
+          if (job.status === 'COMPLETED') {
+            clearInterval(interval)
+            toast({
+              title: '🎉 Vídeo pronto!',
+              description: 'Seu MP4 está disponível na aba Criativos.',
+              duration: 8000,
+            })
+            window.dispatchEvent(new CustomEvent('video-export-completed', { detail }))
+          } else if (job.status === 'FAILED') {
+            clearInterval(interval)
+            toast({
+              variant: 'destructive',
+              title: 'Erro no processamento',
+              description: job.errorMessage || 'Falha ao converter o vídeo.',
+            })
+            window.dispatchEvent(
+              new CustomEvent('video-export-failed', {
+                detail: {
+                  ...detail,
+                  errorMessage: job.errorMessage,
+                },
+              })
+            )
+          }
+        } catch (error) {
+          console.error('[VideoExportQueue] Polling error:', error)
+          clearInterval(interval)
+        }
+      }, 5000)
+
+      return () => clearInterval(interval)
+    },
+    [toast]
+  )
+
   const handleExport = async () => {
     if (!hasVideo || !videoLayer) {
       toast({
@@ -212,7 +324,15 @@ export function VideoExportButton() {
       return
     }
 
-    // Buscar stage diretamente do Konva
+    if (exportFormat !== 'mp4') {
+      toast({
+        variant: 'destructive',
+        description: 'A fila de processamento está disponível apenas para MP4 no momento.',
+      })
+      setExportFormat('mp4')
+      return
+    }
+
     const stageElement = document.querySelector('.konvajs-content')
     const stage = stageElement
       ? Konva.stages.find((s) => s.container() === stageElement.parentElement)
@@ -226,26 +346,34 @@ export function VideoExportButton() {
       return
     }
 
+    if (!clerkUserId) {
+      toast({
+        variant: 'destructive',
+        description: 'Sessão expirada. Faça login novamente para continuar.',
+      })
+      return
+    }
+
+    const resolvedProjectId =
+      typeof projectId === 'number'
+        ? projectId
+        : Number(projectId) && !Number.isNaN(Number(projectId))
+          ? Number(projectId)
+          : undefined
+
+    if (!resolvedProjectId) {
+      toast({
+        variant: 'destructive',
+        description: 'Projeto inválido para exportação.',
+      })
+      return
+    }
+
     setIsExporting(true)
-    setExportProgress({ phase: 'preparing', progress: 0 })
+    setExportProgress({ phase: 'preparing', progress: 10 })
 
     try {
-      // 1. Chamar API para validar e deduzir créditos
-      const validateResponse = await fetch('/api/export/video/validate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          layerId: videoLayer.id,
-        }),
-      })
-
-      if (!validateResponse.ok) {
-        const error = await validateResponse.json()
-        throw new Error(error.error || 'Falha ao validar créditos')
-      }
-
-      // 2. Exportar vídeo client-side
-      const blob = await exportVideoWithLayers(
+      const videoBlob = await exportVideoWithLayers(
         stage,
         videoLayer,
         design,
@@ -257,165 +385,113 @@ export function VideoExportButton() {
         },
         {
           fps: 30,
-          format: exportFormat,
+          format: 'webm',
           quality: 0.8,
-          audioConfig: audioConfig, // Pass audio configuration
+          audioConfig,
         },
         (progress) => {
           setExportProgress(progress)
         }
       )
 
-      // 3. Gerar thumbnail do primeiro frame do vídeo
-      setExportProgress({ phase: 'finalizing', progress: 90 })
-      console.log('[Video Export] Gerando thumbnail...')
+      setExportProgress({ phase: 'preparing', progress: 45 })
 
-      let thumbnailBlob: Blob | null = null
-      try {
-        // Criar vídeo temporário para capturar primeiro frame
-        const videoUrl = URL.createObjectURL(blob)
-        const videoEl = document.createElement('video')
-        videoEl.src = videoUrl
-        videoEl.muted = true
+      const thumbnailDataUrl = await generateVideoThumbnail(stage, videoLayer)
+      const thumbnailBlob = await dataUrlToBlob(thumbnailDataUrl)
 
-        await new Promise<void>((resolve, reject) => {
-          videoEl.addEventListener('loadeddata', () => resolve(), { once: true })
-          videoEl.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo')), { once: true })
-        })
+      const videoUploadPath = generateUploadPath(clerkUserId, designName)
+      const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, designName)
 
-        // Capturar primeiro frame
-        const canvas = document.createElement('canvas')
-        canvas.width = videoEl.videoWidth
-        canvas.height = videoEl.videoHeight
-        const ctx = canvas.getContext('2d')
+      toast({
+        title: 'Gerando vídeo...',
+        description: 'Estamos preparando o arquivo e enviando para processamento.',
+      })
 
-        if (ctx) {
-          ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height)
-          thumbnailBlob = await new Promise<Blob>((resolve, reject) => {
-            canvas.toBlob(
-              (b) => (b ? resolve(b) : reject(new Error('Falha ao gerar thumbnail'))),
-              'image/jpeg',
-              0.8
-            )
-          })
-        }
+      const thumbnailUpload = await upload(thumbnailUploadPath, thumbnailBlob, {
+        access: 'public',
+        contentType: 'image/jpeg',
+        handleUploadUrl: '/api/video-processing/upload',
+      })
 
-        URL.revokeObjectURL(videoUrl)
-        console.log('[Video Export] Thumbnail gerado:', thumbnailBlob?.size, 'bytes')
-      } catch (error) {
-        console.warn('[Video Export] Falha ao gerar thumbnail:', error)
-        // Continuar sem thumbnail se falhar
-      }
+      setExportProgress({ phase: 'uploading', progress: 55 })
 
-      // 4. Upload direto para Vercel Blob (evita limite de 413)
-      setExportProgress({ phase: 'finalizing', progress: 90 })
-
-      const fileName = `videos/${design.name || 'video'}-${Date.now()}.${exportFormat}`
-      console.log('[Video Export] Iniciando upload direto para Vercel Blob...', fileName, blob.size, 'bytes')
-
-      let videoUrl: string
-      try {
-        const videoUpload = await upload(fileName, blob, {
-          access: 'public',
-          contentType: blob.type,
-          handleUploadUrl: '/api/export/video/upload-url',
-          onUploadProgress: ({ percentage }) => {
+      const videoUpload = await upload(videoUploadPath, videoBlob, {
+        access: 'public',
+        contentType: 'video/webm',
+        handleUploadUrl: '/api/video-processing/upload',
+        multipart: videoBlob.size > 15 * 1024 * 1024,
+        onUploadProgress: ({ percentage }) => {
+          if (typeof percentage === 'number') {
             setExportProgress({
-              phase: 'finalizing',
-              progress: 90 + Math.min((percentage / 100) * 5, 5),
+              phase: 'uploading',
+              progress: 55 + Math.min(percentage * 0.4, 40),
             })
-          },
-        })
+          }
+        },
+      })
 
-        videoUrl = videoUpload.url
-        console.log('[Video Export] Vídeo enviado para Vercel Blob:', videoUrl)
-      } catch (uploadError) {
-        console.error('[Video Export] Falha no upload do vídeo:', uploadError)
-        throw new Error('Falha ao enviar o vídeo para o armazenamento')
-      }
+      setExportProgress({ phase: 'uploading', progress: 95 })
 
-      // 4.3. Upload do thumbnail (se existe)
-      let thumbnailUrl: string | undefined
-      if (thumbnailBlob) {
-        setExportProgress({ phase: 'finalizing', progress: 95 })
-        const thumbnailFileName = fileName.replace(/\.[^/.]+$/, '_thumb.jpg')
+      const exportedDuration =
+        audioConfig?.source === 'library'
+          ? audioConfig.endTime - audioConfig.startTime
+          : videoDuration || videoLayer.videoMetadata?.duration || 10
 
-        try {
-          const thumbUpload = await upload(thumbnailFileName, thumbnailBlob, {
-            access: 'public',
-            contentType: 'image/jpeg',
-            handleUploadUrl: '/api/export/video/upload-url',
-            onUploadProgress: ({ percentage }) => {
-              setExportProgress({
-                phase: 'finalizing',
-                progress: 95 + Math.min((percentage / 100) * 2, 2),
-              })
-            },
-          })
-
-          thumbnailUrl = thumbUpload.url
-          console.log('[Video Export] Thumbnail enviado:', thumbnailUrl)
-        } catch (thumbError) {
-          console.warn('[Video Export] Falha ao enviar thumbnail. Continuando sem thumbnail.', thumbError)
-        }
-      }
-
-      // 4.4. Registrar geração no banco de dados
-      setExportProgress({ phase: 'finalizing', progress: 97 })
-
-      const exportedDuration = audioConfig?.source === 'library'
-        ? (audioConfig.endTime - audioConfig.startTime)
-        : (videoDuration || videoLayer.videoMetadata?.duration || 10)
-
-      const saveResponse = await fetch('/api/export/video/save', {
+      const queueResponse = await fetch('/api/video-processing/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          videoUrl,
-          thumbnailUrl,
           templateId,
-          projectId,
-          fileName,
-          duration: exportedDuration,
-          fileSize: blob.size,
-          format: exportFormat,
+          projectId: resolvedProjectId,
+          videoName: designName || 'vídeo',
+          videoDuration: exportedDuration,
+          videoWidth: design.canvas.width,
+          videoHeight: design.canvas.height,
+          webmBlobUrl: videoUpload.url,
+          webmBlobSize: videoBlob.size,
+          thumbnailBlobUrl: thumbnailUpload.url,
+          thumbnailBlobSize: thumbnailBlob.size,
+          designData: design,
         }),
       })
 
-      if (!saveResponse.ok) {
-        const error = await saveResponse.json()
-        throw new Error(error.error || 'Falha ao salvar vídeo')
+      const queueJson = await queueResponse.json()
+      if (!queueResponse.ok) {
+        const message = queueJson?.error || queueJson?.message || 'Falha ao adicionar vídeo à fila'
+        throw new Error(message)
       }
 
-      const saveResult = await saveResponse.json()
-      console.log('[Video Export] Vídeo salvo com sucesso:', saveResult.generation.id)
-
-      // 4. Confirmar exportação e deduzir créditos
-      try {
-        const confirmResponse = await fetch('/api/export/video/confirm', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            layerId: videoLayer.id,
-            duration: exportedDuration,
-            fileSize: blob.size,
-          }),
-        })
-
-        if (!confirmResponse.ok) {
-          const error = await confirmResponse.json()
-          console.warn('Falha ao confirmar exportação:', error)
-        }
-      } catch (confirmError) {
-        console.error('Erro ao confirmar exportação:', confirmError)
+      const { jobId, generationId } = queueJson as { jobId?: string; generationId?: string }
+      if (!jobId) {
+        throw new Error('Resposta inválida ao enfileirar vídeo')
       }
 
-      // 5. Atualizar saldo de créditos
-      await refreshCredits()
+      if (generationId) {
+        window.dispatchEvent(
+          new CustomEvent('video-export-queued', {
+            detail: {
+              jobId,
+              generationId,
+              projectId: resolvedProjectId,
+              thumbnailUrl: thumbnailUpload.url,
+              progress: 0,
+              status: 'PENDING',
+            },
+          })
+        )
+      }
+
+      setExportProgress({ phase: 'queued', progress: 100 })
+
+      void fetch('/api/video-processing/process', { method: 'POST' }).catch((error) => {
+        console.warn('[VideoExportQueue] Falha ao acionar processamento imediato:', error)
+      })
+
+      pollJobStatus(jobId, generationId, resolvedProjectId)
 
       toast({
-        title: 'Vídeo exportado com sucesso!',
-        description: `Vídeo disponível na aba Criativos. ${creditCost} créditos foram deduzidos.`,
+        title: 'Vídeo na fila de processamento',
+        description: 'Continue sendo criativo! Avisaremos quando o MP4 aparecer na aba Criativos.',
       })
 
       setIsOpen(false)
@@ -446,6 +522,10 @@ export function VideoExportButton() {
         return 'Convertendo para MP4...'
       case 'finalizing':
         return 'Finalizando...'
+      case 'uploading':
+        return 'Enviando vídeo para processamento...'
+      case 'queued':
+        return 'Vídeo adicionado à fila...'
       default:
         return ''
     }
@@ -465,145 +545,158 @@ export function VideoExportButton() {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Exportar Vídeo Final</DialogTitle>
+            <DialogTitle>Exportar vídeo final</DialogTitle>
             <DialogDescription>
-              Esta ação irá gerar um vídeo completo com todas as camadas sobrepostas ao vídeo de
-              fundo.
+              O MP4 é enviado para a fila de processamento. Você pode continuar editando e será
+              avisado quando ele aparecer na aba Criativos.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 py-4">
-            {/* Alerta de suporte do navegador */}
+          <div className="space-y-6 py-2">
             {!browserSupport.supported && (
-              <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+              <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-destructive">Navegador não suportado</p>
+                <div>
+                  <p className="text-sm font-semibold text-destructive">Navegador não suportado</p>
                   <p className="text-xs text-muted-foreground">{browserSupport.message}</p>
                 </div>
               </div>
             )}
 
-            {/* Custo da exportação */}
-            <div className="flex items-center justify-between rounded-lg border p-4">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Custo da exportação</p>
-                <p className="text-xs text-muted-foreground">
-                  Será deduzido do seu saldo atual: {credits?.creditsRemaining || 0} créditos
-                </p>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="rounded-xl border bg-background p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold">Créditos necessários</p>
+                    <p className="text-xs text-muted-foreground">
+                      Você tem {credits?.creditsRemaining || 0} créditos disponíveis
+                    </p>
+                  </div>
+                  <div className="text-2xl font-bold">{creditCost}</div>
+                </div>
+                {!hasCredits && (
+                  <p className="mt-3 text-xs font-medium text-destructive">
+                    Saldo insuficiente para exportar este vídeo.
+                  </p>
+                )}
               </div>
-              <div className="text-2xl font-bold">{creditCost} créditos</div>
+
+              <div className="rounded-xl border bg-background p-4 shadow-sm">
+                <div className="flex items-center justify-between text-sm">
+                  <p className="font-semibold">Formato do arquivo</p>
+                  <Badge variant="secondary">MP4</Badge>
+                </div>
+                <RadioGroup value={exportFormat} className="mt-3 grid gap-3">
+                  <label
+                    htmlFor="mp4"
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-primary bg-primary/5 p-3"
+                  >
+                    <RadioGroupItem value="mp4" id="mp4" />
+                    <div>
+                      <div className="flex items-center gap-2 text-sm font-medium">
+                        MP4 (H.264)
+                        <Badge variant="outline" className="text-[10px]">
+                          Fila automática
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Compatível com todas as plataformas. Processamos em segundo plano e o MP4
+                        aparecerá na aba Criativos.
+                      </p>
+                    </div>
+                  </label>
+                </RadioGroup>
+              </div>
             </div>
 
-            {/* Seleção de formato */}
-            <div className="space-y-3 rounded-lg border p-4">
-              <Label className="text-sm font-medium">Formato de exportação</Label>
-              <RadioGroup
-                value={exportFormat}
-                onValueChange={(value) => setExportFormat(value as 'webm' | 'mp4')}
-                className="space-y-2"
-              >
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="mp4" id="mp4" />
-                  <Label htmlFor="mp4" className="flex flex-col cursor-pointer">
-                    <span className="text-sm font-medium">MP4 (H.264)</span>
-                    <span className="text-xs text-muted-foreground">
-                      Recomendado - Compatível com iOS e redes sociais
-                    </span>
-                  </Label>
+            <div className="rounded-xl border bg-background p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">Trilha sonora</p>
+                  <p className="text-xs text-muted-foreground">
+                    {audioConfig.source === 'original'
+                      ? 'Usando o áudio do próprio vídeo'
+                      : audioConfig.source === 'library'
+                        ? 'Música da biblioteca selecionada'
+                        : audioConfig.source === 'mix'
+                          ? 'Mix de áudio original + biblioteca'
+                          : 'Sem áudio (mudo)'}
+                  </p>
                 </div>
-                <div className="flex items-center space-x-2">
-                  <RadioGroupItem value="webm" id="webm" />
-                  <Label htmlFor="webm" className="flex flex-col cursor-pointer">
-                    <span className="text-sm font-medium">WebM (VP9/VP8)</span>
-                    <span className="text-xs text-muted-foreground">
-                      Exportação mais rápida - Não funciona no iOS
-                    </span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-
-            {/* Configuração de Áudio */}
-            <div className="space-y-3 rounded-lg border p-4">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Configuração de Áudio</Label>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setIsAudioModalOpen(true)}
-                  className="gap-2"
-                >
-                  <Music className="h-4 w-4" />
+                <Button variant="outline" size="sm" onClick={() => setIsAudioModalOpen(true)}>
+                  <Music className="mr-2 h-4 w-4" />
                   Configurar
                 </Button>
               </div>
-              <div className="text-xs text-muted-foreground space-y-1">
-                <p>• Fonte: {
-                  audioConfig.source === 'original' ? 'Áudio Original do Vídeo' :
-                  audioConfig.source === 'library' ? 'Música da Biblioteca' :
-                  'Sem Áudio (Mudo)'
-                }</p>
-                {audioConfig.source === 'library' && audioConfig.musicId && (
-                  <p>• Volume: {audioConfig.volume}%</p>
-                )}
-              </div>
+              {(audioConfig.source === 'library' || audioConfig.source === 'mix') && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Janela selecionada: {audioConfig.startTime.toFixed(1)}s →{' '}
+                  {audioConfig.endTime.toFixed(1)}s • Volume{' '}
+                  {audioConfig.source === 'mix'
+                    ? `${audioConfig.volumeMusic ?? audioConfig.volume}%`
+                    : `${audioConfig.volume}%`}
+                </p>
+              )}
             </div>
 
-            {/* Configurações */}
-            <div className="space-y-2 rounded-lg bg-muted p-4">
-              <p className="text-sm font-medium">Configurações:</p>
-              <ul className="text-xs text-muted-foreground space-y-1">
-                <li>• Formato: {exportFormat.toUpperCase()} {exportFormat === 'mp4' ? '(H.264)' : '(VP9/VP8)'}</li>
-                <li>• FPS: 30</li>
-                <li>• Qualidade: Alta (0.8)</li>
-                <li>
-                  • Duração: {videoLayer?.videoMetadata?.duration?.toFixed(1) || 'Auto'}s
-                </li>
-                {exportFormat === 'mp4' && (
-                  <li className="text-amber-600 dark:text-amber-500">
-                    ⚠️ Conversão para MP4 pode levar mais tempo
-                  </li>
-                )}
-              </ul>
+            <div className="rounded-xl border bg-muted/30 p-4">
+              <p className="text-sm font-semibold text-muted-foreground">Resumo técnico</p>
+              <dl className="mt-3 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+                <div>
+                  <dt>Formato final</dt>
+                  <dd className="font-medium">
+                    {exportFormat.toUpperCase()}{' '}
+                    {exportFormat === 'mp4' ? '(H.264 + AAC)' : '(VP9/VP8)'}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Duração</dt>
+                  <dd className="font-medium">
+                    {videoLayer?.videoMetadata?.duration?.toFixed(1) || 'Detectando...'}s
+                  </dd>
+                </div>
+                <div>
+                  <dt>FPS e qualidade</dt>
+                  <dd className="font-medium">30 fps • Qualidade alta</dd>
+                </div>
+                <div>
+                  <dt>Projeto</dt>
+                  <dd className="font-medium truncate">{designName}</dd>
+                </div>
+              </dl>
+              {exportFormat === 'mp4' && (
+                <p className="mt-2 text-xs text-amber-600">
+                  ⚠️ A conversão para MP4 acontece após a gravação e pode levar alguns segundos a
+                  mais.
+                </p>
+              )}
             </div>
 
-            {/* Progress bar durante exportação */}
             {isExporting && exportProgress && (
-              <div className="space-y-2">
+              <div className="rounded-xl border bg-background p-4 shadow-sm">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">{getProgressText()}</span>
-                  <span className="font-medium">{Math.round(exportProgress.progress)}%</span>
+                  <span className="font-semibold">{Math.round(exportProgress.progress)}%</span>
                 </div>
-                <Progress value={exportProgress.progress} className="h-2" />
-              </div>
-            )}
-
-            {/* Alerta de créditos insuficientes */}
-            {!hasCredits && (
-              <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
-                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-destructive">Créditos insuficientes</p>
-                  <p className="text-xs text-muted-foreground">
-                    Você precisa de pelo menos {creditCost} créditos para exportar este vídeo.
-                  </p>
-                </div>
+                <Progress value={exportProgress.progress} className="mt-3 h-2.5" />
               </div>
             )}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setIsOpen(false)} disabled={isExporting}>
               Cancelar
             </Button>
-            <Button onClick={handleExport} disabled={!hasCredits || isExporting || !browserSupport.supported}>
+            <Button
+              onClick={handleExport}
+              disabled={!hasCredits || isExporting || !browserSupport.supported}
+            >
               {isExporting ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Exportando...
+                  Exportando
                 </>
               ) : (
                 <>

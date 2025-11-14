@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FaixaMusica } from '@/hooks/use-music-library';
 import { Music, PlayCircle, PauseCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -15,6 +15,24 @@ interface MusicCardProps {
 export function MusicCard({ musica, isSelected, videoDuration, onSelect }: MusicCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const previewEventName = 'music-preview-play';
+
+  useEffect(() => {
+    const pauseIfAnotherIsPlaying = (event: Event) => {
+      const detail = (event as CustomEvent<{ id: number }>).detail;
+      if (!detail || detail.id === musica.id) return;
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.currentTime = 0;
+      }
+    };
+
+    window.addEventListener(previewEventName, pauseIfAnotherIsPlaying as EventListener);
+
+    return () => {
+      window.removeEventListener(previewEventName, pauseIfAnotherIsPlaying as EventListener);
+    };
+  }, [musica.id]);
 
   const handlePlayPause = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -25,8 +43,15 @@ export function MusicCard({ musica, isSelected, videoDuration, onSelect }: Music
       audioRef.current.pause();
       setIsPlaying(false);
     } else {
-      audioRef.current.play();
-      setIsPlaying(true);
+      window.dispatchEvent(new CustomEvent(previewEventName, { detail: { id: musica.id } }));
+      audioRef.current
+        .play()
+        .then(() => {
+          setIsPlaying(true);
+        })
+        .catch(() => {
+          setIsPlaying(false);
+        });
     }
   };
 

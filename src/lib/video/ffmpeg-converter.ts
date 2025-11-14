@@ -26,8 +26,11 @@ async function loadFFmpeg(): Promise<FFmpeg> {
     })
 
     ffmpegInstance.on('progress', ({ progress, time }) => {
-      console.log('[FFmpeg Progress]', `${(progress * 100).toFixed(2)}%`, `Time: ${time}`)
-      ffmpegProgressCallback?.(progress)
+      const safeProgress = Number.isFinite(progress)
+        ? Math.max(0, Math.min(progress, 1))
+        : 0
+      console.log('[FFmpeg Progress]', `${(safeProgress * 100).toFixed(2)}%`, `Time: ${time}`)
+      ffmpegProgressCallback?.(safeProgress)
     })
   }
 
@@ -97,9 +100,9 @@ export async function convertWebMToMP4(
         '-c:v',
         'libx264',
         '-preset',
-        'fast',
+        'ultrafast',
         '-crf',
-        '20',
+        '22',
         '-profile:v',
         'high',
         '-level',
@@ -110,14 +113,12 @@ export async function convertWebMToMP4(
         'faststart',
         '-g',
         '60',
-        '-bf',
-        '2',
         '-c:a',
         audioCodec,
         ...(audioCodec === 'aac'
-          ? ['-b:a', '192k', '-ar', '48000', '-ac', '2']
+          ? ['-b:a', '160k', '-ar', '48000', '-ac', '2']
           : audioCodec === 'libmp3lame'
-            ? ['-b:a', '192k', '-ar', '48000', '-ac', '2']
+            ? ['-b:a', '160k', '-ar', '48000', '-ac', '2']
             : []),
         'output.mp4',
       ])
@@ -125,7 +126,8 @@ export async function convertWebMToMP4(
 
     const previousProgressCallback = ffmpegProgressCallback
     ffmpegProgressCallback = (ratio) => {
-      const mapped = 30 + Math.min(ratio * 50, 50)
+      const safeRatio = Number.isFinite(ratio) ? Math.max(0, Math.min(ratio, 1)) : 0
+      const mapped = 30 + safeRatio * 50
       onProgress?.(mapped)
     }
 

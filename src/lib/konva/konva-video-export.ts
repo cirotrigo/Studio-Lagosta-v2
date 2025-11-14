@@ -11,7 +11,7 @@ export interface VideoExportOptions {
 }
 
 export interface VideoExportProgress {
-  phase: 'preparing' | 'recording' | 'finalizing' | 'converting'
+  phase: 'preparing' | 'recording' | 'finalizing' | 'converting' | 'uploading' | 'queued'
   progress: number // 0-100
 }
 
@@ -289,6 +289,7 @@ export async function exportVideoWithLayers(
   } = options
   const normalizedQuality = Math.min(Math.max(requestedQuality, 0.5), 1)
   const captureFps = Math.min(60, Math.max(24, Math.round(requestedFps)))
+  const audioSource = audioConfig?.source || 'original'
 
   onProgress?.({ phase: 'preparing', progress: 0 })
 
@@ -298,6 +299,9 @@ export async function exportVideoWithLayers(
   }
 
   let cleanupState: StageCleanupState | null = null
+
+  let baseVideoOriginalMuted = false
+  let baseVideoOriginalVolume = 1
 
   try {
     // Preparar stage (remover guides, transformers, normalizar zoom)
@@ -321,6 +325,18 @@ export async function exportVideoWithLayers(
     const videoElement = videoNode.image() as HTMLVideoElement
     if (!videoElement) {
       throw new Error('Elemento de vídeo não encontrado')
+    }
+    baseVideoOriginalMuted = videoElement.muted
+    baseVideoOriginalVolume = typeof videoElement.volume === 'number' ? videoElement.volume : 1
+    const shouldMuteBaseVideo = audioSource !== 'original'
+
+    if (shouldMuteBaseVideo) {
+      try {
+        videoElement.muted = true
+        videoElement.volume = 0
+      } catch (error) {
+        console.warn('[Video Export] Não foi possível mutar o áudio original:', error)
+      }
     }
 
     // Calcular duração do vídeo
@@ -395,18 +411,25 @@ export async function exportVideoWithLayers(
     // Criar stream do canvas offscreen
     const canvasStream = offscreenCanvas.captureStream(captureFps)
     const primaryCanvasTrack = canvasStream.getVideoTracks()[0]
-    if (primaryCanvasTrack && 'contentHint' in primaryCanvasTrack) {
-      try {
-        ;(primaryCanvasTrack as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion'
-      } catch {
-        // Alguns navegadores (Safari) não permitem definir o hint — ignorar nesses casos
+    if (primaryCanvasTrack) {
+      if ('contentHint' in primaryCanvasTrack) {
+        try {
+          ;(primaryCanvasTrack as MediaStreamTrack & { contentHint?: string }).contentHint = 'motion'
+        } catch {
+          // Alguns navegadores não permitem definir o hint
+        }
+      }
+      if (typeof primaryCanvasTrack.applyConstraints === 'function') {
+        try {
+          await primaryCanvasTrack.applyConstraints({ frameRate: captureFps })
+        } catch (error) {
+          console.warn('[Video Export] Não foi possível aplicar frameRate no track:', error)
+        }
       }
     }
 
     // Processar áudio de acordo com audioConfig
     let stream = canvasStream
-    const audioSource = audioConfig?.source || 'original'
-
     try {
       const audioContext = new AudioContext()
 
@@ -812,6 +835,17 @@ export async function exportVideoWithLayers(
         contextFunctions.setSelectedLayerIds,
         contextFunctions.setZoomState
       )
+    }
+
+    try {
+      const videoNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
+      const baseVideo = videoNode?.image() as HTMLVideoElement | undefined
+      if (baseVideo) {
+        baseVideo.muted = baseVideoOriginalMuted
+        baseVideo.volume = baseVideoOriginalVolume
+      }
+    } catch {
+      // ignore
     }
   }
 }
