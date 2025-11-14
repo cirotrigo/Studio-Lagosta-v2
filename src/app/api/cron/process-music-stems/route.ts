@@ -12,9 +12,9 @@ import { startStemSeparation, checkMvsepJobStatus } from '@/lib/mvsep/mvsep-clie
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes
 
-export async function POST(req: NextRequest) {
+export async function GET(req: NextRequest) {
   try {
-    // Verificar autenticação do cron job
+    // Verificar autenticação do cron job (Vercel Cron envia via header)
     const authHeader = req.headers.get('authorization')
     const expectedAuth = `Bearer ${process.env.CRON_SECRET}`
 
