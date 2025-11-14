@@ -43,42 +43,63 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
       },
     })
 
-    // Determinar URL e tipo de fonte
-    // Se tem sourceUrl (YouTube/SoundCloud), usar isso
-    // Senão, usar blobUrl (upload de arquivo)
-    const musicUrl = job.music.sourceUrl || job.music.blobUrl
-    const remoteType = job.music.sourceType || 'url'
+    // Determinar se é link externo (YouTube/SoundCloud) ou arquivo
+    const isExternalLink = job.music.sourceType === 'youtube' || job.music.sourceType === 'soundcloud'
 
     console.log('[MVSEP] Music source:', {
       hasSourceUrl: !!job.music.sourceUrl,
       sourceType: job.music.sourceType,
-      remoteType,
+      isExternalLink,
+      willUseMultipart: !isExternalLink,
     })
 
-    // Enviar para MVSEP API
-    const requestBody = {
-      api_token: MVSEP_API_KEY,
-      url: musicUrl,
-      separation_type: 37, // DrumSep - Type 37 (percussion separation)
-      output_format: 'mp3', // MP3 320kbps
-      remote_type: remoteType, // 'youtube', 'soundcloud', ou 'url'
+    let response: Response
+
+    if (isExternalLink) {
+      // Para YouTube/SoundCloud, usar API com URL
+      const requestBody = {
+        api_token: MVSEP_API_KEY,
+        url: job.music.sourceUrl!,
+        separation_type: 37,
+        output_format: 'mp3',
+        remote_type: job.music.sourceType,
+      }
+
+      console.log('[MVSEP] Using URL API for', job.music.sourceType)
+
+      response = await fetch(`${MVSEP_API_URL}/separation/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+    } else {
+      // Para arquivos do Vercel Blob, fazer upload direto via multipart
+      console.log('[MVSEP] Downloading file from Vercel Blob:', job.music.blobUrl)
+
+      const audioResponse = await fetch(job.music.blobUrl)
+      if (!audioResponse.ok) {
+        throw new Error(`Failed to download audio from Vercel Blob: ${audioResponse.status}`)
+      }
+
+      const audioBlob = await audioResponse.blob()
+      console.log('[MVSEP] Downloaded file, size:', audioBlob.size, 'bytes')
+
+      // Criar FormData para upload
+      const formData = new FormData()
+      formData.append('api_token', MVSEP_API_KEY)
+      formData.append('file', audioBlob, 'audio.mp3')
+      formData.append('separation_type', '37')
+      formData.append('output_format', 'mp3')
+
+      console.log('[MVSEP] Uploading file to MVSEP via multipart...')
+
+      response = await fetch(`${MVSEP_API_URL}/separation/create`, {
+        method: 'POST',
+        body: formData,
+      })
     }
-
-    console.log('[MVSEP] Request to MVSEP API:', {
-      endpoint: `${MVSEP_API_URL}/separation/create`,
-      musicUrl: musicUrl.substring(0, 100) + '...',
-      remoteType,
-      separation_type: 37,
-      hasApiKey: !!MVSEP_API_KEY,
-    })
-
-    const response = await fetch(`${MVSEP_API_URL}/separation/create`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
-    })
 
     console.log('[MVSEP] Response status:', response.status, response.statusText)
 
