@@ -275,27 +275,43 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
 
     // Try to find instrumental stem
     // MVSEP retorna 2 arquivos: vocals e instrumental
-    // Precisamos pegar o que NÃO é vocals
+    // Ordem típica: [0]=vocals, [1]=instrumental
+    // IMPORTANTE: Pegar o ÚLTIMO arquivo quando não conseguir identificar
 
-    // Primeiro, tentar filtrar EXCLUINDO vocals
-    const nonVocalStems = files.filter((file) => {
-      const name = getFileName(file).toLowerCase()
-      // Excluir arquivos que são claramente vocais
-      const isVocals = name.includes('vocal') || name.includes('voice') || name.includes('voz')
-      return !isVocals
-    })
+    console.log(`[MVSEP] 🔍 Analisando ${files.length} arquivos...`)
 
-    // Ou procurar por palavras que indicam instrumental
+    // Procurar por palavras que indicam INSTRUMENTAL
     const instrumentalStems = files.filter((file) => {
       const name = getFileName(file).toLowerCase()
-      return (
+      const isInstrumental = (
         name.includes('instrumental') ||
         name.includes('instrum') ||
         name.includes('no_vocal') ||
         name.includes('no vocal') ||
         name.includes('music') ||
-        name.includes('backing')
+        name.includes('backing') ||
+        name.includes('karaoke')
       )
+      if (isInstrumental) {
+        console.log(`[MVSEP] ✅ Encontrado arquivo instrumental pelo nome:`, name)
+      }
+      return isInstrumental
+    })
+
+    // Procurar por palavras que indicam VOCALS (para EXCLUIR)
+    const vocalStems = files.filter((file) => {
+      const name = getFileName(file).toLowerCase()
+      const isVocals = (
+        name.includes('vocal') ||
+        name.includes('voice') ||
+        name.includes('voz') ||
+        name.includes('singer') ||
+        name.includes('acapella')
+      )
+      if (isVocals) {
+        console.log(`[MVSEP] ❌ Encontrado arquivo vocal (vai ignorar):`, name)
+      }
+      return isVocals
     })
 
     // Escolher qual usar
@@ -303,23 +319,24 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     let stemName: string
 
     if (instrumentalStems.length > 0) {
+      // Caso 1: Encontrou arquivo com nome "instrumental"
       stemToUse = instrumentalStems[0]
       stemName = getFileName(stemToUse)
-      console.log(`[MVSEP] ✅ Found instrumental stem by name:`, stemName)
-    } else if (nonVocalStems.length > 0) {
-      stemToUse = nonVocalStems[0]
+      console.log(`[MVSEP] ✅ Usando arquivo identificado como instrumental:`, stemName)
+    } else if (vocalStems.length > 0 && files.length > vocalStems.length) {
+      // Caso 2: Encontrou vocals, pegar qualquer arquivo que NÃO seja vocal
+      const nonVocals = files.filter(f => !vocalStems.includes(f))
+      stemToUse = nonVocals[0]
       stemName = getFileName(stemToUse)
-      console.log(`[MVSEP] ✅ Using non-vocal stem:`, stemName)
-    } else if (files.length >= 2) {
-      // Fallback: pegar o SEGUNDO arquivo (geralmente instrumental)
-      stemToUse = files[1]
-      stemName = getFileName(stemToUse)
-      console.warn('[MVSEP] ⚠️  Using second file (likely instrumental):', stemName)
+      console.log(`[MVSEP] ✅ Usando arquivo não-vocal (excluindo ${vocalStems.length} vocal):`, stemName)
     } else {
-      // Último recurso: primeiro arquivo
-      stemToUse = files[0]
+      // Caso 3: Não conseguiu identificar - PEGAR O ÚLTIMO ARQUIVO
+      // Na maioria dos casos MVSEP retorna [vocals, instrumental] nessa ordem
+      // Então o último é o instrumental
+      stemToUse = files[files.length - 1]
       stemName = getFileName(stemToUse)
-      console.warn('[MVSEP] ⚠️  Using first file (may be vocals!):', stemName)
+      console.warn(`[MVSEP] ⚠️  Não identificado - usando ÚLTIMO arquivo (índice ${files.length - 1}):`, stemName)
+      console.warn(`[MVSEP] Todos os arquivos:`, files.map((f, i) => `[${i}] ${getFileName(f)}`))
     }
 
     await processStem(job, stemToUse)
