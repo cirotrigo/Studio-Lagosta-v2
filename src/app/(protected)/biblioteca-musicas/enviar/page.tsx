@@ -46,14 +46,23 @@ export default function EnviarMusicaPage() {
   const enviarMusica = useEnviarMusica();
   const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
 
-  const [arquivo, setArquivo] = useState<File | null>(null);
+  // Modo de envio: arquivo ou link
+  const [uploadMode, setUploadMode] = useState<'file' | 'link'>('file');
+
+  // Campos comuns
   const [nome, setNome] = useState('');
   const [artista, setArtista] = useState('');
   const [genero, setGenero] = useState('');
   const [humor, setHumor] = useState('');
   const [projectId, setProjectId] = useState<string>('none'); // 'none' = sem projeto (música global)
   const [duracao, setDuracao] = useState(0);
+
+  // Upload de arquivo
+  const [arquivo, setArquivo] = useState<File | null>(null);
   const [extraindo, setExtraindo] = useState(false);
+
+  // Link externo
+  const [sourceUrl, setSourceUrl] = useState('');
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];

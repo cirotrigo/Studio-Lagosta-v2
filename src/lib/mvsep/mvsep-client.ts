@@ -43,18 +43,31 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
       },
     })
 
+    // Determinar URL e tipo de fonte
+    // Se tem sourceUrl (YouTube/SoundCloud), usar isso
+    // Senão, usar blobUrl (upload de arquivo)
+    const musicUrl = job.music.sourceUrl || job.music.blobUrl
+    const remoteType = job.music.sourceType || 'url'
+
+    console.log('[MVSEP] Music source:', {
+      hasSourceUrl: !!job.music.sourceUrl,
+      sourceType: job.music.sourceType,
+      remoteType,
+    })
+
     // Enviar para MVSEP API
     const requestBody = {
       api_token: MVSEP_API_KEY,
-      url: job.music.blobUrl, // URL pública do Vercel Blob
+      url: musicUrl,
       separation_type: 37, // DrumSep - Type 37 (percussion separation)
       output_format: 'mp3', // MP3 320kbps
-      remote_type: 'url', // URL direta (não 'other' que é inválido)
+      remote_type: remoteType, // 'youtube', 'soundcloud', ou 'url'
     }
 
     console.log('[MVSEP] Request to MVSEP API:', {
       endpoint: `${MVSEP_API_URL}/separation/create`,
-      musicUrl: job.music.blobUrl,
+      musicUrl: musicUrl.substring(0, 100) + '...',
+      remoteType,
       separation_type: 37,
       hasApiKey: !!MVSEP_API_KEY,
     })
