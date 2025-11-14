@@ -25,10 +25,7 @@ interface MvsepStatusResponse {
   success: boolean
   status: 'waiting' | 'processing' | 'done' | 'failed'
   data?: {
-    files?: Array<{
-      name: string
-      url: string
-    }>
+    files?: Array<any> // Structure varies, use helper functions to extract fields
     algorithm?: string
     output_format?: string
     date?: string
@@ -221,6 +218,34 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
 }
 
 /**
+ * Helper: Extract file name from MVSEP file object (tries multiple field names)
+ */
+function getFileName(file: any): string {
+  return (
+    file.name ||
+    file.filename ||
+    file.file_name ||
+    file.fileName ||
+    file.title ||
+    'unknown.mp3'
+  )
+}
+
+/**
+ * Helper: Extract download URL from MVSEP file object (tries multiple field names)
+ */
+function getFileUrl(file: any): string | null {
+  return (
+    file.url ||
+    file.link ||
+    file.download_url ||
+    file.downloadUrl ||
+    file.download ||
+    null
+  )
+}
+
+/**
  * Baixa o stem de percussão e salva no Vercel Blob
  */
 async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusResponse) {
@@ -244,25 +269,30 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     // Para DrumSep (Type 37), procuramos o stem de drums/percussion
     console.log(`[MVSEP] Looking for drum stems in ${files.length} files...`)
     console.log(`[MVSEP] Files structure:`, JSON.stringify(files, null, 2))
-    console.log(`[MVSEP] File names:`, files.map(f => f.name || 'NO_NAME'))
-    console.log(`[MVSEP] File URLs:`, files.map(f => f.url || 'NO_URL'))
+    console.log(`[MVSEP] File names:`, files.map(f => getFileName(f)))
+    console.log(`[MVSEP] File URLs:`, files.map(f => getFileUrl(f) || 'NO_URL'))
     console.log(`[MVSEP] All file keys:`, files.map(f => Object.keys(f)))
 
-    const drumStems = files.filter(
-      (r) =>
-        r.name &&
-        (r.name.toLowerCase().includes('drum') || r.name.toLowerCase().includes('percussion'))
-    )
+    // Try to find drum/percussion stem
+    const drumStems = files.filter((file) => {
+      const name = getFileName(file)
+      return (
+        name.toLowerCase().includes('drum') ||
+        name.toLowerCase().includes('percussion')
+      )
+    })
 
     if (!drumStems || drumStems.length === 0) {
       // Fallback: pegar o primeiro stem disponível
       const firstFile = files[0]
-      console.warn('[MVSEP] No drum-specific stem found, using first available:', firstFile?.name || 'unnamed')
+      const firstName = getFileName(firstFile)
+      console.warn('[MVSEP] No drum-specific stem found, using first available:', firstName)
       await processStem(job, firstFile)
     } else {
       // Pegar o primeiro stem de drums (geralmente é o combinado)
-      console.log(`[MVSEP] Found ${drumStems.length} drum stems, using:`, drumStems[0].name)
       const drumStem = drumStems[0]
+      const drumName = getFileName(drumStem)
+      console.log(`[MVSEP] Found ${drumStems.length} drum stems, using:`, drumName)
       await processStem(job, drumStem)
     }
   } catch (error) {
@@ -282,12 +312,22 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
 /**
  * Processa um stem: baixa, faz upload para Blob e atualiza o banco
  */
-async function processStem(job: MusicStemJob, stem: { name: string; url: string }) {
-  console.log(`[MVSEP] 🎵 Processing stem: ${stem.name} from URL: ${stem.url}`)
+async function processStem(job: MusicStemJob, stem: any) {
+  const stemName = getFileName(stem)
+  const stemUrl = getFileUrl(stem)
+
+  console.log(`[MVSEP] 🎵 Processing stem: ${stemName}`)
+  console.log(`[MVSEP] Stem URL: ${stemUrl}`)
+  console.log(`[MVSEP] Stem object keys:`, Object.keys(stem))
+  console.log(`[MVSEP] Full stem object:`, JSON.stringify(stem, null, 2))
+
+  if (!stemUrl) {
+    throw new Error(`No download URL found in stem object. Available keys: ${Object.keys(stem).join(', ')}`)
+  }
 
   // Download do arquivo
   console.log(`[MVSEP] Downloading stem from MVSEP...`)
-  const audioResponse = await fetch(stem.url)
+  const audioResponse = await fetch(stemUrl)
   if (!audioResponse.ok) {
     throw new Error(`Failed to download stem from MVSEP: ${audioResponse.status} ${audioResponse.statusText}`)
   }
