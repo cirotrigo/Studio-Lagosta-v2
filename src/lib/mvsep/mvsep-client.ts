@@ -243,8 +243,10 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     // MVSEP retorna array de stems
     // Para DrumSep (Type 37), procuramos o stem de drums/percussion
     console.log(`[MVSEP] Looking for drum stems in ${files.length} files...`)
+    console.log(`[MVSEP] Files structure:`, JSON.stringify(files, null, 2))
     console.log(`[MVSEP] File names:`, files.map(f => f.name || 'NO_NAME'))
     console.log(`[MVSEP] File URLs:`, files.map(f => f.url || 'NO_URL'))
+    console.log(`[MVSEP] All file keys:`, files.map(f => Object.keys(f)))
 
     const drumStems = files.filter(
       (r) =>
