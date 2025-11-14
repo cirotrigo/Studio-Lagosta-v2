@@ -7,7 +7,7 @@ import { useMusicStemStatus } from '@/hooks/use-music-stem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Music, Plus, Search, Trash2, Edit, Drum, Loader2 } from 'lucide-react';
+import { Music, Plus, Search, Trash2, Edit, MicOff, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MusicPlayer } from '@/components/music/music-player';
 import { YoutubeJobsList } from '@/components/youtube/youtube-jobs-list';
@@ -28,12 +28,12 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
 
   if (!stemStatus) return null;
 
-  // Stem completo e disponível
-  if (stemStatus.hasPercussionStem) {
+  // Stem instrumental completo e disponível
+  if (stemStatus.hasInstrumentalStem) {
     return (
       <Badge variant="secondary" className="text-xs">
-        <Drum className="h-3 w-3 mr-1" />
-        Stems
+        <MicOff className="h-3 w-3 mr-1" />
+        Instrumental
       </Badge>
     );
   }
@@ -77,7 +77,7 @@ function MusicPlayerWithStems({ faixa }: { faixa: FaixaMusica }) {
   return (
     <MusicPlayer
       originalUrl={faixa.blobUrl}
-      percussionUrl={stemStatus?.percussionUrl}
+      instrumentalUrl={stemStatus?.instrumentalUrl}
       musicName={faixa.name}
     />
   );

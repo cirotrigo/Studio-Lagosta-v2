@@ -1281,11 +1281,11 @@ model MusicLibrary {
   isPublic    Boolean  @default(true) // futuro: músicas privadas por usuário
   thumbnailUrl String? // capa/artwork da música
 
-  // Percussion stem (apenas percussão)
-  percussionUrl     String?   // URL do stem de percussão
-  percussionSize    Int?      // Tamanho do arquivo de percussão
-  hasPercussionStem Boolean   @default(false)
-  stemsProcessedAt  DateTime?
+  // Instrumental stem (música sem vocais)
+  instrumentalUrl     String?   // URL do stem instrumental
+  instrumentalSize    Int?      // Tamanho do arquivo instrumental
+  hasInstrumentalStem Boolean   @default(false)
+  stemsProcessedAt    DateTime?
 
   // Vinculação com projeto (opcional - músicas globais não têm projeto)
   projectId   Int?
@@ -1309,7 +1309,7 @@ model MusicLibrary {
   @@index([genre])
   @@index([mood])
   @@index([isActive, isPublic])
-  @@index([hasPercussionStem])
+  @@index([hasInstrumentalStem])
 }
 
 // =============================================================================

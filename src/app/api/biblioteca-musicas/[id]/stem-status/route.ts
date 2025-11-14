@@ -29,8 +29,8 @@ export async function GET(
 
     return NextResponse.json({
       musicId: music.id,
-      hasPercussionStem: music.hasPercussionStem,
-      percussionUrl: music.percussionUrl,
+      hasInstrumentalStem: music.hasInstrumentalStem,
+      instrumentalUrl: music.instrumentalUrl,
       stemsProcessedAt: music.stemsProcessedAt,
       job: music.stemJob
         ? {

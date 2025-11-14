@@ -18,8 +18,8 @@ interface StemJobStatus {
 
 interface MusicStemStatusResponse {
   musicId: number
-  hasPercussionStem: boolean
-  percussionUrl: string | null
+  hasInstrumentalStem: boolean
+  instrumentalUrl: string | null
   stemsProcessedAt: string | null
   job: StemJobStatus | null
 }

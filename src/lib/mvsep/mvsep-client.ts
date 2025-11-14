@@ -65,7 +65,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
     const formData = new FormData()
     formData.append('api_token', MVSEP_API_KEY)
     formData.append('audiofile', audioBlob, 'audio.mp3')
-    formData.append('sep_type', '37') // DrumSep
+    formData.append('sep_type', '48') // MelBand Roformer (vocals, instrumental)
     formData.append('output_format', '0') // 0 = mp3 320kbps
 
     console.log('[MVSEP] Uploading file to MVSEP via multipart...')
@@ -266,34 +266,36 @@ async function downloadAndSaveStem(job: MusicStemJob, mvsepResult: MvsepStatusRe
     const files = mvsepResult.data.files
 
     // MVSEP retorna array de stems
-    // Para DrumSep (Type 37), procuramos o stem de drums/percussion
-    console.log(`[MVSEP] Looking for drum stems in ${files.length} files...`)
+    // Para MelBand Roformer (Type 48), procuramos o stem instrumental (sem vocais)
+    console.log(`[MVSEP] Looking for instrumental stem in ${files.length} files...`)
     console.log(`[MVSEP] Files structure:`, JSON.stringify(files, null, 2))
     console.log(`[MVSEP] File names:`, files.map(f => getFileName(f)))
     console.log(`[MVSEP] File URLs:`, files.map(f => getFileUrl(f) || 'NO_URL'))
     console.log(`[MVSEP] All file keys:`, files.map(f => Object.keys(f)))
 
-    // Try to find drum/percussion stem
-    const drumStems = files.filter((file) => {
+    // Try to find instrumental stem
+    const instrumentalStems = files.filter((file) => {
       const name = getFileName(file)
       return (
-        name.toLowerCase().includes('drum') ||
-        name.toLowerCase().includes('percussion')
+        name.toLowerCase().includes('instrumental') ||
+        name.toLowerCase().includes('instrum') ||
+        name.toLowerCase().includes('no_vocals') ||
+        name.toLowerCase().includes('no vocals')
       )
     })
 
-    if (!drumStems || drumStems.length === 0) {
+    if (!instrumentalStems || instrumentalStems.length === 0) {
       // Fallback: pegar o primeiro stem disponível
       const firstFile = files[0]
       const firstName = getFileName(firstFile)
-      console.warn('[MVSEP] No drum-specific stem found, using first available:', firstName)
+      console.warn('[MVSEP] No instrumental-specific stem found, using first available:', firstName)
       await processStem(job, firstFile)
     } else {
-      // Pegar o primeiro stem de drums (geralmente é o combinado)
-      const drumStem = drumStems[0]
-      const drumName = getFileName(drumStem)
-      console.log(`[MVSEP] Found ${drumStems.length} drum stems, using:`, drumName)
-      await processStem(job, drumStem)
+      // Pegar o primeiro stem instrumental
+      const instrumentalStem = instrumentalStems[0]
+      const instrumentalName = getFileName(instrumentalStem)
+      console.log(`[MVSEP] Found ${instrumentalStems.length} instrumental stems, using:`, instrumentalName)
+      await processStem(job, instrumentalStem)
     }
   } catch (error) {
     console.error('[MVSEP] ❌ Failed to download/save stem:', error)
@@ -343,7 +345,7 @@ async function processStem(job: MusicStemJob, stem: any) {
   console.log(`[MVSEP] Updated progress to 85%`)
 
   // Upload para Vercel Blob
-  const fileName = `music/stems/${job.musicId}_percussion.mp3`
+  const fileName = `music/stems/${job.musicId}_instrumental.mp3`
   console.log(`[MVSEP] Uploading to Vercel Blob: ${fileName}`)
   const blob = await put(fileName, buffer, {
     access: 'public',
@@ -358,14 +360,14 @@ async function processStem(job: MusicStemJob, stem: any) {
   })
   console.log(`[MVSEP] Updated progress to 95%`)
 
-  // Atualizar MusicLibrary com o stem
+  // Atualizar MusicLibrary com o stem instrumental
   console.log(`[MVSEP] Updating MusicLibrary ${job.musicId}...`)
   await db.musicLibrary.update({
     where: { id: job.musicId },
     data: {
-      percussionUrl: blob.url,
-      percussionSize: buffer.length,
-      hasPercussionStem: true,
+      instrumentalUrl: blob.url,
+      instrumentalSize: buffer.length,
+      hasInstrumentalStem: true,
       stemsProcessedAt: new Date(),
     },
   })

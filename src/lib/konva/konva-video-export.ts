@@ -428,16 +428,16 @@ export async function exportVideoWithLayers(
         }
         const musicData = await musicResponse.json()
 
-        // Determinar qual URL usar baseado na versão selecionada (original vs percussion)
+        // Determinar qual URL usar baseado na versão selecionada (original vs instrumental)
         const audioVersion = audioConfig.audioVersion || 'original'
         let audioUrl: string
 
-        if (audioVersion === 'percussion') {
-          if (!musicData.hasPercussionStem || !musicData.percussionUrl) {
-            throw new Error('A versão de percussão não está disponível ainda. Por favor, aguarde o processamento.')
+        if (audioVersion === 'instrumental') {
+          if (!musicData.hasInstrumentalStem || !musicData.instrumentalUrl) {
+            throw new Error('A versão instrumental não está disponível ainda. Por favor, aguarde o processamento.')
           }
-          audioUrl = musicData.percussionUrl
-          console.log('[Video Export] Usando versão de percussão:', audioUrl)
+          audioUrl = musicData.instrumentalUrl
+          console.log('[Video Export] Usando versão instrumental:', audioUrl)
         } else {
           audioUrl = musicData.blobUrl
           console.log('[Video Export] Usando versão original:', audioUrl)
@@ -515,16 +515,16 @@ export async function exportVideoWithLayers(
         }
         const musicData = await musicResponse.json()
 
-        // Determinar qual URL usar baseado na versão selecionada (original vs percussion)
+        // Determinar qual URL usar baseado na versão selecionada (original vs instrumental)
         const audioVersion = audioConfig.audioVersion || 'original'
         let audioUrl: string
 
-        if (audioVersion === 'percussion') {
-          if (!musicData.hasPercussionStem || !musicData.percussionUrl) {
-            throw new Error('A versão de percussão não está disponível ainda. Por favor, aguarde o processamento.')
+        if (audioVersion === 'instrumental') {
+          if (!musicData.hasInstrumentalStem || !musicData.instrumentalUrl) {
+            throw new Error('A versão instrumental não está disponível ainda. Por favor, aguarde o processamento.')
           }
-          audioUrl = musicData.percussionUrl
-          console.log('[Video Export] Usando versão de percussão:', audioUrl)
+          audioUrl = musicData.instrumentalUrl
+          console.log('[Video Export] Usando versão instrumental:', audioUrl)
         } else {
           audioUrl = musicData.blobUrl
           console.log('[Video Export] Usando versão original:', audioUrl)

@@ -2,24 +2,24 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, Music, Drum } from 'lucide-react';
+import { Play, Pause, Music, MicOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MusicPlayerProps {
   originalUrl: string;
-  percussionUrl?: string | null;
+  instrumentalUrl?: string | null;
   musicName: string;
 }
 
-type AudioVersion = 'original' | 'percussion';
+type AudioVersion = 'original' | 'instrumental';
 
-export function MusicPlayer({ originalUrl, percussionUrl, musicName }: MusicPlayerProps) {
+export function MusicPlayer({ originalUrl, instrumentalUrl, musicName }: MusicPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentVersion, setCurrentVersion] = useState<AudioVersion>('original');
   const audioRef = useRef<HTMLAudioElement>(null);
 
   // URL atual baseada na versão selecionada
-  const currentUrl = currentVersion === 'percussion' && percussionUrl ? percussionUrl : originalUrl;
+  const currentUrl = currentVersion === 'instrumental' && instrumentalUrl ? instrumentalUrl : originalUrl;
 
   // Atualizar source quando trocar de versão
   useEffect(() => {
@@ -99,21 +99,21 @@ export function MusicPlayer({ originalUrl, percussionUrl, musicName }: MusicPlay
           Original
         </Button>
 
-        {percussionUrl && (
+        {instrumentalUrl && (
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => switchVersion('percussion')}
+            onClick={() => switchVersion('instrumental')}
             className={cn(
               'h-7 px-2 rounded-none text-xs',
-              currentVersion === 'percussion'
+              currentVersion === 'instrumental'
                 ? 'bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground'
                 : 'hover:bg-muted'
             )}
-            title="Apenas percussão"
+            title="Instrumental (sem vocais)"
           >
-            <Drum className="h-3 w-3 mr-1" />
-            Percussão
+            <MicOff className="h-3 w-3 mr-1" />
+            Instrumental
           </Button>
         )}
       </div>

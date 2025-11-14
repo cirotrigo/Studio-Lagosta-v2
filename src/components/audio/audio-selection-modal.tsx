@@ -23,12 +23,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { useBuscaMusicas } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
 import { useMusicStemStatus } from '@/hooks/use-music-stem';
-import { Search, Volume2, X, Music, PlayCircle, CheckCircle2, Drum } from 'lucide-react';
+import { Search, Volume2, X, Music, PlayCircle, CheckCircle2, MicOff } from 'lucide-react';
 import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
 import { MusicStemProgress } from './music-stem-progress';
 
-export type AudioVersion = 'original' | 'percussion';
+export type AudioVersion = 'original' | 'instrumental';
 
 export interface AudioConfig {
   source: 'original' | 'library' | 'mute' | 'mix';
@@ -306,11 +306,11 @@ export function AudioSelectionModal({
                   />
 
                   {/* Progresso do Stem (se estiver processando) */}
-                  {stemStatus && (!stemStatus.hasPercussionStem || stemStatus.job) && (
+                  {stemStatus && (!stemStatus.hasInstrumentalStem || stemStatus.job) && (
                     <MusicStemProgress musicId={musicaAtual.id} />
                   )}
 
-                  {/* Escolha da versão (original ou percussion) */}
+                  {/* Escolha da versão (original ou instrumental) */}
                   <div className="space-y-2">
                     <Label>Versão da Música</Label>
                     <Select
@@ -331,15 +331,15 @@ export function AudioSelectionModal({
                           </div>
                         </SelectItem>
                         <SelectItem
-                          value="percussion"
-                          disabled={!stemStatus?.hasPercussionStem}
+                          value="instrumental"
+                          disabled={!stemStatus?.hasInstrumentalStem}
                         >
                           <div className="flex items-center justify-between w-full gap-3">
                             <div className="flex items-center gap-2">
-                              <Drum className="h-4 w-4" />
-                              <span>Apenas Percussão (Bateria)</span>
+                              <MicOff className="h-4 w-4" />
+                              <span>Instrumental (Sem Vocais)</span>
                             </div>
-                            {stemStatus?.hasPercussionStem ? (
+                            {stemStatus?.hasInstrumentalStem ? (
                               <span className="text-xs text-green-600">✓ Disponível</span>
                             ) : stemStatus?.job?.status === 'processing' ? (
                               <span className="text-xs text-amber-600">
@@ -357,8 +357,8 @@ export function AudioSelectionModal({
                     <div className="rounded-lg bg-blue-50 border border-blue-200 p-3">
                       <p className="text-sm text-blue-800">
                         💡 <strong>A música original está disponível imediatamente.</strong>
-                        {!stemStatus?.hasPercussionStem && (
-                          <> A versão apenas com percussão estará pronta em alguns minutos.</>
+                        {!stemStatus?.hasInstrumentalStem && (
+                          <> A versão instrumental (sem vocais) estará pronta em alguns minutos.</>
                         )}
                       </p>
                     </div>

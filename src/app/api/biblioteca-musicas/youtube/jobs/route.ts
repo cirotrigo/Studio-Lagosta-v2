@@ -17,7 +17,7 @@ export async function GET() {
             id: true,
             name: true,
             blobUrl: true,
-            hasPercussionStem: true,
+            hasInstrumentalStem: true,
           },
         },
       },
