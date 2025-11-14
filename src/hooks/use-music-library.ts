@@ -190,6 +190,56 @@ export function useEnviarMusica() {
 }
 
 /**
+ * Enviar música via link (YouTube/SoundCloud)
+ */
+export function useEnviarMusicaDeLink() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: {
+      sourceUrl: string
+      nome: string
+      artista?: string
+      genero?: string
+      humor?: string
+      duracao?: number
+      projectId?: number
+    }) => {
+      console.log('📤 Enviando música via link:', data.sourceUrl);
+
+      const response = await fetch('/api/biblioteca-musicas/from-link', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sourceUrl: data.sourceUrl,
+          name: data.nome,
+          artist: data.artista,
+          genre: data.genero,
+          mood: data.humor,
+          duration: data.duracao,
+          projectId: data.projectId,
+        }),
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to add music from link');
+      }
+
+      const result = await response.json();
+      console.log('✅ Música adicionada via link:', result);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: chavesMusica.listas() });
+    },
+  });
+}
+
+/**
  * Atualizar metadados da música
  */
 export function useAtualizarMusica(musicaId: number) {
