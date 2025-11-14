@@ -306,29 +306,98 @@ export function VideoExportButton() {
         // Continuar sem thumbnail se falhar
       }
 
-      // 4. Fazer upload do vídeo para Vercel Blob e salvar em Criativos
-      setExportProgress({ phase: 'finalizing', progress: 95 })
+      // 4. Upload direto para Vercel Blob (evita limite de 413)
+      setExportProgress({ phase: 'finalizing', progress: 90 })
 
       const fileName = `videos/${design.name || 'video'}-${Date.now()}.${exportFormat}`
-      const formData = new FormData()
-      formData.append('video', blob, fileName)
-      if (thumbnailBlob) {
-        formData.append('thumbnail', thumbnailBlob, 'thumbnail.jpg')
-      }
-      formData.append('templateId', templateId.toString())
-      formData.append('projectId', projectId.toString())
-      formData.append('fileName', fileName)
+      console.log('[Video Export] Iniciando upload direto para Vercel Blob...', fileName, blob.size, 'bytes')
 
-      // Calcular duração real do vídeo exportado
+      // 4.1. Obter URL de upload assinada
+      const uploadUrlResponse = await fetch('/api/export/video/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: blob.type,
+          pathname: fileName,
+        }),
+      })
+
+      if (!uploadUrlResponse.ok) {
+        throw new Error('Falha ao obter URL de upload')
+      }
+
+      const { url: uploadUrl } = await uploadUrlResponse.json()
+      console.log('[Video Export] URL de upload obtida:', uploadUrl)
+
+      // 4.2. Fazer upload direto do vídeo para Vercel Blob
+      setExportProgress({ phase: 'finalizing', progress: 93 })
+      const uploadResponse = await fetch(uploadUrl, {
+        method: 'PUT',
+        body: blob,
+        headers: {
+          'Content-Type': blob.type,
+        },
+      })
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Falha no upload: ${uploadResponse.statusText}`)
+      }
+
+      const uploadResult = await uploadResponse.json()
+      const videoUrl = uploadResult.url
+      console.log('[Video Export] Vídeo enviado para Vercel Blob:', videoUrl)
+
+      // 4.3. Upload do thumbnail (se existe)
+      let thumbnailUrl: string | undefined
+      if (thumbnailBlob) {
+        setExportProgress({ phase: 'finalizing', progress: 95 })
+        const thumbnailFileName = fileName.replace(/\.[^/.]+$/, '_thumb.jpg')
+
+        const thumbUploadUrlResponse = await fetch('/api/export/video/upload-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: 'image/jpeg',
+            pathname: thumbnailFileName,
+          }),
+        })
+
+        if (thumbUploadUrlResponse.ok) {
+          const { url: thumbUploadUrl } = await thumbUploadUrlResponse.json()
+          const thumbUploadResponse = await fetch(thumbUploadUrl, {
+            method: 'PUT',
+            body: thumbnailBlob,
+            headers: { 'Content-Type': 'image/jpeg' },
+          })
+
+          if (thumbUploadResponse.ok) {
+            const thumbResult = await thumbUploadResponse.json()
+            thumbnailUrl = thumbResult.url
+            console.log('[Video Export] Thumbnail enviado:', thumbnailUrl)
+          }
+        }
+      }
+
+      // 4.4. Registrar geração no banco de dados
+      setExportProgress({ phase: 'finalizing', progress: 97 })
+
       const exportedDuration = audioConfig?.source === 'library'
         ? (audioConfig.endTime - audioConfig.startTime)
         : (videoDuration || videoLayer.videoMetadata?.duration || 10)
-      console.log('[Video Export] Duração do vídeo exportado:', exportedDuration, 'segundos')
-      formData.append('duration', exportedDuration.toString())
 
       const saveResponse = await fetch('/api/export/video/save', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoUrl,
+          thumbnailUrl,
+          templateId,
+          projectId,
+          fileName,
+          duration: exportedDuration,
+          fileSize: blob.size,
+          format: exportFormat,
+        }),
       })
 
       if (!saveResponse.ok) {

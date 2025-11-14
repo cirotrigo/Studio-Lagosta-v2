@@ -55,6 +55,9 @@
     },
     "app/api/organizations/[orgId]/analytics/members/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/export/video/save/route.ts": {
+      "maxDuration": 300
     }
   },
   "crons": [
