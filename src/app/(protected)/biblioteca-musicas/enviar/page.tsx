@@ -372,20 +372,54 @@ export default function EnviarMusicaPage() {
       <div className="space-y-2">
         <Label htmlFor="projectId">Projeto Vinculado</Label>
         <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
-          <SelectTrigger>
+          <SelectTrigger className="w-full">
             <SelectValue placeholder="Sem projeto (música global)" />
           </SelectTrigger>
-          <SelectContent className="max-h-[300px] overflow-y-auto">
-            <SelectItem value="none">Sem projeto (música global)</SelectItem>
-            {projetos.map((projeto) => (
-              <SelectItem key={projeto.id} value={projeto.id.toString()}>
-                {projeto.name}
-              </SelectItem>
-            ))}
+          <SelectContent
+            position="popper"
+            sideOffset={4}
+            className="max-h-[min(var(--radix-select-content-available-height),400px)] w-[var(--radix-select-trigger-width)]"
+          >
+            <SelectItem value="none" className="cursor-pointer">
+              <div className="flex items-center gap-2">
+                <Music className="h-4 w-4 text-gray-400" />
+                <span className="font-medium">Sem projeto (música global)</span>
+              </div>
+            </SelectItem>
+            <div className="my-1 h-px bg-gray-200" />
+            {isLoadingProjetos ? (
+              <div className="py-6 text-center text-sm text-gray-500">
+                Carregando projetos...
+              </div>
+            ) : projetos.length === 0 ? (
+              <div className="py-6 text-center text-sm text-gray-500">
+                Nenhum projeto disponível
+              </div>
+            ) : (
+              projetos.map((projeto) => (
+                <SelectItem
+                  key={projeto.id}
+                  value={projeto.id.toString()}
+                  className="cursor-pointer"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 text-xs font-semibold text-blue-700">
+                      {projeto.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="truncate">{projeto.name}</span>
+                  </div>
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
         <p className="text-sm text-gray-500">
-          Músicas globais ficam disponíveis para todos os projetos
+          {isLoadingProjetos
+            ? 'Carregando projetos...'
+            : projetos.length === 0
+            ? 'Crie um projeto primeiro para vincular músicas'
+            : `${projetos.length} ${projetos.length === 1 ? 'projeto disponível' : 'projetos disponíveis'}`
+          }
         </p>
       </div>
       {options.includeDuration && (
