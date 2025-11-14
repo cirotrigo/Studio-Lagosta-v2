@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Music, Plus, Search, Trash2, Edit, Drum, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { MusicPlayer } from '@/components/music/music-player';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -66,6 +67,19 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
   }
 
   return null;
+}
+
+// Componente auxiliar para player com busca de stems
+function MusicPlayerWithStems({ faixa }: { faixa: FaixaMusica }) {
+  const { data: stemStatus } = useMusicStemStatus(faixa.id);
+
+  return (
+    <MusicPlayer
+      originalUrl={faixa.blobUrl}
+      percussionUrl={stemStatus?.percussionUrl}
+      musicName={faixa.name}
+    />
+  );
 }
 
 export default function BibliotecaMusicasPage() {
@@ -139,7 +153,7 @@ export default function BibliotecaMusicasPage() {
                   <p className="text-sm text-gray-500">{faixa.artist || 'Sem artista'}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <audio src={faixa.blobUrl} controls className="h-8" />
+                  <MusicPlayerWithStems faixa={faixa} />
                   <Link href={`/biblioteca-musicas/${faixa.id}/editar`}>
                     <Button size="sm" variant="ghost"><Edit className="h-4 w-4" /></Button>
                   </Link>
