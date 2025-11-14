@@ -137,17 +137,29 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
   }
 
   try {
+    console.log(`[MVSEP] Checking status for job ${job.id}, hash: ${job.mvsepJobHash}`)
+
     const response = await fetch(
       `${MVSEP_API_URL}/separation/get?api_token=${MVSEP_API_KEY}&hash=${job.mvsepJobHash}`
     )
 
-    const data = (await response.json()) as MvsepStatusResponse
+    const responseText = await response.text()
+    console.log(`[MVSEP] Status response for job ${job.id}:`, responseText)
+
+    let data: MvsepStatusResponse
+    try {
+      data = JSON.parse(responseText) as MvsepStatusResponse
+    } catch (parseError) {
+      console.error(`[MVSEP] Failed to parse status response:`, parseError)
+      throw new Error('Invalid JSON response from MVSEP status check')
+    }
 
     if (!response.ok) {
       throw new Error(data.message || 'Failed to check status')
     }
 
     const mvsepStatus = data.status
+    console.log(`[MVSEP] Job ${job.id} MVSEP status:`, mvsepStatus, 'Full data:', JSON.stringify(data, null, 2))
 
     // Atualizar progress baseado no status
     let progress = job.progress
