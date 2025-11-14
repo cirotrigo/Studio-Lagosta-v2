@@ -190,6 +190,7 @@ model Project {
   OrganizationUsage    OrganizationUsage[]
   SocialPost           SocialPost[] // Social media posts for this account
   musicLibrary         MusicLibrary[] @relation("ProjectMusicLibrary")
+  youtubeDownloads     YoutubeDownloadJob[]
 
   // Instagram Analytics
   instagramStories       InstagramStory[]
@@ -1290,6 +1291,9 @@ model MusicLibrary {
   projectId   Int?
   project     Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
 
+  // Relacionamento com download do YouTube
+  youtubeDownloadJob YoutubeDownloadJob? @relation("YoutubeDownloadMusic")
+
   // Metadados
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -1338,4 +1342,57 @@ model MusicStemJob {
   @@index([status])
   @@index([mvsepJobHash])
   @@index([createdAt])
+}
+
+// =============================================================================
+// YouTube Download Queue
+// =============================================================================
+
+model YoutubeDownloadJob {
+  id             Int      @id @default(autoincrement())
+  youtubeUrl     String
+  youtubeId      String?
+
+  // Metadados fornecidos pelo usuário
+  requestedName   String?
+  requestedArtist String?
+  requestedGenre  String?
+  requestedMood   String?
+  projectId       Int?
+  project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  // Status: pending → downloading → uploading → completed/failed
+  status         String   @default("pending")
+  progress       Int      @default(0)
+
+  // video-download-api.com metadata
+  videoApiJobId  String?
+  videoApiStatus String?
+
+  // Result
+  musicId        Int?     @unique
+  music          MusicLibrary? @relation("YoutubeDownloadMusic", fields: [musicId], references: [id], onDelete: SetNull)
+
+  // Extra metadata
+  title          String?
+  duration       Float?
+  thumbnail      String?
+
+  // Error / retries
+  error          String?  @db.Text
+  retryCount     Int      @default(0)
+
+  // Audit
+  createdBy      String?
+
+  // Timestamps
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  @@index([status])
+  @@index([youtubeUrl])
+  @@index([createdAt])
+  @@index([videoApiJobId])
 }

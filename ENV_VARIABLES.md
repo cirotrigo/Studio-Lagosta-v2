@@ -52,6 +52,14 @@ BLOB_READ_WRITE_TOKEN="vercel_blob_..."
 - **O que faz:** Armazena imagens, vídeos e arquivos exportados
 - **Alternativa:** Configure outro provider de storage se preferir
 
+### YouTube Download Service
+```bash
+VIDEO_DOWNLOAD_API_KEY="your-video-download-api-key"
+```
+- **Onde conseguir:** Painel do [video-download-api.com](https://video-download-api.com) → Settings → API Keys
+- **O que faz:** Permite baixar áudio em MP3 (320kbps) para processamento automático
+- **Importante:** Mantenha esta chave privada para evitar abuso do serviço
+
 ### Replicate (Geração de Imagens AI)
 ```bash
 REPLICATE_API_TOKEN="r8_..."

@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Music, Plus, Search, Trash2, Edit, Drum, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MusicPlayer } from '@/components/music/music-player';
+import { YoutubeJobsList } from '@/components/youtube/youtube-jobs-list';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -137,6 +138,8 @@ export default function BibliotecaMusicasPage() {
           />
         </div>
       </div>
+
+      <YoutubeJobsList />
 
       <div className="rounded-lg border bg-white p-4">
         {isLoading ? (

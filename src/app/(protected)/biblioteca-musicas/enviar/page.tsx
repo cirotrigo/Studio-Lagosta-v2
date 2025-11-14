@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEnviarMusica } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
+import { useBaixarDoYoutube } from '@/hooks/use-youtube-download';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,7 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Upload, Music } from 'lucide-react';
+import { ArrowLeft, Upload, Music, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const GENEROS = [
@@ -44,31 +45,28 @@ export default function EnviarMusicaPage() {
   const router = useRouter();
   const { toast } = useToast();
   const enviarMusica = useEnviarMusica();
+  const baixarDoYoutube = useBaixarDoYoutube();
   const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
 
-  // Modo de envio: arquivo ou link
-  const [uploadMode, setUploadMode] = useState<'file' | 'link'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'youtube'>('file');
 
-  // Campos comuns
   const [nome, setNome] = useState('');
   const [artista, setArtista] = useState('');
   const [genero, setGenero] = useState('');
   const [humor, setHumor] = useState('');
-  const [projectId, setProjectId] = useState<string>('none'); // 'none' = sem projeto (música global)
+  const [projectId, setProjectId] = useState<string>('none');
   const [duracao, setDuracao] = useState(0);
 
-  // Upload de arquivo
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [extraindo, setExtraindo] = useState(false);
 
-  // Link externo
-  const [sourceUrl, setSourceUrl] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [aceitouTermos, setAceitouTermos] = useState(false);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Validar tipo de arquivo
     if (!selectedFile.type.startsWith('audio/')) {
       toast({
         title: 'Tipo de arquivo inválido',
@@ -78,7 +76,6 @@ export default function EnviarMusicaPage() {
       return;
     }
 
-    // Validar tamanho do arquivo (max 50MB)
     if (selectedFile.size > 50 * 1024 * 1024) {
       toast({
         title: 'Arquivo muito grande',
@@ -90,13 +87,11 @@ export default function EnviarMusicaPage() {
 
     setArquivo(selectedFile);
 
-    // Auto-fill name from filename if not set
     if (!nome) {
       const fileName = selectedFile.name.replace(/\.[^/.]+$/, '');
       setNome(fileName);
     }
 
-    // Extract duration
     setExtraindo(true);
     try {
       const audio = new Audio();
@@ -163,151 +158,141 @@ export default function EnviarMusicaPage() {
     }
   };
 
-  return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
-      {/* Header */}
-      <div className="mb-8">
-        <Link href="/biblioteca-musicas">
-          <Button variant="ghost" className="mb-4">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Voltar para Biblioteca
-          </Button>
-        </Link>
-        <h1 className="text-3xl font-bold">Enviar Música</h1>
-        <p className="mt-2 text-gray-600">
-          Adicione uma nova faixa de música à biblioteca
-        </p>
+  const handleYoutubeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!youtubeUrl.trim()) {
+      toast({
+        title: 'URL inválida',
+        description: 'Informe um link completo do YouTube.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (!aceitouTermos) {
+      toast({
+        title: 'Termos não aceitos',
+        description: 'Confirme que possui direitos legais para este conteúdo.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    try {
+      await baixarDoYoutube.mutateAsync({
+        youtubeUrl: youtubeUrl.trim(),
+        nome: nome || undefined,
+        artista: artista || undefined,
+        genero: genero || undefined,
+        humor: humor || undefined,
+        projectId: projectId !== 'none' ? parseInt(projectId) : undefined,
+      });
+
+      toast({
+        title: 'Download iniciado',
+        description: 'Estamos baixando a música do YouTube. Você será avisado quando estiver pronta.',
+      });
+
+      router.push('/biblioteca-musicas');
+    } catch (error) {
+      console.error('Erro ao iniciar download do YouTube:', error);
+      toast({
+        title: 'Falha ao iniciar download',
+        description: error instanceof Error ? error.message : 'Não foi possível iniciar o download.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const renderInformacoesBasicas = (requireNome: boolean) => (
+    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+      <h3 className="text-base font-semibold text-gray-900">Informações Básicas</h3>
+      <div className="space-y-2">
+        <Label htmlFor="nome">
+          Nome da Faixa {requireNome && <span className="text-red-500">*</span>}
+        </Label>
+        <Input
+          id="nome"
+          value={nome}
+          onChange={(e) => setNome(e.target.value)}
+          placeholder="Summer Vibes"
+          required={requireNome}
+        />
       </div>
+      <div className="space-y-2">
+        <Label htmlFor="artista">Artista</Label>
+        <Input
+          id="artista"
+          value={artista}
+          onChange={(e) => setArtista(e.target.value)}
+          placeholder="John Doe"
+        />
+      </div>
+    </div>
+  );
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Upload de Arquivo */}
-        <div className="space-y-2 rounded-lg border p-6 bg-white shadow-sm">
-          <Label htmlFor="arquivo" className="text-base font-semibold">
-            Arquivo de Áudio <span className="text-red-500">*</span>
-          </Label>
-          <div className="flex flex-col gap-4">
-            <Input
-              id="arquivo"
-              type="file"
-              accept="audio/*"
-              onChange={handleFileChange}
-              className="flex-1"
-              required
-            />
-            {arquivo && (
-              <div className="flex items-center justify-between rounded-md bg-green-50 p-3 border border-green-200">
-                <div className="flex items-center gap-2 text-sm text-green-700">
-                  <Music className="h-4 w-4" />
-                  <span className="font-medium">{arquivo.name}</span>
-                </div>
-                <span className="text-sm text-green-600">
-                  {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
-                </span>
-              </div>
-            )}
-          </div>
-          <p className="text-sm text-gray-500">
-            Formatos suportados: MP3, WAV, OGG, AAC, M4A (max 50MB)
-          </p>
-        </div>
-
-        {/* Informações Básicas */}
-        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
-          <h3 className="text-base font-semibold text-gray-900">Informações Básicas</h3>
-
-          {/* Nome */}
-          <div className="space-y-2">
-            <Label htmlFor="nome">
-              Nome da Faixa <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Summer Vibes"
-              required
-            />
-          </div>
-
-          {/* Artista */}
-          <div className="space-y-2">
-            <Label htmlFor="artista">Artista</Label>
-            <Input
-              id="artista"
-              value={artista}
-              onChange={(e) => setArtista(e.target.value)}
-              placeholder="John Doe"
-            />
-          </div>
-        </div>
-
-        {/* Classificação */}
-        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
-          <h3 className="text-base font-semibold text-gray-900">Classificação</h3>
-
-          {/* Gênero e Humor */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <Label htmlFor="genero">Gênero</Label>
-            <Select value={genero} onValueChange={setGenero}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o gênero" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px] overflow-y-auto">
-                {GENEROS.map((g) => (
-                  <SelectItem key={g} value={g}>
-                    {g}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="humor">Humor</Label>
-            <Select value={humor} onValueChange={setHumor}>
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o humor" />
-              </SelectTrigger>
-              <SelectContent className="max-h-[300px] overflow-y-auto">
-                {HUMORES.map((h) => (
-                  <SelectItem key={h} value={h}>
-                    {h}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          </div>
-        </div>
-
-        {/* Vinculação e Metadados */}
-        <div className="space-y-4 rounded-lg border p-6 bg-white shadow-sm">
-          <h3 className="text-base font-semibold text-gray-900">Vinculação e Metadados</h3>
-
-          {/* Projeto */}
-          <div className="space-y-2">
-          <Label htmlFor="projectId">Projeto Vinculado</Label>
-          <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+  const renderClassificacao = () => (
+    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+      <h3 className="text-base font-semibold text-gray-900">Classificação</h3>
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="genero">Gênero</Label>
+          <Select value={genero} onValueChange={setGenero}>
             <SelectTrigger>
-              <SelectValue placeholder="Sem projeto (música global)" />
+              <SelectValue placeholder="Selecione o gênero" />
             </SelectTrigger>
             <SelectContent className="max-h-[300px] overflow-y-auto">
-              <SelectItem value="none">Sem projeto (música global)</SelectItem>
-              {projetos.map((projeto) => (
-                <SelectItem key={projeto.id} value={projeto.id.toString()}>
-                  {projeto.name}
+              {GENEROS.map((g) => (
+                <SelectItem key={g} value={g}>
+                  {g}
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
-          <p className="text-sm text-gray-500">
-            Músicas globais ficam disponíveis para todos os projetos
-          </p>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="humor">Humor</Label>
+          <Select value={humor} onValueChange={setHumor}>
+            <SelectTrigger>
+              <SelectValue placeholder="Selecione o humor" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px] overflow-y-auto">
+              {HUMORES.map((h) => (
+                <SelectItem key={h} value={h}>
+                  {h}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+    </div>
+  );
 
-        {/* Duração */}
+  const renderVinculacao = (options: { includeDuration: boolean }) => (
+    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
+      <h3 className="text-base font-semibold text-gray-900">Vinculação e Metadados</h3>
+      <div className="space-y-2">
+        <Label htmlFor="projectId">Projeto Vinculado</Label>
+        <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+          <SelectTrigger>
+            <SelectValue placeholder="Sem projeto (música global)" />
+          </SelectTrigger>
+          <SelectContent className="max-h-[300px] overflow-y-auto">
+            <SelectItem value="none">Sem projeto (música global)</SelectItem>
+            {projetos.map((projeto) => (
+              <SelectItem key={projeto.id} value={projeto.id.toString()}>
+                {projeto.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-sm text-gray-500">
+          Músicas globais ficam disponíveis para todos os projetos
+        </p>
+      </div>
+      {options.includeDuration && (
         <div className="space-y-2">
           <Label htmlFor="duracao">
             Duração (segundos) <span className="text-red-500">*</span>
@@ -323,43 +308,181 @@ export default function EnviarMusicaPage() {
             required
             disabled={extraindo}
           />
-          {extraindo && (
-            <p className="text-sm text-gray-500">Extraindo metadados...</p>
-          )}
+          {extraindo && <p className="text-sm text-gray-500">Extraindo metadados...</p>}
           {duracao > 0 && (
             <p className="text-sm text-green-600">
               ✓ {Math.floor(duracao / 60)}:{String(Math.floor(duracao % 60)).padStart(2, '0')} min
             </p>
           )}
         </div>
-        </div>
+      )}
+    </div>
+  );
 
-        {/* Submit Buttons */}
-        <div className="flex gap-4 pt-4">
-          <Link href="/biblioteca-musicas" className="flex-1">
-            <Button type="button" variant="outline" className="w-full">
-              Cancelar
-            </Button>
-          </Link>
-          <Button
-            type="submit"
-            className="flex-1"
-            disabled={enviarMusica.isPending || !arquivo}
-          >
-            {enviarMusica.isPending ? (
-              <>
-                <Upload className="mr-2 h-4 w-4 animate-spin" />
-                Enviando...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Enviar Música
-              </>
-            )}
+  return (
+    <div className="container mx-auto max-w-2xl px-4 py-8">
+      <div className="mb-8">
+        <Link href="/biblioteca-musicas">
+          <Button variant="ghost" className="mb-4">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Voltar para Biblioteca
           </Button>
-        </div>
-      </form>
+        </Link>
+        <h1 className="text-3xl font-bold">Enviar Música</h1>
+        <p className="mt-2 text-gray-600">Adicione uma nova faixa à biblioteca</p>
+      </div>
+
+      <div className="mb-6 flex gap-2 rounded-lg bg-gray-100 p-1">
+        <button
+          type="button"
+          onClick={() => setUploadMode('file')}
+          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+            uploadMode === 'file' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          📁 Upload de Arquivo
+        </button>
+        <button
+          type="button"
+          onClick={() => setUploadMode('youtube')}
+          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
+            uploadMode === 'youtube' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
+          }`}
+        >
+          🔗 Link do YouTube
+        </button>
+      </div>
+
+      {uploadMode === 'file' && (
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="space-y-2 rounded-lg border bg-white p-6 shadow-sm">
+            <Label htmlFor="arquivo" className="text-base font-semibold">
+              Arquivo de Áudio <span className="text-red-500">*</span>
+            </Label>
+            <div className="flex flex-col gap-4">
+              <Input
+                id="arquivo"
+                type="file"
+                accept="audio/*"
+                onChange={handleFileChange}
+                className="flex-1"
+                required
+              />
+              {arquivo && (
+                <div className="flex items-center justify-between rounded-md border border-green-200 bg-green-50 p-3">
+                  <div className="flex items-center gap-2 text-sm text-green-700">
+                    <Music className="h-4 w-4" />
+                    <span className="font-medium">{arquivo.name}</span>
+                  </div>
+                  <span className="text-sm text-green-600">
+                    {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
+                  </span>
+                </div>
+              )}
+            </div>
+            <p className="text-sm text-gray-500">
+              Formatos suportados: MP3, WAV, OGG, AAC, M4A (max 50MB)
+            </p>
+          </div>
+
+          {renderInformacoesBasicas(true)}
+          {renderClassificacao()}
+          {renderVinculacao({ includeDuration: true })}
+
+          <div className="flex gap-4 pt-4">
+            <Link href="/biblioteca-musicas" className="flex-1">
+              <Button type="button" variant="outline" className="w-full">
+                Cancelar
+              </Button>
+            </Link>
+            <Button type="submit" className="flex-1" disabled={enviarMusica.isPending || !arquivo}>
+              {enviarMusica.isPending ? (
+                <>
+                  <Upload className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Enviar Música
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      )}
+
+      {uploadMode === 'youtube' && (
+        <form onSubmit={handleYoutubeSubmit} className="space-y-6">
+          <div className="space-y-2 rounded-lg border bg-white p-6 shadow-sm">
+            <Label htmlFor="youtubeUrl" className="text-base font-semibold">
+              URL do YouTube <span className="text-red-500">*</span>
+            </Label>
+            <Input
+              id="youtubeUrl"
+              type="url"
+              value={youtubeUrl}
+              onChange={(e) => setYoutubeUrl(e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              required
+            />
+            <p className="text-sm text-gray-500">Cole o link completo do vídeo do YouTube</p>
+          </div>
+
+          <div className="rounded-lg border-2 border-red-300 bg-red-50 p-6">
+            <h3 className="mb-3 text-base font-bold text-red-900">⚠️ Aviso legal importante</h3>
+            <div className="space-y-2 text-sm text-red-800">
+              <p>
+                Baixar conteúdo protegido pode violar os <strong>Termos de Serviço do YouTube</strong>.
+              </p>
+              <p>Use apenas quando tiver autorização legal (Creative Commons, próprio conteúdo, domínio público).</p>
+              <p className="font-semibold">Você é o responsável por qualquer uso indevido.</p>
+            </div>
+            <div className="mt-4 flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="aceitouTermos"
+                checked={aceitouTermos}
+                onChange={(e) => setAceitouTermos(e.target.checked)}
+                className="mt-1 h-4 w-4"
+                required
+              />
+              <label htmlFor="aceitouTermos" className="text-sm text-red-900">
+                Confirmo que tenho direitos legais para usar o conteúdo deste link.
+              </label>
+            </div>
+          </div>
+
+          {renderInformacoesBasicas(false)}
+          {renderClassificacao()}
+          {renderVinculacao({ includeDuration: false })}
+
+          <div className="flex gap-4 pt-4">
+            <Link href="/biblioteca-musicas" className="flex-1">
+              <Button type="button" variant="outline" className="w-full">
+                Cancelar
+              </Button>
+            </Link>
+            <Button
+              type="submit"
+              className="flex-1"
+              disabled={baixarDoYoutube.isPending || !aceitouTermos}
+            >
+              {baixarDoYoutube.isPending ? (
+                <>
+                  <Download className="mr-2 h-4 w-4 animate-spin" />
+                  Iniciando download...
+                </>
+              ) : (
+                <>
+                  <Download className="mr-2 h-4 w-4" />
+                  Baixar do YouTube
+                </>
+              )}
+            </Button>
+          </div>
+        </form>
+      )}
     </div>
   );
 }

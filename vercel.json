@@ -85,6 +85,10 @@
     {
       "path": "/api/cron/process-music-stems",
       "schedule": "*/2 * * * *"
+    },
+    {
+      "path": "/api/cron/process-youtube-downloads",
+      "schedule": "* * * * *"
     }
   ]
 }
