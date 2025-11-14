@@ -7,7 +7,7 @@ import { useMusicStemStatus } from '@/hooks/use-music-stem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Music, Plus, Search, Trash2, Edit, MicOff, Loader2 } from 'lucide-react';
+import { Music, Plus, Search, Trash2, Edit, MicOff, Loader2, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { MusicPlayer } from '@/components/music/music-player';
 import { YoutubeJobsList } from '@/components/youtube/youtube-jobs-list';
@@ -89,6 +89,7 @@ export default function BibliotecaMusicasPage() {
   const { toast } = useToast();
   const [termoBusca, setTermoBusca] = useState('');
   const [musicaParaDeletar, setMusicaParaDeletar] = useState<FaixaMusica | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const faixasFiltradas = faixasMusica?.filter((faixa) =>
     faixa.name.toLowerCase().includes(termoBusca.toLowerCase()) ||
@@ -111,6 +112,49 @@ export default function BibliotecaMusicasPage() {
         title: 'Erro ao excluir',
         description: 'Não foi possível excluir a música. Tente novamente.',
       });
+    }
+  };
+
+  const handleDownloadZip = async (faixa: FaixaMusica) => {
+    try {
+      setDownloadingId(faixa.id);
+
+      const response = await fetch(`/api/biblioteca-musicas/${faixa.id}/download-zip`);
+
+      if (!response.ok) {
+        throw new Error('Erro ao gerar arquivo ZIP');
+      }
+
+      // Criar blob e fazer download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+
+      // Extrair nome do arquivo do header Content-Disposition ou usar fallback
+      const contentDisposition = response.headers.get('Content-Disposition');
+      const fileNameMatch = contentDisposition?.match(/filename="(.+)"/);
+      const fileName = fileNameMatch ? fileNameMatch[1] : `${faixa.name}.zip`;
+
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+
+      toast({
+        title: 'Download iniciado',
+        description: `Baixando "${faixa.name}" com as versões original e instrumental.`,
+      });
+    } catch (error) {
+      console.error('Erro ao baixar ZIP:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Erro ao baixar',
+        description: 'Não foi possível gerar o arquivo ZIP. Tente novamente.',
+      });
+    } finally {
+      setDownloadingId(null);
     }
   };
 
@@ -157,6 +201,19 @@ export default function BibliotecaMusicasPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <MusicPlayerWithStems faixa={faixa} />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => handleDownloadZip(faixa)}
+                    disabled={downloadingId === faixa.id}
+                    title="Baixar ZIP com versões original e instrumental"
+                  >
+                    {downloadingId === faixa.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                  </Button>
                   <Link href={`/biblioteca-musicas/${faixa.id}/editar`}>
                     <Button size="sm" variant="ghost"><Edit className="h-4 w-4" /></Button>
                   </Link>
