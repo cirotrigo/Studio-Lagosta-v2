@@ -1,5 +1,70 @@
 # Plano de Implementação: Download de Músicas do YouTube + Processamento MVSEP
 
+## 📌 Contexto e Histórico
+
+### ⚠️ Implementação Anterior Removida
+
+Uma tentativa anterior foi feita de integrar YouTube/SoundCloud enviando URLs diretamente para a API MVSEP. **Esta abordagem não funcionou** pelos seguintes motivos:
+
+1. **MVSEP não suporta YouTube/SoundCloud como fonte remota**
+   - Erro: "Unsupported remote type"
+   - A API MVSEP apenas aceita arquivos via multipart/form-data upload
+   - Não é possível enviar URLs de plataformas de streaming
+
+2. **Código removido:**
+   - ❌ Endpoint `/api/biblioteca-musicas/from-link/route.ts` (deletado)
+   - ❌ Hook `useEnviarMusicaDeLink` (removido)
+   - ❌ Campos `sourceType` e `sourceUrl` no schema Prisma (removidos)
+   - ❌ Lógica de URL remota no `mvsep-client.ts` (simplificado)
+
+3. **Migração aplicada:**
+   ```sql
+   -- Removido do schema MusicLibrary:
+   -- sourceType String?
+   -- sourceUrl  String?
+   ```
+
+### ✅ Abordagem Correta (Este Plano)
+
+Este plano implementa a abordagem **que realmente funciona**:
+
+```
+YouTube URL → Download MP3 → Upload Vercel Blob → MVSEP Processing
+```
+
+**Diferença fundamental:**
+- ❌ **Anterior**: Tentar enviar URL para MVSEP (não funciona)
+- ✅ **Este plano**: Baixar arquivo primeiro, depois enviar para MVSEP (funciona!)
+
+### ✅ Já Implementado
+
+Os seguintes componentes **já estão funcionando** e serão reutilizados:
+
+1. **Sistema de Separação MVSEP** ✅
+   - Modelo `MusicStemJob`
+   - Cron job `/api/cron/process-music-stems`
+   - Cliente MVSEP com multipart upload
+   - Processamento de percussão DrumSep (Type 37)
+
+2. **Player de Áudio com Alternância** ✅
+   - Componente `MusicPlayer` (`src/components/music/music-player.tsx`)
+   - Alternância entre versão Original e Percussão
+   - Integrado na biblioteca de músicas
+   - Mantém posição ao trocar versões
+
+3. **Upload Manual de Arquivos** ✅
+   - Interface de upload via arquivo local
+   - Upload para Vercel Blob
+   - Criação automática de `MusicStemJob`
+
+**Este plano adiciona apenas:**
+- Sistema de download do YouTube (nova funcionalidade)
+- Modelo `YoutubeDownloadJob` (novo)
+- Cron job para processar downloads (novo)
+- Tab "Link do YouTube" na UI (novo)
+
+---
+
 ## 📋 Visão Geral
 
 Implementar sistema de download de músicas do YouTube via **video-download-api.com**, seguido de **processamento automático no MVSEP** para separação de percussão. O usuário cola uma URL do YouTube e recebe:
@@ -45,54 +110,6 @@ RESULTADO:
 - ✅ Disclaimers legais robustos sobre ToS do YouTube
 - ✅ Música original disponível após download (~1-2 min)
 - ✅ Percussão disponível após processamento MVSEP (~5-7 min)
-
----
-
-## ⚖️ AVISO LEGAL IMPORTANTE
-
-### 🚨 Riscos e Conformidade
-
-**IMPORTANTE: Esta funcionalidade pode violar os Termos de Serviço do YouTube.**
-
-#### Termos de Serviço do YouTube (2025)
-> "You shall not download any Content unless you see a 'download' or similar link displayed by YouTube on the Service for that Content."
-
-**Consequências Potenciais:**
-- ❌ Violação dos ToS do YouTube
-- ❌ Possível ação legal do YouTube
-- ❌ Suspensão de contas de usuários
-- ❌ Copyright infringement (músicas protegidas)
-
-#### O Que é Legal no YouTube?
-✅ **Permitido:**
-- Vídeos com Creative Commons (CC BY)
-- Conteúdo de domínio público
-- Vídeos com botão "Download" oficial
-- Seus próprios vídeos
-
-❌ **Proibido:**
-- Download via APIs de terceiros
-- Download de músicas protegidas por copyright
-- Uso comercial de conteúdo protegido
-
-#### Mitigações Implementadas
-
-1. **Disclaimers Robustos**
-   - Avisos claros na interface
-   - Checkbox de confirmação obrigatório
-   - Termos de uso explícitos
-
-2. **Responsabilidade do Usuário**
-   - Usuário confirma ter direitos para usar o conteúdo
-   - Logs de ações para auditoria
-   - Sistema preparado para DMCA takedown (futuro)
-
-3. **Uso Ético Recomendado**
-   - Músicas Creative Commons
-   - Conteúdo próprio
-   - Uso educacional/pessoal
-
-**⚠️ RECOMENDAÇÃO: Consulte um advogado antes de implementar em produção.**
 
 ---
 
@@ -198,11 +215,17 @@ model YoutubeDownloadJob {
 
 ### Atualizar `MusicLibrary`
 
+**Nota:** Os campos `sourceType` e `sourceUrl` foram **removidos** do schema (abordagem anterior que não funcionou).
+
 ```prisma
 model MusicLibrary {
   // ... campos existentes ...
 
-  // Relacionamento com YouTube Download
+  // ❌ REMOVIDO (abordagem anterior):
+  // sourceType String?
+  // sourceUrl  String?
+
+  // ✅ NOVO: Relacionamento com YouTube Download
   youtubeDownloadJob YoutubeDownloadJob? @relation("YoutubeDownloadMusic")
 
   // Relacionamento com MVSEP (já existe no separacao-musica.md)
@@ -1521,14 +1544,6 @@ ALTER TABLE "YoutubeDownloadJob" ADD CONSTRAINT "YoutubeDownloadJob_musicId_fkey
 
 ## ⚠️ Considerações Técnicas
 
-### 1. Conformidade Legal
-
-- ✅ Disclaimers robustos na UI
-- ✅ Checkbox de confirmação obrigatório
-- ✅ Logs de auditoria (quem baixou o quê)
-- ⚠️ Termos de uso claros
-- ⚠️ Sistema de DMCA takedown (preparação futura)
-- 🚨 **Consultar advogado antes de produção**
 
 ### 2. Limitações do video-download-api.com
 
@@ -1627,12 +1642,20 @@ console.log('[MVSEP] Job automático criado:', { musicId });
 
 ## ✅ Decisões Finalizadas
 
+### 0. Por Que Não Enviar URL Diretamente para MVSEP?
+
+❌ **Abordagem Rejeitada:** Enviar URLs do YouTube/SoundCloud diretamente para MVSEP
+- **Motivo:** MVSEP não suporta URLs remotas de plataformas de streaming
+- **Erro obtido:** "Unsupported remote type"
+- **Conclusão:** É necessário baixar o arquivo primeiro, depois fazer upload
+
 ### 1. Abordagem de Download
 
-- ✅ Usar **video-download-api.com** para download
+- ✅ Usar **video-download-api.com** para download (primeira etapa)
 - ✅ Formato: **MP3 320kbps**
-- ✅ Upload para **Vercel Blob Storage**
-- ✅ Processamento automático no **MVSEP**
+- ✅ Upload para **Vercel Blob Storage** (segunda etapa)
+- ✅ Processamento automático no **MVSEP** (terceira etapa - via multipart upload)
+- ❌ ~~Enviar URL diretamente para MVSEP~~ (não funciona)
 
 ### 2. UI/UX
 
