@@ -64,6 +64,20 @@ const STATUS_OPTIONS = [
   { value: 'FAILED', label: 'Falharam' },
 ]
 
+const GRID_DENSITY_CONFIG = {
+  compact: { label: 'Compacto', minWidth: 180, gapClass: 'gap-2.5 md:gap-3' },
+  cozy: { label: 'Médio', minWidth: 220, gapClass: 'gap-3 md:gap-4' },
+  comfortable: { label: 'Amplo', minWidth: 260, gapClass: 'gap-4 md:gap-5' },
+} as const
+
+type GridDensity = keyof typeof GRID_DENSITY_CONFIG
+
+const GRID_DENSITY_OPTIONS: { value: GridDensity; label: string }[] = [
+  { value: 'compact', label: GRID_DENSITY_CONFIG.compact.label },
+  { value: 'cozy', label: GRID_DENSITY_CONFIG.cozy.label },
+  { value: 'comfortable', label: GRID_DENSITY_CONFIG.comfortable.label },
+]
+
 type ViewMode = 'grid' | 'list'
 type PreviewState = {
   id: string
@@ -78,6 +92,22 @@ type ProgressOverride = {
   status: GenerationRecord['status'] | 'PENDING'
   errorMessage?: string | null
 }
+
+const STATUS_LABELS: Record<ProgressOverride['status'], string> = {
+  COMPLETED: 'Concluído',
+  POSTING: 'Processando',
+  FAILED: 'Falhou',
+  PENDING: 'Pendente',
+}
+
+const STATUS_COLORS: Record<ProgressOverride['status'], string> = {
+  COMPLETED: 'bg-emerald-500',
+  POSTING: 'bg-amber-500',
+  FAILED: 'bg-destructive',
+  PENDING: 'bg-slate-400',
+}
+
+const STATUS_ORDER: ProgressOverride['status'][] = ['COMPLETED', 'POSTING', 'PENDING', 'FAILED']
 
 function getStringField(values: Record<string, unknown>, key: string): string | undefined {
   const value = values?.[key]
@@ -103,6 +133,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
   const [memberFilter, setMemberFilter] = React.useState<string | null>(null)
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
+  const [gridDensity, setGridDensity] = React.useState<GridDensity>('cozy')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
   const [onlyWithResult, setOnlyWithResult] = React.useState(true)
   const [preview, setPreview] = React.useState<PreviewState>(null)
@@ -323,11 +354,23 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     })
   }, [data?.generations, statusFilter, searchTerm, onlyWithResult])
 
+  const shouldEnablePhotoSwipe = viewMode === 'grid' && !isLoading && !isError && filtered.length > 0
+
+  const gridTemplateStyle = React.useMemo<React.CSSProperties>(
+    () => ({
+      gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${GRID_DENSITY_CONFIG[gridDensity].minWidth}px), 1fr))`,
+    }),
+    [gridDensity]
+  )
+
+  const gridGapClass = GRID_DENSITY_CONFIG[gridDensity].gapClass
+
   // PhotoSwipe integration - re-init quando os dados mudarem
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
     childSelector: 'a',
-    dependencies: [filtered.length, isLoading],
+    dependencies: [filtered.length, isLoading, viewMode, gridDensity],
+    enabled: shouldEnablePhotoSwipe,
   })
 
   const getGenerationMeta = React.useCallback(
@@ -542,6 +585,20 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     } as Partial<PostFormData>
   }, [schedulingGeneration, getGenerationMeta])
 
+  const statusSummary = React.useMemo(() => {
+    return filtered.reduce<Record<ProgressOverride['status'], number>>(
+      (acc, generation) => {
+        const meta = getGenerationMeta(generation)
+        acc[meta.status] += 1
+        return acc
+      },
+      { COMPLETED: 0, POSTING: 0, FAILED: 0, PENDING: 0 }
+    )
+  }, [filtered, getGenerationMeta])
+
+  const totalGenerations = data?.generations?.length ?? 0
+  const showGridSummary = shouldEnablePhotoSwipe
+
   const isEmpty = !isLoading && filtered.length === 0
 
   return (
@@ -591,12 +648,33 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
-              <Grid3X3 className="h-4 w-4" />
-            </Button>
-            <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('list')}>
-              <List className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
+                <Grid3X3 className="h-4 w-4" />
+              </Button>
+              <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('list')}>
+                <List className="h-4 w-4" />
+              </Button>
+              {viewMode === 'grid' && (
+                <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
+                  {GRID_DENSITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={cn(
+                        'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                        gridDensity === option.value
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                      onClick={() => setGridDensity(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Button
               variant="outline"
               size="sm"
@@ -625,6 +703,28 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           </div>
         </div>
       </Card>
+
+      {showGridSummary && (
+        <div className="mb-4 rounded-xl border border-border/50 bg-muted/30 px-4 py-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="font-medium text-foreground">
+              Mostrando {filtered.length} de {totalGenerations} criativos
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Ajuste a densidade para visualizar mais cards no grid
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+            {STATUS_ORDER.map((status) => (
+              <span key={status} className="flex items-center gap-1">
+                <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_COLORS[status])} />
+                <span className="uppercase tracking-wide">{STATUS_LABELS[status]}</span>
+                <span className="font-semibold text-foreground normal-case">{statusSummary[status]}</span>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
@@ -655,7 +755,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       ) : viewMode === 'grid' ? (
         <div
           id="creatives-gallery"
-          className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 md:gap-4"
+          className={cn('grid auto-rows-[1fr]', gridGapClass)}
+          style={gridTemplateStyle}
         >
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)

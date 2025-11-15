@@ -29,12 +29,27 @@ interface UsePhotoSwipeOptions {
   childSelector: string
   items?: PhotoSwipeItem[]
   dependencies?: unknown[]
+  enabled?: boolean
 }
 
-export function usePhotoSwipe({ gallerySelector, childSelector, items = [], dependencies = [] }: UsePhotoSwipeOptions) {
+export function usePhotoSwipe({
+  gallerySelector,
+  childSelector,
+  items = [],
+  dependencies = [],
+  enabled = true,
+}: UsePhotoSwipeOptions) {
   const lightboxRef = useRef<PhotoSwipeLightbox | null>(null)
 
   useEffect(() => {
+    if (!enabled) {
+      if (lightboxRef.current) {
+        lightboxRef.current.destroy()
+        lightboxRef.current = null
+      }
+      return
+    }
+
     // Destruir instância anterior se existir
     if (lightboxRef.current) {
       console.log('PhotoSwipe: Destroying previous instance')
@@ -265,7 +280,7 @@ export function usePhotoSwipe({ gallerySelector, childSelector, items = [], depe
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gallerySelector, childSelector, ...dependencies])
+  }, [gallerySelector, childSelector, enabled, ...dependencies])
 
   const openPhotoSwipe = (index: number) => {
     if (lightboxRef.current && items.length > 0) {
