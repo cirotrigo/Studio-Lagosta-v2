@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PostMiniCard } from './post-mini-card'
 import { sortPostsByDate } from './calendar-utils'
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarDayCellProps {
@@ -19,6 +19,7 @@ interface CalendarDayCellProps {
   isCurrentMonth: boolean
   isToday: boolean
   onPostClick: (post: SocialPost) => void
+  onAddPost?: (date: Date) => void
 }
 
 export function CalendarDayCell({
@@ -26,7 +27,8 @@ export function CalendarDayCell({
   posts,
   isCurrentMonth,
   isToday,
-  onPostClick
+  onPostClick,
+  onAddPost
 }: CalendarDayCellProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -47,7 +49,7 @@ export function CalendarDayCell({
       )}
     >
       {/* Número do dia */}
-      <div className="flex items-center justify-between mb-1 sm:mb-2 sticky top-0 bg-inherit z-10 pb-0.5 sm:pb-1">
+      <div className="flex items-center justify-between mb-1 sm:mb-2 sticky top-0 bg-inherit z-10 pb-0.5 sm:pb-1 group">
         <span
           className={cn(
             'text-xs sm:text-sm font-medium transition-all',
@@ -58,17 +60,41 @@ export function CalendarDayCell({
           {day.dayNumber}
         </span>
 
-        {/* Badge de total de posts */}
-        {posts.length > 0 && (
-          <span className={cn(
-            "text-[10px] sm:text-xs font-medium px-1 sm:px-1.5 py-0.5 rounded-full transition-all",
-            posts.length > 3
-              ? "bg-primary/20 text-primary ring-1 ring-primary/30"
-              : "bg-muted text-muted-foreground"
-          )}>
-            {posts.length}
-          </span>
-        )}
+        <div className="flex items-center gap-1">
+          {/* Botão + discreto */}
+          {onAddPost && isCurrentMonth && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation()
+                onAddPost(day.date)
+              }}
+              className={cn(
+                "opacity-0 group-hover:opacity-100 transition-opacity",
+                "w-4 h-4 sm:w-5 sm:h-5 rounded-full",
+                "flex items-center justify-center",
+                "bg-primary/10 hover:bg-primary/20",
+                "text-primary hover:text-primary",
+                "border border-primary/30 hover:border-primary/50",
+                "active:scale-95 transition-all"
+              )}
+              title="Adicionar post nesta data"
+            >
+              <Plus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+            </button>
+          )}
+
+          {/* Badge de total de posts */}
+          {posts.length > 0 && (
+            <span className={cn(
+              "text-[10px] sm:text-xs font-medium px-1 sm:px-1.5 py-0.5 rounded-full transition-all",
+              posts.length > 3
+                ? "bg-primary/20 text-primary ring-1 ring-primary/30"
+                : "bg-muted text-muted-foreground"
+            )}>
+              {posts.length}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Posts do dia */}

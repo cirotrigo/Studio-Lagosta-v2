@@ -10,6 +10,7 @@ interface CalendarGridProps {
   posts: SocialPost[]
   selectedDate: Date
   onPostClick: (post: SocialPost) => void
+  onAddPost?: (date: Date) => void
   isLoading: boolean
 }
 
@@ -18,6 +19,7 @@ export const CalendarGrid = memo(function CalendarGrid({
   posts,
   selectedDate,
   onPostClick,
+  onAddPost,
   isLoading
 }: CalendarGridProps) {
   // Gerar dias do mês
@@ -76,6 +78,7 @@ export const CalendarGrid = memo(function CalendarGrid({
             isCurrentMonth={day.isCurrentMonth}
             isToday={day.isToday}
             onPostClick={onPostClick}
+            onAddPost={onAddPost}
           />
         ))}
       </div>

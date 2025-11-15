@@ -70,6 +70,7 @@ export function AgendaCalendarView() {
   const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true) // Sidebar colapsada por padrão
+  const [newPostDate, setNewPostDate] = useState<Date | null>(null)
 
   // Fetch user projects (channels)
   const { data: projectsData } = useQuery<ProjectResponse[]>({
@@ -170,11 +171,42 @@ export function AgendaCalendarView() {
   const handleCloseComposer = useCallback(() => {
     setIsComposerOpen(false)
     setEditingPost(null)
+    setNewPostDate(null)
   }, [])
+
+  const handleAddPost = useCallback((date: Date) => {
+    // Configurar data com horário de 10 horas
+    const dateAt10AM = new Date(date)
+    dateAt10AM.setHours(10, 0, 0, 0)
+
+    // Se não há projeto selecionado, selecionar o primeiro disponível
+    if (!selectedProjectId && projectList.length > 0) {
+      setSelectedProjectId(projectList[0].id)
+    }
+
+    setNewPostDate(dateAt10AM)
+    setEditingPost(null)
+    setIsComposerOpen(true)
+  }, [selectedProjectId, projectList])
 
   // Convert SocialPost to PostFormData format for editing
   // OPTIMIZED: Memoize to prevent recalculation on every render
   const getInitialData = useMemo((): Partial<PostFormData> | undefined => {
+    // Se estamos criando um novo post com data específica (botão +)
+    if (newPostDate && !editingPost) {
+      return {
+        postType: 'STORY',
+        caption: '',
+        mediaUrls: [],
+        generationIds: [],
+        scheduleType: 'SCHEDULED',
+        scheduledDatetime: newPostDate,
+        altText: [],
+        firstComment: '',
+        publishType: 'DIRECT',
+      }
+    }
+
     if (!editingPost) return undefined
 
     const recurringConfig = parseRecurringConfig(editingPost.recurringConfig)
@@ -201,7 +233,7 @@ export function AgendaCalendarView() {
       firstComment: editingPost.firstComment ?? '',
       publishType: (editingPost.publishType ?? 'DIRECT') as PostFormData['publishType'],
     }
-  }, [editingPost])
+  }, [editingPost, newPostDate])
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -267,6 +299,7 @@ export function AgendaCalendarView() {
                   posts={filteredPosts}
                   selectedDate={selectedDate}
                   onPostClick={setSelectedPost}
+                  onAddPost={handleAddPost}
                   isLoading={isLoading}
                 />
               )}
