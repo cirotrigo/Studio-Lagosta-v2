@@ -41,6 +41,11 @@ function isVideoFile(item: MediaItem): boolean {
   return videoExtensions.some(ext => fileName.endsWith(ext))
 }
 
+// Helper to detect if URL is from Google Drive API
+function isGoogleDriveApiUrl(url: string): boolean {
+  return url.includes('/api/google-drive/')
+}
+
 export function SortableMediaItem({
   item,
   index,
@@ -62,6 +67,8 @@ export function SortableMediaItem({
   }
 
   const isVideo = isVideoFile(item)
+  const isGoogleDriveApi = isGoogleDriveApiUrl(item.url) ||
+    (item.thumbnailUrl ? isGoogleDriveApiUrl(item.thumbnailUrl) : false)
 
   return (
     <div
@@ -85,14 +92,23 @@ export function SortableMediaItem({
           <>
             {item.thumbnailUrl && item.thumbnailUrl !== item.url ? (
               // Use thumbnail image if available (better performance)
-              <Image
-                src={item.thumbnailUrl}
-                alt={item.name}
-                fill
-                sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-                className="object-cover pointer-events-none"
-                unoptimized
-              />
+              isGoogleDriveApi ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.thumbnailUrl}
+                  alt={item.name}
+                  className="w-full h-full object-cover pointer-events-none"
+                />
+              ) : (
+                <Image
+                  src={item.thumbnailUrl}
+                  alt={item.name}
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+                  className="object-cover pointer-events-none"
+                  unoptimized
+                />
+              )
             ) : (
               // Fallback to video element
               <video
@@ -116,14 +132,23 @@ export function SortableMediaItem({
             </div>
           </>
         ) : (
-          <Image
-            src={item.thumbnailUrl || item.url}
-            alt={item.name}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
-            className="object-cover pointer-events-none"
-            unoptimized
-          />
+          isGoogleDriveApi ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.thumbnailUrl || item.url}
+              alt={item.name}
+              className="w-full h-full object-cover pointer-events-none"
+            />
+          ) : (
+            <Image
+              src={item.thumbnailUrl || item.url}
+              alt={item.name}
+              fill
+              sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
+              className="object-cover pointer-events-none"
+              unoptimized
+            />
+          )
         )}
 
         {/* Drag indicator - Top left */}

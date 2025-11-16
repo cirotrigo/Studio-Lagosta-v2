@@ -138,6 +138,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'drive.google.com',
       },
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+      },
     ],
     // OPTIMIZED: Image optimization settings
     formats: ['image/avif', 'image/webp'], // Use modern formats for better compression

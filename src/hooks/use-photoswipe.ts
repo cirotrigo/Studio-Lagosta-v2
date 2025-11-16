@@ -165,8 +165,15 @@ export function usePhotoSwipe({
       lightboxRef.current.on('contentLoad', (e) => {
         const { content } = e
 
+        console.log('PhotoSwipe: contentLoad event:', {
+          type: content.data.type,
+          src: content.data.src
+        })
+
         // Verificar se é um vídeo
         if (content.data.type === 'video') {
+          console.log('🎬 PhotoSwipe: Loading video content:', content.data.src)
+
           // Prevenir carregamento padrão
           e.preventDefault()
 
@@ -175,22 +182,43 @@ export function usePhotoSwipe({
           videoElement.src = content.data.src as string
           videoElement.controls = true
           videoElement.autoplay = true
-          videoElement.loop = true
+          videoElement.loop = false
           videoElement.playsInline = true
+          videoElement.muted = false
+          videoElement.preload = 'auto'
           videoElement.style.width = '100%'
           videoElement.style.height = '100%'
           videoElement.style.objectFit = 'contain'
+          videoElement.style.backgroundColor = '#000'
+
+          // Adicionar event listeners para debug
+          videoElement.addEventListener('loadstart', () => {
+            console.log('🎬 PhotoSwipe: Video loadstart')
+          })
+          videoElement.addEventListener('loadedmetadata', () => {
+            console.log('🎬 PhotoSwipe: Video metadata loaded')
+          })
+          videoElement.addEventListener('canplay', () => {
+            console.log('🎬 PhotoSwipe: Video can play')
+          })
+          videoElement.addEventListener('error', (err) => {
+            console.error('🎬 PhotoSwipe: Video error:', err)
+          })
 
           // Envolver em um container div para compatibilidade com typings
           const wrapper = document.createElement('div')
           wrapper.style.width = '100%'
           wrapper.style.height = '100%'
+          wrapper.style.display = 'flex'
+          wrapper.style.alignItems = 'center'
+          wrapper.style.justifyContent = 'center'
+          wrapper.style.backgroundColor = '#000'
           wrapper.appendChild(videoElement)
 
           // Definir elemento como conteúdo do slide
           content.element = wrapper
 
-          console.log('PhotoSwipe: Video content loaded:', content.data.src)
+          console.log('✅ PhotoSwipe: Video element created and set')
         }
       })
 

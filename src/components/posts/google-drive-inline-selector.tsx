@@ -1,8 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import Image from 'next/image'
-import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Check, ArrowLeft, Eye, Plus } from 'lucide-react'
+import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Check, ArrowLeft, Eye, Plus, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -280,7 +279,7 @@ export function GoogleDriveInlineSelector({
 // Loading Grid Component
 function LoadingGrid() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
       {Array.from({ length: 8 }).map((_, index) => (
         <div key={index} className="space-y-2">
           <Skeleton className="aspect-square w-full rounded-lg" />
@@ -345,7 +344,7 @@ interface ItemsGridProps {
 
 function ItemsGrid({ items, mode, selectedItems, onItemToggle }: ItemsGridProps) {
   return (
-    <div id="google-drive-inline-gallery" className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+    <div id="google-drive-inline-gallery" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
       {items.map((item) => {
         const isFolder = item.kind === 'folder'
         const isSelected = selectedItems.some(i => i.id === item.id)
@@ -366,6 +365,16 @@ function ItemsGrid({ items, mode, selectedItems, onItemToggle }: ItemsGridProps)
   )
 }
 
+// Helper function to check if item is a video
+function isVideoFile(item: GoogleDriveItem): boolean {
+  if (!item.mimeType) return false
+  const isVideo = item.mimeType.startsWith('video/')
+  if (isVideo) {
+    console.log('🎬 Google Drive: Detected video file:', item.name, 'mimeType:', item.mimeType)
+  }
+  return isVideo
+}
+
 // Item Card Component
 interface ItemCardProps {
   item: GoogleDriveItem
@@ -378,7 +387,19 @@ interface ItemCardProps {
 function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemCardProps) {
   const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
   const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
-  const [imageDimensions, setImageDimensions] = React.useState({ width: 1600, height: 1600 })
+  const [imageDimensions, setImageDimensions] = React.useState({ width: 1920, height: 1080 })
+  const isVideo = isVideoFile(item)
+
+  // Log video detection
+  React.useEffect(() => {
+    if (isVideo) {
+      console.log('🎬 Google Drive: Video card rendered:', {
+        name: item.name,
+        mimeType: item.mimeType,
+        id: item.id
+      })
+    }
+  }, [isVideo, item.name, item.mimeType, item.id])
 
   // Generate thumbnail URLs with fallback chain
   const thumbnailSources = React.useMemo(() => {
@@ -423,20 +444,38 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
 
   const handleImageLoad = React.useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
     setImageState('loaded')
-    // Obter dimensões reais da imagem
+    // Para thumbnails, precisamos carregar a imagem completa para obter dimensões reais
     const img = e.currentTarget
     if (img.naturalWidth && img.naturalHeight) {
-      setImageDimensions({
-        width: img.naturalWidth,
-        height: img.naturalHeight
-      })
+      // Se for thumbnail, carregar imagem completa em background para obter dimensões
+      const fullImageUrl = `/api/google-drive/image/${item.id}`
+      const fullImg = new Image()
+      fullImg.onload = () => {
+        setImageDimensions({
+          width: fullImg.naturalWidth,
+          height: fullImg.naturalHeight
+        })
+      }
+      fullImg.onerror = () => {
+        // Fallback to thumbnail dimensions
+        setImageDimensions({
+          width: img.naturalWidth,
+          height: img.naturalHeight
+        })
+      }
+      fullImg.src = fullImageUrl
     }
-  }, [])
+  }, [item.id])
 
   const fullImageSrc = `/api/google-drive/image/${item.id}`
 
   return (
-    <div className="group relative">
+    <div
+      className="group relative"
+      onClick={(e) => {
+        console.log('📦 Card wrapper clicked', { isFolder, isVideo, target: e.target })
+      }}
+    >
       <Card
         className={cn(
           'relative transition-all overflow-hidden border-2',
@@ -444,7 +483,12 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
         )}
       >
         {/* Thumbnail / Icon */}
-        <div className="relative aspect-square w-full bg-muted">
+        <div
+          className="relative aspect-square w-full bg-muted"
+          onClick={(e) => {
+            console.log('🎨 Thumbnail container clicked', { isFolder, isVideo })
+          }}
+        >
           {isFolder ? (
             <button
               onClick={onClick}
@@ -460,14 +504,29 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                 data-pswp-src={fullImageSrc}
                 data-pswp-width={imageDimensions.width.toString()}
                 data-pswp-height={imageDimensions.height.toString()}
+                data-pswp-type={isVideo ? 'video' : 'image'}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full h-full relative"
                 onClick={(e) => {
+                  console.log('🖱️ Google Drive: Link clicked', {
+                    isVideo,
+                    loaded: imageState === 'loaded',
+                    src: fullImageSrc
+                  })
+
                   if (imageState !== 'loaded') {
                     e.preventDefault()
+                    console.log('🚫 Click prevented - image not loaded yet')
+                    return
                   }
-                  e.stopPropagation()
+
+                  if (isVideo) {
+                    console.log('🎬 Google Drive: Video link clicked, letting PhotoSwipe handle it')
+                  }
+
+                  // Don't stop propagation - let PhotoSwipe intercept the click
+                  // e.stopPropagation() - REMOVED
                 }}
               >
                 {/* Loading skeleton */}
@@ -477,19 +536,39 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                   </div>
                 )}
 
-                {/* Actual image */}
-                <Image
-                  src={currentSrc}
-                  alt={item.name}
-                  fill
-                  sizes="(max-width: 768px) 45vw, 200px"
-                  className={cn(
-                    'object-cover transition-opacity duration-200',
-                    imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
-                  )}
-                  onError={handleImageError}
-                  onLoad={handleImageLoad}
-                />
+                {/* Video preview with play icon */}
+                {isVideo ? (
+                  <>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={currentSrc}
+                      alt={item.name}
+                      className={cn(
+                        'w-full h-full object-cover transition-opacity duration-200',
+                        imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                      )}
+                      onError={handleImageError}
+                      onLoad={handleImageLoad}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                      <div className="bg-white/95 rounded-full p-3">
+                        <Play className="w-6 h-6 text-black" fill="black" />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={currentSrc}
+                    alt={item.name}
+                    className={cn(
+                      'w-full h-full object-cover transition-opacity duration-200',
+                      imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                    )}
+                    onError={handleImageError}
+                    onLoad={handleImageLoad}
+                  />
+                )}
 
                 {/* Error state */}
                 {imageState === 'error' && (
