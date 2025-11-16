@@ -83,30 +83,35 @@ export function SortableMediaItem({
       >
         {isVideo ? (
           <>
-            {item.thumbnailUrl ? (
+            {item.thumbnailUrl && item.thumbnailUrl !== item.url ? (
               // Use thumbnail image if available (better performance)
               <Image
                 src={item.thumbnailUrl}
                 alt={item.name}
                 fill
-                sizes="120px"
+                sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
                 className="object-cover pointer-events-none"
                 unoptimized
               />
             ) : (
               // Fallback to video element
               <video
-                src={`${item.url}#t=0.1`}
+                src={item.url}
                 className="w-full h-full object-cover pointer-events-none"
                 muted
                 playsInline
                 preload="metadata"
+                onLoadedMetadata={(e) => {
+                  // Set video to first frame
+                  const video = e.target as HTMLVideoElement
+                  video.currentTime = 0.1
+                }}
               />
             )}
             {/* Play icon overlay para vídeos */}
-            <div className="absolute inset-0 flex items-center justify-center bg-black/20 pointer-events-none">
-              <div className="bg-white/90 rounded-full p-1">
-                <Play className="w-3 h-3 text-black" fill="black" />
+            <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+              <div className="bg-white/95 rounded-full p-2 sm:p-2.5">
+                <Play className="w-4 h-4 sm:w-5 sm:h-5 text-black" fill="black" />
               </div>
             </div>
           </>
@@ -115,7 +120,7 @@ export function SortableMediaItem({
             src={item.thumbnailUrl || item.url}
             alt={item.name}
             fill
-            sizes="120px"
+            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, (max-width: 1024px) 25vw, 20vw"
             className="object-cover pointer-events-none"
             unoptimized
           />
