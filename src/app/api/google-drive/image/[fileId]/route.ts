@@ -7,7 +7,7 @@ import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 export const runtime = 'nodejs'
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ fileId: string }> },
 ) {
   try {
@@ -27,15 +27,63 @@ export async function GET(
 
     assertRateLimit({ key: `drive:image:${userId}` })
 
-    const { stream, mimeType, name } = await googleDriveService.getFileStream(fileId)
+    const rangeHeader = request.headers.get('range') ?? undefined
+    const {
+      stream,
+      mimeType,
+      name,
+      size,
+      contentLength,
+      contentRange,
+    } = await googleDriveService.getFileStream(fileId, rangeHeader)
     const webStream = Readable.toWeb(stream)
 
+    const headers: Record<string, string> = {
+      'Content-Type': mimeType,
+      'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
+      'Cache-Control': 'public, max-age=300',
+      'Accept-Ranges': 'bytes',
+    }
+
+    let status = 200
+
+    if (rangeHeader) {
+      status = 206
+      headers['Accept-Ranges'] = 'bytes'
+      let fallbackRange: { start: number; end?: number } | undefined
+      const rangeMatch = rangeHeader.match(/bytes=(\d+)-(\d+)?/i)
+      if (rangeMatch) {
+        const start = Number(rangeMatch[1])
+        const end = rangeMatch[2] ? Number(rangeMatch[2]) : size ? size - 1 : undefined
+        fallbackRange = { start, end }
+      }
+      const computedRange =
+        contentRange ??
+        (fallbackRange && typeof fallbackRange.end === 'number' && size
+          ? `bytes ${fallbackRange.start}-${fallbackRange.end}/${size}`
+          : undefined)
+      if (computedRange) {
+        headers['Content-Range'] = computedRange
+      }
+      if (contentLength) {
+        headers['Content-Length'] = contentLength
+      } else if (computedRange) {
+        const match = computedRange.match(/bytes\s+(\d+)-(\d+)\/(\d+)/i)
+        if (match) {
+          const start = Number(match[1])
+          const end = Number(match[2])
+          headers['Content-Length'] = String(end - start + 1)
+        }
+      }
+    } else if (contentLength) {
+      headers['Content-Length'] = contentLength
+    } else if (typeof size === 'number') {
+      headers['Content-Length'] = String(size)
+    }
+
     return new NextResponse(webStream as unknown as BodyInit, {
-      headers: {
-        'Content-Type': mimeType,
-        'Content-Disposition': `inline; filename="${encodeURIComponent(name)}"`,
-        'Cache-Control': 'public, max-age=300',
-      },
+      status,
+      headers,
     })
   } catch (error) {
     if (error instanceof RateLimitError) {

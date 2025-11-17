@@ -107,6 +107,9 @@ export function usePhotoSwipe({
         gallery: gallerySelector,
         children: childSelector,
         pswpModule: () => import('photoswipe'),
+        // Allow Radix Dialog to keep focus without fighting PhotoSwipe focus trap
+        trapFocus: false,
+        returnFocus: false,
         paddingFn: (viewportSize) => {
           return {
             top: 30,
@@ -139,6 +142,9 @@ export function usePhotoSwipe({
         const widthAttr = linkEl.getAttribute('data-pswp-width')
         const heightAttr = linkEl.getAttribute('data-pswp-height')
         const typeAttr = linkEl.getAttribute('data-pswp-type')
+        const mediaTypeAttr = linkEl.getAttribute('data-pswp-media-type')
+        const href = linkEl.getAttribute('href') || linkEl.getAttribute('data-pswp-src') || ''
+        const inferredVideo = /(\.mp4|\.mov|\.webm)(\?|$)/i.test(href)
 
         if (widthAttr && heightAttr) {
           const width = parseInt(widthAttr, 10)
@@ -149,11 +155,22 @@ export function usePhotoSwipe({
           itemData.h = height
 
           // Se for vídeo, adicionar tipo customizado
-          if (typeAttr === 'video') {
+          if (typeAttr === 'video' || (!typeAttr && inferredVideo)) {
             itemData.type = 'video'
           }
 
-          console.log('PhotoSwipe: Item dimensions set:', { width, height, type: typeAttr, src: itemData.src })
+          if (mediaTypeAttr) {
+            // Custom metadata to forward mime type (normalized below when rendering)
+            ;(itemData as Record<string, unknown>).mediaType = mediaTypeAttr
+          }
+
+          console.log('PhotoSwipe: Item dimensions set:', {
+            width,
+            height,
+            type: itemData.type ?? typeAttr,
+            mediaType: mediaTypeAttr,
+            src: itemData.src
+          })
         } else {
           console.warn('PhotoSwipe: Missing dimensions for item:', linkEl.href)
         }
@@ -179,12 +196,11 @@ export function usePhotoSwipe({
 
           // Criar elemento de vídeo HTML5
           const videoElement = document.createElement('video')
-          videoElement.src = content.data.src as string
           videoElement.controls = true
           videoElement.autoplay = true
           videoElement.loop = false
           videoElement.playsInline = true
-          videoElement.muted = false
+          videoElement.muted = true
           videoElement.preload = 'auto'
           videoElement.style.width = '100%'
           videoElement.style.height = '100%'
@@ -195,15 +211,53 @@ export function usePhotoSwipe({
           videoElement.addEventListener('loadstart', () => {
             console.log('🎬 PhotoSwipe: Video loadstart')
           })
+          const tryAutoplay = () => {
+            const playPromise = videoElement.play()
+            if (playPromise && typeof playPromise.then === 'function') {
+              playPromise.catch((err) => {
+                console.warn('🎬 PhotoSwipe: Autoplay blocked, awaiting user interaction', err)
+              })
+            }
+          }
+
           videoElement.addEventListener('loadedmetadata', () => {
             console.log('🎬 PhotoSwipe: Video metadata loaded')
+            tryAutoplay()
           })
           videoElement.addEventListener('canplay', () => {
             console.log('🎬 PhotoSwipe: Video can play')
+            tryAutoplay()
           })
-          videoElement.addEventListener('error', (err) => {
-            console.error('🎬 PhotoSwipe: Video error:', err)
+          videoElement.addEventListener('error', () => {
+            const mediaError = videoElement.error
+            console.error('🎬 PhotoSwipe: Video error:', {
+              code: mediaError?.code,
+              message: mediaError?.message,
+              networkState: videoElement.networkState,
+              readyState: videoElement.readyState
+            })
           })
+
+          const source = document.createElement('source')
+          source.src = content.data.src as string
+          const mediaType = (content.data as { mediaType?: string }).mediaType
+          const normalizedType =
+            typeof mediaType === 'string'
+              ? (/quicktime|x-m4v/i.test(mediaType) ? 'video/mp4' : mediaType)
+              : undefined
+          if (normalizedType && normalizedType.length > 0) {
+            source.type = normalizedType
+          } else if (/\.mp4(\?|$)/i.test(source.src)) {
+            source.type = 'video/mp4'
+          }
+          videoElement.appendChild(source)
+          videoElement.addEventListener('click', () => {
+            videoElement.muted = false
+            videoElement.play().catch((err) => {
+              console.warn('🎬 PhotoSwipe: Play on click failed', err)
+            })
+          })
+          videoElement.load()
 
           // Envolver em um container div para compatibilidade com typings
           const wrapper = document.createElement('div')

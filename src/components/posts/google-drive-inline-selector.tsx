@@ -78,6 +78,7 @@ export function GoogleDriveInlineSelector({
     gallerySelector: '#google-drive-inline-gallery',
     childSelector: 'a[data-pswp-src]',
     dependencies: [items.length],
+    enabled: items.length > 0,
   })
 
   const queryError = driveQuery.isError
@@ -407,23 +408,32 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
 
     const sources: string[] = []
 
-    // Primary: Use our proxy endpoint for authenticated access
-    sources.push(`/api/google-drive/thumbnail/${item.id}?size=400`)
+    // Para vídeos, use apenas thumbnail gerado pelo Drive (quando disponível)
+    if (isVideo) {
+      if (item.thumbnailLink) {
+        sources.push(item.thumbnailLink.replace(/=s\d+/, '=s400'))
+      }
+    } else {
+      // Imagens podem usar nosso proxy autenticado
+      sources.push(`/api/google-drive/thumbnail/${item.id}?size=400`)
 
-    // Fallback 1: If item has thumbnailLink from API
-    if (item.thumbnailLink) {
-      const modifiedLink = item.thumbnailLink.replace(/=s\d+/, '=s400')
-      sources.push(modifiedLink)
+      if (item.thumbnailLink) {
+        sources.push(item.thumbnailLink.replace(/=s\d+/, '=s400'))
+      }
+
+      // Fallback final para imagem completa
+      sources.push(`/api/google-drive/image/${item.id}`)
     }
 
-    // Fallback 2: Full image via proxy
-    sources.push(`/api/google-drive/image/${item.id}`)
-
     return sources
-  }, [item.id, item.thumbnailLink, isFolder])
+  }, [item.id, item.thumbnailLink, isFolder, isVideo])
 
   React.useEffect(() => {
-    if (isFolder || thumbnailSources.length === 0) return
+    if (isFolder || thumbnailSources.length === 0) {
+      setImageState('error')
+      setCurrentSrc(null)
+      return
+    }
 
     setImageState('loading')
     setCurrentSrc(thumbnailSources[0])
@@ -443,6 +453,12 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
   }, [currentSrc, thumbnailSources])
 
   const handleImageLoad = React.useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (isVideo) {
+      // Para vídeos basta usar dimensões padrão do thumbnail
+      setImageState('loaded')
+      return
+    }
+
     setImageState('loaded')
     // Para thumbnails, precisamos carregar a imagem completa para obter dimensões reais
     const img = e.currentTarget
@@ -467,7 +483,7 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
     }
   }, [item.id])
 
-  const fullImageSrc = `/api/google-drive/image/${item.id}`
+  const fullMediaSrc = `/api/google-drive/image/${item.id}`
 
   return (
     <div
@@ -496,37 +512,29 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
             >
               <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
             </button>
-          ) : currentSrc ? (
+          ) : (
             <>
               {/* PhotoSwipe link wrapper */}
               <a
-                href={fullImageSrc}
-                data-pswp-src={fullImageSrc}
+                href={fullMediaSrc}
+                data-pswp-src={fullMediaSrc}
                 data-pswp-width={imageDimensions.width.toString()}
                 data-pswp-height={imageDimensions.height.toString()}
                 data-pswp-type={isVideo ? 'video' : 'image'}
+                data-pswp-media-type={item.mimeType}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block w-full h-full relative"
-                onClick={(e) => {
+                onClick={() => {
                   console.log('🖱️ Google Drive: Link clicked', {
                     isVideo,
                     loaded: imageState === 'loaded',
-                    src: fullImageSrc
+                    src: fullMediaSrc
                   })
-
-                  if (imageState !== 'loaded') {
-                    e.preventDefault()
-                    console.log('🚫 Click prevented - image not loaded yet')
-                    return
-                  }
 
                   if (isVideo) {
                     console.log('🎬 Google Drive: Video link clicked, letting PhotoSwipe handle it')
                   }
-
-                  // Don't stop propagation - let PhotoSwipe intercept the click
-                  // e.stopPropagation() - REMOVED
                 }}
               >
                 {/* Loading skeleton */}
@@ -536,8 +544,8 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                   </div>
                 )}
 
-                {/* Video preview with play icon */}
-                {isVideo ? (
+                {/* Preview or fallback */}
+                {currentSrc ? (
                   <>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -550,36 +558,25 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                       onError={handleImageError}
                       onLoad={handleImageLoad}
                     />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                      <div className="bg-white/95 rounded-full p-3">
-                        <Play className="w-6 h-6 text-black" fill="black" />
-                      </div>
-                    </div>
                   </>
                 ) : (
-                  /* eslint-disable-next-line @next/next/no-img-element */
-                  <img
-                    src={currentSrc}
-                    alt={item.name}
-                    className={cn(
-                      'w-full h-full object-cover transition-opacity duration-200',
-                      imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
-                    )}
-                    onError={handleImageError}
-                    onLoad={handleImageLoad}
-                  />
-                )}
-
-                {/* Error state */}
-                {imageState === 'error' && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
                     <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-                    <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+                    <p className="text-[10px] text-muted-foreground opacity-60 text-center px-4">Preview indisponível</p>
+                  </div>
+                )}
+
+                {/* Video overlay */}
+                {isVideo && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
+                    <div className="bg-white/95 rounded-full p-3">
+                      <Play className="w-6 h-6 text-black" fill="black" />
+                    </div>
                   </div>
                 )}
               </a>
 
-              {/* Hover overlay with buttons (only for images, not folders) */}
+              {/* Hover overlay with buttons (only for files) */}
               <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
                 <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
                   {/* Add to selection button */}
@@ -616,7 +613,6 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                     }}
                     className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
                     title="Visualizar em tela cheia"
-                    disabled={imageState !== 'loaded'}
                   >
                     <Eye className="h-5 w-5" />
                   </button>
@@ -641,10 +637,6 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
                 </>
               )}
             </>
-          ) : (
-            <div className="flex h-full items-center justify-center">
-              <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-            </div>
           )}
         </div>
 

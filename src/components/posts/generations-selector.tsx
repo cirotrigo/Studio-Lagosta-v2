@@ -54,6 +54,7 @@ export function GenerationsSelector({
     gallerySelector: '#generations-gallery',
     childSelector: 'a[data-pswp-src]',
     dependencies: [generationsList.length],
+    enabled: generationsList.length > 0,
   })
 
   const handleToggle = (generation: Generation) => {
@@ -211,6 +212,8 @@ function GenerationCard({
             data-pswp-src={generation.resultUrl}
             data-pswp-width={imageDimensions.width.toString()}
             data-pswp-height={imageDimensions.height.toString()}
+            data-pswp-type={isVideo ? 'video' : 'image'}
+            data-pswp-media-type={isVideo ? 'video/mp4' : undefined}
             target="_blank"
             rel="noopener noreferrer"
             className="block w-full h-full relative"

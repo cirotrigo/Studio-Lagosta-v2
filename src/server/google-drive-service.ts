@@ -256,14 +256,14 @@ export class GoogleDriveService {
     }
   }
 
-  async getFileStream(fileId: string) {
+  async getFileStream(fileId: string, rangeHeader?: string) {
     this.ensureEnabled()
 
     const metadata = await this.withRetry('getFileMetadata', async () =>
       this.drive.files.get(
         {
           fileId,
-          fields: 'name, mimeType',
+          fields: 'name, mimeType, size',
           supportsAllDrives: true,
         },
         { timeout: 15_000 },
@@ -278,16 +278,30 @@ export class GoogleDriveService {
           supportsAllDrives: true,
           acknowledgeAbuse: false,
         },
-        { responseType: 'stream', timeout: LIST_TIMEOUT },
+        {
+          responseType: 'stream',
+          timeout: LIST_TIMEOUT,
+          headers: rangeHeader ? { Range: rangeHeader } : undefined,
+        },
       ),
     )
 
     const stream = mediaResponse.data as unknown as Readable
+    const headers = mediaResponse.headers ?? {}
+    const contentLengthHeader = Array.isArray(headers['content-length'])
+      ? headers['content-length'][0]
+      : headers['content-length']
+    const contentRangeHeader = Array.isArray(headers['content-range'])
+      ? headers['content-range'][0]
+      : headers['content-range']
 
     return {
       stream,
       mimeType: metadata.data.mimeType ?? 'application/octet-stream',
       name: metadata.data.name ?? fileId,
+      size: metadata.data.size ? Number(metadata.data.size) : undefined,
+      contentLength: contentLengthHeader ? String(contentLengthHeader) : undefined,
+      contentRange: contentRangeHeader ? String(contentRangeHeader) : undefined,
     }
   }
 
