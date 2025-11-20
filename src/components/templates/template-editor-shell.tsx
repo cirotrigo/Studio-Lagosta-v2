@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { createPortal } from 'react-dom'
-import { TemplateEditorProvider, TemplateResource, useTemplateEditor } from '@/contexts/template-editor-context'
+import { TemplateEditorProvider, TemplateResource, useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
 import type { TemplateDto } from '@/hooks/use-template'
 import { useUpdateTemplateWithThumbnail } from '@/hooks/use-template'
@@ -55,9 +55,13 @@ import { MobileToolsDrawer } from './mobile-tools-drawer'
 
 interface TemplateEditorShellProps {
   template: TemplateDto
+  prefillDriveImage?: {
+    fileId: string
+    fileName?: string
+  }
 }
 
-export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
+export function TemplateEditorShell({ template, prefillDriveImage }: TemplateEditorShellProps) {
   const [fontsLoaded, setFontsLoaded] = React.useState(false)
   const fontManager = React.useMemo(() => getFontManager(), [])
 
@@ -141,7 +145,7 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
     <MultiPageProvider templateId={template.id}>
       <TemplateEditorProvider template={resource}>
         <PageSyncWrapper>
-          <TemplateEditorContent />
+          <TemplateEditorContent prefillDriveImage={prefillDriveImage} />
         </PageSyncWrapper>
       </TemplateEditorProvider>
     </MultiPageProvider>
@@ -151,7 +155,11 @@ export function TemplateEditorShell({ template }: TemplateEditorShellProps) {
 type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | null
 type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | 'agenda' | null
 
-function TemplateEditorContent() {
+function TemplateEditorContent({
+  prefillDriveImage,
+}: {
+  prefillDriveImage?: { fileId: string; fileName?: string }
+}) {
   const { toast } = useToast()
   const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplateWithThumbnail()
   const {
@@ -160,6 +168,7 @@ function TemplateEditorContent() {
     setName,
     type: templateType,
     design,
+    addLayer,
     dynamicFields,
     markSaved,
     dirty,
@@ -332,6 +341,75 @@ function TemplateEditorContent() {
       setActivePanel(null) // Fechar painel lateral ao entrar em fullscreen
     }
   }, [isFullscreen])
+
+  const insertPrefillImage = React.useCallback(
+    (url: string, name?: string) => {
+      const base = createDefaultLayer('image')
+      const width = design.canvas?.width ?? 1080
+      const height = design.canvas?.height ?? 1080
+      const layer = {
+        ...base,
+        name: name ? `Imagem - ${name}` : 'Imagem do Drive',
+        fileUrl: url,
+        position: { x: 0, y: 0 },
+        size: { width, height },
+        style: {
+          ...base.style,
+          objectFit: 'cover' as const,
+        },
+      }
+      addLayer(layer)
+      toast({
+        title: 'Imagem aplicada',
+        description: 'A foto foi adicionada ao template.',
+      })
+    },
+    [addLayer, design.canvas?.height, design.canvas?.width, toast],
+  )
+
+  const hasAppliedDrivePrefill = React.useRef(false)
+
+  React.useEffect(() => {
+    if (!prefillDriveImage || hasAppliedDrivePrefill.current) return
+    hasAppliedDrivePrefill.current = true
+    let cancelled = false
+
+    async function importDriveImage() {
+      try {
+        const response = await fetch('/api/upload/google-drive', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fileId: prefillDriveImage.fileId }),
+        })
+        if (!response.ok) {
+          const message = await response.text()
+          throw new Error(message || 'Não foi possível importar a imagem do Drive.')
+        }
+        const payload = (await response.json()) as { url?: string; name?: string }
+        if (!payload.url) {
+          throw new Error('Resposta inválida ao importar a imagem do Drive.')
+        }
+        if (!cancelled) {
+          insertPrefillImage(payload.url, payload.name ?? prefillDriveImage.fileName)
+        }
+      } catch (error) {
+        console.error('[TemplateEditor] Failed to prefill image from Drive', error)
+        if (!cancelled) {
+          toast({
+            title: 'Erro ao importar imagem',
+            description: error instanceof Error ? error.message : 'Falha ao usar a imagem selecionada.',
+            variant: 'destructive',
+          })
+        }
+      }
+    }
+
+    importDriveImage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [prefillDriveImage, insertPrefillImage, toast])
 
   // Handler para adicionar página (usado no mobile)
   const handleAddPage = React.useCallback(async () => {

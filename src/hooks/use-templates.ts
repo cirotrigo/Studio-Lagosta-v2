@@ -31,6 +31,7 @@ interface UseTemplatesParams {
   limit?: number
   includeDesign?: boolean
   publicOnly?: boolean
+  enabled?: boolean
 }
 
 export interface CreateTemplateData {
@@ -96,9 +97,14 @@ export function useTemplates(params: UseTemplatesParams = {}) {
 
   const queryString = buildQueryString(params)
 
+  const enabled =
+    typeof params.enabled === 'boolean'
+      ? params.enabled
+      : params.projectId === undefined || params.projectId === null || Number.isFinite(params.projectId)
+
   return useQuery<TemplateListItem[]>({
     queryKey,
-    enabled: params.projectId === undefined || params.projectId === null || Number.isFinite(params.projectId),
+    enabled,
     queryFn: () => api.get(`/api/templates${queryString}`),
     staleTime: 5 * 60_000, // 5 minutos
     gcTime: 10 * 60_000, // 10 minutos

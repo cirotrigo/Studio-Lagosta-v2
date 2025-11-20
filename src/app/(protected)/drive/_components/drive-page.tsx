@@ -16,6 +16,7 @@ import {
   useUploadFiles,
   useMoveFiles,
 } from '@/hooks/use-drive'
+import { useTemplates } from '@/hooks/use-templates'
 import { DriveHeader } from './drive-header'
 import { DriveFolderToggle } from './drive-folder-toggle'
 import { DriveToolbar } from './drive-toolbar'
@@ -90,11 +91,17 @@ export function DrivePage({
   const projectIdForQuery = initialProjectId ?? activeProject ?? null
   const driveQuery = useDriveFiles(projectIdForQuery, folderType, currentFolderId ?? undefined, debouncedSearch || undefined)
   const breadcrumbQuery = useFolderBreadcrumbs(projectIdForQuery, currentFolderId)
+  const { data: templateOptions = [] } = useTemplates({
+    projectId: projectIdForQuery ?? undefined,
+    limit: 100,
+    enabled: Boolean(projectIdForQuery),
+  })
   const { selectedFileIds, toggleFile, clearSelection, selectAll } = useSelectedFiles()
   const downloadZip = useDownloadZip()
   const deleteMutation = useDeleteFiles()
   const dropUploadMutation = useUploadFiles()
   const moveMutation = useMoveFiles()
+  const lastProjectRef = React.useRef<number | null>(null)
 
   const [folderDialogOpen, setFolderDialogOpen] = React.useState(false)
   const [uploadDialogOpen, setUploadDialogOpen] = React.useState(false)
@@ -118,6 +125,18 @@ export function DrivePage({
       setActiveProject(initialProjectId)
     }
   }, [initialProjectId, activeProject, setActiveProject])
+
+  React.useEffect(() => {
+    if (!projectIdForQuery) {
+      lastProjectRef.current = null
+      return
+    }
+    if (lastProjectRef.current !== projectIdForQuery) {
+      setCurrentFolderId(null)
+      clearSelection()
+      lastProjectRef.current = projectIdForQuery
+    }
+  }, [projectIdForQuery, clearSelection, setCurrentFolderId])
 
   React.useEffect(() => {
     if (!shouldSyncUrl) return
@@ -257,6 +276,18 @@ export function DrivePage({
     window.open(url, '_blank', 'noopener')
   }
 
+  const handleOpenInTemplate = React.useCallback((file: GoogleDriveItem, templateId: number) => {
+    if (file.kind === 'folder') return
+    const targetId = file.shortcutDetails?.targetId ?? file.id
+    if (!targetId || typeof window === 'undefined') return
+    const params = new URLSearchParams({ driveFileId: targetId })
+    if (file.name) {
+      params.set('driveFileName', file.name)
+    }
+    const url = `/templates/${templateId}/editor?${params.toString()}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [])
+
   const handleMoveFiles = (fileIds: string[]) => {
     setMoveFiles(fileIds)
     setMoveDialogOpen(true)
@@ -392,6 +423,8 @@ export function DrivePage({
           onDeleteItem={isAdmin ? (item) => handleDelete([item.id]) : undefined}
           selectedFileIds={selectedFileIds}
           onToggleSelect={toggleFile}
+          templates={templateOptions}
+          onOpenInTemplate={handleOpenInTemplate}
         />
       </DriveDropZone>
       )}

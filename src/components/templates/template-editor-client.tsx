@@ -8,9 +8,13 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 interface TemplateEditorClientProps {
   templateId: number
+  prefillDriveImage?: {
+    fileId: string
+    fileName?: string
+  }
 }
 
-export function TemplateEditorClient({ templateId }: TemplateEditorClientProps) {
+export function TemplateEditorClient({ templateId, prefillDriveImage }: TemplateEditorClientProps) {
   const { data, isLoading, isError, refetch } = useTemplate(Number.isFinite(templateId) ? templateId : null)
 
   if (isLoading) {
@@ -38,5 +42,5 @@ export function TemplateEditorClient({ templateId }: TemplateEditorClientProps) 
     )
   }
 
-  return <TemplateEditorShell template={data} />
+  return <TemplateEditorShell template={data} prefillDriveImage={prefillDriveImage} />
 }

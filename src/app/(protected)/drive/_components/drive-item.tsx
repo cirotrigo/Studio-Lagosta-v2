@@ -14,8 +14,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
+import type { TemplateListItem } from '@/hooks/use-templates'
 
 interface DriveItemProps {
   item: GoogleDriveItem
@@ -25,6 +29,8 @@ interface DriveItemProps {
   onDownload: (item: GoogleDriveItem) => void
   onMove: (item: GoogleDriveItem) => void
   onDelete?: (item: GoogleDriveItem) => void
+  templates: TemplateListItem[]
+  onOpenInTemplate: (item: GoogleDriveItem, templateId: number) => void
 }
 
 const MIME_FOLDER = 'application/vnd.google-apps.folder'
@@ -43,7 +49,17 @@ function formatDate(date?: string) {
   return formatter.format(new Date(date))
 }
 
-export function DriveItem({ item, selected, onToggleSelect, onOpen, onDownload, onMove, onDelete }: DriveItemProps) {
+export function DriveItem({
+  item,
+  selected,
+  onToggleSelect,
+  onOpen,
+  onDownload,
+  onMove,
+  onDelete,
+  templates,
+  onOpenInTemplate,
+}: DriveItemProps) {
   const isFolder = item.kind === 'folder' || item.mimeType === MIME_FOLDER
   const resolvedFileId = item.shortcutDetails?.targetId ?? item.id
   const thumbnailUrl = isFolder ? undefined : `/api/drive/thumbnail/${resolvedFileId}`
@@ -82,6 +98,8 @@ export function DriveItem({ item, selected, onToggleSelect, onOpen, onDownload, 
     },
     [isImage],
   )
+
+  const templateOptions = React.useMemo(() => templates.slice(0, 20), [templates])
 
   const handleDoubleClick = React.useCallback(() => {
     onOpen(item)
@@ -207,9 +225,41 @@ export function DriveItem({ item, selected, onToggleSelect, onOpen, onDownload, 
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onSelect={() => onOpen(item)}>
-              <Eye className="h-4 w-4" /> Abrir
-            </DropdownMenuItem>
+            {isFolder ? (
+              <DropdownMenuItem onSelect={() => onOpen(item)}>
+                <Eye className="h-4 w-4" /> Abrir
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Abrir
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-64 w-64 overflow-y-auto">
+                  <DropdownMenuItem onSelect={() => onOpen(item)}>
+                    <Eye className="h-4 w-4" />
+                    <span className="ml-2">Visualizar arquivo</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  {templateOptions.length === 0 ? (
+                    <div className="px-2 py-1 text-xs text-muted-foreground">Nenhum template disponível.</div>
+                  ) : (
+                    templateOptions.map((template) => (
+                      <DropdownMenuItem
+                        key={template.id}
+                        onSelect={(event) => {
+                          event.preventDefault()
+                          onOpenInTemplate(item, template.id)
+                        }}
+                      >
+                        <span className="truncate">{template.name}</span>
+                        <span className="ml-2 text-[10px] uppercase text-muted-foreground">{template.type}</span>
+                      </DropdownMenuItem>
+                    ))
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
             {!isFolder && (
               <DropdownMenuItem onSelect={() => onDownload(item)}>
                 <DownloadIcon className="h-4 w-4" /> Download

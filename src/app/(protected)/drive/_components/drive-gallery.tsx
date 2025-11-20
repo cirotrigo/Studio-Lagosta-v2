@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { DriveItem } from './drive-item'
+import type { TemplateListItem } from '@/hooks/use-templates'
 
 interface DriveGalleryProps {
   items: GoogleDriveItem[]
@@ -22,6 +23,8 @@ interface DriveGalleryProps {
   onDeleteItem?: (item: GoogleDriveItem) => void
   selectedFileIds: string[]
   onToggleSelect: (id: string) => void
+  templates: TemplateListItem[]
+  onOpenInTemplate: (item: GoogleDriveItem, templateId: number) => void
 }
 
 export function DriveGallery({
@@ -37,6 +40,8 @@ export function DriveGallery({
   onDeleteItem,
   selectedFileIds,
   onToggleSelect,
+  templates,
+  onOpenInTemplate,
 }: DriveGalleryProps) {
   const isEmpty = !items.length && !isLoading
   const galleryId = React.useId()
@@ -88,6 +93,8 @@ export function DriveGallery({
               onDownload={onDownloadItem}
               onMove={onMoveItem}
               onDelete={onDeleteItem}
+              templates={templates}
+              onOpenInTemplate={onOpenInTemplate}
             />
           ))}
           {isLoading &&
