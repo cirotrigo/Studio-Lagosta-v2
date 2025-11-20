@@ -47,6 +47,41 @@ export function DriveItem({ item, selected, onToggleSelect, onOpen, onDownload, 
   const isFolder = item.kind === 'folder' || item.mimeType === MIME_FOLDER
   const resolvedFileId = item.shortcutDetails?.targetId ?? item.id
   const thumbnailUrl = isFolder ? undefined : `/api/drive/thumbnail/${resolvedFileId}`
+  const isImage = item.mimeType?.startsWith('image/')
+  const isVideo = item.mimeType?.startsWith('video/')
+  const fullResourceSrc = !isFolder && resolvedFileId ? `/api/google-drive/image/${resolvedFileId}` : null
+  const [cardAspectRatio, setCardAspectRatio] = React.useState(1)
+  const [lightboxDimensions, setLightboxDimensions] = React.useState(() => ({
+    width: isVideo ? 1920 : 1600,
+    height: isVideo ? 1080 : 1600,
+  }))
+  const pswpWidth = Math.max(1, lightboxDimensions.width)
+  const pswpHeight = Math.max(1, lightboxDimensions.height)
+  const enableLightbox = Boolean(fullResourceSrc && (isImage || isVideo))
+  const [previewLoaded, setPreviewLoaded] = React.useState(!thumbnailUrl)
+  React.useEffect(() => {
+    if (!isImage) {
+      setCardAspectRatio(1)
+      setLightboxDimensions({
+        width: isVideo ? 1920 : 1600,
+        height: isVideo ? 1080 : 1600,
+      })
+    }
+  }, [isImage, isVideo])
+
+  const updateDimensionsFromPreview = React.useCallback(
+    (width: number, height: number) => {
+      if (!width || !height || !isImage) return
+      const ratio = width / height
+      setCardAspectRatio(ratio || 1)
+      const targetHeight = 2000
+      setLightboxDimensions({
+        width: Math.max(1, Math.round(ratio * targetHeight)),
+        height: targetHeight,
+      })
+    },
+    [isImage],
+  )
 
   const handleDoubleClick = React.useCallback(() => {
     onOpen(item)
@@ -97,18 +132,69 @@ export function DriveItem({ item, selected, onToggleSelect, onOpen, onDownload, 
       {...attributes}
       {...listeners}
     >
-      <div className="relative mb-3 aspect-square w-full overflow-hidden rounded-xl bg-muted/40">
-        {thumbnailUrl ? (
+      <div
+        className="relative mb-3 w-full overflow-hidden rounded-xl bg-muted/40"
+        style={{ aspectRatio: cardAspectRatio || 1 }}
+      >
+        {enableLightbox ? (
+          <a
+            href={fullResourceSrc ?? undefined}
+            data-pswp-src={fullResourceSrc ?? undefined}
+            data-pswp-width={String(pswpWidth)}
+            data-pswp-height={String(pswpHeight)}
+            data-pswp-type={isVideo ? 'video' : 'image'}
+            data-pswp-media-type={item.mimeType}
+            className="block h-full w-full"
+            onClick={(event) => {
+              if (!previewLoaded) {
+                event.preventDefault()
+              }
+            }}
+          >
+            {thumbnailUrl ? (
+              <Image
+                src={thumbnailUrl}
+                alt={item.name}
+                fill
+                sizes="200px"
+                className="object-cover transition group-hover:scale-105"
+                onLoadingComplete={(img) => {
+                  setPreviewLoaded(true)
+                  if (img.naturalWidth && img.naturalHeight) {
+                    updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
+                  }
+                }}
+                onError={() => setPreviewLoaded(true)}
+              />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                <FileImage className="h-8 w-8" />
+              </div>
+            )}
+          </a>
+        ) : thumbnailUrl ? (
           <Image
             src={thumbnailUrl}
             alt={item.name}
             fill
             sizes="200px"
             className="object-cover transition group-hover:scale-105"
+            onLoadingComplete={(img) => {
+              setPreviewLoaded(true)
+              if (img.naturalWidth && img.naturalHeight) {
+                updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
+              }
+            }}
+            onError={() => setPreviewLoaded(true)}
           />
         ) : (
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Folder className="h-8 w-8" />
+            {isFolder ? <Folder className="h-8 w-8" /> : <FileImage className="h-8 w-8" />}
+          </div>
+        )}
+        {!isFolder && isVideo && (
+          <div className="pointer-events-none absolute bottom-2 left-2 z-10 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold uppercase text-white">
+            Vídeo
           </div>
         )}
         <div className="absolute left-2 top-2 z-10">

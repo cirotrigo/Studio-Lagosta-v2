@@ -6,6 +6,7 @@ import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } f
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { DriveItem } from './drive-item'
 
 interface DriveGalleryProps {
@@ -38,11 +39,20 @@ export function DriveGallery({
   onToggleSelect,
 }: DriveGalleryProps) {
   const isEmpty = !items.length && !isLoading
+  const galleryId = React.useId()
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 8 },
     }),
   )
+
+  const shouldEnablePhotoSwipe = items.some((item) => item.kind === 'file')
+  usePhotoSwipe({
+    gallerySelector: `#${galleryId}`,
+    childSelector: 'a[data-pswp-src]',
+    dependencies: [items.length, galleryId],
+    enabled: shouldEnablePhotoSwipe,
+  })
 
   const handleDragEnd = (event: DragEndEvent) => {
     const targetItem = event.over?.data.current?.item as GoogleDriveItem | undefined
@@ -67,7 +77,7 @@ export function DriveGallery({
   return (
     <div className="flex flex-col gap-6">
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div id={galleryId} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {items.map((item) => (
             <DriveItem
               key={item.id}

@@ -252,10 +252,8 @@ export function DrivePage({
 
   const handleDownloadItem = (item: GoogleDriveItem) => {
     const targetId = item.shortcutDetails?.targetId ?? item.id
-    const url =
-      item.webContentLink ??
-      item.webViewLink ??
-      (targetId ? `https://drive.google.com/uc?id=${targetId}&export=download` : `https://drive.google.com/uc?id=${item.id}&export=download`)
+    if (!targetId) return
+    const url = `/api/google-drive/image/${targetId}`
     window.open(url, '_blank', 'noopener')
   }
 
