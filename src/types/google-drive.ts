@@ -18,6 +18,10 @@ export interface GoogleDriveItem {
   thumbnailLink?: string | null
   webViewLink?: string | null
   webContentLink?: string | null
+  shortcutDetails?: {
+    targetId?: string | null
+    targetMimeType?: string | null
+  }
 }
 
 export interface GoogleDriveListResponse {
@@ -31,4 +35,3 @@ export interface GoogleDriveUploadResult {
   webContentLink?: string | null
   publicUrl: string
 }
-

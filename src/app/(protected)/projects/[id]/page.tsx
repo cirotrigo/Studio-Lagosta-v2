@@ -36,6 +36,7 @@ import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
+import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -202,6 +203,12 @@ if (!projectDetails) {
   )
 }
 
+const driveImagesConfigured = Boolean(projectDetails.googleDriveImagesFolderId)
+const driveVideosConfigured = Boolean(projectDetails.googleDriveVideosFolderId)
+const driveFallbackConfigured = Boolean(projectDetails.googleDriveFolderId)
+const driveConfigured = driveImagesConfigured || driveVideosConfigured || driveFallbackConfigured
+const configLink = `/projects/${projectId}?tab=configuracoes`
+
 return (
   <div className="w-full max-w-full overflow-x-hidden px-0">
     <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4 max-w-full overflow-hidden">
@@ -230,12 +237,28 @@ return (
       className="w-full max-w-full overflow-x-hidden"
     >
         <TabsList>
+          <TabsTrigger value="drive">Drive</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
+          <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="drive" className="mt-6 space-y-4">
+          {!driveConfigured && (
+            <Card className="p-4 text-sm text-muted-foreground">
+              <p>
+                Configure as pastas de fotos e/ou vídeos em{' '}
+                <Link href={configLink} className="font-medium text-primary hover:underline">
+                  Configurações
+                </Link>{' '}
+                para aproveitar todos os recursos do Drive. Mesmo assim, você já pode visualizar os arquivos existentes abaixo.
+              </p>
+            </Card>
+          )}
+          <ProjectDrivePage initialProjectId={projectDetails.id} showProjectSelector={false} disableUrlSync />
+        </TabsContent>
 
         <TabsContent value="templates" className="mt-6">
           <div className="flex items-center justify-between mb-6">
@@ -446,10 +469,6 @@ return (
           )}
         </TabsContent>
 
-        <TabsContent value="assets" className="mt-6">
-          <ProjectAssetsPanel projectId={projectId} />
-        </TabsContent>
-
         <TabsContent value="criativos" className="mt-6">
           <div className="mb-6">
             <h2 className="text-xl font-semibold mb-2">Galeria de Criativos</h2>
@@ -476,6 +495,10 @@ return (
               </p>
             </Card>
           )}
+        </TabsContent>
+
+        <TabsContent value="assets" className="mt-6">
+          <ProjectAssetsPanel projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">

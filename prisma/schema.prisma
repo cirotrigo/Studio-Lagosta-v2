@@ -206,6 +206,37 @@ model Project {
   @@index([updatedAt(sort: Desc)])
 }
 
+model DriveSettings {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  favoriteFolders String[] @default([])
+  defaultView     String   @default("grid")
+  itemsPerPage    Int      @default(50)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model DriveFileCache {
+  id           String   @id @default(cuid())
+  googleFileId String   @unique
+  name         String
+  mimeType     String
+  kind         String
+  parentId     String?
+  size         Int?
+  thumbnailUrl String?
+  lastSynced   DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([parentId])
+  @@index([kind])
+  @@index([lastSynced])
+}
+
 model Organization {
   id              String                        @id @default(cuid())
   clerkOrgId      String                        @unique
@@ -427,6 +458,7 @@ model User {
   SubscriptionEvent           SubscriptionEvent[]
   UsageHistory                UsageHistory[]
   OrganizationMemberAnalytics OrganizationMemberAnalytics[]
+  driveSettings               DriveSettings?
 
   @@index([createdAt])
   @@index([email])

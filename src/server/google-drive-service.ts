@@ -14,6 +14,7 @@ const ARTES_FOLDER_NAME = 'ARTES LAGOSTA'
 const MIME_TYPE_FOLDER = 'application/vnd.google-apps.folder'
 const MIME_TYPE_IMAGE_PREFIX = 'image/'
 const MIME_TYPE_VIDEO_PREFIX = 'video/'
+const MIME_TYPE_SHORTCUT = 'application/vnd.google-apps.shortcut'
 const LIST_TIMEOUT = 30_000
 const UPLOAD_TIMEOUT = 60_000
 const CACHE_TTL_MS = 10 * 60 * 1000
@@ -136,14 +137,22 @@ export class GoogleDriveService {
     queryParts.push(targetFolder)
     queryParts.push('trashed = false')
 
+    const includeShortcuts = `(mimeType = '${MIME_TYPE_SHORTCUT}')`
+
     if (mode === 'folders') {
       queryParts.push(`mimeType = '${MIME_TYPE_FOLDER}'`)
     } else if (mode === 'images') {
-      queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}')`)
+      queryParts.push(
+        `(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}' or ${includeShortcuts})`,
+      )
     } else if (mode === 'videos') {
-      queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}')`)
+      queryParts.push(
+        `(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}' or ${includeShortcuts})`,
+      )
     } else if (mode === 'both') {
-      queryParts.push(`(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}')`)
+      queryParts.push(
+        `(mimeType = '${MIME_TYPE_FOLDER}' or mimeType contains '${MIME_TYPE_IMAGE_PREFIX}' or mimeType contains '${MIME_TYPE_VIDEO_PREFIX}' or ${includeShortcuts})`,
+      )
     }
 
     if (search && search.trim().length > 0) {
@@ -160,7 +169,7 @@ export class GoogleDriveService {
           pageSize: 50,
           pageToken,
           fields:
-            'nextPageToken, files(id, name, mimeType, size, modifiedTime, iconLink, thumbnailLink, webViewLink, webContentLink)',
+            'nextPageToken, files(id, name, mimeType, size, modifiedTime, iconLink, thumbnailLink, webViewLink, webContentLink, shortcutDetails(targetId, targetMimeType))',
           supportsAllDrives: true,
           includeItemsFromAllDrives: true,
         },
@@ -169,23 +178,234 @@ export class GoogleDriveService {
     )
 
     const files = response.data.files ?? []
-    const items: GoogleDriveItem[] = files.map((file) => ({
-      id: file.id!,
-      name: file.name ?? 'Sem nome',
-      mimeType: file.mimeType ?? 'application/octet-stream',
-      kind: file.mimeType === MIME_TYPE_FOLDER ? 'folder' : 'file',
-      size: file.size ? Number(file.size) : undefined,
-      modifiedTime: file.modifiedTime ?? undefined,
-      iconLink: file.iconLink ?? null,
-      thumbnailLink: file.thumbnailLink ?? null,
-      webViewLink: file.webViewLink ?? null,
-      webContentLink: file.webContentLink ?? null,
-    }))
+    const items: GoogleDriveItem[] = files
+      .map((file): GoogleDriveItem | null => {
+        const isShortcut = file.mimeType === MIME_TYPE_SHORTCUT
+        const shortcutTargetId = file.shortcutDetails?.targetId ?? null
+        const shortcutTargetMimeType = file.shortcutDetails?.targetMimeType ?? null
+        const effectiveMimeType =
+          isShortcut && shortcutTargetMimeType
+            ? shortcutTargetMimeType
+            : file.mimeType ?? 'application/octet-stream'
+
+        if (isShortcut) {
+          if (!shortcutTargetMimeType) {
+            return null
+          }
+          const matchesMode =
+            mode === 'videos'
+              ? shortcutTargetMimeType.startsWith(MIME_TYPE_VIDEO_PREFIX)
+              : mode === 'images'
+                ? shortcutTargetMimeType.startsWith(MIME_TYPE_IMAGE_PREFIX)
+                : mode === 'both'
+                  ? shortcutTargetMimeType.startsWith(MIME_TYPE_IMAGE_PREFIX) ||
+                    shortcutTargetMimeType.startsWith(MIME_TYPE_VIDEO_PREFIX)
+                  : true
+          if (!matchesMode) {
+            return null
+          }
+        }
+
+        return {
+          id: file.id!,
+          name: file.name ?? 'Sem nome',
+          mimeType: effectiveMimeType,
+          kind: file.mimeType === MIME_TYPE_FOLDER ? 'folder' : 'file',
+          size: file.size ? Number(file.size) : undefined,
+          modifiedTime: file.modifiedTime ?? undefined,
+          iconLink: file.iconLink ?? null,
+          thumbnailLink: file.thumbnailLink ?? null,
+          webViewLink: file.webViewLink ?? null,
+          webContentLink: file.webContentLink ?? null,
+          shortcutDetails: shortcutTargetId
+            ? {
+                targetId: shortcutTargetId,
+                targetMimeType: shortcutTargetMimeType ?? null,
+              }
+            : undefined,
+        } satisfies GoogleDriveItem
+      })
+      .filter((item): item is GoogleDriveItem => Boolean(item))
 
     return {
       items,
       nextPageToken: response.data.nextPageToken ?? undefined,
     }
+  }
+
+  async createFolder(name: string, parentId: string): Promise<string> {
+    this.ensureEnabled()
+    return this.createFolderInternal(name, parentId)
+  }
+
+  async moveFiles(fileIds: string[], targetFolderId: string) {
+    this.ensureEnabled()
+    if (!fileIds.length) {
+      return []
+    }
+
+    const results = await Promise.all(
+      fileIds.map(async (fileId) => {
+        const metadata = await this.withRetry('getFileParents', async () =>
+          this.drive.files.get(
+            {
+              fileId,
+              fields: 'parents',
+              supportsAllDrives: true,
+            },
+            { timeout: 15_000 },
+          ),
+        )
+
+        const previousParents = metadata.data.parents?.join(',') || undefined
+
+        await this.withRetry('moveFile', async () =>
+          this.drive.files.update(
+            {
+              fileId,
+              addParents: targetFolderId,
+              removeParents: previousParents,
+              supportsAllDrives: true,
+              fields: 'id, parents',
+            },
+            { timeout: 15_000 },
+          ),
+        )
+
+        return {
+          fileId,
+          previousParents: metadata.data.parents ?? [],
+        }
+      }),
+    )
+
+    return results
+  }
+
+  async deleteFiles(fileIds: string[]) {
+    this.ensureEnabled()
+    if (!fileIds.length) {
+      return []
+    }
+
+    await Promise.all(
+      fileIds.map((fileId) =>
+        this.withRetry('deleteFile', async () =>
+          this.drive.files.update(
+            {
+              fileId,
+              requestBody: {
+                trashed: true,
+              },
+              supportsAllDrives: true,
+              fields: 'id, trashed',
+            },
+            { timeout: 15_000 },
+          ),
+        ),
+      ),
+    )
+  }
+
+  async getFileMetadata(fileId: string, fields = 'id, name, mimeType, size, parents, modifiedTime') {
+    this.ensureEnabled()
+
+    const response = await this.withRetry('getFileMetadata', async () =>
+      this.drive.files.get(
+        {
+          fileId,
+          fields,
+          supportsAllDrives: true,
+        },
+        { timeout: 15_000 },
+      ),
+    )
+
+    return response.data
+  }
+
+  async getFolderBreadcrumbs(folderId: string) {
+    this.ensureEnabled()
+
+    const breadcrumbs: Array<{ id: string; name: string }> = []
+    let currentId: string | null = folderId
+    const visited = new Set<string>()
+
+    while (currentId && !visited.has(currentId)) {
+      visited.add(currentId)
+      const metadata = await this.withRetry('getBreadcrumb', async () =>
+        this.drive.files.get(
+          {
+            fileId: currentId,
+            fields: 'id, name, parents',
+            supportsAllDrives: true,
+          },
+          { timeout: 15_000 },
+        ),
+      )
+
+      if (!metadata.data.id) {
+        break
+      }
+
+      breadcrumbs.unshift({
+        id: metadata.data.id,
+        name: metadata.data.name ?? 'Sem nome',
+      })
+
+      const parentId = metadata.data.parents?.[0]
+      if (!parentId || parentId === 'root') {
+        break
+      }
+      currentId = parentId
+    }
+
+    return breadcrumbs
+  }
+
+  async listFolderFiles(folderId: string) {
+    this.ensureEnabled()
+
+    const response = await this.withRetry('listFolderFiles', async () =>
+      this.drive.files.list(
+        {
+          q: `'${escapeQueryValue(folderId)}' in parents and trashed = false and mimeType != '${MIME_TYPE_FOLDER}'`,
+          orderBy: 'name',
+          pageSize: 1000,
+          fields: 'files(id, name, mimeType, size, webContentLink, webViewLink, modifiedTime, shortcutDetails(targetId, targetMimeType))',
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        },
+        { timeout: LIST_TIMEOUT },
+      ),
+    )
+
+    return (
+      response.data.files?.map((file) => {
+        const isShortcut = file.mimeType === MIME_TYPE_SHORTCUT
+        const shortcutTargetMimeType = file.shortcutDetails?.targetMimeType ?? null
+        const effectiveMimeType =
+          isShortcut && shortcutTargetMimeType
+            ? shortcutTargetMimeType
+            : file.mimeType ?? 'application/octet-stream'
+
+        return {
+          id: file.id!,
+          name: file.name ?? 'Sem nome',
+          mimeType: effectiveMimeType,
+          size: file.size ? Number(file.size) : undefined,
+          webContentLink: file.webContentLink ?? null,
+          webViewLink: file.webViewLink ?? null,
+          modifiedTime: file.modifiedTime ?? undefined,
+          shortcutDetails: file.shortcutDetails
+            ? {
+                targetId: file.shortcutDetails.targetId ?? null,
+                targetMimeType: shortcutTargetMimeType,
+              }
+            : undefined,
+        }
+      }) ?? []
+    )
   }
 
   async uploadCreativeToArtesLagosta(buffer: Buffer, projectFolderId: string, projectName?: string | null): Promise<GoogleDriveUploadResult> {
@@ -392,7 +612,7 @@ export class GoogleDriveService {
       return existing
     }
 
-    const created = await this.createFolder(ARTES_FOLDER_NAME, projectFolderId)
+    const created = await this.createFolderInternal(ARTES_FOLDER_NAME, projectFolderId)
     this.artesFolderCache.set(projectFolderId, {
       folderId: created,
       expiresAt: now + CACHE_TTL_MS,
@@ -416,7 +636,7 @@ export class GoogleDriveService {
     return folder?.id ?? null
   }
 
-  private async createFolder(name: string, parentId: string): Promise<string> {
+  private async createFolderInternal(name: string, parentId: string): Promise<string> {
     const response = await this.withRetry('createFolder', async () =>
       this.drive.files.create(
         {
