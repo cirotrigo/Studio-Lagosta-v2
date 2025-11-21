@@ -170,6 +170,7 @@ model Project {
   makeWebhookCreativeUrl      String?
   userId                      String
   workspaceId                 Int?
+  isClientProject             Boolean       @default(false)
 
   // Instagram account configuration
   instagramAccountId  String? @db.Text
@@ -198,12 +199,59 @@ model Project {
   instagramDailySummary  InstagramDailySummary[]
   instagramWeeklyReports InstagramWeeklyReport[]
   instagramGoalSettings  InstagramGoalSettings?
+  clientInvite           ClientInvite?
 
   @@index([status])
   @@index([userId])
   @@index([workspaceId])
   @@index([userId, updatedAt(sort: Desc)])
   @@index([updatedAt(sort: Desc)])
+  @@index([isClientProject])
+}
+
+model ClientInvite {
+  id                          String             @id @default(cuid())
+  email                       String
+  clientName                  String?
+  projectName                 String
+  projectDescription          String?
+  googleDriveFolderId         String?
+  googleDriveFolderName       String?
+  googleDriveImagesFolderId   String?
+  googleDriveImagesFolderName String?
+  googleDriveVideosFolderId   String?
+  googleDriveVideosFolderName String?
+  instagramAccountId          String?
+  instagramUsername           String?
+  zapierWebhookUrl            String?            @db.Text
+  clerkInvitationId           String?            @unique
+  inviteUrl                   String?            @db.Text
+  status                      ClientInviteStatus @default(PENDING)
+  invitedBy                   String
+  invitedByName               String?
+  userId                      String?            @unique
+  user                        User?              @relation(fields: [userId], references: [id])
+  projectId                   Int?               @unique
+  project                     Project?           @relation(fields: [projectId], references: [id])
+  createdAt                   DateTime           @default(now())
+  updatedAt                   DateTime           @updatedAt
+  acceptedAt                  DateTime?
+  completedAt                 DateTime?
+  cancelledAt                 DateTime?
+  expiresAt                   DateTime?
+
+  @@index([email])
+  @@index([status])
+  @@index([createdAt])
+  @@index([invitedBy])
+}
+
+enum ClientInviteStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+  EXPIRED
 }
 
 model DriveSettings {
@@ -459,6 +507,7 @@ model User {
   UsageHistory                UsageHistory[]
   OrganizationMemberAnalytics OrganizationMemberAnalytics[]
   driveSettings               DriveSettings?
+  clientInvite                ClientInvite?
 
   @@index([createdAt])
   @@index([email])

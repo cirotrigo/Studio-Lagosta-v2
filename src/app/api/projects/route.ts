@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { createProjectSchema } from '@/lib/validations/studio'
+import { fulfillInviteForUser } from '@/lib/services/client-invite-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Complex queries with multiple JOINs and aggregations
@@ -12,6 +13,23 @@ export async function GET() {
   const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  const dbUser = await db.user.findUnique({
+    where: { clerkId: userId },
+    select: { id: true, email: true, clerkId: true },
+  })
+
+  if (dbUser) {
+    try {
+      await fulfillInviteForUser({
+        userId: dbUser.id,
+        clerkUserId: dbUser.clerkId,
+        email: dbUser.email,
+      })
+    } catch (error) {
+      console.error('[projects] Failed to fulfill client invite on GET', error)
+    }
   }
 
   // Parallel fetching for owned and shared projects

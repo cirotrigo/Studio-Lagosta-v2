@@ -19,12 +19,15 @@ export async function GET(request: Request) {
     const includeUsageCount = searchParams.get("includeUsageCount") === "true";
 
     // Build where clause for search
-    const whereClause = search ? {
-      OR: [
-        { name: { contains: search, mode: 'insensitive' as const } },
-        { email: { contains: search, mode: 'insensitive' as const } },
-      ]
-    } : {};
+    const whereClause = search
+      ? {
+          isActive: true,
+          OR: [
+            { name: { contains: search, mode: 'insensitive' as const } },
+            { email: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : { isActive: true };
 
     // Create cache key based on query parameters
     const cacheKey = getCacheKey('admin:users', page, pageSize, search, includeUsageCount.toString());

@@ -6,6 +6,49 @@ import { refreshUserCredits, addUserCredits } from "@/lib/credits/validate-credi
 import { SUBSCRIPTION_PLANS } from "@/lib/clerk/subscription-utils";
 import { getPlanCredits } from "@/lib/credits/settings";
 import { getCreditsForPrice } from "@/lib/clerk/credit-packs";
+import { fulfillInviteForUser } from "@/lib/services/client-invite-service";
+
+async function syncUserFromClerk(params: {
+  clerkUserId: string
+  email: string | null
+  name: string | null
+}) {
+  const normalizedEmail = params.email ?? null
+  const normalizedName = params.name?.trim() ? params.name.trim() : null
+
+  return db.$transaction(async (tx) => {
+    const user = await tx.user.upsert({
+      where: { clerkId: params.clerkUserId },
+      update: {
+        email: normalizedEmail,
+        name: normalizedName,
+      },
+      create: {
+        clerkId: params.clerkUserId,
+        email: normalizedEmail,
+        name: normalizedName,
+      },
+    })
+
+    const existingBalance = await tx.creditBalance.findUnique({
+      where: { clerkUserId: params.clerkUserId },
+    })
+
+    if (!existingBalance) {
+      const credits = await getPlanCredits('free')
+      await tx.creditBalance.create({
+        data: {
+          userId: user.id,
+          clerkUserId: params.clerkUserId,
+          creditsRemaining: credits,
+        },
+      })
+    }
+
+    return user
+  })
+}
+
 
 export async function POST(req: Request) {
   const WEBHOOK_SECRET = process.env.CLERK_WEBHOOK_SECRET || process.env.WEBHOOK_SECRET;
@@ -52,28 +95,26 @@ export async function POST(req: Request) {
   console.log('Webhook body:', body);
 
   if (eventType === 'user.created') {
-    const { id, email_addresses, first_name, last_name } = evt.data;
-    
-    try {
-      const primaryEmail = email_addresses.find(email => email.id === evt.data.primary_email_address_id);
-      
-      // Create user in database
-      const user = await db.user.create({
-        data: {
-          clerkId: id,
-          email: primaryEmail?.email_address || null,
-          name: `${first_name || ''} ${last_name || ''}`.trim() || null,
-        },
-      });
+    const { id: clerkUserId, email_addresses, first_name, last_name } = evt.data;
 
-      // Initialize credit balance in database (free tier credits)
-      await db.creditBalance.create({
-        data: {
-          userId: user.id,
-          clerkUserId: id,
-          creditsRemaining: 0,
-        },
-      });
+    try {
+      const primaryEmail = email_addresses.find(
+        (email) => email.id === evt.data.primary_email_address_id
+      )
+      const emailAddress = primaryEmail?.email_address ?? null
+      const resolvedName = `${first_name || ''} ${last_name || ''}`.trim() || null
+
+      const user = await syncUserFromClerk({
+        clerkUserId,
+        email: emailAddress,
+        name: resolvedName,
+      })
+
+      await fulfillInviteForUser({
+        userId: user.id,
+        clerkUserId: clerkUserId,
+        email: emailAddress,
+      })
 
       console.log('User and credits created successfully');
     } catch (error) {
@@ -87,14 +128,20 @@ export async function POST(req: Request) {
     
     try {
       const primaryEmail = email_addresses.find(email => email.id === evt.data.primary_email_address_id);
-      
-      await db.user.update({
-        where: { clerkId: id },
-        data: {
-          email: primaryEmail?.email_address || null,
-          name: `${first_name || ''} ${last_name || ''}`.trim() || null,
-        },
-      });
+      const emailAddress = primaryEmail?.email_address ?? null
+      const resolvedName = `${first_name || ''} ${last_name || ''}`.trim() || null
+
+      const syncedUser = await syncUserFromClerk({
+        clerkUserId: id,
+        email: emailAddress,
+        name: resolvedName,
+      })
+
+      await fulfillInviteForUser({
+        userId: syncedUser.id,
+        clerkUserId: id,
+        email: emailAddress,
+      })
 
       // Check if subscription metadata changed
       const publicMetadata = evt.data.public_metadata as Record<string, unknown>;
@@ -106,9 +153,7 @@ export async function POST(req: Request) {
         });
         
         // Update credit balance in our database
-        const dbUser = await db.user.findUnique({
-          where: { clerkId: id }
-        });
+        const dbUser = syncedUser;
         
         if (dbUser) {
           // If credits are explicitly set, use those; otherwise calculate from plan

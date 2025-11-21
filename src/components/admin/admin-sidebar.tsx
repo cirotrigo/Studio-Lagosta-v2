@@ -17,6 +17,8 @@ import {
   Image,
   Package,
   Settings,
+  UserPlus,
+  FolderKanban,
 } from "lucide-react";
 import {
   Sidebar,
@@ -47,6 +49,8 @@ const content: Item[] = [
 ];
 const management: Item[] = [
   { title: "Usuários", href: "/admin/users", icon: Users },
+  { title: "Clientes", href: "/admin/clients", icon: UserPlus },
+  { title: "Projetos de Clientes", href: "/admin/client-projects", icon: FolderKanban },
   { title: "Créditos", href: "/admin/credits", icon: CreditCard },
   { title: "Armazenamento", href: "/admin/storage", icon: CreditCard },
   { title: "Base de Conhecimento", href: "/admin/knowledge", icon: BookOpen },

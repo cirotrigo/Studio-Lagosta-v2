@@ -3,6 +3,7 @@ import { NextResponse } from "next/server"
 import { isAdmin } from "@/lib/admin-utils"
 import { db } from "@/lib/db"
 import { refreshUserCredits } from "@/lib/credits/validate-credits"
+import { fulfillInviteForUser } from "@/lib/services/client-invite-service"
 
 const clerk = createClerkClient({ secretKey: process.env.CLERK_SECRET_KEY as string })
 export const runtime = 'nodejs'
@@ -32,8 +33,11 @@ export async function POST(request: Request) {
     let createdBalances = 0
     let activeSubscriptions = 0
     let creditsRefreshed = 0
+    let deletedUsers = 0
     let pagesProcessed = 0
+    let reachedEnd = false
     const unmappedPlanIds = new Set<string>()
+    const seenClerkIds = new Set<string>()
 
     const billingToken = process.env.CLERK_SECRET_KEY
     const canQueryBilling = Boolean(billingToken)
@@ -69,7 +73,10 @@ export async function POST(request: Request) {
     for (let page = 0; page < max; page++) {
       const res = await clerk.users.getUserList({ limit: pageSize, offset: page * pageSize }) as unknown as { data?: Array<Record<string, unknown>> } | Array<Record<string, unknown>>
       const users: Array<Record<string, unknown>> = (res as { data?: Array<Record<string, unknown>> })?.data || (res as Array<Record<string, unknown>>) || []
-      if (!users.length) break
+      if (!users.length) {
+        reachedEnd = true
+        break
+      }
       pagesProcessed++
       dlog(`page ${page + 1}/${max}: fetched ${users.length} users`)
 
@@ -81,10 +88,11 @@ export async function POST(request: Request) {
           totalProcessed++
           try {
             const clerkId = String(cu.id)
+            seenClerkIds.add(clerkId)
             dlog('processing user', { clerkId })
             const emailAddresses = (cu.emailAddresses as Array<{ id?: string; emailAddress?: string }> | undefined) || []
             const primary = emailAddresses.find((e) => e.id === cu.primaryEmailAddressId) || emailAddresses[0]
-            const email = String(primary?.emailAddress || '')
+            const email = primary?.emailAddress ? String(primary.emailAddress) : ''
             const firstName = String(cu.firstName || '')
             const lastName = String(cu.lastName || '')
             const name = [firstName, lastName].filter(Boolean).join(' ') || firstName
@@ -147,6 +155,14 @@ export async function POST(request: Request) {
                 console.error('Failed to sync subscription for user', clerkId, subErr)
               }
             }
+
+            if (syncUsers && dbUser && email) {
+              await fulfillInviteForUser({
+                userId: dbUser.id,
+                clerkUserId: clerkId,
+                email,
+              })
+            }
           } catch (innerErr) {
             console.error('Sync user failed:', innerErr)
           }
@@ -155,6 +171,42 @@ export async function POST(request: Request) {
         // Wait for batch to complete before processing next batch
         await Promise.allSettled(batchPromises)
       }
+
+      if (users.length < pageSize) {
+        reachedEnd = true
+        break
+      }
+    }
+
+    if (syncUsers && reachedEnd) {
+      const toKeep = Array.from(seenClerkIds)
+      const removable = await db.user.findMany({
+        where: {
+          isActive: true,
+          ...(toKeep.length ? { clerkId: { notIn: toKeep } } : {}),
+        },
+        select: { id: true },
+      })
+
+      if (removable.length) {
+        await db.$transaction(
+          removable.map((user) =>
+            db.user.update({
+              where: { id: user.id },
+              data: {
+                isActive: false,
+                email: null,
+              },
+            })
+          )
+        )
+        deletedUsers = removable.length
+        if (debug) {
+          dlog('deactivated users not found in Clerk', { deletedUsers })
+        }
+      }
+    } else if (syncUsers && !reachedEnd && debug) {
+      dlog('cleanup skipped because Clerk pagination limit was reached')
     }
 
     const payload: Record<string, unknown> = {
@@ -163,6 +215,7 @@ export async function POST(request: Request) {
       createdBalances,
       activeSubscriptions,
       creditsRefreshed,
+      deletedUsers,
     }
     if (debug) {
       payload.debug = {

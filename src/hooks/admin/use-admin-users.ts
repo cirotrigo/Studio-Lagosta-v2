@@ -170,6 +170,7 @@ export function useSyncFromClerk() {
         createdBalances?: number;
         activeSubscriptions?: number;
         creditsRefreshed?: number;
+        deletedUsers?: number;
       };
       const parts = [
         'Processed ' + syncData.processed,
@@ -181,6 +182,9 @@ export function useSyncFromClerk() {
       }
       if (typeof syncData.creditsRefreshed === 'number') {
         parts.push('credits refreshed ' + syncData.creditsRefreshed);
+      }
+      if (typeof syncData.deletedUsers === 'number') {
+        parts.push('deleted users ' + syncData.deletedUsers);
       }
       const msg = parts.join(', ');
 
