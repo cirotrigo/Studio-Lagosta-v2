@@ -12,6 +12,74 @@ import type {
   UpdateClientInviteInput,
 } from '@/lib/validations/client-invite'
 
+const DEFAULT_CLIENT_TEMPLATE_ID = Number(process.env.DEFAULT_CLIENT_TEMPLATE_ID ?? '67')
+
+async function cloneDefaultTemplateForProject(
+  tx: Prisma.TransactionClient,
+  options: { projectId: number; createdBy: string }
+) {
+  if (!Number.isInteger(DEFAULT_CLIENT_TEMPLATE_ID) || DEFAULT_CLIENT_TEMPLATE_ID <= 0) {
+    return
+  }
+
+  const existingTemplates = await tx.template.count({
+    where: { projectId: options.projectId },
+  })
+  if (existingTemplates > 0) {
+    return
+  }
+
+  const baseTemplate = await tx.template.findUnique({
+    where: { id: DEFAULT_CLIENT_TEMPLATE_ID },
+    include: {
+      Page: {
+        orderBy: { order: 'asc' },
+      },
+    },
+  })
+
+  if (!baseTemplate) {
+    console.warn(`[client-invite] Default template ${DEFAULT_CLIENT_TEMPLATE_ID} not found`)
+    return
+  }
+
+  const newTemplate = await tx.template.create({
+    data: {
+      name: baseTemplate.name,
+      type: baseTemplate.type,
+      dimensions: baseTemplate.dimensions,
+      designData: baseTemplate.designData,
+      dynamicFields: baseTemplate.dynamicFields,
+      thumbnailUrl: baseTemplate.thumbnailUrl,
+      category: baseTemplate.category,
+      tags: baseTemplate.tags,
+      isPublic: false,
+      isPremium: false,
+      projectId: options.projectId,
+      createdBy: options.createdBy,
+    },
+  })
+
+  if (baseTemplate.Page?.length) {
+    await Promise.all(
+      baseTemplate.Page.map((page) =>
+        tx.page.create({
+          data: {
+            name: page.name,
+            width: page.width,
+            height: page.height,
+            layers: page.layers,
+            background: page.background,
+            order: page.order,
+            thumbnail: page.thumbnail,
+            templateId: newTemplate.id,
+          },
+        })
+      )
+    )
+  }
+}
+
 export const clientInviteInclude = {
   user: {
     select: {
@@ -241,6 +309,13 @@ export async function fulfillInviteForUser(params: {
         },
       })
       projectId = project.id
+    }
+
+    if (projectId) {
+      await cloneDefaultTemplateForProject(tx, {
+        projectId,
+        createdBy: params.clerkUserId,
+      })
     }
 
     await tx.clientInvite.update({
