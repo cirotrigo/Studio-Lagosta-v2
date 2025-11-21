@@ -175,6 +175,7 @@ export function DriveItem({
                 alt={item.name}
                 fill
                 sizes="200px"
+                unoptimized
                 className="object-cover transition group-hover:scale-105"
                 onLoadingComplete={(img) => {
                   setPreviewLoaded(true)
@@ -196,6 +197,7 @@ export function DriveItem({
             alt={item.name}
             fill
             sizes="200px"
+            unoptimized
             className="object-cover transition group-hover:scale-105"
             onLoadingComplete={(img) => {
               setPreviewLoaded(true)
