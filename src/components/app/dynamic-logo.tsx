@@ -29,49 +29,77 @@ export function DynamicLogo({ useFull = false, className }: DynamicLogoProps) {
     const logoFullDark = configWithFull.logoFullDark || config.logo?.dark
     const fullLogoClasses = className || 'h-12'
 
+    // Se não tiver logos configuradas, mostra fallback
+    if (!logoFullDark && !logoFullLight) {
+      return (
+        <div className={`${fullLogoClasses} flex items-center justify-center font-bold text-foreground`}>
+          {config.shortName || config.name}
+        </div>
+      )
+    }
+
     return (
       <>
         {/* Logo completa para tema claro (escura) */}
-        <Image
-          src={logoFullDark || ''}
-          width={200}
-          height={48}
-          className={`dark:hidden object-contain ${fullLogoClasses}`}
-          alt={config.shortName || config.name}
-          style={{ width: 'auto', maxWidth: '200px' }}
-        />
+        {logoFullDark && (
+          <Image
+            src={logoFullDark}
+            width={200}
+            height={48}
+            className={`dark:hidden object-contain ${fullLogoClasses}`}
+            alt={config.shortName || config.name}
+            style={{ width: 'auto', maxWidth: '200px' }}
+          />
+        )}
         {/* Logo completa para tema escuro (clara) */}
-        <Image
-          src={logoFullLight || ''}
-          width={200}
-          height={48}
-          className={`hidden dark:block object-contain ${fullLogoClasses}`}
-          alt={config.shortName || config.name}
-          style={{ width: 'auto', maxWidth: '200px' }}
-        />
+        {logoFullLight && (
+          <Image
+            src={logoFullLight}
+            width={200}
+            height={48}
+            className={`hidden dark:block object-contain ${fullLogoClasses}`}
+            alt={config.shortName || config.name}
+            style={{ width: 'auto', maxWidth: '200px' }}
+          />
+        )}
       </>
     )
   }
 
   // Para logo ícone apenas (sem texto)
   const iconClasses = className || 'size-9'
+  const logoDark = config.logo?.dark
+  const logoLight = config.logo?.light
+
+  // Se não tiver logos configuradas, mostra fallback
+  if (!logoDark && !logoLight) {
+    return (
+      <div className={`${iconClasses} flex items-center justify-center rounded-md bg-primary text-primary-foreground font-bold text-sm`}>
+        {(config.shortName || config.name || 'L').charAt(0)}
+      </div>
+    )
+  }
 
   return (
     <>
-      <Image
-        src={config.logo?.dark || ''}
-        width={36}
-        height={36}
-        className={`dark:hidden object-contain ${iconClasses}`}
-        alt={config.shortName || config.name}
-      />
-      <Image
-        src={config.logo?.light || ''}
-        width={36}
-        height={36}
-        className={`hidden dark:block object-contain ${iconClasses}`}
-        alt={config.shortName || config.name}
-      />
+      {logoDark && (
+        <Image
+          src={logoDark}
+          width={36}
+          height={36}
+          className={`dark:hidden object-contain ${iconClasses}`}
+          alt={config.shortName || config.name}
+        />
+      )}
+      {logoLight && (
+        <Image
+          src={logoLight}
+          width={36}
+          height={36}
+          className={`hidden dark:block object-contain ${iconClasses}`}
+          alt={config.shortName || config.name}
+        />
+      )}
     </>
   )
 }
