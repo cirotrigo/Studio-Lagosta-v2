@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
     await db.socialPost.update({
       where: { id: post.id },
       data: {
-        status: PostStatus.POSTED,
+        status: post.postType === PostType.STORY ? PostStatus.VERIFYING : PostStatus.POSTED,
         sentAt: sentAtDate,
         bufferId: buffer_update_id,
         bufferSentAt: sentAtDate,

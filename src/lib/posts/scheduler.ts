@@ -190,9 +190,30 @@ export class PostScheduler {
         throw new Error('Clerk user ID not found for post author')
       }
 
+      // Safety net: ensure stories always have a verification tag before sending
+      let verificationTag = post.verificationTag
+      if (post.postType === PostType.STORY && !verificationTag) {
+        verificationTag = generateVerificationTag(post.id)
+        await db.socialPost.update({
+          where: { id: post.id },
+          data: {
+            verificationTag,
+            verificationStatus: VerificationStatus.PENDING,
+            verificationAttempts: 0,
+            nextVerificationAt: null,
+            lastVerificationAt: null,
+            verifiedByFallback: false,
+            verificationError: null,
+            verifiedStoryId: null,
+            verifiedPermalink: null,
+            verifiedTimestamp: null,
+          },
+        })
+      }
+
       const captionWithVerificationTag =
-        post.postType === PostType.STORY && post.verificationTag
-          ? appendTagToCaption(post.caption, post.verificationTag)
+        post.postType === PostType.STORY && verificationTag
+          ? appendTagToCaption(post.caption, verificationTag)
           : post.caption
 
       if (post.postType === PostType.STORY && !post.verificationTag) {
@@ -255,7 +276,7 @@ export class PostScheduler {
           project_name: post.Project.name,
           user_id: post.userId,
           created_at: post.createdAt.toISOString(),
-          verification_tag: post.verificationTag || null,
+          verification_tag: verificationTag || null,
         },
       }
 

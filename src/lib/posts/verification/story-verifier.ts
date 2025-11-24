@@ -292,6 +292,7 @@ export class StoryVerifier {
     await db.socialPost.update({
       where: { id: post.id },
       data: {
+        status: PostStatus.POSTED,
         verificationStatus: VerificationStatus.VERIFIED,
         verificationAttempts: options.attempts,
         verifiedByFallback: options.verifiedByFallback,
@@ -323,6 +324,7 @@ export class StoryVerifier {
     await db.socialPost.update({
       where: { id: post.id },
       data: {
+        status: PostStatus.FAILED,
         verificationStatus: VerificationStatus.VERIFICATION_FAILED,
         verificationAttempts: attempts,
         lastVerificationAt: now,
@@ -371,6 +373,7 @@ export class StoryVerifier {
         nextVerificationAt: addMinutes(now, delayMinutes),
         lastVerificationAt: now,
         verificationError: error,
+        status: PostStatus.VERIFYING,
       },
     })
   }
