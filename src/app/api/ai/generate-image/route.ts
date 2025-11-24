@@ -7,9 +7,10 @@ import { put } from '@vercel/blob'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI image generation
+export const dynamic = 'force-dynamic' // Garantir que a rota não seja estaticamente otimizada
 
 const generateImageSchema = z.object({
-  projectId: z.number(),
+  projectId: z.number().int().positive('projectId deve ser um número positivo'),
   prompt: z.string().min(1, 'Prompt é obrigatório'),
   aspectRatio: z.string().default('1:1'),
   referenceImages: z.array(z.string()).optional(),
@@ -19,8 +20,13 @@ const generateImageSchema = z.object({
 const NANO_BANANA_VERSION = '1b00a781b969984d0336047c859f06a54097bc7b5e9494ccd307ebde81094c34'
 
 export async function POST(request: Request) {
+  console.log('[AI Generate] POST request received to /api/ai/generate-image')
+
   const { userId, orgId } = await auth()
+  console.log('[AI Generate] Auth result:', { userId: userId?.substring(0, 10), orgId })
+
   if (!userId) {
+    console.error('[AI Generate] Unauthorized - no userId')
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -36,7 +42,10 @@ export async function POST(request: Request) {
   try {
     // 1. Validar input
     const rawBody = await request.json()
-    console.log('[AI Generate] Raw body received:', rawBody)
+    console.log('[AI Generate] Raw body received:', {
+      ...rawBody,
+      prompt: rawBody.prompt?.substring(0, 50)
+    })
     const body = generateImageSchema.parse(rawBody)
 
     // 2. Verificar ownership do projeto

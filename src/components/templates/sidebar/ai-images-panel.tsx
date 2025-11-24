@@ -197,19 +197,26 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
 
   const generateMutation = useMutation({
     mutationFn: async (data: { prompt: string; aspectRatio: string; referenceImages: string[] }) => {
+      const payload = {
+        projectId,
+        prompt: data.prompt,
+        aspectRatio: data.aspectRatio,
+        referenceImages: data.referenceImages,
+      }
+
+      console.log('[AIImagesPanel] Sending request to /api/ai/generate-image with payload:', payload)
+
       const response = await fetch('/api/ai/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          projectId,
-          prompt: data.prompt,
-          aspectRatio: data.aspectRatio,
-          referenceImages: data.referenceImages,
-        }),
+        body: JSON.stringify(payload),
       })
 
+      console.log('[AIImagesPanel] Response status:', response.status, response.statusText)
+
       if (!response.ok) {
-        const error = await response.json()
+        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
+        console.error('[AIImagesPanel] API Error:', error)
         throw new Error(error.error || 'Falha ao gerar imagem')
       }
 
@@ -244,7 +251,8 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return
     }
 
-    if (!projectId) {
+    if (projectId === null || projectId === undefined) {
+      console.error('[AIImagesPanel] projectId is null/undefined:', projectId)
       toast({ variant: 'destructive', description: 'Erro: projeto não identificado' })
       return
     }
@@ -282,6 +290,13 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
 
       // 3. Combinar todas as URLs
       const allImageUrls = [...driveImageUrls, ...localFileUrls]
+
+      console.log('[AIImagesPanel] Generating image with:', {
+        projectId,
+        prompt: prompt.trim(),
+        aspectRatio,
+        referenceImagesCount: allImageUrls.length
+      })
 
       generateMutation.mutate({
         prompt: prompt.trim(),
