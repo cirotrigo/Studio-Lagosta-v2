@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 
-// Regex com prefixo único para minimizar colisões com hashtags reais
-export const TAG_REGEX = /^#SLTAG-([a-zA-Z0-9]{8})-([A-Z0-9]{4})$/
+// Prefixo curto e sem hash (#) para funcionar melhor como Tag no Buffer
+export const TAG_REGEX = /^SL-([a-zA-Z0-9]{6})-([A-Z0-9]{4})$/
 
 export function generateVerificationTag(postId: string): string {
   const hash = crypto
@@ -11,7 +11,7 @@ export function generateVerificationTag(postId: string): string {
     .substring(0, 4)
     .toUpperCase()
 
-  return `#SLTAG-${postId.substring(0, 8)}-${hash}`
+  return `SL-${postId.substring(0, 6)}-${hash}`
 }
 
 export function validateTag(tag: string): boolean {

@@ -260,6 +260,7 @@ export class PostScheduler {
         alt_text: post.altText,
         first_comment: post.firstComment || '',
         publish_type: post.publishType.toLowerCase(), // direct or reminder
+        tags: verificationTag ? [verificationTag] : [],
 
         // Carousel URLs (url1 to url10) - only populated for multiple_images
         ...carouselUrls,
