@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
@@ -157,6 +157,33 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               <span className="hidden sm:inline">Falhou</span>
               <span className="sm:hidden">✕</span>
             </Badge>
+          )}
+
+          {/* Badges de Verificação - apenas para Stories */}
+          {post.postType === 'STORY' && (
+            <>
+              {post.verificationStatus === 'VERIFIED' && (
+                <Badge className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-blue-500 text-white hover:bg-blue-500 flex items-center gap-0.5">
+                  <ShieldCheck className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  <span className="hidden sm:inline">{post.verifiedByFallback ? 'Verificado*' : 'Verificado'}</span>
+                  <span className="sm:hidden">✓</span>
+                </Badge>
+              )}
+              {post.verificationStatus === 'VERIFICATION_FAILED' && (
+                <Badge className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-orange-500 text-white hover:bg-orange-500 flex items-center gap-0.5">
+                  <ShieldAlert className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  <span className="hidden sm:inline">Não Verificado</span>
+                  <span className="sm:hidden">⚠</span>
+                </Badge>
+              )}
+              {post.verificationStatus === 'PENDING' && post.status === 'POSTED' && (
+                <Badge variant="outline" className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] flex items-center gap-0.5">
+                  <Clock className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  <span className="hidden sm:inline">Verificando</span>
+                  <span className="sm:hidden">⏱</span>
+                </Badge>
+              )}
+            </>
           )}
         </div>
       </div>

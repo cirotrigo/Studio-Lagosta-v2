@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle } from 'lucide-react'
+import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from '../calendar/calendar-utils'
@@ -184,6 +184,30 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
                 <XCircle className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 <span>Falhou</span>
               </Badge>
+            )}
+
+            {/* Badges de Verificação - apenas para Stories */}
+            {post.postType === 'STORY' && (
+              <>
+                {post.verificationStatus === 'VERIFIED' && (
+                  <Badge className="text-[10px] sm:text-xs bg-blue-500 text-white hover:bg-blue-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                    <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <span>{post.verifiedByFallback ? 'Verificado*' : 'Verificado'}</span>
+                  </Badge>
+                )}
+                {post.verificationStatus === 'VERIFICATION_FAILED' && (
+                  <Badge className="text-[10px] sm:text-xs bg-orange-500 text-white hover:bg-orange-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                    <ShieldAlert className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <span>Não Verificado</span>
+                  </Badge>
+                )}
+                {post.verificationStatus === 'PENDING' && post.status === 'POSTED' && (
+                  <Badge variant="outline" className="text-[10px] sm:text-xs flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <span>Verificando</span>
+                  </Badge>
+                )}
+              </>
             )}
           </div>
 

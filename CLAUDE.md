@@ -213,6 +213,75 @@ The admin settings have been split into specialized pages for better organizatio
 - **Validation**: Ensures non-negative integer values for credits
 - **Real-time Updates**: Changes reflected immediately with proper validation
 
+### Instagram Story Verification System
+The application includes an independent verification system for Instagram Stories using the Instagram Graph API to confirm that posts scheduled via Buffer/Zapier were actually published.
+
+#### Verification Approach (v1 - Simplified)
+- **Primary Method (Plano A)**: Uses unique verification tags in captions
+- **Fallback Method (Plano B)**: Matches by timestamp + media_type (expected to be primary method in production)
+- **TAG Format Decision**: Uses `SL-{postId6chars}-{hash4chars}` format (without `#` prefix)
+  - Chosen for better compatibility with Buffer's tag system
+  - Original plan suggested `#SLTAG-{8chars}-{4chars}` but simplified for practical use
+  - 6 characters of postId provide sufficient uniqueness for our scale
+
+#### System Architecture
+**Core Components**:
+- `src/lib/posts/verification/tag-generator.ts` - Generates and validates unique tags
+- `src/lib/posts/verification/story-verifier.ts` - Main verification logic with fallback
+- `src/lib/instagram/graph-api-client.ts` - Instagram Graph API client
+- `src/app/api/cron/verify-stories/route.ts` - Cron job endpoint (runs every 5 minutes)
+- `src/app/api/webhooks/buffer/post-sent/route.ts` - Webhook handler that schedules verification
+
+**Database Fields** (SocialPost model):
+- `verificationTag` - Unique tag added to caption
+- `verificationStatus` - Enum: PENDING, VERIFIED, VERIFICATION_FAILED, SKIPPED
+- `verificationAttempts` - Retry counter (max 3 attempts)
+- `nextVerificationAt` - Scheduled time for next verification attempt
+- `verifiedStoryId` - Confirmed story ID from Instagram API
+- `verifiedByFallback` - Boolean flag indicating if fallback method was used
+- `verificationError` - Error code for debugging failed verifications
+
+#### Verification Flow
+1. **Post Creation**: TAG generated for STORY posts, added to caption before sending to Zapier
+2. **Webhook Trigger**: Buffer webhook confirms post sent, schedules first verification (+5 min)
+3. **Cron Verification**: Every 5 minutes, cron job processes pending verifications:
+   - Fetches stories from Instagram Graph API
+   - **Primary attempt**: Searches for TAG in story captions (Plano A)
+   - **Fallback attempt**: If TAG not found, matches by timestamp (±5 min) + media_type (Plano B)
+   - Accepts match only if exactly 1 candidate found (avoids false positives)
+   - Retries with backoff: 5, 10, 15 minutes (max 3 attempts)
+   - Respects 24-hour TTL for stories
+4. **Result**: Post marked as VERIFIED (success), VERIFICATION_FAILED (not found/error), or SKIPPED (legacy/non-story)
+
+#### Fallback Method (Plano B) - Primary Expected Method
+The fallback verification is robust and production-ready:
+- **Time Window**: Matches stories within ±5 minutes of expected timestamp
+- **Media Type Detection**: Compares image vs video based on URL patterns
+- **Ambiguity Handling**: Rejects matches if multiple candidates found
+- **Base Timestamp**: Uses `sentAt || bufferSentAt || scheduledDatetime || createdAt`
+- **Expected Usage**: Primary method in production (TAGs serve as backup identifier)
+
+#### Error Handling
+- **Token Errors**: Detected and logged, manual token refresh required
+- **Rate Limiting**: Automatic 15-minute delay before retry
+- **Permission Errors**: Detected and logged with specific error codes
+- **TTL Expiration**: Posts older than 24h marked as failed (stories expire)
+- **Legacy Posts**: Posts created before launch date automatically skipped
+- **API Errors**: Generic errors trigger standard retry logic
+
+#### Environment Variables
+- `INSTAGRAM_ACCESS_TOKEN` - Long-lived Instagram Graph API token
+- `INSTAGRAM_GRAPH_API_VERSION` - API version (default: v18.0)
+- `VERIFICATION_FEATURE_LAUNCH_DATE` - Feature activation date (default: 2024-12-01)
+- `CRON_SECRET` - Authentication for cron endpoints
+
+#### Important Notes
+- **PostStatus.VERIFYING**: Enum value exists but is NOT used; system uses `verificationStatus` field instead
+- **Non-STORY Posts**: Automatically receive `verificationStatus: SKIPPED` (no verification needed)
+- **Grouping Optimization**: Posts grouped by Instagram account to minimize API calls
+- **Security**: All error messages sanitized to remove tokens before logging
+- **Monitoring**: Verification results logged with structured data for debugging
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

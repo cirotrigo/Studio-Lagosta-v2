@@ -25,6 +25,14 @@ export class InstagramApiException extends Error {
     this.name = 'InstagramApiException'
   }
 
+  get code(): number | undefined {
+    return this.apiError?.code
+  }
+
+  get type(): string | undefined {
+    return this.apiError?.type
+  }
+
   get isTokenError(): boolean {
     return this.apiError?.code === 190 || this.message.includes('INSTAGRAM_ACCESS_TOKEN')
   }

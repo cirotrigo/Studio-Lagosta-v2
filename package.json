@@ -35,7 +35,9 @@
     "db:debug-org": "npx tsx scripts/debug-org-access.ts",
     "deploy:check": "bash scripts/pre-deploy-check.sh",
     "deploy:vercel": "npm run deploy:check && vercel --prod",
-    "check:drive": "npx tsx scripts/check-drive.ts"
+    "check:drive": "npx tsx scripts/check-drive.ts",
+    "validate-instagram-ids": "npx tsx src/scripts/validate-instagram-ids.ts",
+    "migrate-verifying-status": "npx tsx src/scripts/migrate-verifying-status.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.16",
