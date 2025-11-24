@@ -94,6 +94,15 @@ ZAPIER_WEBHOOK_SECRET="your-webhook-secret"
 - **O que faz:** Recebe webhooks para automações
 - **Veja:** `ZAPIER_FINAL_MAPPING.md` para mais detalhes
 
+### Verificação de Stories (Instagram Graph API)
+```bash
+INSTAGRAM_ACCESS_TOKEN="your-instagram-long-lived-token"
+VERIFICATION_FEATURE_LAUNCH_DATE="2024-12-01T00:00:00Z"
+CRON_SECRET="strong-shared-secret"
+```
+- **O que faz:** Usa a Graph API para confirmar stories publicados via Buffer/Zapier
+- **Importante:** `CRON_SECRET` protege todos os endpoints de cron (`/api/cron/*`)
+
 ---
 
 ## 📊 Analytics (Opcional mas Recomendado)

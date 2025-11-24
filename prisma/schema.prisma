@@ -173,9 +173,10 @@ model Project {
   isClientProject             Boolean       @default(false)
 
   // Instagram account configuration
-  instagramAccountId  String? @db.Text
-  instagramUsername   String? @db.Text
-  zapierWebhookUrl    String? @db.Text
+  instagramAccountId String? @db.Text
+  instagramUsername  String? @db.Text
+  instagramUserId    String? @db.Text
+  zapierWebhookUrl   String? @db.Text
 
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
@@ -190,7 +191,7 @@ model Project {
   organizationProjects OrganizationProject[]
   OrganizationUsage    OrganizationUsage[]
   SocialPost           SocialPost[] // Social media posts for this account
-  musicLibrary         MusicLibrary[] @relation("ProjectMusicLibrary")
+  musicLibrary         MusicLibrary[]        @relation("ProjectMusicLibrary")
   youtubeDownloads     YoutubeDownloadJob[]
 
   // Instagram Analytics
@@ -899,15 +900,15 @@ model VideoProcessingJob {
   generation      Generation? @relation("GenerationVideoJob", fields: [generationId], references: [id])
 
   // Audio configuration
-  audioSource     String? // 'original' | 'music' | 'none'
-  musicId         Int? // FK para MusicLibrary
-  music           MusicLibrary? @relation(fields: [musicId], references: [id])
-  musicStartTime  Float? // Início do trecho selecionado (segundos)
-  musicEndTime    Float? // Fim do trecho selecionado (segundos)
-  audioVolume     Float? @default(1.0) // 0.0 a 1.0
-  audioFadeIn     Float? // duração do fade in (segundos)
-  audioFadeOut    Float? // duração do fade out (segundos)
-  audioLoop       Boolean? @default(false) // se música deve fazer loop
+  audioSource    String? // 'original' | 'music' | 'none'
+  musicId        Int? // FK para MusicLibrary
+  music          MusicLibrary? @relation(fields: [musicId], references: [id])
+  musicStartTime Float? // Início do trecho selecionado (segundos)
+  musicEndTime   Float? // Fim do trecho selecionado (segundos)
+  audioVolume    Float?        @default(1.0) // 0.0 a 1.0
+  audioFadeIn    Float? // duração do fade in (segundos)
+  audioFadeOut   Float? // duração do fade out (segundos)
+  audioLoop      Boolean?      @default(false) // se música deve fazer loop
 
   @@index([userId])
   @@index([clerkUserId])
@@ -932,9 +933,16 @@ enum PostType {
 enum PostStatus {
   DRAFT
   SCHEDULED
-  POSTING    // Enviado para Buffer/Zapier, aguardando confirmação
-  POSTED     // Confirmado pelo webhook como publicado
+  POSTING // Enviado para Buffer/Zapier, aguardando confirmação
+  POSTED // Confirmado pelo webhook como publicado
   FAILED
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  VERIFICATION_FAILED
+  SKIPPED
 }
 
 enum ScheduleType {
@@ -1004,10 +1012,22 @@ model SocialPost {
   zapierWebhookUrl String? // Specific Zapier URL for this post
 
   // Buffer & Instagram tracking (for post validation and reporting)
-  publishedUrl       String? @db.Text // Instagram public URL (permalink)
-  instagramMediaId   String? @db.Text // Instagram media_id (service_update_id from Buffer)
-  bufferId           String? @db.Text // Buffer update ID
-  bufferSentAt       DateTime? // Timestamp from Buffer confirmation
+  publishedUrl     String?   @db.Text // Instagram public URL (permalink)
+  instagramMediaId String?   @db.Text // Instagram media_id (service_update_id from Buffer)
+  bufferId         String?   @db.Text // Buffer update ID
+  bufferSentAt     DateTime? // Timestamp from Buffer confirmation
+
+  // Story verification
+  verificationTag      String?
+  verificationStatus   VerificationStatus @default(SKIPPED)
+  verificationAttempts Int                @default(0)
+  nextVerificationAt   DateTime?
+  lastVerificationAt   DateTime?
+  verifiedStoryId      String?            @db.Text
+  verifiedPermalink    String?            @db.Text
+  verifiedTimestamp    DateTime?
+  verifiedByFallback   Boolean            @default(false)
+  verificationError    String?            @db.Text
 
   // Metadata
   isRecurring          Boolean       @default(false)
@@ -1036,6 +1056,8 @@ model SocialPost {
   @@index([scheduleType])
   @@index([generationId])
   @@index([parentPostId])
+  @@index([verificationStatus, nextVerificationAt])
+  @@index([verificationTag])
   // Performance indexes for calendar queries
   @@index([projectId, scheduledDatetime])
   @@index([projectId, status, scheduleType])
@@ -1080,22 +1102,22 @@ model PostLog {
 // =============================================================================
 
 model ChatConversation {
-  id             String        @id @default(cuid())
+  id             String  @id @default(cuid())
   userId         String
   clerkUserId    String
   organizationId String?
 
   // Conversation metadata
-  title          String        @default("Nova Conversa")
-  lastMessageAt  DateTime      @default(now())
+  title         String   @default("Nova Conversa")
+  lastMessageAt DateTime @default(now())
 
   // Automatic cleanup after 7 days
-  expiresAt      DateTime      // Auto-calculated: lastMessageAt + 7 days
+  expiresAt DateTime // Auto-calculated: lastMessageAt + 7 days
 
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  messages       ChatMessage[]
+  messages ChatMessage[]
 
   @@index([userId])
   @@index([clerkUserId])
@@ -1105,21 +1127,21 @@ model ChatConversation {
 }
 
 model ChatMessage {
-  id             String           @id @default(cuid())
+  id             String @id @default(cuid())
   conversationId String
 
   // Message content
-  role           String           // 'user' | 'assistant' | 'system'
-  content        String           @db.Text
+  role    String // 'user' | 'assistant' | 'system'
+  content String @db.Text
 
   // AI metadata
-  provider       String?          // 'openai', 'anthropic', etc.
-  model          String?          // Model used for this message
-  attachments    Json?            // Array of attachment objects
+  provider    String? // 'openai', 'anthropic', etc.
+  model       String? // Model used for this message
+  attachments Json? // Array of attachment objects
 
-  createdAt      DateTime         @default(now())
+  createdAt DateTime @default(now())
 
-  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId])
   @@index([createdAt])
@@ -1136,40 +1158,40 @@ enum InstagramMediaType {
 }
 
 model InstagramStory {
-  id                 String              @id @default(cuid())
-  projectId          Int
-  organizationId     String?
+  id             String  @id @default(cuid())
+  projectId      Int
+  organizationId String?
 
   // Dados da mídia
-  mediaId            String              @unique
-  username           String
-  mediaType          InstagramMediaType
-  mediaUrl           String
-  thumbnailUrl       String?
-  caption            String?             @db.Text
+  mediaId      String             @unique
+  username     String
+  mediaType    InstagramMediaType
+  mediaUrl     String
+  thumbnailUrl String?
+  caption      String?            @db.Text
 
   // Timestamps
-  publishedAt        DateTime
-  capturedAt         DateTime
+  publishedAt DateTime
+  capturedAt  DateTime
 
   // Insights
-  impressions        Int                 @default(0)
-  reach              Int                 @default(0)
-  tapsForward        Int                 @default(0)
-  tapsBack           Int                 @default(0)
-  exits              Int                 @default(0)
-  replies            Int                 @default(0)
+  impressions Int @default(0)
+  reach       Int @default(0)
+  tapsForward Int @default(0)
+  tapsBack    Int @default(0)
+  exits       Int @default(0)
+  replies     Int @default(0)
 
   // Controle de contabilização
-  countedInGoal      Boolean             @default(true)
+  countedInGoal Boolean @default(true)
 
   // Metadata
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([organizationId])
@@ -1180,43 +1202,43 @@ model InstagramStory {
 }
 
 model InstagramFeed {
-  id                 String              @id @default(cuid())
-  projectId          Int
-  organizationId     String?
+  id             String  @id @default(cuid())
+  projectId      Int
+  organizationId String?
 
   // Dados da mídia
-  mediaId            String              @unique
-  username           String
-  mediaType          InstagramMediaType
-  caption            String?             @db.Text
-  mediaUrl           String
-  thumbnailUrl       String?
-  permalink          String
+  mediaId      String             @unique
+  username     String
+  mediaType    InstagramMediaType
+  caption      String?            @db.Text
+  mediaUrl     String
+  thumbnailUrl String?
+  permalink    String
 
   // Timestamps
-  publishedAt        DateTime
-  capturedAt         DateTime
+  publishedAt DateTime
+  capturedAt  DateTime
 
   // Contadores públicos
-  likes              Int                 @default(0)
-  comments           Int                 @default(0)
+  likes    Int @default(0)
+  comments Int @default(0)
 
   // Insights
-  engagement         Int                 @default(0)
-  impressions        Int                 @default(0)
-  reach              Int                 @default(0)
-  saved              Int                 @default(0)
+  engagement  Int @default(0)
+  impressions Int @default(0)
+  reach       Int @default(0)
+  saved       Int @default(0)
 
   // Controle de contabilização
-  countedInGoal      Boolean             @default(true)
+  countedInGoal Boolean @default(true)
 
   // Metadata
-  createdAt          DateTime            @default(now())
-  updatedAt          DateTime            @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  project            Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization       Organization?       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([organizationId])
@@ -1228,37 +1250,37 @@ model InstagramFeed {
 }
 
 model InstagramDailySummary {
-  id                    String          @id @default(cuid())
-  projectId             Int
-  organizationId        String?
-  username              String
+  id             String  @id @default(cuid())
+  projectId      Int
+  organizationId String?
+  username       String
 
   // Data
-  date                  DateTime        @db.Date
+  date DateTime @db.Date
 
   // Metas
-  storiesGoal           Int             @default(3)
+  storiesGoal Int @default(3)
 
   // Resultados
-  storiesPublished      Int             @default(0)
-  feedsPublished        Int             @default(0)
+  storiesPublished Int @default(0)
+  feedsPublished   Int @default(0)
 
   // Taxa de cumprimento (stories)
-  storiesCompletionRate Float           @default(0)
-  goalMet               Boolean         @default(false)
+  storiesCompletionRate Float   @default(0)
+  goalMet               Boolean @default(false)
 
   // Estatísticas
-  totalStoryReach       Int             @default(0)
-  totalStoryImpressions Int             @default(0)
-  totalFeedEngagement   Int             @default(0)
+  totalStoryReach       Int @default(0)
+  totalStoryImpressions Int @default(0)
+  totalFeedEngagement   Int @default(0)
 
   // Metadata
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  project               Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization          Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, date])
   @@index([organizationId])
@@ -1268,50 +1290,50 @@ model InstagramDailySummary {
 }
 
 model InstagramWeeklyReport {
-  id                      String          @id @default(cuid())
-  projectId               Int
-  organizationId          String?
-  username                String
+  id             String  @id @default(cuid())
+  projectId      Int
+  organizationId String?
+  username       String
 
   // Período
-  weekStart               DateTime        @db.Date
-  weekEnd                 DateTime        @db.Date
-  year                    Int
-  weekNumber              Int
+  weekStart  DateTime @db.Date
+  weekEnd    DateTime @db.Date
+  year       Int
+  weekNumber Int
 
   // Metas
-  feedsGoal               Int             @default(4)
-  storiesGoal             Int             @default(21)
+  feedsGoal   Int @default(4)
+  storiesGoal Int @default(21)
 
   // Resultados
-  feedsPublished          Int             @default(0)
-  storiesPublished        Int             @default(0)
+  feedsPublished   Int @default(0)
+  storiesPublished Int @default(0)
 
   // Taxas de cumprimento
-  feedsCompletionRate     Float           @default(0)
-  storiesCompletionRate   Float           @default(0)
-  overallCompletionRate   Float           @default(0)
+  feedsCompletionRate   Float @default(0)
+  storiesCompletionRate Float @default(0)
+  overallCompletionRate Float @default(0)
 
   // Score (A, B, C, D, F)
-  score                   String          @db.Char(1)
+  score String @db.Char(1)
 
   // Estatísticas adicionais
-  daysWithoutPost         Int             @default(0)
-  bestPerformingFeedId    String?
-  totalEngagement         Int             @default(0)
+  daysWithoutPost      Int     @default(0)
+  bestPerformingFeedId String?
+  totalEngagement      Int     @default(0)
 
   // Dados completos em JSON
-  metricsJson             Json
-  alerts                  Json?
+  metricsJson Json
+  alerts      Json?
 
   // Metadata
-  generatedAt             DateTime
-  createdAt               DateTime        @default(now())
-  updatedAt               DateTime        @updatedAt
+  generatedAt DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  project                 Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization            Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, weekStart])
   @@index([organizationId])
@@ -1322,24 +1344,24 @@ model InstagramWeeklyReport {
 }
 
 model InstagramGoalSettings {
-  id                  String          @id @default(cuid())
-  projectId           Int             @unique
-  organizationId      String?
+  id             String  @id @default(cuid())
+  projectId      Int     @unique
+  organizationId String?
 
   // Metas configuráveis
-  weeklyFeedGoal      Int             @default(4)
-  dailyStoryGoal      Int             @default(3)
+  weeklyFeedGoal Int @default(4)
+  dailyStoryGoal Int @default(3)
 
   // Status
-  isActive            Boolean         @default(true)
+  isActive Boolean @default(true)
 
   // Metadata
-  createdAt           DateTime        @default(now())
-  updatedAt           DateTime        @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  project             Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization        Organization?   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([organizationId])
   @@index([isActive])
@@ -1350,41 +1372,41 @@ model InstagramGoalSettings {
 // =============================================================================
 
 model MusicLibrary {
-  id          Int      @id @default(autoincrement())
-  name        String
-  artist      String?
-  duration    Float    // duração em segundos
-  blobUrl     String   // URL do arquivo no Vercel Blob
-  blobSize    Int      // tamanho em bytes
-  genre       String?  // Rock, Pop, Electronic, etc.
-  mood        String?  // Happy, Sad, Energetic, Calm, etc.
-  isActive    Boolean  @default(true)
-  isPublic    Boolean  @default(true) // futuro: músicas privadas por usuário
+  id           Int     @id @default(autoincrement())
+  name         String
+  artist       String?
+  duration     Float // duração em segundos
+  blobUrl      String // URL do arquivo no Vercel Blob
+  blobSize     Int // tamanho em bytes
+  genre        String? // Rock, Pop, Electronic, etc.
+  mood         String? // Happy, Sad, Energetic, Calm, etc.
+  isActive     Boolean @default(true)
+  isPublic     Boolean @default(true) // futuro: músicas privadas por usuário
   thumbnailUrl String? // capa/artwork da música
 
   // Instrumental stem (música sem vocais)
-  instrumentalUrl     String?   // URL do stem instrumental
-  instrumentalSize    Int?      // Tamanho do arquivo instrumental
+  instrumentalUrl     String? // URL do stem instrumental
+  instrumentalSize    Int? // Tamanho do arquivo instrumental
   hasInstrumentalStem Boolean   @default(false)
   stemsProcessedAt    DateTime?
 
   // Vinculação com projeto (opcional - músicas globais não têm projeto)
-  projectId   Int?
-  project     Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
+  projectId Int?
+  project   Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
 
   // Relacionamento com download do YouTube
   youtubeDownloadJob YoutubeDownloadJob? @relation("YoutubeDownloadMusic")
 
   // Metadados
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  createdBy   String?  // admin que fez upload
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String? // admin que fez upload
 
   // Relação com vídeos gerados (audit trail)
   usedInVideos VideoProcessingJob[]
 
   // Relação com job de processamento
-  stemJob     MusicStemJob?
+  stemJob MusicStemJob?
 
   @@index([projectId])
   @@index([genre])
@@ -1398,27 +1420,27 @@ model MusicLibrary {
 // =============================================================================
 
 model MusicStemJob {
-  id             Int      @id @default(autoincrement())
-  musicId        Int      @unique // Um job por música
-  music          MusicLibrary @relation(fields: [musicId], references: [id], onDelete: Cascade)
+  id      Int          @id @default(autoincrement())
+  musicId Int          @unique // Um job por música
+  music   MusicLibrary @relation(fields: [musicId], references: [id], onDelete: Cascade)
 
   // Status do job
-  status         String   @default("pending") // pending, processing, completed, failed
-  progress       Int      @default(0) // 0-100
+  status   String @default("pending") // pending, processing, completed, failed
+  progress Int    @default(0) // 0-100
 
   // MVSEP API
-  mvsepJobHash   String?  // Hash retornado pela API
-  mvsepStatus    String?  // waiting, processing, done, failed
+  mvsepJobHash String? // Hash retornado pela API
+  mvsepStatus  String? // waiting, processing, done, failed
 
   // Resultado
   percussionBlobUrl String? // URL temporária antes de mover para MusicLibrary
-  error          String?  @db.Text
+  error             String? @db.Text
 
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  startedAt      DateTime? // Quando começou o processamento MVSEP
-  completedAt    DateTime? // Quando finalizou tudo
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime? // Quando começou o processamento MVSEP
+  completedAt DateTime? // Quando finalizou tudo
 
   @@index([status])
   @@index([mvsepJobHash])
@@ -1430,9 +1452,9 @@ model MusicStemJob {
 // =============================================================================
 
 model YoutubeDownloadJob {
-  id             Int      @id @default(autoincrement())
-  youtubeUrl     String
-  youtubeId      String?
+  id         Int     @id @default(autoincrement())
+  youtubeUrl String
+  youtubeId  String?
 
   // Metadados fornecidos pelo usuário
   requestedName   String?
@@ -1443,34 +1465,34 @@ model YoutubeDownloadJob {
   project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
 
   // Status: pending → downloading → uploading → completed/failed
-  status         String   @default("pending")
-  progress       Int      @default(0)
+  status   String @default("pending")
+  progress Int    @default(0)
 
   // video-download-api.com metadata
   videoApiJobId  String?
   videoApiStatus String?
 
   // Result
-  musicId        Int?     @unique
-  music          MusicLibrary? @relation("YoutubeDownloadMusic", fields: [musicId], references: [id], onDelete: SetNull)
+  musicId Int?          @unique
+  music   MusicLibrary? @relation("YoutubeDownloadMusic", fields: [musicId], references: [id], onDelete: SetNull)
 
   // Extra metadata
-  title          String?
-  duration       Float?
-  thumbnail      String?
+  title     String?
+  duration  Float?
+  thumbnail String?
 
   // Error / retries
-  error          String?  @db.Text
-  retryCount     Int      @default(0)
+  error      String? @db.Text
+  retryCount Int     @default(0)
 
   // Audit
-  createdBy      String?
+  createdBy String?
 
   // Timestamps
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  startedAt      DateTime?
-  completedAt    DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
 
   @@index([status])
   @@index([youtubeUrl])

@@ -66,6 +66,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/verify-stories",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/check-stuck-posts",
       "schedule": "*/10 * * * *"
     },

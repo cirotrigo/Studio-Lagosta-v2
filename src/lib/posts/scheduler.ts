@@ -7,8 +7,10 @@ import {
   RecurrenceFrequency,
   PostStatus,
   PostLogEvent,
-  PublishType
+  PublishType,
+  VerificationStatus
 } from '../../../prisma/generated/client'
+import { appendTagToCaption, generateVerificationTag } from '@/lib/posts/verification/tag-generator'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -53,7 +55,7 @@ export class PostScheduler {
     console.log('📅 Scheduled datetime:', scheduledDatetime)
 
     // Create post in database
-    const post = await db.socialPost.create({
+    let post = await db.socialPost.create({
       data: {
         projectId: data.projectId,
         userId: data.userId,
@@ -73,6 +75,26 @@ export class PostScheduler {
         // zapierWebhookUrl will be set when sending to Zapier
       },
     })
+
+    if (post.postType === PostType.STORY) {
+      const verificationTag = generateVerificationTag(post.id)
+
+      post = await db.socialPost.update({
+        where: { id: post.id },
+        data: {
+          verificationTag,
+          verificationStatus: VerificationStatus.PENDING,
+          verificationAttempts: 0,
+          nextVerificationAt: null,
+          lastVerificationAt: null,
+          verifiedByFallback: false,
+          verificationError: null,
+          verifiedStoryId: null,
+          verifiedPermalink: null,
+          verifiedTimestamp: null,
+        },
+      })
+    }
 
     // Log creation
     await this.createLog(post.id, PostLogEvent.CREATED, 'Post criado')
@@ -168,6 +190,15 @@ export class PostScheduler {
         throw new Error('Clerk user ID not found for post author')
       }
 
+      const captionWithVerificationTag =
+        post.postType === PostType.STORY && post.verificationTag
+          ? appendTagToCaption(post.caption, post.verificationTag)
+          : post.caption
+
+      if (post.postType === PostType.STORY && !post.verificationTag) {
+        console.warn('[Verification] Story post without verificationTag', post.id)
+      }
+
       // Detect media type based on URL and count
       const detectMediaType = (urls: string[]): string => {
         if (urls.length > 1) {
@@ -202,7 +233,7 @@ export class PostScheduler {
         // Post data
         post_type: bufferPostType, // post, reels, story
         media_type: mediaType, // image, video, multiple_images
-        caption: post.caption,
+        caption: captionWithVerificationTag,
         media_urls: post.mediaUrls, // Keep original array for backward compatibility
         media_count: post.mediaUrls.length,
         alt_text: post.altText,
@@ -224,6 +255,7 @@ export class PostScheduler {
           project_name: post.Project.name,
           user_id: post.userId,
           created_at: post.createdAt.toISOString(),
+          verification_tag: post.verificationTag || null,
         },
       }
 
@@ -348,7 +380,7 @@ export class PostScheduler {
     // Create child posts for each occurrence
     // Note: zapierWebhookUrl will be determined at send time based on project config
     for (const occurrence of occurrences) {
-      await db.socialPost.create({
+      const childPost = await db.socialPost.create({
         data: {
           parentPostId: post.id,
           projectId: post.projectId,
@@ -366,6 +398,26 @@ export class PostScheduler {
           originalScheduleType: ScheduleType.RECURRING,
         },
       })
+
+      if (post.postType === PostType.STORY) {
+        const verificationTag = generateVerificationTag(childPost.id)
+
+        await db.socialPost.update({
+          where: { id: childPost.id },
+          data: {
+            verificationTag,
+            verificationStatus: VerificationStatus.PENDING,
+            verificationAttempts: 0,
+            nextVerificationAt: null,
+            lastVerificationAt: null,
+            verifiedByFallback: false,
+            verificationError: null,
+            verifiedStoryId: null,
+            verifiedPermalink: null,
+            verifiedTimestamp: null,
+          },
+        })
+      }
     }
 
     console.log(`🔄 Série recorrente criada: ${occurrences.length} posts agendados`)

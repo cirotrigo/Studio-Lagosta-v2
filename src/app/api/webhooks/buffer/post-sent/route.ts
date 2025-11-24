@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { PostStatus, PostType, VerificationStatus } from '../../../../../../prisma/generated/client'
+import { INITIAL_VERIFICATION_DELAY_MINUTES } from '@/lib/posts/verification/story-verifier'
+
+const addMinutes = (date: Date, minutes: number) => new Date(date.getTime() + minutes * 60 * 1000)
 
 export const runtime = 'nodejs'
 
@@ -86,7 +90,7 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      if (post && post.status !== 'POSTING') {
+      if (post && post.status !== PostStatus.POSTING) {
         console.warn(`⚠️ Post ${postId} found but status is ${post.status}, not POSTING`)
       }
     }
@@ -96,7 +100,7 @@ export async function POST(req: NextRequest) {
       console.log('🔍 No post ID in metadata or post not found, using fallback: most recent POSTING post')
       post = await db.socialPost.findFirst({
         where: {
-          status: 'POSTING',
+          status: PostStatus.POSTING,
         },
         orderBy: {
           createdAt: 'desc',
@@ -136,13 +140,23 @@ export async function POST(req: NextRequest) {
       console.log(`   Post ID: ${post.id}`)
       console.log(`   Error message: ${message || 'No error message provided'}`)
 
+      const verificationFailureData =
+        post.postType === PostType.STORY
+          ? {
+              verificationStatus: VerificationStatus.VERIFICATION_FAILED,
+              nextVerificationAt: null,
+              verificationError: 'POST_FAILED',
+            }
+          : {}
+
       await db.socialPost.update({
         where: { id: post.id },
         data: {
-          status: 'FAILED',
+          status: PostStatus.FAILED,
           failedAt: new Date(),
           errorMessage: message || 'Failed to publish via Buffer',
           bufferId: buffer_update_id,
+          ...verificationFailureData,
         },
       })
 
@@ -164,13 +178,31 @@ export async function POST(req: NextRequest) {
     console.log(`   Buffer ID: ${buffer_update_id || 'Not provided'}`)
     console.log(`   Sent at: ${sent_at ? new Date(sent_at * 1000).toISOString() : 'Using current time'}`)
 
+    const sentAtDate = sent_at ? new Date(sent_at * 1000) : new Date()
+
+    const verificationData =
+      post.postType === PostType.STORY
+        ? {
+            verificationStatus: VerificationStatus.PENDING,
+            verificationAttempts: 0,
+            nextVerificationAt: addMinutes(sentAtDate, INITIAL_VERIFICATION_DELAY_MINUTES),
+            lastVerificationAt: null,
+            verificationError: null,
+            verifiedByFallback: false,
+            verifiedStoryId: null,
+            verifiedPermalink: null,
+            verifiedTimestamp: null,
+          }
+        : {}
+
     await db.socialPost.update({
       where: { id: post.id },
       data: {
-        status: 'POSTED',
-        sentAt: sent_at ? new Date(sent_at * 1000) : new Date(),
+        status: PostStatus.POSTED,
+        sentAt: sentAtDate,
         bufferId: buffer_update_id,
-        bufferSentAt: sent_at ? new Date(sent_at * 1000) : new Date(),
+        bufferSentAt: sentAtDate,
+        ...verificationData,
       },
     })
 
