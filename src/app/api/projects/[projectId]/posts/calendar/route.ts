@@ -78,6 +78,13 @@ export async function GET(
         errorMessage: true,
         publishedUrl: true,
         instagramMediaId: true,
+        verificationTag: true,
+        verificationStatus: true,
+        verificationAttempts: true,
+        verifiedByFallback: true,
+        verifiedStoryId: true,
+        verificationError: true,
+        isRecurring: true,
         createdAt: true,
         updatedAt: true,
         Generation: {
