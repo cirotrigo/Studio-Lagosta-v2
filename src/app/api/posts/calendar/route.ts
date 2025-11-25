@@ -129,7 +129,7 @@ export async function GET(request: NextRequest) {
       orderBy: {
         scheduledDatetime: 'asc',
       },
-      take: 500, // Limit to prevent loading too many posts
+      take: 5000, // Increased limit to show all posts in month view
     })
 
     // Fetch active recurring posts (they don't have scheduledDatetime in range)
