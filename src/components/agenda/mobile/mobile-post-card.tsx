@@ -186,34 +186,34 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
               </Badge>
             )}
 
-            {/* Badges de Verificação - apenas para Stories */}
-            {post.postType === 'STORY' && (
+            {/* Badges de Verificação - apenas para Stories já enviados */}
+            {post.postType === 'STORY' && (post.status === 'POSTED' || post.status === 'FAILED') && (
               <>
                 {post.verificationStatus === 'VERIFIED' && (
                   <Badge
-                    className="text-[10px] sm:text-xs bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 font-semibold"
+                    className="text-[9px] bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-0.5 px-1.5 py-0.5 font-semibold"
                     title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
                   >
-                    <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <ShieldCheck className="w-2.5 h-2.5" />
                     <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
                   </Badge>
                 )}
                 {post.verificationStatus === 'VERIFICATION_FAILED' && (
                   <Badge
-                    className="text-[10px] sm:text-xs bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 font-semibold"
+                    className="text-[9px] bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5 px-1.5 py-0.5 font-semibold"
                     title="Não encontrado no Instagram após 3 tentativas"
                   >
-                    <ShieldAlert className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                    <ShieldAlert className="w-2.5 h-2.5" />
                     <span>Instagram ✗</span>
                   </Badge>
                 )}
                 {post.verificationStatus === 'PENDING' && (
                   <Badge
                     variant="outline"
-                    className="text-[10px] sm:text-xs flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 border-blue-400 text-blue-600"
+                    className="text-[9px] flex items-center gap-0.5 px-1.5 py-0.5 border-blue-400 text-blue-600"
                     title="Aguardando verificação no Instagram"
                   >
-                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-pulse" />
+                    <Clock className="w-2.5 h-2.5 animate-pulse" />
                     <span>Verificando...</span>
                   </Badge>
                 )}

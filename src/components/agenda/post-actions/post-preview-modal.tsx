@@ -457,34 +457,34 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               {post.status === 'DRAFT' && 'Rascunho'}
             </Badge>
 
-            {/* Badges de Verificação - apenas para Stories */}
-            {isStory && (
+            {/* Badges de Verificação - apenas para Stories já enviados */}
+            {isStory && (post.status === 'POSTED' || post.status === 'FAILED') && (
               <>
                 {post.verificationStatus === 'VERIFIED' && (
                   <Badge
-                    className="bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-1 font-semibold"
+                    className="bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-1 font-semibold text-xs"
                     title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
                   >
-                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <ShieldCheck className="w-3 h-3" />
                     <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
                   </Badge>
                 )}
                 {post.verificationStatus === 'VERIFICATION_FAILED' && (
                   <Badge
-                    className="bg-red-600 text-white hover:bg-red-700 flex items-center gap-1 font-semibold"
+                    className="bg-red-600 text-white hover:bg-red-700 flex items-center gap-1 font-semibold text-xs"
                     title="Não encontrado no Instagram após 3 tentativas"
                   >
-                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <ShieldAlert className="w-3 h-3" />
                     <span>Instagram ✗</span>
                   </Badge>
                 )}
                 {post.verificationStatus === 'PENDING' && (
                   <Badge
                     variant="outline"
-                    className="flex items-center gap-1 border-blue-400 text-blue-600"
+                    className="flex items-center gap-1 border-blue-400 text-blue-600 text-xs"
                     title="Aguardando verificação no Instagram"
                   >
-                    <Clock className="w-3.5 h-3.5 animate-pulse" />
+                    <Clock className="w-3 h-3 animate-pulse" />
                     <span>Verificando...</span>
                   </Badge>
                 )}
