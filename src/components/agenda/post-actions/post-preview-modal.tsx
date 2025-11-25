@@ -20,7 +20,8 @@ import {
   Video as VideoIcon,
   ExternalLink,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  Bell
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -457,8 +458,19 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               {post.status === 'DRAFT' && 'Rascunho'}
             </Badge>
 
-            {/* Badges de Verificação - apenas para Stories já enviados */}
-            {isStory && (post.status === 'POSTED' || post.status === 'FAILED') && (
+            {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
+            {post.publishType === 'REMINDER' && (
+              <Badge
+                className="bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-1 font-semibold text-xs"
+                title="Lembrete no Buffer - não publicado no Instagram"
+              >
+                <Bell className="w-3 h-3" />
+                <span>Lembrete</span>
+              </Badge>
+            )}
+
+            {/* Badges de Verificação - apenas para Stories já enviados e NÃO lembretes */}
+            {isStory && post.publishType !== 'REMINDER' && (post.status === 'POSTED' || post.status === 'FAILED') && (
               <>
                 {post.verificationStatus === 'VERIFIED' && (
                   <Badge

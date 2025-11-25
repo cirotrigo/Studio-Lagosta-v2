@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
@@ -159,8 +159,20 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
             </Badge>
           )}
 
-          {/* Badges de Verificação - apenas para Stories já enviados */}
-          {post.postType === 'STORY' && (post.status === 'POSTED' || post.status === 'FAILED') && (
+          {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
+          {post.publishType === 'REMINDER' && (
+            <Badge
+              className="h-3 px-1 text-[8px] bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-0.5 font-semibold"
+              title="Lembrete no Buffer - não publicado no Instagram"
+            >
+              <Bell className="w-2 h-2" />
+              <span className="hidden sm:inline">Lembrete</span>
+              <span className="sm:hidden">🔔</span>
+            </Badge>
+          )}
+
+          {/* Badges de Verificação - apenas para Stories já enviados e NÃO lembretes */}
+          {post.postType === 'STORY' && post.publishType !== 'REMINDER' && (post.status === 'POSTED' || post.status === 'FAILED') && (
             <>
               {post.verificationStatus === 'VERIFIED' && (
                 <Badge

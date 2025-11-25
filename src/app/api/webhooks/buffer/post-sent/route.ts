@@ -83,6 +83,7 @@ export async function POST(req: NextRequest) {
           id: true,
           status: true,
           postType: true,
+          publishType: true,
           createdAt: true,
           Project: {
             select: {
@@ -112,6 +113,7 @@ export async function POST(req: NextRequest) {
           id: true,
           status: true,
           postType: true,
+          publishType: true,
           createdAt: true,
           Project: {
             select: {
@@ -145,8 +147,9 @@ export async function POST(req: NextRequest) {
 
       // IMPORTANTE: Agendamos verificação mesmo em falhas pois o webhook do Buffer não é confiável
       // O post pode ter sido publicado mesmo que o Buffer reporte falha
+      // EXCETO lembretes (REMINDER), que nunca são publicados no Instagram
       const verificationData =
-        post.postType === PostType.STORY
+        post.postType === PostType.STORY && post.publishType === 'DIRECT'
           ? {
               verificationStatus: VerificationStatus.PENDING,
               verificationAttempts: 0,
@@ -157,6 +160,10 @@ export async function POST(req: NextRequest) {
               verifiedPermalink: null,
               verifiedTimestamp: null,
               verifiedByFallback: false,
+            }
+          : post.postType === PostType.STORY && post.publishType === 'REMINDER'
+          ? {
+              verificationStatus: VerificationStatus.SKIPPED,
             }
           : {}
 
@@ -189,8 +196,9 @@ export async function POST(req: NextRequest) {
     console.log(`   Buffer ID: ${buffer_update_id || 'Not provided'}`)
     console.log(`   Sent at: ${sentAtDate.toISOString()}`)
 
+    // Lembretes (REMINDER) não são publicados no Instagram, então são SKIPPED
     const verificationData =
-      post.postType === PostType.STORY
+      post.postType === PostType.STORY && post.publishType === 'DIRECT'
         ? {
             verificationStatus: VerificationStatus.PENDING,
             verificationAttempts: 0,
@@ -201,6 +209,10 @@ export async function POST(req: NextRequest) {
             verifiedStoryId: null,
             verifiedPermalink: null,
             verifiedTimestamp: null,
+          }
+        : post.postType === PostType.STORY && post.publishType === 'REMINDER'
+        ? {
+            verificationStatus: VerificationStatus.SKIPPED,
           }
         : {}
 
