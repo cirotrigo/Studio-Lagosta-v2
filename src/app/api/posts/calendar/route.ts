@@ -67,30 +67,17 @@ export async function GET(request: NextRequest) {
       ...sharedProjects.filter(p => !ownedIds.has(p.id)).map(p => p.id),
     ]
 
-    // Fetch regular scheduled and sent posts
+    // Fetch regular scheduled posts
     // OPTIMIZATION: Use select instead of include, add limit and ordering
     const scheduledPosts = await db.socialPost.findMany({
       where: {
         projectId: { in: allProjectIds },
         scheduleType: { in: ['SCHEDULED', 'IMMEDIATE'] },
+        scheduledDatetime: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
         ...(postType && postType !== 'ALL' ? { postType: postType as PostType } : {}),
-        OR: [
-          {
-            // Scheduled posts in the period
-            scheduledDatetime: {
-              gte: new Date(startDate),
-              lte: new Date(endDate),
-            },
-          },
-          {
-            // Already sent posts in the period (by sentAt date)
-            status: 'POSTED',
-            sentAt: {
-              gte: new Date(startDate),
-              lte: new Date(endDate),
-            },
-          },
-        ],
       },
       select: {
         id: true,
