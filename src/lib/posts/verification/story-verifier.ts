@@ -57,7 +57,7 @@ export class StoryVerifier {
         verificationStatus: VerificationStatus.PENDING,
         nextVerificationAt: { lte: now },
         postType: PostType.STORY,
-        status: PostStatus.POSTED,
+        // Verifica TODOS os posts (POSTED e FAILED) pois webhook do Buffer não é confiável
       },
       include: {
         Project: {

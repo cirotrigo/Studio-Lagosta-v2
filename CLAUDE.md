@@ -243,15 +243,20 @@ The application includes an independent verification system for Instagram Storie
 
 #### Verification Flow
 1. **Post Creation**: TAG generated for STORY posts, added to caption before sending to Zapier
-2. **Webhook Trigger**: Buffer webhook confirms post sent, schedules first verification (+5 min)
+2. **Webhook Trigger**: Buffer webhook receives response, schedules verification (+5 min)
+   - **IMPORTANT**: Verification is scheduled for ALL stories, regardless of Buffer's reported status
+   - Buffer webhook is not reliable - posts may publish even if Buffer reports failure
+   - Posts with `status: FAILED` are also verified to catch false negatives
 3. **Cron Verification**: Every 5 minutes, cron job processes pending verifications:
    - Fetches stories from Instagram Graph API
+   - Verifies ALL pending posts (both POSTED and FAILED status)
    - **Primary attempt**: Searches for TAG in story captions (Plano A)
    - **Fallback attempt**: If TAG not found, matches by timestamp (±5 min) + media_type (Plano B)
    - Accepts match only if exactly 1 candidate found (avoids false positives)
    - Retries with backoff: 5, 10, 15 minutes (max 3 attempts)
    - Respects 24-hour TTL for stories
 4. **Result**: Post marked as VERIFIED (success), VERIFICATION_FAILED (not found/error), or SKIPPED (legacy/non-story)
+   - If verified and post was FAILED, it means Buffer reported incorrectly
 
 #### Fallback Method (Plano B) - Primary Expected Method
 The fallback verification is robust and production-ready:

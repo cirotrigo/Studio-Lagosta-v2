@@ -62,6 +62,9 @@ export async function POST(req: NextRequest) {
       metadata,
     })
 
+    // Parse sent_at timestamp
+    const sentAtDate = sent_at ? new Date(sent_at * 1000) : new Date()
+
     // 3. Validate required fields
     if (success === undefined || success === null) {
       console.error('❌ Buffer webhook: Missing success field')
@@ -140,12 +143,20 @@ export async function POST(req: NextRequest) {
       console.log(`   Post ID: ${post.id}`)
       console.log(`   Error message: ${message || 'No error message provided'}`)
 
-      const verificationFailureData =
+      // IMPORTANTE: Agendamos verificação mesmo em falhas pois o webhook do Buffer não é confiável
+      // O post pode ter sido publicado mesmo que o Buffer reporte falha
+      const verificationData =
         post.postType === PostType.STORY
           ? {
-              verificationStatus: VerificationStatus.VERIFICATION_FAILED,
-              nextVerificationAt: null,
-              verificationError: 'POST_FAILED',
+              verificationStatus: VerificationStatus.PENDING,
+              verificationAttempts: 0,
+              nextVerificationAt: addMinutes(sentAtDate, INITIAL_VERIFICATION_DELAY_MINUTES),
+              lastVerificationAt: null,
+              verificationError: null,
+              verifiedStoryId: null,
+              verifiedPermalink: null,
+              verifiedTimestamp: null,
+              verifiedByFallback: false,
             }
           : {}
 
@@ -156,7 +167,7 @@ export async function POST(req: NextRequest) {
           failedAt: new Date(),
           errorMessage: message || 'Failed to publish via Buffer',
           bufferId: buffer_update_id,
-          ...verificationFailureData,
+          ...verificationData,
         },
       })
 
@@ -176,9 +187,7 @@ export async function POST(req: NextRequest) {
     console.log('✨ Processing SUCCESSFUL post...')
     console.log(`   Post ID: ${post.id}`)
     console.log(`   Buffer ID: ${buffer_update_id || 'Not provided'}`)
-    console.log(`   Sent at: ${sent_at ? new Date(sent_at * 1000).toISOString() : 'Using current time'}`)
-
-    const sentAtDate = sent_at ? new Date(sent_at * 1000) : new Date()
+    console.log(`   Sent at: ${sentAtDate.toISOString()}`)
 
     const verificationData =
       post.postType === PostType.STORY

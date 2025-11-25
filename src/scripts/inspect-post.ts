@@ -60,8 +60,7 @@ async function main() {
   console.log(`Scheduled: ${post.scheduledDatetime?.toISOString() || 'N/A'}`)
   console.log(`Sent At: ${post.sentAt?.toISOString() || 'N/A'}`)
   console.log(`Buffer Sent At: ${post.bufferSentAt?.toISOString() || 'N/A'}`)
-  console.log(`Buffer Post ID: ${post.bufferPostId || 'N/A'}`)
-  console.log(`Zapier Post ID: ${post.zapierPostId || 'N/A'}`)
+  console.log(`Buffer ID: ${post.bufferId || 'N/A'}`)
 
   console.log('\n🔐 Verification:')
   console.log('----------------')

@@ -190,21 +190,31 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
             {post.postType === 'STORY' && (
               <>
                 {post.verificationStatus === 'VERIFIED' && (
-                  <Badge className="text-[10px] sm:text-xs bg-blue-500 text-white hover:bg-blue-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                  <Badge
+                    className="text-[10px] sm:text-xs bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 font-semibold"
+                    title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
+                  >
                     <ShieldCheck className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                    <span>{post.verifiedByFallback ? 'Verificado*' : 'Verificado'}</span>
+                    <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
                   </Badge>
                 )}
                 {post.verificationStatus === 'VERIFICATION_FAILED' && (
-                  <Badge className="text-[10px] sm:text-xs bg-orange-500 text-white hover:bg-orange-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
+                  <Badge
+                    className="text-[10px] sm:text-xs bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 font-semibold"
+                    title="Não encontrado no Instagram após 3 tentativas"
+                  >
                     <ShieldAlert className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                    <span>Não Verificado</span>
+                    <span>Instagram ✗</span>
                   </Badge>
                 )}
-                {post.verificationStatus === 'PENDING' && post.status === 'POSTED' && (
-                  <Badge variant="outline" className="text-[10px] sm:text-xs flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5">
-                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                    <span>Verificando</span>
+                {post.verificationStatus === 'PENDING' && (
+                  <Badge
+                    variant="outline"
+                    className="text-[10px] sm:text-xs flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5 border-blue-400 text-blue-600"
+                    title="Aguardando verificação no Instagram"
+                  >
+                    <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 animate-pulse" />
+                    <span>Verificando...</span>
                   </Badge>
                 )}
               </>
