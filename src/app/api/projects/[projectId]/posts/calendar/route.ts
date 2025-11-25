@@ -83,6 +83,7 @@ export async function GET(
         verificationAttempts: true,
         verifiedByFallback: true,
         verifiedStoryId: true,
+        verifiedPermalink: true,
         verificationError: true,
         isRecurring: true,
         createdAt: true,

@@ -494,8 +494,21 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
           {/* Ações */}
           <div className="flex items-center gap-2 pt-4 border-t">
+            {/* Botão para abrir story verificado no Instagram */}
+            {isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink && (
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => window.open(post.verifiedPermalink!, '_blank', 'noopener,noreferrer')}
+                className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+              >
+                <ExternalLink className="w-4 h-4" />
+                <span>Ver Story no Instagram</span>
+              </Button>
+            )}
+
             {/* Mensagem quando post foi publicado */}
-            {post.status === 'POSTED' && (
+            {post.status === 'POSTED' && !(isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink) && (
               <div className="flex-1 text-sm text-green-600 dark:text-green-400 italic text-center py-2 bg-green-50 dark:bg-green-950/20 rounded-md">
                 ✓ Post publicado com sucesso!
               </div>
