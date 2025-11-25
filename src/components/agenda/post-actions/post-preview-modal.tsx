@@ -18,7 +18,9 @@ import {
   ChevronRight,
   Play,
   Video as VideoIcon,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
+  ShieldAlert
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -438,7 +440,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
           )}
 
           {/* Status Badge */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge
               variant={
                 post.status === 'SCHEDULED' ? 'default' :
@@ -454,6 +456,40 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               {post.status === 'FAILED' && 'Falhou'}
               {post.status === 'DRAFT' && 'Rascunho'}
             </Badge>
+
+            {/* Badges de Verificação - apenas para Stories */}
+            {isStory && (
+              <>
+                {post.verificationStatus === 'VERIFIED' && (
+                  <Badge
+                    className="bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-1 font-semibold"
+                    title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
+                  </Badge>
+                )}
+                {post.verificationStatus === 'VERIFICATION_FAILED' && (
+                  <Badge
+                    className="bg-red-600 text-white hover:bg-red-700 flex items-center gap-1 font-semibold"
+                    title="Não encontrado no Instagram após 3 tentativas"
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5" />
+                    <span>Instagram ✗</span>
+                  </Badge>
+                )}
+                {post.verificationStatus === 'PENDING' && (
+                  <Badge
+                    variant="outline"
+                    className="flex items-center gap-1 border-blue-400 text-blue-600"
+                    title="Aguardando verificação no Instagram"
+                  >
+                    <Clock className="w-3.5 h-3.5 animate-pulse" />
+                    <span>Verificando...</span>
+                  </Badge>
+                )}
+              </>
+            )}
           </div>
 
           {/* Ações */}
