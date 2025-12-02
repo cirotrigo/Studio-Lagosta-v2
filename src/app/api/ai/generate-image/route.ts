@@ -4,9 +4,14 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { validateCreditsForFeature, deductCreditsForFeature } from '@/lib/credits/deduct'
 import { put } from '@vercel/blob'
+import {
+  type AIImageModel,
+  AI_IMAGE_MODELS,
+  calculateCreditsForModel
+} from '@/lib/ai/image-models-config'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120 // 2 minutes for AI image generation
+export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
 export const dynamic = 'force-dynamic' // Garantir que a rota não seja estaticamente otimizada
 
 const generateImageSchema = z.object({
@@ -14,10 +19,31 @@ const generateImageSchema = z.object({
   prompt: z.string().min(1, 'Prompt é obrigatório'),
   aspectRatio: z.string().default('1:1'),
   referenceImages: z.array(z.string()).optional(),
+  model: z.enum([
+    'flux-1.1-pro',
+    'flux-schnell',
+    'nano-banana-pro',
+    'nano-banana',
+    'seedream-4',
+    'ideogram-v3-turbo',
+    'recraft-v3',
+    'stable-diffusion-3'
+  ]).default('flux-1.1-pro'),
+  resolution: z.enum(['1K', '2K', '4K']).optional(),
+  // Parâmetros específicos do FLUX
+  seed: z.number().int().optional(),
+  promptUpsampling: z.boolean().optional(),
+  safetyTolerance: z.number().min(1).max(6).optional(),
+  outputQuality: z.number().min(0).max(100).optional(),
+  // Parâmetros específicos do Ideogram
+  styleType: z.enum(['auto', 'general', 'realistic', 'design']).optional(),
+  magicPrompt: z.boolean().optional(),
+  // Parâmetros específicos do Seedream
+  enhancePrompt: z.boolean().optional(),
+  // Parâmetros específicos do Stable Diffusion
+  cfgScale: z.number().min(0).max(20).optional(),
+  steps: z.number().min(1).max(50).optional(),
 })
-
-// Version ID do Nano Banana no Replicate
-const NANO_BANANA_VERSION = '1b00a781b969984d0336047c859f06a54097bc7b5e9494ccd307ebde81094c34'
 
 export async function POST(request: Request) {
   console.log('[AI Generate] POST request received to /api/ai/generate-image')
@@ -38,15 +64,20 @@ export async function POST(request: Request) {
       { status: 503 }
     )
   }
+  console.log('[AI Generate] REPLICATE_API_TOKEN is configured:', process.env.REPLICATE_API_TOKEN?.substring(0, 10) + '...')
 
   try {
     // 1. Validar input
     const rawBody = await request.json()
     console.log('[AI Generate] Raw body received:', {
       ...rawBody,
-      prompt: rawBody.prompt?.substring(0, 50)
+      prompt: rawBody.prompt?.substring(0, 50),
+      model: rawBody.model,
+      resolution: rawBody.resolution
     })
+
     const body = generateImageSchema.parse(rawBody)
+    console.log('[AI Generate] Body validated successfully')
 
     // 2. Verificar ownership do projeto
     const project = await db.project.findFirst({
@@ -56,8 +87,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    // 3. Validar créditos
-    await validateCreditsForFeature(userId, 'ai_image_generation', 1, {
+    // 3. Validar créditos baseado no modelo e resolução selecionados
+    const modelConfig = AI_IMAGE_MODELS[body.model]
+    const creditsRequired = calculateCreditsForModel(body.model, body.resolution)
+
+    await validateCreditsForFeature(userId, 'ai_image_generation', creditsRequired, {
       organizationId: orgId ?? undefined,
     })
 
@@ -133,22 +167,39 @@ export async function POST(request: Request) {
 
     // 5. Criar prediction no Replicate
     console.log('[AI Generate] Creating prediction with:', {
+      model: body.model,
       prompt: body.prompt,
       aspectRatio: body.aspectRatio,
+      resolution: body.resolution,
       referenceImagesCount: publicReferenceUrls.length,
       referenceImages: publicReferenceUrls
     })
 
     const prediction = await createReplicatePrediction({
+      model: body.model,
       prompt: body.prompt,
       aspectRatio: body.aspectRatio,
+      resolution: body.resolution,
       referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
+      // Parâmetros opcionais do FLUX
+      seed: body.seed,
+      promptUpsampling: body.promptUpsampling,
+      safetyTolerance: body.safetyTolerance,
+      outputQuality: body.outputQuality,
+      // Parâmetros opcionais do Ideogram
+      styleType: body.styleType,
+      magicPrompt: body.magicPrompt,
+      // Parâmetros opcionais do Seedream
+      enhancePrompt: body.enhancePrompt,
+      // Parâmetros opcionais do Stable Diffusion
+      cfgScale: body.cfgScale,
+      steps: body.steps,
     })
 
     console.log('[AI Generate] Prediction created:', prediction.id)
 
-    // 6. Aguardar conclusão (polling com timeout de 60 segundos)
-    const result = await waitForPrediction(prediction.id)
+    // 6. Aguardar conclusão (polling com timeout de até 280 segundos para 4K)
+    const result = await waitForPrediction(prediction.id, 280)
 
     if (result.status === 'failed') {
       throw new Error(result.error || 'Failed to generate image')
@@ -170,7 +221,7 @@ export async function POST(request: Request) {
     const aiImage = await db.aIGeneratedImage.create({
       data: {
         projectId: body.projectId,
-        name: `IA - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
+        name: `${modelConfig.displayName} - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
         prompt: body.prompt,
         mode: 'GENERATE',
         fileUrl: blobUrl,
@@ -178,19 +229,22 @@ export async function POST(request: Request) {
         width: dimensions.width,
         height: dimensions.height,
         aspectRatio: body.aspectRatio,
-        provider: 'replicate',
-        model: 'nano-banana',
+        provider: modelConfig.provider.toLowerCase(),
+        model: body.model,
         predictionId: prediction.id,
         createdBy: userId,
       },
     })
 
-    // 10. Deduzir créditos após sucesso
+    // 10. Deduzir créditos após sucesso (quantidade calculada baseada no modelo)
     await deductCreditsForFeature({
       clerkUserId: userId,
       feature: 'ai_image_generation',
+      quantity: creditsRequired,
       details: {
         mode: 'generate',
+        model: body.model,
+        resolution: body.resolution,
         prompt: body.prompt,
         aiImageId: aiImage.id,
         aspectRatio: body.aspectRatio,
@@ -220,16 +274,18 @@ export async function POST(request: Request) {
       )
     }
 
-    // Erro do Replicate (API error)
+    // Erro do Replicate (API error) - retornar mensagem real
     if (error.message?.includes('Replicate API error')) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao gerar imagem'
       return NextResponse.json(
-        { error: 'Erro ao gerar imagem. Verifique sua configuração do Replicate.' },
+        { error: errorMessage },
         { status: 500 }
       )
     }
 
     // Erro genérico
     const errorMessage = error instanceof Error ? error.message : 'Failed to generate image'
+    console.error('[AI Generate] Returning error to client:', errorMessage)
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
@@ -242,25 +298,140 @@ export async function POST(request: Request) {
 // ============================================================================
 
 async function createReplicatePrediction(params: {
+  model: AIImageModel
   prompt: string
   aspectRatio: string
+  resolution?: '1K' | '2K' | '4K'
   referenceImages?: string[]
+  // FLUX-specific params
+  seed?: number
+  promptUpsampling?: boolean
+  safetyTolerance?: number
+  outputQuality?: number
+  // Ideogram-specific params
+  styleType?: string
+  magicPrompt?: boolean
+  // Seedream-specific params
+  enhancePrompt?: boolean
+  // Stable Diffusion-specific params
+  cfgScale?: number
+  steps?: number
 }) {
+  const modelConfig = AI_IMAGE_MODELS[params.model]
   const inputData: Record<string, unknown> = {
     prompt: params.prompt,
-    aspect_ratio: params.aspectRatio,
-    output_format: 'png',
   }
 
-  // Adicionar imagens de referência se fornecidas
-  if (params.referenceImages && params.referenceImages.length > 0) {
-    // Converter URLs relativas para URLs completas
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-    inputData.image_input = params.referenceImages.map(url => {
-      if (url.startsWith('http')) return url
-      return `${baseUrl}${url}`
-    })
+  // Configuração específica por modelo
+  if (params.model === 'flux-1.1-pro' || params.model === 'flux-schnell') {
+    // FLUX 1.1 Pro e FLUX Schnell
+    inputData.aspect_ratio = params.aspectRatio === 'custom' ? undefined : params.aspectRatio
+    inputData.output_format = 'png'
+    inputData.output_quality = params.outputQuality ?? 80
+
+    if (params.model === 'flux-1.1-pro') {
+      // Parâmetros específicos do Pro
+      inputData.safety_tolerance = params.safetyTolerance ?? 2
+      inputData.prompt_upsampling = params.promptUpsampling ?? false
+    }
+
+    if (params.seed !== undefined) {
+      inputData.seed = params.seed
+    }
+
+    // FLUX usa image_prompt para referência (apenas 1 imagem)
+    if (params.referenceImages && params.referenceImages.length > 0) {
+      inputData.image_prompt = params.referenceImages[0]
+    }
+
+  } else if (params.model === 'seedream-4') {
+    // Seedream 4
+    // O parâmetro size aceita: "1K", "2K", "4K", ou "custom"
+    inputData.size = params.resolution || '2K'
+    inputData.aspect_ratio = params.aspectRatio
+    inputData.enhance_prompt = params.enhancePrompt ?? true // Default do Seedream é true
+
+    // Imagens de referência (até 10)
+    if (params.referenceImages && params.referenceImages.length > 0) {
+      inputData.image_input = params.referenceImages
+    }
+
+  } else if (params.model === 'ideogram-v3-turbo') {
+    // Ideogram v3 Turbo
+    inputData.aspect_ratio = params.aspectRatio
+
+    // Capitalizar corretamente: "Auto", "General", "Realistic", "Design"
+    const styleTypeMap: Record<string, string> = {
+      'auto': 'Auto',
+      'general': 'General',
+      'realistic': 'Realistic',
+      'design': 'Design'
+    }
+    inputData.style_type = styleTypeMap[params.styleType ?? 'auto'] || 'Auto'
+
+    // magic_prompt_option: "Auto", "On", "Off"
+    inputData.magic_prompt_option = params.magicPrompt ?? true ? 'Auto' : 'Off'
+
+    // Style reference (primeira imagem de referência)
+    if (params.referenceImages && params.referenceImages.length > 0) {
+      inputData.style_reference_image = params.referenceImages[0]
+    }
+
+  } else if (params.model === 'recraft-v3') {
+    // Recraft V3
+    inputData.aspect_ratio = params.aspectRatio
+    inputData.output_format = 'png'
+    // Style será 'realistic_image' por padrão
+    inputData.style = 'realistic_image'
+
+  } else if (params.model === 'stable-diffusion-3') {
+    // Stable Diffusion 3
+    inputData.aspect_ratio = params.aspectRatio
+    inputData.output_format = 'png'
+    inputData.output_quality = params.outputQuality ?? 90
+    inputData.cfg = params.cfgScale ?? 3.5
+    inputData.steps = params.steps ?? 28
+
+    if (params.seed !== undefined) {
+      inputData.seed = params.seed
+    }
+
+  } else if (params.model === 'nano-banana-pro' || params.model === 'nano-banana') {
+    // Nano Banana e Nano Banana Pro
+    inputData.aspect_ratio = params.aspectRatio
+    inputData.output_format = 'png'
+
+    // Resolução (apenas Pro)
+    if (params.model === 'nano-banana-pro' && params.resolution) {
+      inputData.resolution = params.resolution
+    }
+
+    // Imagens de referência (suporta múltiplas)
+    if (params.referenceImages && params.referenceImages.length > 0) {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+      inputData.image_input = params.referenceImages.map(url => {
+        if (url.startsWith('http')) return url
+        return `${baseUrl}${url}`
+      })
+    }
+
+    // Safety filter (apenas Pro)
+    if (params.model === 'nano-banana-pro') {
+      inputData.safety_filter_level = 'block_only_high'
+    }
   }
+
+  const payload = {
+    version: modelConfig.version,
+    input: inputData
+  }
+
+  console.log('[AI Generate] Sending to Replicate:', {
+    model: params.model,
+    version: modelConfig.version,
+    inputKeys: Object.keys(inputData),
+    input: inputData
+  })
 
   const response = await fetch('https://api.replicate.com/v1/predictions', {
     method: 'POST',
@@ -268,21 +439,39 @@ async function createReplicatePrediction(params: {
       'Authorization': `Bearer ${process.env.REPLICATE_API_TOKEN}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      version: NANO_BANANA_VERSION,
-      input: inputData
-    })
+    body: JSON.stringify(payload)
   })
 
   if (!response.ok) {
-    const error = await response.json()
-    throw new Error(`Replicate API error: ${JSON.stringify(error)}`)
+    const errorText = await response.text()
+    console.error('[AI Generate] Replicate API error response:', {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorText
+    })
+
+    let errorMessage = 'Falha ao criar prediction no Replicate'
+    try {
+      const errorData = JSON.parse(errorText)
+      errorMessage = errorData.detail || errorData.error || errorMessage
+    } catch {
+      errorMessage = errorText || errorMessage
+    }
+
+    throw new Error(`Replicate API error: ${errorMessage}`)
   }
 
-  return response.json()
+  const result = await response.json()
+  console.log('[AI Generate] Prediction created successfully:', {
+    id: result.id,
+    status: result.status
+  })
+  return result
 }
 
 async function waitForPrediction(predictionId: string, maxAttempts = 60) {
+  console.log(`[AI Generate] Starting to wait for prediction ${predictionId} (max ${maxAttempts}s)`)
+
   for (let i = 0; i < maxAttempts; i++) {
     const response = await fetch(
       `https://api.replicate.com/v1/predictions/${predictionId}`,
@@ -299,7 +488,13 @@ async function waitForPrediction(predictionId: string, maxAttempts = 60) {
 
     const prediction = await response.json()
 
+    // Log a cada 30 segundos
+    if (i > 0 && i % 30 === 0) {
+      console.log(`[AI Generate] Still waiting for prediction... ${i}s elapsed, status: ${prediction.status}`)
+    }
+
     if (prediction.status === 'succeeded' || prediction.status === 'failed') {
+      console.log(`[AI Generate] Prediction completed after ${i}s with status: ${prediction.status}`)
       return prediction
     }
 
@@ -307,7 +502,8 @@ async function waitForPrediction(predictionId: string, maxAttempts = 60) {
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
-  throw new Error('Prediction timeout após 60 segundos')
+  const timeoutSeconds = maxAttempts
+  throw new Error(`Geração de imagem excedeu o tempo limite (${timeoutSeconds}s). Imagens 4K podem demorar mais - tente novamente ou use resolução menor.`)
 }
 
 async function uploadToVercelBlob(imageUrl: string, fileName: string) {

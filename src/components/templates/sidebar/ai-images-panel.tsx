@@ -36,6 +36,9 @@ import { Badge } from '@/components/ui/badge'
 import { usePrompts } from '@/hooks/use-prompts'
 import type { Prompt } from '@/types/prompt'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { AIModelSelector, ResolutionSelector } from '@/components/ai/ai-model-selector'
+import type { AIImageModel } from '@/lib/ai/image-models-config'
+import { calculateCreditsForModel, AI_IMAGE_MODELS } from '@/lib/ai/image-models-config'
 
 interface AIImageRecord {
   id: string
@@ -50,8 +53,29 @@ interface AIImageRecord {
   createdAt: string
 }
 
+// Visual representation of aspect ratios
+function AspectRatioIcon({ ratio }: { ratio: string }) {
+  const dimensions = {
+    '1:1': 'w-4 h-4',      // Square
+    '16:9': 'w-5 h-3',     // Landscape
+    '9:16': 'w-3 h-5',     // Portrait/Stories
+    '4:5': 'w-3.5 h-4',    // Slightly tall
+  }
+
+  return (
+    <div className="flex items-center justify-center">
+      <div
+        className={cn(
+          'border-2 border-current rounded-sm',
+          dimensions[ratio as keyof typeof dimensions] || 'w-4 h-4'
+        )}
+      />
+    </div>
+  )
+}
+
 export function AIImagesPanel() {
-  const { addLayer, projectId } = useTemplateEditor()
+  const { addLayer, projectId, design } = useTemplateEditor()
   const { toast } = useToast()
 
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
@@ -85,13 +109,38 @@ export function AIImagesPanel() {
     dependencies: [filteredImages.length, isLoading]
   })
 
+  // Função helper para calcular tamanho e posição com largura total do canvas e centralizada
+  const calculateCanvasPlacement = (imageWidth: number, imageHeight: number) => {
+    const canvasWidth = design.canvas.width
+    const canvasHeight = design.canvas.height
+
+    // Largura total do canvas
+    const newWidth = canvasWidth
+
+    // Altura proporcional mantendo aspect ratio
+    const aspectRatio = imageWidth / imageHeight
+    const newHeight = newWidth / aspectRatio
+
+    // Centralizar verticalmente
+    const x = 0
+    const y = (canvasHeight - newHeight) / 2
+
+    return {
+      size: { width: newWidth, height: newHeight },
+      position: { x, y }
+    }
+  }
+
   // Handler para adicionar imagem ao canvas
   const handleAddToCanvas = (image: AIImageRecord) => {
     const layer = createDefaultLayer('image')
     layer.name = image.name
     layer.fileUrl = image.fileUrl
-    layer.size = { width: image.width, height: image.height }
-    layer.position = { x: 50, y: 50 }
+
+    // Calcular tamanho e posição com largura total e centralizada
+    const placement = calculateCanvasPlacement(image.width, image.height)
+    layer.size = placement.size
+    layer.position = placement.position
 
     addLayer(layer)
     toast({ description: `${image.name} adicionado ao canvas` })
@@ -174,9 +223,9 @@ export function AIImagesPanel() {
 // Componente de formulário de geração
 function GenerateImageForm({ projectId }: { projectId: number | null | undefined }) {
   const { toast } = useToast()
-  const { canPerformOperation, getCost, refresh } = useCredits()
+  const { credits, canPerformOperation, getCost, refresh } = useCredits()
   const queryClient = useQueryClient()
-  const { addLayer } = useTemplateEditor()
+  const { addLayer, design } = useTemplateEditor()
   const { data: project } = useProject(projectId)
   const driveFolderId =
     project?.googleDriveImagesFolderId ?? project?.googleDriveFolderId ?? null
@@ -184,7 +233,9 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
   const [prompt, setPrompt] = React.useState('')
-  const [aspectRatio, setAspectRatio] = React.useState('1:1')
+  const [aspectRatio, setAspectRatio] = React.useState('9:16')
+  const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('flux-1.1-pro')
+  const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K' | undefined>('2K')
   const [referenceImages, setReferenceImages] = React.useState<GoogleDriveItem[]>([])
   const [localFiles, setLocalFiles] = React.useState<File[]>([])
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
@@ -195,13 +246,43 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
   // Buscar prompts globais do usuário
   const { data: prompts = [] } = usePrompts()
 
+  // Função helper para calcular tamanho e posição com largura total do canvas e centralizada
+  const calculateCanvasPlacement = (imageWidth: number, imageHeight: number) => {
+    const canvasWidth = design.canvas.width
+    const canvasHeight = design.canvas.height
+
+    // Largura total do canvas
+    const newWidth = canvasWidth
+
+    // Altura proporcional mantendo aspect ratio
+    const aspectRatio = imageWidth / imageHeight
+    const newHeight = newWidth / aspectRatio
+
+    // Centralizar verticalmente
+    const x = 0
+    const y = (canvasHeight - newHeight) / 2
+
+    return {
+      size: { width: newWidth, height: newHeight },
+      position: { x, y }
+    }
+  }
+
   const generateMutation = useMutation({
-    mutationFn: async (data: { prompt: string; aspectRatio: string; referenceImages: string[] }) => {
+    mutationFn: async (data: {
+      prompt: string
+      aspectRatio: string
+      referenceImages: string[]
+      model: AIImageModel
+      resolution?: '1K' | '2K' | '4K'
+    }) => {
       const payload = {
         projectId,
         prompt: data.prompt,
         aspectRatio: data.aspectRatio,
         referenceImages: data.referenceImages,
+        model: data.model,
+        resolution: data.resolution,
       }
 
       console.log('[AIImagesPanel] Sending request to /api/ai/generate-image with payload:', payload)
@@ -215,9 +296,18 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       console.log('[AIImagesPanel] Response status:', response.status, response.statusText)
 
       if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }))
-        console.error('[AIImagesPanel] API Error:', error)
-        throw new Error(error.error || 'Falha ao gerar imagem')
+        let errorMessage = 'Falha ao gerar imagem'
+        try {
+          const error = await response.json()
+          console.error('[AIImagesPanel] API Error Response:', error)
+          errorMessage = error.error || error.message || error.detail || JSON.stringify(error)
+        } catch (parseError) {
+          console.error('[AIImagesPanel] Failed to parse error response:', parseError)
+          const text = await response.text().catch(() => '')
+          console.error('[AIImagesPanel] Error response text:', text)
+          errorMessage = text || `HTTP ${response.status}: ${response.statusText}`
+        }
+        throw new Error(errorMessage)
       }
 
       return response.json()
@@ -229,12 +319,16 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       setPrompt('')
       setReferenceImages([]) // Limpar imagens de referência
 
-      // Adicionar automaticamente ao canvas
+      // Adicionar automaticamente ao canvas com largura total e centralizada
       const layer = createDefaultLayer('image')
       layer.name = data.name
       layer.fileUrl = data.fileUrl
-      layer.size = { width: data.width, height: data.height }
-      layer.position = { x: 50, y: 50 }
+
+      // Calcular tamanho e posição com largura total e centralizada
+      const placement = calculateCanvasPlacement(data.width, data.height)
+      layer.size = placement.size
+      layer.position = placement.position
+
       addLayer(layer)
     },
     onError: (error: Error) => {
@@ -257,8 +351,16 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return
     }
 
-    if (!canPerformOperation('ai_image_generation')) {
-      toast({ variant: 'destructive', description: 'Créditos insuficientes' })
+    // Calcular créditos necessários baseado no modelo e resolução
+    const creditsRequired = calculateCreditsForModel(selectedModel, resolution)
+
+    // Verificar créditos manualmente (a função canPerformOperation usa custo fixo)
+    // Por isso verificamos diretamente os créditos disponíveis
+    if (!credits || credits.creditsRemaining < creditsRequired) {
+      toast({
+        variant: 'destructive',
+        description: `Créditos insuficientes (necessário: ${creditsRequired}, disponível: ${credits?.creditsRemaining ?? 0})`
+      })
       return
     }
 
@@ -295,13 +397,17 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         projectId,
         prompt: prompt.trim(),
         aspectRatio,
+        model: selectedModel,
+        resolution,
         referenceImagesCount: allImageUrls.length
       })
 
       generateMutation.mutate({
         prompt: prompt.trim(),
         aspectRatio,
-        referenceImages: allImageUrls
+        referenceImages: allImageUrls,
+        model: selectedModel,
+        resolution,
       })
     } catch (_error) {
       toast({
@@ -325,15 +431,15 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'))
     const totalImages = referenceImages.length + localFiles.length + imageFiles.length
 
-    if (totalImages > 3) {
+    if (totalImages > maxReferenceImages) {
       toast({
         variant: 'destructive',
-        description: 'Máximo de 3 imagens no total'
+        description: `Máximo de ${maxReferenceImages} imagens para este modelo`
       })
       return
     }
 
-    setLocalFiles(prev => [...prev, ...imageFiles].slice(0, 3 - referenceImages.length))
+    setLocalFiles(prev => [...prev, ...imageFiles].slice(0, maxReferenceImages - referenceImages.length))
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -378,7 +484,36 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     window.open(url, '_blank')
   }
 
-  const cost = getCost('ai_image_generation')
+  // Calcular custo dinâmico baseado no modelo e resolução
+  const cost = React.useMemo(
+    () => calculateCreditsForModel(selectedModel, resolution),
+    [selectedModel, resolution]
+  )
+
+  // Calcular limite máximo de imagens de referência baseado no modelo
+  const maxReferenceImages = React.useMemo(() => {
+    const modelConfig = AI_IMAGE_MODELS[selectedModel]
+    return modelConfig.capabilities.maxReferenceImages
+  }, [selectedModel])
+
+  // Limpar imagens de referência excedentes quando trocar de modelo
+  React.useEffect(() => {
+    const totalImages = referenceImages.length + localFiles.length
+    if (totalImages > maxReferenceImages) {
+      // Priorizar manter imagens do Google Drive, depois locais
+      if (referenceImages.length > maxReferenceImages) {
+        setReferenceImages(prev => prev.slice(0, maxReferenceImages))
+        setLocalFiles([])
+      } else {
+        const remainingSlots = maxReferenceImages - referenceImages.length
+        setLocalFiles(prev => prev.slice(0, remainingSlots))
+      }
+
+      toast({
+        description: `Este modelo aceita no máximo ${maxReferenceImages} imagem${maxReferenceImages !== 1 ? 'ns' : ''} de referência`,
+      })
+    }
+  }, [maxReferenceImages])
 
   return (
     <Card className="p-4 space-y-4">
@@ -422,6 +557,21 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         />
       </div>
 
+      {/* Seletor de Modelo de IA */}
+      <AIModelSelector
+        value={selectedModel}
+        onValueChange={setSelectedModel}
+        disabled={generateMutation.isPending}
+      />
+
+      {/* Seletor de Resolução (apenas para modelos que suportam) */}
+      <ResolutionSelector
+        model={selectedModel}
+        value={resolution}
+        onValueChange={setResolution}
+        disabled={generateMutation.isPending}
+      />
+
       <div className="space-y-2">
         <label className="text-sm font-medium">Proporção</label>
         <div className="grid grid-cols-4 gap-2">
@@ -431,17 +581,28 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
               variant={aspectRatio === ratio ? 'default' : 'outline'}
               size="sm"
               onClick={() => setAspectRatio(ratio)}
-              className="text-xs"
+              className="text-xs flex-col gap-1 h-auto py-2"
               disabled={generateMutation.isPending}
             >
-              {ratio}
+              <AspectRatioIcon ratio={ratio} />
+              <span>{ratio}</span>
             </Button>
           ))}
         </div>
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">Imagens de Referência (opcional)</label>
+        <div className="flex items-center justify-between">
+          <label className="text-sm font-medium">Imagens de Referência (opcional)</label>
+          {maxReferenceImages === 0 && (
+            <Badge variant="secondary" className="text-xs">Não suportado</Badge>
+          )}
+        </div>
+        {maxReferenceImages === 0 ? (
+          <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded border">
+            Este modelo não suporta imagens de referência
+          </div>
+        ) : (
         <div className="space-y-2">
           {/* Preview das imagens selecionadas */}
           {(referenceImages.length > 0 || localFiles.length > 0) && (
@@ -512,7 +673,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
               Arraste imagens aqui ou clique para selecionar
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {referenceImages.length + localFiles.length}/3 imagens
+              {referenceImages.length + localFiles.length}/{maxReferenceImages} imagens
             </p>
           </div>
 
@@ -530,11 +691,11 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
             variant="outline"
             size="sm"
             className="w-full"
-            disabled={generateMutation.isPending || referenceImages.length + localFiles.length >= 3}
+            disabled={generateMutation.isPending || referenceImages.length + localFiles.length >= maxReferenceImages || maxReferenceImages === 0}
             onClick={() => setIsDriveModalOpen(true)}
           >
             <HardDrive className="mr-2 h-4 w-4" />
-            Selecionar do Google Drive ({referenceImages.length}/3)
+            Selecionar do Google Drive ({referenceImages.length}/{maxReferenceImages})
           </Button>
 
           <DesktopGoogleDriveModal
@@ -545,7 +706,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
             initialFolderName={driveFolderName ?? undefined}
             onSelect={() => {}} // Not used in multi-select mode
             multiSelect={true}
-            maxSelection={3}
+            maxSelection={maxReferenceImages}
             selectedItems={referenceImages}
             onMultiSelectConfirm={(items) => {
               setReferenceImages(items)
@@ -553,6 +714,7 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
             }}
           />
         </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between pt-2">

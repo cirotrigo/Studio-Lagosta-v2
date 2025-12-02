@@ -33,7 +33,7 @@
       "maxDuration": 120
     },
     "app/api/ai/generate-image/route.ts": {
-      "maxDuration": 120
+      "maxDuration": 300
     },
     "app/api/admin/knowledge/[id]/reindex/route.ts": {
       "maxDuration": 120
