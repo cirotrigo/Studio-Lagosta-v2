@@ -14,6 +14,8 @@ export type AIImageModel =
   | 'recraft-v3'
   | 'stable-diffusion-3'
 
+export type AIImageMode = 'generate' | 'edit' | 'inpaint'
+
 export interface AIImageModelConfig {
   id: AIImageModel
   name: string
@@ -30,6 +32,9 @@ export interface AIImageModelConfig {
     supportsCustomDimensions: boolean
     supports4K: boolean
     averageSpeed: string // em segundos
+    supportsImageEditing?: boolean // Suporta edição de imagens
+    supportsInpainting?: boolean // Suporta inpainting (edição com máscara)
+    supportedModes?: AIImageMode[] // Modos suportados
   }
 
   // Custos
@@ -129,7 +134,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     name: 'Seedream 4',
     provider: 'ByteDance',
     displayName: 'Seedream 4',
-    description: 'Especialista em imagens ultra-realistas com texturas e iluminação superiores, suporte 4K',
+    description: 'Especialista em imagens ultra-realistas com texturas e iluminação superiores, suporte 4K e edição de imagens',
     version: 'cf7d431991436f19d1c8dad83fe463c729c816d7a21056c5105e75c84a0aa7e9',
 
     capabilities: {
@@ -139,6 +144,9 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       supportsCustomDimensions: true,
       supports4K: true,
       averageSpeed: '8-12',
+      supportsImageEditing: true,
+      supportsInpainting: true,
+      supportedModes: ['generate', 'edit'],
     },
 
     pricing: {
@@ -158,6 +166,8 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       'Até 10 imagens de referência',
       'Enhance prompt automático',
       'Geração sequencial de imagens',
+      'Edição de imagens (remoção/adição de objetos)',
+      'Inpainting profissional',
     ],
   },
 
@@ -166,7 +176,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     name: 'Ideogram v3 Turbo',
     provider: 'Ideogram',
     displayName: 'Ideogram v3 Turbo',
-    description: 'Especialista em renderização perfeita de texto em imagens, com 50+ estilos artísticos',
+    description: 'Especialista em renderização perfeita de texto em imagens, com 50+ estilos artísticos e Magic Fill',
     version: 'd9b3748f95c0fe3e71f010f8cc5d80e8f5252acd0e74b1c294ee889eea52a47b',
 
     capabilities: {
@@ -176,6 +186,9 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       supportsCustomDimensions: true,
       supports4K: false,
       averageSpeed: '4-6',
+      supportsImageEditing: true,
+      supportsInpainting: true,
+      supportedModes: ['generate', 'edit', 'inpaint'],
     },
 
     pricing: {
@@ -269,7 +282,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     name: 'Nano Banana Pro',
     provider: 'Google DeepMind',
     displayName: 'Gemini 3 Pro Image',
-    description: 'Modelo avançado da Google com suporte 4K, melhor renderização de texto e controles profissionais',
+    description: 'Modelo avançado da Google com suporte 4K, edição profissional e controles avançados',
     version: '81a5073adeced23b51ae9f85cd86c88954e7f25d7894eea0c7ebbc0c24d6831a',
 
     capabilities: {
@@ -279,6 +292,9 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       supportsCustomDimensions: false,
       supports4K: true,
       averageSpeed: '15-30',
+      supportsImageEditing: true,
+      supportsInpainting: true,
+      supportedModes: ['generate', 'edit'],
     },
 
     pricing: {
@@ -298,6 +314,8 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       'Controles profissionais (luz, câmera, foco)',
       'Conhecimento de mundo aprimorado',
       'Safety filter configurável',
+      'Edição profissional (generative fill)',
+      'Remoção/alteração de objetos',
     ],
 
     isNew: true,

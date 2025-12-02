@@ -37,7 +37,7 @@ import { usePrompts } from '@/hooks/use-prompts'
 import type { Prompt } from '@/types/prompt'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { AIModelSelector, ResolutionSelector } from '@/components/ai/ai-model-selector'
-import type { AIImageModel } from '@/lib/ai/image-models-config'
+import type { AIImageModel, AIImageMode } from '@/lib/ai/image-models-config'
 import { calculateCreditsForModel, AI_IMAGE_MODELS } from '@/lib/ai/image-models-config'
 
 interface AIImageRecord {
@@ -50,6 +50,7 @@ interface AIImageRecord {
   width: number
   height: number
   aspectRatio: string
+  model: string
   createdAt: string
 }
 
@@ -80,6 +81,7 @@ export function AIImagesPanel() {
 
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
   const [search, setSearch] = React.useState('')
+  const [imageToEdit, setImageToEdit] = React.useState<AIImageRecord | null>(null)
 
   // Buscar imagens IA do projeto
   const { data: aiImages = [], isLoading } = useQuery<AIImageRecord[]>({
@@ -146,6 +148,14 @@ export function AIImagesPanel() {
     toast({ description: `${image.name} adicionado ao canvas` })
   }
 
+  // Handler para editar imagem
+  const handleEditImage = (image: AIImageRecord) => {
+    console.log('[AIImagesPanel] handleEditImage called with:', image)
+    setImageToEdit(image)
+    setMode('generate') // Mudar para a aba de geração
+    toast({ description: 'Imagem carregada para edição' })
+  }
+
   return (
     <div className="flex h-full flex-col gap-3">
       {/* Header com tabs */}
@@ -164,7 +174,7 @@ export function AIImagesPanel() {
         </TabsList>
 
         <TabsContent value="generate" className="mt-4 space-y-4">
-          <GenerateImageForm projectId={projectId} />
+          <GenerateImageForm projectId={projectId} imageToEdit={imageToEdit} onClearImageToEdit={() => setImageToEdit(null)} />
         </TabsContent>
 
         <TabsContent value="library" className="mt-4 space-y-4">
@@ -205,6 +215,7 @@ export function AIImagesPanel() {
                     image={image}
                     projectId={projectId}
                     onAddToCanvas={() => handleAddToCanvas(image)}
+                    onEditImage={() => handleEditImage(image)}
                   />
                 ))}
               </div>
@@ -221,7 +232,17 @@ export function AIImagesPanel() {
 }
 
 // Componente de formulário de geração
-function GenerateImageForm({ projectId }: { projectId: number | null | undefined }) {
+function GenerateImageForm({
+  projectId,
+  imageToEdit,
+  onClearImageToEdit
+}: {
+  projectId: number | null | undefined
+  imageToEdit: AIImageRecord | null
+  onClearImageToEdit: () => void
+}) {
+  console.log('[GenerateImageForm] Component rendered with imageToEdit:', imageToEdit)
+
   const { toast } = useToast()
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
   const queryClient = useQueryClient()
@@ -243,8 +264,77 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
   const [selectedPromptId, setSelectedPromptId] = React.useState<string>('')
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
+  // Estados para edição de imagens
+  const [mode, setMode] = React.useState<'generate' | 'edit'>('generate')
+  const [baseImageFile, setBaseImageFile] = React.useState<File | null>(null)
+  const [baseImagePreview, setBaseImagePreview] = React.useState<string | null>(null)
+  const [baseImageUrl, setBaseImageUrl] = React.useState<string | null>(null)
+  const [maskImageFile, setMaskImageFile] = React.useState<File | null>(null)
+  const [maskImagePreview, setMaskImagePreview] = React.useState<string | null>(null)
+  const baseImageInputRef = React.useRef<HTMLInputElement>(null)
+  const maskImageInputRef = React.useRef<HTMLInputElement>(null)
+
   // Buscar prompts globais do usuário
   const { data: prompts = [] } = usePrompts()
+
+  // Efeito para carregar imageToEdit quando selecionada da biblioteca
+  React.useEffect(() => {
+    console.log('[GenerateImageForm] imageToEdit changed:', imageToEdit)
+
+    if (imageToEdit) {
+      console.log('[GenerateImageForm] Loading image for editing:', {
+        fileUrl: imageToEdit.fileUrl,
+        prompt: imageToEdit.prompt,
+        aspectRatio: imageToEdit.aspectRatio,
+        model: imageToEdit.model
+      })
+
+      // Mudar para modo edit
+      setMode('edit')
+
+      // Carregar a URL da imagem
+      setBaseImageUrl(imageToEdit.fileUrl)
+      setBaseImagePreview(imageToEdit.fileUrl)
+
+      // Limpar o arquivo local (pois estamos usando URL direta)
+      setBaseImageFile(null)
+
+      // Preencher o prompt original (usuário pode modificar)
+      setPrompt(imageToEdit.prompt)
+
+      // Definir o aspect ratio original
+      setAspectRatio(imageToEdit.aspectRatio)
+
+      // Tentar definir o modelo original se ainda estiver disponível
+      if (imageToEdit.model && imageToEdit.model in AI_IMAGE_MODELS) {
+        const model = imageToEdit.model as AIImageModel
+        const modelConfig = AI_IMAGE_MODELS[model]
+
+        // Só usar o modelo se suportar edição
+        if (modelConfig.capabilities.supportsImageEditing) {
+          console.log('[GenerateImageForm] Using original model:', model)
+          setSelectedModel(model)
+        } else {
+          // Se não suporta edição, usar Seedream 4 como padrão
+          console.log('[GenerateImageForm] Model does not support editing, using seedream-4')
+          setSelectedModel('seedream-4')
+          toast({
+            description: `Modelo original não suporta edição. Usando Seedream 4.`
+          })
+        }
+      } else {
+        console.log('[GenerateImageForm] Model not found or not specified, using default')
+      }
+
+      console.log('[GenerateImageForm] State updated:', {
+        mode: 'edit',
+        baseImageUrl: imageToEdit.fileUrl,
+        baseImagePreview: imageToEdit.fileUrl,
+        prompt: imageToEdit.prompt,
+        aspectRatio: imageToEdit.aspectRatio
+      })
+    }
+  }, [imageToEdit, toast])
 
   // Função helper para calcular tamanho e posição com largura total do canvas e centralizada
   const calculateCanvasPlacement = (imageWidth: number, imageHeight: number) => {
@@ -275,6 +365,9 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       referenceImages: string[]
       model: AIImageModel
       resolution?: '1K' | '2K' | '4K'
+      mode: 'generate' | 'edit'
+      baseImage?: string
+      maskImage?: string
     }) => {
       const payload = {
         projectId,
@@ -283,6 +376,9 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         referenceImages: data.referenceImages,
         model: data.model,
         resolution: data.resolution,
+        mode: data.mode,
+        baseImage: data.baseImage,
+        maskImage: data.maskImage,
       }
 
       console.log('[AIImagesPanel] Sending request to /api/ai/generate-image with payload:', payload)
@@ -313,11 +409,22 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
       return response.json()
     },
     onSuccess: (data) => {
-      toast({ description: 'Imagem gerada com sucesso!' })
+      toast({ description: mode === 'edit' ? 'Imagem editada com sucesso!' : 'Imagem gerada com sucesso!' })
       queryClient.invalidateQueries({ queryKey: ['ai-images', projectId] })
       refresh() // Atualizar créditos
       setPrompt('')
       setReferenceImages([]) // Limpar imagens de referência
+
+      // Limpar estado de edição
+      if (mode === 'edit') {
+        setBaseImageFile(null)
+        setBaseImagePreview(null)
+        setBaseImageUrl(null)
+        setMaskImageFile(null)
+        setMaskImagePreview(null)
+        onClearImageToEdit()
+        setMode('generate') // Voltar para modo geração
+      }
 
       // Adicionar automaticamente ao canvas com largura total e centralizada
       const layer = createDefaultLayer('image')
@@ -339,6 +446,87 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     },
   })
 
+  // Handlers para upload de imagens de edição
+  const handleBaseImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validar tipo
+    if (!file.type.startsWith('image/')) {
+      toast({ variant: 'destructive', description: 'Por favor, selecione uma imagem' })
+      return
+    }
+
+    // Validar tamanho (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 10MB)' })
+      return
+    }
+
+    setBaseImageFile(file)
+    // Criar preview
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setBaseImagePreview(e.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const handleMaskImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.type.startsWith('image/')) {
+      toast({ variant: 'destructive', description: 'Por favor, selecione uma imagem' })
+      return
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 10MB)' })
+      return
+    }
+
+    setMaskImageFile(file)
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setMaskImagePreview(e.target?.result as string)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  // Limpar imagens de edição quando o usuário explicitamente muda de 'edit' para 'generate'
+  const previousMode = React.useRef<'generate' | 'edit'>('generate')
+  React.useEffect(() => {
+    // Só limpar se o usuário estava em 'edit' e mudou para 'generate'
+    // (não quando está carregando pela primeira vez ou vindo de outra aba)
+    if (previousMode.current === 'edit' && mode === 'generate') {
+      console.log('[GenerateImageForm] User switched from edit to generate, cleaning up')
+      setBaseImageFile(null)
+      setBaseImagePreview(null)
+      setBaseImageUrl(null)
+      setMaskImageFile(null)
+      setMaskImagePreview(null)
+      onClearImageToEdit() // Limpar a imagem selecionada da biblioteca
+    }
+    previousMode.current = mode
+  }, [mode, onClearImageToEdit])
+
+  // Verificar se modelo selecionado suporta edição
+  const modelSupportsEditing = React.useMemo(() => {
+    const modelConfig = AI_IMAGE_MODELS[selectedModel]
+    return modelConfig.capabilities.supportsImageEditing === true
+  }, [selectedModel])
+
+  // Auto-switch para 'generate' se modelo não suportar edição
+  React.useEffect(() => {
+    if (mode === 'edit' && !modelSupportsEditing) {
+      setMode('generate')
+      toast({
+        description: `${AI_IMAGE_MODELS[selectedModel].displayName} não suporta edição. Modo alterado para Gerar.`
+      })
+    }
+  }, [selectedModel, mode, modelSupportsEditing])
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       toast({ variant: 'destructive', description: 'Digite um prompt' })
@@ -348,6 +536,12 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     if (projectId === null || projectId === undefined) {
       console.error('[AIImagesPanel] projectId is null/undefined:', projectId)
       toast({ variant: 'destructive', description: 'Erro: projeto não identificado' })
+      return
+    }
+
+    // Validar imagem base em modo edit
+    if (mode === 'edit' && !baseImageFile && !baseImageUrl) {
+      toast({ variant: 'destructive', description: 'Selecione uma imagem para editar' })
       return
     }
 
@@ -365,9 +559,54 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
     }
 
     try {
-      // 1. Upload de arquivos locais para Vercel Blob (se houver)
+      // 1. Upload de imagem base (se modo edit)
+      let finalBaseImageUrl: string | undefined
+      if (mode === 'edit') {
+        // Se já temos a URL (imagem da biblioteca), usar diretamente
+        if (baseImageUrl) {
+          finalBaseImageUrl = baseImageUrl
+        }
+        // Senão, fazer upload do arquivo local
+        else if (baseImageFile) {
+          const formData = new FormData()
+          formData.append('file', baseImageFile)
+
+          const uploadResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData
+          })
+
+          if (!uploadResponse.ok) {
+            throw new Error('Falha ao fazer upload da imagem base')
+          }
+
+          const { url } = await uploadResponse.json()
+          finalBaseImageUrl = url
+        }
+      }
+
+      // 2. Upload de máscara (se fornecida)
+      let maskImageUrl: string | undefined
+      if (mode === 'edit' && maskImageFile) {
+        const formData = new FormData()
+        formData.append('file', maskImageFile)
+
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!uploadResponse.ok) {
+          throw new Error('Falha ao fazer upload da máscara')
+        }
+
+        const { url } = await uploadResponse.json()
+        maskImageUrl = url
+      }
+
+      // 3. Upload de arquivos de referência locais (se houver e modo = generate)
       const localFileUrls: string[] = []
-      if (localFiles.length > 0) {
+      if (mode === 'generate' && localFiles.length > 0) {
         for (const file of localFiles) {
           const formData = new FormData()
           formData.append('file', file)
@@ -386,19 +625,22 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         }
       }
 
-      // 2. Converter GoogleDriveItem para URLs completas
+      // 4. Converter GoogleDriveItem para URLs completas (só em modo generate)
       const baseUrl = window.location.origin
-      const driveImageUrls = referenceImages.map(img => `${baseUrl}/api/google-drive/image/${img.id}`)
+      const driveImageUrls = mode === 'generate' ? referenceImages.map(img => `${baseUrl}/api/google-drive/image/${img.id}`) : []
 
-      // 3. Combinar todas as URLs
+      // 5. Combinar todas as URLs de referência
       const allImageUrls = [...driveImageUrls, ...localFileUrls]
 
-      console.log('[AIImagesPanel] Generating image with:', {
+      console.log('[AIImagesPanel] Generating/editing image with:', {
         projectId,
+        mode,
         prompt: prompt.trim(),
         aspectRatio,
         model: selectedModel,
         resolution,
+        hasBaseImage: !!finalBaseImageUrl,
+        hasMask: !!maskImageUrl,
         referenceImagesCount: allImageUrls.length
       })
 
@@ -408,6 +650,9 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         referenceImages: allImageUrls,
         model: selectedModel,
         resolution,
+        mode,
+        baseImage: finalBaseImageUrl,
+        maskImage: maskImageUrl,
       })
     } catch (_error) {
       toast({
@@ -572,6 +817,177 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         disabled={generateMutation.isPending}
       />
 
+      {/* Toggle entre Gerar e Editar */}
+      <div className="space-y-2">
+        <label className="text-sm font-medium">Modo</label>
+        <div className="grid grid-cols-2 gap-2">
+          <Button
+            variant={mode === 'generate' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('generate')}
+            disabled={generateMutation.isPending}
+            className="text-xs"
+          >
+            <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+            Gerar
+          </Button>
+          <Button
+            variant={mode === 'edit' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setMode('edit')}
+            disabled={generateMutation.isPending || !modelSupportsEditing}
+            className="text-xs"
+          >
+            <Wand2 className="mr-1.5 h-3.5 w-3.5" />
+            Editar
+          </Button>
+        </div>
+        {!modelSupportsEditing && (
+          <p className="text-xs text-muted-foreground">
+            Este modelo não suporta edição de imagens
+          </p>
+        )}
+      </div>
+
+      {/* Seção de Edição - Imagem Base */}
+      {mode === 'edit' && (() => {
+        console.log('[GenerateImageForm] Rendering edit section:', { mode, baseImagePreview, baseImageUrl, hasImageToEdit: !!imageToEdit })
+        return null
+      })()}
+      {mode === 'edit' && (
+        <div className="space-y-2">
+          <label className="text-sm font-medium">Imagem para Editar</label>
+
+          <p className="text-xs text-muted-foreground">
+            {selectedModel === 'ideogram-v3-turbo'
+              ? 'Carregue a imagem e (opcionalmente) uma máscara para inpainting. Preto = editar, Branco = preservar.'
+              : 'Carregue a imagem que deseja modificar. O prompt deve descrever as mudanças (ex: "remova a garrafa verde").'}
+          </p>
+
+          {baseImagePreview ? (
+            <div className="relative">
+              <div className="relative w-full h-40 rounded border overflow-hidden bg-muted">
+                <Image
+                  src={baseImagePreview}
+                  alt="Imagem base"
+                  fill
+                  className="object-contain"
+                  unoptimized
+                  onLoad={() => console.log('[GenerateImageForm] Image loaded successfully')}
+                  onError={(e) => console.error('[GenerateImageForm] Image failed to load:', e)}
+                />
+              </div>
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute top-2 right-2 h-7 w-7"
+                onClick={() => {
+                  setBaseImageFile(null)
+                  setBaseImagePreview(null)
+                  setBaseImageUrl(null)
+                  onClearImageToEdit()
+                  if (baseImageInputRef.current) {
+                    baseImageInputRef.current.value = ''
+                  }
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+              {imageToEdit && (
+                <div className="mt-2">
+                  <p className="text-xs text-muted-foreground">
+                    Editando: {imageToEdit.name}
+                  </p>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => baseImageInputRef.current?.click()}
+            >
+              <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm text-muted-foreground">
+                Clique para selecionar a imagem
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                PNG, JPG ou WEBP (máx 10MB)
+              </p>
+            </div>
+          )}
+
+          <input
+            ref={baseImageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleBaseImageSelect}
+            disabled={generateMutation.isPending}
+          />
+        </div>
+      )}
+
+      {/* Seção de Edição - Máscara (opcional, para modelos com inpainting) */}
+      {mode === 'edit' && AI_IMAGE_MODELS[selectedModel].capabilities.supportsInpainting && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Máscara (opcional)</label>
+            <Badge variant="secondary" className="text-xs">Inpainting</Badge>
+          </div>
+
+          <p className="text-xs text-muted-foreground">
+            Preto = área a editar, Branco = área a preservar
+          </p>
+
+          {maskImagePreview ? (
+            <div className="relative">
+              <div className="relative w-full h-32 rounded border overflow-hidden">
+                <Image
+                  src={maskImagePreview}
+                  alt="Máscara"
+                  fill
+                  className="object-contain"
+                  unoptimized
+                />
+              </div>
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute top-2 right-2 h-7 w-7"
+                onClick={() => {
+                  setMaskImageFile(null)
+                  setMaskImagePreview(null)
+                  if (maskImageInputRef.current) {
+                    maskImageInputRef.current.value = ''
+                  }
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          ) : (
+            <div
+              className="border-2 border-dashed rounded-lg p-4 text-center cursor-pointer hover:border-primary/50 transition-colors"
+              onClick={() => maskImageInputRef.current?.click()}
+            >
+              <Upload className="h-6 w-6 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-xs text-muted-foreground">
+                Clique para adicionar máscara
+              </p>
+            </div>
+          )}
+
+          <input
+            ref={maskImageInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleMaskImageSelect}
+            disabled={generateMutation.isPending}
+          />
+        </div>
+      )}
+
       <div className="space-y-2">
         <label className="text-sm font-medium">Proporção</label>
         <div className="grid grid-cols-4 gap-2">
@@ -591,19 +1007,21 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
         </div>
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-sm font-medium">Imagens de Referência (opcional)</label>
-          {maxReferenceImages === 0 && (
-            <Badge variant="secondary" className="text-xs">Não suportado</Badge>
-          )}
-        </div>
-        {maxReferenceImages === 0 ? (
-          <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded border">
-            Este modelo não suporta imagens de referência
-          </div>
-        ) : (
+      {/* Imagens de Referência - apenas em modo generate */}
+      {mode === 'generate' && (
         <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-sm font-medium">Imagens de Referência (opcional)</label>
+            {maxReferenceImages === 0 && (
+              <Badge variant="secondary" className="text-xs">Não suportado</Badge>
+            )}
+          </div>
+          {maxReferenceImages === 0 ? (
+            <div className="text-xs text-muted-foreground p-3 bg-muted/50 rounded border">
+              Este modelo não suporta imagens de referência
+            </div>
+          ) : (
+          <div className="space-y-2">
           {/* Preview das imagens selecionadas */}
           {(referenceImages.length > 0 || localFiles.length > 0) && (
             <div className="grid grid-cols-3 gap-2">
@@ -715,7 +1133,8 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
           />
         </div>
         )}
-      </div>
+        </div>
+      )}
 
       <div className="flex items-center justify-between pt-2">
         <span className="text-xs text-muted-foreground">
@@ -728,12 +1147,21 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
           {generateMutation.isPending ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Gerando...
+              {mode === 'edit' ? 'Editando...' : 'Gerando...'}
             </>
           ) : (
             <>
-              <Sparkles className="mr-2 h-4 w-4" />
-              Gerar Imagem
+              {mode === 'edit' ? (
+                <>
+                  <Wand2 className="mr-2 h-4 w-4" />
+                  Editar Imagem
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Gerar Imagem
+                </>
+              )}
             </>
           )}
         </Button>
@@ -746,11 +1174,13 @@ function GenerateImageForm({ projectId }: { projectId: number | null | undefined
 function ImageCard({
   image,
   projectId,
-  onAddToCanvas
+  onAddToCanvas,
+  onEditImage
 }: {
   image: AIImageRecord
   projectId: number | null | undefined
   onAddToCanvas: () => void
+  onEditImage: () => void
 }) {
   const queryClient = useQueryClient()
   const { toast } = useToast()
@@ -818,6 +1248,19 @@ function ImageCard({
                 title="Adicionar ao canvas"
               >
                 <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                size="icon"
+                variant="secondary"
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onEditImage()
+                }}
+                className="h-8 w-8"
+                title="Editar imagem"
+              >
+                <Wand2 className="h-4 w-4" />
               </Button>
               <Button
                 size="icon"

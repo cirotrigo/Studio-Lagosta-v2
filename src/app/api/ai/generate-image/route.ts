@@ -30,6 +30,12 @@ const generateImageSchema = z.object({
     'stable-diffusion-3'
   ]).default('flux-1.1-pro'),
   resolution: z.enum(['1K', '2K', '4K']).optional(),
+  // Modo de operação (geração ou edição)
+  mode: z.enum(['generate', 'edit', 'inpaint']).default('generate'),
+  // Imagem base para edição (obrigatória quando mode = edit ou inpaint)
+  baseImage: z.string().url().optional(),
+  // Máscara para inpainting (opcional, só para mode = inpaint)
+  maskImage: z.string().url().optional(),
   // Parâmetros específicos do FLUX
   seed: z.number().int().optional(),
   promptUpsampling: z.boolean().optional(),
@@ -43,6 +49,15 @@ const generateImageSchema = z.object({
   // Parâmetros específicos do Stable Diffusion
   cfgScale: z.number().min(0).max(20).optional(),
   steps: z.number().min(1).max(50).optional(),
+}).refine((data) => {
+  // Se mode = edit ou inpaint, baseImage é obrigatória
+  if ((data.mode === 'edit' || data.mode === 'inpaint') && !data.baseImage) {
+    return false
+  }
+  return true
+}, {
+  message: 'baseImage é obrigatória quando mode = edit ou inpaint',
+  path: ['baseImage'],
 })
 
 export async function POST(request: Request) {
@@ -200,6 +215,10 @@ export async function POST(request: Request) {
       aspectRatio: body.aspectRatio,
       resolution: body.resolution,
       referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
+      // Parâmetros de edição
+      mode: body.mode,
+      baseImage: body.baseImage,
+      maskImage: body.maskImage,
       // Parâmetros opcionais do FLUX
       seed: body.seed,
       promptUpsampling: body.promptUpsampling,
@@ -290,7 +309,7 @@ export async function POST(request: Request) {
       feature: 'ai_image_generation',
       quantity: creditsRequired,
       details: {
-        mode: 'generate',
+        mode: body.mode,
         model: body.model,
         resolution: body.resolution,
         prompt: body.prompt,
@@ -351,6 +370,10 @@ async function createReplicatePrediction(params: {
   aspectRatio: string
   resolution?: '1K' | '2K' | '4K'
   referenceImages?: string[]
+  // Edit mode params
+  mode?: 'generate' | 'edit' | 'inpaint'
+  baseImage?: string
+  maskImage?: string
   // FLUX-specific params
   seed?: number
   promptUpsampling?: boolean
@@ -399,14 +422,37 @@ async function createReplicatePrediction(params: {
     inputData.aspect_ratio = params.aspectRatio
     inputData.enhance_prompt = params.enhancePrompt ?? true // Default do Seedream é true
 
-    // Imagens de referência (até 10)
-    if (params.referenceImages && params.referenceImages.length > 0) {
+    // Modo de edição: usar baseImage como imagem principal
+    if (params.mode === 'edit' && params.baseImage) {
+      console.log('[AI Generate] Seedream 4 edit mode: using baseImage as primary input')
+      inputData.image_input = [params.baseImage]
+      // Prompt deve descrever as mudanças (ex: "remove a garrafa verde")
+    }
+    // Modo geração: usar referenceImages (se houver)
+    else if (params.referenceImages && params.referenceImages.length > 0) {
       inputData.image_input = params.referenceImages
     }
 
   } else if (params.model === 'ideogram-v3-turbo') {
     // Ideogram v3 Turbo
-    inputData.aspect_ratio = params.aspectRatio
+
+    // Modo inpainting: usar baseImage + maskImage
+    if ((params.mode === 'inpaint' || params.mode === 'edit') && params.baseImage) {
+      console.log('[AI Generate] Ideogram v3 inpainting mode: using baseImage and mask')
+      inputData.image = params.baseImage
+
+      // Máscara é obrigatória para inpainting no Ideogram
+      if (params.maskImage) {
+        inputData.mask = params.maskImage
+      } else {
+        // Se não houver máscara, tentaremos usar a imagem completa como base para edição
+        console.warn('[AI Generate] Ideogram v3: no mask provided, editing entire image')
+      }
+      // Aspect ratio é ignorado em modo inpainting
+    } else {
+      // Modo geração normal
+      inputData.aspect_ratio = params.aspectRatio
+    }
 
     // Capitalizar corretamente: "Auto", "General", "Realistic", "Design"
     const styleTypeMap: Record<string, string> = {
@@ -420,8 +466,8 @@ async function createReplicatePrediction(params: {
     // magic_prompt_option: "Auto", "On", "Off"
     inputData.magic_prompt_option = params.magicPrompt ?? true ? 'Auto' : 'Off'
 
-    // Style reference (primeira imagem de referência)
-    if (params.referenceImages && params.referenceImages.length > 0) {
+    // Style reference (primeira imagem de referência) - só em modo geração
+    if (!params.baseImage && params.referenceImages && params.referenceImages.length > 0) {
       inputData.style_reference_image = params.referenceImages[0]
     }
 
@@ -454,13 +500,15 @@ async function createReplicatePrediction(params: {
       inputData.resolution = params.resolution
     }
 
-    // Imagens de referência (suporta múltiplas)
-    if (params.referenceImages && params.referenceImages.length > 0) {
-      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
-      inputData.image_input = params.referenceImages.map(url => {
-        if (url.startsWith('http')) return url
-        return `${baseUrl}${url}`
-      })
+    // Modo de edição: usar baseImage como imagem principal
+    if (params.mode === 'edit' && params.baseImage) {
+      console.log('[AI Generate] Nano Banana Pro edit mode: using baseImage as primary input')
+      inputData.image_input = [params.baseImage]
+      // Prompt deve descrever as mudanças (ex: "remove a garrafa verde, blur background")
+    }
+    // Modo geração: usar referenceImages (se houver)
+    else if (params.referenceImages && params.referenceImages.length > 0) {
+      inputData.image_input = params.referenceImages
     }
 
     // Safety filter (apenas Pro)
