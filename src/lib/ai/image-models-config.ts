@@ -275,7 +275,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     capabilities: {
       maxResolution: '4K',
       minResolution: '1K',
-      maxReferenceImages: 14,
+      maxReferenceImages: 3, // Teoricamente 14, mas na prática limitado a 3 para evitar timeout E6716
       supportsCustomDimensions: false,
       supports4K: true,
       averageSpeed: '15-30',
@@ -293,7 +293,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
 
     features: [
       'Resolução 4K ultra HD',
-      'Até 14 imagens de referência',
+      'Até 3 imagens de referência (limite prático)',
       'Renderização avançada de texto',
       'Controles profissionais (luz, câmera, foco)',
       'Conhecimento de mundo aprimorado',

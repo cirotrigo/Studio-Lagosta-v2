@@ -98,7 +98,10 @@ export async function POST(request: Request) {
     // 4. Upload de imagens de referência para Vercel Blob (se houver)
     let publicReferenceUrls: string[] = []
     if (body.referenceImages && body.referenceImages.length > 0) {
-      console.log('[AI Generate] Uploading reference images to Vercel Blob...')
+      console.log('[AI Generate] Uploading reference images to Vercel Blob...', {
+        count: body.referenceImages.length,
+        urls: body.referenceImages
+      })
 
       publicReferenceUrls = await Promise.all(
         body.referenceImages.map(async (url, index) => {
@@ -143,9 +146,13 @@ export async function POST(request: Request) {
             }
 
             // Validar tamanho da imagem de referência
+            const sizeInMb = (imageBuffer.byteLength / (1024 * 1024)).toFixed(2)
             const maxMb = 10 // Limite de 10MB para imagens de referência
+
+            console.log(`[AI Generate] Reference image ${index + 1} size: ${sizeInMb}MB`)
+
             if (imageBuffer.byteLength > maxMb * 1024 * 1024) {
-              throw new Error(`Reference image ${index + 1} is too large (max ${maxMb}MB)`)
+              throw new Error(`Reference image ${index + 1} is too large (${sizeInMb}MB, max ${maxMb}MB)`)
             }
 
             // Upload para Vercel Blob
@@ -156,6 +163,13 @@ export async function POST(request: Request) {
             })
 
             console.log('[AI Generate] Reference image uploaded:', blob.url)
+
+            // Verificar se a imagem está acessível
+            const testResponse = await fetch(blob.url, { method: 'HEAD' })
+            if (!testResponse.ok) {
+              throw new Error(`Uploaded image is not accessible (HTTP ${testResponse.status})`)
+            }
+
             return blob.url
           } catch (error) {
             console.error(`[AI Generate] Error processing reference image ${index + 1}:`, error)
@@ -163,6 +177,11 @@ export async function POST(request: Request) {
           }
         })
       )
+
+      console.log('[AI Generate] All reference images validated and ready:', {
+        count: publicReferenceUrls.length,
+        urls: publicReferenceUrls
+      })
     }
 
     // 5. Criar prediction no Replicate
@@ -202,7 +221,36 @@ export async function POST(request: Request) {
     const result = await waitForPrediction(prediction.id, 280)
 
     if (result.status === 'failed') {
-      throw new Error(result.error || 'Failed to generate image')
+      console.error('[AI Generate] Prediction failed:', {
+        id: result.id,
+        error: result.error,
+        logs: result.logs,
+        status: result.status
+      })
+
+      // Erro específico do Replicate
+      let errorMessage = result.error || 'Falha ao gerar imagem'
+
+      // Erros conhecidos do Replicate
+      if (errorMessage.includes('E6716')) {
+        const modelName = modelConfig.displayName
+        const refCount = publicReferenceUrls.length
+        errorMessage = `Timeout ao iniciar geração com ${modelName} (Erro E6716).\n\n` +
+          `O modelo não conseguiu iniciar o processamento a tempo com ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência.\n\n` +
+          `Embora o modelo suporte até 14 imagens teoricamente, há uma limitação prática:\n` +
+          `✅ Funciona bem com até 3 imagens\n` +
+          `❌ Pode dar timeout com 4+ imagens (devido ao tamanho total ou recursos necessários)\n\n` +
+          `Sugestões:\n` +
+          `• Reduza para no máximo 3 imagens de referência\n` +
+          `• Ou use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (até 10 imagens)\n` +
+          `• Ou aguarde alguns minutos e tente novamente`
+      } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
+        errorMessage = 'Conteúdo bloqueado pelo filtro de segurança. Ajuste o prompt e tente novamente.'
+      } else if (errorMessage.includes('timeout')) {
+        errorMessage = 'Tempo limite excedido ao processar a imagem. Tente reduzir a resolução ou número de imagens de referência.'
+      }
+
+      throw new Error(errorMessage)
     }
 
     // 7. Upload para Vercel Blob
