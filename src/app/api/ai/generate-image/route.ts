@@ -15,10 +15,16 @@ export const maxDuration = 300 // 5 minutes for AI image generation (needed for 
 export const dynamic = 'force-dynamic' // Garantir que a rota não seja estaticamente otimizada
 
 const generateImageSchema = z.object({
-  projectId: z.number().int().positive('projectId deve ser um número positivo'),
-  prompt: z.string().min(1, 'Prompt é obrigatório'),
+  projectId: z.number({
+    required_error: 'ID do projeto é obrigatório',
+    invalid_type_error: 'ID do projeto deve ser um número',
+  }).int('ID do projeto deve ser um número inteiro').positive('ID do projeto deve ser um número positivo'),
+  prompt: z.string({
+    required_error: 'O prompt é obrigatório',
+    invalid_type_error: 'O prompt deve ser texto',
+  }).min(1, 'O prompt não pode estar vazio'),
   aspectRatio: z.string().default('1:1'),
-  referenceImages: z.array(z.string()).optional(),
+  referenceImages: z.array(z.string().url('URL de imagem de referência inválida')).optional(),
   model: z.enum([
     'flux-1.1-pro',
     'flux-schnell',
@@ -28,27 +34,35 @@ const generateImageSchema = z.object({
     'ideogram-v3-turbo',
     'recraft-v3',
     'stable-diffusion-3'
-  ]).default('flux-1.1-pro'),
-  resolution: z.enum(['1K', '2K', '4K']).optional(),
+  ], {
+    errorMap: () => ({ message: 'Modelo de IA inválido. Escolha um dos modelos disponíveis.' })
+  }).default('flux-1.1-pro'),
+  resolution: z.enum(['1K', '2K', '4K'], {
+    errorMap: () => ({ message: 'Resolução inválida. Use 1K, 2K ou 4K.' })
+  }).optional(),
   // Modo de operação (geração ou edição)
-  mode: z.enum(['generate', 'edit', 'inpaint']).default('generate'),
+  mode: z.enum(['generate', 'edit', 'inpaint'], {
+    errorMap: () => ({ message: 'Modo inválido. Use generate, edit ou inpaint.' })
+  }).default('generate'),
   // Imagem base para edição (obrigatória quando mode = edit ou inpaint)
-  baseImage: z.string().url().optional(),
+  baseImage: z.string().url('URL da imagem base inválida').optional(),
   // Máscara para inpainting (opcional, só para mode = inpaint)
-  maskImage: z.string().url().optional(),
+  maskImage: z.string().url('URL da máscara inválida').optional(),
   // Parâmetros específicos do FLUX
-  seed: z.number().int().optional(),
+  seed: z.number().int('Seed deve ser um número inteiro').optional(),
   promptUpsampling: z.boolean().optional(),
-  safetyTolerance: z.number().min(1).max(6).optional(),
-  outputQuality: z.number().min(0).max(100).optional(),
+  safetyTolerance: z.number().min(1, 'Safety tolerance deve ser entre 1 e 6').max(6, 'Safety tolerance deve ser entre 1 e 6').optional(),
+  outputQuality: z.number().min(0, 'Qualidade deve ser entre 0 e 100').max(100, 'Qualidade deve ser entre 0 e 100').optional(),
   // Parâmetros específicos do Ideogram
-  styleType: z.enum(['auto', 'general', 'realistic', 'design']).optional(),
+  styleType: z.enum(['auto', 'general', 'realistic', 'design'], {
+    errorMap: () => ({ message: 'Tipo de estilo inválido' })
+  }).optional(),
   magicPrompt: z.boolean().optional(),
   // Parâmetros específicos do Seedream
   enhancePrompt: z.boolean().optional(),
   // Parâmetros específicos do Stable Diffusion
-  cfgScale: z.number().min(0).max(20).optional(),
-  steps: z.number().min(1).max(50).optional(),
+  cfgScale: z.number().min(0, 'CFG Scale deve ser entre 0 e 20').max(20, 'CFG Scale deve ser entre 0 e 20').optional(),
+  steps: z.number().min(1, 'Steps deve ser entre 1 e 50').max(50, 'Steps deve ser entre 1 e 50').optional(),
 }).refine((data) => {
   // Se mode = edit ou inpaint, baseImage é obrigatória
   if ((data.mode === 'edit' || data.mode === 'inpaint') && !data.baseImage) {
@@ -56,7 +70,7 @@ const generateImageSchema = z.object({
   }
   return true
 }, {
-  message: 'baseImage é obrigatória quando mode = edit ou inpaint',
+  message: 'Imagem base é obrigatória para modo de edição ou inpainting',
   path: ['baseImage'],
 })
 
@@ -68,14 +82,14 @@ export async function POST(request: Request) {
 
   if (!userId) {
     console.error('[AI Generate] Unauthorized - no userId')
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Não autorizado. Por favor, faça login novamente.' }, { status: 401 })
   }
 
   // Verificar se a chave da API do Replicate está configurada
   if (!process.env.REPLICATE_API_TOKEN) {
     console.error('[AI Generate] REPLICATE_API_TOKEN not configured')
     return NextResponse.json(
-      { error: 'Geração de imagens não configurada. Entre em contato com o administrador.' },
+      { error: 'Serviço de geração de imagens temporariamente indisponível. Entre em contato com o suporte.' },
       { status: 503 }
     )
   }
@@ -99,16 +113,37 @@ export async function POST(request: Request) {
       where: { id: body.projectId, userId },
     })
     if (!project) {
-      return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+      return NextResponse.json({ error: 'Projeto não encontrado ou você não tem permissão para acessá-lo.' }, { status: 404 })
     }
 
     // 3. Validar créditos baseado no modelo e resolução selecionados
     const modelConfig = AI_IMAGE_MODELS[body.model]
     const creditsRequired = calculateCreditsForModel(body.model, body.resolution)
 
-    await validateCreditsForFeature(userId, 'ai_image_generation', creditsRequired, {
-      organizationId: orgId ?? undefined,
-    })
+    try {
+      await validateCreditsForFeature(userId, 'ai_image_generation', creditsRequired, {
+        organizationId: orgId ?? undefined,
+      })
+    } catch (error) {
+      // Traduzir erro de créditos insuficientes
+      if (error.message?.includes('Insufficient credits') || error.message?.includes('créditos insuficientes')) {
+        const match = error.message.match(/required (\d+), available (\d+)/)
+        if (match) {
+          const [, required, available] = match
+          throw new Error(
+            `Créditos insuficientes.\n\n` +
+            `Necessário: ${required} créditos\n` +
+            `Disponível: ${available} créditos\n` +
+            `Faltam: ${parseInt(required) - parseInt(available)} créditos\n\n` +
+            `💡 Dica: Use modelos mais econômicos:\n` +
+            `• FLUX Schnell: 1 crédito\n` +
+            `• Seedream 4: 3 créditos\n` +
+            `• FLUX 1.1 Pro: 4 créditos`
+          )
+        }
+      }
+      throw error
+    }
 
     // 4. Upload de imagens de referência para Vercel Blob (se houver)
     let publicReferenceUrls: string[] = []
@@ -145,7 +180,7 @@ export async function POST(request: Request) {
 
               if (!response.ok) {
                 console.error(`[AI Generate] Failed to fetch reference image ${index + 1}:`, response.status, response.statusText)
-                throw new Error(`Failed to fetch reference image ${index + 1} from Google Drive`)
+                throw new Error(`Falha ao carregar imagem de referência ${index + 1} do Google Drive. Verifique se o arquivo existe e você tem permissão.`)
               }
 
               imageBuffer = await response.arrayBuffer()
@@ -154,7 +189,7 @@ export async function POST(request: Request) {
               // Para outras URLs, fazer fetch normal
               const response = await fetch(url)
               if (!response.ok) {
-                throw new Error(`Failed to fetch reference image ${index + 1}`)
+                throw new Error(`Falha ao carregar imagem de referência ${index + 1}. Verifique se a URL está acessível.`)
               }
               imageBuffer = await response.arrayBuffer()
               contentType = response.headers.get('content-type') || 'image/jpeg'
@@ -167,7 +202,7 @@ export async function POST(request: Request) {
             console.log(`[AI Generate] Reference image ${index + 1} size: ${sizeInMb}MB`)
 
             if (imageBuffer.byteLength > maxMb * 1024 * 1024) {
-              throw new Error(`Reference image ${index + 1} is too large (${sizeInMb}MB, max ${maxMb}MB)`)
+              throw new Error(`Imagem de referência ${index + 1} muito grande (${sizeInMb}MB). Tamanho máximo: ${maxMb}MB.\n\nCompacte a imagem antes de enviar.`)
             }
 
             // Upload para Vercel Blob
@@ -182,13 +217,13 @@ export async function POST(request: Request) {
             // Verificar se a imagem está acessível
             const testResponse = await fetch(blob.url, { method: 'HEAD' })
             if (!testResponse.ok) {
-              throw new Error(`Uploaded image is not accessible (HTTP ${testResponse.status})`)
+              throw new Error(`Falha ao verificar imagem enviada (HTTP ${testResponse.status}). Tente novamente.`)
             }
 
             return blob.url
           } catch (error) {
             console.error(`[AI Generate] Error processing reference image ${index + 1}:`, error)
-            throw new Error(`Failed to process reference image ${index + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+            throw new Error(`Erro ao processar imagem de referência ${index + 1}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
           }
         })
       )
@@ -254,19 +289,23 @@ export async function POST(request: Request) {
       if (errorMessage.includes('E6716')) {
         const modelName = modelConfig.displayName
         const refCount = publicReferenceUrls.length
-        errorMessage = `Timeout ao iniciar geração com ${modelName} (Erro E6716).\n\n` +
-          `O modelo não conseguiu iniciar o processamento a tempo com ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência.\n\n` +
-          `Embora o modelo suporte até 14 imagens teoricamente, há uma limitação prática:\n` +
-          `✅ Funciona bem com até 3 imagens\n` +
-          `❌ Pode dar timeout com 4+ imagens (devido ao tamanho total ou recursos necessários)\n\n` +
-          `Sugestões:\n` +
+        errorMessage = `⏱️ Timeout ao iniciar geração com ${modelName}\n\n` +
+          `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
+          `💡 Soluções:\n` +
           `• Reduza para no máximo 3 imagens de referência\n` +
-          `• Ou use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (até 10 imagens)\n` +
-          `• Ou aguarde alguns minutos e tente novamente`
+          `• Use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (10 imagens)\n` +
+          `• Aguarde alguns minutos e tente novamente`
       } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
-        errorMessage = 'Conteúdo bloqueado pelo filtro de segurança. Ajuste o prompt e tente novamente.'
-      } else if (errorMessage.includes('timeout')) {
-        errorMessage = 'Tempo limite excedido ao processar a imagem. Tente reduzir a resolução ou número de imagens de referência.'
+        errorMessage = '🚫 Conteúdo bloqueado pelo filtro de segurança.\n\nPor favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
+      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+        errorMessage = '⏱️ Tempo limite excedido ao processar a imagem.\n\n💡 Soluções:\n• Reduza a resolução (use 2K ao invés de 4K)\n• Diminua o número de imagens de referência\n• Tente novamente em alguns minutos'
+      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+        errorMessage = '⚠️ Limite de uso atingido no serviço de IA.\n\nO Replicate está com alta demanda. Aguarde alguns minutos e tente novamente.'
+      } else if (errorMessage.includes('invalid') && errorMessage.includes('image')) {
+        errorMessage = '❌ Formato de imagem inválido.\n\nVerifique se as imagens de referência estão em formato válido (JPG, PNG, WebP).'
+      } else {
+        // Melhorar mensagem genérica
+        errorMessage = `❌ Falha ao gerar imagem: ${errorMessage}\n\nSe o problema persistir, tente:\n• Usar outro modelo\n• Simplificar o prompt\n• Reduzir número de imagens de referência`
       }
 
       throw new Error(errorMessage)
@@ -275,7 +314,7 @@ export async function POST(request: Request) {
     // 7. Upload para Vercel Blob
     const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
     if (!imageUrl) {
-      throw new Error('No image URL in response')
+      throw new Error('Nenhuma imagem foi retornada pelo modelo de IA. Tente novamente.')
     }
 
     const fileName = `ai-generated-${Date.now()}.png`
@@ -325,25 +364,38 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('[AI Generate] Error:', error)
 
-    // Erro de créditos
-    if (error.message?.includes('créditos insuficientes') || error.message?.includes('insufficient credits')) {
+    // Erro de créditos insuficientes
+    if (error.message?.includes('Créditos insuficientes') || error.message?.includes('Insufficient credits') || error.message?.includes('créditos insuficientes')) {
+      const errorMessage = error instanceof Error ? error.message : 'Créditos insuficientes para gerar esta imagem.'
       return NextResponse.json(
-        { error: 'Créditos insuficientes' },
+        { error: errorMessage },
         { status: 402 }
       )
     }
 
-    // Erro de validação
+    // Erro de validação (Zod)
     if (error instanceof z.ZodError) {
+      const firstError = error.errors[0]
+      let friendlyMessage = firstError.message
+
+      // Traduzir mensagens comuns de validação
+      if (firstError.path.includes('projectId')) {
+        friendlyMessage = 'ID do projeto inválido ou ausente.'
+      } else if (firstError.path.includes('prompt')) {
+        friendlyMessage = 'O prompt é obrigatório e não pode estar vazio.'
+      } else if (firstError.path.includes('baseImage')) {
+        friendlyMessage = 'Imagem base é obrigatória para modo de edição.'
+      }
+
       return NextResponse.json(
-        { error: error.errors[0].message },
+        { error: `Dados inválidos: ${friendlyMessage}` },
         { status: 400 }
       )
     }
 
     // Erro do Replicate (API error) - retornar mensagem real
     if (error.message?.includes('Replicate API error')) {
-      const errorMessage = error instanceof Error ? error.message : 'Erro ao gerar imagem'
+      const errorMessage = error instanceof Error ? error.message.replace('Replicate API error:', '').trim() : 'Erro ao comunicar com o serviço de IA'
       return NextResponse.json(
         { error: errorMessage },
         { status: 500 }
@@ -351,7 +403,7 @@ export async function POST(request: Request) {
     }
 
     // Erro genérico
-    const errorMessage = error instanceof Error ? error.message : 'Failed to generate image'
+    const errorMessage = error instanceof Error ? error.message : 'Falha ao gerar imagem. Tente novamente.'
     console.error('[AI Generate] Returning error to client:', errorMessage)
     return NextResponse.json(
       { error: errorMessage },
@@ -546,10 +598,21 @@ async function createReplicatePrediction(params: {
       body: errorText
     })
 
-    let errorMessage = 'Falha ao criar prediction no Replicate'
+    let errorMessage = 'Falha ao iniciar geração de imagem no Replicate'
     try {
       const errorData = JSON.parse(errorText)
       errorMessage = errorData.detail || errorData.error || errorMessage
+
+      // Traduzir erros comuns da API do Replicate
+      if (errorMessage.includes('authentication') || errorMessage.includes('unauthorized')) {
+        errorMessage = 'Erro de autenticação com o serviço de IA. Contate o suporte.'
+      } else if (errorMessage.includes('quota') || errorMessage.includes('limit')) {
+        errorMessage = 'Limite de uso do serviço atingido. Aguarde alguns minutos e tente novamente.'
+      } else if (errorMessage.includes('invalid model') || errorMessage.includes('model not found')) {
+        errorMessage = 'Modelo de IA indisponível. Tente usar outro modelo.'
+      } else if (errorMessage.includes('invalid input')) {
+        errorMessage = 'Parâmetros inválidos enviados ao modelo de IA. Verifique as configurações.'
+      }
     } catch {
       errorMessage = errorText || errorMessage
     }
@@ -579,7 +642,9 @@ async function waitForPrediction(predictionId: string, maxAttempts = 60) {
     )
 
     if (!response.ok) {
-      throw new Error('Failed to get prediction status')
+      const errorText = await response.text()
+      console.error('[AI Generate] Failed to check prediction status:', response.status, errorText)
+      throw new Error('Falha ao verificar status da geração. Tente novamente.')
     }
 
     const prediction = await response.json()
@@ -598,25 +663,39 @@ async function waitForPrediction(predictionId: string, maxAttempts = 60) {
     await new Promise(resolve => setTimeout(resolve, 1000))
   }
 
-  const timeoutSeconds = maxAttempts
-  throw new Error(`Geração de imagem excedeu o tempo limite (${timeoutSeconds}s). Imagens 4K podem demorar mais - tente novamente ou use resolução menor.`)
+  const timeoutMinutes = Math.floor(maxAttempts / 60)
+  throw new Error(
+    `⏱️ Tempo limite excedido (${timeoutMinutes} minutos)\n\n` +
+    `A geração está demorando mais que o esperado.\n\n` +
+    `💡 Sugestões:\n` +
+    `• Imagens 4K demoram mais - tente 2K\n` +
+    `• Reduza o número de imagens de referência\n` +
+    `• Tente novamente em alguns minutos\n` +
+    `• Use um modelo mais rápido (FLUX Schnell)`
+  )
 }
 
 async function uploadToVercelBlob(imageUrl: string, fileName: string) {
   const imageResponse = await fetch(imageUrl)
 
   if (!imageResponse.ok) {
-    throw new Error('Failed to fetch generated image')
+    console.error('[AI Generate] Failed to fetch generated image:', imageResponse.status)
+    throw new Error('Falha ao baixar imagem gerada do Replicate. Tente novamente.')
   }
 
   const imageBuffer = await imageResponse.arrayBuffer()
 
-  const blob = await put(fileName, imageBuffer, {
-    access: 'public',
-    contentType: 'image/png',
-  })
+  try {
+    const blob = await put(fileName, imageBuffer, {
+      access: 'public',
+      contentType: 'image/png',
+    })
 
-  return blob.url
+    return blob.url
+  } catch (error) {
+    console.error('[AI Generate] Failed to upload to Vercel Blob:', error)
+    throw new Error('Falha ao salvar imagem gerada. Tente novamente.')
+  }
 }
 
 function calculateDimensions(aspectRatio: string): { width: number; height: number } {
