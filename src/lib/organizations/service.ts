@@ -233,6 +233,62 @@ export async function removeOrganization(clerkOrgId: string, tx: TransactionClie
   })
 }
 
+/**
+ * Ensures the organization exists in database by syncing from Clerk if needed
+ * This is useful when a user is in an organization but webhook hasn't been processed yet
+ * @param clerkOrgId - Clerk organization ID
+ * @param clerkApi - Optional Clerk API client to fetch organization data
+ * @returns The organization record or null if sync failed
+ */
+export async function ensureOrganizationExists(
+  clerkOrgId: string,
+  tx: TransactionClient = db
+) {
+  // Try to find existing organization
+  const existing = await tx.organization.findUnique({
+    where: { clerkOrgId },
+  })
+
+  if (existing) {
+    return existing
+  }
+
+  // Organization doesn't exist in database, try to sync from Clerk
+  console.log(`[Organizations] Organization ${clerkOrgId} not found in DB, attempting to sync from Clerk`)
+
+  try {
+    // Import clerkClient dynamically to avoid circular dependencies
+    const { clerkClient } = await import('@clerk/nextjs/server')
+
+    // Fetch organization from Clerk
+    const client = await clerkClient()
+    const clerkOrg = await client.organizations.getOrganization({
+      organizationId: clerkOrgId,
+    })
+
+    if (!clerkOrg) {
+      console.error(`[Organizations] Organization ${clerkOrgId} not found in Clerk`)
+      return null
+    }
+
+    // Sync to database
+    const synced = await syncOrganizationFromClerk({
+      id: clerkOrg.id,
+      name: clerkOrg.name,
+      slug: clerkOrg.slug,
+      image_url: clerkOrg.imageUrl,
+      public_metadata: clerkOrg.publicMetadata,
+      created_by: clerkOrg.createdBy,
+    }, tx)
+
+    console.log(`[Organizations] Successfully synced organization ${clerkOrgId} from Clerk`)
+    return synced
+  } catch (error) {
+    console.error(`[Organizations] Failed to sync organization ${clerkOrgId} from Clerk:`, error)
+    return null
+  }
+}
+
 export async function ensureOrganizationCreditBalance(
   clerkOrgId: string,
   tx: TransactionClient = db

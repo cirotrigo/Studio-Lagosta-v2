@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
+import { ensureOrganizationExists } from '@/lib/organizations'
 
 const updatePromptSchema = z.object({
   title: z.string().min(1, 'Título é obrigatório').optional(),
@@ -26,11 +27,7 @@ export async function GET(
     let organizationId: string | null = null
 
     if (orgId) {
-      const organization = await db.organization.findUnique({
-        where: { clerkOrgId: orgId },
-        select: { id: true },
-      })
-
+      const organization = await ensureOrganizationExists(orgId)
       organizationId = organization?.id ?? null
     }
 
@@ -78,11 +75,7 @@ export async function PATCH(
     let organizationId: string | null = null
 
     if (orgId) {
-      const organization = await db.organization.findUnique({
-        where: { clerkOrgId: orgId },
-        select: { id: true },
-      })
-
+      const organization = await ensureOrganizationExists(orgId)
       organizationId = organization?.id ?? null
     }
 
@@ -146,11 +139,7 @@ export async function DELETE(
     let organizationId: string | null = null
 
     if (orgId) {
-      const organization = await db.organization.findUnique({
-        where: { clerkOrgId: orgId },
-        select: { id: true },
-      })
-
+      const organization = await ensureOrganizationExists(orgId)
       organizationId = organization?.id ?? null
     }
 
