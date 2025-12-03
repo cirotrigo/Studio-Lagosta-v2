@@ -9,6 +9,7 @@ import {
   AI_IMAGE_MODELS,
   calculateCreditsForModel
 } from '@/lib/ai/image-models-config'
+import { fetchProjectWithAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
@@ -108,13 +109,13 @@ export async function POST(request: Request) {
     const body = generateImageSchema.parse(rawBody)
     console.log('[AI Generate] Body validated successfully')
 
-    // 2. Verificar ownership do projeto
-    const project = await db.project.findFirst({
-      where: { id: body.projectId, userId },
-    })
+    // 2. Verificar acesso ao projeto (inclui verificação de organização)
+    const project = await fetchProjectWithAccess(body.projectId, { userId, orgId })
     if (!project) {
+      console.error('[AI Generate] Project not found or access denied:', { projectId: body.projectId, userId, orgId })
       return NextResponse.json({ error: 'Projeto não encontrado ou você não tem permissão para acessá-lo.' }, { status: 404 })
     }
+    console.log('[AI Generate] Project access validated for:', project.name)
 
     // 3. Validar créditos baseado no modelo e resolução selecionados
     const modelConfig = AI_IMAGE_MODELS[body.model]
