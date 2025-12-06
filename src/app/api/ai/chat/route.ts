@@ -1,6 +1,6 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
-import { streamText } from 'ai'
+import { streamText, convertToModelMessages, type UIMessage } from 'ai'
 import { createOpenAI } from '@ai-sdk/openai'
 import { createAnthropic } from '@ai-sdk/anthropic'
 import { createGoogleGenerativeAI } from '@ai-sdk/google'
@@ -78,18 +78,13 @@ const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
   ],
 }
 
-const MessageSchema = z.object({
-  role: z.enum(['user', 'assistant', 'system']),
-  content: z.string().min(1).max(20000),
-})
-
 const AttachmentSchema = z.object({ name: z.string().min(1).max(500), url: z.string().url() })
 
 const BodySchema = z
   .object({
     provider: ProviderSchema,
     model: z.string().min(1),
-    messages: z.array(MessageSchema).min(1),
+    messages: z.array(z.any()).min(1), // UIMessage[] format from v5
     temperature: z.number().min(0).max(2).optional(),
     maxTokens: z.number().min(100).max(32000).optional(),
     attachments: z.array(AttachmentSchema).optional(),
@@ -118,7 +113,15 @@ export async function POST(req: Request) {
       if (!parsed.success) {
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
-      const { provider, model, messages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data
+      const { provider, model, messages: uiMessages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data as {
+        provider: string
+        model: string
+        messages: UIMessage[]
+        temperature?: number
+        maxTokens?: number
+        attachments?: Array<{ name: string; url: string }>
+        conversationId?: string
+      }
 
       if (!isAllowedModel(provider, model)) {
         return NextResponse.json({ error: 'Modelo não permitido para este provedor' }, { status: 400 })
@@ -136,46 +139,54 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Chave API ausente para ${provider}.` }, { status: 400 })
       }
 
+      // Convert UIMessage[] to ModelMessage[] format
+      let modelMessages = convertToModelMessages(uiMessages)
+
       // If there are attachments, append a user message listing them so the model can reference the files
-      type ChatMessage = { role: 'user' | 'assistant' | 'system'; content: string }
-      // After zod validation, messages are guaranteed to have role and content
-      let mergedMessages: ChatMessage[] = messages as ChatMessage[]
       if (attachments && attachments.length > 0) {
         const lines = attachments.map(a => `- ${a.name}: ${a.url}`).join('\n')
         const attachNote = `Anexos:\n${lines}`
-        mergedMessages = [...(messages as ChatMessage[]), { role: 'user' as const, content: attachNote }]
+        modelMessages = [...modelMessages, { role: 'user' as const, content: attachNote }]
       }
 
       // RAG: Inject context from knowledge base
-      const lastUserMessage = messages.filter(m => m.role === 'user').pop()
+      const lastUserMessage = uiMessages.filter(m => m.role === 'user').pop()
       if (lastUserMessage) {
-        try {
-          console.log('[RAG] Attempting to get context for query:', lastUserMessage.content.substring(0, 100))
-          const dbUser = await getUserFromClerkId(userId)
-          console.log('[RAG] DB User:', dbUser.id, 'Organization:', organizationId || 'none')
+        // Extract text from UIMessage parts
+        const userMessageText = lastUserMessage.parts
+          ?.filter(part => part.type === 'text')
+          .map(part => part.text)
+          .join(' ') || ''
 
-          // Build tenant key: prioritize organization knowledge, fallback to user knowledge
-          const tenantKey = organizationId
-            ? { workspaceId: organizationId } // Organization knowledge (shared)
-            : { userId: dbUser.id } // Personal knowledge (fallback)
+        if (userMessageText) {
+          try {
+            console.log('[RAG] Attempting to get context for query:', userMessageText.substring(0, 100))
+            const dbUser = await getUserFromClerkId(userId)
+            console.log('[RAG] DB User:', dbUser.id, 'Organization:', organizationId || 'none')
 
-          const ragContext = await getRAGContext(lastUserMessage.content, tenantKey)
-          console.log('[RAG] Context retrieved, length:', ragContext.length)
+            // Build tenant key: prioritize organization knowledge, fallback to user knowledge
+            const tenantKey = organizationId
+              ? { workspaceId: organizationId } // Organization knowledge (shared)
+              : { userId: dbUser.id } // Personal knowledge (fallback)
 
-          if (ragContext.trim()) {
-            const contextMessage: ChatMessage = {
-              role: 'system',
-              content: `Use o seguinte contexto da base de conhecimento SOMENTE se for relevante para a pergunta do usuário. Se o contexto não for pertinente, ignore-o completamente e responda normalmente.
+            const ragContext = await getRAGContext(userMessageText, tenantKey)
+            console.log('[RAG] Context retrieved, length:', ragContext.length)
+
+            if (ragContext.trim()) {
+              const contextMessage = {
+                role: 'system' as const,
+                content: `Use o seguinte contexto da base de conhecimento SOMENTE se for relevante para a pergunta do usuário. Se o contexto não for pertinente, ignore-o completamente e responda normalmente.
 
 <context>
 ${ragContext}
 </context>`,
+              }
+              modelMessages = [contextMessage, ...modelMessages]
             }
-            mergedMessages = [contextMessage, ...mergedMessages]
+          } catch (ragError) {
+            // Log RAG error but continue without context
+            console.error('[RAG] Error retrieving context:', ragError)
           }
-        } catch (ragError) {
-          // Log RAG error but continue without context
-          console.error('[RAG] Error retrieving context:', ragError)
         }
       }
 
@@ -226,13 +237,19 @@ ${ragContext}
           conversationDbId = conversation.id
 
           // Save user message (last message in the array)
-          const lastUserMessage = messages[messages.length - 1]
-          if (lastUserMessage && lastUserMessage.role === 'user') {
+          const lastUserMsg = uiMessages[uiMessages.length - 1]
+          if (lastUserMsg && lastUserMsg.role === 'user') {
+            // Extract text from UIMessage parts
+            const userContent = lastUserMsg.parts
+              ?.filter(part => part.type === 'text')
+              .map(part => part.text)
+              .join(' ') || ''
+
             await db.chatMessage.create({
               data: {
                 conversationId: conversationDbId,
                 role: 'user',
-                content: lastUserMessage.content,
+                content: userContent,
                 provider,
                 model,
                 attachments: attachments ? JSON.parse(JSON.stringify(attachments)) : null,
@@ -243,7 +260,7 @@ ${ragContext}
 
         const streamConfig = {
           model: getModel(provider, model),
-          messages: mergedMessages,
+          messages: modelMessages,
           temperature,
           maxOutputTokens: finalMaxTokens,
           async onFinish({ text }) {
