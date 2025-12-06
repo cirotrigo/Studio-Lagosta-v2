@@ -1,10 +1,11 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { streamText, convertToModelMessages, type UIMessage } from 'ai'
+import { openai } from '@ai-sdk/openai'
+import { anthropic } from '@ai-sdk/anthropic'
+import { google } from '@ai-sdk/google'
+import { mistral } from '@ai-sdk/mistral'
 import { createOpenAI } from '@ai-sdk/openai'
-import { createAnthropic } from '@ai-sdk/anthropic'
-import { createGoogleGenerativeAI } from '@ai-sdk/google'
-import { createMistral } from '@ai-sdk/mistral'
 import { z } from 'zod'
 import { validateUserAuthentication, getUserFromClerkId } from '@/lib/auth-utils'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
@@ -17,10 +18,6 @@ import { db } from '@/lib/db'
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI streaming responses + RAG context retrieval
 
-const openai = createOpenAI({ apiKey: process.env.OPENAI_API_KEY })
-const anthropic = createAnthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-const google = createGoogleGenerativeAI({ apiKey: process.env.GOOGLE_GENERATIVE_AI_API_KEY })
-const mistral = createMistral({ apiKey: process.env.MISTRAL_API_KEY })
 // OpenRouter is OpenAI-compatible
 const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,

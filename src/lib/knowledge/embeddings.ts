@@ -4,14 +4,9 @@
  */
 
 import { embed, embedMany } from 'ai'
-import { createOpenAI } from '@ai-sdk/openai'
+import { openai } from '@ai-sdk/openai'
 
-// Use OpenAI directly for embeddings (OpenRouter doesn't support this)
-const openai = createOpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-})
-
-const embeddingModel = openai.textEmbeddingModel('text-embedding-3-small')
+const embeddingModel = openai.embedding('text-embedding-3-small')
 
 /**
  * Generate a single embedding vector
@@ -24,7 +19,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   const { embedding } = await embed({
-    model: embeddingModel as any,
+    model: embeddingModel,
     value: text,
   })
 
@@ -48,7 +43,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   const { embeddings } = await embedMany({
-    model: embeddingModel as any,
+    model: embeddingModel,
     values: validTexts,
   })
 

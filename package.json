@@ -42,10 +42,10 @@
     "inspect-post": "npx tsx src/scripts/inspect-post.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^1.1.16",
-    "@ai-sdk/google": "^1.1.16",
-    "@ai-sdk/mistral": "^1.1.16",
-    "@ai-sdk/openai": "^1.1.16",
+    "@ai-sdk/anthropic": "^2.0.53",
+    "@ai-sdk/google": "^2.0.44",
+    "@ai-sdk/mistral": "^2.0.25",
+    "@ai-sdk/openai": "^2.0.77",
     "@ai-sdk/react": "^2.0.108",
     "@clerk/backend": "^2.6.2",
     "@clerk/nextjs": "^6.36.0",
