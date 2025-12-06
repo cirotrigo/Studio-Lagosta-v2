@@ -140,14 +140,28 @@ export default function AIChatPage() {
 
   const [input, setInput] = React.useState('')
 
+  // Use refs to ensure body function always gets current values (AI SDK v5 closure issue)
+  const providerRef = React.useRef(provider)
+  const modelRef = React.useRef(model)
+  const attachmentsRef = React.useRef(readyAttachments)
+  const conversationIdRef = React.useRef(currentConversationId)
+
+  // Update refs when values change
+  React.useEffect(() => {
+    providerRef.current = provider
+    modelRef.current = model
+    attachmentsRef.current = readyAttachments
+    conversationIdRef.current = currentConversationId
+  }, [provider, model, readyAttachments, currentConversationId])
+
   const { messages, sendMessage, status, stop, setMessages, regenerate } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
       body: () => ({
-        provider,
-        model,
-        attachments: readyAttachments.map(a => ({ name: a.name, url: a.url })),
-        conversationId: currentConversationId,
+        provider: providerRef.current,
+        model: modelRef.current,
+        attachments: attachmentsRef.current.map(a => ({ name: a.name, url: a.url })),
+        conversationId: conversationIdRef.current,
       }),
     }),
     experimental_throttle: 60,

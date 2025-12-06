@@ -40,13 +40,19 @@ export function TemplateAIChat() {
 
   const [input, setInput] = React.useState('')
 
+  // Use ref to ensure body function always gets current conversationId (AI SDK v5 closure issue)
+  const conversationIdRef = React.useRef(currentConversationId)
+  React.useEffect(() => {
+    conversationIdRef.current = currentConversationId
+  }, [currentConversationId])
+
   const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
       body: () => ({
         provider: 'openai',
         model: 'gpt-4o-mini', // Modelo mais econômico para uso no editor
-        conversationId: currentConversationId,
+        conversationId: conversationIdRef.current,
       }),
     }),
     experimental_throttle: 60,
