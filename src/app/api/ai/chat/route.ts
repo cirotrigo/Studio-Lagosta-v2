@@ -80,17 +80,15 @@ const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
 
 const AttachmentSchema = z.object({ name: z.string().min(1).max(500), url: z.string().url() })
 
-const BodySchema = z
-  .object({
-    provider: ProviderSchema,
-    model: z.string().min(1),
-    messages: z.array(z.any()).min(1), // UIMessage[] format from v5
-    temperature: z.number().min(0).max(2).optional(),
-    maxTokens: z.number().min(100).max(32000).optional(),
-    attachments: z.array(AttachmentSchema).optional(),
-    conversationId: z.string().optional(), // Optional conversation ID for history
-  })
-  .strict()
+const BodySchema = z.object({
+  provider: ProviderSchema,
+  model: z.string().min(1),
+  messages: z.array(z.any()).min(1), // UIMessage[] format from v5
+  temperature: z.number().min(0).max(2).optional(),
+  maxTokens: z.number().min(100).max(32000).optional(),
+  attachments: z.array(AttachmentSchema).optional(),
+  conversationId: z.string().optional(), // Optional conversation ID for history
+})
 
 function isAllowedModel(provider: z.infer<typeof ProviderSchema>, model: string) {
   if (provider === 'openrouter') {
@@ -118,7 +116,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
       const { provider, model, messages: uiMessages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data as {
-        provider: string
+        provider: z.infer<typeof ProviderSchema>
         model: string
         messages: UIMessage[]
         temperature?: number
