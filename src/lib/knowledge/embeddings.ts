@@ -11,6 +11,8 @@ const openai = createOpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 })
 
+const embeddingModel = openai.textEmbeddingModel('text-embedding-3-small')
+
 /**
  * Generate a single embedding vector
  * @param text Text to embed
@@ -22,7 +24,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   const { embedding } = await embed({
-    model: openai.embedding('text-embedding-3-small'),
+    model: embeddingModel as any,
     value: text,
   })
 
@@ -46,7 +48,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   }
 
   const { embeddings } = await embedMany({
-    model: openai.embedding('text-embedding-3-small'),
+    model: embeddingModel as any,
     values: validTexts,
   })
 

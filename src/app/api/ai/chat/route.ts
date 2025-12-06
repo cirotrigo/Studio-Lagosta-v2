@@ -241,11 +241,11 @@ ${ragContext}
           }
         }
 
-        const streamConfig: Parameters<typeof streamText>[0] = {
-          model: getModel(provider, model) as Parameters<typeof streamText>[0]['model'],
+        const streamConfig = {
+          model: getModel(provider, model),
           messages: mergedMessages,
           temperature,
-          maxTokens: finalMaxTokens,
+          maxOutputTokens: finalMaxTokens,
           async onFinish({ text }) {
             // Save assistant response to conversation history
             if (conversationDbId) {
@@ -280,9 +280,9 @@ ${ragContext}
           },
         }
 
-        const result = await streamText(streamConfig)
+        const result = await streamText(streamConfig as any)
         console.log('[CHAT] Stream text successful, returning response')
-        return result.toAIStreamResponse()
+        return result.toUIMessageStreamResponse()
       } catch (providerErr: unknown) {
         // Provider call failed after deduction — reimburse user
         console.error('[CHAT] Provider error:', providerErr)

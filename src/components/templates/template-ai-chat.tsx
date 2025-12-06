@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import { Button } from '@/components/ui/button'
 import { MessageBubble } from '@/components/chat/message-bubble'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -37,25 +38,23 @@ export function TemplateAIChat() {
   const createConversation = useCreateConversation()
   const deleteConversation = useDeleteConversation()
 
-  const { messages, input, setInput, handleInputChange, handleSubmit, isLoading, stop, setMessages } = useChat({
-    api: '/api/ai/chat',
-    body: {
-      provider: 'openai',
-      model: 'gpt-4o-mini', // Modelo mais econômico para uso no editor
-      conversationId: currentConversationId,
-    },
+  const [input, setInput] = React.useState('')
+
+  const { messages, sendMessage, status, stop, setMessages } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/ai/chat',
+      body: {
+        provider: 'openai',
+        model: 'gpt-4o-mini', // Modelo mais econômico para uso no editor
+        conversationId: currentConversationId,
+      },
+    }),
     experimental_throttle: 60,
-    async onResponse(res) {
-      if (res.status === 402) {
-        try {
-          const data = await res.clone().json()
-          const msg = `Você não tem créditos. Necessário ${data?.required ?? ''}, disponível ${data?.available ?? ''}.\n\n[Ir para cobrança →](/billing)`
-          const id = `sys-nocred-${Date.now()}`
-          setMessages(prev => [...prev, { id, role: 'assistant', content: msg }])
-        } catch {
-          const id = `sys-nocred-${Date.now()}`
-          setMessages(prev => [...prev, { id, role: 'assistant', content: 'Você não tem créditos. [Ir para cobrança →](/billing)' }])
-        }
+    onError(error) {
+      // Handle 402 errors (insufficient credits)
+      if (error.message?.includes('402')) {
+        const id = `sys-nocred-${Date.now()}`
+        setMessages(prev => [...prev, { id, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem créditos. [Ir para cobrança →](/billing)' }] }])
       }
     },
   })
@@ -66,7 +65,7 @@ export function TemplateAIChat() {
       const loadedMessages = currentConversation.messages.map((msg) => ({
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
+        parts: [{ type: 'text' as const, text: msg.content }],
       }))
       setMessages(loadedMessages)
     }
@@ -118,19 +117,19 @@ export function TemplateAIChat() {
 
         // Wait a bit for state to update before submitting
         setTimeout(() => {
-          handleSubmit(e)
+          sendMessage({ text: prompt })
           setInput('')
           setTimeout(() => refresh(), 300)
         }, 100)
       } catch (error) {
         console.error('Error creating conversation:', error)
         // Fallback: continue without conversation
-        handleSubmit(e)
+        sendMessage({ text: prompt })
         setInput('')
         setTimeout(() => refresh(), 300)
       }
     } else {
-      handleSubmit(e)
+      sendMessage({ text: prompt })
       setInput('')
       setTimeout(() => refresh(), 300)
     }
@@ -300,7 +299,10 @@ export function TemplateAIChat() {
             )}
             {deferredMessages.map((m, idx) => {
               const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
-              const disableMarkdown = normalizedRole === 'assistant' && isLoading && idx === deferredMessages.length - 1
+              const disableMarkdown = normalizedRole === 'assistant' && status === 'streaming' && idx === deferredMessages.length - 1
+
+              // Extract text content from parts
+              const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
 
               return (
                 <MessageBubble
@@ -308,13 +310,13 @@ export function TemplateAIChat() {
                   message={{
                     id: m.id,
                     role: normalizedRole,
-                    content: m.content
+                    content
                   }}
                   disableMarkdown={disableMarkdown}
                 />
               )
             })}
-            {isLoading && (
+            {status === 'streaming' && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gerando resposta...
               </div>
@@ -330,14 +332,14 @@ export function TemplateAIChat() {
           <div className="flex flex-col gap-2">
             <textarea
               value={input}
-              onChange={handleInputChange}
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={onKeyDown}
               placeholder="Digite sua mensagem... (Enter para enviar)"
               rows={3}
               className="w-full resize-none rounded-md border border-border/60 bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary"
             />
             <div className="flex justify-end">
-              {isLoading ? (
+              {status === 'streaming' ? (
                 <Button
                   type="button"
                   onClick={() => stop?.()}
@@ -352,7 +354,7 @@ export function TemplateAIChat() {
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={!input.trim() || !canPerformOperation('ai_chat')}
+                  disabled={!input.trim() || !canPerformOperation('ai_chat') || status !== 'ready'}
                   className="gap-2"
                 >
                   <Send className="h-3.5 w-3.5" />

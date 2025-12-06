@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useChat } from '@ai-sdk/react'
+import { DefaultChatTransport } from 'ai'
 import { Button } from '@/components/ui/button'
 import { DropdownTriggerButton } from '@/components/ui/dropdown-trigger-button'
 import { Autocomplete } from '@/components/ui/autocomplete'
@@ -137,26 +138,24 @@ export default function AIChatPage() {
     [attachments],
   )
 
-  const { messages, input, setInput, handleInputChange, handleSubmit, isLoading, stop, setMessages, reload } = useChat({
-    api: '/api/ai/chat',
-    body: {
-      provider,
-      model,
-      attachments: readyAttachments.map(a => ({ name: a.name, url: a.url })),
-      conversationId: currentConversationId,
-    },
+  const [input, setInput] = React.useState('')
+
+  const { messages, sendMessage, status, stop, setMessages, regenerate } = useChat({
+    transport: new DefaultChatTransport({
+      api: '/api/ai/chat',
+      body: {
+        provider,
+        model,
+        attachments: readyAttachments.map(a => ({ name: a.name, url: a.url })),
+        conversationId: currentConversationId,
+      },
+    }),
     experimental_throttle: 60,
-    async onResponse(res) {
-      if (res.status === 402) {
-        try {
-          const data = await res.clone().json()
-          const msg = `Você não tem créditos. Necessário ${data?.required ?? ''}, disponível ${data?.available ?? ''}.\n\n[Ir para cobrança →](/billing)`
-          const id = `sys-nocred-${Date.now()}`
-          setMessages(prev => [...prev, { id, role: 'assistant', content: msg }])
-        } catch {
-          const id = `sys-nocred-${Date.now()}`
-          setMessages(prev => [...prev, { id, role: 'assistant', content: 'Você não tem créditos. [Ir para cobrança →](/billing)' }])
-        }
+    onError(error) {
+      // Handle 402 errors (insufficient credits)
+      if (error.message?.includes('402')) {
+        const id = `sys-nocred-${Date.now()}`
+        setMessages(prev => [...prev, { id, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem créditos. [Ir para cobrança →](/billing)' }] }])
       }
     },
   })
@@ -169,7 +168,7 @@ export default function AIChatPage() {
       const loadedMessages = currentConversation.messages.map((msg) => ({
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
-        content: msg.content,
+        parts: [{ type: 'text' as const, text: msg.content }],
       }))
       setMessages(loadedMessages)
     }
@@ -293,8 +292,8 @@ export default function AIChatPage() {
       const attachmentCount = readyAttachments.length
       setMessages(prev => [
         ...prev,
-        { id: id1, role: 'user', content: prompt + (attachmentCount ? `\n\n(Anexada${attachmentCount>1?'s':''} ${attachmentCount} imagem${attachmentCount>1?'ns':''})` : '') },
-        { id: id2, role: 'assistant', content: JSON.stringify({ images }) },
+        { id: id1, role: 'user', parts: [{ type: 'text', text: prompt + (attachmentCount ? `\n\n(Anexada${attachmentCount>1?'s':''} ${attachmentCount} imagem${attachmentCount>1?'ns':''})` : '') }] },
+        { id: id2, role: 'assistant', parts: [{ type: 'text', text: JSON.stringify({ images }) }] },
       ])
       setAttachments([])
     } catch (error) {
@@ -305,14 +304,14 @@ export default function AIChatPage() {
       if ((error as Error)?.message?.includes('402') || (error as Error)?.message?.includes('crédito')) {
         setMessages(prev => [
           ...prev,
-          { id: id1, role: 'user', content: prompt },
-          { id: id2, role: 'assistant', content: 'Você não tem créditos suficientes. [Ir para cobrança →](/billing)' },
+          { id: id1, role: 'user', parts: [{ type: 'text', text: prompt }] },
+          { id: id2, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem créditos suficientes. [Ir para cobrança →](/billing)' }] },
         ])
       } else {
         setMessages(prev => [
           ...prev,
-          { id: id1, role: 'user', content: prompt },
-          { id: id2, role: 'assistant', content: 'Não foi possível gerar a imagem. Tente novamente.' },
+          { id: id1, role: 'user', parts: [{ type: 'text', text: prompt }] },
+          { id: id2, role: 'assistant', parts: [{ type: 'text', text: 'Não foi possível gerar a imagem. Tente novamente.' }] },
         ])
       }
     }
@@ -335,7 +334,7 @@ export default function AIChatPage() {
 
         // Wait a bit for state to update before submitting
         setTimeout(() => {
-          handleSubmit(e)
+          sendMessage({ text: prompt })
           setInput('')
           setAttachments([])
           setTimeout(() => refresh(), 300)
@@ -343,13 +342,13 @@ export default function AIChatPage() {
       } catch (error) {
         console.error('Error creating conversation:', error)
         // Fallback: continue without conversation
-        handleSubmit(e)
+        sendMessage({ text: prompt })
         setInput('')
         setAttachments([])
         setTimeout(() => refresh(), 300)
       }
     } else {
-      handleSubmit(e)
+      sendMessage({ text: prompt })
       setInput('')
       setAttachments([])
       setTimeout(() => refresh(), 300)
@@ -460,13 +459,13 @@ export default function AIChatPage() {
       return prev.slice(0, cut + 1)
     })
     if (shouldReload) {
-      // trigger a reload of the last user message
+      // trigger a regenerate of the last user message
       try {
-        // reload may exist on this hook version
-        reload?.()
+        // regenerate the last message
+        regenerate?.()
       } catch {}
     }
-  }, [reload, setMessages])
+  }, [regenerate, setMessages])
 
   // Show a helpful bubble when credits transition from >0 to 0 while chatting
   const prevCreditsRef = React.useRef<number | null>(null)
@@ -478,7 +477,7 @@ export default function AIChatPage() {
       const hasTip = messages.some(m => m.id?.toString().startsWith('sys-nocred-'))
       if (!hasTip) {
         const id = `sys-nocred-${Date.now()}`
-        setMessages(prev => [...prev, { id, role: 'assistant', content: 'Você não tem mais créditos. [Ir para cobrança →](/billing)' }])
+        setMessages(prev => [...prev, { id, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem mais créditos. [Ir para cobrança →](/billing)' }] }])
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -599,8 +598,11 @@ export default function AIChatPage() {
             const disableMarkdown =
               mode === 'text' &&
               normalizedRole === 'assistant' &&
-              isLoading &&
+              status === 'streaming' &&
               idx === deferredMessages.length - 1
+
+            // Extract text content from parts
+            const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
 
             return (
               <MessageBubble
@@ -608,7 +610,7 @@ export default function AIChatPage() {
                 message={{
                   id: m.id,
                   role: normalizedRole,
-                  content: m.content
+                  content
                 }}
                 onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
                 retryIndex={idx}
@@ -616,7 +618,7 @@ export default function AIChatPage() {
               />
             )
           })}
-          {(isLoading || generateImage.isPending) && (
+          {(status === 'streaming' || generateImage.isPending) && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : 'Gerando resposta...'}
             </div>
@@ -631,7 +633,7 @@ export default function AIChatPage() {
         <form onSubmit={mode === 'image' ? handleSubmitImage : handleSubmitText} className="p-3">
           <textarea
             value={input}
-            onChange={handleInputChange}
+            onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
             placeholder="Digite sua mensagem... (Shift+Enter para nova linha)"
             rows={2}
@@ -748,7 +750,7 @@ export default function AIChatPage() {
             ) : (
               <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_chat')} crédito</span>
             )}
-            {isLoading ? (
+            {status === 'streaming' ? (
               <Button
                 type="button"
                 onClick={() => stop?.()}
@@ -766,6 +768,7 @@ export default function AIChatPage() {
                   hasUploadingAttachments ||
                   (mode === 'image' && readyAttachments.length === 0) ||
                   !input.trim() ||
+                  status !== 'ready' ||
                   (mode === 'image' ? !canPerformOperation('ai_image_generation') : !canPerformOperation('ai_chat'))
                 }
                 className="gap-2"
