@@ -11,6 +11,8 @@ import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
+// Import custom Konva filters
+import '@/lib/konva/filters'
 
 /**
  * Converte ângulo CSS para pontos de início e fim do gradiente Konva
@@ -650,12 +652,50 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
   const filters = React.useMemo<KonvaFilter[]>(() => {
     const list: KonvaFilter[] = []
-    if (layer.style?.blur) list.push(Konva.Filters.Blur)
-    if (layer.style?.brightness !== undefined) list.push(Konva.Filters.Brighten)
+
+    // Professional adjustments (order matters for quality)
+    // 1. Exposure/Brightness first
+    if (layer.style?.exposure !== undefined || layer.style?.brightness !== undefined) {
+      list.push(Konva.Filters.Brighten)
+    }
+
+    // 2. Contrast
     if (layer.style?.contrast !== undefined) list.push(Konva.Filters.Contrast)
+
+    // 3. Highlights and Shadows
+    if ((layer.style?.highlights !== undefined && layer.style.highlights !== 0) ||
+        (layer.style?.shadows !== undefined && layer.style.shadows !== 0)) {
+      // @ts-ignore - Custom filter
+      list.push(Konva.Filters.HighlightsShadows)
+    }
+
+    // 4. Whites and Blacks
+    if ((layer.style?.whites !== undefined && layer.style.whites !== 0) ||
+        (layer.style?.blacks !== undefined && layer.style.blacks !== 0)) {
+      // @ts-ignore - Custom filter
+      list.push(Konva.Filters.WhitesBlacks)
+    }
+
+    // 5. Saturation
+    if (layer.style?.saturation !== undefined && layer.style.saturation !== 0) {
+      list.push(Konva.Filters.HSL)
+    }
+
+    // Effects filters
+    // 6. Blur
+    if (layer.style?.blur) list.push(Konva.Filters.Blur)
+
+    // 7. Vignette (last for best visual effect)
+    if (layer.style?.vignette !== undefined && layer.style.vignette > 0) {
+      // @ts-ignore - Custom filter
+      list.push(Konva.Filters.Vignette)
+    }
+
+    // Legacy filters (deprecated)
     if (layer.style?.grayscale) list.push(Konva.Filters.Grayscale)
     if (layer.style?.sepia) list.push(Konva.Filters.Sepia)
     if (layer.style?.invert) list.push(Konva.Filters.Invert)
+
     return list
   }, [layer.style])
 
@@ -786,9 +826,18 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       height={height}
       {...crop}
       filters={filters.length ? filters : undefined}
-      blurRadius={layer.style?.blur ?? 0}
-      brightness={layer.style?.brightness ?? 0}
+      // Professional adjustments
+      brightness={layer.style?.exposure ?? layer.style?.brightness ?? 0}
       contrast={layer.style?.contrast ?? 0}
+      highlights={layer.style?.highlights ?? 0}
+      shadows={layer.style?.shadows ?? 0}
+      whites={layer.style?.whites ?? 0}
+      blacks={layer.style?.blacks ?? 0}
+      saturation={layer.style?.saturation ?? 0}
+      // Effects filters
+      blurRadius={layer.style?.blur ?? 0}
+      vignette={layer.style?.vignette ?? 0}
+      // Styling
       cornerRadius={borderRadius}
       stroke={borderWidth > 0 ? borderColor : undefined}
       strokeWidth={borderWidth > 0 ? borderWidth : undefined}

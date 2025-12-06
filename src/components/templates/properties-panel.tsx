@@ -33,17 +33,7 @@ import { VideoProperties } from './video-properties'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
 
-const IMAGE_FILTER_PRESETS: Array<{
-  id: string
-  label: string
-  style: Partial<Pick<LayerStyle, 'blur' | 'brightness' | 'contrast' | 'grayscale' | 'sepia' | 'invert'>>
-}> = [
-  { id: 'original', label: 'Original', style: { blur: 0, brightness: 0, contrast: 0, grayscale: false, sepia: false, invert: false } },
-  { id: 'warm', label: 'Quente', style: { brightness: 0.1, contrast: 0.1, sepia: true, grayscale: false, invert: false } },
-  { id: 'cool', label: 'Frio', style: { brightness: -0.1, contrast: 0.15, grayscale: false, sepia: false, invert: false } },
-  { id: 'dramatic', label: 'Dramático', style: { brightness: -0.2, contrast: 0.3, grayscale: false, sepia: false, invert: false } },
-  { id: 'mono', label: 'Monocromático', style: { grayscale: true, sepia: false, invert: false, brightness: 0, contrast: 0.1 } },
-]
+// Image filter presets removed - professional adjustments should be configured manually
 
 interface GradientPropertiesProps {
   layerId: string
@@ -199,9 +189,18 @@ export function EffectsPanel() {
 
   const resetImageFilters = React.useCallback((layer: Layer) => {
     setStyleValue(layer, {
-      blur: 0,
-      brightness: 0,
+      // Reset all adjustments and filters
+      exposure: 0,
       contrast: 0,
+      highlights: 0,
+      shadows: 0,
+      whites: 0,
+      blacks: 0,
+      saturation: 0,
+      blur: 0,
+      vignette: 0,
+      // Reset legacy filters
+      brightness: 0,
       grayscale: false,
       sepia: false,
       invert: false,
@@ -320,9 +319,18 @@ export function PropertiesPanel() {
   const resetImageFilters = React.useCallback(
     (layer: Layer) => {
       setStyleValue(layer, {
-        blur: 0,
-        brightness: 0,
+        // Reset all adjustments and filters
+        exposure: 0,
         contrast: 0,
+        highlights: 0,
+        shadows: 0,
+        whites: 0,
+        blacks: 0,
+        saturation: 0,
+        blur: 0,
+        vignette: 0,
+        // Reset legacy filters
+        brightness: 0,
         grayscale: false,
         sepia: false,
         invert: false,
@@ -1072,73 +1080,120 @@ interface ImageEffectsOnlyProps {
 
 
 function ImageEffectsOnly({ layer, setStyleValue, resetFilters }: ImageEffectsOnlyProps) {
+  const handleResetAdjustments = () => {
+    setStyleValue(layer, {
+      exposure: 0,
+      contrast: 0,
+      highlights: 0,
+      shadows: 0,
+      whites: 0,
+      blacks: 0,
+      saturation: 0,
+    })
+  }
+
+  const handleResetFilters = () => {
+    setStyleValue(layer, {
+      blur: 0,
+      vignette: 0,
+    })
+  }
+
   return (
-    <div className="space-y-2 text-xs">
-      <div className="rounded-md border border-border/30 bg-muted/30 p-2">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold uppercase">Filtros</span>
-          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={resetFilters}>
+    <div className="space-y-3 text-xs">
+      {/* Basic Adjustments Section */}
+      <div className="rounded-md border border-border/30 bg-muted/30 p-3">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide">Ajustes Básicos</span>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleResetAdjustments}>
             Resetar
           </Button>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
+          <FilterSlider
+            label="Exposição"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={layer.style?.exposure ?? 0}
+            onChange={(value) => setStyleValue(layer, { exposure: value })}
+          />
+          <FilterSlider
+            label="Contraste"
+            min={-2}
+            max={2}
+            step={0.05}
+            value={layer.style?.contrast ?? 0}
+            onChange={(value) => setStyleValue(layer, { contrast: value })}
+          />
+          <FilterSlider
+            label="Realces"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.highlights ?? 0}
+            onChange={(value) => setStyleValue(layer, { highlights: value })}
+          />
+          <FilterSlider
+            label="Sombras"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.shadows ?? 0}
+            onChange={(value) => setStyleValue(layer, { shadows: value })}
+          />
+          <FilterSlider
+            label="Brancos"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.whites ?? 0}
+            onChange={(value) => setStyleValue(layer, { whites: value })}
+          />
+          <FilterSlider
+            label="Pretos"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.blacks ?? 0}
+            onChange={(value) => setStyleValue(layer, { blacks: value })}
+          />
+          <FilterSlider
+            label="Saturação"
+            min={-2}
+            max={2}
+            step={0.1}
+            value={layer.style?.saturation ?? 0}
+            onChange={(value) => setStyleValue(layer, { saturation: value })}
+          />
+        </div>
+      </div>
+
+      {/* Filters Section */}
+      <div className="rounded-md border border-border/30 bg-muted/30 p-3">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide">Filtros</span>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={handleResetFilters}>
+            Resetar
+          </Button>
+        </div>
+        <div className="space-y-2.5">
           <FilterSlider
             label="Blur"
             min={0}
-            max={15}
+            max={30}
             step={0.5}
             value={layer.style?.blur ?? 0}
             onChange={(value) => setStyleValue(layer, { blur: value })}
           />
           <FilterSlider
-            label="Brilho"
-            min={-1}
-            max={1}
+            label="Vinheta"
+            min={0}
+            max={1.5}
             step={0.05}
-            value={layer.style?.brightness ?? 0}
-            onChange={(value) => setStyleValue(layer, { brightness: value })}
+            value={layer.style?.vignette ?? 0}
+            onChange={(value) => setStyleValue(layer, { vignette: value })}
           />
-          <FilterSlider
-            label="Contraste"
-            min={-1}
-            max={1}
-            step={0.05}
-            value={layer.style?.contrast ?? 0}
-            onChange={(value) => setStyleValue(layer, { contrast: value })}
-          />
-          <div className="flex flex-wrap gap-1">
-            <ToggleChip
-              label="P&B"
-              active={Boolean(layer.style?.grayscale)}
-              onToggle={(active) => setStyleValue(layer, { grayscale: active })}
-            />
-            <ToggleChip
-              label="Sépia"
-              active={Boolean(layer.style?.sepia)}
-              onToggle={(active) => setStyleValue(layer, { sepia: active })}
-            />
-            <ToggleChip
-              label="Inverter"
-              active={Boolean(layer.style?.invert)}
-              onToggle={(active) => setStyleValue(layer, { invert: active })}
-            />
-          </div>
-        </div>
-        <div className="mt-2 space-y-1">
-          <p className="text-[9px] font-semibold uppercase">Presets</p>
-          <div className="flex flex-wrap gap-1">
-            {IMAGE_FILTER_PRESETS.map((preset) => (
-              <Button
-                key={preset.id}
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] px-2"
-                onClick={() => setStyleValue(layer, preset.style)}
-              >
-                {preset.label}
-              </Button>
-            ))}
-          </div>
         </div>
       </div>
     </div>
@@ -1230,71 +1285,110 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
         </div>
       )}
 
-      <div className="rounded-md border border-border/30 bg-muted/30 p-2">
-        <div className="flex items-center justify-between mb-2">
-          <span className="text-[10px] font-semibold uppercase">Filtros</span>
-          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={resetFilters}>
+      {/* Basic Adjustments Section */}
+      <div className="rounded-md border border-border/30 bg-muted/30 p-3">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide">Ajustes Básicos</span>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setStyleValue(layer, {
+            exposure: 0,
+            contrast: 0,
+            highlights: 0,
+            shadows: 0,
+            whites: 0,
+            blacks: 0,
+            saturation: 0,
+          })}>
             Resetar
           </Button>
         </div>
-        <div className="space-y-2">
+        <div className="space-y-2.5">
+          <FilterSlider
+            label="Exposição"
+            min={-1}
+            max={1}
+            step={0.05}
+            value={layer.style?.exposure ?? 0}
+            onChange={(value) => setStyleValue(layer, { exposure: value })}
+          />
+          <FilterSlider
+            label="Contraste"
+            min={-2}
+            max={2}
+            step={0.05}
+            value={layer.style?.contrast ?? 0}
+            onChange={(value) => setStyleValue(layer, { contrast: value })}
+          />
+          <FilterSlider
+            label="Realces"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.highlights ?? 0}
+            onChange={(value) => setStyleValue(layer, { highlights: value })}
+          />
+          <FilterSlider
+            label="Sombras"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.shadows ?? 0}
+            onChange={(value) => setStyleValue(layer, { shadows: value })}
+          />
+          <FilterSlider
+            label="Brancos"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.whites ?? 0}
+            onChange={(value) => setStyleValue(layer, { whites: value })}
+          />
+          <FilterSlider
+            label="Pretos"
+            min={-100}
+            max={100}
+            step={1}
+            value={layer.style?.blacks ?? 0}
+            onChange={(value) => setStyleValue(layer, { blacks: value })}
+          />
+          <FilterSlider
+            label="Saturação"
+            min={-2}
+            max={2}
+            step={0.1}
+            value={layer.style?.saturation ?? 0}
+            onChange={(value) => setStyleValue(layer, { saturation: value })}
+          />
+        </div>
+      </div>
+
+      {/* Filters Section */}
+      <div className="rounded-md border border-border/30 bg-muted/30 p-3">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-[10px] font-semibold uppercase tracking-wide">Filtros</span>
+          <Button variant="ghost" size="sm" className="h-6 text-[10px] px-2" onClick={() => setStyleValue(layer, {
+            blur: 0,
+            vignette: 0,
+          })}>
+            Resetar
+          </Button>
+        </div>
+        <div className="space-y-2.5">
           <FilterSlider
             label="Blur"
             min={0}
-            max={15}
+            max={30}
             step={0.5}
             value={layer.style?.blur ?? 0}
             onChange={(value) => setStyleValue(layer, { blur: value })}
           />
           <FilterSlider
-            label="Brilho"
-            min={-1}
-            max={1}
+            label="Vinheta"
+            min={0}
+            max={1.5}
             step={0.05}
-            value={layer.style?.brightness ?? 0}
-            onChange={(value) => setStyleValue(layer, { brightness: value })}
+            value={layer.style?.vignette ?? 0}
+            onChange={(value) => setStyleValue(layer, { vignette: value })}
           />
-          <FilterSlider
-            label="Contraste"
-            min={-1}
-            max={1}
-            step={0.05}
-            value={layer.style?.contrast ?? 0}
-            onChange={(value) => setStyleValue(layer, { contrast: value })}
-          />
-          <div className="flex flex-wrap gap-1">
-            <ToggleChip
-              label="P&B"
-              active={Boolean(layer.style?.grayscale)}
-              onToggle={(active) => setStyleValue(layer, { grayscale: active })}
-            />
-            <ToggleChip
-              label="Sépia"
-              active={Boolean(layer.style?.sepia)}
-              onToggle={(active) => setStyleValue(layer, { sepia: active })}
-            />
-            <ToggleChip
-              label="Inverter"
-              active={Boolean(layer.style?.invert)}
-              onToggle={(active) => setStyleValue(layer, { invert: active })}
-            />
-          </div>
-        </div>
-        <div className="mt-2 space-y-1">
-          <p className="text-[9px] font-semibold uppercase">Presets</p>
-          <div className="flex flex-wrap gap-1">
-            {IMAGE_FILTER_PRESETS.map((preset) => (
-              <Button
-                key={preset.id}
-                variant="outline"
-                size="sm"
-                className="h-6 text-[10px] px-2"
-                onClick={() => setStyleValue(layer, preset.style)}
-              >
-                {preset.label}
-              </Button>
-            ))}
-          </div>
         </div>
       </div>
     </div>

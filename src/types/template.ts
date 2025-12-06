@@ -93,9 +93,18 @@ export interface LayerStyle {
   strokeWidth?: number
   shapeType?: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line'
   iconId?: string
+  // Image filters and adjustments
   blur?: number
-  brightness?: number
+  exposure?: number // -1 to 1 (replaces brightness)
   contrast?: number
+  highlights?: number // -100 to 100
+  shadows?: number // -100 to 100
+  whites?: number // -100 to 100
+  blacks?: number // -100 to 100
+  saturation?: number // -2 to 2
+  vignette?: number // 0 to 1
+  // Legacy filters (deprecated)
+  brightness?: number // @deprecated use exposure instead
   grayscale?: boolean
   sepia?: boolean
   invert?: boolean
