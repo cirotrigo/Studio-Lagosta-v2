@@ -109,8 +109,12 @@ export async function POST(req: Request) {
       const { orgId } = await auth()
       const organizationId = orgId ?? null
       // Pre-parse to also include in credits usage details if valid
-      const parsed = BodySchema.safeParse(await req.json())
+      const body = await req.json()
+      console.log('[CHAT] Request body received:', JSON.stringify(body, null, 2))
+
+      const parsed = BodySchema.safeParse(body)
       if (!parsed.success) {
+        console.error('[CHAT] Validation error:', parsed.error.flatten())
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
       const { provider, model, messages: uiMessages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data as {
