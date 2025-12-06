@@ -1,11 +1,10 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { streamText, convertToModelMessages, type UIMessage } from 'ai'
-import { openai } from '@ai-sdk/openai'
+import { openai, createOpenAI } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { google } from '@ai-sdk/google'
 import { mistral } from '@ai-sdk/mistral'
-import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 import { validateUserAuthentication, getUserFromClerkId } from '@/lib/auth-utils'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
@@ -18,8 +17,13 @@ import { db } from '@/lib/db'
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI streaming responses + RAG context retrieval
 
-const openrouter = createOpenRouter({
+const openrouter = createOpenAI({
   apiKey: process.env.OPENROUTER_API_KEY || '',
+  baseURL: 'https://openrouter.ai/api/v1',
+  headers: {
+    'HTTP-Referer': process.env.NEXT_PUBLIC_SITE_URL || 'https://localhost:3000',
+    'X-Title': 'Studio Lagosta AI Chat',
+  },
 })
 
 function getModel(provider: string, model: string) {
@@ -133,6 +137,15 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Chave API ausente para ${provider}.` }, { status: 400 })
       }
 
+      console.log('[CHAT] Received request body:', JSON.stringify({
+        provider,
+        model,
+        messagesCount: uiMessages.length,
+        temperature,
+        maxTokens,
+        hasAttachments: !!attachments?.length,
+      }, null, 2))
+
       // Clean UIMessages: remove step parts (step-start, step-finish) that OpenRouter doesn't support
       const cleanedUIMessages = uiMessages.map(msg => ({
         ...msg,
@@ -147,6 +160,8 @@ export async function POST(req: Request) {
 
       // Convert UIMessage[] to ModelMessage[] format
       let modelMessages = convertToModelMessages(cleanedUIMessages)
+
+      console.log('[CHAT] Model messages after conversion:', JSON.stringify(modelMessages.slice(-2), null, 2))
 
       // If there are attachments, append a user message listing them so the model can reference the files
       if (attachments && attachments.length > 0) {
@@ -301,11 +316,28 @@ ${ragContext}
           },
         }
 
+        console.log('[CHAT] Calling streamText with config:', {
+          provider,
+          model,
+          messageCount: modelMessages.length,
+          temperature,
+          maxOutputTokens: finalMaxTokens,
+        })
+
         const result = await streamText(streamConfig as any)
+
+        console.log('[CHAT] StreamText result type:', typeof result)
+
         return result.toUIMessageStreamResponse()
       } catch (providerErr: unknown) {
         // Provider call failed after deduction — reimburse user
         console.error('[CHAT] Provider error:', providerErr)
+        console.error('[CHAT] Provider error details:', JSON.stringify({
+          message: (providerErr as { message?: string })?.message,
+          name: (providerErr as { name?: string })?.name,
+          stack: (providerErr as { stack?: string })?.stack,
+          cause: (providerErr as { cause?: unknown })?.cause,
+        }, null, 2))
         await refundCreditsForFeature({
           clerkUserId: userId,
           feature,
