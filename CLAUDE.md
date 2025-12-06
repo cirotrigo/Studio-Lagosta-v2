@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Context7 MCP Integration
+
+**IMPORTANT**: This project has Context7 MCP server configured for up-to-date documentation access.
+
+### When to Use Context7
+Always use Context7 when you need:
+- Code generation with latest library/framework syntax
+- Setup or configuration steps for dependencies
+- API documentation for libraries in our tech stack
+- Version-specific examples (Next.js 15, Clerk, Prisma, TanStack Query, etc.)
+- Up-to-date best practices beyond January 2025 knowledge cutoff
+
+### How to Use
+Simply include `use context7:` at the start of your prompt when requesting help with code implementation, library usage, or framework-specific features.
+
+**Example:**
+```
+use context7: How to implement server actions with Prisma in Next.js 15?
+```
+
 ## Development Commands
 
 ### Running the Application

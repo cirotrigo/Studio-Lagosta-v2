@@ -2,6 +2,16 @@
 
 This file is a navigation hub for agents working in this repository. It avoids duplicating content and points you to the authoritative docs and guides.
 
+## Context7 MCP - Up-to-Date Documentation
+
+**ALWAYS use Context7** when implementing code or consulting library documentation:
+- Syntax and API changes beyond January 2025
+- Latest best practices for Next.js 15, Clerk, Prisma, TanStack Query, Radix UI
+- Version-specific setup and configuration
+- Framework updates and migration guides
+
+**Usage:** Prefix prompts with `use context7:` when requesting code generation or library documentation.
+
 ## Start Here
 - [docs/README.md](docs/README.md) — Central documentation index: architecture, backend/frontend, API, auth, database, AI, workflows
 - [agents/README.md](agents/README.md) — Agent guides index with checklists and PR deliverables (security, frontend, backend, database, planning, QA)
