@@ -143,12 +143,12 @@ export default function AIChatPage() {
   const { messages, sendMessage, status, stop, setMessages, regenerate } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: {
+      body: () => ({
         provider,
         model,
         attachments: readyAttachments.map(a => ({ name: a.name, url: a.url })),
         conversationId: currentConversationId,
-      },
+      }),
     }),
     experimental_throttle: 60,
     onError(error) {

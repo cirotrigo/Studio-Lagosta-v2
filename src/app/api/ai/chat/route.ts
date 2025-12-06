@@ -87,7 +87,7 @@ const BodySchema = z.object({
   temperature: z.number().min(0).max(2).optional(),
   maxTokens: z.number().min(100).max(32000).optional(),
   attachments: z.array(AttachmentSchema).optional(),
-  conversationId: z.string().optional(), // Optional conversation ID for history
+  conversationId: z.string().nullable().optional(), // Optional conversation ID for history
 })
 
 function isAllowedModel(provider: z.infer<typeof ProviderSchema>, model: string) {

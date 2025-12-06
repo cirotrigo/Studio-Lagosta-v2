@@ -43,11 +43,11 @@ export function TemplateAIChat() {
   const { messages, sendMessage, status, stop, setMessages } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: {
+      body: () => ({
         provider: 'openai',
         model: 'gpt-4o-mini', // Modelo mais econômico para uso no editor
         conversationId: currentConversationId,
-      },
+      }),
     }),
     experimental_throttle: 60,
     onError(error) {
