@@ -105,11 +105,8 @@ export async function POST(req: Request) {
       const organizationId = orgId ?? null
       // Pre-parse to also include in credits usage details if valid
       const body = await req.json()
-      console.log('[CHAT] Request body received:', JSON.stringify(body, null, 2))
-
       const parsed = BodySchema.safeParse(body)
       if (!parsed.success) {
-        console.error('[CHAT] Validation error:', parsed.error.flatten())
         return NextResponse.json({ error: 'Corpo da requisição inválido', issues: parsed.error.flatten() }, { status: 400 })
       }
       const { provider, model, messages: uiMessages, temperature = 0.4, maxTokens, attachments, conversationId } = parsed.data as {
@@ -138,8 +135,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Chave API ausente para ${provider}.` }, { status: 400 })
       }
 
+      // Clean UIMessages: remove step parts (step-start, step-finish) that OpenRouter doesn't support
+      const cleanedUIMessages = uiMessages.map(msg => ({
+        ...msg,
+        parts: msg.parts?.filter(part =>
+          // Keep only text parts and tool-related parts, remove step-start/step-finish
+          part.type === 'text' ||
+          part.type === 'file' ||
+          part.type.startsWith('tool-') ||
+          part.type.startsWith('data-')
+        ) || []
+      }))
+
       // Convert UIMessage[] to ModelMessage[] format
-      let modelMessages = convertToModelMessages(uiMessages)
+      let modelMessages = convertToModelMessages(cleanedUIMessages)
 
       // If there are attachments, append a user message listing them so the model can reference the files
       if (attachments && attachments.length > 0) {
@@ -215,8 +224,6 @@ ${ragContext}
         // Get provider-specific default max tokens (can be overridden by user)
         const defaultMaxTokens = getMaxOutputTokens(provider as AIProvider)
         const finalMaxTokens = maxTokens || defaultMaxTokens
-
-        console.log('[CHAT] Calling provider:', provider, 'model:', model, 'maxTokens:', finalMaxTokens)
 
         // Conversation history: verify ownership and save user message
         let conversationDbId: string | null = null
@@ -297,7 +304,6 @@ ${ragContext}
         }
 
         const result = await streamText(streamConfig as any)
-        console.log('[CHAT] Stream text successful, returning response')
         return result.toUIMessageStreamResponse()
       } catch (providerErr: unknown) {
         // Provider call failed after deduction — reimburse user
