@@ -5,7 +5,7 @@ import { openai } from '@ai-sdk/openai'
 import { anthropic } from '@ai-sdk/anthropic'
 import { google } from '@ai-sdk/google'
 import { mistral } from '@ai-sdk/mistral'
-import { createOpenAI } from '@ai-sdk/openai'
+import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import { z } from 'zod'
 import { validateUserAuthentication, getUserFromClerkId } from '@/lib/auth-utils'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
@@ -18,10 +18,8 @@ import { db } from '@/lib/db'
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI streaming responses + RAG context retrieval
 
-// OpenRouter is OpenAI-compatible
-const openrouter = createOpenAI({
-  apiKey: process.env.OPENROUTER_API_KEY,
-  baseURL: 'https://openrouter.ai/api/v1',
+const openrouter = createOpenRouter({
+  apiKey: process.env.OPENROUTER_API_KEY || '',
 })
 
 function getModel(provider: string, model: string) {
