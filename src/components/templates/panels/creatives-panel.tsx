@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Trash2, Download, Loader2, ImageIcon, Calendar } from 'lucide-react'
+import { Trash2, Download, Loader2, ImageIcon, Calendar, Wand2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import {
@@ -22,17 +22,20 @@ import { CreativesLightbox } from '../creatives-lightbox'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
+import { useTemplateEditor } from '@/contexts/template-editor-context'
 
 interface CreativesPanelProps {
   templateId: number
   projectId: number
+  onOpenAIPanel?: () => void
 }
 
-export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
+export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: CreativesPanelProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const { data: creatives = [], isLoading, error, refetch } = useTemplateCreatives(templateId)
   const deleteCreative = useDeleteCreative(templateId)
+  const { setPendingAIImageEdit } = useTemplateEditor()
   const [creativeToDelete, setCreativeToDelete] = React.useState<string | null>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingCreative, setSchedulingCreative] = React.useState<Creative | null>(null)
@@ -199,6 +202,26 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
     setSchedulingCreative(null)
   }, [])
 
+  const handleEditWithAI = React.useCallback((creative: Creative) => {
+    // Apenas permitir edição de imagens (não vídeos)
+    if (creative.isVideo) {
+      toast({
+        variant: 'destructive',
+        description: 'Apenas imagens podem ser editadas com IA. Vídeos não são suportados.'
+      })
+      return
+    }
+
+    // Passar dados para o contexto
+    setPendingAIImageEdit({
+      url: creative.resultUrl,
+      name: creative.templateName || `Criativo ${creative.id}`
+    })
+
+    // Abrir painel de AI Images
+    onOpenAIPanel?.()
+  }, [setPendingAIImageEdit, onOpenAIPanel, toast])
+
   const composerInitialData = React.useMemo(() => {
     if (!schedulingCreative) return undefined
 
@@ -317,7 +340,12 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
                       className="h-full w-full object-cover transition-transform group-hover:scale-105"
                       muted
                       playsInline
-                      onMouseEnter={(e) => e.currentTarget.play()}
+                      onMouseEnter={(e) => {
+                        // Tentar reproduzir, mas ignorar erros (navegadores podem pausar vídeos em background)
+                        e.currentTarget.play().catch(() => {
+                          // Silenciosamente ignorar erro de play() - comum em navegadores para economia de energia
+                        })
+                      }}
                       onMouseLeave={(e) => {
                         e.currentTarget.pause()
                         e.currentTarget.currentTime = 0
@@ -383,6 +411,17 @@ export function CreativesPanel({ templateId, projectId }: CreativesPanelProps) {
                     >
                       <Calendar className="h-3.5 w-3.5" />
                     </Button>
+                    {!isVideo && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 w-7 p-0"
+                        onClick={() => handleEditWithAI(creative)}
+                        title="Editar com IA"
+                      >
+                        <Wand2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"

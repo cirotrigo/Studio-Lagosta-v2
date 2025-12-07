@@ -804,7 +804,13 @@ function TemplateEditorContent({
               {activeRightPanel === 'effects' && <EffectsPanel />}
               {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
               {activeRightPanel === 'chat' && <TemplateAIChat />}
-              {activeRightPanel === 'creatives' && <CreativesPanel templateId={templateId} projectId={projectId} />}
+              {activeRightPanel === 'creatives' && (
+                <CreativesPanel
+                  templateId={templateId}
+                  projectId={projectId}
+                  onOpenAIPanel={() => setActivePanel('ai-images')}
+                />
+              )}
               {activeRightPanel === 'agenda' && <AgendaPanel projectId={projectId} />}
             </div>
           </aside>

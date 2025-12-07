@@ -76,12 +76,17 @@ function AspectRatioIcon({ ratio }: { ratio: string }) {
 }
 
 export function AIImagesPanel() {
-  const { addLayer, projectId, design } = useTemplateEditor()
+  const { addLayer, projectId, design, pendingAIImageEdit, setPendingAIImageEdit } = useTemplateEditor()
   const { toast } = useToast()
 
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
   const [search, setSearch] = React.useState('')
   const [imageToEdit, setImageToEdit] = React.useState<AIImageRecord | null>(null)
+
+  // Debug: verificar projectId
+  React.useEffect(() => {
+    console.log('[AIImagesPanel] projectId from context:', projectId, 'type:', typeof projectId)
+  }, [projectId])
 
   // Buscar imagens IA do projeto
   const { data: aiImages = [], isLoading } = useQuery<AIImageRecord[]>({
@@ -155,6 +160,39 @@ export function AIImagesPanel() {
     setMode('generate') // Mudar para a aba de geração
     toast({ description: 'Imagem carregada para edição' })
   }
+
+  // Processar imagem pendente vinda de criativo
+  React.useEffect(() => {
+    if (pendingAIImageEdit) {
+      console.log('[AIImagesPanel] Processing pendingAIImageEdit:', pendingAIImageEdit)
+
+      // Converter para formato AIImageRecord
+      const tempRecord: AIImageRecord = {
+        id: `temp-${Date.now()}`,
+        name: pendingAIImageEdit.name,
+        prompt: 'Editar esta imagem com IA',
+        mode: 'EDIT',
+        fileUrl: pendingAIImageEdit.url,
+        thumbnailUrl: pendingAIImageEdit.url,
+        width: 1080,
+        height: 1920,
+        aspectRatio: '9:16',
+        model: 'seedream-4', // Modelo padrão para edição
+        createdAt: new Date().toISOString()
+      }
+
+      // Carregar para edição
+      setImageToEdit(tempRecord)
+      setMode('generate') // Ativa a aba "Gerar"
+
+      // Limpar estado pendente
+      setPendingAIImageEdit(null)
+
+      toast({
+        description: `Criativo "${pendingAIImageEdit.name}" carregado para edição com IA`
+      })
+    }
+  }, [pendingAIImageEdit, setPendingAIImageEdit, toast])
 
   return (
     <div className="flex h-full flex-col gap-3">
@@ -369,6 +407,11 @@ function GenerateImageForm({
       baseImage?: string
       maskImage?: string
     }) => {
+      // Validar projectId antes de enviar
+      if (projectId === null || projectId === undefined) {
+        throw new Error('Projeto não identificado. Por favor, recarregue a página.')
+      }
+
       const payload = {
         projectId,
         prompt: data.prompt,
@@ -381,7 +424,13 @@ function GenerateImageForm({
         maskImage: data.maskImage,
       }
 
-      console.log('[AIImagesPanel] Sending request to /api/ai/generate-image with payload:', payload)
+      console.log('[AIImagesPanel] Sending request to /api/ai/generate-image with payload:', {
+        ...payload,
+        projectId: payload.projectId,
+        mode: payload.mode,
+        model: payload.model,
+        hasBaseImage: !!payload.baseImage
+      })
 
       const response = await fetch('/api/ai/generate-image', {
         method: 'POST',
@@ -396,7 +445,24 @@ function GenerateImageForm({
         try {
           const error = await response.json()
           console.error('[AIImagesPanel] API Error Response:', error)
-          errorMessage = error.error || error.message || error.detail || JSON.stringify(error)
+          errorMessage = error.error || error.message || error.detail || 'Erro desconhecido'
+
+          // Se o erro ainda estiver vazio, usar uma mensagem padrão baseada no status
+          if (!errorMessage || errorMessage === 'Erro desconhecido') {
+            if (response.status === 400) {
+              errorMessage = 'Dados inválidos enviados para o servidor'
+            } else if (response.status === 401) {
+              errorMessage = 'Não autorizado. Faça login novamente.'
+            } else if (response.status === 402) {
+              errorMessage = 'Créditos insuficientes'
+            } else if (response.status === 404) {
+              errorMessage = 'Projeto não encontrado'
+            } else if (response.status === 500) {
+              errorMessage = 'Erro interno do servidor'
+            } else {
+              errorMessage = `Erro HTTP ${response.status}`
+            }
+          }
         } catch (parseError) {
           console.error('[AIImagesPanel] Failed to parse error response:', parseError)
           const text = await response.text().catch(() => '')
@@ -517,15 +583,17 @@ function GenerateImageForm({
     return modelConfig.capabilities.supportsImageEditing === true
   }, [selectedModel])
 
-  // Auto-switch para 'generate' se modelo não suportar edição
+  // Auto-switch para modelo que suporte edição se estiver em modo edit
   React.useEffect(() => {
     if (mode === 'edit' && !modelSupportsEditing) {
-      setMode('generate')
+      console.warn(`[GenerateImageForm] Model ${selectedModel} does not support editing. Switching to seedream-4.`)
+      setSelectedModel('seedream-4')
       toast({
-        description: `${AI_IMAGE_MODELS[selectedModel].displayName} não suporta edição. Modo alterado para Gerar.`
+        description: `⚠️ ${AI_IMAGE_MODELS[selectedModel].displayName} não suporta edição.\n\nMudando para Seedream 4 automaticamente.`,
+        duration: 5000
       })
     }
-  }, [selectedModel, mode, modelSupportsEditing])
+  }, [selectedModel, mode, modelSupportsEditing, toast])
 
   const handleGenerate = async () => {
     if (!prompt.trim()) {
@@ -760,6 +828,22 @@ function GenerateImageForm({
     }
   }, [maxReferenceImages])
 
+  // Aviso se projectId não estiver disponível
+  if (projectId === null || projectId === undefined) {
+    return (
+      <Card className="p-4">
+        <div className="text-center py-6 space-y-2">
+          <p className="text-sm font-medium text-destructive">
+            Projeto não identificado
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Recarregue a página para continuar gerando imagens com IA.
+          </p>
+        </div>
+      </Card>
+    )
+  }
+
   return (
     <Card className="p-4 space-y-4">
       <div className="space-y-2">
@@ -807,6 +891,7 @@ function GenerateImageForm({
         value={selectedModel}
         onValueChange={setSelectedModel}
         disabled={generateMutation.isPending}
+        filterByEditing={mode === 'edit'}
       />
 
       {/* Seletor de Resolução (apenas para modelos que suportam) */}

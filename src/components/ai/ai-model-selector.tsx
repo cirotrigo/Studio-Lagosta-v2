@@ -23,10 +23,17 @@ interface AIModelSelectorProps {
   value: AIImageModel
   onValueChange: (value: AIImageModel) => void
   disabled?: boolean
+  filterByEditing?: boolean
 }
 
-export function AIModelSelector({ value, onValueChange, disabled }: AIModelSelectorProps) {
-  const availableModels = getAvailableModels()
+export function AIModelSelector({ value, onValueChange, disabled, filterByEditing = false }: AIModelSelectorProps) {
+  const availableModels = getAvailableModels().filter(model => {
+    // Filtrar apenas modelos com capacidade de edição se solicitado
+    if (filterByEditing) {
+      return model.capabilities.supportsImageEditing === true
+    }
+    return true
+  })
   const selectedModel = AI_IMAGE_MODELS[value]
   const [showComparison, setShowComparison] = useState(false)
 

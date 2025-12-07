@@ -100,10 +100,13 @@ export async function POST(request: Request) {
     // 1. Validar input
     const rawBody = await request.json()
     console.log('[AI Generate] Raw body received:', {
-      ...rawBody,
+      projectId: rawBody.projectId,
+      projectIdType: typeof rawBody.projectId,
       prompt: rawBody.prompt?.substring(0, 50),
       model: rawBody.model,
-      resolution: rawBody.resolution
+      mode: rawBody.mode,
+      resolution: rawBody.resolution,
+      hasBaseImage: !!rawBody.baseImage
     })
 
     const body = generateImageSchema.parse(rawBody)
@@ -492,16 +495,17 @@ async function createReplicatePrediction(params: {
     // Modo inpainting: usar baseImage + maskImage
     if ((params.mode === 'inpaint' || params.mode === 'edit') && params.baseImage) {
       console.log('[AI Generate] Ideogram v3 inpainting mode: using baseImage and mask')
-      inputData.image = params.baseImage
 
-      // Máscara é obrigatória para inpainting no Ideogram
-      if (params.maskImage) {
-        inputData.mask = params.maskImage
-      } else {
-        // Se não houver máscara, tentaremos usar a imagem completa como base para edição
-        console.warn('[AI Generate] Ideogram v3: no mask provided, editing entire image')
-      }
-      // Aspect ratio é ignorado em modo inpainting
+      // IMPORTANTE: Ideogram v3 NÃO suporta edição direta de imagens via API
+      // O modelo só suporta: geração normal ou inpainting com máscara
+      // Para "editar" uma imagem, precisamos usar o prompt descrevendo o que queremos
+      throw new Error(
+        'O modelo Ideogram v3 Turbo não suporta edição direta de imagens.\n\n' +
+        '💡 Use um destes modelos para edição:\n' +
+        '• Seedream 4 - Edição profissional (3-6 créditos)\n' +
+        '• Nano Banana Pro - Edição 4K (15-30 créditos)\n\n' +
+        'ℹ️ O Ideogram é excelente para gerar imagens com texto perfeito.'
+      )
     } else {
       // Modo geração normal
       inputData.aspect_ratio = params.aspectRatio

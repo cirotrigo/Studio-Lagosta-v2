@@ -87,6 +87,9 @@ export interface TemplateEditorContextValue {
   // Canvas Alignment
   alignSelectedToCanvasCenterH: () => void
   alignSelectedToCanvasCenterV: () => void
+  // AI Image Edit Integration
+  pendingAIImageEdit: { url: string; name: string } | null
+  setPendingAIImageEdit: (image: { url: string; name: string } | null) => void
 }
 
 export interface ExportRecord {
@@ -154,6 +157,7 @@ const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
 const [, setUpdateCounter] = React.useState(0)
+const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{ url: string; name: string } | null>(null)
 
   // Keep ref in sync with state
   React.useEffect(() => {
@@ -1253,6 +1257,8 @@ const [, setUpdateCounter] = React.useState(0)
       moveSelectedBackward,
       alignSelectedToCanvasCenterH,
       alignSelectedToCanvasCenterV,
+      pendingAIImageEdit,
+      setPendingAIImageEdit,
     }),
     [
       template.id,
@@ -1314,6 +1320,7 @@ const [, setUpdateCounter] = React.useState(0)
       moveSelectedBackward,
       alignSelectedToCanvasCenterH,
       alignSelectedToCanvasCenterV,
+      pendingAIImageEdit,
     ],
   )
 

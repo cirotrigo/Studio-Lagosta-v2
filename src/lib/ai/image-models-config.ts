@@ -186,9 +186,9 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
       supportsCustomDimensions: true,
       supports4K: false,
       averageSpeed: '4-6',
-      supportsImageEditing: true,
-      supportsInpainting: true,
-      supportedModes: ['generate', 'edit', 'inpaint'],
+      supportsImageEditing: false, // Ideogram NÃO suporta edição direta via API
+      supportsInpainting: true, // Suporta apenas com máscara (não usado atualmente)
+      supportedModes: ['generate'], // Apenas geração normal
     },
 
     pricing: {
