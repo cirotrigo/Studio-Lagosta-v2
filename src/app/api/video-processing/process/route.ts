@@ -38,8 +38,6 @@ async function processNextJob(): Promise<NextResponse> {
       select: {
         googleDriveFolderId: true,
         googleDriveFolderName: true,
-        googleDriveVideosFolderId: true,
-        googleDriveVideosFolderName: true,
       },
     })
 
@@ -184,7 +182,7 @@ async function processNextJob(): Promise<NextResponse> {
         finalThumbnailUrl = generationFieldValues['thumbnailUrl'] as string
       }
 
-      const driveFolderId = project?.googleDriveVideosFolderId ?? project?.googleDriveFolderId ?? null
+      const driveFolderId = project?.googleDriveFolderId ?? null
       if (driveFolderId && googleDriveService.isEnabled()) {
         try {
           const driveResult = await googleDriveService.uploadFileToFolder({
