@@ -137,15 +137,6 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: `Chave API ausente para ${provider}.` }, { status: 400 })
       }
 
-      console.log('[CHAT] Received request body:', JSON.stringify({
-        provider,
-        model,
-        messagesCount: uiMessages.length,
-        temperature,
-        maxTokens,
-        hasAttachments: !!attachments?.length,
-      }, null, 2))
-
       // Clean UIMessages: remove step parts (step-start, step-finish) that OpenRouter doesn't support
       const cleanedUIMessages = uiMessages.map(msg => ({
         ...msg,
@@ -160,8 +151,6 @@ export async function POST(req: Request) {
 
       // Convert UIMessage[] to ModelMessage[] format
       let modelMessages = convertToModelMessages(cleanedUIMessages)
-
-      console.log('[CHAT] Model messages after conversion:', JSON.stringify(modelMessages.slice(-2), null, 2))
 
       // If there are attachments, append a user message listing them so the model can reference the files
       if (attachments && attachments.length > 0) {
@@ -316,18 +305,7 @@ ${ragContext}
           },
         }
 
-        console.log('[CHAT] Calling streamText with config:', {
-          provider,
-          model,
-          messageCount: modelMessages.length,
-          temperature,
-          maxOutputTokens: finalMaxTokens,
-        })
-
         const result = await streamText(streamConfig as any)
-
-        console.log('[CHAT] StreamText result type:', typeof result)
-
         return result.toUIMessageStreamResponse()
       } catch (providerErr: unknown) {
         // Provider call failed after deduction — reimburse user

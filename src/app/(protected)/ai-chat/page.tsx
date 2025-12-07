@@ -110,6 +110,16 @@ export default function AIChatPage() {
     [availableProviders, provider]
   )
 
+  // Reset model when provider changes (to prevent stale model selection)
+  const prevProviderRef = React.useRef(provider)
+  React.useEffect(() => {
+    if (prevProviderRef.current !== provider && prevProviderRef.current !== '') {
+      // Provider changed, reset model
+      setModel('')
+    }
+    prevProviderRef.current = provider
+  }, [provider])
+
   // Get models for current provider
   const currentModels = React.useMemo(() => {
     if (provider === 'openrouter') {
@@ -198,33 +208,44 @@ export default function AIChatPage() {
     provider === 'openrouter' ? (mode === 'image' ? 'image' : 'text') : undefined
   )
 
+  // Track if we've already set initial model to avoid infinite loops
+  const initialModelSetRef = React.useRef(false)
+
   React.useEffect(() => {
     if (provider === 'openrouter') {
       if (openRouterModelsData?.models && openRouterModelsData.models.length > 0) {
         // Convert OpenRouterModel to the expected format
-        const formattedModels = openRouterModelsData.models.map(model => ({
-          id: model.id,
-          label: model.label
+        const formattedModels = openRouterModelsData.models.map(m => ({
+          id: m.id,
+          label: m.label
         }))
         setDynamicOpenRouterModels(formattedModels)
-        if (formattedModels.length > 0 && !model) {
+
+        // Only auto-select model if empty or doesn't exist in new list
+        const modelExists = model && formattedModels.some(m => m.id === model)
+        if (!modelExists && formattedModels.length > 0) {
           setModel(formattedModels[0].id)
+          initialModelSetRef.current = true
         }
       } else if (!isLoadingModels) {
         // Fallback to static models if API fails
         setDynamicOpenRouterModels(null)
         const fallbackModels = mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : (currentProviderData?.models ?? STATIC_MODELS['openrouter'])
-        if (fallbackModels.length > 0 && !model) {
+        const modelExists = model && fallbackModels.some(m => m.id === model)
+        if (!modelExists && fallbackModels.length > 0) {
           setModel(fallbackModels[0].id)
+          initialModelSetRef.current = true
         }
       }
     } else if (currentProviderData) {
       // For non-OpenRouter providers, use models from provider data
-      if (currentProviderData.models.length > 0 && !model) {
+      const modelExists = model && currentProviderData.models.some(m => m.id === model)
+      if (!modelExists && currentProviderData.models.length > 0) {
         setModel(currentProviderData.models[0].id)
+        initialModelSetRef.current = true
       }
     }
-  }, [provider, mode, openRouterModelsData, isLoadingModels, currentProviderData, model])
+  }, [provider, mode, openRouterModelsData, isLoadingModels, currentProviderData])
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const endRef = React.useRef<HTMLDivElement>(null)
