@@ -37,13 +37,14 @@ async function loadFFmpeg(): Promise<FFmpeg> {
   if (!isLoaded) {
     console.log('[FFmpeg] Carregando FFmpeg.wasm...')
 
-    // Usar CDN direto sem toBlobURL (evita problemas de COOP/COEP em desenvolvimento)
-    const baseURL = 'https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd'
+    // Usar CDN com versão multi-threaded para melhor performance
+    const baseURL = 'https://unpkg.com/@ffmpeg/core-mt@0.12.10/dist/esm'
 
     try {
       await ffmpegInstance.load({
         coreURL: `${baseURL}/ffmpeg-core.js`,
         wasmURL: `${baseURL}/ffmpeg-core.wasm`,
+        workerURL: `${baseURL}/ffmpeg-core.worker.js`,
       })
 
       isLoaded = true
@@ -104,15 +105,21 @@ export async function convertWebMToMP4(
         '-crf',
         '22',
         '-profile:v',
-        'high',
+        'baseline',
         '-level',
-        '4.1',
+        '3.0',
         '-pix_fmt',
         'yuv420p',
         '-movflags',
         'faststart',
         '-g',
-        '60',
+        '30',
+        '-r',
+        '30',
+        '-vsync',
+        'cfr',
+        '-max_muxing_queue_size',
+        '1024',
         '-c:a',
         audioCodec,
         ...(audioCodec === 'aac'

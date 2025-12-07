@@ -270,6 +270,8 @@ export async function convertWebMToMP4ServerSide(
         'baseline',
         '-level',
         '3.0',
+        '-g',
+        '30',
         '-max_muxing_queue_size',
         '1024',
         '-vf',

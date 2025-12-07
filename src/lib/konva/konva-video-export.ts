@@ -408,8 +408,10 @@ export async function exportVideoWithLayers(
 
     onProgress?.({ phase: 'preparing', progress: 40 })
 
-    // Criar stream do canvas offscreen
+    // Criar stream do canvas offscreen com frameRate fixo
     const canvasStream = offscreenCanvas.captureStream(captureFps)
+    console.log(`[Video Export] Canvas stream criado com ${captureFps} FPS`)
+
     const primaryCanvasTrack = canvasStream.getVideoTracks()[0]
     if (primaryCanvasTrack) {
       if ('contentHint' in primaryCanvasTrack) {
@@ -422,8 +424,9 @@ export async function exportVideoWithLayers(
       if (typeof primaryCanvasTrack.applyConstraints === 'function') {
         try {
           await primaryCanvasTrack.applyConstraints({ frameRate: captureFps })
+          console.log(`[Video Export] ✅ FrameRate constraint aplicado: ${captureFps} FPS`)
         } catch (error) {
-          console.warn('[Video Export] Não foi possível aplicar frameRate no track:', error)
+          console.warn('[Video Export] ⚠️ Não foi possível aplicar frameRate no track:', error)
         }
       }
     }
