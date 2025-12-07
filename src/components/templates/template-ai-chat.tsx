@@ -51,7 +51,7 @@ export function TemplateAIChat() {
       api: '/api/ai/chat',
       body: () => ({
         provider: 'openai',
-        model: 'gpt-4o-mini', // Modelo mais econômico para uso no editor
+        model: 'gpt-5-mini', // Modelo econômico e balanceado para uso no editor
         conversationId: conversationIdRef.current,
       }),
     }),
@@ -288,7 +288,7 @@ export function TemplateAIChat() {
           </Button>
         </div>
         <div className="text-[10px] text-muted-foreground">
-          GPT-4o Mini · {getCost('ai_chat')} crédito
+          GPT-5 Mini · {getCost('ai_chat')} crédito
         </div>
       </div>
 

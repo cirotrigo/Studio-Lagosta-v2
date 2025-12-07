@@ -390,7 +390,7 @@ function CropButton({ x, y, text, fill, onClick }: CropButtonProps) {
   }, [])
 
   const handleClick = React.useCallback(
-    (e: KonvaEventObject<MouseEvent>) => {
+    (e: KonvaEventObject<MouseEvent | TouchEvent>) => {
       e.cancelBubble = true
       onClick()
     },

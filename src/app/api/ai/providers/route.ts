@@ -13,9 +13,13 @@ type Provider = {
 // Available models for each provider
 const PROVIDER_MODELS: Record<string, { id: string; label: string }[]> = {
   openai: [
-    { id: 'gpt-4o', label: 'GPT-4o (Latest)' },
+    { id: 'gpt-5.1', label: 'GPT-5.1 (Latest Flagship)' },
+    { id: 'gpt-5-mini', label: 'GPT-5 Mini (Balanced)' },
+    { id: 'gpt-5-nano', label: 'GPT-5 Nano (Fastest)' },
+    { id: 'o4-mini', label: 'o4-mini (Reasoning)' },
+    { id: 'o3-mini', label: 'o3-mini (Reasoning)' },
+    { id: 'gpt-4o', label: 'GPT-4o' },
     { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-    { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
   ],
   anthropic: [
     { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
@@ -34,6 +38,11 @@ const PROVIDER_MODELS: Record<string, { id: string; label: string }[]> = {
   ],
   openrouter: [
     // OpenRouter models are fetched dynamically
+    { id: 'openai/gpt-5.1', label: 'OpenAI · GPT-5.1 (Flagship)' },
+    { id: 'openai/gpt-5-mini', label: 'OpenAI · GPT-5 Mini' },
+    { id: 'openai/gpt-5-nano', label: 'OpenAI · GPT-5 Nano' },
+    { id: 'openai/o4-mini', label: 'OpenAI · o4-mini (Reasoning)' },
+    { id: 'openai/o3-mini', label: 'OpenAI · o3-mini (Reasoning)' },
     { id: 'openai/gpt-4o-mini', label: 'OpenAI · GPT-4o Mini' },
     { id: 'anthropic/claude-3.5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
     { id: 'google/gemini-2.0-flash-exp:free', label: 'Google · Gemini 2.0 Flash (Free)' },
