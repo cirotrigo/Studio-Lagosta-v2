@@ -231,17 +231,17 @@ export function DesktopGoogleDriveModal({
 
   const headerTitle =
     mode === 'folders' ? 'Selecionar Pasta' :
-    mode === 'videos' ? 'Escolher Vídeo do Google Drive' :
-    mode === 'both' ? 'Escolher Mídia do Google Drive' :
-    'Escolher Imagem do Google Drive'
+      mode === 'videos' ? 'Escolher Vídeo do Google Drive' :
+        mode === 'both' ? 'Escolher Mídia do Google Drive' :
+          'Escolher Imagem do Google Drive'
   const description =
     mode === 'folders'
       ? 'Escolha a pasta que receberá os backups automáticos dos criativos.'
       : mode === 'videos'
-      ? 'Selecione um vídeo da pasta configurada'
-      : mode === 'both'
-      ? 'Selecione imagens ou vídeos da pasta configurada'
-      : 'Selecione uma imagem da pasta configurada'
+        ? 'Selecione um vídeo da pasta configurada'
+        : mode === 'both'
+          ? 'Selecione imagens ou vídeos da pasta configurada'
+          : 'Selecione uma imagem da pasta configurada'
 
   const isLoading = driveQuery.isLoading
   const isFetchingMore = driveQuery.isFetchingNextPage
@@ -612,21 +612,26 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
   const fullImageSrc = `/api/google-drive/image/${item.id}`
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-lg border-2 transition-all hover:shadow-lg focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2"
-      style={{
-        borderColor: isSelected ? 'var(--primary)' : 'var(--border)',
-      }}
+    <div
+      className={cn(
+        "group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all duration-200 cursor-pointer shadow-sm",
+        isSelected
+          ? "border-primary ring-2 ring-primary ring-offset-2 z-10"
+          : "border-border/40 hover:border-border hover:shadow-md hover:-translate-y-0.5"
+      )}
+      onClick={onClick}
+      onDoubleClick={onDoubleClick}
     >
-      {/* Thumbnail / Icon */}
-      <div className="relative aspect-square w-full bg-muted">
+      {/* Thumbnail / Icon area */}
+      <div className={cn(
+        "relative w-full overflow-hidden flex items-center justify-center",
+        isFolder ? "aspect-[4/3] bg-muted/5 py-4" : "aspect-square bg-muted/30"
+      )}>
         {isFolder ? (
-          <button
-            onClick={onClick}
-            onDoubleClick={onDoubleClick}
-            className="flex h-full w-full items-center justify-center focus:outline-none"
-          >
-            <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
-          </button>
+          <div className="flex flex-col items-center justify-center gap-1 transition-transform duration-300 group-hover:scale-105">
+            {/* Folder Icon - Finder Style (Blue Fill) */}
+            <Folder className="h-14 w-14 text-sky-500 fill-sky-500 drop-shadow-sm" strokeWidth={1.5} />
+          </div>
         ) : currentSrc ? (
           <>
             {/* PhotoSwipe link wrapper */}
@@ -637,29 +642,30 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
               data-pswp-height={imageDimensions.height.toString()}
               target="_blank"
               rel="noopener noreferrer"
-              className="block w-full h-full relative"
+              className="relative block h-full w-full"
               onClick={(e) => {
-                // Prevenir navegação para não interferir com PhotoSwipe
+                // Prevenir link se não carregou, mas permitir seleção via bubble (onClick do pai)
                 if (imageState !== 'loaded') {
                   e.preventDefault()
                 }
+                // Não paramos a propagação, para que o clique selecione o card
               }}
             >
               {/* Loading skeleton */}
               {imageState === 'loading' && (
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
                 </div>
               )}
 
-              {/* Actual image */}
+              {/* Actual image - Object Contain to respect proportions */}
               <Image
                 src={currentSrc}
                 alt={item.name}
                 fill
                 sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
                 className={cn(
-                  'object-cover transition-opacity duration-200',
+                  'object-contain p-1 transition-opacity duration-300',
                   imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
                 )}
                 onError={handleImageError}
@@ -668,74 +674,83 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
 
               {/* Error state */}
               {imageState === 'error' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-                  <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-                  <p className="text-[10px] text-muted-foreground opacity-60">Preview indisponível</p>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/50">
+                  <FileImage className="h-10 w-10" />
+                  <p className="text-[10px] font-medium">Erro</p>
                 </div>
               )}
             </a>
 
-            {/* Hover overlay with buttons (only for images, not folders) */}
-            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
-                {/* Add to selection button */}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    onClick()
-                  }}
-                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
-                  title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
-                >
-                  <Plus className={cn("h-5 w-5", isSelected && "rotate-45")} />
-                </button>
-
-                {/* View in lightbox button */}
-                <button
-                  onClick={(e) => {
-                    e.preventDefault()
-                    e.stopPropagation()
-                    // Trigger PhotoSwipe by dispatching click event on the link
-                    const card = e.currentTarget.closest('.group')
-                    const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
-                    if (link) {
-                      console.log('👁️ Eye button clicked, dispatching click on link:', link.href)
-                      // Dispatch a real click event that PhotoSwipe will intercept
-                      const clickEvent = new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                      })
-                      link.dispatchEvent(clickEvent)
-                    }
-                  }}
-                  className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
-                  title="Visualizar em tela cheia"
-                  disabled={imageState !== 'loaded'}
-                >
-                  <Eye className="h-5 w-5" />
-                </button>
-              </div>
+            {/* Hover Actions */}
+            <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
+              {/* View in lightbox button */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  // Trigger PhotoSwipe by dispatching click event on the link
+                  const card = e.currentTarget.closest('.group')
+                  const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                  if (link) {
+                    const clickEvent = new MouseEvent('click', {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window
+                    })
+                    link.dispatchEvent(clickEvent)
+                  }
+                }}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-background/90 text-foreground shadow-sm border border-border/50 hover:bg-background hover:scale-105 transition-all"
+                title="Visualizar em tela cheia"
+                disabled={imageState !== 'loaded'}
+              >
+                <Eye className="h-4 w-4" />
+              </button>
             </div>
 
-            {/* Selection indicator */}
+            {/* Selected Indicator Checkmark */}
             {isSelected && (
-              <div className="absolute inset-0 bg-primary/10 ring-2 ring-inset ring-primary pointer-events-none" />
+              <div className="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in fade-in zoom-in duration-200">
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              </div>
             )}
           </>
         ) : (
           <div className="flex h-full items-center justify-center">
-            <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+            <FileImage className="h-12 w-12 text-muted-foreground/30" />
           </div>
         )}
       </div>
 
-      {/* File name */}
-      <div className="relative bg-gradient-to-t from-black/60 to-transparent p-2 -mt-12 pt-12 pointer-events-none">
-        <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
+      {/* File Info / Footer */}
+      <div className="flex flex-col gap-1 p-3 pt-2 bg-card min-h-[3.5rem] justify-start border-t border-border/10">
+        <p
+          className="text-sm font-medium text-foreground/90 leading-tight line-clamp-1 truncate"
+          title={item.name}
+        >
           {item.name}
         </p>
+        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground/70">
+          <span>
+            {isFolder ? 'Pasta' : (item.mimeType?.split('/').pop()?.toUpperCase() || 'ARQUIVO')}
+          </span>
+          {item.size && (
+            <span>
+              {(item.size / 1024 / 1024).toFixed(1)} MB
+            </span>
+          )}
+        </div>
       </div>
     </div>
   )
