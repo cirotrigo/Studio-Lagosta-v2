@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Folder, HardDrive, Loader2, Search, RefreshCw, X, FolderOpen, AlertCircle, FileImage, Check, ArrowLeft, Eye, Plus, Play } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -12,6 +13,9 @@ import { useGoogleDriveItems } from '@/hooks/use-google-drive'
 import type { GoogleDriveItem, GoogleDriveBrowserMode } from '@/types/google-drive'
 import { cn } from '@/lib/utils'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
+import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 interface FolderBreadcrumb {
   id: string
@@ -25,6 +29,14 @@ interface GoogleDriveInlineSelectorProps {
   selectedIds: string[]
   onSelectionChange: (items: GoogleDriveItem[]) => void
   maxSelection: number
+}
+
+function formatBytes(size?: number) {
+  if (!size) return '—'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1)
+  const value = size / 1024 ** exponent
+  return `${value.toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`
 }
 
 export function GoogleDriveInlineSelector({
@@ -388,19 +400,46 @@ interface ItemCardProps {
 function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemCardProps) {
   const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
   const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
-  const [imageDimensions, setImageDimensions] = React.useState({ width: 1920, height: 1080 })
+  const [cardAspectRatio, setCardAspectRatio] = React.useState(1)
+  const [lightboxDimensions, setLightboxDimensions] = React.useState({ width: 1920, height: 1080 })
   const isVideo = isVideoFile(item)
 
-  // Log video detection
+  // Spotlight effect
+  const mouseX = useMotionValue(0)
+  const mouseY = useMotionValue(0)
+
+  function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
+    const { left, top } = currentTarget.getBoundingClientRect()
+    mouseX.set(clientX - left)
+    mouseY.set(clientY - top)
+  }
+
+  // Initial aspect ratio setup
   React.useEffect(() => {
-    if (isVideo) {
-      console.log('🎬 Google Drive: Video card rendered:', {
-        name: item.name,
-        mimeType: item.mimeType,
-        id: item.id
+    if (isFolder) {
+      setCardAspectRatio(1.2)
+    } else {
+      setCardAspectRatio(0.8) // Default for files
+      setLightboxDimensions({
+        width: isVideo ? 1920 : 1600,
+        height: isVideo ? 1080 : 1600,
       })
     }
-  }, [isVideo, item.name, item.mimeType, item.id])
+  }, [isFolder, isVideo])
+
+  const updateDimensionsFromPreview = React.useCallback(
+    (width: number, height: number) => {
+      if (!width || !height || isFolder) return
+      const ratio = width / height
+      setCardAspectRatio(ratio || 1)
+      const targetHeight = 2000
+      setLightboxDimensions({
+        width: Math.max(1, Math.round(ratio * targetHeight)),
+        height: targetHeight,
+      })
+    },
+    [isFolder],
+  )
 
   // Generate thumbnail URLs with fallback chain
   const thumbnailSources = React.useMemo(() => {
@@ -430,8 +469,10 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
 
   React.useEffect(() => {
     if (isFolder || thumbnailSources.length === 0) {
-      setImageState('error')
-      setCurrentSrc(null)
+      if (!isFolder && thumbnailSources.length === 0) {
+        setImageState('error')
+        setCurrentSrc(null)
+      }
       return
     }
 
@@ -453,200 +494,201 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
   }, [currentSrc, thumbnailSources])
 
   const handleImageLoad = React.useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
-    if (isVideo) {
-      // Para vídeos basta usar dimensões padrão do thumbnail
-      setImageState('loaded')
-      return
-    }
-
     setImageState('loaded')
-    // Para thumbnails, precisamos carregar a imagem completa para obter dimensões reais
-    const img = e.currentTarget
-    if (img.naturalWidth && img.naturalHeight) {
-      // Se for thumbnail, carregar imagem completa em background para obter dimensões
-      const fullImageUrl = `/api/google-drive/image/${item.id}`
-      const fullImg = new Image()
-      fullImg.onload = () => {
-        setImageDimensions({
-          width: fullImg.naturalWidth,
-          height: fullImg.naturalHeight
-        })
+    if (!isVideo) {
+      const img = e.currentTarget
+      if (img.naturalWidth && img.naturalHeight) {
+        updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
       }
-      fullImg.onerror = () => {
-        // Fallback to thumbnail dimensions
-        setImageDimensions({
-          width: img.naturalWidth,
-          height: img.naturalHeight
-        })
-      }
-      fullImg.src = fullImageUrl
     }
-  }, [item.id])
+  }, [isVideo, updateDimensionsFromPreview])
 
   const fullMediaSrc = `/api/google-drive/image/${item.id}`
+  const pswpWidth = Math.max(1, lightboxDimensions.width)
+  const pswpHeight = Math.max(1, lightboxDimensions.height)
 
   return (
-    <div
-      className="group relative"
-      onClick={(e) => {
-        console.log('📦 Card wrapper clicked', { isFolder, isVideo, target: e.target })
-      }}
+    <motion.div
+      className={cn(
+        "group relative flex flex-col rounded-xl overflow-hidden bg-card border border-white/5 transition-all text-left",
+        isSelected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+        'w-full cursor-pointer'
+      )}
+      onClick={onClick}
+      onMouseMove={handleMouseMove}
     >
-      <Card
-        className={cn(
-          'relative transition-all overflow-hidden border-2',
-          isSelected ? 'border-primary ring-2 ring-primary/20 shadow-lg' : 'border-transparent hover:border-primary/50',
-        )}
-      >
-        {/* Thumbnail / Icon */}
-        <div
-          className="relative aspect-square w-full bg-muted"
-          onClick={(e) => {
-            console.log('🎨 Thumbnail container clicked', { isFolder, isVideo })
-          }}
-        >
-          {isFolder ? (
-            <button
-              onClick={onClick}
-              className="flex h-full w-full items-center justify-center focus:outline-none"
-            >
-              <Folder className="h-12 w-12 text-muted-foreground opacity-60" />
-            </button>
-          ) : (
-            <>
-              {/* PhotoSwipe link wrapper */}
-              <a
-                href={fullMediaSrc}
-                data-pswp-src={fullMediaSrc}
-                data-pswp-width={imageDimensions.width.toString()}
-                data-pswp-height={imageDimensions.height.toString()}
-                data-pswp-type={isVideo ? 'video' : 'image'}
-                data-pswp-media-type={item.mimeType}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block w-full h-full relative"
-                onClick={() => {
-                  console.log('🖱️ Google Drive: Link clicked', {
-                    isVideo,
-                    loaded: imageState === 'loaded',
-                    src: fullMediaSrc
-                  })
+      {/* Spotlight Effect */}
+      <motion.div
+        className="pointer-events-none absolute -inset-px rounded-xl opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+        style={{
+          background: useMotionTemplate`
+            radial-gradient(
+              650px circle at ${mouseX}px ${mouseY}px,
+              color-mix(in oklch, var(--primary) 40%, transparent),
+              transparent 80%
+            )
+          `,
+        }}
+      />
 
-                  if (isVideo) {
-                    console.log('🎬 Google Drive: Video link clicked, letting PhotoSwipe handle it')
+      <div
+        className="relative w-full overflow-hidden bg-muted/40"
+        style={{ aspectRatio: cardAspectRatio }}
+      >
+        {isFolder ? (
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
+            <button
+              className="flex h-full w-full flex-col items-center justify-center focus:outline-none gap-2"
+            // onClick is handled by parent div
+            >
+              <Folder className="h-16 w-16 text-sky-500 fill-sky-500 drop-shadow-md" strokeWidth={1.5} />
+              <span className="text-xs text-center line-clamp-2 px-2 opacity-70 break-all text-foreground">
+                {item.name}
+              </span>
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* PhotoSwipe link wrapper */}
+            <a
+              href={fullMediaSrc}
+              data-pswp-src={fullMediaSrc}
+              data-pswp-width={String(pswpWidth)}
+              data-pswp-height={String(pswpHeight)}
+              data-pswp-type={isVideo ? 'video' : 'image'}
+              data-pswp-media-type={item.mimeType}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="block w-full h-full relative"
+              onClick={(e) => {
+                console.log('🖱️ Google Drive: Link clicked', { isVideo, loaded: imageState === 'loaded' })
+                if (imageState !== 'loaded') {
+                  e.preventDefault()
+                }
+                // Don't stop propagation so card click (toggle selection) works
+                // UNLESS we are specifically clicking "Eye" button which is handled separately.
+                // Wait, if I click the image, I want to TOGGLE SELECTION in inline mode usually?
+                // Or viewing?
+                // In inline selector, clicking THE CARD toggles selection.
+                // Viewing is usually secondary action.
+                // So we should prevent link navigation/photoswipe on main click, only on Eye button.
+
+                // If I want to trigger PhotoSwipe, I should do it on Eye button.
+                // So here I prevent default ALWAYS for the link click if I want card click to select.
+                e.preventDefault()
+              }}
+            >
+              {/* Loading skeleton */}
+              {imageState === 'loading' && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none bg-muted/30">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
+              {/* Preview or fallback */}
+              {currentSrc ? (
+                <Image
+                  src={currentSrc}
+                  alt={item.name}
+                  fill
+                  sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                  unoptimized
+                  className={cn(
+                    'object-cover transition duration-500 group-hover:scale-105',
+                    imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
+                  )}
+                  onError={handleImageError}
+                  onLoadingComplete={(img) => {
+                    setImageState('loaded')
+                    if (!isVideo && img.naturalWidth && img.naturalHeight) {
+                      updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
+                    }
+                  }}
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none bg-muted/30">
+                  <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
+                  <p className="text-[10px] text-muted-foreground opacity-60 text-center px-4">Preview indisponível</p>
+                </div>
+              )}
+
+              {/* Video overlay */}
+              {isVideo && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-20">
+                  <div className="bg-black/40 backdrop-blur-sm rounded-full p-3 pointer-events-auto hover:bg-black/60 transition-colors">
+                    <Play className="w-6 h-6 text-white ml-1" fill="currentColor" />
+                  </div>
+                </div>
+              )}
+            </a>
+
+            {/* Hover overlay with buttons (only for files) */}
+            <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 pointer-events-auto">
+              {/* View in lightbox button */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  // Trigger PhotoSwipe by dispatching click event on the link
+                  const card = e.currentTarget.closest('.group')
+                  const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                  if (link) {
+                    const clickEvent = new MouseEvent('click', {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window
+                    })
+                    link.dispatchEvent(clickEvent)
                   }
                 }}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-black/40 text-white hover:bg-black/60 shadow-sm backdrop-blur-md transition-all"
+                title="Visualizar em tela cheia"
               >
-                {/* Loading skeleton */}
-                {imageState === 'loading' && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
+                <Eye className="h-4 w-4" />
+              </button>
+
+              {/* Add/Remove Selection Button (alternative to clicking card) */}
+              <button
+                onClick={(e) => {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  onClick()
+                }}
+                className={cn(
+                  "flex items-center justify-center w-8 h-8 rounded-full shadow-sm backdrop-blur-md transition-all",
+                  isSelected ? "bg-primary text-primary-foreground" : "bg-black/40 text-white hover:bg-black/60"
                 )}
+                title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
+              >
+                <Plus className={cn("h-4 w-4 transition-transform", isSelected && "rotate-45")} />
+              </button>
+            </div>
 
-                {/* Preview or fallback */}
-                {currentSrc ? (
-                  <>
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={currentSrc}
-                      alt={item.name}
-                      className={cn(
-                        'w-full h-full object-cover transition-opacity duration-200',
-                        imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
-                      )}
-                      onError={handleImageError}
-                      onLoad={handleImageLoad}
-                    />
-                  </>
-                ) : (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-                    <FileImage className="h-12 w-12 text-muted-foreground opacity-40" />
-                    <p className="text-[10px] text-muted-foreground opacity-60 text-center px-4">Preview indisponível</p>
-                  </div>
-                )}
-
-                {/* Video overlay */}
-                {isVideo && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
-                    <div className="bg-white/95 rounded-full p-3">
-                      <Play className="w-6 h-6 text-black" fill="black" />
-                    </div>
-                  </div>
-                )}
-              </a>
-
-              {/* Hover overlay with buttons (only for files) */}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
-                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex gap-2 pointer-events-auto">
-                  {/* Add to selection button */}
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      onClick()
-                    }}
-                    className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
-                    title={isSelected ? "Remover da seleção" : "Adicionar à seleção"}
-                  >
-                    <Plus className={cn("h-5 w-5", isSelected && "rotate-45")} />
-                  </button>
-
-                  {/* View in lightbox button */}
-                  <button
-                    onClick={(e) => {
-                      e.preventDefault()
-                      e.stopPropagation()
-                      // Trigger PhotoSwipe by dispatching click event on the link
-                      const card = e.currentTarget.closest('.group')
-                      const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
-                      if (link) {
-                        console.log('👁️ Eye button clicked, dispatching click on link:', link.href)
-                        // Dispatch a real click event that PhotoSwipe will intercept
-                        const clickEvent = new MouseEvent('click', {
-                          bubbles: true,
-                          cancelable: true,
-                          view: window
-                        })
-                        link.dispatchEvent(clickEvent)
-                      }
-                    }}
-                    className="flex items-center justify-center w-10 h-10 rounded-full bg-white/90 hover:bg-white text-gray-900 shadow-lg transition-all hover:scale-110"
-                    title="Visualizar em tela cheia"
-                  >
-                    <Eye className="h-5 w-5" />
-                  </button>
+            {/* Selection indicators for files only */}
+            {isSelected && (
+              <>
+                {/* Selection number */}
+                <div className="absolute top-2 left-2 w-7 h-7 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-xs font-bold shadow-lg z-30 animate-in fade-in zoom-in">
+                  {selectionIndex + 1}
                 </div>
+              </>
+            )}
+
+            {/* Overlay Info - Reveal on hover */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+
+            <div className="absolute bottom-0 left-0 right-0 p-3 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20">
+              <h3 className="text-white font-medium text-xs leading-snug line-clamp-2 drop-shadow-sm mb-1 break-anywhere">
+                {item.name}
+              </h3>
+              <div className="flex items-center justify-between text-[10px] text-white/70">
+                <span>{formatBytes(item.size)}</span>
+                <span>{item.modifiedTime ? format(new Date(item.modifiedTime), 'dd MMM', { locale: ptBR }) : '-'}</span>
               </div>
-
-              {/* Selection indicators for files only */}
-              {isSelected && (
-                <>
-                  {/* Check icon */}
-                  <div className="absolute top-2 right-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center shadow-lg z-10">
-                    <Check className="w-5 h-5" />
-                  </div>
-
-                  {/* Selection number */}
-                  <div className="absolute top-2 left-2 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-bold shadow-lg z-10">
-                    {selectionIndex + 1}
-                  </div>
-
-                  {/* Overlay */}
-                  <div className="absolute inset-0 bg-primary/10 pointer-events-none" />
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* File name */}
-        <div className="p-2 bg-gradient-to-t from-black/60 to-transparent absolute bottom-0 left-0 right-0 pointer-events-none">
-          <p className="text-xs font-medium text-white line-clamp-2 leading-tight">
-            {item.name}
-          </p>
-        </div>
-      </Card>
-    </div>
+            </div>
+          </>
+        )}
+      </div>
+    </motion.div>
   )
 }

@@ -16,6 +16,9 @@ import { cn } from '@/lib/utils'
 import { useUpdateProjectSettings, type UpdateProjectSettingsInput } from '@/hooks/use-project'
 import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe, isPhotoSwipeOpen, wasPhotoSwipeJustClosed } from '@/hooks/use-photoswipe'
+import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
+import { format } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
 interface FolderBreadcrumb {
   id: string
@@ -33,6 +36,14 @@ interface DesktopGoogleDriveModalProps {
   maxSelection?: number
   selectedItems?: GoogleDriveItem[]
   onMultiSelectConfirm?: (items: GoogleDriveItem[]) => void
+}
+
+function formatBytes(size?: number) {
+  if (!size) return '—'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const exponent = Math.min(Math.floor(Math.log(size) / Math.log(1024)), units.length - 1)
+  const value = size / 1024 ** exponent
+  return `${value.toFixed(exponent === 0 ? 0 : 1)} ${units[exponent]}`
 }
 
 export function DesktopGoogleDriveModal({
@@ -104,6 +115,8 @@ export function DesktopGoogleDriveModal({
     if (!driveQuery.data?.pages) return []
     return driveQuery.data.pages.flatMap((page) => page.items)
   }, [driveQuery.data])
+
+
 
   const queryError = driveQuery.isError
     ? driveQuery.error instanceof Error
@@ -433,7 +446,7 @@ export function DesktopGoogleDriveModal({
 // Loading Grid Component
 function LoadingGrid() {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pb-4">
       {Array.from({ length: 8 }).map((_, index) => (
         <div key={index} className="space-y-2">
           <Skeleton className="aspect-square w-full rounded-lg" />
@@ -546,10 +559,51 @@ interface ItemCardProps {
 }
 
 function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: ItemCardProps) {
-  const isFolder = item.kind === 'folder'
+  const isFolder = item.kind === 'folder' || item.mimeType === 'application/vnd.google-apps.folder'
+  const isVideo = item.mimeType?.startsWith('video/')
   const [imageState, setImageState] = React.useState<'loading' | 'loaded' | 'error'>('loading')
   const [currentSrc, setCurrentSrc] = React.useState<string | null>(null)
-  const [imageDimensions, setImageDimensions] = React.useState({ width: 1600, height: 1600 })
+
+  // Aspect ratio state matching DriveItem
+  const [cardAspectRatio, setCardAspectRatio] = React.useState(1)
+  const [lightboxDimensions, setLightboxDimensions] = React.useState({ width: 1600, height: 1600 })
+
+  // Spotlight effect
+  const mouseX = useMotionValue(0)
+  const mouseY = useMotionValue(0)
+
+  function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
+    const { left, top } = currentTarget.getBoundingClientRect()
+    mouseX.set(clientX - left)
+    mouseY.set(clientY - top)
+  }
+
+  // Initial aspect ratio setup
+  React.useEffect(() => {
+    if (isFolder) {
+      setCardAspectRatio(1.2)
+    } else {
+      setCardAspectRatio(0.8) // Default for files
+      setLightboxDimensions({
+        width: isVideo ? 1920 : 1600,
+        height: isVideo ? 1080 : 1600,
+      })
+    }
+  }, [isFolder, isVideo])
+
+  const updateDimensionsFromPreview = React.useCallback(
+    (width: number, height: number) => {
+      if (!width || !height || isFolder) return
+      const ratio = width / height
+      setCardAspectRatio(ratio || 1)
+      const targetHeight = 2000
+      setLightboxDimensions({
+        width: Math.max(1, Math.round(ratio * targetHeight)),
+        height: targetHeight,
+      })
+    },
+    [isFolder],
+  )
 
   // Generate thumbnail URLs with fallback chain
   const thumbnailSources = React.useMemo(() => {
@@ -602,35 +656,50 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
     // Obter dimensões reais da imagem
     const img = e.currentTarget
     if (img.naturalWidth && img.naturalHeight) {
-      setImageDimensions({
-        width: img.naturalWidth,
-        height: img.naturalHeight
-      })
+      updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
     }
-  }, [])
+  }, [updateDimensionsFromPreview])
 
   const fullImageSrc = `/api/google-drive/image/${item.id}`
+  const pswpWidth = Math.max(1, lightboxDimensions.width)
+  const pswpHeight = Math.max(1, lightboxDimensions.height)
 
   return (
-    <div
+    <motion.div
       className={cn(
-        "group relative flex flex-col overflow-hidden rounded-xl border bg-card transition-all duration-200 cursor-pointer shadow-sm",
-        isSelected
-          ? "border-primary ring-2 ring-primary ring-offset-2 z-10"
-          : "border-border/40 hover:border-border hover:shadow-md hover:-translate-y-0.5"
+        "group relative flex flex-col rounded-xl overflow-hidden bg-card border border-white/5 transition-all text-left", // Added text-left to reset button defaults if any
+        isSelected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
+        'w-full cursor-pointer'
       )}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
+      onMouseMove={handleMouseMove}
     >
-      {/* Thumbnail / Icon area */}
-      <div className={cn(
-        "relative w-full overflow-hidden flex items-center justify-center",
-        isFolder ? "aspect-[4/3] bg-muted/5 py-4" : "aspect-square bg-muted/30"
-      )}>
+      {/* Spotlight Effect */}
+      <motion.div
+        className="pointer-events-none absolute -inset-px rounded-xl opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+        style={{
+          background: useMotionTemplate`
+            radial-gradient(
+              650px circle at ${mouseX}px ${mouseY}px,
+              color-mix(in oklch, var(--primary) 40%, transparent),
+              transparent 80%
+            )
+          `,
+        }}
+      />
+
+      {/* Thumbnail / Main Content */}
+      <div
+        className="relative w-full overflow-hidden bg-muted/40"
+        style={{ aspectRatio: cardAspectRatio }}
+      >
         {isFolder ? (
-          <div className="flex flex-col items-center justify-center gap-1 transition-transform duration-300 group-hover:scale-105">
-            {/* Folder Icon - Finder Style (Blue Fill) */}
-            <Folder className="h-14 w-14 text-sky-500 fill-sky-500 drop-shadow-sm" strokeWidth={1.5} />
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
+            <Folder className="h-16 w-16 text-sky-500 fill-sky-500 drop-shadow-md" strokeWidth={1.5} />
+            <span className="text-xs text-center line-clamp-2 px-2 opacity-70 break-all text-foreground">
+              {item.name}
+            </span>
           </div>
         ) : currentSrc ? (
           <>
@@ -638,121 +707,159 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
             <a
               href={fullImageSrc}
               data-pswp-src={fullImageSrc}
-              data-pswp-width={imageDimensions.width.toString()}
-              data-pswp-height={imageDimensions.height.toString()}
+              data-pswp-width={String(pswpWidth)}
+              data-pswp-height={String(pswpHeight)}
+              data-pswp-type={isVideo ? 'video' : 'image'}
+              data-pswp-media-type={item.mimeType}
               target="_blank"
               rel="noopener noreferrer"
-              className="relative block h-full w-full"
+              className="block h-full w-full relative"
               onClick={(e) => {
-                // Prevenir link se não carregou, mas permitir seleção via bubble (onClick do pai)
+                // Prevent default link behavior if just selecting
+                // But allow if checking lightbox
                 if (imageState !== 'loaded') {
                   e.preventDefault()
                 }
-                // Não paramos a propagação, para que o clique selecione o card
               }}
             >
               {/* Loading skeleton */}
               {imageState === 'loading' && (
-                <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center bg-muted/30">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground/50" />
                 </div>
               )}
 
-              {/* Actual image - Object Contain to respect proportions */}
+              {/* Actual image */}
               <Image
                 src={currentSrc}
                 alt={item.name}
                 fill
-                sizes="(max-width: 768px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, 25vw"
+                unoptimized
                 className={cn(
-                  'object-contain p-1 transition-opacity duration-300',
+                  'object-cover transition duration-500 group-hover:scale-105',
                   imageState === 'loaded' ? 'opacity-100' : 'opacity-0',
                 )}
                 onError={handleImageError}
-                onLoad={handleImageLoad}
+                onLoadingComplete={(img) => {
+                  setImageState('loaded')
+                  if (img.naturalWidth && img.naturalHeight) {
+                    updateDimensionsFromPreview(img.naturalWidth, img.naturalHeight)
+                  }
+                }}
               />
 
               {/* Error state */}
               {imageState === 'error' && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/50">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 text-muted-foreground/50 bg-muted/30">
                   <FileImage className="h-10 w-10" />
-                  <p className="text-[10px] font-medium">Erro</p>
+                  <p className="text-[10px] font-medium">Erro no preview</p>
                 </div>
               )}
             </a>
 
-            {/* Hover Actions */}
-            <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
-              {/* View in lightbox button */}
-              <button
-                onClick={(e) => {
-                  e.preventDefault()
-                  e.stopPropagation()
-                  // Trigger PhotoSwipe by dispatching click event on the link
-                  const card = e.currentTarget.closest('.group')
-                  const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
-                  if (link) {
-                    const clickEvent = new MouseEvent('click', {
-                      bubbles: true,
-                      cancelable: true,
-                      view: window
-                    })
-                    link.dispatchEvent(clickEvent)
-                  }
-                }}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-background/90 text-foreground shadow-sm border border-border/50 hover:bg-background hover:scale-105 transition-all"
-                title="Visualizar em tela cheia"
-                disabled={imageState !== 'loaded'}
-              >
-                <Eye className="h-4 w-4" />
-              </button>
-            </div>
-
-            {/* Selected Indicator Checkmark */}
-            {isSelected && (
-              <div className="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in fade-in zoom-in duration-200">
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
+            {/* Video Badge */}
+            {isVideo && (
+              <div className="absolute top-2 right-2 z-20 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase text-white backdrop-blur-sm pointer-events-none">
+                Vídeo
               </div>
             )}
           </>
         ) : (
-          <div className="flex h-full items-center justify-center">
-            <FileImage className="h-12 w-12 text-muted-foreground/30" />
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
+            <FileImage className="h-12 w-12 opacity-50" />
+            <span className="text-xs text-center line-clamp-2 px-2 opacity-70 break-all">
+              {item.name}
+            </span>
+          </div>
+        )}
+
+        {/* Hover overlay with buttons (only for files) */}
+        {!isFolder && (
+          <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30 pointer-events-auto">
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // Trigger PhotoSwipe
+                const card = e.currentTarget.closest('.group')
+                const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                if (link) {
+                  const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                  })
+                  link.dispatchEvent(clickEvent)
+                }
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-black/40 text-white hover:bg-black/60 shadow-sm backdrop-blur-md transition-all"
+              title="Visualizar em tela cheia"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Overlay Info - Reveal on hover (like DriveItem) */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+
+        <div className="absolute bottom-0 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20">
+          <h3 className="text-white font-medium text-sm leading-snug line-clamp-2 drop-shadow-sm mb-1 break-anywhere">
+            {item.name}
+          </h3>
+          <div className="flex items-center justify-between text-[11px] text-white/70">
+            <span>{formatBytes(item.size)}</span>
+            <span>{item.modifiedTime ? format(new Date(item.modifiedTime), 'dd MMM', { locale: ptBR }) : '-'}</span>
+          </div>
+        </div>
+
+        {/* Selected Indicator Checkmark (Custom for selector) */}
+        {isSelected && (
+          <div className="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in fade-in zoom-in duration-200 z-30">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          </div>
+        )}
+
+        {/* Simple hover action for View */}
+        {!isFolder && currentSrc && imageState === 'loaded' && (
+          <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30">
+            <button
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // Trigger PhotoSwipe by dispatching click event on the link
+                const card = e.currentTarget.closest('.group')
+                const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
+                if (link) {
+                  const clickEvent = new MouseEvent('click', {
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                  })
+                  link.dispatchEvent(clickEvent)
+                }
+              }}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-black/40 text-white hover:bg-black/60 shadow-sm backdrop-blur-md transition-all"
+              title="Visualizar em tela cheia"
+            >
+              <Eye className="h-4 w-4" />
+            </button>
           </div>
         )}
       </div>
-
-      {/* File Info / Footer */}
-      <div className="flex flex-col gap-1 p-3 pt-2 bg-card min-h-[3.5rem] justify-start border-t border-border/10">
-        <p
-          className="text-sm font-medium text-foreground/90 leading-tight line-clamp-1 truncate"
-          title={item.name}
-        >
-          {item.name}
-        </p>
-        <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground/70">
-          <span>
-            {isFolder ? 'Pasta' : (item.mimeType?.split('/').pop()?.toUpperCase() || 'ARQUIVO')}
-          </span>
-          {item.size && (
-            <span>
-              {(item.size / 1024 / 1024).toFixed(1)} MB
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
+    </motion.div>
   )
 }
 
