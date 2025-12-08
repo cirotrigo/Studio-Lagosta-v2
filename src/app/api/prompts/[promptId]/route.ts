@@ -9,6 +9,7 @@ const updatePromptSchema = z.object({
   content: z.string().min(1, 'Conteúdo é obrigatório').optional(),
   category: z.string().optional().nullable(),
   tags: z.array(z.string()).optional(),
+  referenceImages: z.array(z.string().url('URL inválida')).optional(),
 })
 
 // GET - Buscar um prompt específico

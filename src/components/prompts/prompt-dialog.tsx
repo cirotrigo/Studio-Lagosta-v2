@@ -26,6 +26,7 @@ import { useCreatePrompt, useUpdatePrompt } from '@/hooks/use-prompts'
 import { useToast } from '@/hooks/use-toast'
 import type { Prompt } from '@/types/prompt'
 import { PROMPT_CATEGORIES } from '@/types/prompt'
+import { ReferenceImagesGrid } from './reference-images-grid'
 
 interface PromptDialogProps {
   open: boolean
@@ -44,6 +45,8 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
   const [category, setCategory] = React.useState<string>('')
   const [tags, setTags] = React.useState<string[]>([])
   const [tagInput, setTagInput] = React.useState('')
+  const [referenceImages, setReferenceImages] = React.useState<string[]>([])
+  const [referenceImageInput, setReferenceImageInput] = React.useState('')
 
   // Preencher campos quando editando
   React.useEffect(() => {
@@ -52,6 +55,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
       setContent(prompt.content)
       setCategory(prompt.category || '')
       setTags(prompt.tags)
+      setReferenceImages(prompt.referenceImages)
     } else {
       resetForm()
     }
@@ -63,6 +67,8 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
     setCategory('')
     setTags([])
     setTagInput('')
+    setReferenceImages([])
+    setReferenceImageInput('')
   }
 
   const handleAddTag = () => {
@@ -84,6 +90,39 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
     }
   }
 
+  const handleAddReferenceImage = () => {
+    const trimmedUrl = referenceImageInput.trim()
+    // Validação básica de URL
+    try {
+      new URL(trimmedUrl)
+      if (!referenceImages.includes(trimmedUrl)) {
+        setReferenceImages([...referenceImages, trimmedUrl])
+        setReferenceImageInput('')
+      } else {
+        toast({
+          variant: 'destructive',
+          description: 'Esta URL já foi adicionada',
+        })
+      }
+    } catch {
+      toast({
+        variant: 'destructive',
+        description: 'URL inválida',
+      })
+    }
+  }
+
+  const handleRemoveReferenceImage = (index: number) => {
+    setReferenceImages(referenceImages.filter((_, i) => i !== index))
+  }
+
+  const handleReferenceImageKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      handleAddReferenceImage()
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -100,6 +139,7 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
       content: content.trim(),
       category: category && category !== 'none' ? category : undefined,
       tags,
+      referenceImages,
     }
 
     try {
@@ -220,6 +260,37 @@ export function PromptDialog({ open, onOpenChange, prompt, mode }: PromptDialogP
                   </Badge>
                 ))}
               </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="referenceImages">Imagens de Referência (opcional)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="referenceImages"
+                placeholder="Cole a URL de uma imagem..."
+                value={referenceImageInput}
+                onChange={(e) => setReferenceImageInput(e.target.value)}
+                onKeyDown={handleReferenceImageKeyDown}
+                disabled={isLoading}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleAddReferenceImage}
+                disabled={isLoading || !referenceImageInput.trim()}
+              >
+                Adicionar
+              </Button>
+            </div>
+
+            {referenceImages.length > 0 && (
+              <ReferenceImagesGrid
+                images={referenceImages}
+                editable={true}
+                onRemove={handleRemoveReferenceImage}
+                className="mt-2"
+              />
             )}
           </div>
 

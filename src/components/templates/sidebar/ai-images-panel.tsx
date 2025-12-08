@@ -39,6 +39,8 @@ import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { AIModelSelector, ResolutionSelector } from '@/components/ai/ai-model-selector'
 import type { AIImageModel, AIImageMode } from '@/lib/ai/image-models-config'
 import { calculateCreditsForModel, AI_IMAGE_MODELS } from '@/lib/ai/image-models-config'
+import { SavePromptDialog } from '@/components/prompts/save-prompt-dialog'
+import { ReferenceImagesGrid } from '@/components/prompts/reference-images-grid'
 
 interface AIImageRecord {
   id: string
@@ -82,6 +84,7 @@ export function AIImagesPanel() {
   const [mode, setMode] = React.useState<'generate' | 'library' | 'prompts'>('generate')
   const [search, setSearch] = React.useState('')
   const [imageToEdit, setImageToEdit] = React.useState<AIImageRecord | null>(null)
+  const [promptToApply, setPromptToApply] = React.useState<Prompt | null>(null)
 
   // Debug: verificar projectId
   React.useEffect(() => {
@@ -212,7 +215,13 @@ export function AIImagesPanel() {
         </TabsList>
 
         <TabsContent value="generate" className="mt-4 space-y-4">
-          <GenerateImageForm projectId={projectId} imageToEdit={imageToEdit} onClearImageToEdit={() => setImageToEdit(null)} />
+          <GenerateImageForm
+            projectId={projectId}
+            imageToEdit={imageToEdit}
+            onClearImageToEdit={() => setImageToEdit(null)}
+            promptToApply={promptToApply}
+            onPromptApplied={() => setPromptToApply(null)}
+          />
         </TabsContent>
 
         <TabsContent value="library" className="mt-4 space-y-4">
@@ -262,7 +271,13 @@ export function AIImagesPanel() {
         </TabsContent>
 
         <TabsContent value="prompts" className="mt-4 space-y-4">
-          <PromptsLibrary projectId={projectId} />
+          <PromptsLibrary
+            projectId={projectId}
+            onApplyPrompt={(prompt) => {
+              setPromptToApply(prompt)
+              setMode('generate')
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>
@@ -273,11 +288,15 @@ export function AIImagesPanel() {
 function GenerateImageForm({
   projectId,
   imageToEdit,
-  onClearImageToEdit
+  onClearImageToEdit,
+  promptToApply,
+  onPromptApplied,
 }: {
   projectId: number | null | undefined
   imageToEdit: AIImageRecord | null
   onClearImageToEdit: () => void
+  promptToApply: Prompt | null
+  onPromptApplied: () => void
 }) {
   console.log('[GenerateImageForm] Component rendered with imageToEdit:', imageToEdit)
 
@@ -297,6 +316,7 @@ function GenerateImageForm({
   const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K' | undefined>('2K')
   const [referenceImages, setReferenceImages] = React.useState<GoogleDriveItem[]>([])
   const [localFiles, setLocalFiles] = React.useState<File[]>([])
+  const [referenceUrls, setReferenceUrls] = React.useState<string[]>([])
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
   const [selectedPromptId, setSelectedPromptId] = React.useState<string>('')
@@ -312,8 +332,22 @@ function GenerateImageForm({
   const baseImageInputRef = React.useRef<HTMLInputElement>(null)
   const maskImageInputRef = React.useRef<HTMLInputElement>(null)
 
+  // Estados para salvar prompt após geração bem-sucedida
+  const [lastGeneratedPrompt, setLastGeneratedPrompt] = React.useState<string>('')
+  const [lastReferenceUrls, setLastReferenceUrls] = React.useState<string[]>([])
+  const [showSavePromptDialog, setShowSavePromptDialog] = React.useState(false)
+
   // Buscar prompts globais do usuário
   const { data: prompts = [] } = usePrompts()
+
+  // Debug: verificar estado do lastGeneratedPrompt
+  React.useEffect(() => {
+    console.log('[GenerateImageForm] Estado atual:', {
+      lastGeneratedPrompt,
+      mode,
+      showButton: !!lastGeneratedPrompt && mode === 'generate'
+    })
+  }, [lastGeneratedPrompt, mode])
 
   // Efeito para carregar imageToEdit quando selecionada da biblioteca
   React.useEffect(() => {
@@ -373,6 +407,21 @@ function GenerateImageForm({
       })
     }
   }, [imageToEdit, toast])
+
+  // Efeito para aplicar prompt salvo
+  React.useEffect(() => {
+    if (promptToApply) {
+      console.log('[GenerateImageForm] Applying prompt:', promptToApply)
+      setPrompt(promptToApply.content)
+      setReferenceUrls(promptToApply.referenceImages)
+      // Limpar outras referências
+      setReferenceImages([])
+      setLocalFiles([])
+      // Notificar que o prompt foi aplicado
+      onPromptApplied()
+      toast({ description: 'Prompt aplicado com sucesso!' })
+    }
+  }, [promptToApply, onPromptApplied, toast])
 
   // Função helper para calcular tamanho e posição com largura total do canvas e centralizada
   const calculateCanvasPlacement = (imageWidth: number, imageHeight: number) => {
@@ -474,12 +523,22 @@ function GenerateImageForm({
 
       return response.json()
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       toast({ description: mode === 'edit' ? 'Imagem editada com sucesso!' : 'Imagem gerada com sucesso!' })
       queryClient.invalidateQueries({ queryKey: ['ai-images', projectId] })
       refresh() // Atualizar créditos
+
+      // Salvar dados para o "Salvar Prompt" (apenas em modo generate)
+      if (mode === 'generate') {
+        console.log('[AIImagesPanel] Salvando último prompt gerado:', variables.prompt)
+        setLastGeneratedPrompt(variables.prompt)
+        setLastReferenceUrls(variables.referenceImages)
+      }
+
       setPrompt('')
       setReferenceImages([]) // Limpar imagens de referência
+      setLocalFiles([]) // Limpar arquivos locais
+      setReferenceUrls([]) // Limpar URLs de referência
 
       // Limpar estado de edição
       if (mode === 'edit') {
@@ -697,8 +756,8 @@ function GenerateImageForm({
       const baseUrl = window.location.origin
       const driveImageUrls = mode === 'generate' ? referenceImages.map(img => `${baseUrl}/api/google-drive/image/${img.id}`) : []
 
-      // 5. Combinar todas as URLs de referência
-      const allImageUrls = [...driveImageUrls, ...localFileUrls]
+      // 5. Combinar todas as URLs de referência (incluindo URLs diretas de prompts salvos)
+      const allImageUrls = [...driveImageUrls, ...localFileUrls, ...referenceUrls]
 
       console.log('[AIImagesPanel] Generating/editing image with:', {
         projectId,
@@ -742,7 +801,7 @@ function GenerateImageForm({
     if (!files) return
 
     const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'))
-    const totalImages = referenceImages.length + localFiles.length + imageFiles.length
+    const totalImages = referenceImages.length + localFiles.length + referenceUrls.length + imageFiles.length
 
     if (totalImages > maxReferenceImages) {
       toast({
@@ -811,14 +870,19 @@ function GenerateImageForm({
 
   // Limpar imagens de referência excedentes quando trocar de modelo
   React.useEffect(() => {
-    const totalImages = referenceImages.length + localFiles.length
+    const totalImages = referenceImages.length + localFiles.length + referenceUrls.length
     if (totalImages > maxReferenceImages) {
-      // Priorizar manter imagens do Google Drive, depois locais
+      // Priorizar manter imagens do Google Drive, depois URLs, depois locais
       if (referenceImages.length > maxReferenceImages) {
         setReferenceImages(prev => prev.slice(0, maxReferenceImages))
         setLocalFiles([])
-      } else {
+        setReferenceUrls([])
+      } else if (referenceImages.length + referenceUrls.length > maxReferenceImages) {
         const remainingSlots = maxReferenceImages - referenceImages.length
+        setReferenceUrls(prev => prev.slice(0, remainingSlots))
+        setLocalFiles([])
+      } else {
+        const remainingSlots = maxReferenceImages - referenceImages.length - referenceUrls.length
         setLocalFiles(prev => prev.slice(0, remainingSlots))
       }
 
@@ -826,7 +890,7 @@ function GenerateImageForm({
         description: `Este modelo aceita no máximo ${maxReferenceImages} imagem${maxReferenceImages !== 1 ? 'ns' : ''} de referência`,
       })
     }
-  }, [maxReferenceImages])
+  }, [maxReferenceImages, toast])
 
   // Aviso se projectId não estiver disponível
   if (projectId === null || projectId === undefined) {
@@ -1108,7 +1172,7 @@ function GenerateImageForm({
           ) : (
           <div className="space-y-2">
           {/* Preview das imagens selecionadas */}
-          {(referenceImages.length > 0 || localFiles.length > 0) && (
+          {(referenceImages.length > 0 || localFiles.length > 0 || referenceUrls.length > 0) && (
             <div className="grid grid-cols-3 gap-2">
               {/* Imagens do Google Drive */}
               {referenceImages.map((refImg, index) => (
@@ -1156,6 +1220,27 @@ function GenerateImageForm({
                   </button>
                 </div>
               ))}
+
+              {/* URLs de referência (de prompts salvos) */}
+              {referenceUrls.map((url, index) => (
+                <div key={`url-${index}`} className="relative group">
+                  <div className="relative w-full h-20 rounded border overflow-hidden">
+                    <Image
+                      src={url}
+                      alt={`Referência ${index + 1}`}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                  </div>
+                  <button
+                    onClick={() => setReferenceUrls(prev => prev.filter((_, i) => i !== index))}
+                    className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
@@ -1176,7 +1261,7 @@ function GenerateImageForm({
               Arraste imagens aqui ou clique para selecionar
             </p>
             <p className="text-xs text-muted-foreground mt-1">
-              {referenceImages.length + localFiles.length}/{maxReferenceImages} imagens
+              {referenceImages.length + localFiles.length + referenceUrls.length}/{maxReferenceImages} imagens
             </p>
           </div>
 
@@ -1194,11 +1279,11 @@ function GenerateImageForm({
             variant="outline"
             size="sm"
             className="w-full"
-            disabled={generateMutation.isPending || referenceImages.length + localFiles.length >= maxReferenceImages || maxReferenceImages === 0}
+            disabled={generateMutation.isPending || referenceImages.length + localFiles.length + referenceUrls.length >= maxReferenceImages || maxReferenceImages === 0}
             onClick={() => setIsDriveModalOpen(true)}
           >
             <HardDrive className="mr-2 h-4 w-4" />
-            Selecionar do Google Drive ({referenceImages.length}/{maxReferenceImages})
+            Selecionar do Google Drive
           </Button>
 
           <DesktopGoogleDriveModal
@@ -1221,36 +1306,58 @@ function GenerateImageForm({
         </div>
       )}
 
-      <div className="flex items-center justify-between pt-2">
-        <span className="text-xs text-muted-foreground">
-          Custo: {cost} {cost === 1 ? 'crédito' : 'créditos'}
-        </span>
-        <Button
-          onClick={handleGenerate}
-          disabled={!prompt.trim() || generateMutation.isPending || !canPerformOperation('ai_image_generation')}
-        >
-          {generateMutation.isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {mode === 'edit' ? 'Editando...' : 'Gerando...'}
-            </>
-          ) : (
-            <>
-              {mode === 'edit' ? (
-                <>
-                  <Wand2 className="mr-2 h-4 w-4" />
-                  Editar Imagem
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Gerar Imagem
-                </>
-              )}
-            </>
-          )}
-        </Button>
+      <div className="flex flex-col gap-2 pt-2">
+        {lastGeneratedPrompt && mode === 'generate' && (
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => setShowSavePromptDialog(true)}
+            className="w-full gap-1.5"
+          >
+            <BookmarkPlus className="h-4 w-4" />
+            Salvar Último Prompt Gerado
+          </Button>
+        )}
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-muted-foreground">
+            Custo: {cost} {cost === 1 ? 'crédito' : 'créditos'}
+          </span>
+          <Button
+            onClick={handleGenerate}
+            disabled={!prompt.trim() || generateMutation.isPending || !canPerformOperation('ai_image_generation')}
+          >
+            {generateMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {mode === 'edit' ? 'Editando...' : 'Gerando...'}
+              </>
+            ) : (
+              <>
+                {mode === 'edit' ? (
+                  <>
+                    <Wand2 className="mr-2 h-4 w-4" />
+                    Editar Imagem
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Gerar Imagem
+                  </>
+                )}
+              </>
+            )}
+          </Button>
+        </div>
       </div>
+
+      {/* Dialog para salvar prompt */}
+      <SavePromptDialog
+        open={showSavePromptDialog}
+        onOpenChange={setShowSavePromptDialog}
+        promptContent={lastGeneratedPrompt}
+        referenceImages={lastReferenceUrls}
+      />
     </Card>
   )
 }
@@ -1396,7 +1503,13 @@ function ImageCard({
 
 
 // Biblioteca de Prompts Globais
-function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | undefined }) {
+function PromptsLibrary({
+  projectId: _projectId,
+  onApplyPrompt,
+}: {
+  projectId: number | null | undefined
+  onApplyPrompt: (prompt: Prompt) => void
+}) {
   const { toast } = useToast()
   const [copiedId, setCopiedId] = React.useState<string | null>(null)
   const [selectedPrompt, setSelectedPrompt] = React.useState<Prompt | null>(null)
@@ -1404,6 +1517,17 @@ function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | 
 
   // Buscar prompts globais do usuário
   const { data: prompts = [], isLoading } = usePrompts()
+
+  // Debug: log dos prompts carregados
+  React.useEffect(() => {
+    if (prompts.length > 0) {
+      console.log('[PromptsLibrary] Prompts carregados:', prompts.map(p => ({
+        title: p.title,
+        referenceImagesCount: p.referenceImages.length,
+        referenceImages: p.referenceImages
+      })))
+    }
+  }, [prompts])
 
   // Filtrar prompts por busca
   const filteredPrompts = React.useMemo(() => {
@@ -1520,6 +1644,18 @@ function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | 
                           className="h-7 w-7"
                           onClick={(e) => {
                             e.stopPropagation()
+                            onApplyPrompt(prompt)
+                          }}
+                          title="Usar este prompt"
+                        >
+                          <Wand2 className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          onClick={(e) => {
+                            e.stopPropagation()
                             handleCopy(prompt.content, prompt.id)
                           }}
                           title="Copiar prompt"
@@ -1548,6 +1684,14 @@ function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | 
                     <p className="text-xs text-muted-foreground break-words line-clamp-3 leading-relaxed">
                       {prompt.content}
                     </p>
+
+                    {prompt.referenceImages.length > 0 && (
+                      <ReferenceImagesGrid
+                        images={prompt.referenceImages}
+                        maxDisplay={3}
+                        className="mt-2"
+                      />
+                    )}
 
                     {prompt.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1">
@@ -1619,6 +1763,15 @@ function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | 
               </div>
             </div>
 
+            {selectedPrompt?.referenceImages && selectedPrompt.referenceImages.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-semibold">
+                  Imagens de Referência ({selectedPrompt.referenceImages.length})
+                </h4>
+                <ReferenceImagesGrid images={selectedPrompt.referenceImages} />
+              </div>
+            )}
+
             {selectedPrompt?.tags && selectedPrompt.tags.length > 0 && (
               <div className="space-y-2">
                 <h4 className="text-sm font-semibold">Tags</h4>
@@ -1631,6 +1784,27 @@ function PromptsLibrary({ projectId: _projectId }: { projectId: number | null | 
                 </div>
               </div>
             )}
+
+            {/* Botão para aplicar prompt */}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={handleCloseDialog}
+              >
+                Fechar
+              </Button>
+              <Button
+                onClick={() => {
+                  if (selectedPrompt) {
+                    onApplyPrompt(selectedPrompt)
+                    handleCloseDialog()
+                  }
+                }}
+              >
+                <Wand2 className="mr-2 h-4 w-4" />
+                Usar este Prompt
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

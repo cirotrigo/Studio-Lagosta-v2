@@ -6,6 +6,7 @@ export interface Prompt {
   content: string
   category: string | null
   tags: string[]
+  referenceImages: string[]
   createdAt: string
   updatedAt: string
 }
@@ -15,6 +16,7 @@ export interface CreatePromptData {
   content: string
   category?: string
   tags?: string[]
+  referenceImages?: string[]
 }
 
 export interface UpdatePromptData {
@@ -22,6 +24,7 @@ export interface UpdatePromptData {
   content?: string
   category?: string | null
   tags?: string[]
+  referenceImages?: string[]
 }
 
 export interface PromptFilters {

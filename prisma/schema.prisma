@@ -838,16 +838,17 @@ model PromptLibrary {
 
 // Global Prompts - User-level prompts (reusable across all projects)
 model Prompt {
-  id             String        @id @default(cuid())
-  userId         String
-  title          String
-  content        String        @db.Text
-  category       String?
-  tags           String[]      @default([])
-  organizationId String?
-  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id              String        @id @default(cuid())
+  userId          String
+  title           String
+  content         String        @db.Text
+  category        String?
+  tags            String[]      @default([])
+  referenceImages String[]      @default([])
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@index([userId])
   @@index([category])

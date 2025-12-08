@@ -9,6 +9,7 @@ const createPromptSchema = z.object({
   content: z.string().min(1, 'Conteúdo é obrigatório'),
   category: z.string().optional(),
   tags: z.array(z.string()).optional(),
+  referenceImages: z.array(z.string().url('URL inválida')).optional(),
 })
 
 // GET - Buscar todos os prompts do usuário
@@ -107,6 +108,7 @@ export async function POST(req: Request) {
       category: validatedData.category || null,
       userId,
       tags: validatedData.tags || [],
+      referenceImages: validatedData.referenceImages || [],
       organizationId,
     }
     console.log('[POST /api/prompts] Creating prompt with data:', promptData)
