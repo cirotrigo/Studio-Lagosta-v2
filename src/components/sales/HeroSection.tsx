@@ -35,6 +35,15 @@ export function HeroSection() {
                 }}
             />
 
+            {/* Top Navigation - Login Button */}
+            <div className="absolute top-0 right-0 p-4 md:p-8 z-50">
+                <Button variant="ghost" className="text-sm font-medium text-muted-foreground hover:text-orange-500 hover:bg-orange-500/10 transition-colors" asChild>
+                    <Link href="/sign-in">
+                        Entrar no Studio
+                    </Link>
+                </Button>
+            </div>
+
             {/* Background Gradients/Effects */}
             <div className="absolute inset-0 z-0">
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-gradient-to-b from-background via-background/90 to-background z-10" />

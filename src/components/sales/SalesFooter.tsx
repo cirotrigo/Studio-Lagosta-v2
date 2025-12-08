@@ -2,7 +2,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Instagram, Linkedin } from 'lucide-react';
+import { Instagram } from 'lucide-react';
 
 export function SalesFooter() {
     return (
@@ -22,11 +22,8 @@ export function SalesFooter() {
                             Marketing Gastronômico Especializado. Backend de crescimento para restaurantes.
                         </p>
                         <div className="flex gap-4 mt-6">
-                            <Link href="#" className="text-muted-foreground hover:text-orange-500 transition-colors">
+                            <Link href="https://www.instagram.com/lagostacriativa/" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-orange-500 transition-colors">
                                 <Instagram className="h-5 w-5" />
-                            </Link>
-                            <Link href="#" className="text-muted-foreground hover:text-orange-500 transition-colors">
-                                <Linkedin className="h-5 w-5" />
                             </Link>
                         </div>
                     </div>
