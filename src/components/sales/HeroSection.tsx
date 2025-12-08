@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { ArrowRight, TrendingUp, Users, UtensilsCrossed } from 'lucide-react';
 import Link from 'next/link';
 import { motion, useMotionValue, useMotionTemplate } from 'framer-motion';
@@ -36,7 +37,8 @@ export function HeroSection() {
             />
 
             {/* Top Navigation - Login Button */}
-            <div className="absolute top-0 right-0 p-4 md:p-8 z-50">
+            <div className="absolute top-0 right-0 p-4 md:p-8 z-50 flex items-center gap-4">
+                <ThemeToggle />
                 <Button variant="ghost" className="text-sm font-medium text-muted-foreground hover:text-orange-500 hover:bg-orange-500/10 transition-colors" asChild>
                     <Link href="/sign-in">
                         Entrar no Studio

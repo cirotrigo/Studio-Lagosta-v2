@@ -123,7 +123,7 @@ export default function RootLayout({
         >
           <AnalyticsPixels />
           <QueryProvider>
-            <ThemeProvider>
+            <ThemeProvider defaultTheme="dark">
               {children}
               <Toaster />
             </ThemeProvider>
