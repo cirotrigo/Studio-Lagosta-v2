@@ -123,16 +123,17 @@ export function HeroSection() {
                 {/* Simple Logo Strip Visual */}
                 <div className="mt-12 opacity-50 grayscale hover:grayscale-0 transition-all duration-500">
                     <p className="items-center text-sm font-semibold text-muted-foreground mb-4">CONFIRMADO POR GIGANTES DO ES</p>
-                    <div className="flex flex-wrap justify-center gap-8 items-center">
-                        {/* Client Logos */}
-                        <img src="/clients/client-1.png" alt="Bacana" className="h-16 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-2.png" alt="Cliente 2" className="h-16 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-3.png" alt="Cliente 3" className="h-12 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-4.png" alt="Cliente 4" className="h-12 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-5.png" alt="Cliente 5" className="h-12 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-6.png" alt="Seu Quinto" className="h-14 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-7.png" alt="Tero" className="h-12 w-auto object-contain hover:scale-110 transition-transform" />
-                        <img src="/clients/client-8.png" alt="Coronel Picanha" className="h-16 w-auto object-contain hover:scale-110 transition-transform" />
+                    {/* Mobile: Horizontal scroll | Desktop: Wrap */}
+                    <div className="flex flex-nowrap md:flex-wrap justify-start md:justify-center gap-6 md:gap-8 items-center overflow-x-auto md:overflow-visible pb-4 md:pb-0 scrollbar-thin scrollbar-thumb-orange-500/20 scrollbar-track-transparent">
+                        {/* Client Logos - 48px height */}
+                        <img src="/clients/client-1.png" alt="Bacana" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-2.png" alt="Cliente 2" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-3.png" alt="Cliente 3" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-4.png" alt="Cliente 4" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-5.png" alt="Cliente 5" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-6.png" alt="Seu Quinto" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-7.png" alt="Tero" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
+                        <img src="/clients/client-8.png" alt="Coronel Picanha" className="h-12 max-h-12 w-auto object-contain hover:scale-110 transition-transform flex-shrink-0" />
                     </div>
                 </div>
             </div>
