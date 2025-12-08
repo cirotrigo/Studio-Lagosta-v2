@@ -82,24 +82,27 @@ export function DriveGallery({
   return (
     <div className="flex flex-col gap-6">
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-        <div id={galleryId} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div id={galleryId} className="w-full columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
           {items.map((item) => (
-            <DriveItem
-              key={item.id}
-              item={item}
-              selected={selectedFileIds.includes(item.id)}
-              onToggleSelect={() => onToggleSelect(item.id)}
-              onOpen={onOpenItem}
-              onDownload={onDownloadItem}
-              onMove={onMoveItem}
-              onDelete={onDeleteItem}
-              templates={templates}
-              onOpenInTemplate={onOpenInTemplate}
-            />
+            <div key={item.id} className="break-inside-avoid mb-4">
+              <DriveItem
+                item={item}
+                selected={selectedFileIds.includes(item.id)}
+                onToggleSelect={() => onToggleSelect(item.id)}
+                onOpen={onOpenItem}
+                onDownload={onDownloadItem}
+                onMove={onMoveItem}
+                onDelete={onDeleteItem}
+                templates={templates}
+                onOpenInTemplate={onOpenInTemplate}
+              />
+            </div>
           ))}
           {isLoading &&
-            Array.from({ length: 4 }).map((_, index) => (
-              <Skeleton key={`drive-skeleton-${index}`} className="h-[220px] rounded-2xl" />
+            Array.from({ length: 8 }).map((_, index) => (
+              <div key={`drive-skeleton-${index}`} className="break-inside-avoid mb-4">
+                <Skeleton className="w-full aspect-[4/5] rounded-xl" />
+              </div>
             ))}
         </div>
       </DndContext>

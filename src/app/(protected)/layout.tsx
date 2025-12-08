@@ -90,7 +90,7 @@ export default function ProtectedLayout({
                   className="pointer-events-none absolute -inset-6 -z-10 rounded-2xl"
                   style={{
                     background:
-                      "radial-gradient(60% 40% at 10% 0%, color-mix(in oklch, var(--neon) 20%, transparent), transparent 70%), radial-gradient(50% 40% at 90% 10%, color-mix(in oklch, var(--neon-2) 18%, transparent), transparent 70%)",
+                      "radial-gradient(60% 40% at 10% 0%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 70%), radial-gradient(50% 40% at 90% 10%, color-mix(in oklch, var(--retro-magenta) 18%, transparent), transparent 70%)",
                     filter: "blur(30px)",
                     opacity: 0.6,
                   }}

@@ -65,9 +65,9 @@ const STATUS_OPTIONS = [
 ]
 
 const GRID_DENSITY_CONFIG = {
-  compact: { label: 'Compacto', minWidth: 180, gapClass: 'gap-2.5 md:gap-3' },
-  cozy: { label: 'Médio', minWidth: 220, gapClass: 'gap-3 md:gap-4' },
-  comfortable: { label: 'Amplo', minWidth: 260, gapClass: 'gap-4 md:gap-5' },
+  compact: { label: 'Compacto', columnsClass: 'columns-2 sm:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6', gapClass: 'gap-2 mb-2' },
+  cozy: { label: 'Médio', columnsClass: 'columns-2 sm:columns-2 lg:columns-3 xl:columns-4', gapClass: 'gap-3 mb-3' },
+  comfortable: { label: 'Amplo', columnsClass: 'columns-1 sm:columns-2 lg:columns-3', gapClass: 'gap-4 mb-4' },
 } as const
 
 type GridDensity = keyof typeof GRID_DENSITY_CONFIG
@@ -154,7 +154,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     staleTime: 10_000,
   })
 
-
+  // Mutation para deletar
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/generations/${id}`),
     onSuccess: () => {
@@ -185,6 +185,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     },
   })
 
+  // Listeners para Webhooks/Eventos de Progresso (Simulado ou Real)
   React.useEffect(() => {
     const handleQueued = (event: Event) => {
       const detail = (event as CustomEvent<Record<string, unknown>>).detail
@@ -315,6 +316,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     }
   }, [projectId, queryClient])
 
+  // Limpar overrides quando os dados chegam atualizados
   React.useEffect(() => {
     if (!data?.generations) return
     setProgressOverrides((prev) => {
@@ -342,7 +344,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         !onlyWithResult ||
         Boolean(
           generation.resultUrl ||
-            (thumbnailValue && thumbnailValue.length > 0)
+          (thumbnailValue && thumbnailValue.length > 0)
         )
       const query = searchTerm.trim().toLowerCase()
       const matchesSearch =
@@ -356,16 +358,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   const shouldEnablePhotoSwipe = viewMode === 'grid' && !isLoading && !isError && filtered.length > 0
 
-  const gridTemplateStyle = React.useMemo<React.CSSProperties>(
-    () => ({
-      gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${GRID_DENSITY_CONFIG[gridDensity].minWidth}px), 1fr))`,
-    }),
-    [gridDensity]
-  )
+  const gridDensityConfig = GRID_DENSITY_CONFIG[gridDensity]
 
-  const gridGapClass = GRID_DENSITY_CONFIG[gridDensity].gapClass
-
-  // PhotoSwipe integration - re-init quando os dados mudarem
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
     childSelector: 'a',
@@ -603,9 +597,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   return (
     <>
-      {/* Filtros e controles - layout responsivo mobile-first */}
       <Card className="flex flex-col gap-4 p-4 mb-6 max-w-full overflow-hidden">
-        {/* Filtros superiores */}
         <div className="flex flex-col sm:flex-row gap-3 w-full">
           <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -640,7 +632,6 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           </div>
         </div>
 
-        {/* Controles inferiores */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
@@ -755,37 +746,27 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       ) : viewMode === 'grid' ? (
         <div
           id="creatives-gallery"
-          className={cn('grid auto-rows-[1fr]', gridGapClass)}
-          style={gridTemplateStyle}
+          className={cn('w-full', gridDensityConfig.columnsClass, gridDensityConfig.gapClass.split(' ')[0])}
         >
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
             const templateLabel = generation.template?.name || generation.templateName || 'Template'
             const dimensions = generation.template?.dimensions || '1080x1080'
 
-            // Parsear dimensões do template (ex: "1080x1920")
+            // Parsear dimensões do template
             const [widthStr, heightStr] = dimensions.split('x')
             const width = parseInt(widthStr, 10) || 1080
             const height = parseInt(heightStr, 10) || 1080
 
-            // Determinar tipo baseado nas dimensões reais
             let templateType: 'STORY' | 'FEED' | 'SQUARE' = 'SQUARE'
             const aspectRatio = width / height
 
             if (aspectRatio < 0.7) {
-              // Vertical - Story (9:16 = 0.5625)
               templateType = 'STORY'
             } else if (aspectRatio < 0.95) {
-              // Retrato - Feed (4:5 = 0.8)
               templateType = 'FEED'
             } else {
-              // Quadrado ou próximo (1:1)
               templateType = 'SQUARE'
-            }
-
-            // Debug: ver o tipo real
-            if (index === 0) {
-              console.log('Template dimensions:', { dimensions, width, height, aspectRatio, templateType })
             }
 
             const meta = getGenerationMeta(generation)
@@ -793,51 +774,52 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             const previewPayload =
               meta.assetUrl ?? meta.displayUrl
                 ? {
-                    id: generation.id,
-                    url: (meta.assetUrl ?? meta.displayUrl) as string,
-                    templateName: templateLabel,
-                    isVideo: meta.isVideo && Boolean(meta.assetUrl),
-                    posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
-                  }
+                  id: generation.id,
+                  url: (meta.assetUrl ?? meta.displayUrl) as string,
+                  templateName: templateLabel,
+                  isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                  posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
+                }
                 : null
 
             return (
-              <GalleryItem
-                key={generation.id}
-                id={generation.id}
-                displayUrl={meta.displayUrl ?? null}
-                assetUrl={meta.assetUrl}
-                title={templateLabel}
-                date={new Intl.DateTimeFormat('pt-BR', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                }).format(new Date(generation.createdAt))}
-                templateType={templateType}
-                selected={selected}
-                hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
-                status={meta.status}
-                progress={meta.progress}
-                errorMessage={meta.errorMessage ?? undefined}
-                isVideo={meta.isVideo}
-                authorClerkId={generation.createdBy}
-                onToggleSelect={() => toggleSelection(generation.id)}
-                onDownload={() => handleDownload(generation)}
-                onDelete={() => handleDelete(generation)}
-                onSchedule={() => handleSchedule(generation)}
-                onPreview={() => {
-                  if (previewPayload) {
-                    setPreview(previewPayload)
+              <div key={generation.id} className={cn("break-inside-avoid", gridDensityConfig.gapClass.split(' ')[1])}>
+                <GalleryItem
+                  id={generation.id}
+                  displayUrl={meta.displayUrl ?? null}
+                  assetUrl={meta.assetUrl}
+                  title={templateLabel}
+                  date={new Intl.DateTimeFormat('pt-BR', {
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  }).format(new Date(generation.createdAt))}
+                  templateType={templateType}
+                  selected={selected}
+                  hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
+                  status={meta.status}
+                  progress={meta.progress}
+                  errorMessage={meta.errorMessage ?? undefined}
+                  isVideo={meta.isVideo}
+                  authorClerkId={generation.createdBy}
+                  onToggleSelect={() => toggleSelection(generation.id)}
+                  onDownload={() => handleDownload(generation)}
+                  onDelete={() => handleDelete(generation)}
+                  onSchedule={() => handleSchedule(generation)}
+                  onPreview={() => {
+                    if (previewPayload) {
+                      setPreview(previewPayload)
+                    }
+                  }}
+                  onDriveOpen={
+                    generation.googleDriveBackupUrl
+                      ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')
+                      : undefined
                   }
-                }}
-                onDriveOpen={
-                  generation.googleDriveBackupUrl
-                    ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')
-                    : undefined
-                }
-                index={index}
-                pswpWidth={width}
-                pswpHeight={height}
-              />
+                  index={index}
+                  pswpWidth={width}
+                  pswpHeight={height}
+                />
+              </div>
             )
           })}
         </div>
@@ -919,12 +901,12 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                               setPreview(
                                 canPreview
                                   ? {
-                                      id: generation.id,
-                                      url: previewUrl!,
-                                      templateName: templateLabel,
-                                      isVideo: meta.isVideo && Boolean(meta.assetUrl),
-                                      posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
-                                    }
+                                    id: generation.id,
+                                    url: previewUrl!,
+                                    templateName: templateLabel,
+                                    isVideo: meta.isVideo && Boolean(meta.assetUrl),
+                                    posterUrl: meta.thumbnailUrl ?? meta.displayUrl ?? undefined,
+                                  }
                                   : null
                               )
                             }

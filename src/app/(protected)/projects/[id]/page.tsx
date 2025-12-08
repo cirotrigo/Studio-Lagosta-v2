@@ -4,19 +4,13 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import Image from 'next/image'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { Plus, FileText, Trash2, Edit, Copy, MoreVertical } from 'lucide-react'
+import { Plus, FileText } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import {
   Select,
   SelectContent,
@@ -33,6 +27,7 @@ import Link from 'next/link'
 import { toast } from 'sonner'
 import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
+import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
@@ -47,18 +42,6 @@ const createTemplateSchema = z.object({
 })
 
 type CreateTemplateData = z.infer<typeof createTemplateSchema>
-
-interface Template {
-  id: number
-  name: string
-  type: string
-  dimensions: string
-  thumbnailUrl: string | null
-  createdAt: string
-  _count?: {
-    Page: number
-  }
-}
 
 const TEMPLATE_TYPES = [
   { value: 'STORY', label: 'Story (9:16)', dimensions: '1080x1920' },
@@ -84,11 +67,6 @@ export default function ProjectDetailPage() {
   } = useProject(
     Number.isNaN(projectId) ? null : projectId,
   )
-  const { data: templates, isLoading } = useQuery<Template[]>({
-    queryKey: ['templates', projectId],
-    queryFn: () => api.get(`/api/projects/${projectId}/templates`),
-    enabled: !isNaN(projectId),
-  })
 
   const createMutation = useMutation({
     mutationFn: (data: CreateTemplateData) =>
@@ -104,27 +82,8 @@ export default function ProjectDetailPage() {
     },
   })
 
-  const deleteMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/api/templates/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
-      toast.success('Template deletado com sucesso!')
-    },
-    onError: () => {
-      toast.error('Erro ao deletar template')
-    },
-  })
-
-  const duplicateMutation = useMutation({
-    mutationFn: (id: number) => api.post(`/api/templates/${id}/duplicate`, {}),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
-      toast.success('Template duplicado com sucesso!')
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Erro ao duplicar template')
-    },
-  })
+  // Mutations de exclusão/duplicação removidas pois agora são lidadas pelo TemplatesGallery
+  // Query de templates removida
 
   const {
     register,
@@ -153,89 +112,74 @@ export default function ProjectDetailPage() {
     createMutation.mutate(data)
   }
 
-  const handleDelete = (id: number, name: string) => {
-    deleteMutation.mutate(id)
-  }
-
-const handleDuplicate = (id: number, name: string) => {
-  if (confirm(`Duplicar o template "${name}"?`)) {
-    duplicateMutation.mutate(id)
-  }
-}
-
-const getTypeLabel = (type: string) => {
-  const typeConfig = TEMPLATE_TYPES.find((t) => t.value === type)
-  return typeConfig?.label || type
-}
-
-if (isLoadingProject) {
-  return (
-    <div className="container mx-auto space-y-6 p-8">
-      <Skeleton className="h-6 w-32" />
-      <Skeleton className="h-10 w-3/4" />
-      <Skeleton className="h-24 w-full" />
-    </div>
-  )
-}
-
-if (projectError) {
-  return (
-    <div className="container mx-auto p-8">
-      <Card className="border border-destructive/40 bg-destructive/10 p-6">
-        <p className="text-sm text-destructive-foreground">
-          Ocorreu um erro ao carregar este projeto. Tente novamente mais tarde.
-        </p>
-      </Card>
-    </div>
-  )
-}
-
-if (!projectDetails) {
-  return (
-    <div className="container mx-auto p-8">
-      <Card className="border border-border/40 bg-card/60 p-6">
-        <p className="text-sm text-muted-foreground">Projeto não encontrado.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push('/projects')}>
-          Voltar para projetos
-        </Button>
-      </Card>
-    </div>
-  )
-}
-
-const driveImagesConfigured = Boolean(projectDetails.googleDriveImagesFolderId)
-const driveVideosConfigured = Boolean(projectDetails.googleDriveVideosFolderId)
-const driveFallbackConfigured = Boolean(projectDetails.googleDriveFolderId)
-const driveConfigured = driveImagesConfigured || driveVideosConfigured || driveFallbackConfigured
-const configLink = `/projects/${projectId}?tab=configuracoes`
-
-return (
-  <div className="w-full max-w-full overflow-x-hidden px-0">
-    <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4 max-w-full overflow-hidden">
-      <Button
-        variant="ghost"
-        onClick={() => router.push('/projects')}
-        className="self-start flex-shrink-0"
-      >
-        ← Voltar para Projetos
-      </Button>
-      <div className="max-w-full overflow-hidden">
-        <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words overflow-wrap-anywhere">
-          {projectDetails.name}
-        </h1>
-        {projectDetails.description && (
-          <p className="mt-1 text-sm text-muted-foreground break-words overflow-wrap-anywhere">
-            {projectDetails.description}
-          </p>
-        )}
+  if (isLoadingProject) {
+    return (
+      <div className="container mx-auto space-y-6 p-8">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-10 w-3/4" />
+        <Skeleton className="h-24 w-full" />
       </div>
-    </div>
+    )
+  }
 
-    <Tabs
-      value={activeTab}
-      onValueChange={(value) => router.push(`/projects/${projectId}?tab=${value}`)}
-      className="w-full max-w-full overflow-x-hidden"
-    >
+  if (projectError) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card className="border border-destructive/40 bg-destructive/10 p-6">
+          <p className="text-sm text-destructive-foreground">
+            Ocorreu um erro ao carregar este projeto. Tente novamente mais tarde.
+          </p>
+        </Card>
+      </div>
+    )
+  }
+
+  if (!projectDetails) {
+    return (
+      <div className="container mx-auto p-8">
+        <Card className="border border-border/40 bg-card/60 p-6">
+          <p className="text-sm text-muted-foreground">Projeto não encontrado.</p>
+          <Button className="mt-4" variant="outline" onClick={() => router.push('/projects')}>
+            Voltar para projetos
+          </Button>
+        </Card>
+      </div>
+    )
+  }
+
+  const driveImagesConfigured = Boolean(projectDetails.googleDriveImagesFolderId)
+  const driveVideosConfigured = Boolean(projectDetails.googleDriveVideosFolderId)
+  const driveFallbackConfigured = Boolean(projectDetails.googleDriveFolderId)
+  const driveConfigured = driveImagesConfigured || driveVideosConfigured || driveFallbackConfigured
+  const configLink = `/projects/${projectId}?tab=configuracoes`
+
+  return (
+    <div className="w-full max-w-full overflow-x-hidden px-0">
+      <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4 max-w-full overflow-hidden">
+        <Button
+          variant="ghost"
+          onClick={() => router.push('/projects')}
+          className="self-start flex-shrink-0"
+        >
+          ← Voltar para Projetos
+        </Button>
+        <div className="max-w-full overflow-hidden">
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words overflow-wrap-anywhere">
+            {projectDetails.name}
+          </h1>
+          {projectDetails.description && (
+            <p className="mt-1 text-sm text-muted-foreground break-words overflow-wrap-anywhere">
+              {projectDetails.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      <Tabs
+        value={activeTab}
+        onValueChange={(value) => router.push(`/projects/${projectId}?tab=${value}`)}
+        className="w-full max-w-full overflow-x-hidden"
+      >
         <TabsList>
           <TabsTrigger value="drive">Drive</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
@@ -335,138 +279,10 @@ return (
             </Dialog>
           </div>
 
-          {isLoading ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-              {Array.from({ length: 8 }).map((_, index) => (
-                <Card key={`skeleton-${index}`} className="overflow-hidden">
-                  <Skeleton className="aspect-[4/5] w-full" />
-                  <div className="p-3">
-                    <Skeleton className="h-4 w-3/4 mb-2" />
-                    <Skeleton className="h-3 w-1/2" />
-                  </div>
-                </Card>
-              ))}
-            </div>
-          ) : templates && templates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
-              {templates.map((template) => {
-                // Calcular aspect ratio baseado no tipo
-                const aspectRatios: Record<string, string> = {
-                  STORY: 'aspect-[9/16]',
-                  FEED: 'aspect-[4/5]',
-                  SQUARE: 'aspect-square',
-                }
-                const aspectRatio = aspectRatios[template.type] ?? 'aspect-[4/5]'
-
-                return (
-                  <Card
-                    key={template.id}
-                    className="group overflow-hidden transition-all hover:shadow-lg hover:scale-[1.02]"
-                  >
-                    <div className={cn('relative bg-muted group', aspectRatio)}>
-                      {/* Link para abrir o editor ao clicar na imagem */}
-                      <Link
-                        href={`/templates/${template.id}/editor`}
-                        className="absolute inset-0 z-0"
-                      >
-                        {template.thumbnailUrl ? (
-                          <Image
-                            src={template.thumbnailUrl}
-                            alt={template.name}
-                            fill
-                            sizes="(min-width: 1536px) 20vw, (min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 768px) 50vw, 100vw"
-                            className="object-cover"
-                            unoptimized
-                          />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-                            <FileText className="w-8 h-8 text-muted-foreground opacity-40" />
-                            <span className="text-xs text-muted-foreground opacity-60">Sem preview</span>
-                          </div>
-                        )}
-                      </Link>
-
-                      {/* Menu dropdown no canto superior direito */}
-                      <div className="absolute top-2 right-2 z-10">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button
-                              size="icon"
-                              variant="secondary"
-                              className="h-9 w-9 shadow-lg"
-                              onClick={(e) => e.preventDefault()}
-                            >
-                              <MoreVertical className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
-                            <DropdownMenuItem asChild>
-                              <Link
-                                href={`/templates/${template.id}/editor`}
-                                className="flex items-center cursor-pointer"
-                              >
-                                <Edit className="mr-2 h-4 w-4" />
-                                Editar Template
-                              </Link>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDuplicate(template.id, template.name)}
-                              disabled={duplicateMutation.isPending}
-                              className="cursor-pointer"
-                            >
-                              <Copy className="mr-2 h-4 w-4" />
-                              Duplicar Template
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => handleDelete(template.id, template.name)}
-                              disabled={deleteMutation.isPending}
-                              className="cursor-pointer text-red-600 focus:text-red-600"
-                            >
-                              <Trash2 className="mr-2 h-4 w-4" />
-                              Deletar Template
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-                    <div className="p-3">
-                      <h3 className="font-semibold text-sm leading-tight line-clamp-1 mb-1">
-                        {template.name}
-                      </h3>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-muted-foreground truncate">
-                          {getTypeLabel(template.type)} • {template.dimensions}
-                        </span>
-                      </div>
-                      {template._count && template._count.Page > 0 && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {template._count.Page} {template._count.Page === 1 ? 'página' : 'páginas'}
-                        </div>
-                      )}
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-          ) : (
-            <Card className="p-12 text-center">
-              <div className="flex flex-col items-center gap-4">
-                <div className="p-4 bg-muted rounded-full">
-                  <FileText className="w-8 h-8 text-muted-foreground" />
-                </div>
-                <div>
-                  <h3 className="font-semibold text-lg mb-2">Nenhum template ainda</h3>
-                  <p className="text-muted-foreground mb-4">
-                    Crie seu primeiro template para começar
-                  </p>
-                  <Button onClick={() => setIsDialogOpen(true)}>
-                    <Plus className="w-4 h-4 mr-2" />
-                    Criar Primeiro Template
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          )}
+          <TemplatesGallery
+            projectId={projectId}
+            onCreateClick={() => setIsDialogOpen(true)}
+          />
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
