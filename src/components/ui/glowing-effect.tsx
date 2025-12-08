@@ -9,7 +9,7 @@ interface GlowingEffectProps {
   inactiveZone?: number
   proximity?: number
   spread?: number
-  variant?: "default" | "white"
+  variant?: "default" | "white" | "orange"
   glow?: boolean
   className?: string
   disabled?: boolean
@@ -79,7 +79,7 @@ const GlowingEffect = memo(
             parseFloat(element.style.getPropertyValue("--start")) || 0
           const targetAngle =
             (180 * Math.atan2(mouseY - center[1], mouseX - center[0])) /
-              Math.PI +
+            Math.PI +
             90
 
           const angleDiff = ((targetAngle - currentAngle + 180) % 360) - 180
@@ -124,6 +124,7 @@ const GlowingEffect = memo(
             "pointer-events-none absolute -inset-px hidden rounded-[inherit] border opacity-0 transition-opacity",
             glow && "opacity-100",
             variant === "white" && "border-white",
+            (variant === "default" || variant === "orange") && "border-zinc-800",
             disabled && "!block"
           )}
         />
@@ -143,7 +144,9 @@ const GlowingEffect = memo(
                   var(--black),
                   var(--black) calc(25% / var(--repeating-conic-gradient-times))
                 )`
-                : `linear-gradient(135deg, rgba(29,78,216,0.8) 0%, rgba(59,130,246,0.8) 50%, rgba(236,72,153,0.8) 100%)`,
+                : variant === "orange"
+                  ? `linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%)`
+                  : `linear-gradient(135deg, rgba(29,78,216,0.8) 0%, rgba(59,130,246,0.8) 50%, rgba(236,72,153,0.8) 100%)`,
           } as React.CSSProperties}
           className={cn(
             "pointer-events-none absolute inset-0 rounded-[inherit] opacity-100 transition-opacity",
