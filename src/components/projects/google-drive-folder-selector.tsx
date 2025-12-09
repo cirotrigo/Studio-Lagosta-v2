@@ -716,9 +716,16 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
               className="block h-full w-full relative"
               onClick={(e) => {
                 // Prevent default link behavior if just selecting
-                // But allow if checking lightbox
-                if (imageState !== 'loaded') {
-                  e.preventDefault()
+                // But allow if checking lightbox via Eye button (dispatched event) or direct intent if refined
+                // Ideally, click on main area should SELECT.
+                // WE PREVENT DEFAULT HERE ALWAYS for click on wrapper link, 
+                // UNLESS distinct from a regular click?
+                // Actually, if we just e.preventDefault(), the lightbox won't open on click.
+                // The Eye button dispatches a click event manually. 
+                // We need to distinguish between "User Click" and "Script Dispatch"?
+                if (e.isTrusted) {
+                  e.preventDefault() // Block direct user clicks on image from opening lightbox
+                  onClick() // Trigger selection instead!
                 }
               }}
             >
@@ -801,6 +808,45 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
           </div>
         )}
 
+        {/* Selection Checkbox (always visible on hover or if selected) */}
+        {!isFolder && (
+          <div
+            className={cn(
+              "absolute top-2 left-2 z-30 transition-opacity duration-200",
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+            )}
+          >
+            <div
+              role="checkbox"
+              aria-checked={isSelected}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onClick()
+              }}
+              className={cn(
+                "flex h-6 w-6 items-center justify-center rounded-full border border-white/20 shadow-sm cursor-pointer transition-all hover:scale-110",
+                isSelected ? "bg-primary text-primary-foreground border-primary" : "bg-black/40 hover:bg-black/60 text-transparent"
+              )}
+            >
+              {isSelected && (
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Overlay Info - Reveal on hover (like DriveItem) */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
 
@@ -814,50 +860,7 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
           </div>
         </div>
 
-        {/* Selected Indicator Checkmark (Custom for selector) */}
-        {isSelected && (
-          <div className="absolute top-2 left-2 flex h-6 w-6 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm animate-in fade-in zoom-in duration-200 z-30">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </div>
-        )}
 
-        {/* Simple hover action for View */}
-        {!isFolder && currentSrc && imageState === 'loaded' && (
-          <div className="absolute top-2 right-2 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-30">
-            <button
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                // Trigger PhotoSwipe by dispatching click event on the link
-                const card = e.currentTarget.closest('.group')
-                const link = card?.querySelector('a[data-pswp-src]') as HTMLAnchorElement
-                if (link) {
-                  const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                  })
-                  link.dispatchEvent(clickEvent)
-                }
-              }}
-              className="flex items-center justify-center w-8 h-8 rounded-full bg-black/40 text-white hover:bg-black/60 shadow-sm backdrop-blur-md transition-all"
-              title="Visualizar em tela cheia"
-            >
-              <Eye className="h-4 w-4" />
-            </button>
-          </div>
-        )}
       </div>
     </motion.div>
   )

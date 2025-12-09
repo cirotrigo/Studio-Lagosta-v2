@@ -562,20 +562,13 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
               className="block w-full h-full relative"
               onClick={(e) => {
                 console.log('🖱️ Google Drive: Link clicked', { isVideo, loaded: imageState === 'loaded' })
-                if (imageState !== 'loaded') {
-                  e.preventDefault()
-                }
-                // Don't stop propagation so card click (toggle selection) works
-                // UNLESS we are specifically clicking "Eye" button which is handled separately.
-                // Wait, if I click the image, I want to TOGGLE SELECTION in inline mode usually?
-                // Or viewing?
-                // In inline selector, clicking THE CARD toggles selection.
-                // Viewing is usually secondary action.
-                // So we should prevent link navigation/photoswipe on main click, only on Eye button.
 
-                // If I want to trigger PhotoSwipe, I should do it on Eye button.
-                // So here I prevent default ALWAYS for the link click if I want card click to select.
-                e.preventDefault()
+                // Allow lightbox only if triggered by script (Eye button)
+                // If trusted (user click), prevent lightbox and trigger selection
+                if (e.isTrusted) {
+                  e.preventDefault()
+                  onClick()
+                }
               }}
             >
               {/* Loading skeleton */}
