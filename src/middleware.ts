@@ -15,6 +15,7 @@ const isPublicRoute = createRouteMatcher([
   '/pricing(.*)',
   '/contact(.*)',
   '/blog(.*)',
+  '/privacy-policy(.*)',
   '/[slug]', // Single level dynamic pages
 ])
 
