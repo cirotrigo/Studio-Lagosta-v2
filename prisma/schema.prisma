@@ -604,6 +604,7 @@ model KnowledgeBaseEntry {
   content     String           @db.Text
   tags        String[]
   metadata    Json?
+  expiresAt   DateTime? // Para campanhas/promoções com data de validade
   status      EntryStatus      @default(ACTIVE)
   createdBy   String
   updatedBy   String?
@@ -620,6 +621,8 @@ model KnowledgeBaseEntry {
   @@index([workspaceId])
   @@index([status])
   @@index([createdBy])
+  @@index([expiresAt]) // Para queries de limpeza
+  @@index([projectId, expiresAt]) // Para queries de RAG filtradas
   @@map("knowledge_base_entries")
 }
 

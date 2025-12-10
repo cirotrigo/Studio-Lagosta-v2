@@ -1,12 +1,13 @@
 /**
  * Semantic search service for knowledge base retrieval
- * Implements RAG context retrieval
+ * Implements RAG context retrieval with Redis caching
  */
 
 import { generateEmbedding } from './embeddings'
 import { queryVectors, type TenantKey } from './vector-client'
 import { db } from '@/lib/db'
 import type { KnowledgeCategory, EntryStatus } from '@prisma/client'
+import { getCachedResults, setCachedResults } from './cache'
 
 export interface SearchResult {
   entryId: string
@@ -40,6 +41,7 @@ export async function searchKnowledgeBase(
     includeEntryMetadata?: boolean
     minScore?: number
     categoryFilter?: KnowledgeCategory
+    useCache?: boolean
   } = {}
 ): Promise<SearchResult[]> {
   const {
@@ -48,6 +50,7 @@ export async function searchKnowledgeBase(
     includeEntryMetadata = true,
     minScore = 0.7,
     categoryFilter,
+    useCache = true,
   } = options
 
   if (!tenant?.projectId) {
@@ -56,6 +59,14 @@ export async function searchKnowledgeBase(
 
   if (!query.trim()) {
     return []
+  }
+
+  // Try cache first (only for ACTIVE status queries)
+  if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE') {
+    const cached = await getCachedResults(query, tenant.projectId, categoryFilter)
+    if (cached) {
+      return cached
+    }
   }
 
   // Generate query embedding
@@ -84,6 +95,11 @@ export async function searchKnowledgeBase(
         projectId: tenant.projectId,
         status: { in: includeStatuses },
         ...(categoryFilter ? { category: categoryFilter } : {}),
+        // Filtrar entradas expiradas (ou que ainda não expiraram)
+        OR: [
+          { expiresAt: null }, // Sem expiração
+          { expiresAt: { gt: new Date() } }, // Ainda não expirou
+        ],
       },
     },
     include: includeEntryMetadata
@@ -121,6 +137,11 @@ export async function searchKnowledgeBase(
       }
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
+
+  // Cache results if enabled (only for ACTIVE status queries)
+  if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE' && results.length > 0) {
+    await setCachedResults(query, tenant.projectId, results, categoryFilter)
+  }
 
   return results
 }

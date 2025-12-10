@@ -4,6 +4,56 @@ import { openai } from '@ai-sdk/openai'
 export type UserIntent = 'CREATE' | 'UPDATE' | 'REPLACE' | 'DELETE' | 'QUERY'
 
 const VALID_INTENTS: UserIntent[] = ['CREATE', 'UPDATE', 'REPLACE', 'DELETE', 'QUERY']
+
+// Mapa de sinônimos para parsing robusto
+const INTENT_SYNONYMS: Record<string, UserIntent> = {
+  // CREATE synonyms
+  'CREATE': 'CREATE',
+  'CRIAR': 'CREATE',
+  'ADICIONAR': 'CREATE',
+  'INSERIR': 'CREATE',
+  'NOVA': 'CREATE',
+  'NOVO': 'CREATE',
+  'ADD': 'CREATE',
+  'INSERT': 'CREATE',
+  'NEW': 'CREATE',
+
+  // UPDATE synonyms
+  'UPDATE': 'UPDATE',
+  'ATUALIZAR': 'UPDATE',
+  'MODIFICAR': 'UPDATE',
+  'ALTERAR': 'UPDATE',
+  'EDITAR': 'UPDATE',
+  'MUDAR': 'UPDATE',
+  'MODIFY': 'UPDATE',
+  'EDIT': 'UPDATE',
+  'CHANGE': 'UPDATE',
+
+  // REPLACE synonyms
+  'REPLACE': 'REPLACE',
+  'SUBSTITUIR': 'REPLACE',
+  'TROCAR': 'REPLACE',
+  'SWAP': 'REPLACE',
+
+  // DELETE synonyms
+  'DELETE': 'DELETE',
+  'DELETAR': 'DELETE',
+  'REMOVER': 'DELETE',
+  'EXCLUIR': 'DELETE',
+  'APAGAR': 'DELETE',
+  'REMOVE': 'DELETE',
+  'ERASE': 'DELETE',
+
+  // QUERY synonyms
+  'QUERY': 'QUERY',
+  'CONSULTAR': 'QUERY',
+  'PERGUNTAR': 'QUERY',
+  'BUSCAR': 'QUERY',
+  'PROCURAR': 'QUERY',
+  'SEARCH': 'QUERY',
+  'ASK': 'QUERY',
+  'QUESTION': 'QUERY',
+}
 const DEFAULT_MODEL = process.env.CLASSIFICATION_MODEL || 'gpt-4o-mini'
 const DEFAULT_TEMPERATURE = Number.isFinite(Number(process.env.CLASSIFICATION_TEMPERATURE))
   ? Number(process.env.CLASSIFICATION_TEMPERATURE)
@@ -37,10 +87,29 @@ export async function classifyIntent(userMessage: string): Promise<UserIntent> {
     temperature: DEFAULT_TEMPERATURE,
   })
 
-  const intent = text.trim().toUpperCase()
-  if (VALID_INTENTS.includes(intent as UserIntent)) {
-    return intent as UserIntent
+  const rawResponse = text.trim().toUpperCase()
+
+  // 1. Exact match com intents válidas
+  if (VALID_INTENTS.includes(rawResponse as UserIntent)) {
+    return rawResponse as UserIntent
   }
 
+  // 2. Match via sinônimos
+  if (rawResponse in INTENT_SYNONYMS) {
+    return INTENT_SYNONYMS[rawResponse]
+  }
+
+  // 3. Buscar primeira palavra que seja um sinônimo conhecido
+  const words = rawResponse.split(/\s+/)
+  for (const word of words) {
+    if (word in INTENT_SYNONYMS) {
+      return INTENT_SYNONYMS[word]
+    }
+  }
+
+  // 4. Fallback: QUERY (pergunta normal)
+  console.warn(
+    `[classify-intent] LLM returned unexpected intent: "${rawResponse}". Defaulting to QUERY.`
+  )
   return 'QUERY'
 }

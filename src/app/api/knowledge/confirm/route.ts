@@ -6,6 +6,7 @@ import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, updateEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 
 export const runtime = 'nodejs'
 
@@ -202,6 +203,9 @@ export async function POST(req: Request) {
         data: { lastMessageAt: new Date() },
       })
     }
+
+    // Invalidar cache do projeto após modificação
+    await invalidateProjectCache(projectId)
 
     return NextResponse.json({ success: true, entryId })
   } catch (error) {

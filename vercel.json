@@ -86,6 +86,10 @@
       "schedule": "0 3 * * *"
     },
     {
+      "path": "/api/cron/archive-expired-knowledge",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/cleanup-blobs",
       "schedule": "0 2 * * *"
     },
