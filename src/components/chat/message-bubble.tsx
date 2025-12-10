@@ -3,17 +3,19 @@
 import * as React from 'react'
 import { cn } from '@/lib/utils'
 import Image from 'next/image'
-import { Bot, Check, Copy, RefreshCw, User, Download } from 'lucide-react'
+import { Bot, Check, Copy, RefreshCw, User, Download, Database } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Markdown } from '@/components/ui/markdown'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
+import { Badge } from '@/components/ui/badge'
 
 export type ChatMessage = {
   id: string
   role: 'user' | 'assistant' | 'system'
   // allow either plain text or a structured payload with images
   content: string | { images?: unknown[] }
+  metadata?: Record<string, unknown>
 }
 
 type MessageBubbleProps = {
@@ -27,6 +29,10 @@ type MessageBubbleProps = {
 function MessageBubbleComponent({ message, className, onRetry, retryIndex, disableMarkdown }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const [copied, setCopied] = React.useState(false)
+  const ragUsed = Boolean((message.metadata as { ragUsed?: unknown } | undefined)?.ragUsed)
+  const knowledgeEntries = Array.isArray((message.metadata as { knowledgeEntries?: unknown } | undefined)?.knowledgeEntries)
+    ? ((message.metadata as { knowledgeEntries: unknown[] }).knowledgeEntries)
+    : []
   // Try to parse JSON-based payloads like { images: ["data:image/png;base64,..."] }
   const parsed = React.useMemo(() => {
     if (isUser || disableMarkdown) return null
@@ -156,6 +162,18 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
           </div>
         )}
 
+        {!isUser && ragUsed && (
+          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
+            <Database className="h-3.5 w-3.5" />
+            <span>Resposta baseada na base de conhecimento</span>
+            {knowledgeEntries.length > 0 && (
+              <Badge variant="outline" className="text-[10px] font-medium">
+                {knowledgeEntries.length} fonte{knowledgeEntries.length > 1 ? 's' : ''}
+              </Badge>
+            )}
+          </div>
+        )}
+
         {/* Actions appear on hover for both roles */}
         <div className={cn('absolute -right-1.5 -top-2.5 flex items-center gap-1 rounded-full bg-background/60 p-0.5 opacity-0 ring-1 ring-border transition-opacity group-hover:opacity-100', isUser ? 'text-foreground' : 'text-foreground')}>
           <Tooltip>
@@ -217,6 +235,16 @@ const MessageBubble = React.memo(MessageBubbleComponent, (prev, next) => {
   if (prevMessage.id !== nextMessage.id) return false
   if (prevMessage.role !== nextMessage.role) return false
   if (prevMessage.content !== nextMessage.content) return false
+  const prevRag = Boolean(prevMessage.metadata && (prevMessage.metadata as { ragUsed?: unknown }).ragUsed)
+  const nextRag = Boolean(nextMessage.metadata && (nextMessage.metadata as { ragUsed?: unknown }).ragUsed)
+  if (prevRag !== nextRag) return false
+  const prevEntriesLen = Array.isArray((prevMessage.metadata as { knowledgeEntries?: unknown } | undefined)?.knowledgeEntries)
+    ? ((prevMessage.metadata as { knowledgeEntries: unknown[] }).knowledgeEntries.length)
+    : 0
+  const nextEntriesLen = Array.isArray((nextMessage.metadata as { knowledgeEntries?: unknown } | undefined)?.knowledgeEntries)
+    ? ((nextMessage.metadata as { knowledgeEntries: unknown[] }).knowledgeEntries.length)
+    : 0
+  if (prevEntriesLen !== nextEntriesLen) return false
 
   return true
 })

@@ -211,18 +211,41 @@ export async function getRAGContext(
 ): Promise<string> {
   const { topK = 5, maxTokens = 2000 } = options
 
+  const { context } = await getRAGContextWithResults(query, tenant, {
+    topK,
+    maxTokens,
+  })
+
+  return context
+}
+
+/**
+ * Get context plus raw results for downstream metadata/telemetry
+ */
+export async function getRAGContextWithResults(
+  query: string,
+  tenant: TenantKey,
+  options: {
+    topK?: number
+    maxTokens?: number
+  } = {}
+): Promise<{ context: string; results: SearchResult[] }> {
+  const { topK = 5, maxTokens = 2000 } = options
+
   const results = await searchKnowledgeBase(query, tenant, {
     topK,
     includeEntryMetadata: true,
   })
 
   if (results.length === 0) {
-    return ''
+    return { context: '', results: [] }
   }
 
-  return formatContextFromResults(results, {
+  const context = formatContextFromResults(results, {
     maxTokens,
     includeTitles: true,
     includeScores: false,
   })
+
+  return { context, results }
 }

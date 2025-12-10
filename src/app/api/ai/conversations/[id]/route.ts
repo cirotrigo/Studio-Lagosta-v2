@@ -37,6 +37,7 @@ export async function GET(
             provider: true,
             model: true,
             attachments: true,
+            metadata: true,
             createdAt: true,
           },
           orderBy: {

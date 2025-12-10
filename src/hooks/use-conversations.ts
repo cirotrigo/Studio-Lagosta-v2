@@ -11,6 +11,7 @@ export interface ChatMessage {
   model?: string | null
   attachments?: unknown
   createdAt: string
+  metadata?: Record<string, unknown> | null
 }
 
 export interface ChatConversation {

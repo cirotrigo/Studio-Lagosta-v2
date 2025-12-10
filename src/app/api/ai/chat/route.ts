@@ -10,7 +10,7 @@ import { validateUserAuthentication, getUserFromClerkId } from '@/lib/auth-utils
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { type FeatureKey } from '@/lib/credits/feature-config'
-import { getRAGContext } from '@/lib/knowledge/search'
+import { getRAGContextWithResults } from '@/lib/knowledge/search'
 import { getMaxOutputTokens, type AIProvider } from '@/lib/ai/token-limits'
 import { db } from '@/lib/db'
 
@@ -169,6 +169,9 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
       }
 
+      // RAG metadata container (set during context fetch)
+      let ragMetadata: { used: boolean; entries: Array<Record<string, unknown>> } | null = null
+
       // Clean UIMessages: remove step parts (step-start, step-finish) that OpenRouter doesn't support
       const cleanedUIMessages = uiMessages.map(msg => ({
         ...msg,
@@ -211,10 +214,11 @@ export async function POST(req: Request) {
               workspaceId: organizationId ?? undefined,
             }
 
-            const ragContext = await getRAGContext(userMessageText, tenantKey)
+            const { context: ragContext, results: ragResults } = await getRAGContextWithResults(userMessageText, tenantKey)
+            const ragUsed = ragContext.trim().length > 0
             console.log('[RAG] Context retrieved, length:', ragContext.length)
 
-            if (ragContext.trim()) {
+            if (ragUsed) {
               const contextMessage = {
                 role: 'system' as const,
                 content: `Use o seguinte contexto da base de conhecimento SOMENTE se for relevante para a pergunta do usuário. Se o contexto não for pertinente, ignore-o completamente e responda normalmente.
@@ -224,6 +228,19 @@ ${ragContext}
 </context>`,
               }
               modelMessages = [contextMessage, ...modelMessages]
+            }
+
+            // Attach RAG usage metadata for downstream saving
+            ragMetadata = {
+              used: ragUsed,
+              entries:
+                ragResults?.map(r => ({
+                  entryId: r.entryId,
+                  title: r.entry?.title,
+                  category: r.entry?.category,
+                  projectId: r.entry?.projectId,
+                  score: r.score,
+                })) ?? [],
             }
           } catch (ragError) {
             // Log RAG error but continue without context
@@ -324,6 +341,12 @@ ${ragContext}
                     content: text,
                     provider,
                     model,
+                    metadata: ragMetadata
+                      ? {
+                          ragUsed: ragMetadata.used,
+                          knowledgeEntries: ragMetadata.entries,
+                        }
+                      : null,
                   },
                 })
 

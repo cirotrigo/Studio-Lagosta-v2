@@ -160,10 +160,14 @@ export default function AIChatPage() {
 
   // Fetch conversations and current conversation
   const { data: conversationsData } = useConversations(hasProject ? selectedProjectId : undefined)
-  const { data: currentConversation } = useConversation(currentConversationId, hasProject ? selectedProjectId : undefined)
+  const {
+    data: currentConversation,
+    refetch: refetchConversation,
+  } = useConversation(currentConversationId, hasProject ? selectedProjectId : undefined)
   const createConversation = useCreateConversation(hasProject ? selectedProjectId : undefined)
   const deleteConversation = useDeleteConversation(hasProject ? selectedProjectId : undefined)
   const [hydratedConversationId, setHydratedConversationId] = React.useState<string | null>(null)
+  const [messageMetadata, setMessageMetadata] = React.useState<Record<string, unknown>>({})
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -279,9 +283,14 @@ export default function AIChatPage() {
       if (hasProject && selectedProjectId != null) {
         queryClient.invalidateQueries({ queryKey: ['conversations', 'list', selectedProjectId] })
       }
+      if (currentConversationId) {
+        setHydratedConversationId(null)
+        setMessageMetadata({})
+        refetchConversation()
+      }
     }
     lastStatusRef.current = status
-  }, [hasProject, queryClient, selectedProjectId, status])
+  }, [currentConversationId, hasProject, queryClient, refetchConversation, selectedProjectId, status])
 
   // Load conversation messages when a conversation is selected
   React.useEffect(() => {
@@ -297,8 +306,16 @@ export default function AIChatPage() {
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
         parts: [{ type: 'text' as const, text: msg.content }],
+        metadata: msg.metadata ?? undefined,
       }))
-      setMessages(loadedMessages)
+      const metadataMap: Record<string, unknown> = {}
+      currentConversation.messages!.forEach((msg) => {
+        if (msg.metadata) {
+          metadataMap[msg.id] = msg.metadata
+        }
+      })
+      setMessageMetadata(metadataMap)
+      setMessages(loadedMessages as any)
       setHydratedConversationId(currentConversation.id)
       return
     }
@@ -315,6 +332,7 @@ export default function AIChatPage() {
     conversationIdRef.current = null
     setMessages([])
     setHydratedConversationId(null)
+    setMessageMetadata({})
   }, [selectedProjectId, setMessages])
 
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
@@ -576,6 +594,7 @@ export default function AIChatPage() {
       })
       setCurrentConversationId(newConv.id)
       setMessages([])
+      setMessageMetadata({})
       setHydratedConversationId(null)
       setHistoryOpen(false)
     } catch (error) {
@@ -587,6 +606,7 @@ export default function AIChatPage() {
   const handleSelectConversation = (id: string) => {
     setCurrentConversationId(id)
     setMessages([])
+    setMessageMetadata({})
     setHydratedConversationId(null)
     setHistoryOpen(false)
   }
@@ -600,6 +620,7 @@ export default function AIChatPage() {
         if (currentConversationId === id) {
           setCurrentConversationId(null)
           setMessages([])
+          setMessageMetadata({})
         }
       } catch (error) {
         console.error('Error deleting conversation:', error)
@@ -788,6 +809,7 @@ export default function AIChatPage() {
 
                   // Extract text content from parts
                   const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
+                  const metadata = (m as { metadata?: Record<string, unknown> }).metadata ?? messageMetadata[m.id]
 
                   return (
                     <MessageBubble
@@ -795,7 +817,8 @@ export default function AIChatPage() {
                       message={{
                         id: m.id,
                         role: normalizedRole,
-                        content
+                        content,
+                        metadata,
                       }}
                       onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
                       retryIndex={idx}

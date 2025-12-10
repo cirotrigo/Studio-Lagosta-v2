@@ -50,10 +50,14 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   const [pendingPreview, setPendingPreview] = React.useState<TrainingPreview | null>(null)
   const [isSavingPreview, setIsSavingPreview] = React.useState(false)
   const [isTrainingLoading, setIsTrainingLoading] = React.useState(false)
+  const [messageMetadata, setMessageMetadata] = React.useState<Record<string, unknown>>({})
 
   // Fetch conversations and current conversation
   const { data: conversationsData } = useConversations(projectId)
-  const { data: currentConversation } = useConversation(currentConversationId, projectId)
+  const {
+    data: currentConversation,
+    refetch: refetchConversation,
+  } = useConversation(currentConversationId, projectId)
   const createConversation = useCreateConversation(projectId)
   const deleteConversation = useDeleteConversation(projectId)
 
@@ -96,8 +100,16 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
         parts: [{ type: 'text' as const, text: msg.content }],
+        metadata: msg.metadata ?? undefined,
       }))
-      setMessages(loadedMessages)
+      const metadataMap: Record<string, unknown> = {}
+      currentConversation.messages.forEach((msg) => {
+        if (msg.metadata) {
+          metadataMap[msg.id] = msg.metadata
+        }
+      })
+      setMessageMetadata(metadataMap)
+      setMessages(loadedMessages as any)
     }
   }, [currentConversation, setMessages])
 
@@ -106,9 +118,12 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   React.useEffect(() => {
     if (lastStatusRef.current === 'streaming' && status !== 'streaming') {
       queryClient.invalidateQueries({ queryKey: ['conversations', 'list', projectId] })
+      if (currentConversationId) {
+        refetchConversation()
+      }
     }
     lastStatusRef.current = status
-  }, [projectId, queryClient, status])
+  }, [currentConversationId, projectId, queryClient, refetchConversation, status])
   const { canPerformOperation, getCost, refresh } = useCredits()
 
   const listRef = React.useRef<HTMLDivElement>(null)
@@ -338,6 +353,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
       })
       setCurrentConversationId(newConv.id)
       setMessages([])
+      setMessageMetadata({})
       setHistoryOpen(false)
     } catch (error) {
       console.error('Error creating conversation:', error)
@@ -347,6 +363,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   // Select existing conversation
   const handleSelectConversation = (id: string) => {
     setCurrentConversationId(id)
+    setMessageMetadata({})
     setHistoryOpen(false)
   }
 
@@ -359,6 +376,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
         if (currentConversationId === id) {
           setCurrentConversationId(null)
           setMessages([])
+          setMessageMetadata({})
         }
       } catch (error) {
         console.error('Error deleting conversation:', error)
@@ -505,6 +523,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
             {deferredMessages.map((m, idx) => {
               const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
               const disableMarkdown = normalizedRole === 'assistant' && status === 'streaming' && idx === deferredMessages.length - 1
+              const metadata = (m as { metadata?: Record<string, unknown> }).metadata ?? messageMetadata[m.id]
 
               // Extract text content from parts
               const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
@@ -515,7 +534,8 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
                   message={{
                     id: m.id,
                     role: normalizedRole,
-                    content
+                    content,
+                    metadata,
                   }}
                   disableMarkdown={disableMarkdown}
                 />
