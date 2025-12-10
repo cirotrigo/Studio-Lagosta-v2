@@ -25,8 +25,15 @@ import {
 import { TrainingModeToggle } from '@/components/chat/training-mode-toggle'
 import { KnowledgePreviewCard } from '@/components/chat/knowledge-preview-card'
 import { DuplicateWarningCard } from '@/components/chat/duplicate-warning-card'
+import { MultipleMatchesCard } from '@/components/chat/multiple-matches-card'
+import { EditPreviewForm } from '@/components/chat/edit-preview-form'
 import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
 import { useProjectSelectionStore } from '@/stores/project-selection'
+import {
+  isDisambiguationResponse,
+  handleDisambiguationChoice,
+  createDisambiguationState,
+} from '@/lib/knowledge/disambiguation'
 
 /**
  * TemplateAIChat - Componente de chat com IA otimizado para o painel lateral do editor
@@ -48,6 +55,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   const [historyOpen, setHistoryOpen] = React.useState(false)
   const [trainingMode, setTrainingMode] = React.useState(false)
   const [pendingPreview, setPendingPreview] = React.useState<TrainingPreview | null>(null)
+  const [editingPreview, setEditingPreview] = React.useState<TrainingPreview | null>(null)
   const [isSavingPreview, setIsSavingPreview] = React.useState(false)
   const [isTrainingLoading, setIsTrainingLoading] = React.useState(false)
   const [messageMetadata, setMessageMetadata] = React.useState<Record<string, unknown>>({})
@@ -171,6 +179,39 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   )
 
   const handleTrainingSubmit = async (prompt: string) => {
+    // Detectar resposta de disambiguação (escolha numérica)
+    if (pendingPreview?.matchType === 'multiple' && isDisambiguationResponse(prompt)) {
+      try {
+        const disambState = createDisambiguationState(pendingPreview)
+        const resolvedPreview = handleDisambiguationChoice(prompt, disambState)
+
+        if (resolvedPreview) {
+          // Usuário escolheu uma opção
+          setPendingPreview(resolvedPreview)
+          setInput('')
+        } else {
+          // Usuário cancelou
+          setPendingPreview(null)
+          setInput('')
+          const assistantId = `sys-${Date.now()}`
+          setMessages(prev => [
+            ...prev,
+            { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: '❌ Operação cancelada.' }] },
+          ])
+        }
+        return
+      } catch (error) {
+        // Escolha inválida
+        const assistantId = `err-${Date.now()}`
+        setMessages(prev => [
+          ...prev,
+          { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: (error as Error)?.message || 'Escolha inválida.' }] },
+        ])
+        setInput('')
+        return
+      }
+    }
+
     try {
       setIsTrainingLoading(true)
       const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
@@ -541,7 +582,7 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
                 />
               )
             })}
-            {pendingPreview && (
+            {pendingPreview && !editingPreview && (
               <div className="space-y-3">
                 {pendingPreview.matchType === 'duplicate_warning' ? (
                   <DuplicateWarningCard
@@ -551,40 +592,40 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
                     onCancel={handleCancelPreview}
                   />
                 ) : pendingPreview.matchType === 'multiple' && pendingPreview.matches?.length ? (
-                  <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
-                    <p className="text-sm font-semibold text-muted-foreground mb-2">
-                      Encontrei várias entradas similares. Escolha uma para atualizar/deletar.
-                    </p>
-                    <div className="space-y-2">
-                      {pendingPreview.matches.map(match => (
-                        <div
-                          key={match.entryId}
-                          className="flex items-start justify-between gap-2 rounded border bg-background p-3"
-                        >
-                          <div>
-                            <p className="font-medium">{match.title}</p>
-                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{match.content}</p>
-                          </div>
-                          <Button size="sm" variant="outline" onClick={() => handleSelectMatch(match.entryId)}>
-                            Usar
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  <MultipleMatchesCard
+                    preview={pendingPreview}
+                    onSelectMatch={(targetId) => {
+                      // Atualizar preview com targetEntryId selecionado
+                      setPendingPreview({
+                        ...pendingPreview,
+                        targetEntryId: targetId,
+                        matchType: 'single',
+                        matches: pendingPreview.matches?.filter(m => m.entryId === targetId),
+                      })
+                    }}
+                    onCancel={handleCancelPreview}
+                  />
                 ) : (
                   <KnowledgePreviewCard
                     preview={pendingPreview}
                     onConfirm={handleConfirmPreview}
-                    onEdit={() => {
-                      setInput(pendingPreview.content)
-                      handleCancelPreview()
-                    }}
+                    onEdit={() => setEditingPreview(pendingPreview)}
                     onCancel={handleCancelPreview}
                     isLoading={isSavingPreview}
                   />
                 )}
               </div>
+            )}
+            {editingPreview && (
+              <EditPreviewForm
+                preview={editingPreview}
+                onSave={(updated) => {
+                  setPendingPreview(updated)
+                  setEditingPreview(null)
+                }}
+                onCancel={() => setEditingPreview(null)}
+                isLoading={isSavingPreview}
+              />
             )}
             {(status === 'streaming' || isTrainingLoading) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
