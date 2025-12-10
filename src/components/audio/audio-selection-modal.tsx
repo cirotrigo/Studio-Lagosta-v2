@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo } from 'react';
+import Image from 'next/image';
 import {
   Dialog,
   DialogContent,
@@ -144,8 +145,8 @@ export function AudioSelectionModal({
   const [volumeMusic, setVolumeMusic] = useState(currentConfig?.volumeMusic || 60);
   const [fadeIn, setFadeIn] = useState(currentConfig?.fadeIn || false);
   const [fadeOut, setFadeOut] = useState(currentConfig?.fadeOut || false);
-  const [fadeInDuration, setFadeInDuration] = useState(currentConfig?.fadeInDuration || 0.5);
-  const [fadeOutDuration, setFadeOutDuration] = useState(currentConfig?.fadeOutDuration || 0.5);
+  const [fadeInDuration] = useState(currentConfig?.fadeInDuration || 0.5);
+  const [fadeOutDuration] = useState(currentConfig?.fadeOutDuration || 0.5);
 
   const musicaAtual = useMemo(
     () => musicas.find((m) => m.id === musicaSelecionada),
@@ -331,9 +332,11 @@ export function AudioSelectionModal({
                     <div className="flex items-start gap-3">
                       <div className="h-14 w-14 overflow-hidden rounded-md bg-gradient-to-br from-purple-500 to-pink-500">
                         {musicaAtual.thumbnailUrl ? (
-                          <img
+                          <Image
                             src={musicaAtual.thumbnailUrl}
                             alt={musicaAtual.name}
+                            width={56}
+                            height={56}
                             className="h-full w-full object-cover"
                           />
                         ) : (

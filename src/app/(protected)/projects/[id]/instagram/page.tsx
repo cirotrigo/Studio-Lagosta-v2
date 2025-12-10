@@ -1,6 +1,7 @@
 'use client'
 
 import { use } from 'react'
+import Image from 'next/image'
 import { useInstagramDashboard } from '@/hooks/use-instagram-analytics'
 import { WeeklySummaryCard } from '@/components/instagram/weekly-summary-card'
 import { DailyHeatmap } from '@/components/instagram/daily-heatmap'
@@ -99,10 +100,11 @@ export default function InstagramAnalyticsPage({
                 className="group"
               >
                 <div className="relative aspect-square overflow-hidden rounded-lg">
-                  <img
+                  <Image
                     src={feed.mediaUrl}
                     alt={feed.caption || 'Feed'}
-                    className="object-cover w-full h-full group-hover:scale-110 transition-transform"
+                    fill
+                    className="object-cover group-hover:scale-110 transition-transform"
                   />
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <div className="text-white text-center p-4">

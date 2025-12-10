@@ -9,7 +9,8 @@ async function reindexVectorsWithProject() {
 
   const entries = await prisma.knowledgeBaseEntry.findMany({
     where: {
-      projectId: { not: null },
+      // Prisma não aceita `not: null` para ints; usar um guard explícito
+      projectId: { gt: 0 },
       status: 'ACTIVE',
     },
     include: {

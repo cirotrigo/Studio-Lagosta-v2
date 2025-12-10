@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, CheckSquare, Trash2, Video, FileText } from 'lucide-react'
+import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, Trash2, Video, FileText } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { GoogleDriveItem } from '@/types/google-drive'

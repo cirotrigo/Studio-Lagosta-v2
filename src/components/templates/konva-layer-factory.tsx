@@ -665,14 +665,14 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // 3. Highlights and Shadows
     if ((layer.style?.highlights !== undefined && layer.style.highlights !== 0) ||
         (layer.style?.shadows !== undefined && layer.style.shadows !== 0)) {
-      // @ts-ignore - Custom filter
+      // @ts-expect-error - Custom filter
       list.push(Konva.Filters.HighlightsShadows)
     }
 
     // 4. Whites and Blacks
     if ((layer.style?.whites !== undefined && layer.style.whites !== 0) ||
         (layer.style?.blacks !== undefined && layer.style.blacks !== 0)) {
-      // @ts-ignore - Custom filter
+      // @ts-expect-error - Custom filter
       list.push(Konva.Filters.WhitesBlacks)
     }
 
@@ -687,7 +687,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
     // 7. Vignette (last for best visual effect)
     if (layer.style?.vignette !== undefined && layer.style.vignette > 0) {
-      // @ts-ignore - Custom filter
+      // @ts-expect-error - Custom filter
       list.push(Konva.Filters.Vignette)
     }
 

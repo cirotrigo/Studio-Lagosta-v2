@@ -17,7 +17,7 @@ import { startStemSeparation, checkMvsepJobStatus } from '@/lib/mvsep/mvsep-clie
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes
 
-export async function GET(req: NextRequest) {
+export async function GET(_req: NextRequest) {
   try {
     // Apenas em desenvolvimento
     if (process.env.NODE_ENV === 'production') {

@@ -320,7 +320,7 @@ export function usePhotoSwipe({
       const links = galleryElement.querySelectorAll(childSelector)
       console.log(`✅ PhotoSwipe: Found ${links.length} clickable items`)
       links.forEach((link, index) => {
-        link.addEventListener('click', (e) => {
+        link.addEventListener('click', (_e) => {
           console.log(`🖱️ PhotoSwipe: Link ${index} clicked`, {
             href: (link as HTMLAnchorElement).href,
             width: link.getAttribute('data-pswp-width'),

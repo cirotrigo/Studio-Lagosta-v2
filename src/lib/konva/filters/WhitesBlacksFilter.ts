@@ -52,11 +52,11 @@ export function WhitesBlacksFilter(this: any, imageData: ImageData) {
 }
 
 // Register custom attributes with Konva.Factory
-// @ts-ignore - Adding custom attribute
+// @ts-expect-error - Adding custom attribute
 Factory.addGetterSetter(Konva.Image, 'whites', 0)
-// @ts-ignore - Adding custom attribute
+// @ts-expect-error - Adding custom attribute
 Factory.addGetterSetter(Konva.Image, 'blacks', 0)
 
 // Register the filter with Konva
-// @ts-ignore - Extending Konva.Filters
+// @ts-expect-error - Extending Konva.Filters
 Konva.Filters.WhitesBlacks = WhitesBlacksFilter

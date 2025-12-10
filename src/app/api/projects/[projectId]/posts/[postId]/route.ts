@@ -81,7 +81,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -206,7 +206,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

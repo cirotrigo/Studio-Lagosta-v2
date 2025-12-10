@@ -8,8 +8,6 @@ import { InstagramGraphApiClient, InstagramApiException } from '@/lib/instagram/
 const FALLBACK_WINDOW_MINUTES = 5
 const STORY_TTL_HOURS = 24
 
-const addMinutes = (date: Date, minutes: number) => new Date(date.getTime() + minutes * 60 * 1000)
-
 const isVideoUrl = (url: string) => {
   const lower = url.toLowerCase()
   return lower.includes('.mp4') || lower.includes('.mov') || lower.includes('.avi') || lower.includes('video') || lower.includes('.webm')

@@ -106,7 +106,7 @@ export default function BibliotecaMusicasPage() {
         description: `"${musicaParaDeletar.name}" foi excluída com sucesso.`,
       });
       setMusicaParaDeletar(null);
-    } catch (error) {
+    } catch (_error) {
       toast({
         variant: 'destructive',
         title: 'Erro ao excluir',

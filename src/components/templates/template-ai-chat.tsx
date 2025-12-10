@@ -21,6 +21,10 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { TrainingModeToggle } from '@/components/chat/training-mode-toggle'
+import { KnowledgePreviewCard } from '@/components/chat/knowledge-preview-card'
+import { DuplicateWarningCard } from '@/components/chat/duplicate-warning-card'
+import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
 
 /**
  * TemplateAIChat - Componente de chat com IA otimizado para o painel lateral do editor
@@ -31,6 +35,10 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   // Conversation history state
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [trainingMode, setTrainingMode] = React.useState(false)
+  const [pendingPreview, setPendingPreview] = React.useState<TrainingPreview | null>(null)
+  const [isSavingPreview, setIsSavingPreview] = React.useState(false)
+  const [isTrainingLoading, setIsTrainingLoading] = React.useState(false)
 
   // Fetch conversations and current conversation
   const { data: conversationsData } = useConversations(projectId)
@@ -44,6 +52,10 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   const conversationIdRef = React.useRef(currentConversationId)
   React.useEffect(() => {
     conversationIdRef.current = currentConversationId
+  }, [currentConversationId])
+  React.useEffect(() => {
+    // Limpa pré-visualizações ao trocar de conversa
+    setPendingPreview(null)
   }, [currentConversationId])
 
   const { messages, sendMessage, status, stop, setMessages } = useChat({
@@ -110,10 +122,172 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
     }
   }
 
+  const ensureConversationId = React.useCallback(
+    async (titleHint: string) => {
+      if (conversationIdRef.current) return conversationIdRef.current
+
+      const newConv = await createConversation.mutateAsync({
+        title: titleHint,
+      })
+
+      setCurrentConversationId(newConv.id)
+      conversationIdRef.current = newConv.id
+      return newConv.id
+    },
+    [createConversation]
+  )
+
+  const handleTrainingSubmit = async (prompt: string) => {
+    try {
+      setIsTrainingLoading(true)
+      const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
+      const convId = await ensureConversationId(title)
+
+      const response = await fetch('/api/knowledge/training/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          message: prompt,
+          conversationId: convId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível gerar a pré-visualização.')
+      }
+
+      // Intent foi classificada como consulta
+      if (!data.preview) {
+        const assistantId = `a-${Date.now()}`
+        setMessages(prev => [
+          ...prev,
+          { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: data.message || 'Ative o modo consulta para fazer perguntas.' }] },
+        ])
+        return
+      }
+
+      setPendingPreview(data.preview as TrainingPreview)
+
+      const userId = `u-${Date.now()}`
+      const assistantId = `p-${Date.now()}`
+
+      setMessages(prev => [
+        ...prev,
+        { id: userId, role: 'user', parts: [{ type: 'text', text: prompt }] },
+        { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: data.message }] },
+      ])
+    } catch (error) {
+      console.error('Erro no modo treinamento:', error)
+      const message =
+        (error as Error)?.message || 'Não foi possível processar a solicitação de treinamento.'
+      const assistantId = `err-${Date.now()}`
+      setMessages(prev => [
+        ...prev,
+        { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: message }] },
+      ])
+    } finally {
+      setInput('')
+      setIsTrainingLoading(false)
+    }
+  }
+
+  const normalizePreviewForConfirm = (preview: TrainingPreview): TrainingPreview => {
+    if (
+      (preview.operation === 'UPDATE' ||
+        preview.operation === 'REPLACE' ||
+        preview.operation === 'DELETE') &&
+      !preview.targetEntryId
+    ) {
+      return {
+        ...preview,
+        operation: 'CREATE',
+        matchType: 'single',
+        matches: [],
+      }
+    }
+    return preview
+  }
+
+  const handleConfirmPreview = async () => {
+    if (!pendingPreview) return
+    const previewToSend = normalizePreviewForConfirm(pendingPreview)
+
+    try {
+      setIsSavingPreview(true)
+      const response = await fetch('/api/knowledge/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId,
+          preview: previewToSend,
+          conversationId: conversationIdRef.current,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.error || 'Não foi possível salvar o conhecimento.')
+      }
+
+      setPendingPreview(null)
+    } catch (error) {
+      console.error('Erro ao confirmar conhecimento:', error)
+      const assistantId = `err-${Date.now()}`
+      setMessages(prev => [
+        ...prev,
+        {
+          id: assistantId,
+          role: 'assistant',
+          parts: [{ type: 'text', text: (error as Error)?.message || 'Erro ao salvar.' }],
+        },
+      ])
+    } finally {
+      setIsSavingPreview(false)
+    }
+  }
+
+  const handleCancelPreview = () => {
+    setPendingPreview(null)
+  }
+
+  const handleSelectMatch = (entryId: string) => {
+    setPendingPreview(prev => {
+      if (!prev) return prev
+      const chosenMatch = prev.matches?.find(m => m.entryId === entryId)
+      return {
+        ...prev,
+        operation: prev.operation === 'DELETE' ? 'DELETE' : prev.operation === 'CREATE' ? 'UPDATE' : prev.operation,
+        targetEntryId: entryId,
+        matchType: 'single',
+        matches: chosenMatch ? [chosenMatch] : prev.matches,
+      }
+    })
+  }
+
+  const handleCreateNewFromDuplicate = () => {
+    setPendingPreview(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        operation: 'CREATE',
+        targetEntryId: undefined,
+        matchType: 'single',
+      }
+    })
+  }
+
   const handleSubmitWrapper = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     const prompt = input.trim()
     if (!prompt) return
+
+    if (trainingMode) {
+      await handleTrainingSubmit(prompt)
+      return
+    }
 
     // Auto-create conversation if none selected
     if (!currentConversationId) {
@@ -288,9 +462,19 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
             <Plus className="h-3.5 w-3.5" />
           </Button>
         </div>
-        <div className="text-[10px] text-muted-foreground">
-          GPT-5 Mini · {getCost('ai_chat')} crédito
-        </div>
+      <div className="text-[10px] text-muted-foreground">
+        GPT-5 Mini · {getCost('ai_chat')} crédito
+      </div>
+    </div>
+
+      <div className="flex-shrink-0 border-b border-border/40 px-4 pb-3">
+        <TrainingModeToggle
+          enabled={trainingMode}
+          onChange={(value) => {
+            setTrainingMode(value)
+            setPendingPreview(null)
+          }}
+        />
       </div>
 
       {/* Messages area */}
@@ -323,9 +507,55 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
                 />
               )
             })}
-            {status === 'streaming' && (
+            {pendingPreview && (
+              <div className="space-y-3">
+                {pendingPreview.matchType === 'duplicate_warning' ? (
+                  <DuplicateWarningCard
+                    preview={pendingPreview}
+                    onCreateNew={handleCreateNewFromDuplicate}
+                    onUpdateExisting={handleSelectMatch}
+                    onCancel={handleCancelPreview}
+                  />
+                ) : pendingPreview.matchType === 'multiple' && pendingPreview.matches?.length ? (
+                  <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                    <p className="text-sm font-semibold text-muted-foreground mb-2">
+                      Encontrei várias entradas similares. Escolha uma para atualizar/deletar.
+                    </p>
+                    <div className="space-y-2">
+                      {pendingPreview.matches.map(match => (
+                        <div
+                          key={match.entryId}
+                          className="flex items-start justify-between gap-2 rounded border bg-background p-3"
+                        >
+                          <div>
+                            <p className="font-medium">{match.title}</p>
+                            <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{match.content}</p>
+                          </div>
+                          <Button size="sm" variant="outline" onClick={() => handleSelectMatch(match.entryId)}>
+                            Usar
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <KnowledgePreviewCard
+                    preview={pendingPreview}
+                    onConfirm={handleConfirmPreview}
+                    onEdit={() => {
+                      setInput(pendingPreview.content)
+                      handleCancelPreview()
+                    }}
+                    onCancel={handleCancelPreview}
+                    isLoading={isSavingPreview}
+                  />
+                )}
+              </div>
+            )}
+            {(status === 'streaming' || isTrainingLoading) && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Gerando resposta...
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />{' '}
+                {trainingMode ? 'Gerando pré-visualização...' : 'Gerando resposta...'}
               </div>
             )}
             <div ref={endRef} />
@@ -361,11 +591,18 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
                 <Button
                   type="submit"
                   size="sm"
-                  disabled={!input.trim() || !canPerformOperation('ai_chat') || status !== 'ready'}
+                  disabled={
+                    !input.trim() ||
+                    !canPerformOperation('ai_chat') ||
+                    status !== 'ready' ||
+                    isTrainingLoading ||
+                    isSavingPreview ||
+                    (trainingMode && !!pendingPreview)
+                  }
                   className="gap-2"
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Enviar
+                  {trainingMode ? 'Gerar preview' : 'Enviar'}
                 </Button>
               )}
             </div>

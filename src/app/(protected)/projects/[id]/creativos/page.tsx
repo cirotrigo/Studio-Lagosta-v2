@@ -240,7 +240,7 @@ export default function ProjectCreativesPage() {
   })
 
   // Query separada para buscar TODOS os criativos (para o MemberFilter)
-  const { data: allGenerationsData, isLoading: isLoadingAll } = useQuery<GenerationsResponse>({
+  const { data: allGenerationsData } = useQuery<GenerationsResponse>({
     queryKey: ['generations', projectId, 'all'],
     enabled: isValidProject,
     queryFn: () => {

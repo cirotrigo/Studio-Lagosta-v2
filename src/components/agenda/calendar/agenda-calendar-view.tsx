@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState, memo, useCallback } from 'react'
+import { useMemo, useState, useCallback } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
 import { useScheduledPostCounts } from '@/hooks/use-scheduled-counts'

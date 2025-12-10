@@ -80,7 +80,7 @@ export async function GET(req: NextRequest) {
       responseData = JSON.parse(responseText)
       logs.push(`[TEST] Response body (parsed):`)
       logs.push(JSON.stringify(responseData, null, 2))
-    } catch (e) {
+    } catch (_e) {
       logs.push(`[TEST] ERROR: Failed to parse response as JSON`)
       responseData = { raw: responseText }
     }

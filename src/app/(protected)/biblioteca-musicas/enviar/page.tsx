@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useEnviarMusica } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
 import { useBaixarDoYoutube } from '@/hooks/use-youtube-download';
@@ -567,9 +568,11 @@ export default function EnviarMusicaPage() {
             {youtubeMetadataStatus === 'success' && (
               <div className="mt-2 flex gap-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
                 {youtubeMetadataThumb ? (
-                  <img
+                  <Image
                     src={youtubeMetadataThumb}
                     alt="Thumbnail do vídeo"
+                    width={48}
+                    height={48}
                     className="h-12 w-12 rounded object-cover"
                   />
                 ) : (

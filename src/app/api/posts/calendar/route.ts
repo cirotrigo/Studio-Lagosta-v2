@@ -195,7 +195,6 @@ export async function GET(request: NextRequest) {
 
     // Filter and expand recurring posts to show their next occurrence in the date range
     const rangeStart = new Date(startDate)
-    const rangeEnd = new Date(endDate)
     const now = new Date()
 
     const expandedRecurringPosts = recurringPosts.filter(post => {

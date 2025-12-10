@@ -60,7 +60,7 @@ async function validateProject(
       await client.getStories(project.instagramAccountId)
       result.accountIdWorks = true
       result.recommendedId = project.instagramAccountId
-    } catch (error) {
+    } catch (_error) {
       result.accountIdWorks = false
     }
   }
@@ -73,7 +73,7 @@ async function validateProject(
       if (!result.recommendedId) {
         result.recommendedId = project.instagramUserId
       }
-    } catch (error) {
+    } catch (_error) {
       result.userIdWorks = false
     }
   }

@@ -42,7 +42,7 @@ export async function POST(
 ) {
   const { projectId: projectIdParam } = await params
   try {
-    const { userId: clerkUserId, orgId, sessionClaims } = await auth()
+    const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }

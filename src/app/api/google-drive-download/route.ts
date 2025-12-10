@@ -112,7 +112,7 @@ export async function POST(req: NextRequest) {
             console.log(`📷 Google Drive image: ${imageInfo.width}x${imageInfo.height}`)
             buffer = await cropToInstagramFeed(buffer)
             console.log('✂️ Image cropped to 1080x1350')
-          } catch (cropError) {
+          } catch (_cropError) {
             console.warn('⚠️ Using original image (crop failed)')
           }
         }

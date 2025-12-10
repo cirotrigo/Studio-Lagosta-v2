@@ -33,7 +33,7 @@ export default function ClientProjectsPage() {
   )
 
   const projectsQuery = useClientProjects(filters)
-  const projects = projectsQuery.data ?? []
+  const projects = useMemo(() => projectsQuery.data ?? [], [projectsQuery.data])
 
   const stats = useMemo(() => {
     return {

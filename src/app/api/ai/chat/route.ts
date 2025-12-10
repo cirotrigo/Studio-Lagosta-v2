@@ -303,9 +303,6 @@ ${ragContext}
                 provider,
                 model,
                 attachments: attachments ? JSON.parse(JSON.stringify(attachments)) : null,
-                metadata: {
-                  projectId,
-                },
               },
             })
           }

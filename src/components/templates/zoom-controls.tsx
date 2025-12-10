@@ -15,12 +15,10 @@
 "use client"
 
 import * as React from 'react'
-import { Button } from '@/components/ui/button'
 import {
   ZoomIn,
   ZoomOut,
   Maximize2,
-  RotateCcw,
 } from 'lucide-react'
 import {
   Tooltip,

@@ -3,7 +3,6 @@
 import { useState } from 'react'
 import {
   type AIImageModel,
-  type AIImageModelConfig,
   getAvailableModels,
   AI_IMAGE_MODELS,
 } from '@/lib/ai/image-models-config'
@@ -14,9 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Info, Sparkles, Zap, Crown, Table } from 'lucide-react'
+import { Sparkles, Zap, Crown, Table } from 'lucide-react'
 import { AIModelsComparisonModal } from './ai-models-comparison-modal'
 
 interface AIModelSelectorProps {

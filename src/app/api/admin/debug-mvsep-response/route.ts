@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     let data
     try {
       data = JSON.parse(responseText)
-    } catch (e) {
+    } catch (_e) {
       return NextResponse.json({
         error: 'Invalid JSON from MVSEP',
         rawResponse: responseText,

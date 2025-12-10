@@ -16,7 +16,6 @@ import {
   Copy,
   ChevronLeft,
   ChevronRight,
-  Play,
   Video as VideoIcon,
   ExternalLink,
   ShieldCheck,
@@ -60,7 +59,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   usePostStatusPolling({
     postId: post.id,
     enabled: isPolling && post.status === 'POSTING',
-    onSuccess: (publishedUrl, postType) => {
+    onSuccess: (publishedUrl, _postType) => {
       setIsPolling(false)
       toast.success('Post confirmado como publicado!', {
         description: publishedUrl ? 'Visualize no Instagram' : undefined,
@@ -81,7 +80,6 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const mediaUrls = post.mediaUrls || []
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
   const isStory = post.postType === 'STORY'
-  const isReel = post.postType === 'REEL'
 
   // OPTIMIZED: Preload next and previous images for carousel
   useEffect(() => {

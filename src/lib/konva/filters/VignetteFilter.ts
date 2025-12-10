@@ -58,9 +58,9 @@ export function VignetteFilter(this: any, imageData: ImageData) {
 }
 
 // Register custom attribute with Konva.Factory
-// @ts-ignore - Adding custom attribute
+// @ts-expect-error - Adding custom attribute
 Factory.addGetterSetter(Konva.Image, 'vignette', 0)
 
 // Register the filter with Konva
-// @ts-ignore - Extending Konva.Filters
+// @ts-expect-error - Extending Konva.Filters
 Konva.Filters.Vignette = VignetteFilter

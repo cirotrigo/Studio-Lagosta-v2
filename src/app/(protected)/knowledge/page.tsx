@@ -5,7 +5,7 @@
  * Allows all organization members to view and contribute
  */
 
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -38,6 +38,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import type { KnowledgeCategory } from '@prisma/client'
+import { useProjects } from '@/hooks/use-project'
+import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
 
 export default function OrgKnowledgePage() {
   usePageConfig('Base de Conhecimento', 'Colabore com conhecimento compartilhado da organização', [
@@ -59,8 +61,32 @@ export default function OrgKnowledgePage() {
 
   const searchParams = useSearchParams()
   const projectIdParam = searchParams.get('projectId')
-  const projectId = projectIdParam ? Number(projectIdParam) : NaN
-  const hasProject = Number.isFinite(projectId)
+  const initialProjectFromQuery = useMemo(() => {
+    const parsed = projectIdParam ? Number(projectIdParam) : null
+    return parsed && !Number.isNaN(parsed) ? parsed : null
+  }, [projectIdParam])
+
+  const { data: projects, isLoading: isLoadingProjects } = useProjects()
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+
+  // Seleciona projeto inicial (query param válido ou primeiro da lista)
+  useEffect(() => {
+    if (selectedProjectId != null) return
+    if (!projects || projects.length === 0) return
+
+    if (initialProjectFromQuery && projects.some(p => p.id === initialProjectFromQuery)) {
+      setSelectedProjectId(initialProjectFromQuery)
+      return
+    }
+
+    setSelectedProjectId(projects[0].id)
+  }, [projects, initialProjectFromQuery, selectedProjectId])
+
+  const hasProject = selectedProjectId != null && !Number.isNaN(selectedProjectId ?? NaN)
+  const selectedProject = useMemo(
+    () => projects?.find(p => p.id === selectedProjectId),
+    [projects, selectedProjectId]
+  )
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -78,7 +104,7 @@ export default function OrgKnowledgePage() {
       page: 1,
       limit: 50,
       search: search || undefined,
-      projectId: hasProject ? projectId : 0,
+      projectId: hasProject ? selectedProjectId! : 0,
       category: undefined,
     },
     { enabled: hasProject }
@@ -93,7 +119,7 @@ export default function OrgKnowledgePage() {
 
     try {
       await createMutation.mutateAsync({
-        projectId,
+        projectId: selectedProjectId!,
         category,
         title,
         content,
@@ -129,7 +155,7 @@ export default function OrgKnowledgePage() {
       const fileContent = await file.text()
 
       await uploadMutation.mutateAsync({
-        projectId,
+        projectId: selectedProjectId!,
         category,
         title,
         filename: file.name,
@@ -178,267 +204,283 @@ export default function OrgKnowledgePage() {
     }
   }
 
-  if (!hasProject) {
-    return (
-      <div className="max-w-4xl mx-auto p-6 space-y-3">
-        <h1 className="text-2xl font-semibold">Selecione um projeto</h1>
-        <p className="text-sm text-muted-foreground">
-          Adicione <code>?projectId=&lt;id-do-projeto&gt;</code> na URL para gerenciar o conhecimento deste projeto.
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Base de Conhecimento Compartilhada</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            Contribua e acesse conhecimento da sua organização
-          </p>
+      <Card className="p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Projeto selecionado</p>
+            <p className="font-semibold">
+              {selectedProject?.name ?? (isLoadingProjects ? 'Carregando...' : 'Nenhum projeto')}
+            </p>
+          </div>
+          <ProjectSelector
+            projects={projects || []}
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            isLoading={isLoadingProjects}
+          />
         </div>
+      </Card>
 
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Adicionar Conhecimento
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Adicionar à Base de Conhecimento</DialogTitle>
-              <DialogDescription>
-                Adicione conhecimento em formato de texto ou faça upload de um arquivo para compartilhar com sua organização.
-              </DialogDescription>
-            </DialogHeader>
-
-            <Tabs defaultValue="text" className="w-full">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="text">Texto</TabsTrigger>
-                <TabsTrigger value="file">Arquivo</TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="text">
-                <form onSubmit={handleSubmitText} className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="title">Título</Label>
-                    <Input
-                      id="title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Ex: Processo de Onboarding"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="category">Categoria</Label>
-                    <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
-                      <SelectTrigger id="category">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat.replace(/_/g, ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="content">Conteúdo</Label>
-                    <Textarea
-                      id="content"
-                      value={content}
-                      onChange={(e) => setContent(e.target.value)}
-                      placeholder="Descreva o conhecimento em detalhes..."
-                      rows={8}
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
-                    <Input
-                      id="tags"
-                      value={tags}
-                      onChange={(e) => setTags(e.target.value)}
-                      placeholder="Ex: processo, rh, onboarding"
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={createMutation.isPending} className="w-full">
-                    {createMutation.isPending ? 'Adicionando...' : 'Adicionar Conhecimento'}
-                  </Button>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="file">
-                <form onSubmit={handleSubmitFile} className="space-y-4 mt-4">
-                  <div>
-                    <Label htmlFor="file-title">Título</Label>
-                    <Input
-                      id="file-title"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Ex: Manual de Procedimentos"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <Label htmlFor="file-category">Categoria</Label>
-                    <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
-                      <SelectTrigger id="file-category">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>
-                            {cat.replace(/_/g, ' ')}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="file">Arquivo (TXT ou Markdown)</Label>
-                    <div className="mt-2">
-                      <Input
-                        id="file"
-                        type="file"
-                        accept=".txt,.md,.markdown"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        required
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Formatos suportados: .txt, .md, .markdown
-                    </p>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="file-tags">Tags (separadas por vírgula)</Label>
-                    <Input
-                      id="file-tags"
-                      value={tags}
-                      onChange={(e) => setTags(e.target.value)}
-                      placeholder="Ex: manual, procedimentos, guia"
-                    />
-                  </div>
-
-                  <Button type="submit" disabled={uploadMutation.isPending || !file} className="w-full">
-                    {uploadMutation.isPending ? 'Processando...' : 'Fazer Upload'}
-                  </Button>
-                </form>
-              </TabsContent>
-            </Tabs>
-          </DialogContent>
-        </Dialog>
-      </div>
-
-      {/* Search */}
-      <div>
-        <Input
-          placeholder="Buscar na base de conhecimento..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="max-w-md"
-        />
-      </div>
-
-      {/* Entries List */}
-      {isLoading ? (
-        <div className="text-center py-12 text-muted-foreground">
-          Carregando...
-        </div>
-      ) : !data?.entries || data.entries.length === 0 ? (
-        <Card className="p-12 text-center">
-          <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Nenhum conhecimento cadastrado</h3>
-          <p className="text-sm text-muted-foreground mb-4">
-            Seja o primeiro a contribuir para a base de conhecimento da organização!
+      {!hasProject ? (
+        <Card className="p-6">
+          <p className="text-sm text-muted-foreground">
+            Nenhum projeto disponível. Crie um projeto ou aguarde o carregamento para gerenciar a base de conhecimento.
           </p>
-          <Button onClick={() => setIsDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Adicionar Primeiro Conhecimento
-          </Button>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {data.entries.map((entry) => (
-            <Card key={entry.id} className="p-4 hover:shadow-lg transition-shadow">
-              <div className="space-y-2">
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className="font-semibold line-clamp-1 flex-1">{entry.title}</h3>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <MoreVertical className="h-4 w-4" />
+        <>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-2xl font-bold">Base de Conhecimento Compartilhada</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Contribua e acesse conhecimento da sua organização
+              </p>
+            </div>
+
+            <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              <DialogTrigger asChild>
+                <Button className="gap-2" disabled={!hasProject}>
+                  <Plus className="h-4 w-4" />
+                  Adicionar Conhecimento
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl">
+                <DialogHeader>
+                  <DialogTitle>Adicionar à Base de Conhecimento</DialogTitle>
+                  <DialogDescription>
+                    Adicione conhecimento em formato de texto ou faça upload de um arquivo para compartilhar com sua organização.
+                  </DialogDescription>
+                </DialogHeader>
+
+                <Tabs defaultValue="text" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="text">Texto</TabsTrigger>
+                    <TabsTrigger value="file">Arquivo</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="text">
+                    <form onSubmit={handleSubmitText} className="space-y-4 mt-4">
+                      <div>
+                        <Label htmlFor="title">Título</Label>
+                        <Input
+                          id="title"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Ex: Processo de Onboarding"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="category">Categoria</Label>
+                        <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
+                          <SelectTrigger id="category">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat.replace(/_/g, ' ')}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="content">Conteúdo</Label>
+                        <Textarea
+                          id="content"
+                          value={content}
+                          onChange={(e) => setContent(e.target.value)}
+                          placeholder="Descreva o conhecimento em detalhes..."
+                          rows={8}
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <Label htmlFor="tags">Tags (separadas por vírgula)</Label>
+                        <Input
+                          id="tags"
+                          value={tags}
+                          onChange={(e) => setTags(e.target.value)}
+                          placeholder="Ex: processo, rh, onboarding"
+                        />
+                      </div>
+
+                      <Button type="submit" disabled={createMutation.isPending || !hasProject} className="w-full">
+                        {createMutation.isPending ? 'Adicionando...' : 'Adicionar Conhecimento'}
                       </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}`)}>
-                        <Eye className="h-4 w-4 mr-2" />
-                        Ver detalhes
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}/edit`)}>
-                        <Edit className="h-4 w-4 mr-2" />
-                        Editar
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => handleDelete(entry.id, entry.title)}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                    </form>
+                  </TabsContent>
 
-                <p className="text-sm text-muted-foreground line-clamp-3">
-                  {entry.content}
-                </p>
+                  <TabsContent value="file">
+                    <form onSubmit={handleSubmitFile} className="space-y-4 mt-4">
+                      <div>
+                        <Label htmlFor="file-title">Título</Label>
+                        <Input
+                          id="file-title"
+                          value={title}
+                          onChange={(e) => setTitle(e.target.value)}
+                          placeholder="Ex: Manual de Procedimentos"
+                          required
+                        />
+                      </div>
 
-                {entry.tags && entry.tags.length > 0 && (
-                  <div className="flex flex-wrap gap-1">
-                    {entry.tags.map((tag, i) => (
-                      <span
-                        key={i}
-                        className="text-xs bg-muted px-2 py-0.5 rounded-full"
-                      >
-                        {tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
+                      <div>
+                        <Label htmlFor="file-category">Categoria</Label>
+                        <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
+                          <SelectTrigger id="file-category">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>
+                                {cat.replace(/_/g, ' ')}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    {new Date(entry.updatedAt).toLocaleDateString()}
-                  </div>
-                  <div>
-                    {entry._count?.chunks || 0} chunks
-                  </div>
-                </div>
-              </div>
+                      <div>
+                        <Label htmlFor="file">Arquivo (TXT ou Markdown)</Label>
+                        <div className="mt-2">
+                          <Input
+                            id="file"
+                            type="file"
+                            accept=".txt,.md,.markdown"
+                            onChange={(e) => setFile(e.target.files?.[0] || null)}
+                            required
+                          />
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Formatos suportados: .txt, .md, .markdown
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label htmlFor="file-tags">Tags (separadas por vírgula)</Label>
+                        <Input
+                          id="file-tags"
+                          value={tags}
+                          onChange={(e) => setTags(e.target.value)}
+                          placeholder="Ex: manual, procedimentos, guia"
+                        />
+                      </div>
+
+                      <Button type="submit" disabled={uploadMutation.isPending || !file || !hasProject} className="w-full">
+                        {uploadMutation.isPending ? 'Processando...' : 'Fazer Upload'}
+                      </Button>
+                    </form>
+                  </TabsContent>
+                </Tabs>
+              </DialogContent>
+            </Dialog>
+          </div>
+
+          {/* Search */}
+          <div>
+            <Input
+              placeholder="Buscar na base de conhecimento..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="max-w-md"
+            />
+          </div>
+
+          {/* Entries List */}
+          {isLoading ? (
+            <div className="text-center py-12 text-muted-foreground">
+              Carregando...
+            </div>
+          ) : !data?.entries || data.entries.length === 0 ? (
+            <Card className="p-12 text-center">
+              <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Nenhum conhecimento cadastrado</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                Seja o primeiro a contribuir para a base de conhecimento da organização!
+              </p>
+              <Button onClick={() => setIsDialogOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Adicionar Primeiro Conhecimento
+              </Button>
             </Card>
-          ))}
-        </div>
-      )}
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {data.entries.map((entry) => (
+                <Card key={entry.id} className="p-4 hover:shadow-lg transition-shadow">
+                  <div className="space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-semibold line-clamp-1 flex-1">{entry.title}</h3>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}`)}>
+                            <Eye className="h-4 w-4 mr-2" />
+                            Ver detalhes
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => router.push(`/knowledge/${entry.id}/edit`)}>
+                            <Edit className="h-4 w-4 mr-2" />
+                            Editar
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleDelete(entry.id, entry.title)}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
 
-      {data && data.pagination.total > 0 && (
-        <div className="text-sm text-muted-foreground text-center">
-          Mostrando {data.entries.length} de {data.pagination.total} entradas
-        </div>
+                    <p className="text-sm text-muted-foreground line-clamp-3">
+                      {entry.content}
+                    </p>
+
+                    {entry.tags && entry.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {entry.tags.map((tag, i) => (
+                          <span
+                            key={i}
+                            className="text-xs bg-muted px-2 py-0.5 rounded-full"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-4 text-xs text-muted-foreground pt-2 border-t">
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {new Date(entry.updatedAt).toLocaleDateString()}
+                      </div>
+                      <div>
+                        {entry._count?.chunks || 0} chunks
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {data && data.pagination.total > 0 && (
+            <div className="text-sm text-muted-foreground text-center">
+              Mostrando {data.entries.length} de {data.pagination.total} entradas
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -319,7 +319,7 @@ export function DrivePage({
         toast.error(message)
       }
     },
-    [activeProject, clearSelection, moveMutation, refetchDrive],
+    [clearSelection, moveMutation, projectIdForQuery, refetchDrive],
   )
 
   const handleDownloadZip = () => {

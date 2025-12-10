@@ -80,7 +80,7 @@ export class InstagramGraphApiClient {
 
     try {
       body = rawBody ? JSON.parse(rawBody) : {}
-    } catch (error) {
+    } catch (_error) {
       throw new InstagramApiException('Invalid JSON response from Instagram API', response.status)
     }
 

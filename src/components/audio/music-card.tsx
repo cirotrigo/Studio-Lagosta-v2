@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import Image from 'next/image';
 import { FaixaMusica } from '@/hooks/use-music-library';
 import { Music, PlayCircle, PauseCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -93,11 +94,14 @@ export function MusicCard({ musica, isSelected, videoDuration, onSelect }: Music
         {/* Thumbnail/Artwork */}
         <div className="mb-2 flex aspect-square items-center justify-center rounded-md bg-gradient-to-br from-purple-400 to-pink-400">
           {musica.thumbnailUrl ? (
-            <img
-              src={musica.thumbnailUrl}
-              alt={musica.name}
-              className="h-full w-full rounded-md object-cover"
-            />
+            <div className="relative h-full w-full">
+              <Image
+                src={musica.thumbnailUrl}
+                alt={musica.name}
+                fill
+                className="rounded-md object-cover"
+              />
+            </div>
           ) : (
             <Music className="h-12 w-12 text-white" />
           )}

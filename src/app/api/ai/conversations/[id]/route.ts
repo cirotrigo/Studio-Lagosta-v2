@@ -7,17 +7,17 @@ export const runtime = 'nodejs'
 // GET /api/ai/conversations/[id] - Get conversation with messages
 export async function GET(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = await params
+    const { id } = params
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')
     const projectId = projectIdParam ? Number(projectIdParam) : NaN
 
-    if (!projectIdParam || Number.isNaN(projectId)) {
+    if (!projectIdParam || Number.isNaN(projectId) || projectId <= 0) {
       return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
     }
 
@@ -29,6 +29,16 @@ export async function GET(
       },
       include: {
         messages: {
+          select: {
+            id: true,
+            conversationId: true,
+            role: true,
+            content: true,
+            provider: true,
+            model: true,
+            attachments: true,
+            createdAt: true,
+          },
           orderBy: {
             createdAt: 'asc',
           },
@@ -58,7 +68,7 @@ export async function GET(
   } catch (error) {
     console.error('Error fetching conversation:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', detail: (error as Error)?.message },
       { status: 500 }
     )
   }
@@ -67,17 +77,17 @@ export async function GET(
 // DELETE /api/ai/conversations/[id] - Delete conversation
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = await params
+    const { id } = params
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')
     const projectId = projectIdParam ? Number(projectIdParam) : NaN
 
-    if (!projectIdParam || Number.isNaN(projectId)) {
+    if (!projectIdParam || Number.isNaN(projectId) || projectId <= 0) {
       return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
     }
 
@@ -109,7 +119,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting conversation:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', detail: (error as Error)?.message },
       { status: 500 }
     )
   }
@@ -118,18 +128,18 @@ export async function DELETE(
 // PATCH /api/ai/conversations/[id] - Update conversation (e.g., title)
 export async function PATCH(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: { id: string } }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = await params
+    const { id } = params
     const body = await req.json()
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')
     const projectId = projectIdParam ? Number(projectIdParam) : NaN
 
-    if (!projectIdParam || Number.isNaN(projectId)) {
+    if (!projectIdParam || Number.isNaN(projectId) || projectId <= 0) {
       return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
     }
 
@@ -171,7 +181,7 @@ export async function PATCH(
   } catch (error) {
     console.error('Error updating conversation:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', detail: (error as Error)?.message },
       { status: 500 }
     )
   }

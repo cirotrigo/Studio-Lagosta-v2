@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { InstagramApiException, InstagramGraphApiClient, InstagramStory } from '@/lib/instagram/graph-api-client'
-import { PostStatus, PostType, VerificationStatus } from '../../../../prisma/generated/client'
+import { PostType, VerificationStatus } from '../../../../prisma/generated/client'
 import { SocialPostWithProject, VerificationErrorCode, VerificationSummary } from './types'
 
 const MAX_ATTEMPTS = 3
