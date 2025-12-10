@@ -53,7 +53,7 @@ export function KnowledgePreviewCard({
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
         <div>
           <Label className="text-xs uppercase tracking-wide text-muted-foreground">Categoria</Label>
           <div className="mt-1">

@@ -26,6 +26,10 @@ import { useSearchParams } from 'next/navigation'
 import { useProjects } from '@/hooks/use-project'
 import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
 import { useProjectSelectionStore } from '@/stores/project-selection'
+import { TrainingModeToggle } from '@/components/chat/training-mode-toggle'
+import { KnowledgePreviewCard } from '@/components/chat/knowledge-preview-card'
+import { DuplicateWarningCard } from '@/components/chat/duplicate-warning-card'
+import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
@@ -168,6 +172,10 @@ export default function AIChatPage() {
   const deleteConversation = useDeleteConversation(hasProject ? selectedProjectId : undefined)
   const [hydratedConversationId, setHydratedConversationId] = React.useState<string | null>(null)
   const [messageMetadata, setMessageMetadata] = React.useState<Record<string, unknown>>({})
+  const [trainingMode, setTrainingMode] = React.useState(false)
+  const [pendingPreview, setPendingPreview] = React.useState<TrainingPreview | null>(null)
+  const [isTrainingLoading, setIsTrainingLoading] = React.useState(false)
+  const [isSavingPreview, setIsSavingPreview] = React.useState(false)
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -333,6 +341,10 @@ export default function AIChatPage() {
     setMessages([])
     setHydratedConversationId(null)
     setMessageMetadata({})
+    setPendingPreview(null)
+    setTrainingMode(false)
+    setIsTrainingLoading(false)
+    setIsSavingPreview(false)
   }, [selectedProjectId, setMessages])
 
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
@@ -505,16 +517,17 @@ export default function AIChatPage() {
       return
     }
 
+    if (trainingMode) {
+      await handleTrainingSubmit(prompt)
+      return
+    }
+
     let conversationIdToUse = conversationIdRef.current
 
     if (!conversationIdToUse) {
       try {
         const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
-        const newConv = await createConversation.mutateAsync({ title })
-        conversationIdToUse = newConv.id
-        conversationIdRef.current = newConv.id
-        setCurrentConversationId(newConv.id)
-        setHydratedConversationId(null)
+        conversationIdToUse = await ensureConversationId(title)
       } catch (error) {
         console.error('Error creating conversation:', error)
       }
@@ -581,6 +594,159 @@ export default function AIChatPage() {
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true) }
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false) }
 
+  const ensureConversationId = React.useCallback(
+    async (titleHint: string) => {
+      if (conversationIdRef.current) return conversationIdRef.current
+      const newConv = await createConversation.mutateAsync({ title: titleHint })
+      conversationIdRef.current = newConv.id
+      setCurrentConversationId(newConv.id)
+      setHydratedConversationId(null)
+      setMessageMetadata({})
+      return newConv.id
+    },
+    [createConversation]
+  )
+
+  const handleTrainingSubmit = async (prompt: string) => {
+    if (!hasProject || !selectedProjectId) {
+      alert('Selecione um projeto para usar o chat.')
+      return
+    }
+    try {
+      setIsTrainingLoading(true)
+      const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
+      const convId = await ensureConversationId(title)
+
+      const response = await fetch('/api/knowledge/training/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          message: prompt,
+          conversationId: convId,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.error || 'Não foi possível gerar a pré-visualização.')
+      }
+
+      if (!data.preview) {
+        const assistantId = `sys-${Date.now()}`
+        setMessages(prev => [
+          ...prev,
+          { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: data.message || 'A intenção foi classificada como consulta. Desligue o modo treinamento para fazer perguntas.' }] },
+        ])
+        return
+      }
+
+      setPendingPreview(data.preview as TrainingPreview)
+
+      const userId = `u-${Date.now()}`
+      const assistantId = `p-${Date.now()}`
+
+      setMessages(prev => [
+        ...prev,
+        { id: userId, role: 'user', parts: [{ type: 'text', text: prompt }] },
+        { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: data.message }] },
+      ])
+    } catch (error) {
+      console.error('Erro no modo treinamento:', error)
+      const assistantId = `err-${Date.now()}`
+      setMessages(prev => [
+        ...prev,
+        { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: (error as Error)?.message || 'Não foi possível processar a solicitação de treinamento.' }] },
+      ])
+    } finally {
+      setInput('')
+      setIsTrainingLoading(false)
+    }
+  }
+
+  const normalizePreviewForConfirm = (preview: TrainingPreview): TrainingPreview => {
+    if (
+      (preview.operation === 'UPDATE' ||
+        preview.operation === 'REPLACE' ||
+        preview.operation === 'DELETE') &&
+      !preview.targetEntryId
+    ) {
+      return {
+        ...preview,
+        operation: 'CREATE',
+        matchType: 'single',
+        matches: [],
+      }
+    }
+    return preview
+  }
+
+  const handleConfirmPreview = async () => {
+    if (!pendingPreview || !hasProject || !selectedProjectId) return
+    const previewToSend = normalizePreviewForConfirm(pendingPreview)
+
+    try {
+      setIsSavingPreview(true)
+      const response = await fetch('/api/knowledge/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          projectId: selectedProjectId,
+          preview: previewToSend,
+          conversationId: conversationIdRef.current,
+        }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data?.error || 'Não foi possível salvar o conhecimento.')
+      }
+
+      setPendingPreview(null)
+      refetchConversation()
+    } catch (error) {
+      console.error('Erro ao confirmar conhecimento:', error)
+      const assistantId = `err-${Date.now()}`
+      setMessages(prev => [
+        ...prev,
+        { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: (error as Error)?.message || 'Erro ao confirmar conhecimento.' }] },
+      ])
+    } finally {
+      setIsSavingPreview(false)
+    }
+  }
+
+  const handleCancelPreview = () => {
+    setPendingPreview(null)
+  }
+
+  const handleSelectMatch = (entryId: string) => {
+    setPendingPreview(prev => {
+      if (!prev) return prev
+      const chosenMatch = prev.matches?.find(m => m.entryId === entryId)
+      return {
+        ...prev,
+        operation: prev.operation === 'DELETE' ? 'DELETE' : prev.operation === 'CREATE' ? 'UPDATE' : prev.operation,
+        targetEntryId: entryId,
+        matchType: 'single',
+        matches: chosenMatch ? [chosenMatch] : prev.matches,
+      }
+    })
+  }
+
+  const handleCreateNewFromDuplicate = () => {
+    setPendingPreview(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        operation: 'CREATE',
+        targetEntryId: undefined,
+        matchType: 'single',
+      }
+    })
+  }
+
   // Create new conversation
   const handleNewConversation = async () => {
     if (!hasProject) {
@@ -596,6 +762,7 @@ export default function AIChatPage() {
       setMessages([])
       setMessageMetadata({})
       setHydratedConversationId(null)
+      setPendingPreview(null)
       setHistoryOpen(false)
     } catch (error) {
       console.error('Error creating conversation:', error)
@@ -608,6 +775,7 @@ export default function AIChatPage() {
     setMessages([])
     setMessageMetadata({})
     setHydratedConversationId(null)
+    setPendingPreview(null)
     setHistoryOpen(false)
   }
 
@@ -621,6 +789,7 @@ export default function AIChatPage() {
           setCurrentConversationId(null)
           setMessages([])
           setMessageMetadata({})
+          setPendingPreview(null)
         }
       } catch (error) {
         console.error('Error deleting conversation:', error)
@@ -768,6 +937,16 @@ export default function AIChatPage() {
             </SheetContent>
           </Sheet>
 
+          <div className="flex items-center justify-end">
+            <TrainingModeToggle
+              enabled={trainingMode}
+              onChange={(value) => {
+                setTrainingMode(value)
+                setPendingPreview(null)
+              }}
+            />
+          </div>
+
           <Card className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <div>
@@ -826,9 +1005,54 @@ export default function AIChatPage() {
                     />
                   )
                 })}
-                {(status === 'streaming' || generateImage.isPending) && (
+                {pendingPreview && (
+                  <div className="space-y-3">
+                    {pendingPreview.matchType === 'duplicate_warning' ? (
+                      <DuplicateWarningCard
+                        preview={pendingPreview}
+                        onCreateNew={handleCreateNewFromDuplicate}
+                        onUpdateExisting={handleSelectMatch}
+                        onCancel={handleCancelPreview}
+                      />
+                    ) : pendingPreview.matchType === 'multiple' && pendingPreview.matches?.length ? (
+                      <div className="rounded-lg border border-border/60 bg-muted/30 p-3">
+                        <p className="text-sm font-semibold text-muted-foreground mb-2">
+                          Encontrei várias entradas similares. Escolha uma para atualizar/deletar.
+                        </p>
+                        <div className="space-y-2">
+                          {pendingPreview.matches.map(match => (
+                            <div
+                              key={match.entryId}
+                              className="flex items-start justify-between gap-2 rounded border bg-background p-3"
+                            >
+                              <div>
+                                <p className="font-medium">{match.title}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{match.content}</p>
+                              </div>
+                              <Button size="sm" variant="outline" onClick={() => handleSelectMatch(match.entryId)}>
+                                Usar
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <KnowledgePreviewCard
+                        preview={pendingPreview}
+                        onConfirm={handleConfirmPreview}
+                        onEdit={() => {
+                          setInput(pendingPreview.content)
+                          handleCancelPreview()
+                        }}
+                        onCancel={handleCancelPreview}
+                        isLoading={isSavingPreview}
+                      />
+                    )}
+                  </div>
+                )}
+                {(status === 'streaming' || generateImage.isPending || isTrainingLoading) && (
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : 'Gerando resposta...'}
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : trainingMode ? 'Gerando pré-visualização...' : 'Gerando resposta...'}
                   </div>
                 )}
                 <div ref={endRef} />
