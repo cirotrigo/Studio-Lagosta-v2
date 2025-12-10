@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { DropdownTriggerButton } from '@/components/ui/dropdown-trigger-button'
 import { Autocomplete } from '@/components/ui/autocomplete'
@@ -24,6 +25,7 @@ import { History, Plus, MoreVertical } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useProjects } from '@/hooks/use-project'
 import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
+import { useProjectSelectionStore } from '@/stores/project-selection'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
@@ -69,32 +71,75 @@ export default function AIChatPage() {
     { label: 'Chat com IA' },
   ])
 
+  const queryClient = useQueryClient()
   const searchParams = useSearchParams()
   const initialProjectFromQuery = React.useMemo(() => {
     const param = searchParams.get('projectId')
     return param ? Number(param) : null
   }, [searchParams])
 
+  const persistedProjectId = useProjectSelectionStore(state => state.lastProjectId)
+  const setPersistedProjectId = useProjectSelectionStore(state => state.setLastProjectId)
+  const hasProjectSelectionHydrated = useProjectSelectionStore(state => state.hasHydrated)
+
   const { data: projects, isLoading: isLoadingProjects } = useProjects()
-  const [selectedProjectId, setSelectedProjectId] = React.useState<number | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = React.useState<number | null>(initialProjectFromQuery)
   const hasProject = selectedProjectId != null && !Number.isNaN(selectedProjectId)
   const selectedProject = React.useMemo(
     () => projects?.find(p => p.id === selectedProjectId),
     [projects, selectedProjectId]
   )
+  const handleProjectChange = React.useCallback(
+    (projectId: number | null) => {
+      setSelectedProjectId(projectId)
+      if (projectId != null) {
+        setPersistedProjectId(projectId)
+      }
+    },
+    [setPersistedProjectId]
+  )
 
   // Seleciona projeto inicial (query param se válido, senão primeiro da lista)
   React.useEffect(() => {
-    if (selectedProjectId != null) return
     if (!projects || projects.length === 0) return
+    if (!hasProjectSelectionHydrated && !initialProjectFromQuery) return
 
-    if (initialProjectFromQuery && projects.some(p => p.id === initialProjectFromQuery)) {
-      setSelectedProjectId(initialProjectFromQuery)
+    const isValidProject = (id: number | null) =>
+      id != null && projects.some(p => p.id === id)
+
+    if (initialProjectFromQuery && isValidProject(initialProjectFromQuery)) {
+      if (selectedProjectId !== initialProjectFromQuery) {
+        setSelectedProjectId(initialProjectFromQuery)
+      }
+      if (persistedProjectId !== initialProjectFromQuery) {
+        setPersistedProjectId(initialProjectFromQuery)
+      }
       return
     }
 
-    setSelectedProjectId(projects[0].id)
-  }, [projects, initialProjectFromQuery, selectedProjectId])
+    if (selectedProjectId != null && isValidProject(selectedProjectId)) {
+      if (persistedProjectId !== selectedProjectId) {
+        setPersistedProjectId(selectedProjectId)
+      }
+      return
+    }
+
+    if (isValidProject(persistedProjectId)) {
+      setSelectedProjectId(persistedProjectId)
+      return
+    }
+
+    const fallbackId = projects[0].id
+    setSelectedProjectId(fallbackId)
+    setPersistedProjectId(fallbackId)
+  }, [
+    projects,
+    selectedProjectId,
+    initialProjectFromQuery,
+    persistedProjectId,
+    hasProjectSelectionHydrated,
+    setPersistedProjectId,
+  ])
 
   // Fetch available providers (only those with API keys)
   const { data: providersData, isLoading: isLoadingProviders } = useAIProviders()
@@ -228,6 +273,15 @@ export default function AIChatPage() {
   })
 
   const deferredMessages = React.useDeferredValue(messages)
+  const lastStatusRef = React.useRef<typeof status | null>(null)
+  React.useEffect(() => {
+    if (lastStatusRef.current === 'streaming' && status !== 'streaming') {
+      if (hasProject && selectedProjectId != null) {
+        queryClient.invalidateQueries({ queryKey: ['conversations', 'list', selectedProjectId] })
+      }
+    }
+    lastStatusRef.current = status
+  }, [hasProject, queryClient, selectedProjectId, status])
 
   // Load conversation messages when a conversation is selected
   React.useEffect(() => {
@@ -433,34 +487,25 @@ export default function AIChatPage() {
       return
     }
 
-    // Auto-create conversation if none selected
-    if (!currentConversationId) {
-      try {
-        const title = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt
-        const newConv = await createConversation.mutateAsync({ title })
-        setCurrentConversationId(newConv.id)
+    let conversationIdToUse = conversationIdRef.current
 
-        // Wait a bit for state to update before submitting
-        setTimeout(() => {
-          sendMessage({ text: prompt })
-          setInput('')
-          setAttachments([])
-          setTimeout(() => refresh(), 300)
-        }, 100)
+    if (!conversationIdToUse) {
+      try {
+        const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
+        const newConv = await createConversation.mutateAsync({ title })
+        conversationIdToUse = newConv.id
+        conversationIdRef.current = newConv.id
+        setCurrentConversationId(newConv.id)
+        setHydratedConversationId(null)
       } catch (error) {
         console.error('Error creating conversation:', error)
-        // Fallback: continue without conversation
-        sendMessage({ text: prompt })
-        setInput('')
-        setAttachments([])
-        setTimeout(() => refresh(), 300)
       }
-    } else {
-      sendMessage({ text: prompt })
-      setInput('')
-      setAttachments([])
-      setTimeout(() => refresh(), 300)
     }
+
+    sendMessage({ text: prompt })
+    setInput('')
+    setAttachments([])
+    setTimeout(() => refresh(), 300)
   }
   
 
@@ -611,7 +656,7 @@ export default function AIChatPage() {
           <ProjectSelector
             projects={projects || []}
             value={selectedProjectId}
-            onChange={setSelectedProjectId}
+            onChange={handleProjectChange}
             isLoading={isLoadingProjects}
           />
         </div>

@@ -5,8 +5,8 @@
  * Allows all organization members to view and contribute
  */
 
-import { useEffect, useMemo, useState } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -40,6 +40,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import type { KnowledgeCategory } from '@prisma/client'
 import { useProjects } from '@/hooks/use-project'
 import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
+import { useProjectSelectionStore } from '@/stores/project-selection'
 
 export default function OrgKnowledgePage() {
   usePageConfig('Base de Conhecimento', 'Colabore com conhecimento compartilhado da organização', [
@@ -59,6 +60,7 @@ export default function OrgKnowledgePage() {
     'FAQ',
   ]
 
+  const router = useRouter()
   const searchParams = useSearchParams()
   const projectIdParam = searchParams.get('projectId')
   const initialProjectFromQuery = useMemo(() => {
@@ -66,27 +68,66 @@ export default function OrgKnowledgePage() {
     return parsed && !Number.isNaN(parsed) ? parsed : null
   }, [projectIdParam])
 
+  const persistedProjectId = useProjectSelectionStore(state => state.lastProjectId)
+  const setPersistedProjectId = useProjectSelectionStore(state => state.setLastProjectId)
+  const hasProjectSelectionHydrated = useProjectSelectionStore(state => state.hasHydrated)
+
   const { data: projects, isLoading: isLoadingProjects } = useProjects()
-  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
+  const [selectedProjectId, setSelectedProjectId] = useState<number | null>(initialProjectFromQuery)
 
   // Seleciona projeto inicial (query param válido ou primeiro da lista)
   useEffect(() => {
-    if (selectedProjectId != null) return
     if (!projects || projects.length === 0) return
+    if (!hasProjectSelectionHydrated && !initialProjectFromQuery) return
 
-    if (initialProjectFromQuery && projects.some(p => p.id === initialProjectFromQuery)) {
-      setSelectedProjectId(initialProjectFromQuery)
+    const isValidProject = (id: number | null) =>
+      id != null && projects.some(p => p.id === id)
+
+    if (initialProjectFromQuery && isValidProject(initialProjectFromQuery)) {
+      if (selectedProjectId !== initialProjectFromQuery) {
+        setSelectedProjectId(initialProjectFromQuery)
+      }
+      if (persistedProjectId !== initialProjectFromQuery) {
+        setPersistedProjectId(initialProjectFromQuery)
+      }
       return
     }
 
-    setSelectedProjectId(projects[0].id)
-  }, [projects, initialProjectFromQuery, selectedProjectId])
+    if (selectedProjectId != null && isValidProject(selectedProjectId)) {
+      if (persistedProjectId !== selectedProjectId) {
+        setPersistedProjectId(selectedProjectId)
+      }
+      return
+    }
+
+    if (isValidProject(persistedProjectId)) {
+      setSelectedProjectId(persistedProjectId)
+      return
+    }
+
+    const fallbackId = projects[0].id
+    setSelectedProjectId(fallbackId)
+    setPersistedProjectId(fallbackId)
+  }, [
+    projects,
+    selectedProjectId,
+    initialProjectFromQuery,
+    persistedProjectId,
+    hasProjectSelectionHydrated,
+    setPersistedProjectId,
+  ])
 
   const hasProject = selectedProjectId != null && !Number.isNaN(selectedProjectId ?? NaN)
   const selectedProject = useMemo(
     () => projects?.find(p => p.id === selectedProjectId),
     [projects, selectedProjectId]
   )
+  const handleProjectChange = useCallback((projectId: number | null) => {
+    setSelectedProjectId(projectId)
+    if (projectId != null) {
+      setPersistedProjectId(projectId)
+    }
+  }, [setPersistedProjectId])
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -217,7 +258,7 @@ export default function OrgKnowledgePage() {
           <ProjectSelector
             projects={projects || []}
             value={selectedProjectId}
-            onChange={setSelectedProjectId}
+            onChange={handleProjectChange}
             isLoading={isLoadingProjects}
           />
         </div>

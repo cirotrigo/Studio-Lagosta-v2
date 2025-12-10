@@ -3,6 +3,7 @@
 import * as React from 'react'
 import { useChat } from '@ai-sdk/react'
 import { DefaultChatTransport } from 'ai'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { MessageBubble } from '@/components/chat/message-bubble'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -25,6 +26,7 @@ import { TrainingModeToggle } from '@/components/chat/training-mode-toggle'
 import { KnowledgePreviewCard } from '@/components/chat/knowledge-preview-card'
 import { DuplicateWarningCard } from '@/components/chat/duplicate-warning-card'
 import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
+import { useProjectSelectionStore } from '@/stores/project-selection'
 
 /**
  * TemplateAIChat - Componente de chat com IA otimizado para o painel lateral do editor
@@ -32,6 +34,15 @@ import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
  * Inclui histórico de conversas com persistência
  */
 export function TemplateAIChat({ projectId }: { projectId: number }) {
+  const setPersistedProjectId = useProjectSelectionStore(state => state.setLastProjectId)
+  const hasProjectSelectionHydrated = useProjectSelectionStore(state => state.hasHydrated)
+
+  React.useEffect(() => {
+    if (!hasProjectSelectionHydrated) return
+    setPersistedProjectId(projectId)
+  }, [hasProjectSelectionHydrated, projectId, setPersistedProjectId])
+
+  const queryClient = useQueryClient()
   // Conversation history state
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = React.useState(false)
@@ -91,6 +102,13 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
   }, [currentConversation, setMessages])
 
   const deferredMessages = React.useDeferredValue(messages)
+  const lastStatusRef = React.useRef<typeof status | null>(null)
+  React.useEffect(() => {
+    if (lastStatusRef.current === 'streaming' && status !== 'streaming') {
+      queryClient.invalidateQueries({ queryKey: ['conversations', 'list', projectId] })
+    }
+    lastStatusRef.current = status
+  }, [projectId, queryClient, status])
   const { canPerformOperation, getCost, refresh } = useCredits()
 
   const listRef = React.useRef<HTMLDivElement>(null)
@@ -179,6 +197,9 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
         { id: userId, role: 'user', parts: [{ type: 'text', text: prompt }] },
         { id: assistantId, role: 'assistant', parts: [{ type: 'text', text: data.message }] },
       ])
+      if (conversationIdRef.current) {
+        queryClient.invalidateQueries({ queryKey: ['conversations', 'list', projectId] })
+      }
     } catch (error) {
       console.error('Erro no modo treinamento:', error)
       const message =
@@ -289,31 +310,24 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
       return
     }
 
-    // Auto-create conversation if none selected
-    if (!currentConversationId) {
-      try {
-        const title = prompt.length > 50 ? prompt.substring(0, 50) + '...' : prompt
-        const newConv = await createConversation.mutateAsync({ title })
-        setCurrentConversationId(newConv.id)
+    let conversationIdToUse = conversationIdRef.current
 
-        // Wait a bit for state to update before submitting
-        setTimeout(() => {
-          sendMessage({ text: prompt })
-          setInput('')
-          setTimeout(() => refresh(), 300)
-        }, 100)
+    if (!conversationIdToUse) {
+      try {
+        const title = prompt.length > 50 ? `${prompt.substring(0, 50)}...` : prompt
+        conversationIdToUse = await ensureConversationId(title)
       } catch (error) {
         console.error('Error creating conversation:', error)
-        // Fallback: continue without conversation
-        sendMessage({ text: prompt })
-        setInput('')
-        setTimeout(() => refresh(), 300)
       }
-    } else {
-      sendMessage({ text: prompt })
-      setInput('')
-      setTimeout(() => refresh(), 300)
     }
+
+    if (conversationIdToUse) {
+      conversationIdRef.current = conversationIdToUse
+    }
+
+    sendMessage({ text: prompt })
+    setInput('')
+    setTimeout(() => refresh(), 300)
   }
 
   // Create new conversation
