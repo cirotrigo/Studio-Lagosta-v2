@@ -93,7 +93,6 @@ export function SortableMediaItem({
             {item.thumbnailUrl && item.thumbnailUrl !== item.url ? (
               // Use thumbnail image if available (better performance)
               isGoogleDriveApi ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={item.thumbnailUrl}
                   alt={item.name}
@@ -133,7 +132,6 @@ export function SortableMediaItem({
           </>
         ) : (
           isGoogleDriveApi ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={item.thumbnailUrl || item.url}
               alt={item.name}

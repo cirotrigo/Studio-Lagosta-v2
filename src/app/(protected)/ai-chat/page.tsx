@@ -596,7 +596,6 @@ export default function AIChatPage() {
         setMessages(prev => [...prev, { id, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem mais créditos. [Ir para cobrança →](/billing)' }] }])
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credits?.creditsRemaining])
 
   return (

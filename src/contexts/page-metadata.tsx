@@ -57,14 +57,12 @@ export function useSetPageMetadata(metadata: PageMetadata) {
   React.useEffect(() => {
     setMetadata(metadata);
     // Dependências específicas ao invés do objeto completo para evitar loops
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     setMetadata,
     metadata.title,
     metadata.description,
     metadata.showBreadcrumbs,
     // Para arrays, usamos JSON.stringify para comparação profunda
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     JSON.stringify(metadata.breadcrumbs)
   ]);
 }

@@ -110,7 +110,6 @@ export function Markdown({ children, className }: MarkdownProps) {
         img({ src, alt, ...props }) {
           const url = typeof src === 'string' ? src : ''
           return (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={url}
               alt={typeof alt === 'string' ? alt : ''}

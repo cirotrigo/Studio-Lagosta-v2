@@ -361,7 +361,6 @@ export function usePhotoSwipe({
         lightboxRef.current = null
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gallerySelector, childSelector, enabled, ...dependencies])
 
   const openPhotoSwipe = (index: number) => {
