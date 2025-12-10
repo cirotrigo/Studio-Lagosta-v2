@@ -803,7 +803,7 @@ function TemplateEditorContent({
               {activeRightPanel === 'properties' && <PropertiesPanel />}
               {activeRightPanel === 'effects' && <EffectsPanel />}
               {activeRightPanel === 'layers' && <LayersPanelAdvanced />}
-              {activeRightPanel === 'chat' && <TemplateAIChat />}
+              {activeRightPanel === 'chat' && <TemplateAIChat projectId={projectId} />}
               {activeRightPanel === 'creatives' && (
                 <CreativesPanel
                   templateId={templateId}

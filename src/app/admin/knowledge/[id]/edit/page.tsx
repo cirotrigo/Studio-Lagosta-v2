@@ -31,6 +31,8 @@ export default function EditKnowledgeEntryPage({ params }: PageProps) {
   const updateMutation = useUpdateKnowledgeEntry(id)
 
   const handleSubmit = async (data: {
+    projectId: number
+    category: import('@prisma/client').KnowledgeCategory
     title: string
     content: string
     tags: string[]
@@ -93,7 +95,10 @@ export default function EditKnowledgeEntryPage({ params }: PageProps) {
       <div className="max-w-3xl">
         <KnowledgeForm
           mode="edit"
+          projectId={entry.projectId}
           initialData={{
+            projectId: entry.projectId,
+            category: entry.category,
             title: entry.title,
             content: entry.content,
             tags: entry.tags,

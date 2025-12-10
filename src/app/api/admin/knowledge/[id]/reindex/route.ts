@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { reindexEntry } from '@/lib/knowledge/indexer'
+import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for reindexing with embedding generation
@@ -51,7 +52,17 @@ export async function POST(
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
 
+    const entry = await db.knowledgeBaseEntry.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+
+    if (!entry) {
+      return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
+    }
+
     const result = await reindexEntry(id, {
+      projectId: entry.projectId,
       userId: dbUser.id,
     })
 
@@ -59,12 +70,14 @@ export async function POST(
   } catch (error) {
     console.error('Error reindexing knowledge entry:', error)
 
-    if (error.message === 'Entry not found') {
-      return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
-    }
+    if (error instanceof Error) {
+      if (error.message === 'Entry not found') {
+        return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
+      }
 
-    if (error.message === 'Unauthorized access to entry') {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+      if (error.message === 'Unauthorized access to entry') {
+        return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
+      }
     }
 
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })

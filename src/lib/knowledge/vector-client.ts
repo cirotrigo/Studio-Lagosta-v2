@@ -5,34 +5,14 @@
 
 import { Index } from '@upstash/vector'
 
-// Singleton Upstash Vector index (lazy init to allow builds without env vars)
-let _vectorIndex: Index | null = null
-
-export const vectorIndex = new Proxy({} as Index, {
-  get(_target, prop: string | symbol) {
-    if (!_vectorIndex) {
-      if (!process.env.UPSTASH_VECTOR_REST_URL) {
-        throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
-      }
-
-      if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
-        throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
-      }
-
-      _vectorIndex = new Index({
-        url: process.env.UPSTASH_VECTOR_REST_URL,
-        token: process.env.UPSTASH_VECTOR_REST_TOKEN,
-      })
-    }
-
-    return _vectorIndex[prop as keyof Index]
-  },
-})
+type VectorStatus = 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
 
 /**
- * Tenant identifier for multi-tenant isolation
+ * Tenant identifier for project isolation (project is mandatory)
  */
 export type TenantKey = {
+  projectId: number
+  // Deprecated: kept during migration for backward compatibility metadata
   userId?: string
   workspaceId?: string
 }
@@ -43,44 +23,61 @@ export type TenantKey = {
 export interface VectorMetadata extends TenantKey {
   entryId: string
   ordinal: number
-  status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  category: string
+  status: VectorStatus
+}
+
+let _vectorIndex: Index | null = null
+
+export function getVectorClient(): Index {
+  if (!_vectorIndex) {
+    if (!process.env.UPSTASH_VECTOR_REST_URL) {
+      throw new Error('UPSTASH_VECTOR_REST_URL is not defined')
+    }
+
+    if (!process.env.UPSTASH_VECTOR_REST_TOKEN) {
+      throw new Error('UPSTASH_VECTOR_REST_TOKEN is not defined')
+    }
+
+    _vectorIndex = new Index({
+      url: process.env.UPSTASH_VECTOR_REST_URL,
+      token: process.env.UPSTASH_VECTOR_REST_TOKEN,
+    })
+  }
+
+  return _vectorIndex
 }
 
 /**
  * Upsert vectors for knowledge base chunks
- * @param chunks Array of chunks with embeddings
- * @param tenant Tenant isolation keys
+ * @param vectors Array of vectors with metadata (must include projectId)
  */
 export async function upsertVectors(
-  chunks: Array<{
+  vectors: Array<{
     id: string
-    entryId: string
-    ordinal: number
-    embedding: number[]
-    status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
-  }>,
-  tenant: TenantKey
+    vector: number[]
+    metadata: VectorMetadata
+  }>
 ) {
-  const vectors = chunks.map(chunk => ({
-    id: chunk.id,
-    vector: chunk.embedding,
-    metadata: {
-      entryId: chunk.entryId,
-      ordinal: chunk.ordinal,
-      status: chunk.status,
-      userId: tenant.userId || '',
-      workspaceId: tenant.workspaceId || '',
-    },
-  }))
+  const index = getVectorClient()
 
-  await vectorIndex.upsert(vectors as Parameters<typeof vectorIndex.upsert>[0])
+  for (const vec of vectors) {
+    if (!vec.metadata.projectId) {
+      throw new Error(`Vector ${vec.id} missing required projectId`)
+    }
+    if (!vec.metadata.category) {
+      throw new Error(`Vector ${vec.id} missing required category`)
+    }
+  }
+
+  await index.upsert(vectors as Parameters<Index['upsert']>[0])
 }
 
 /**
  * Query relevant vectors by semantic similarity
  * @param embedding Query embedding vector
- * @param tenant Tenant isolation keys
- * @param options Query options (topK, status filter)
+ * @param tenant Tenant isolation keys (requires projectId)
+ * @param options Query options (topK, status filter, category filter)
  * @returns Matching vectors with scores
  */
 export async function queryVectors(
@@ -88,71 +85,68 @@ export async function queryVectors(
   tenant: TenantKey,
   options: {
     topK?: number
-    includeStatuses?: ('ACTIVE' | 'DRAFT' | 'ARCHIVED')[]
+    includeStatuses?: VectorStatus[]
+    category?: string
   } = {}
 ) {
-  const { topK = 5, includeStatuses = ['ACTIVE'] } = options
+  const { topK = 5, includeStatuses = ['ACTIVE'], category } = options
 
-  // Build filter for multi-tenant isolation and status
-  const filter: string[] = []
-
-  if (tenant.userId) {
-    filter.push(`userId = '${tenant.userId}'`)
+  if (!tenant?.projectId) {
+    throw new Error('projectId is required for vector queries')
   }
 
-  if (tenant.workspaceId) {
-    filter.push(`workspaceId = '${tenant.workspaceId}'`)
-  }
+  const filter: string[] = [`projectId = ${tenant.projectId}`]
 
   if (includeStatuses.length > 0) {
     const statusFilter = includeStatuses.map(s => `status = '${s}'`).join(' OR ')
     filter.push(`(${statusFilter})`)
   }
 
-  const filterString = filter.length > 0 ? filter.join(' AND ') : undefined
+  if (category) {
+    filter.push(`category = '${category}'`)
+  }
 
-  const results = await vectorIndex.query({
+  const filterString = filter.join(' AND ')
+
+  const index = getVectorClient()
+  const results = await index.query({
     vector: embedding,
     topK,
     includeMetadata: true,
     filter: filterString,
   })
 
-  return results
+  return results.map(result => ({
+    id: String(result.id),
+    score: result.score,
+    metadata: result.metadata as VectorMetadata,
+  }))
 }
 
 /**
- * Delete vectors by entry ID
+ * Delete vectors by entry ID and project
  * Used when deleting a knowledge base entry
  * @param entryId Entry ID to delete
- * @param tenant Tenant isolation keys
+ * @param tenant Tenant isolation keys (requires projectId)
  */
 export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey) {
-  // Build filter for the specific entry and tenant
-  const filter: string[] = [`entryId = '${entryId}'`]
-
-  if (tenant.userId) {
-    filter.push(`userId = '${tenant.userId}'`)
+  if (!tenant?.projectId) {
+    throw new Error('projectId is required to delete vectors')
   }
 
-  if (tenant.workspaceId) {
-    filter.push(`workspaceId = '${tenant.workspaceId}'`)
-  }
+  const filter = [`entryId = '${entryId}'`, `projectId = ${tenant.projectId}`].join(' AND ')
+  const index = getVectorClient()
 
-  const filterString = filter.join(' AND ')
-
-  // Fetch matching vectors to get their IDs
-  const results = await vectorIndex.query({
+  const results = await index.query({
     vector: new Array(1536).fill(0), // Dummy vector for fetching by filter
     topK: 1000, // Max vectors per entry
     includeMetadata: true,
-    filter: filterString,
+    filter,
   })
 
-  // Delete all matching vectors
   if (results.length > 0) {
     const idsToDelete = results.map(r => String(r.id))
-    await vectorIndex.delete(idsToDelete)
+    await index.delete(idsToDelete)
   }
 }
 
@@ -161,5 +155,6 @@ export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey) {
  * @param chunkId Chunk ID (vector ID)
  */
 export async function deleteVector(chunkId: string) {
-  await vectorIndex.delete(chunkId)
+  const index = getVectorClient()
+  await index.delete(chunkId)
 }

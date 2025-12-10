@@ -4,14 +4,20 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { KnowledgeCategory } from '@prisma/client'
 
 // Types
 export interface KnowledgeBaseEntry {
   id: string
+  projectId: number
+  category: KnowledgeCategory
   title: string
   content: string
   tags: string[]
   status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  metadata: Record<string, unknown> | null
+  createdBy: string
+  updatedBy: string | null
   userId: string | null
   workspaceId: string | null
   createdAt: string
@@ -47,20 +53,24 @@ export interface KnowledgeListResponse {
 }
 
 export interface CreateEntryInput {
+  projectId: number
+  category: KnowledgeCategory
   title: string
   content: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
-  workspaceId?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface UploadFileInput {
+  projectId: number
+  category: KnowledgeCategory
   title: string
   filename: string
   fileContent: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
-  workspaceId?: string
+  metadata?: Record<string, unknown>
 }
 
 export interface UpdateEntryInput {
@@ -68,6 +78,8 @@ export interface UpdateEntryInput {
   content?: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  category?: KnowledgeCategory
+  metadata?: Record<string, unknown> | null
 }
 
 export interface ListEntriesParams {
@@ -75,20 +87,27 @@ export interface ListEntriesParams {
   limit?: number
   search?: string
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
-  workspaceId?: string
+  projectId: number
+  category?: KnowledgeCategory
 }
 
 /**
  * Query: List knowledge base entries
  */
-export function useKnowledgeEntries(params: ListEntriesParams = {}) {
+export function useKnowledgeEntries(
+  params: ListEntriesParams,
+  options: { enabled?: boolean } = {}
+) {
   const queryParams = new URLSearchParams()
+  const { enabled = true } = options
+  const hasProject = Number.isFinite(params.projectId)
 
   if (params.page) queryParams.set('page', params.page.toString())
   if (params.limit) queryParams.set('limit', params.limit.toString())
   if (params.search) queryParams.set('search', params.search)
   if (params.status) queryParams.set('status', params.status)
-  if (params.workspaceId) queryParams.set('workspaceId', params.workspaceId)
+  if (hasProject) queryParams.set('projectId', params.projectId.toString())
+  if (params.category) queryParams.set('category', params.category)
 
   const queryString = queryParams.toString()
   const url = `/api/admin/knowledge${queryString ? `?${queryString}` : ''}`
@@ -98,6 +117,7 @@ export function useKnowledgeEntries(params: ListEntriesParams = {}) {
     queryFn: () => api.get(url),
     staleTime: 30_000, // 30 seconds
     gcTime: 5 * 60_000, // 5 minutes
+    enabled: enabled && hasProject,
   })
 }
 

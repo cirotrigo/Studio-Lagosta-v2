@@ -17,10 +17,25 @@ import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { Loader2, Upload } from 'lucide-react'
+import type { KnowledgeCategory } from '@prisma/client'
 
 const MAX_CONTENT_LENGTH = 50000
 
+const KNOWLEDGE_CATEGORIES: KnowledgeCategory[] = [
+  'ESTABELECIMENTO_INFO',
+  'HORARIOS',
+  'CARDAPIO',
+  'DELIVERY',
+  'POLITICAS',
+  'TOM_DE_VOZ',
+  'CAMPANHAS',
+  'DIFERENCIAIS',
+  'FAQ',
+]
+
 const entrySchema = z.object({
+  projectId: z.number().int().positive('projectId é obrigatório'),
+  category: z.enum(KNOWLEDGE_CATEGORIES),
   title: z.string().min(1, 'Título é obrigatório').max(500),
   content: z.string().min(1, 'Conteúdo é obrigatório').max(MAX_CONTENT_LENGTH, `O conteúdo não pode exceder ${MAX_CONTENT_LENGTH.toLocaleString()} caracteres`),
   tags: z.string().optional(),
@@ -31,19 +46,26 @@ type EntryFormData = z.infer<typeof entrySchema>
 
 interface KnowledgeFormProps {
   mode?: 'create' | 'edit'
+  projectId: number
   initialData?: {
+    projectId?: number
+    category?: KnowledgeCategory
     title: string
     content: string
     tags: string[]
     status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   }
   onSubmit: (data: {
+    projectId: number
+    category: KnowledgeCategory
     title: string
     content: string
     tags: string[]
     status: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   }) => Promise<void>
   onFileUpload?: (data: {
+    projectId: number
+    category: KnowledgeCategory
     title: string
     filename: string
     fileContent: string
@@ -55,6 +77,7 @@ interface KnowledgeFormProps {
 
 export function KnowledgeForm({
   mode = 'create',
+  projectId,
   initialData,
   onSubmit,
   onFileUpload,
@@ -73,6 +96,8 @@ export function KnowledgeForm({
   } = useForm<EntryFormData>({
     resolver: zodResolver(entrySchema),
     defaultValues: {
+      projectId: initialData?.projectId ?? projectId,
+      category: initialData?.category || KNOWLEDGE_CATEGORIES[0],
       title: initialData?.title || '',
       content: initialData?.content || '',
       tags: initialData?.tags.join(', ') || '',
@@ -82,6 +107,7 @@ export function KnowledgeForm({
 
   const tagsValue = watch('tags')
   const statusValue = watch('status')
+  const categoryValue = watch('category')
   const contentValue = watch('content')
 
   const contentLength = contentValue?.length || 0
@@ -113,6 +139,8 @@ export function KnowledgeForm({
       // File upload mode
       const fileContent = await selectedFile.text()
       await onFileUpload({
+        projectId: data.projectId,
+        category: data.category,
         title: data.title,
         filename: selectedFile.name,
         fileContent,
@@ -122,6 +150,8 @@ export function KnowledgeForm({
     } else {
       // Text entry mode
       await onSubmit({
+        projectId: data.projectId,
+        category: data.category,
         title: data.title,
         content: data.content,
         tags,
@@ -175,6 +205,44 @@ export function KnowledgeForm({
         </div>
       ) : (
         <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <Label htmlFor="projectId">Projeto</Label>
+              <Input
+                id="projectId"
+                type="number"
+                min={1}
+                {...register('projectId', { valueAsNumber: true })}
+                disabled={isLoading || Boolean(initialData?.projectId)}
+              />
+              {errors.projectId && (
+                <p className="text-sm text-destructive mt-1">{errors.projectId.message}</p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="category">Categoria</Label>
+              <Select
+                value={categoryValue}
+                onValueChange={(value) => setValue('category', value as KnowledgeCategory)}
+                disabled={isLoading}
+              >
+                <SelectTrigger id="category">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {KNOWLEDGE_CATEGORIES.map(cat => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat.replace(/_/g, ' ')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.category && (
+                <p className="text-sm text-destructive mt-1">{errors.category.message}</p>
+              )}
+            </div>
+          </div>
+
           <div className="flex justify-between items-center mb-2">
             <Label htmlFor="content">Conteúdo</Label>
             <div className={`text-xs ${isContentOverLimit ? 'text-destructive' : 'text-muted-foreground'}`}>

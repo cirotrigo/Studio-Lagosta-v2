@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, indexFile } from '@/lib/knowledge/indexer'
+import { KnowledgeCategory } from '@prisma/client'
 
 // Admin check utility
 async function isAdmin(clerkUserId: string): Promise<boolean> {
@@ -30,20 +31,24 @@ async function isAdmin(clerkUserId: string): Promise<boolean> {
 
 // Schemas
 const CreateEntrySchema = z.object({
+  projectId: z.number().int(),
+  category: z.nativeEnum(KnowledgeCategory),
   title: z.string().min(1).max(500),
   content: z.string().min(1),
   tags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
-  workspaceId: z.string().optional(),
 })
 
 const UploadFileSchema = z.object({
+  projectId: z.number().int(),
+  category: z.nativeEnum(KnowledgeCategory),
   title: z.string().min(1).max(500),
   filename: z.string().min(1),
   fileContent: z.string().min(1),
   tags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
-  workspaceId: z.string().optional(),
 })
 
 /**
@@ -69,15 +74,20 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20', 10)
     const search = searchParams.get('search') || ''
     const status = searchParams.get('status') as 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | null
-    const workspaceId = searchParams.get('workspaceId') || undefined
+    const projectIdParam = searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : undefined
+    const categoryParam = searchParams.get('category') as KnowledgeCategory | null
 
     // Build where clause
     // NOTE: Admins can see ALL entries, not just their own
     const where: Record<string, unknown> = {}
 
-    // Optional: Filter by workspace if specified
-    if (workspaceId) {
-      where.workspaceId = workspaceId
+    if (projectId) {
+      where.projectId = projectId
+    }
+
+    if (categoryParam) {
+      where.category = categoryParam
     }
 
     if (status) {
@@ -159,7 +169,15 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { title, filename, fileContent, tags, status } = parsed.data
+      const { title, filename, fileContent, tags, status, projectId, category, metadata } = parsed.data
+
+      const project = await db.project.findUnique({
+        where: { id: projectId },
+      })
+
+      if (!project) {
+        return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+      }
 
       const result = await indexFile({
         title,
@@ -167,9 +185,13 @@ export async function POST(req: NextRequest) {
         fileContent,
         tags,
         status,
+        metadata,
+        category,
+        createdBy: dbUser.id,
         tenant: {
+          projectId,
           userId: dbUser.id,
-          workspaceId: effectiveWorkspaceId,
+          workspaceId: effectiveWorkspaceId || undefined,
         },
       })
 
@@ -184,16 +206,28 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { title, content, tags, status } = parsed.data
+      const { title, content, tags, status, projectId, category, metadata } = parsed.data
+
+      const project = await db.project.findUnique({
+        where: { id: projectId },
+      })
+
+      if (!project) {
+        return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+      }
 
       const result = await indexEntry({
         title,
         content,
         tags,
         status,
+        metadata,
+        category,
+        createdBy: dbUser.id,
         tenant: {
+          projectId,
           userId: dbUser.id,
-          workspaceId: effectiveWorkspaceId,
+          workspaceId: effectiveWorkspaceId || undefined,
         },
       })
 

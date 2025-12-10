@@ -7,6 +7,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { KnowledgeList } from '@/components/admin/knowledge/knowledge-list'
 import {
@@ -21,13 +22,18 @@ export default function AdminKnowledgePage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<string | null>(null)
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const projectIdParam = searchParams.get('projectId')
+  const projectId = projectIdParam ? Number(projectIdParam) : NaN
+  const hasProject = Number.isFinite(projectId)
 
   const { data, isLoading } = useKnowledgeEntries({
     page,
     limit: 20,
     search: search || undefined,
     status: status as 'ACTIVE' | 'DRAFT' | 'ARCHIVED' | null,
-  })
+    projectId: hasProject ? projectId : 0,
+  }, { enabled: hasProject })
 
   const deleteMutation = useDeleteKnowledgeEntry()
 
@@ -92,17 +98,23 @@ export default function AdminKnowledgePage() {
         </div>
       </div>
 
-      <KnowledgeList
-        entries={data?.entries || []}
-        isLoading={isLoading}
-        onDelete={handleDelete}
-        onReindex={handleReindex}
-        onSearch={setSearch}
-        onStatusFilter={setStatus}
-        currentPage={data?.pagination.page || 1}
-        totalPages={data?.pagination.totalPages || 1}
-        onPageChange={setPage}
-      />
+      {!hasProject ? (
+        <div className="rounded border border-dashed p-6 text-sm text-muted-foreground">
+          Informe um projectId na URL (?projectId=123) para visualizar entradas.
+        </div>
+      ) : (
+        <KnowledgeList
+          entries={data?.entries || []}
+          isLoading={isLoading}
+          onDelete={handleDelete}
+          onReindex={handleReindex}
+          onSearch={setSearch}
+          onStatusFilter={setStatus}
+          currentPage={data?.pagination.page || 1}
+          totalPages={data?.pagination.totalPages || 1}
+          onPageChange={setPage}
+        />
+      )}
     </div>
   )
 }

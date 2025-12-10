@@ -91,6 +91,7 @@ const BodySchema = z.object({
   maxTokens: z.number().min(100).max(32000).optional(),
   attachments: z.array(AttachmentSchema).optional(),
   conversationId: z.string().nullable().optional(), // Optional conversation ID for history
+  projectId: z.number().int(),
 })
 
 function isAllowedModel(provider: z.infer<typeof ProviderSchema>, model: string) {
@@ -123,7 +124,9 @@ export async function POST(req: Request) {
         maxTokens?: number
         attachments?: Array<{ name: string; url: string }>
         conversationId?: string
+        projectId: number
       }
+      const projectId = parsed.data.projectId
 
       if (!isAllowedModel(provider, model)) {
         return NextResponse.json({ error: 'Modelo não permitido para este provedor' }, { status: 400 })
@@ -139,6 +142,31 @@ export async function POST(req: Request) {
 
       if (missingKey) {
         return NextResponse.json({ error: `Chave API ausente para ${provider}.` }, { status: 400 })
+      }
+
+      const dbUser = await getUserFromClerkId(userId)
+
+      // Validar acesso ao projeto
+      const project = await db.project.findFirst({
+        where: {
+          id: projectId,
+          OR: [
+            { userId: dbUser.id },
+            ...(organizationId
+              ? [
+                  {
+                    organizationProjects: {
+                      some: { organization: { clerkOrgId: organizationId } },
+                    },
+                  },
+                ]
+              : []),
+          ],
+        },
+      })
+
+      if (!project) {
+        return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
       }
 
       // Clean UIMessages: remove step parts (step-start, step-finish) that OpenRouter doesn't support
@@ -175,13 +203,13 @@ export async function POST(req: Request) {
         if (userMessageText) {
           try {
             console.log('[RAG] Attempting to get context for query:', userMessageText.substring(0, 100))
-            const dbUser = await getUserFromClerkId(userId)
             console.log('[RAG] DB User:', dbUser.id, 'Organization:', organizationId || 'none')
 
-            // Build tenant key: prioritize organization knowledge, fallback to user knowledge
-            const tenantKey = organizationId
-              ? { workspaceId: organizationId } // Organization knowledge (shared)
-              : { userId: dbUser.id } // Personal knowledge (fallback)
+            const tenantKey = {
+              projectId,
+              userId: dbUser.id,
+              workspaceId: organizationId ?? undefined,
+            }
 
             const ragContext = await getRAGContext(userMessageText, tenantKey)
             console.log('[RAG] Context retrieved, length:', ragContext.length)
@@ -234,7 +262,6 @@ ${ragContext}
         // Conversation history: verify ownership and save user message
         let conversationDbId: string | null = null
         if (conversationId) {
-          const dbUser = await getUserFromClerkId(userId)
           const conversation = await db.chatConversation.findFirst({
             where: {
               id: conversationId,
@@ -244,6 +271,17 @@ ${ragContext}
 
           if (!conversation) {
             return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+          }
+
+          if (conversation.projectId && conversation.projectId !== projectId) {
+            return NextResponse.json({ error: 'Conversation does not belong to the provided project' }, { status: 403 })
+          }
+
+          if (!conversation.projectId) {
+            await db.chatConversation.update({
+              where: { id: conversation.id },
+              data: { projectId },
+            })
           }
 
           conversationDbId = conversation.id
@@ -265,6 +303,9 @@ ${ragContext}
                 provider,
                 model,
                 attachments: attachments ? JSON.parse(JSON.stringify(attachments)) : null,
+                metadata: {
+                  projectId,
+                },
               },
             })
           }
@@ -296,6 +337,7 @@ ${ragContext}
                 await db.chatConversation.update({
                   where: { id: conversationDbId },
                   data: {
+                    projectId,
                     lastMessageAt: new Date(),
                     expiresAt: newExpiresAt,
                   },

@@ -6,6 +6,7 @@
 import { generateEmbedding } from './embeddings'
 import { queryVectors, type TenantKey } from './vector-client'
 import { db } from '@/lib/db'
+import type { KnowledgeCategory, EntryStatus } from '@prisma/client'
 
 export interface SearchResult {
   entryId: string
@@ -17,6 +18,9 @@ export interface SearchResult {
     id: string
     title: string
     tags: string[]
+    projectId: number
+    category: KnowledgeCategory
+    status: EntryStatus
   }
 }
 
@@ -35,6 +39,7 @@ export async function searchKnowledgeBase(
     includeStatuses?: ('ACTIVE' | 'DRAFT' | 'ARCHIVED')[]
     includeEntryMetadata?: boolean
     minScore?: number
+    categoryFilter?: KnowledgeCategory
   } = {}
 ): Promise<SearchResult[]> {
   const {
@@ -42,7 +47,12 @@ export async function searchKnowledgeBase(
     includeStatuses = ['ACTIVE'],
     includeEntryMetadata = true,
     minScore = 0.7,
+    categoryFilter,
   } = options
+
+  if (!tenant?.projectId) {
+    throw new Error('projectId is required for knowledge search')
+  }
 
   if (!query.trim()) {
     return []
@@ -55,6 +65,7 @@ export async function searchKnowledgeBase(
   const vectorResults = await queryVectors(queryEmbedding, tenant, {
     topK,
     includeStatuses,
+    category: categoryFilter,
   })
 
   // Filter by minimum score
@@ -69,6 +80,11 @@ export async function searchKnowledgeBase(
   const chunks = await db.knowledgeChunk.findMany({
     where: {
       vectorId: { in: chunkIds },
+      entry: {
+        projectId: tenant.projectId,
+        status: { in: includeStatuses },
+        ...(categoryFilter ? { category: categoryFilter } : {}),
+      },
     },
     include: includeEntryMetadata
       ? {
@@ -77,6 +93,9 @@ export async function searchKnowledgeBase(
               id: true,
               title: true,
               tags: true,
+              projectId: true,
+              category: true,
+              status: true,
             },
           },
         }

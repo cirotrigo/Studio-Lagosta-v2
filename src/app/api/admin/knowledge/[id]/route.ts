@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { updateEntry, deleteEntry } from '@/lib/knowledge/indexer'
+import { KnowledgeCategory } from '@prisma/client'
 
 // Admin check utility
 async function isAdmin(clerkUserId: string): Promise<boolean> {
@@ -34,6 +35,8 @@ const UpdateEntrySchema = z.object({
   content: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
+  category: z.nativeEnum(KnowledgeCategory).optional(),
+  metadata: z.record(z.any()).nullable().optional(),
 })
 
 /**
@@ -56,7 +59,6 @@ export async function GET(
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
-    const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
 
     const entry = await db.knowledgeBaseEntry.findUnique({
@@ -70,11 +72,6 @@ export async function GET(
 
     if (!entry) {
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
-    }
-
-    // Verify ownership
-    if (entry.userId !== dbUser.id) {
-      return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 
     return NextResponse.json(entry)
@@ -116,7 +113,16 @@ export async function PUT(
       )
     }
 
+    const existingEntry = await db.knowledgeBaseEntry.findUnique({
+      where: { id },
+    })
+
+    if (!existingEntry) {
+      return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
+    }
+
     const entry = await updateEntry(id, parsed.data, {
+      projectId: existingEntry.projectId,
       userId: dbUser.id,
     })
 
@@ -159,7 +165,17 @@ export async function DELETE(
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
 
+    const existingEntry = await db.knowledgeBaseEntry.findUnique({
+      where: { id },
+      select: { projectId: true },
+    })
+
+    if (!existingEntry) {
+      return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
+    }
+
     await deleteEntry(id, {
+      projectId: existingEntry.projectId,
       userId: dbUser.id,
     })
 

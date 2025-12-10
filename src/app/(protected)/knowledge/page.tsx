@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -36,12 +36,31 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import type { KnowledgeCategory } from '@prisma/client'
 
 export default function OrgKnowledgePage() {
   usePageConfig('Base de Conhecimento', 'Colabore com conhecimento compartilhado da organização', [
     { label: 'Início', href: '/studio' },
     { label: 'Base de Conhecimento' },
   ])
+
+  const categories: KnowledgeCategory[] = [
+    'ESTABELECIMENTO_INFO',
+    'HORARIOS',
+    'CARDAPIO',
+    'DELIVERY',
+    'POLITICAS',
+    'TOM_DE_VOZ',
+    'CAMPANHAS',
+    'DIFERENCIAIS',
+    'FAQ',
+  ]
+
+  const searchParams = useSearchParams()
+  const projectIdParam = searchParams.get('projectId')
+  const projectId = projectIdParam ? Number(projectIdParam) : NaN
+  const hasProject = Number.isFinite(projectId)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -52,14 +71,19 @@ export default function OrgKnowledgePage() {
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [category, setCategory] = useState<KnowledgeCategory>('ESTABELECIMENTO_INFO')
 
-  const { data, isLoading } = useOrgKnowledgeEntries({
-    page: 1,
-    limit: 50,
-    search: search || undefined,
-  })
+  const { data, isLoading } = useOrgKnowledgeEntries(
+    {
+      page: 1,
+      limit: 50,
+      search: search || undefined,
+      projectId: hasProject ? projectId : 0,
+      category: undefined,
+    },
+    { enabled: hasProject }
+  )
 
-  const router = useRouter()
   const createMutation = useCreateOrgKnowledgeEntry()
   const uploadMutation = useUploadOrgKnowledgeFile()
   const deleteMutation = useDeleteOrgKnowledgeEntry()
@@ -69,6 +93,8 @@ export default function OrgKnowledgePage() {
 
     try {
       await createMutation.mutateAsync({
+        projectId,
+        category,
         title,
         content,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
@@ -103,6 +129,8 @@ export default function OrgKnowledgePage() {
       const fileContent = await file.text()
 
       await uploadMutation.mutateAsync({
+        projectId,
+        category,
         title,
         filename: file.name,
         fileContent,
@@ -148,6 +176,17 @@ export default function OrgKnowledgePage() {
         variant: 'destructive',
       })
     }
+  }
+
+  if (!hasProject) {
+    return (
+      <div className="max-w-4xl mx-auto p-6 space-y-3">
+        <h1 className="text-2xl font-semibold">Selecione um projeto</h1>
+        <p className="text-sm text-muted-foreground">
+          Adicione <code>?projectId=&lt;id-do-projeto&gt;</code> na URL para gerenciar o conhecimento deste projeto.
+        </p>
+      </div>
+    )
   }
 
   return (
@@ -196,6 +235,22 @@ export default function OrgKnowledgePage() {
                   </div>
 
                   <div>
+                    <Label htmlFor="category">Categoria</Label>
+                    <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
+                      <SelectTrigger id="category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat.replace(/_/g, ' ')}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
                     <Label htmlFor="content">Conteúdo</Label>
                     <Textarea
                       id="content"
@@ -234,6 +289,22 @@ export default function OrgKnowledgePage() {
                       placeholder="Ex: Manual de Procedimentos"
                       required
                     />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="file-category">Categoria</Label>
+                    <Select value={category} onValueChange={(val) => setCategory(val as KnowledgeCategory)}>
+                      <SelectTrigger id="file-category">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {categories.map((cat) => (
+                          <SelectItem key={cat} value={cat}>
+                            {cat.replace(/_/g, ' ')}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
 
                   <div>

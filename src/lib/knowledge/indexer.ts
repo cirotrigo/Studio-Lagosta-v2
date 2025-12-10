@@ -7,12 +7,17 @@ import { db } from '@/lib/db'
 import { chunkText, parseFileContent } from './chunking'
 import { generateEmbeddings } from './embeddings'
 import { upsertVectors, deleteVectorsByEntry, type TenantKey } from './vector-client'
+import type { KnowledgeCategory, Prisma } from '@prisma/client'
 
 export interface IndexEntryInput {
   title: string
   content: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  metadata?: Prisma.JsonValue
+  category: KnowledgeCategory
+  createdBy: string
+  updatedBy?: string
   tenant: TenantKey
 }
 
@@ -22,6 +27,10 @@ export interface IndexFileInput {
   fileContent: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  metadata?: Prisma.JsonValue
+  category: KnowledgeCategory
+  createdBy: string
+  updatedBy?: string
   tenant: TenantKey
 }
 
@@ -31,15 +40,30 @@ export interface IndexFileInput {
  * @returns Created entry with chunks
  */
 export async function indexEntry(input: IndexEntryInput) {
-  const { title, content, tags = [], status = 'ACTIVE', tenant } = input
+  const {
+    title,
+    content,
+    tags = [],
+    status = 'ACTIVE',
+    metadata,
+    category,
+    createdBy,
+    updatedBy,
+    tenant,
+  } = input
 
   // Create entry in database
   const entry = await db.knowledgeBaseEntry.create({
     data: {
+      projectId: tenant.projectId,
+      category,
       title,
       content,
       tags,
       status,
+      metadata: metadata ?? undefined,
+      createdBy,
+      updatedBy,
       userId: tenant.userId,
       workspaceId: tenant.workspaceId,
     },
@@ -74,12 +98,17 @@ export async function indexEntry(input: IndexEntryInput) {
   await upsertVectors(
     createdChunks.map((chunk, index) => ({
       id: chunk.vectorId,
-      entryId: chunk.entryId,
-      ordinal: chunk.ordinal,
-      embedding: embeddings[index],
-      status: entry.status,
-    })),
-    tenant
+      vector: embeddings[index],
+      metadata: {
+        entryId: chunk.entryId,
+        ordinal: chunk.ordinal,
+        projectId: tenant.projectId,
+        category,
+        status: entry.status,
+        userId: tenant.userId,
+        workspaceId: tenant.workspaceId,
+      },
+    }))
   )
 
   return {
@@ -121,12 +150,8 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
     throw new Error('Entry not found')
   }
 
-  // Verify tenant ownership
-  // Note: userId and workspaceId can be null/undefined in schema
-  const userIdMatch = entry.userId === tenant.userId || (!entry.userId && !tenant.userId)
-  const workspaceIdMatch = entry.workspaceId === tenant.workspaceId || (!entry.workspaceId && !tenant.workspaceId)
-
-  if (!userIdMatch || !workspaceIdMatch) {
+  // Verify tenant ownership by project (project is the isolation boundary)
+  if (entry.projectId !== tenant.projectId) {
     throw new Error('Unauthorized access to entry')
   }
 
@@ -166,12 +191,17 @@ export async function reindexEntry(entryId: string, tenant: TenantKey) {
   await upsertVectors(
     createdChunks.map((chunk, index) => ({
       id: chunk.vectorId,
-      entryId: chunk.entryId,
-      ordinal: chunk.ordinal,
-      embedding: embeddings[index],
-      status: entry.status,
-    })),
-    tenant
+      vector: embeddings[index],
+      metadata: {
+        entryId: chunk.entryId,
+        ordinal: chunk.ordinal,
+        projectId: tenant.projectId,
+        category: entry.category,
+        status: entry.status,
+        userId: tenant.userId,
+        workspaceId: tenant.workspaceId,
+      },
+    }))
   )
 
   return {
@@ -193,6 +223,9 @@ export async function updateEntry(
     content?: string
     tags?: string[]
     status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+    category?: KnowledgeCategory
+    metadata?: Prisma.JsonValue | null
+    updatedBy?: string
   },
   tenant: TenantKey
 ) {
@@ -206,11 +239,7 @@ export async function updateEntry(
   }
 
   // Verify tenant ownership
-  // Note: userId and workspaceId can be null/undefined in schema
-  const userIdMatch = existing.userId === tenant.userId || (!existing.userId && !tenant.userId)
-  const workspaceIdMatch = existing.workspaceId === tenant.workspaceId || (!existing.workspaceId && !tenant.workspaceId)
-
-  if (!userIdMatch || !workspaceIdMatch) {
+  if (existing.projectId !== tenant.projectId) {
     throw new Error('Unauthorized access to entry')
   }
 
@@ -244,11 +273,7 @@ export async function deleteEntry(entryId: string, tenant: TenantKey) {
   }
 
   // Verify tenant ownership
-  // Note: userId and workspaceId can be null/undefined in schema
-  const userIdMatch = entry.userId === tenant.userId || (!entry.userId && !tenant.userId)
-  const workspaceIdMatch = entry.workspaceId === tenant.workspaceId || (!entry.workspaceId && !tenant.workspaceId)
-
-  if (!userIdMatch || !workspaceIdMatch) {
+  if (entry.projectId !== tenant.projectId) {
     throw new Error('Unauthorized access to entry')
   }
 

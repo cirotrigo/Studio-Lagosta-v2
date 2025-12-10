@@ -5,6 +5,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import type { KnowledgeCategory } from '@prisma/client'
 
 // Reuse types from admin hooks
 import type {
@@ -14,18 +15,24 @@ import type {
 } from './admin/use-admin-knowledge'
 
 export interface CreateOrgEntryInput {
+  projectId: number
+  category: KnowledgeCategory
   title: string
   content: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  metadata?: Record<string, unknown>
 }
 
 export interface UploadOrgFileInput {
+  projectId: number
+  category: KnowledgeCategory
   title: string
   filename: string
   fileContent: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  metadata?: Record<string, unknown>
 }
 
 export interface UpdateOrgEntryInput {
@@ -33,18 +40,27 @@ export interface UpdateOrgEntryInput {
   content?: string
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
+  category?: KnowledgeCategory
+  metadata?: Record<string, unknown> | null
 }
 
 /**
  * Query: List organization's knowledge base entries
  */
-export function useOrgKnowledgeEntries(params: ListEntriesParams = {}) {
+export function useOrgKnowledgeEntries(
+  params: ListEntriesParams,
+  options: { enabled?: boolean } = {}
+) {
   const queryParams = new URLSearchParams()
+  const { enabled = true } = options
+  const hasProject = Number.isFinite(params.projectId)
 
   if (params.page) queryParams.set('page', params.page.toString())
   if (params.limit) queryParams.set('limit', params.limit.toString())
   if (params.search) queryParams.set('search', params.search)
   if (params.status) queryParams.set('status', params.status)
+  if (hasProject) queryParams.set('projectId', params.projectId.toString())
+  if (params.category) queryParams.set('category', params.category)
 
   const queryString = queryParams.toString()
   const url = `/api/knowledge${queryString ? `?${queryString}` : ''}`
@@ -54,6 +70,7 @@ export function useOrgKnowledgeEntries(params: ListEntriesParams = {}) {
     queryFn: () => api.get(url),
     staleTime: 30_000, // 30 seconds
     gcTime: 5 * 60_000, // 5 minutes
+    enabled: enabled && hasProject,
   })
 }
 

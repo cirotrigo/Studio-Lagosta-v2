@@ -9,13 +9,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
-import { reindexEntry } from '@/lib/knowledge/indexer'
+import { reindexEntry, deleteEntry } from '@/lib/knowledge/indexer'
+import { KnowledgeCategory } from '@prisma/client'
+import { getUserFromClerkId } from '@/lib/auth-utils'
 
 const UpdateEntrySchema = z.object({
   title: z.string().min(1).max(500).optional(),
   content: z.string().min(1).optional(),
   tags: z.array(z.string()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
+  category: z.nativeEnum(KnowledgeCategory).optional(),
+  metadata: z.record(z.any()).nullable().optional(),
 })
 
 /**
@@ -41,10 +45,25 @@ export async function GET(
     }
 
     const { id } = await params
+    const dbUser = await getUserFromClerkId(clerkUserId)
 
     const entry = await db.knowledgeBaseEntry.findUnique({
       where: { id },
       include: {
+        project: {
+          select: {
+            id: true,
+            userId: true,
+            name: true,
+            organizationProjects: {
+              select: {
+                organization: {
+                  select: { clerkOrgId: true },
+                },
+              },
+            },
+          },
+        },
         _count: {
           select: { chunks: true },
         },
@@ -56,14 +75,20 @@ export async function GET(
     }
 
     // Verify entry belongs to user's organization
-    if (entry.workspaceId !== orgId) {
-      return NextResponse.json(
-        { error: 'Você não tem permissão para acessar esta entrada' },
-        { status: 403 }
-      )
+    const isProjectInOrg = entry.project?.organizationProjects?.some(
+      (orgProject) => orgProject.organization.clerkOrgId === orgId
+    )
+
+    const isOwnedByUser = entry.project?.userId === dbUser.id
+
+    if (!isProjectInOrg && !isOwnedByUser) {
+      return NextResponse.json({ error: 'Você não tem permissão para acessar esta entrada' }, { status: 403 })
     }
 
-    return NextResponse.json(entry)
+    return NextResponse.json({
+      ...entry,
+      project: entry.project ? { id: entry.project.id, name: entry.project.name } : undefined,
+    })
   } catch (error) {
     console.error('Error fetching knowledge entry:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })
@@ -93,6 +118,7 @@ export async function PUT(
     }
 
     const { id } = await params
+    const dbUser = await getUserFromClerkId(clerkUserId)
     const body = await req.json()
 
     // Validate input
@@ -107,17 +133,31 @@ export async function PUT(
     // Check if entry exists and belongs to organization
     const existingEntry = await db.knowledgeBaseEntry.findUnique({
       where: { id },
+      include: {
+        project: {
+          select: {
+            id: true,
+            userId: true,
+            organizationProjects: {
+              select: { organization: { select: { clerkOrgId: true } } },
+            },
+          },
+        },
+      },
     })
 
     if (!existingEntry) {
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
     }
 
-    if (existingEntry.workspaceId !== orgId) {
-      return NextResponse.json(
-        { error: 'Você não tem permissão para editar esta entrada' },
-        { status: 403 }
-      )
+    const isProjectInOrg = existingEntry.project?.organizationProjects?.some(
+      (orgProject) => orgProject.organization.clerkOrgId === orgId
+    )
+
+    const isOwnedByUser = existingEntry.project?.userId === dbUser.id
+
+    if (!isProjectInOrg && !isOwnedByUser) {
+      return NextResponse.json({ error: 'Você não tem permissão para editar esta entrada' }, { status: 403 })
     }
 
     const { title, content, tags, status } = parsed.data
@@ -134,6 +174,9 @@ export async function PUT(
         ...(content && { content }),
         ...(tags && { tags }),
         ...(status && { status }),
+        ...(parsed.data.category && { category: parsed.data.category }),
+        ...(parsed.data.metadata !== undefined && { metadata: parsed.data.metadata }),
+        updatedBy: dbUser.id,
         updatedAt: new Date(),
       },
       include: {
@@ -147,8 +190,9 @@ export async function PUT(
     if (contentChanged || titleChanged) {
       try {
         await reindexEntry(id, {
-          userId: existingEntry.userId || undefined,
-          workspaceId: existingEntry.workspaceId || undefined,
+          projectId: existingEntry.projectId,
+          userId: dbUser.id,
+          workspaceId: orgId,
         })
       } catch (reindexError) {
         console.error('Error reindexing after update:', reindexError)
@@ -186,26 +230,42 @@ export async function DELETE(
     }
 
     const { id } = await params
+    const dbUser = await getUserFromClerkId(clerkUserId)
 
     // Check if entry exists and belongs to organization
     const entry = await db.knowledgeBaseEntry.findUnique({
       where: { id },
+      include: {
+        project: {
+          select: {
+            id: true,
+            userId: true,
+            organizationProjects: {
+              select: { organization: { select: { clerkOrgId: true } } },
+            },
+          },
+        },
+      },
     })
 
     if (!entry) {
       return NextResponse.json({ error: 'Entrada não encontrada' }, { status: 404 })
     }
 
-    if (entry.workspaceId !== orgId) {
-      return NextResponse.json(
-        { error: 'Você não tem permissão para excluir esta entrada' },
-        { status: 403 }
-      )
+    const isProjectInOrg = entry.project?.organizationProjects?.some(
+      (orgProject) => orgProject.organization.clerkOrgId === orgId
+    )
+
+    const isOwnedByUser = entry.project?.userId === dbUser.id
+
+    if (!isProjectInOrg && !isOwnedByUser) {
+      return NextResponse.json({ error: 'Você não tem permissão para excluir esta entrada' }, { status: 403 })
     }
 
-    // Delete entry (chunks will be cascade deleted)
-    await db.knowledgeBaseEntry.delete({
-      where: { id },
+    await deleteEntry(id, {
+      projectId: entry.projectId,
+      userId: dbUser.id,
+      workspaceId: orgId,
     })
 
     return NextResponse.json({ message: 'Entrada excluída com sucesso' })

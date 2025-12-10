@@ -11,20 +11,27 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, indexFile } from '@/lib/knowledge/indexer'
+import { KnowledgeCategory } from '@prisma/client'
 
 // Schemas
 const CreateEntrySchema = z.object({
+  projectId: z.number().int(),
+  category: z.nativeEnum(KnowledgeCategory),
   title: z.string().min(1).max(500),
   content: z.string().min(1),
   tags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional().default('ACTIVE'),
 })
 
 const UploadFileSchema = z.object({
+  projectId: z.number().int(),
+  category: z.nativeEnum(KnowledgeCategory),
   title: z.string().min(1).max(500),
   filename: z.string().min(1),
   fileContent: z.string().min(1),
   tags: z.array(z.string()).optional(),
+  metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional().default('ACTIVE'),
 })
 
@@ -47,6 +54,43 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    const projectIdParam = req.nextUrl.searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : NaN
+    if (!projectIdParam || Number.isNaN(projectId)) {
+      return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
+    }
+
+    const categoryParam = req.nextUrl.searchParams.get('category') as KnowledgeCategory | null
+
+    const organization = await db.organization.findUnique({
+      where: { clerkOrgId: orgId },
+    })
+
+    if (!organization) {
+      return NextResponse.json({ error: 'Organização não encontrada' }, { status: 404 })
+    }
+
+    const dbUser = await getUserFromClerkId(clerkUserId)
+
+    // Verifica acesso ao projeto (projeto compartilhado com org ou do próprio usuário)
+    const project = await db.project.findFirst({
+      where: {
+        id: projectId,
+        OR: [
+          {
+            organizationProjects: {
+              some: { organization: { clerkOrgId: orgId } },
+            },
+          },
+          { userId: dbUser.id },
+        ],
+      },
+    })
+
+    if (!project) {
+      return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
+    }
+
     // Parse query params
     const searchParams = req.nextUrl.searchParams
     const page = parseInt(searchParams.get('page') || '1', 10)
@@ -56,11 +100,15 @@ export async function GET(req: NextRequest) {
 
     // Build where clause - filter by organization
     const where: Record<string, unknown> = {
-      workspaceId: orgId,
+      projectId,
     }
 
     if (status) {
       where.status = status
+    }
+
+    if (categoryParam) {
+      where.category = categoryParam
     }
 
     if (search) {
@@ -136,7 +184,21 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { title, filename, fileContent, tags, status } = parsed.data
+      const { title, filename, fileContent, tags, status, projectId, category, metadata } = parsed.data
+
+      // Verificar acesso ao projeto
+      const project = await db.project.findFirst({
+        where: {
+          id: projectId,
+          organizationProjects: {
+            some: { organization: { clerkOrgId: orgId } },
+          },
+        },
+      })
+
+      if (!project) {
+        return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
+      }
 
       const result = await indexFile({
         title,
@@ -144,9 +206,13 @@ export async function POST(req: NextRequest) {
         fileContent,
         tags,
         status,
+        metadata,
+        category,
+        createdBy: dbUser.id,
         tenant: {
+          projectId,
           userId: dbUser.id,
-          workspaceId: orgId, // Organization knowledge
+          workspaceId: orgId, // Deprecated, mantido durante migração
         },
       })
 
@@ -161,16 +227,34 @@ export async function POST(req: NextRequest) {
         )
       }
 
-      const { title, content, tags, status } = parsed.data
+      const { title, content, tags, status, projectId, category, metadata } = parsed.data
+
+      // Verificar acesso ao projeto
+      const project = await db.project.findFirst({
+        where: {
+          id: projectId,
+          organizationProjects: {
+            some: { organization: { clerkOrgId: orgId } },
+          },
+        },
+      })
+
+      if (!project) {
+        return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
+      }
 
       const result = await indexEntry({
         title,
         content,
         tags,
         status,
+        metadata,
+        category,
+        createdBy: dbUser.id,
         tenant: {
+          projectId,
           userId: dbUser.id,
-          workspaceId: orgId, // Organization knowledge
+          workspaceId: orgId, // Organization knowledge (legado)
         },
       })
 

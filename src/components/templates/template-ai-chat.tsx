@@ -27,16 +27,16 @@ import {
  * Versão compacta sem seleção de providers/models (usa defaults)
  * Inclui histórico de conversas com persistência
  */
-export function TemplateAIChat() {
+export function TemplateAIChat({ projectId }: { projectId: number }) {
   // Conversation history state
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null)
   const [historyOpen, setHistoryOpen] = React.useState(false)
 
   // Fetch conversations and current conversation
-  const { data: conversationsData } = useConversations()
-  const { data: currentConversation } = useConversation(currentConversationId)
-  const createConversation = useCreateConversation()
-  const deleteConversation = useDeleteConversation()
+  const { data: conversationsData } = useConversations(projectId)
+  const { data: currentConversation } = useConversation(currentConversationId, projectId)
+  const createConversation = useCreateConversation(projectId)
+  const deleteConversation = useDeleteConversation(projectId)
 
   const [input, setInput] = React.useState('')
 
@@ -53,6 +53,7 @@ export function TemplateAIChat() {
         provider: 'openai',
         model: 'gpt-5-mini', // Modelo econômico e balanceado para uso no editor
         conversationId: conversationIdRef.current,
+        projectId,
       }),
     }),
     experimental_throttle: 60,

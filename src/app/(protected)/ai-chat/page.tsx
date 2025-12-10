@@ -21,6 +21,7 @@ import { useAIProviders } from '@/hooks/use-ai-providers'
 import { useConversations, useConversation, useCreateConversation, useDeleteConversation } from '@/hooks/use-conversations'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { History, Plus, MoreVertical } from 'lucide-react'
+import { useSearchParams } from 'next/navigation'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
@@ -66,6 +67,12 @@ export default function AIChatPage() {
     { label: 'Chat com IA' },
   ])
 
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const projectIdParam = searchParams.get('projectId')
+  const projectId = projectIdParam ? Number(projectIdParam) : NaN
+  const hasProject = Number.isFinite(projectId)
+
   // Fetch available providers (only those with API keys)
   const { data: providersData, isLoading: isLoadingProviders } = useAIProviders()
   const availableProviders = React.useMemo(() =>
@@ -84,10 +91,10 @@ export default function AIChatPage() {
   const [historyOpen, setHistoryOpen] = React.useState(false)
 
   // Fetch conversations and current conversation
-  const { data: conversationsData } = useConversations()
-  const { data: currentConversation } = useConversation(currentConversationId)
-  const createConversation = useCreateConversation()
-  const deleteConversation = useDeleteConversation()
+  const { data: conversationsData } = useConversations(hasProject ? projectId : undefined)
+  const { data: currentConversation } = useConversation(currentConversationId, hasProject ? projectId : undefined)
+  const createConversation = useCreateConversation(hasProject ? projectId : undefined)
+  const deleteConversation = useDeleteConversation(hasProject ? projectId : undefined)
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -176,6 +183,7 @@ export default function AIChatPage() {
         model: modelRef.current,
         attachments: attachmentsRef.current.map(a => ({ name: a.name, url: a.url })),
         conversationId: conversationIdRef.current,
+        projectId: hasProject ? projectId : undefined,
       }),
     }),
     experimental_throttle: 60,
@@ -363,6 +371,10 @@ export default function AIChatPage() {
     if (!prompt) {
       return
     }
+    if (!hasProject) {
+      alert('Informe um projectId na URL (?projectId=123) para usar o chat.')
+      return
+    }
 
     // Auto-create conversation if none selected
     if (!currentConversationId) {
@@ -449,8 +461,24 @@ export default function AIChatPage() {
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true) }
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false) }
 
+  if (!hasProject) {
+    return (
+      <div className="max-w-3xl mx-auto p-6 space-y-3">
+        <h1 className="text-2xl font-semibold">Selecione um projeto</h1>
+        <p className="text-muted-foreground text-sm">
+          Adicione <code>?projectId=&lt;id-do-projeto&gt;</code> à URL para usar o chat com RAG isolado por projeto.
+        </p>
+      </div>
+    )
+  }
+
   // Create new conversation
   const handleNewConversation = async () => {
+    if (!hasProject) {
+      alert('Informe um projectId na URL (?projectId=123) para criar conversas.')
+      return
+    }
+
     try {
       const newConv = await createConversation.mutateAsync({
         title: 'Nova Conversa',

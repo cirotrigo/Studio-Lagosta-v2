@@ -18,6 +18,7 @@ export interface ChatConversation {
   userId: string
   clerkUserId: string
   organizationId?: string | null
+  projectId?: number | null
   title: string
   lastMessageAt: string
   expiresAt: string
@@ -36,10 +37,10 @@ export interface ConversationsResponse {
 // Query Keys
 const conversationKeys = {
   all: ['conversations'] as const,
-  lists: () => [...conversationKeys.all, 'list'] as const,
-  list: () => [...conversationKeys.lists()] as const,
-  details: () => [...conversationKeys.all, 'detail'] as const,
-  detail: (id: string) => [...conversationKeys.details(), id] as const,
+  lists: (projectId: number) => [...conversationKeys.all, 'list', projectId] as const,
+  list: (projectId: number) => [...conversationKeys.lists(projectId)] as const,
+  details: (projectId: number) => [...conversationKeys.all, 'detail', projectId] as const,
+  detail: (id: string, projectId: number) => [...conversationKeys.details(projectId), id] as const,
 }
 
 // Hooks
@@ -47,23 +48,28 @@ const conversationKeys = {
 /**
  * Get all conversations for the current user (last 7 days)
  */
-export function useConversations() {
+export function useConversations(projectId?: number) {
+  const enabled = Number.isFinite(projectId)
+
   return useQuery<ConversationsResponse>({
-    queryKey: conversationKeys.list(),
-    queryFn: () => api.get('/api/ai/conversations'),
+    queryKey: conversationKeys.list(projectId || 0),
+    queryFn: () => api.get(`/api/ai/conversations?projectId=${projectId}`),
     staleTime: 30_000, // 30 seconds
     gcTime: 5 * 60_000, // 5 minutes
+    enabled,
   })
 }
 
 /**
  * Get a single conversation with all messages
  */
-export function useConversation(id: string | null) {
+export function useConversation(id: string | null, projectId?: number) {
+  const enabled = !!id && Number.isFinite(projectId)
+
   return useQuery<ChatConversation>({
-    queryKey: conversationKeys.detail(id || ''),
-    queryFn: () => api.get(`/api/ai/conversations/${id}`),
-    enabled: !!id,
+    queryKey: conversationKeys.detail(id || '', projectId || 0),
+    queryFn: () => api.get(`/api/ai/conversations/${id}?projectId=${projectId}`),
+    enabled,
     staleTime: 10_000, // 10 seconds
     gcTime: 5 * 60_000, // 5 minutes
   })
@@ -72,50 +78,63 @@ export function useConversation(id: string | null) {
 /**
  * Create a new conversation
  */
-export function useCreateConversation() {
+export function useCreateConversation(projectId?: number) {
   const queryClient = useQueryClient()
+  const enabled = Number.isFinite(projectId)
 
   return useMutation({
-    mutationFn: (data: { title?: string; organizationId?: string }) =>
-      api.post<ChatConversation>('/api/ai/conversations', data),
+    mutationFn: (data: { title?: string }) =>
+      api.post<ChatConversation>('/api/ai/conversations', { ...data, projectId }),
     onSuccess: () => {
       // Invalidate conversations list to show new conversation
-      queryClient.invalidateQueries({ queryKey: conversationKeys.lists() })
+      if (enabled) {
+        queryClient.invalidateQueries({ queryKey: conversationKeys.lists(projectId!) })
+      }
     },
+    meta: { enabled },
   })
 }
 
 /**
  * Delete a conversation
  */
-export function useDeleteConversation() {
+export function useDeleteConversation(projectId?: number) {
   const queryClient = useQueryClient()
+  const enabled = Number.isFinite(projectId)
 
   return useMutation({
-    mutationFn: (id: string) => api.delete(`/api/ai/conversations/${id}`),
+    mutationFn: (id: string) => api.delete(`/api/ai/conversations/${id}?projectId=${projectId}`),
     onSuccess: (_, deletedId) => {
       // Remove from cache
-      queryClient.removeQueries({ queryKey: conversationKeys.detail(deletedId) })
+      if (enabled) {
+        queryClient.removeQueries({ queryKey: conversationKeys.detail(deletedId, projectId!) })
+        // Invalidate list
+        queryClient.invalidateQueries({ queryKey: conversationKeys.lists(projectId!) })
+      }
       // Invalidate list
-      queryClient.invalidateQueries({ queryKey: conversationKeys.lists() })
     },
+    meta: { enabled },
   })
 }
 
 /**
  * Update conversation (e.g., rename title)
  */
-export function useUpdateConversation() {
+export function useUpdateConversation(projectId?: number) {
   const queryClient = useQueryClient()
+  const enabled = Number.isFinite(projectId)
 
   return useMutation({
     mutationFn: ({ id, title }: { id: string; title: string }) =>
-      api.patch<ChatConversation>(`/api/ai/conversations/${id}`, { title }),
+      api.patch<ChatConversation>(`/api/ai/conversations/${id}?projectId=${projectId}`, { title }),
     onSuccess: (data) => {
       // Update cached conversation
-      queryClient.setQueryData(conversationKeys.detail(data.id), data)
-      // Invalidate list to show updated title
-      queryClient.invalidateQueries({ queryKey: conversationKeys.lists() })
+      if (enabled) {
+        queryClient.setQueryData(conversationKeys.detail(data.id, projectId!), data)
+        // Invalidate list to show updated title
+        queryClient.invalidateQueries({ queryKey: conversationKeys.lists(projectId!) })
+      }
     },
+    meta: { enabled },
   })
 }

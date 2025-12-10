@@ -15,15 +15,23 @@ import {
 import { useToast } from '@/hooks/use-toast'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import type { KnowledgeCategory } from '@prisma/client'
 
 export default function NewKnowledgeEntryPage() {
   const router = useRouter()
   const { toast } = useToast()
+  const searchParams = useSearchParams()
+  const projectIdParam = searchParams.get('projectId')
+  const projectId = projectIdParam ? Number(projectIdParam) : NaN
+  const hasProject = Number.isFinite(projectId)
 
   const createMutation = useCreateKnowledgeEntry()
   const uploadMutation = useUploadKnowledgeFile()
 
   const handleSubmit = async (data: {
+    projectId: number
+    category: KnowledgeCategory
     title: string
     content: string
     tags: string[]
@@ -46,6 +54,8 @@ export default function NewKnowledgeEntryPage() {
   }
 
   const handleFileUpload = async (data: {
+    projectId: number
+    category: KnowledgeCategory
     title: string
     filename: string
     fileContent: string
@@ -84,12 +94,19 @@ export default function NewKnowledgeEntryPage() {
       </div>
 
       <div className="max-w-3xl">
-        <KnowledgeForm
-          mode="create"
-          onSubmit={handleSubmit}
-          onFileUpload={handleFileUpload}
-          isLoading={createMutation.isPending || uploadMutation.isPending}
-        />
+        {!hasProject ? (
+          <div className="rounded border border-dashed p-4 text-sm text-muted-foreground">
+            Informe um projectId na URL (?projectId=123) para criar entradas.
+          </div>
+        ) : (
+          <KnowledgeForm
+            mode="create"
+            projectId={projectId}
+            onSubmit={handleSubmit}
+            onFileUpload={handleFileUpload}
+            isLoading={createMutation.isPending || uploadMutation.isPending}
+          />
+        )}
       </div>
     </div>
   )

@@ -53,11 +53,17 @@ async function reindexDirect() {
         console.log(`   Entry ID: ${entry.id}`)
         console.log(`   User ID: ${entry.userId || 'NULL'}`)
         console.log(`   Workspace ID: ${entry.workspaceId || 'NULL'}`)
+        console.log(`   Project ID: ${entry.projectId || 'NULL'}`)
 
         // Build tenant key
         const tenant = {
+          projectId: entry.projectId,
           userId: entry.userId || undefined,
           workspaceId: entry.workspaceId || undefined,
+        }
+
+        if (!tenant.projectId) {
+          throw new Error('projectId ausente para reindexação')
         }
 
         // Call reindex function directly

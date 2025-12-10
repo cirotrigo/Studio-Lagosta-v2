@@ -13,6 +13,13 @@ export async function GET(
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
+    const searchParams = new URL(req.url).searchParams
+    const projectIdParam = searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : NaN
+
+    if (!projectIdParam || Number.isNaN(projectId)) {
+      return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
+    }
 
     // Verify ownership and fetch conversation with messages
     const conversation = await db.chatConversation.findFirst({
@@ -36,6 +43,17 @@ export async function GET(
       )
     }
 
+    if (conversation.projectId && conversation.projectId !== projectId) {
+      return NextResponse.json({ error: 'Conversation does not belong to this project' }, { status: 403 })
+    }
+
+    if (!conversation.projectId) {
+      await db.chatConversation.update({
+        where: { id: conversation.id },
+        data: { projectId },
+      })
+    }
+
     return NextResponse.json(conversation)
   } catch (error) {
     console.error('Error fetching conversation:', error)
@@ -55,6 +73,13 @@ export async function DELETE(
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
+    const searchParams = new URL(req.url).searchParams
+    const projectIdParam = searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : NaN
+
+    if (!projectIdParam || Number.isNaN(projectId)) {
+      return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
+    }
 
     // Verify ownership before deleting
     const conversation = await db.chatConversation.findFirst({
@@ -69,6 +94,10 @@ export async function DELETE(
         { error: 'Conversation not found' },
         { status: 404 }
       )
+    }
+
+    if (conversation.projectId && conversation.projectId !== projectId) {
+      return NextResponse.json({ error: 'Conversation does not belong to this project' }, { status: 403 })
     }
 
     // Delete conversation (messages will be cascade deleted)
@@ -96,6 +125,13 @@ export async function PATCH(
     const dbUser = await getUserFromClerkId(clerkUserId)
     const { id } = await params
     const body = await req.json()
+    const searchParams = new URL(req.url).searchParams
+    const projectIdParam = searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : NaN
+
+    if (!projectIdParam || Number.isNaN(projectId)) {
+      return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
+    }
 
     // Verify ownership
     const conversation = await db.chatConversation.findFirst({
@@ -110,6 +146,17 @@ export async function PATCH(
         { error: 'Conversation not found' },
         { status: 404 }
       )
+    }
+
+    if (conversation.projectId && conversation.projectId !== projectId) {
+      return NextResponse.json({ error: 'Conversation does not belong to this project' }, { status: 403 })
+    }
+
+    if (!conversation.projectId) {
+      await db.chatConversation.update({
+        where: { id: conversation.id },
+        data: { projectId },
+      })
     }
 
     // Update conversation

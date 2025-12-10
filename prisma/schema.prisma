@@ -193,6 +193,8 @@ model Project {
   SocialPost           SocialPost[] // Social media posts for this account
   musicLibrary         MusicLibrary[]        @relation("ProjectMusicLibrary")
   youtubeDownloads     YoutubeDownloadJob[]
+  knowledgeEntries     KnowledgeBaseEntry[]
+  chatConversations    ChatConversation[]
 
   // Instagram Analytics
   instagramStories       InstagramStory[]
@@ -548,6 +550,18 @@ enum EntryStatus {
   ARCHIVED
 }
 
+enum KnowledgeCategory {
+  ESTABELECIMENTO_INFO
+  HORARIOS
+  CARDAPIO
+  DELIVERY
+  POLITICAS
+  TOM_DE_VOZ
+  CAMPANHAS
+  DIFERENCIAIS
+  FAQ
+}
+
 enum AIImageMode {
   GENERATE
   EDIT
@@ -583,19 +597,29 @@ model AIGeneratedImage {
 
 model KnowledgeBaseEntry {
   id          String           @id @default(cuid())
+  projectId   Int
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  category    KnowledgeCategory
   title       String
   content     String           @db.Text
   tags        String[]
+  metadata    Json?
   status      EntryStatus      @default(ACTIVE)
+  createdBy   String
+  updatedBy   String?
   userId      String?
   workspaceId String?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
   chunks      KnowledgeChunk[]
 
+  @@index([projectId])
+  @@index([projectId, category])
+  @@index([projectId, status])
   @@index([userId])
   @@index([workspaceId])
   @@index([status])
+  @@index([createdBy])
   @@map("knowledge_base_entries")
 }
 
@@ -1107,6 +1131,8 @@ model ChatConversation {
   userId         String
   clerkUserId    String
   organizationId String?
+  projectId      Int?
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   // Conversation metadata
   title         String   @default("Nova Conversa")
@@ -1123,6 +1149,8 @@ model ChatConversation {
   @@index([userId])
   @@index([clerkUserId])
   @@index([organizationId])
+  @@index([projectId])
+  @@index([projectId, userId])
   @@index([lastMessageAt])
   @@index([expiresAt]) // For cleanup queries
 }
@@ -1139,6 +1167,7 @@ model ChatMessage {
   provider    String? // 'openai', 'anthropic', etc.
   model       String? // Model used for this message
   attachments Json? // Array of attachment objects
+  metadata    Json?
 
   createdAt DateTime @default(now())
 

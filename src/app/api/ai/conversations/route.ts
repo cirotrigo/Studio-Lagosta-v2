@@ -7,8 +7,8 @@ import { db } from '@/lib/db'
 export const runtime = 'nodejs'
 
 const CreateConversationSchema = z.object({
+  projectId: z.number().int(),
   title: z.string().min(1).max(200).optional(),
-  organizationId: z.string().optional(),
 })
 
 // POST /api/ai/conversations - Create new conversation
@@ -28,8 +28,30 @@ export async function POST(req: Request) {
       )
     }
 
-    const { title } = parsed.data
+    const { title, projectId } = parsed.data
     const dbUser = await getUserFromClerkId(clerkUserId)
+
+    const project = await db.project.findFirst({
+      where: {
+        id: projectId,
+        OR: [
+          { userId: dbUser.id },
+          ...(organizationId
+            ? [
+                {
+                  organizationProjects: {
+                    some: { organization: { clerkOrgId: organizationId } },
+                  },
+                },
+              ]
+            : []),
+        ],
+      },
+    })
+
+    if (!project) {
+      return NextResponse.json({ error: 'Projeto não encontrado ou acesso negado' }, { status: 404 })
+    }
 
     // Calculate expiration date (7 days from now)
     const expiresAt = new Date()
@@ -40,6 +62,7 @@ export async function POST(req: Request) {
         userId: dbUser.id,
         clerkUserId,
         organizationId,
+        projectId,
         title: title || 'Nova Conversa',
         expiresAt,
       },
@@ -56,7 +79,7 @@ export async function POST(req: Request) {
 }
 
 // GET /api/ai/conversations - List user's conversations (last 7 days)
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const { orgId } = await auth()
@@ -64,11 +87,21 @@ export async function GET() {
 
     const dbUser = await getUserFromClerkId(clerkUserId)
 
+    // Project filter
+    const searchParams = new URL(req.url).searchParams
+    const projectIdParam = searchParams.get('projectId')
+    const projectId = projectIdParam ? Number(projectIdParam) : NaN
+
+    if (!projectIdParam || Number.isNaN(projectId)) {
+      return NextResponse.json({ error: 'projectId é obrigatório e deve ser numérico' }, { status: 400 })
+    }
+
     // Get conversations from last 7 days, ordered by last message
     const conversations = await db.chatConversation.findMany({
       where: {
         userId: dbUser.id,
         organizationId,
+        projectId,
         expiresAt: {
           gte: new Date(), // Only non-expired conversations
         },
