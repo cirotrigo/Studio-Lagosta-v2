@@ -22,6 +22,8 @@ import { useConversations, useConversation, useCreateConversation, useDeleteConv
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { History, Plus, MoreVertical } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
+import { useProjects } from '@/hooks/use-project'
+import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
 
 // Fallback static models (used if API fails)
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
@@ -68,10 +70,31 @@ export default function AIChatPage() {
   ])
 
   const searchParams = useSearchParams()
-  const router = useRouter()
-  const projectIdParam = searchParams.get('projectId')
-  const projectId = projectIdParam ? Number(projectIdParam) : NaN
-  const hasProject = Number.isFinite(projectId)
+  const initialProjectFromQuery = React.useMemo(() => {
+    const param = searchParams.get('projectId')
+    return param ? Number(param) : null
+  }, [searchParams])
+
+  const { data: projects, isLoading: isLoadingProjects } = useProjects()
+  const [selectedProjectId, setSelectedProjectId] = React.useState<number | null>(null)
+  const hasProject = selectedProjectId != null && !Number.isNaN(selectedProjectId)
+  const selectedProject = React.useMemo(
+    () => projects?.find(p => p.id === selectedProjectId),
+    [projects, selectedProjectId]
+  )
+
+  // Seleciona projeto inicial (query param se válido, senão primeiro da lista)
+  React.useEffect(() => {
+    if (selectedProjectId != null) return
+    if (!projects || projects.length === 0) return
+
+    if (initialProjectFromQuery && projects.some(p => p.id === initialProjectFromQuery)) {
+      setSelectedProjectId(initialProjectFromQuery)
+      return
+    }
+
+    setSelectedProjectId(projects[0].id)
+  }, [projects, initialProjectFromQuery, selectedProjectId])
 
   // Fetch available providers (only those with API keys)
   const { data: providersData, isLoading: isLoadingProviders } = useAIProviders()
@@ -91,10 +114,11 @@ export default function AIChatPage() {
   const [historyOpen, setHistoryOpen] = React.useState(false)
 
   // Fetch conversations and current conversation
-  const { data: conversationsData } = useConversations(hasProject ? projectId : undefined)
-  const { data: currentConversation } = useConversation(currentConversationId, hasProject ? projectId : undefined)
-  const createConversation = useCreateConversation(hasProject ? projectId : undefined)
-  const deleteConversation = useDeleteConversation(hasProject ? projectId : undefined)
+  const { data: conversationsData } = useConversations(hasProject ? selectedProjectId : undefined)
+  const { data: currentConversation } = useConversation(currentConversationId, hasProject ? selectedProjectId : undefined)
+  const createConversation = useCreateConversation(hasProject ? selectedProjectId : undefined)
+  const deleteConversation = useDeleteConversation(hasProject ? selectedProjectId : undefined)
+  const [hydratedConversationId, setHydratedConversationId] = React.useState<string | null>(null)
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -166,6 +190,7 @@ export default function AIChatPage() {
   const modelRef = React.useRef(model)
   const attachmentsRef = React.useRef(readyAttachments)
   const conversationIdRef = React.useRef(currentConversationId)
+  const projectIdRef = React.useRef<number | null>(null)
 
   // Update refs when values change
   React.useEffect(() => {
@@ -173,18 +198,24 @@ export default function AIChatPage() {
     modelRef.current = model
     attachmentsRef.current = readyAttachments
     conversationIdRef.current = currentConversationId
-  }, [provider, model, readyAttachments, currentConversationId])
+    projectIdRef.current = hasProject ? selectedProjectId : null
+  }, [provider, model, readyAttachments, currentConversationId, hasProject, selectedProjectId])
 
   const { messages, sendMessage, status, stop, setMessages, regenerate } = useChat({
     transport: new DefaultChatTransport({
       api: '/api/ai/chat',
-      body: () => ({
-        provider: providerRef.current,
-        model: modelRef.current,
-        attachments: attachmentsRef.current.map(a => ({ name: a.name, url: a.url })),
-        conversationId: conversationIdRef.current,
-        projectId: hasProject ? projectId : undefined,
-      }),
+      body: () => {
+        if (!projectIdRef.current) {
+          throw new Error('Projeto não selecionado. Selecione um projeto antes de enviar.')
+        }
+        return {
+          provider: providerRef.current,
+          model: modelRef.current,
+          attachments: attachmentsRef.current.map(a => ({ name: a.name, url: a.url })),
+          conversationId: conversationIdRef.current,
+          projectId: projectIdRef.current,
+        }
+      },
     }),
     experimental_throttle: 60,
     onError(error) {
@@ -200,15 +231,37 @@ export default function AIChatPage() {
 
   // Load conversation messages when a conversation is selected
   React.useEffect(() => {
-    if (currentConversation?.messages) {
-      const loadedMessages = currentConversation.messages.map((msg) => ({
+    if (!currentConversation?.id) return
+    if (hydratedConversationId === currentConversation.id) return
+
+    const hasServerMessages = !!currentConversation.messages?.length
+    const hasLocalMessages = messages.length > 0
+
+    // Se o servidor já tem mensagens, hidrata. Caso contrário, não sobrescreve o que já está em streaming.
+    if (hasServerMessages) {
+      const loadedMessages = currentConversation.messages!.map((msg) => ({
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
         parts: [{ type: 'text' as const, text: msg.content }],
       }))
       setMessages(loadedMessages)
+      setHydratedConversationId(currentConversation.id)
+      return
     }
-  }, [currentConversation, setMessages])
+
+    // Se não há mensagens no servidor, mas o cliente já tem alguma (primeira pergunta), apenas marca como hidratado.
+    if (hasLocalMessages) {
+      setHydratedConversationId(currentConversation.id)
+    }
+  }, [currentConversation, hydratedConversationId, messages, setMessages])
+
+  // Ao trocar de projeto, limpar conversa selecionada e histórico carregado
+  React.useEffect(() => {
+    setCurrentConversationId(null)
+    conversationIdRef.current = null
+    setMessages([])
+    setHydratedConversationId(null)
+  }, [selectedProjectId, setMessages])
 
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
 
@@ -257,7 +310,7 @@ export default function AIChatPage() {
         initialModelSetRef.current = true
       }
     }
-  }, [provider, mode, openRouterModelsData, isLoadingModels, currentProviderData])
+  }, [provider, mode, model, openRouterModelsData, isLoadingModels, currentProviderData])
 
   const listRef = React.useRef<HTMLDivElement>(null)
   const endRef = React.useRef<HTMLDivElement>(null)
@@ -319,6 +372,10 @@ export default function AIChatPage() {
     e.preventDefault()
     const prompt = input.trim()
     if (!prompt) return
+    if (!hasProject) {
+      alert('Selecione um projeto para usar o chat.')
+      return
+    }
 
     // Clear input immediately after sending
     setInput('')
@@ -372,7 +429,7 @@ export default function AIChatPage() {
       return
     }
     if (!hasProject) {
-      alert('Informe um projectId na URL (?projectId=123) para usar o chat.')
+      alert('Selecione um projeto para usar o chat.')
       return
     }
 
@@ -461,21 +518,10 @@ export default function AIChatPage() {
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(true) }
   const onDragLeave = (e: React.DragEvent<HTMLDivElement>) => { e.preventDefault(); e.stopPropagation(); setDragActive(false) }
 
-  if (!hasProject) {
-    return (
-      <div className="max-w-3xl mx-auto p-6 space-y-3">
-        <h1 className="text-2xl font-semibold">Selecione um projeto</h1>
-        <p className="text-muted-foreground text-sm">
-          Adicione <code>?projectId=&lt;id-do-projeto&gt;</code> à URL para usar o chat com RAG isolado por projeto.
-        </p>
-      </div>
-    )
-  }
-
   // Create new conversation
   const handleNewConversation = async () => {
     if (!hasProject) {
-      alert('Informe um projectId na URL (?projectId=123) para criar conversas.')
+      alert('Selecione um projeto para criar conversas.')
       return
     }
 
@@ -485,6 +531,7 @@ export default function AIChatPage() {
       })
       setCurrentConversationId(newConv.id)
       setMessages([])
+      setHydratedConversationId(null)
       setHistoryOpen(false)
     } catch (error) {
       console.error('Error creating conversation:', error)
@@ -494,6 +541,8 @@ export default function AIChatPage() {
   // Select existing conversation
   const handleSelectConversation = (id: string) => {
     setCurrentConversationId(id)
+    setMessages([])
+    setHydratedConversationId(null)
     setHistoryOpen(false)
   }
 
@@ -551,303 +600,330 @@ export default function AIChatPage() {
   }, [credits?.creditsRemaining])
 
   return (
-    <>
-      {/* History Sidebar */}
-      <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="outline"
-            size="sm"
-            className="mb-3 gap-2"
-            onClick={() => setHistoryOpen(true)}
-          >
-            <History className="h-4 w-4" />
-            Histórico de Conversas
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-80 overflow-y-auto">
-          <SheetHeader>
-            <SheetTitle>Histórico de Conversas</SheetTitle>
-          </SheetHeader>
-
-          <div className="mt-6 space-y-2">
-            <Button
-              onClick={handleNewConversation}
-              className="w-full gap-2"
-              variant="default"
-            >
-              <Plus className="h-4 w-4" />
-              Nova Conversa
-            </Button>
-
-            <div className="mt-4 space-y-1">
-              {conversationsData?.conversations.map((conv) => (
-                <div
-                  key={conv.id}
-                  className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
-                    currentConversationId === conv.id ? 'bg-accent border-primary' : ''
-                  }`}
-                  onClick={() => handleSelectConversation(conv.id)}
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">
-                      {conv.title}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {conv._count?.messages || 0} mensagens · {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
-                    </div>
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
-                        }}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Excluir
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              ))}
-
-              {(!conversationsData?.conversations || conversationsData.conversations.length === 0) && (
-                <p className="text-center text-sm text-muted-foreground py-8">
-                  Nenhuma conversa ainda. Comece uma nova!
-                </p>
-              )}
-            </div>
-          </div>
-        </SheetContent>
-      </Sheet>
-
+    <div className="space-y-4">
       <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-        <div>
-          Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
-          {provider === 'openrouter' && model.includes(':free') && (
-            <span className="ml-1 text-green-600 dark:text-green-400">(Gratuito)</span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {credits && (
-            <div className="hidden sm:flex items-center gap-2 mr-2">
-              <span className="text-xs">Créditos: <span className="font-medium text-foreground">{credits.creditsRemaining}</span></span>
-            </div>
-          )}
-          <div className="hidden sm:block">
-            <CreditStatus showUpgradeButton={false} />
-          </div>
-          <Button variant="ghost" size="icon" aria-label="Limpar chat" onClick={() => setMessages([])}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          {/* Stop button moved next to Enviar */}
-        </div>
-      </div>
-
-      <ScrollArea className="mb-3">
-        <div ref={listRef} className="flex flex-col gap-3 pr-2">
-          {messages.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              Selecione o provedor e o modelo, envie uma mensagem e acompanhe a resposta em tempo real.
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-muted-foreground">Projeto selecionado</p>
+            <p className="font-semibold">
+              {selectedProject?.name ?? (isLoadingProjects ? 'Carregando...' : 'Nenhum projeto')}
             </p>
-          )}
-          {deferredMessages.map((m, idx) => {
-            const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
-            const disableMarkdown =
-              mode === 'text' &&
-              normalizedRole === 'assistant' &&
-              status === 'streaming' &&
-              idx === deferredMessages.length - 1
-
-            // Extract text content from parts
-            const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
-
-            return (
-              <MessageBubble
-                key={m.id}
-                message={{
-                  id: m.id,
-                  role: normalizedRole,
-                  content
-                }}
-                onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
-                retryIndex={idx}
-                disableMarkdown={disableMarkdown}
-              />
-            )
-          })}
-          {(status === 'streaming' || generateImage.isPending) && (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : 'Gerando resposta...'}
-            </div>
-          )}
-          <div ref={endRef} />
-        </div>
-      </ScrollArea>
-
-      {/* Animated input concept */}
-      <div className={"relative rounded-2xl border bg-background/90 " + (dragActive ? 'border-primary ring-2 ring-primary/30' : 'border-border/60')} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}>
-
-        <form onSubmit={mode === 'image' ? handleSubmitImage : handleSubmitText} className="p-3">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Digite sua mensagem... (Shift+Enter para nova linha)"
-            rows={2}
-            className="min-h-[60px] w-full resize-none rounded-md bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
-          />
-          <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected} multiple accept={mode==='image' ? 'image/*' : undefined} />
-          <AnimatePresence>
-            {attachments.length > 0 && (
-              <motion.div
-                className="mt-2 flex flex-wrap gap-2"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-              >
-                {attachments.map((att, i) => (
-                  <motion.div
-                    key={i}
-                    className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs"
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
-                  >
-                    {att.url ? (
-                      <a href={att.url} target="_blank" rel="noreferrer" className="underline hover:no-underline">{att.name}</a>
-                    ) : (
-                      <span>{att.name}</span>
-                    )}
-                    {att.status === 'uploading' && (
-                      <span className="text-muted-foreground">{att.progress}%</span>
-                    )}
-                    {att.status === 'error' && (
-                      <span className="text-destructive">{att.error || 'Falhou'}</span>
-                    )}
-                    <button type="button" onClick={() => {
-                      const a = attachments[i]
-                      if (a && a.status === 'uploading') {
-                        const xhr = uploadRefs.current[a.id]
-                        try { xhr?.abort() } catch {}
-                        delete uploadRefs.current[a.id]
-                      }
-                      removeAttachment(i)
-                    }} className="text-muted-foreground hover:text-foreground">
-                      <XIcon className="h-3 w-3" />
-                    </button>
-                  </motion.div>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-            <div className="flex items-center gap-2">
-              <Button type="button" variant="ghost" size="icon" onClick={handleAttachFile} aria-label="Anexar">
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              
-              {/* Mode selector */}
-              <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
-                <DropdownMenuTrigger asChild>
-                  <DropdownTriggerButton isOpen={modeMenuOpen} aria-label="Selecionar modo">
-                    {mode === 'image' ? (
-                      <ImageIcon className="h-4 w-4" />
-                    ) : (
-                      <MessageSquare className="h-4 w-4" />
-                    )}
-                    <span className="truncate max-w-[100px]">{mode === 'text' ? 'Texto' : 'Imagem'}</span>
-                  </DropdownTriggerButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem onClick={() => setMode('text')}>
-                    <MessageSquare className="h-4 w-4 mr-2" /> Texto
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => setMode('image')}>
-                    <ImageIcon className="h-4 w-4 mr-2" /> Imagem
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              {/* Provider selector */}
-              <DropdownMenu open={mode === 'image' ? false : providerMenuOpen} onOpenChange={(o)=>{ if (mode !== 'image') setProviderMenuOpen(o) }}>
-                <DropdownMenuTrigger asChild>
-                  <DropdownTriggerButton isOpen={providerMenuOpen} aria-label="Selecionar provedor" disabled={mode==='image' || isLoadingProviders}>
-                    <Bot className="h-4 w-4" />
-                    <span className="truncate max-w-[140px]">{availableProviders.find((p) => p.key === provider)?.name || 'Carregando...'}</span>
-                  </DropdownTriggerButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  {availableProviders.length === 0 ? (
-                    <DropdownMenuItem disabled>
-                      Nenhum provedor disponível
-                    </DropdownMenuItem>
-                  ) : (
-                    availableProviders.map((p) => (
-                      <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
-                        {p.name}
-                      </DropdownMenuItem>
-                    ))
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-              {/* Model selector */}
-              <Autocomplete
-                items={modelItems}
-                value={model}
-                onChange={setModel}
-                icon={<Sparkles className="h-4 w-4" />}
-                buttonAriaLabel="Selecionar modelo"
-                placeholder="Buscar modelo..."
-                className="min-w-[200px]"
-              />
-            </div>
-            {mode === 'image' ? (
-              <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_image_generation')} créditos</span>
-            ) : (
-              <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_chat')} crédito</span>
-            )}
-            {status === 'streaming' ? (
-              <Button
-                type="button"
-                onClick={() => stop?.()}
-                variant="secondary"
-                className="gap-2"
-                aria-label="Parar geração"
-              >
-                <Square className="h-4 w-4" />
-                Parar
-              </Button>
-            ) : (
-              <Button
-                type="submit"
-                disabled={
-                  hasUploadingAttachments ||
-                  (mode === 'image' && readyAttachments.length === 0) ||
-                  !input.trim() ||
-                  status !== 'ready' ||
-                  (mode === 'image' ? !canPerformOperation('ai_image_generation') : !canPerformOperation('ai_chat'))
-                }
-                className="gap-2"
-              >
-                {generateImage.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                Enviar
-              </Button>
-            )}
           </div>
-        </form>
-      </div>
-    </Card>
-    </>
+          <ProjectSelector
+            projects={projects || []}
+            value={selectedProjectId}
+            onChange={setSelectedProjectId}
+            isLoading={isLoadingProjects}
+          />
+        </div>
+      </Card>
+
+      {!hasProject ? (
+        <Card className="p-4">
+          <p className="text-sm text-muted-foreground">
+            Selecione um projeto para habilitar o chat com RAG isolado e histórico filtrado.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {/* History Sidebar */}
+          <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
+            <SheetTrigger asChild>
+              <Button
+                variant="outline"
+                size="sm"
+                className="gap-2"
+                onClick={() => setHistoryOpen(true)}
+              >
+                <History className="h-4 w-4" />
+                Histórico de Conversas
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-80 overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Histórico de Conversas</SheetTitle>
+              </SheetHeader>
+
+              <div className="mt-6 space-y-2">
+                <Button
+                  onClick={handleNewConversation}
+                  className="w-full gap-2"
+                  variant="default"
+                >
+                  <Plus className="h-4 w-4" />
+                  Nova Conversa
+                </Button>
+
+                <div className="mt-4 space-y-1">
+                  {conversationsData?.conversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
+                        currentConversationId === conv.id ? 'bg-accent border-primary' : ''
+                      }`}
+                      onClick={() => handleSelectConversation(conv.id)}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">
+                          {conv.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {conv._count?.messages || 0} mensagens · {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
+                        </div>
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                            }}
+                            className="text-destructive"
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Excluir
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+                  ))}
+
+                  {(!conversationsData?.conversations || conversationsData.conversations.length === 0) && (
+                    <p className="text-center text-sm text-muted-foreground py-8">
+                      Nenhuma conversa ainda. Comece uma nova!
+                    </p>
+                  )}
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+
+          <Card className="p-4">
+            <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <div>
+                Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
+                {provider === 'openrouter' && model.includes(':free') && (
+                  <span className="ml-1 text-green-600 dark:text-green-400">(Gratuito)</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {credits && (
+                  <div className="hidden sm:flex items-center gap-2 mr-2">
+                    <span className="text-xs">Créditos: <span className="font-medium text-foreground">{credits.creditsRemaining}</span></span>
+                  </div>
+                )}
+                <div className="hidden sm:block">
+                  <CreditStatus showUpgradeButton={false} />
+                </div>
+                <Button variant="ghost" size="icon" aria-label="Limpar chat" onClick={() => setMessages([])}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+                {/* Stop button moved next to Enviar */}
+              </div>
+            </div>
+
+            <ScrollArea className="mb-3">
+              <div ref={listRef} className="flex flex-col gap-3 pr-2">
+                {messages.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    Selecione o provedor e o modelo, envie uma mensagem e acompanhe a resposta em tempo real.
+                  </p>
+                )}
+                {deferredMessages.map((m, idx) => {
+                  const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
+                  const disableMarkdown =
+                    mode === 'text' &&
+                    normalizedRole === 'assistant' &&
+                    status === 'streaming' &&
+                    idx === deferredMessages.length - 1
+
+                  // Extract text content from parts
+                  const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
+
+                  return (
+                    <MessageBubble
+                      key={m.id}
+                      message={{
+                        id: m.id,
+                        role: normalizedRole,
+                        content
+                      }}
+                      onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
+                      retryIndex={idx}
+                      disableMarkdown={disableMarkdown}
+                    />
+                  )
+                })}
+                {(status === 'streaming' || generateImage.isPending) && (
+                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : 'Gerando resposta...'}
+                  </div>
+                )}
+                <div ref={endRef} />
+              </div>
+            </ScrollArea>
+
+            {/* Animated input concept */}
+            <div className={"relative rounded-2xl border bg-background/90 " + (dragActive ? 'border-primary ring-2 ring-primary/30' : 'border-border/60')} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}>
+
+              <form onSubmit={mode === 'image' ? handleSubmitImage : handleSubmitText} className="p-3">
+                <textarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Digite sua mensagem... (Shift+Enter para nova linha)"
+                  rows={2}
+                  className="min-h-[60px] w-full resize-none rounded-md bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                />
+                <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected} multiple accept={mode==='image' ? 'image/*' : undefined} />
+                <AnimatePresence>
+                  {attachments.length > 0 && (
+                    <motion.div
+                      className="mt-2 flex flex-wrap gap-2"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                    >
+                      {attachments.map((att, i) => (
+                        <motion.div
+                          key={i}
+                          className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs"
+                          initial={{ opacity: 0, scale: 0.95 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.95 }}
+                        >
+                          {att.url ? (
+                            <a href={att.url} target="_blank" rel="noreferrer" className="underline hover:no-underline">{att.name}</a>
+                          ) : (
+                            <span>{att.name}</span>
+                          )}
+                          {att.status === 'uploading' && (
+                            <span className="text-muted-foreground">{att.progress}%</span>
+                          )}
+                          {att.status === 'error' && (
+                            <span className="text-destructive">{att.error || 'Falhou'}</span>
+                          )}
+                          <button type="button" onClick={() => {
+                            const a = attachments[i]
+                            if (a && a.status === 'uploading') {
+                              const xhr = uploadRefs.current[a.id]
+                              try { xhr?.abort() } catch {}
+                              delete uploadRefs.current[a.id]
+                            }
+                            removeAttachment(i)
+                          }} className="text-muted-foreground hover:text-foreground">
+                            <XIcon className="h-3 w-3" />
+                          </button>
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
+                  <div className="flex items-center gap-2">
+                    <Button type="button" variant="ghost" size="icon" onClick={handleAttachFile} aria-label="Anexar">
+                      <Paperclip className="h-4 w-4" />
+                    </Button>
+                    
+                    {/* Mode selector */}
+                    <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
+                      <DropdownMenuTrigger asChild>
+                        <DropdownTriggerButton isOpen={modeMenuOpen} aria-label="Selecionar modo">
+                          {mode === 'image' ? (
+                            <ImageIcon className="h-4 w-4" />
+                          ) : (
+                            <MessageSquare className="h-4 w-4" />
+                          )}
+                          <span className="truncate max-w-[100px]">{mode === 'text' ? 'Texto' : 'Imagem'}</span>
+                        </DropdownTriggerButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={() => setMode('text')}>
+                          <MessageSquare className="h-4 w-4 mr-2" /> Texto
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => setMode('image')}>
+                          <ImageIcon className="h-4 w-4 mr-2" /> Imagem
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    {/* Provider selector */}
+                    <DropdownMenu open={mode === 'image' ? false : providerMenuOpen} onOpenChange={(o)=>{ if (mode !== 'image') setProviderMenuOpen(o) }}>
+                      <DropdownMenuTrigger asChild>
+                        <DropdownTriggerButton isOpen={providerMenuOpen} aria-label="Selecionar provedor" disabled={mode==='image' || isLoadingProviders}>
+                          <Bot className="h-4 w-4" />
+                          <span className="truncate max-w-[140px]">{availableProviders.find((p) => p.key === provider)?.name || 'Carregando...'}</span>
+                        </DropdownTriggerButton>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="start">
+                        {availableProviders.length === 0 ? (
+                          <DropdownMenuItem disabled>
+                            Nenhum provedor disponível
+                          </DropdownMenuItem>
+                        ) : (
+                          availableProviders.map((p) => (
+                            <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
+                              {p.name}
+                            </DropdownMenuItem>
+                          ))
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {/* Model selector */}
+                    <Autocomplete
+                      items={modelItems}
+                      value={model}
+                      onChange={setModel}
+                      icon={<Sparkles className="h-4 w-4" />}
+                      buttonAriaLabel="Selecionar modelo"
+                      placeholder="Buscar modelo..."
+                      className="min-w-[200px]"
+                    />
+                  </div>
+                  {mode === 'image' ? (
+                    <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_image_generation')} créditos</span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_chat')} crédito</span>
+                  )}
+                  {status === 'streaming' ? (
+                    <Button
+                      type="button"
+                      onClick={() => stop?.()}
+                      variant="secondary"
+                      className="gap-2"
+                      aria-label="Parar geração"
+                    >
+                      <Square className="h-4 w-4" />
+                      Parar
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      disabled={
+                        hasUploadingAttachments ||
+                        (mode === 'image' && readyAttachments.length === 0) ||
+                        !input.trim() ||
+                        status !== 'ready' ||
+                        (mode === 'image' ? !canPerformOperation('ai_image_generation') : !canPerformOperation('ai_chat'))
+                      }
+                      className="gap-2"
+                    >
+                      {generateImage.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      Enviar
+                    </Button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </Card>
+        </div>
+      )}
+    </div>
   )
 }
