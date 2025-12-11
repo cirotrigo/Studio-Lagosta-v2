@@ -415,7 +415,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[1400px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
             {initialData ? 'Editar Post' : 'Criar Novo Post'}
@@ -444,7 +444,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
                     form.setValue('postType', type.value as PostFormData['postType'])
                     // Reset media if switching to/from carousel
                     if ((type.value === 'CAROUSEL' && selectedMedia.length > 10) ||
-                        (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
+                      (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
                       setSelectedMedia([])
                       form.setValue('mediaUrls', [])
                       form.setValue('generationIds', [])
@@ -466,10 +466,10 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
               {postType === 'CAROUSEL'
                 ? 'Selecione de 2 a 10 imagens para o carrossel'
                 : postType === 'REEL'
-                ? 'Selecione 1 vídeo para o reel'
-                : postType === 'STORY'
-                ? 'Selecione 1 imagem ou vídeo para o story'
-                : 'Selecione 1 imagem'}
+                  ? 'Selecione 1 vídeo para o reel'
+                  : postType === 'STORY'
+                    ? 'Selecione 1 imagem ou vídeo para o story'
+                    : 'Selecione 1 imagem'}
             </p>
             <MediaUploadSystem
               projectId={projectId}
@@ -642,9 +642,9 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
             >
               {(createPost.isPending || updatePost.isPending) ? 'Processando...' :
                 postId ? 'Salvar Alterações' :
-                scheduleType === 'IMMEDIATE' ? 'Postar Agora' :
-                scheduleType === 'SCHEDULED' ? 'Agendar Post' :
-                'Criar Série Recorrente'}
+                  scheduleType === 'IMMEDIATE' ? 'Postar Agora' :
+                    scheduleType === 'SCHEDULED' ? 'Agendar Post' :
+                      'Criar Série Recorrente'}
             </Button>
           </div>
         </form>

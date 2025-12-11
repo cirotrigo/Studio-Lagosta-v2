@@ -417,7 +417,7 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
   // Initial aspect ratio setup
   React.useEffect(() => {
     if (isFolder) {
-      setCardAspectRatio(1.2)
+      setCardAspectRatio(1)
     } else {
       setCardAspectRatio(0.8) // Default for files
       setLightboxDimensions({
@@ -536,15 +536,16 @@ function ItemCard({ item, isSelected, selectionIndex, onClick, isFolder }: ItemC
         style={{ aspectRatio: cardAspectRatio }}
       >
         {isFolder ? (
-          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-2 bg-muted/20">
             <button
-              className="flex h-full w-full flex-col items-center justify-center focus:outline-none gap-2"
-            // onClick is handled by parent div
+              className="flex h-full w-full flex-col items-center justify-center gap-2 focus:outline-none"
+              // onClick is handled by parent div
+              title={item.name}
             >
-              <Folder className="h-16 w-16 text-sky-500 fill-sky-500 drop-shadow-md" strokeWidth={1.5} />
-              <span className="text-xs text-center line-clamp-2 px-2 opacity-70 break-all text-foreground">
+              <Folder className="h-12 w-12 text-primary/70" />
+              <p className="px-1 text-[10px] font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
                 {item.name}
-              </span>
+              </p>
             </button>
           </div>
         ) : (

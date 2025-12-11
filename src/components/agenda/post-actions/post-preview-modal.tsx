@@ -213,11 +213,11 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const referenceDate = getPostDate(post)
   const scheduledTimeLabel = referenceDate
     ? referenceDate.toLocaleDateString('pt-BR', {
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
     : post.scheduleType === 'IMMEDIATE'
       ? 'Enviando agora'
       : 'Horário não definido'
@@ -252,340 +252,340 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
       <Dialog open={open} onOpenChange={handleDialogOpenChange}>
         <DialogContent className={cn(
           "max-h-[90vh] overflow-hidden flex flex-col",
-          isStory ? "max-w-sm" : "max-w-md"
+          isStory ? "max-w-md" : "max-w-2xl"
         )}>
           <VisuallyHidden>
             <DialogTitle>Preview do Post</DialogTitle>
           </VisuallyHidden>
 
           <div className="overflow-y-auto flex-1 space-y-4">
-          {/* Header */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 text-muted-foreground" />
-                <span className="text-sm font-medium">
-                  {scheduledTimeLabel}
-                </span>
-                <Badge variant="outline" className="text-xs">
-                  {post.scheduleType === 'IMMEDIATE' && 'Imediato'}
-                  {post.scheduleType === 'SCHEDULED' && 'Agendado'}
-                  {post.scheduleType === 'RECURRING' && 'Recorrente'}
-                </Badge>
+            {/* Header */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-muted-foreground" />
+                  <span className="text-sm font-medium">
+                    {scheduledTimeLabel}
+                  </span>
+                  <Badge variant="outline" className="text-xs">
+                    {post.scheduleType === 'IMMEDIATE' && 'Imediato'}
+                    {post.scheduleType === 'SCHEDULED' && 'Agendado'}
+                    {post.scheduleType === 'RECURRING' && 'Recorrente'}
+                  </Badge>
+                </div>
+
+                {getPostTypeBadge()}
               </div>
 
-              {getPostTypeBadge()}
+              <div className="flex items-center gap-2">
+                {project ? (
+                  <>
+                    <div className={cn(
+                      "w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs overflow-hidden",
+                      (project.logoUrl || (project as any).Logo?.[0]?.fileUrl)
+                        ? "bg-white border-2 border-border"
+                        : "bg-gradient-to-br from-pink-500 to-purple-500"
+                    )}>
+                      {(project.logoUrl || (project as any).Logo?.[0]?.fileUrl) ? (
+                        <Image
+                          src={project.logoUrl || (project as any).Logo![0].fileUrl}
+                          alt={project.name}
+                          width={32}
+                          height={32}
+                          className="object-contain p-0.5"
+                          priority // OPTIMIZED: Logo loads with priority
+                          quality={70} // OPTIMIZED: Reduced from 75
+                          placeholder="blur"
+                          blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
+                          unoptimized={isExternalImage(project.logoUrl || (project as any).Logo![0].fileUrl)}
+                        />
+                      ) : (
+                        project.name.substring(0, 2).toUpperCase()
+                      )}
+                    </div>
+                    <span className="font-semibold text-sm">{project.instagramUsername || project.name}</span>
+                  </>
+                ) : (
+                  <>
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+                      ...
+                    </div>
+                    <span className="font-semibold text-sm">Carregando...</span>
+                  </>
+                )}
+              </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {project ? (
+            {/* Preview da mídia */}
+            {mediaUrls.length > 0 && mediaUrls[0] && (
+              <div className="relative group">
+                {/* Container com proporção baseada no tipo de post */}
+                <div
+                  className={cn(
+                    "relative overflow-hidden rounded-lg bg-muted",
+                    isStory ? "aspect-[9/16]" : "aspect-square",
+                    isCarousel && "cursor-pointer select-none"
+                  )}
+                  onTouchStart={handleTouchStart}
+                  onTouchMove={handleTouchMove}
+                  onTouchEnd={handleTouchEnd}
+                >
+                  {isCurrentMediaVideo ? (
+                    <>
+                      <video
+                        key={currentImageIndex}
+                        src={currentMediaUrl}
+                        className="absolute inset-0 w-full h-full object-cover"
+                        controls
+                        loop
+                        playsInline
+                        preload="metadata"
+                      >
+                        Seu navegador não suporta vídeos.
+                      </video>
+                      {/* Badge de vídeo */}
+                      <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md flex items-center gap-1">
+                        <VideoIcon className="w-3 h-3 text-white" />
+                        <span className="text-xs text-white font-medium">Vídeo</span>
+                      </div>
+                    </>
+                  ) : (
+                    <Image
+                      key={currentImageIndex}
+                      src={currentMediaUrl || ''}
+                      alt={post.caption || 'Prévia do post'}
+                      fill
+                      sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
+                      className="object-cover transition-opacity duration-300"
+                      priority={currentImageIndex === 0} // OPTIMIZED: Priority for first image
+                      loading={currentImageIndex === 0 ? undefined : "lazy"}
+                      quality={80} // OPTIMIZED: Increased to 80 for preview (was 75)
+                      placeholder="blur"
+                      blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
+                      unoptimized={isExternalImage(currentMediaUrl || '')}
+                    />
+                  )}
+
+                  {/* Botões de navegação do carrossel */}
+                  {isCarousel && (
+                    <>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handlePrevImage}
+                      >
+                        <ChevronLeft className="w-6 h-6" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={handleNextImage}
+                      >
+                        <ChevronRight className="w-6 h-6" />
+                      </Button>
+                    </>
+                  )}
+
+                  {/* Indicadores de carrossel (dots) */}
+                  {isCarousel && (
+                    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+                      {mediaUrls.map((_, index) => (
+                        <button
+                          key={index}
+                          onClick={() => setCurrentImageIndex(index)}
+                          className={cn(
+                            "w-1.5 h-1.5 rounded-full transition-all",
+                            index === currentImageIndex
+                              ? "bg-white w-6"
+                              : "bg-white/50 hover:bg-white/75"
+                          )}
+                          aria-label={`Ir para imagem ${index + 1}`}
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Badge contador de carrossel */}
+                  {isCarousel && (
+                    <Badge className="absolute top-2 right-2">
+                      {currentImageIndex + 1}/{mediaUrls.length}
+                    </Badge>
+                  )}
+
+                  {/* Badge de recorrente - ajustado para não sobrepor badge de vídeo */}
+                  {post.isRecurring && !isCurrentMediaVideo && (
+                    <Badge className="absolute top-2 left-2" variant="secondary">
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Recorrente
+                    </Badge>
+                  )}
+                  {post.isRecurring && isCurrentMediaVideo && (
+                    <Badge className="absolute bottom-2 left-2" variant="secondary">
+                      <RefreshCw className="w-3 h-3 mr-1" />
+                      Recorrente
+                    </Badge>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Caption (se houver) */}
+            {post.caption && (
+              <div className="max-h-32 overflow-y-auto text-sm text-muted-foreground border rounded-lg p-3 bg-muted/20">
+                {post.caption}
+              </div>
+            )}
+
+            {/* Status Badge */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <Badge
+                variant={
+                  post.status === 'SCHEDULED' ? 'default' :
+                    post.status === 'POSTING' ? 'default' :
+                      post.status === 'POSTED' ? 'secondary' :
+                        post.status === 'FAILED' ? 'destructive' :
+                          'outline'
+                }
+              >
+                {post.status === 'SCHEDULED' && 'Agendado'}
+                {post.status === 'POSTING' && 'Postando...'}
+                {post.status === 'POSTED' && 'Postado'}
+                {post.status === 'FAILED' && 'Falhou'}
+                {post.status === 'DRAFT' && 'Rascunho'}
+              </Badge>
+
+              {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
+              {post.publishType === 'REMINDER' && (
+                <Badge
+                  className="bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-1 font-semibold text-xs"
+                  title="Lembrete no Buffer - não publicado no Instagram"
+                >
+                  <Bell className="w-3 h-3" />
+                  <span>Lembrete</span>
+                </Badge>
+              )}
+
+              {/* Badges de Verificação - apenas para Stories já enviados e NÃO lembretes */}
+              {isStory && post.publishType !== 'REMINDER' && (post.status === 'POSTED' || post.status === 'FAILED') && (
                 <>
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-xs overflow-hidden",
-                    (project.logoUrl || (project as any).Logo?.[0]?.fileUrl)
-                      ? "bg-white border-2 border-border"
-                      : "bg-gradient-to-br from-pink-500 to-purple-500"
-                  )}>
-                    {(project.logoUrl || (project as any).Logo?.[0]?.fileUrl) ? (
-                      <Image
-                        src={project.logoUrl || (project as any).Logo![0].fileUrl}
-                        alt={project.name}
-                        width={32}
-                        height={32}
-                        className="object-contain p-0.5"
-                        priority // OPTIMIZED: Logo loads with priority
-                        quality={70} // OPTIMIZED: Reduced from 75
-                        placeholder="blur"
-                        blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNmZmZmZmYiLz48L3N2Zz4="
-                        unoptimized={isExternalImage(project.logoUrl || (project as any).Logo![0].fileUrl)}
-                      />
-                    ) : (
-                      project.name.substring(0, 2).toUpperCase()
-                    )}
-                  </div>
-                  <span className="font-semibold text-sm">{project.instagramUsername || project.name}</span>
-                </>
-              ) : (
-                <>
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
-                    ...
-                  </div>
-                  <span className="font-semibold text-sm">Carregando...</span>
+                  {post.verificationStatus === 'VERIFIED' && (
+                    <Badge
+                      className="bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-1 font-semibold text-xs"
+                      title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
+                    </Badge>
+                  )}
+                  {post.verificationStatus === 'VERIFICATION_FAILED' && (
+                    <Badge
+                      className="bg-red-600 text-white hover:bg-red-700 flex items-center gap-1 font-semibold text-xs"
+                      title="Não encontrado no Instagram após 3 tentativas"
+                    >
+                      <ShieldAlert className="w-3 h-3" />
+                      <span>Instagram ✗</span>
+                    </Badge>
+                  )}
+                  {post.verificationStatus === 'PENDING' && (
+                    <Badge
+                      variant="outline"
+                      className="flex items-center gap-1 border-blue-400 text-blue-600 text-xs"
+                      title="Aguardando verificação no Instagram"
+                    >
+                      <Clock className="w-3 h-3 animate-pulse" />
+                      <span>Verificando...</span>
+                    </Badge>
+                  )}
                 </>
               )}
             </div>
-          </div>
 
-          {/* Preview da mídia */}
-          {mediaUrls.length > 0 && mediaUrls[0] && (
-            <div className="relative group">
-              {/* Container com proporção baseada no tipo de post */}
-              <div
-                className={cn(
-                  "relative overflow-hidden rounded-lg bg-muted",
-                  isStory ? "aspect-[9/16]" : "aspect-square",
-                  isCarousel && "cursor-pointer select-none"
-                )}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
-                {isCurrentMediaVideo ? (
-                  <>
-                    <video
-                      key={currentImageIndex}
-                      src={currentMediaUrl}
-                      className="absolute inset-0 w-full h-full object-cover"
-                      controls
-                      loop
-                      playsInline
-                      preload="metadata"
-                    >
-                      Seu navegador não suporta vídeos.
-                    </video>
-                    {/* Badge de vídeo */}
-                    <div className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm px-2 py-1 rounded-md flex items-center gap-1">
-                      <VideoIcon className="w-3 h-3 text-white" />
-                      <span className="text-xs text-white font-medium">Vídeo</span>
-                    </div>
-                  </>
-                ) : (
-                  <Image
-                    key={currentImageIndex}
-                    src={currentMediaUrl || ''}
-                    alt={post.caption || 'Prévia do post'}
-                    fill
-                    sizes={isStory ? "(max-width: 768px) 80vw, 360px" : "(max-width: 768px) 80vw, 400px"}
-                    className="object-cover transition-opacity duration-300"
-                    priority={currentImageIndex === 0} // OPTIMIZED: Priority for first image
-                    loading={currentImageIndex === 0 ? undefined : "lazy"}
-                    quality={80} // OPTIMIZED: Increased to 80 for preview (was 75)
-                    placeholder="blur"
-                    blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
-                    unoptimized={isExternalImage(currentMediaUrl || '')}
-                  />
-                )}
-
-                {/* Botões de navegação do carrossel */}
-                {isCarousel && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={handlePrevImage}
-                    >
-                      <ChevronLeft className="w-6 h-6" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                      onClick={handleNextImage}
-                    >
-                      <ChevronRight className="w-6 h-6" />
-                    </Button>
-                  </>
-                )}
-
-                {/* Indicadores de carrossel (dots) */}
-                {isCarousel && (
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
-                    {mediaUrls.map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setCurrentImageIndex(index)}
-                        className={cn(
-                          "w-1.5 h-1.5 rounded-full transition-all",
-                          index === currentImageIndex
-                            ? "bg-white w-6"
-                            : "bg-white/50 hover:bg-white/75"
-                        )}
-                        aria-label={`Ir para imagem ${index + 1}`}
-                      />
-                    ))}
-                  </div>
-                )}
-
-                {/* Badge contador de carrossel */}
-                {isCarousel && (
-                  <Badge className="absolute top-2 right-2">
-                    {currentImageIndex + 1}/{mediaUrls.length}
-                  </Badge>
-                )}
-
-                {/* Badge de recorrente - ajustado para não sobrepor badge de vídeo */}
-                {post.isRecurring && !isCurrentMediaVideo && (
-                  <Badge className="absolute top-2 left-2" variant="secondary">
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Recorrente
-                  </Badge>
-                )}
-                {post.isRecurring && isCurrentMediaVideo && (
-                  <Badge className="absolute bottom-2 left-2" variant="secondary">
-                    <RefreshCw className="w-3 h-3 mr-1" />
-                    Recorrente
-                  </Badge>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Caption (se houver) */}
-          {post.caption && (
-            <div className="max-h-32 overflow-y-auto text-sm text-muted-foreground border rounded-lg p-3 bg-muted/20">
-              {post.caption}
-            </div>
-          )}
-
-          {/* Status Badge */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <Badge
-              variant={
-                post.status === 'SCHEDULED' ? 'default' :
-                post.status === 'POSTING' ? 'default' :
-                post.status === 'POSTED' ? 'secondary' :
-                post.status === 'FAILED' ? 'destructive' :
-                'outline'
-              }
-            >
-              {post.status === 'SCHEDULED' && 'Agendado'}
-              {post.status === 'POSTING' && 'Postando...'}
-              {post.status === 'POSTED' && 'Postado'}
-              {post.status === 'FAILED' && 'Falhou'}
-              {post.status === 'DRAFT' && 'Rascunho'}
-            </Badge>
-
-            {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
-            {post.publishType === 'REMINDER' && (
-              <Badge
-                className="bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-1 font-semibold text-xs"
-                title="Lembrete no Buffer - não publicado no Instagram"
-              >
-                <Bell className="w-3 h-3" />
-                <span>Lembrete</span>
-              </Badge>
-            )}
-
-            {/* Badges de Verificação - apenas para Stories já enviados e NÃO lembretes */}
-            {isStory && post.publishType !== 'REMINDER' && (post.status === 'POSTED' || post.status === 'FAILED') && (
-              <>
-                {post.verificationStatus === 'VERIFIED' && (
-                  <Badge
-                    className="bg-emerald-500 text-white hover:bg-emerald-600 flex items-center gap-1 font-semibold text-xs"
-                    title={post.verifiedByFallback ? 'Verificado no Instagram (por timestamp)' : 'Verificado no Instagram (por TAG)'}
-                  >
-                    <ShieldCheck className="w-3 h-3" />
-                    <span>{post.verifiedByFallback ? 'Instagram ✓*' : 'Instagram ✓'}</span>
-                  </Badge>
-                )}
-                {post.verificationStatus === 'VERIFICATION_FAILED' && (
-                  <Badge
-                    className="bg-red-600 text-white hover:bg-red-700 flex items-center gap-1 font-semibold text-xs"
-                    title="Não encontrado no Instagram após 3 tentativas"
-                  >
-                    <ShieldAlert className="w-3 h-3" />
-                    <span>Instagram ✗</span>
-                  </Badge>
-                )}
-                {post.verificationStatus === 'PENDING' && (
-                  <Badge
-                    variant="outline"
-                    className="flex items-center gap-1 border-blue-400 text-blue-600 text-xs"
-                    title="Aguardando verificação no Instagram"
-                  >
-                    <Clock className="w-3 h-3 animate-pulse" />
-                    <span>Verificando...</span>
-                  </Badge>
-                )}
-              </>
-            )}
-          </div>
-
-          {/* Ações */}
-          <div className="flex items-center gap-2 pt-4 border-t">
-            {/* Botão para abrir story verificado no Instagram */}
-            {isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink && (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => window.open(post.verifiedPermalink!, '_blank', 'noopener,noreferrer')}
-                className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>Ver Story no Instagram</span>
-              </Button>
-            )}
-
-            {/* Mensagem quando post foi publicado */}
-            {post.status === 'POSTED' && !(isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink) && (
-              <div className="flex-1 text-sm text-green-600 dark:text-green-400 italic text-center py-2 bg-green-50 dark:bg-green-950/20 rounded-md">
-                ✓ Post publicado com sucesso!
-              </div>
-            )}
-
-            {/* Botões padrão para posts não enviados */}
-            {post.status !== 'POSTED' && post.status !== 'POSTING' && (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setRescheduleOpen(true)}
-                >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  Re-agendar
-                </Button>
-
+            {/* Ações */}
+            <div className="flex items-center gap-2 pt-4 border-t">
+              {/* Botão para abrir story verificado no Instagram */}
+              {isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink && (
                 <Button
                   variant="default"
                   size="sm"
-                  className="flex-1"
-                  onClick={handlePublishNow}
-                  disabled={publishNow.isPending}
+                  onClick={() => window.open(post.verifiedPermalink!, '_blank', 'noopener,noreferrer')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
                 >
-                  <Send className="w-4 h-4 mr-2" />
-                  {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar Agora'}
+                  <ExternalLink className="w-4 h-4" />
+                  <span>Ver Story no Instagram</span>
                 </Button>
-              </>
-            )}
+              )}
 
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleEdit}
-              disabled={!onEdit || post.status === 'POSTED' || post.status === 'POSTING'}
-            >
-              <Edit className="w-4 h-4 mr-2" />
-              Editar
-            </Button>
+              {/* Mensagem quando post foi publicado */}
+              {post.status === 'POSTED' && !(isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink) && (
+                <div className="flex-1 text-sm text-green-600 dark:text-green-400 italic text-center py-2 bg-green-50 dark:bg-green-950/20 rounded-md">
+                  ✓ Post publicado com sucesso!
+                </div>
+              )}
 
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="icon">
-                  <MoreHorizontal className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={handleDuplicate}>
-                  <Copy className="w-4 h-4 mr-2" />
-                  Duplicar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => {}}>
-                  Ver detalhes
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={handleDelete}
-                  className="text-red-600 focus:text-red-600"
-                  disabled={deletePost.isPending}
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Deletar
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+              {/* Botões padrão para posts não enviados */}
+              {post.status !== 'POSTED' && post.status !== 'POSTING' && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setRescheduleOpen(true)}
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Re-agendar
+                  </Button>
+
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="flex-1"
+                    onClick={handlePublishNow}
+                    disabled={publishNow.isPending}
+                  >
+                    <Send className="w-4 h-4 mr-2" />
+                    {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar Agora'}
+                  </Button>
+                </>
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleEdit}
+                disabled={!onEdit || post.status === 'POSTED' || post.status === 'POSTING'}
+              >
+                <Edit className="w-4 h-4 mr-2" />
+                Editar
+              </Button>
+
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={handleDuplicate}>
+                    <Copy className="w-4 h-4 mr-2" />
+                    Duplicar
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => { }}>
+                    Ver detalhes
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    onClick={handleDelete}
+                    className="text-red-600 focus:text-red-600"
+                    disabled={deletePost.isPending}
+                  >
+                    <Trash2 className="w-4 h-4 mr-2" />
+                    Deletar
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

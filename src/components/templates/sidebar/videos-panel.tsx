@@ -397,9 +397,8 @@ export function VideosPanel() {
                     {index > 0 && <ChevronRight className="h-3 w-3 flex-shrink-0" />}
                     <button
                       onClick={() => navigateToFolder(crumb.id, crumb.name)}
-                      className={`truncate max-w-[100px] hover:text-foreground ${
-                        index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
-                      }`}
+                      className={`truncate max-w-[100px] hover:text-foreground ${index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
+                        }`}
                       title={crumb.name}
                     >
                       {crumb.name}
@@ -441,9 +440,9 @@ export function VideosPanel() {
                       className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isFolder ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center">
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-2" title={item.name}>
                           <Folder className="h-12 w-12 text-primary/70" />
-                          <p className="mt-2 truncate px-2 text-xs font-medium text-foreground">
+                          <p className="px-1 text-xs font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
                             {item.name}
                           </p>
                         </div>
@@ -505,11 +504,10 @@ export function VideosPanel() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition ${
-              isDragging
+            className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition ${isDragging
                 ? 'border-primary bg-primary/10'
                 : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
-            }`}
+              }`}
             onClick={() => {
               if (!isBusy) {
                 fileInputRef.current?.click()

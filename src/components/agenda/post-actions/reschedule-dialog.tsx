@@ -72,7 +72,7 @@ export function RescheduleDialog({ post, open, onClose }: RescheduleDialogProps)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle>Re-agendar Post</DialogTitle>
         </DialogHeader>
@@ -84,9 +84,9 @@ export function RescheduleDialog({ post, open, onClose }: RescheduleDialogProps)
             <p className="font-medium">
               {post.scheduledDatetime
                 ? new Date(post.scheduledDatetime).toLocaleString('pt-BR', {
-                    dateStyle: 'full',
-                    timeStyle: 'short'
-                  })
+                  dateStyle: 'full',
+                  timeStyle: 'short'
+                })
                 : 'Não agendado'}
             </p>
           </div>

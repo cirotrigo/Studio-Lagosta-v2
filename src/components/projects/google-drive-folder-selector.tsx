@@ -276,7 +276,7 @@ export function DesktopGoogleDriveModal({
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
-        className="max-w-[1000px] h-[700px] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80vh] sm:max-w-[95vw] sm:h-[85vh]"
+        className="max-w-[1200px] h-[700px] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80vh] sm:max-w-[95vw] sm:h-[85vh]"
       >
         <DialogTitle className="sr-only">{headerTitle}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
@@ -580,7 +580,7 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
   // Initial aspect ratio setup
   React.useEffect(() => {
     if (isFolder) {
-      setCardAspectRatio(1.2)
+      setCardAspectRatio(1)
     } else {
       setCardAspectRatio(0.8) // Default for files
       setLightboxDimensions({
@@ -694,11 +694,14 @@ function ItemCard({ item, isSelected, multiSelect, onClick, onDoubleClick }: Ite
         style={{ aspectRatio: cardAspectRatio }}
       >
         {isFolder ? (
-          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
-            <Folder className="h-16 w-16 text-sky-500 fill-sky-500 drop-shadow-md" strokeWidth={1.5} />
-            <span className="text-xs text-center line-clamp-2 px-2 opacity-70 break-all text-foreground">
+          <div
+            className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-2 bg-muted/20"
+            title={item.name}
+          >
+            <Folder className="h-12 w-12 text-primary/70" />
+            <p className="px-1 text-[10px] font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
               {item.name}
-            </span>
+            </p>
           </div>
         ) : currentSrc ? (
           <>

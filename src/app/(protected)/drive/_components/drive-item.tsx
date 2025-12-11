@@ -87,7 +87,7 @@ export function DriveItem({
 
   React.useEffect(() => {
     if (!isImage) {
-      setCardAspectRatio(isFolder ? 1.2 : 0.8) // Folders a bit wider, standard files vertical-ish
+      setCardAspectRatio(isFolder ? 1 : 0.8) // Folders square, standard files vertical-ish
       setLightboxDimensions({
         width: isVideo ? 1920 : 1600,
         height: isVideo ? 1080 : 1600,
@@ -235,9 +235,17 @@ export function DriveItem({
             onError={() => setPreviewLoaded(true)}
           />
         ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-4 bg-muted/20">
+          <div className="flex h-full w-full flex-col items-center justify-center text-muted-foreground gap-2 p-2 bg-muted/20">
             {isFolder ? (
-              <Folder className="h-16 w-16 text-primary/80 drop-shadow-md" />
+              <div
+                className="flex h-full w-full flex-col items-center justify-center gap-2"
+                title={item.name}
+              >
+                <Folder className="h-12 w-12 text-primary/70" />
+                <p className="px-1 text-[10px] font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
+                  {item.name}
+                </p>
+              </div>
             ) : isVideo ? (
               <Video className="h-12 w-12 opacity-50" />
             ) : (
