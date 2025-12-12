@@ -198,45 +198,238 @@ export class StoryVerifier {
         continue
       }
 
-      for (const target of accountTargets) {
-        const attempt = target.post.verificationAttempts + 1
-        const match = this.findMatchingStory(target.post, stories, target.baseTimestamp)
+      // Tentar matching em lote para resolver ambiguidade
+      const batchResult = await this.batchMatchStories(accountTargets, stories, now)
 
-        if (match.type === 'tag' || match.type === 'fallback') {
-          await this.markVerified(target.post, match.story, now, {
-            verifiedByFallback: match.type === 'fallback',
+      summary.verified += batchResult.verified
+      summary.failed += batchResult.failed
+      summary.rescheduled += batchResult.rescheduled
+    }
+
+    return summary
+  }
+
+  /**
+   * Faz matching em lote para resolver ambiguidade quando múltiplos posts foram agendados no mesmo horário.
+   * Estratégia: ordena posts e stories por timestamp e faz match 1:1 por posição.
+   */
+  private async batchMatchStories(
+    targets: VerificationTarget[],
+    stories: InstagramStory[],
+    now: Date
+  ): Promise<{ verified: number; failed: number; rescheduled: number }> {
+    const result = { verified: 0, failed: 0, rescheduled: 0 }
+
+    // Tentar match por TAG primeiro (pode resolver alguns casos)
+    const remainingTargets: VerificationTarget[] = []
+
+    for (const target of targets) {
+      const attempt = target.post.verificationAttempts + 1
+      const tag = target.post.verificationTag
+
+      if (tag) {
+        const tagMatch = stories.find((story) => story.caption?.includes(tag))
+        if (tagMatch) {
+          await this.markVerified(target.post, tagMatch, now, {
+            verifiedByFallback: false,
             attempts: attempt,
           })
-          summary.verified++
+          result.verified++
           continue
         }
+      }
 
-        if (match.type === 'ambiguous') {
-          const hasAttemptsLeft = attempt < MAX_ATTEMPTS
-          if (hasAttemptsLeft) {
-            await this.reschedule(
-              target.post,
-              target.baseTimestamp,
-              attempt,
-              this.getNextDelayMinutes(attempt),
-              'AMBIGUOUS_MATCH',
-              now
-            )
-            summary.rescheduled++
-          } else {
-            await this.markFailure(target.post, 'AMBIGUOUS_MATCH', now, { attempts: attempt })
-            summary.failed++
-          }
-          continue
-        }
+      remainingTargets.push(target)
+    }
 
-        // No match found
+    if (remainingTargets.length === 0) {
+      return result
+    }
+
+    // Agrupar posts restantes por janela de tempo (±5 min)
+    const timeGroups = this.groupByTimeWindow(remainingTargets)
+
+    for (const group of timeGroups) {
+      const groupResult = await this.matchTimeGroup(group, stories, now)
+      result.verified += groupResult.verified
+      result.failed += groupResult.failed
+      result.rescheduled += groupResult.rescheduled
+    }
+
+    return result
+  }
+
+  /**
+   * Agrupa posts por janela de tempo (±5 min) para fazer matching em lote
+   */
+  private groupByTimeWindow(targets: VerificationTarget[]): VerificationTarget[][] {
+    if (targets.length === 0) return []
+
+    // Ordenar por timestamp
+    const sorted = [...targets].sort((a, b) => a.baseTimestamp.getTime() - b.baseTimestamp.getTime())
+
+    const groups: VerificationTarget[][] = []
+    let currentGroup: VerificationTarget[] = [sorted[0]]
+
+    for (let i = 1; i < sorted.length; i++) {
+      const current = sorted[i]
+      const previous = sorted[i - 1]
+      const diffMinutes = Math.abs(current.baseTimestamp.getTime() - previous.baseTimestamp.getTime()) / (60 * 1000)
+
+      if (diffMinutes <= FALLBACK_WINDOW_MINUTES * 2) {
+        // Dentro da mesma janela (considerando margem dupla)
+        currentGroup.push(current)
+      } else {
+        // Nova janela
+        groups.push(currentGroup)
+        currentGroup = [current]
+      }
+    }
+
+    groups.push(currentGroup)
+    return groups
+  }
+
+  /**
+   * Faz matching para um grupo de posts no mesmo intervalo de tempo
+   */
+  private async matchTimeGroup(
+    group: VerificationTarget[],
+    stories: InstagramStory[],
+    now: Date
+  ): Promise<{ verified: number; failed: number; rescheduled: number }> {
+    const result = { verified: 0, failed: 0, rescheduled: 0 }
+
+    // Se for apenas 1 post, usar lógica individual
+    if (group.length === 1) {
+      const target = group[0]
+      const attempt = target.post.verificationAttempts + 1
+      const match = this.findMatchingStory(target.post, stories, target.baseTimestamp)
+
+      if (match.type === 'fallback') {
+        await this.markVerified(target.post, match.story, now, {
+          verifiedByFallback: true,
+          attempts: attempt,
+        })
+        result.verified++
+        return result
+      }
+
+      if (match.type === 'none') {
         if (this.isStoryExpired(target.baseTimestamp) || attempt >= MAX_ATTEMPTS) {
           await this.markFailure(target.post, 'NOT_FOUND', now, { attempts: attempt })
-          summary.failed++
-          continue
+          result.failed++
+        } else {
+          await this.reschedule(
+            target.post,
+            target.baseTimestamp,
+            attempt,
+            this.getNextDelayMinutes(attempt),
+            'NOT_FOUND',
+            now
+          )
+          result.rescheduled++
         }
+        return result
+      }
 
+      // ambiguous - deixa para tentar em lote
+    }
+
+    // Múltiplos posts: buscar candidatos para TODOS os posts do grupo
+    const allCandidates: InstagramStory[] = []
+    const candidateSet = new Set<string>()
+
+    for (const target of group) {
+      const expectedMediaType = detectMediaType(target.post.mediaUrls)
+      const candidates = stories.filter((story) => {
+        if (!story.timestamp) return false
+        const storyTimestamp = new Date(story.timestamp)
+        const diffMinutes = Math.abs(storyTimestamp.getTime() - target.baseTimestamp.getTime()) / (60 * 1000)
+        if (diffMinutes > FALLBACK_WINDOW_MINUTES) return false
+
+        if (!expectedMediaType || !story.media_type) return true
+        return story.media_type.toLowerCase() === expectedMediaType
+      })
+
+      for (const candidate of candidates) {
+        if (!candidateSet.has(candidate.id)) {
+          candidateSet.add(candidate.id)
+          allCandidates.push(candidate)
+        }
+      }
+    }
+
+    console.log(`[Verification] Time group: ${group.length} posts, ${allCandidates.length} story candidates`)
+
+    // Se não houver candidatos suficientes
+    if (allCandidates.length === 0) {
+      for (const target of group) {
+        const attempt = target.post.verificationAttempts + 1
+        if (this.isStoryExpired(target.baseTimestamp) || attempt >= MAX_ATTEMPTS) {
+          await this.markFailure(target.post, 'NOT_FOUND', now, { attempts: attempt })
+          result.failed++
+        } else {
+          await this.reschedule(
+            target.post,
+            target.baseTimestamp,
+            attempt,
+            this.getNextDelayMinutes(attempt),
+            'NOT_FOUND',
+            now
+          )
+          result.rescheduled++
+        }
+      }
+      return result
+    }
+
+    // Ordenar posts por createdAt (ordem de criação no sistema)
+    const sortedPosts = [...group].sort((a, b) => a.post.createdAt.getTime() - b.post.createdAt.getTime())
+
+    // Ordenar stories por timestamp (ordem de publicação no Instagram)
+    const sortedStories = [...allCandidates].sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return timeA - timeB
+    })
+
+    console.log('[Verification] Ordered matching:')
+    sortedPosts.forEach((target, i) => {
+      console.log(`  Post ${i + 1}: ${target.post.id} (created: ${target.post.createdAt.toISOString()})`)
+    })
+    sortedStories.forEach((story, i) => {
+      console.log(`  Story ${i + 1}: ${story.id} (published: ${story.timestamp})`)
+    })
+
+    // Fazer match 1:1 por posição
+    const matchCount = Math.min(sortedPosts.length, sortedStories.length)
+
+    for (let i = 0; i < matchCount; i++) {
+      const target = sortedPosts[i]
+      const story = sortedStories[i]
+      const attempt = target.post.verificationAttempts + 1
+
+      console.log(`[Verification] Matching post ${target.post.id} → story ${story.id} (position ${i + 1})`)
+
+      await this.markVerified(target.post, story, now, {
+        verifiedByFallback: true,
+        attempts: attempt,
+      })
+      result.verified++
+    }
+
+    // Posts que sobraram (mais posts que stories)
+    for (let i = matchCount; i < sortedPosts.length; i++) {
+      const target = sortedPosts[i]
+      const attempt = target.post.verificationAttempts + 1
+
+      console.log(`[Verification] Post ${target.post.id} - no story found (position ${i + 1})`)
+
+      if (this.isStoryExpired(target.baseTimestamp) || attempt >= MAX_ATTEMPTS) {
+        await this.markFailure(target.post, 'NOT_FOUND', now, { attempts: attempt })
+        result.failed++
+      } else {
         await this.reschedule(
           target.post,
           target.baseTimestamp,
@@ -245,11 +438,11 @@ export class StoryVerifier {
           'NOT_FOUND',
           now
         )
-        summary.rescheduled++
+        result.rescheduled++
       }
     }
 
-    return summary
+    return result
   }
 
   private findMatchingStory(post: SocialPostWithProject, stories: InstagramStory[], baseTimestamp: Date): MatchResult {
