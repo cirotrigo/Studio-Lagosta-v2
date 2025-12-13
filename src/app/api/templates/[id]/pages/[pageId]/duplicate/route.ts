@@ -58,7 +58,7 @@ export async function POST(
     // IMPORTANTE: Não copiar thumbnail - será gerado automaticamente pelo editor
     const newPage = await db.page.create({
       data: {
-        name: `${pageToDuplicate.name} (cópia)`,
+        name: pageToDuplicate.name, // Manter o mesmo nome sem "(cópia)"
         width: pageToDuplicate.width,
         height: pageToDuplicate.height,
         layers: pageToDuplicate.layers, // Já está serializado no banco

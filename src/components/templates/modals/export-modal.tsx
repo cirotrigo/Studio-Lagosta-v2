@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { useMultiPage } from '@/contexts/multi-page-context'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -28,12 +29,19 @@ interface ExportModalProps {
 export function ExportModal({ open, onOpenChange }: ExportModalProps) {
   const { toast } = useToast()
   const { exportDesign, exportHistory, removeExport, clearExports, isExporting } = useTemplateEditor()
+  const { pages, currentPageId } = useMultiPage()
   const [selectedPreview, setSelectedPreview] = React.useState<string | null>(null)
+
+  // Encontrar o nome da página atual
+  const currentPage = React.useMemo(() => {
+    return pages.find((p) => p.id === currentPageId)
+  }, [pages, currentPageId])
 
   const handleExport = React.useCallback(
     async (format: 'png' | 'jpeg') => {
       try {
-        const record = await exportDesign(format)
+        // Passar nome da página para gerar arquivo com data + nome
+        const record = await exportDesign(format, currentPage?.name)
         toast({
           title: 'Exportação concluída!',
           description: `Arquivo ${record.fileName} gerado com sucesso (${formatBytes(record.sizeBytes)})`,
@@ -47,7 +55,7 @@ export function ExportModal({ open, onOpenChange }: ExportModalProps) {
         })
       }
     },
-    [exportDesign, toast],
+    [exportDesign, currentPage, toast],
   )
 
   const handleDownload = React.useCallback((record: { dataUrl: string; fileName: string }) => {

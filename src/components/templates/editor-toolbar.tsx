@@ -29,6 +29,7 @@ import {
   Redo2,
 } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
+import { useMultiPage } from '@/contexts/multi-page-context'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
@@ -77,6 +78,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
     exportDesign,
     isExporting,
   } = useTemplateEditor()
+  const { pages, currentPageId } = useMultiPage()
   const { toast } = useToast()
   const queryClient = useQueryClient()
 
@@ -549,7 +551,9 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
 
   const handleExport = React.useCallback(async () => {
     try {
-      await exportDesign('jpeg')
+      // Encontrar nome da página atual
+      const currentPage = pages.find((p) => p.id === currentPageId)
+      await exportDesign('jpeg', currentPage?.name)
       toast({
         title: 'Criativo salvo com sucesso!',
         description: 'O criativo foi salvo e está disponível na biblioteca.',
@@ -562,7 +566,7 @@ export function EditorToolbar({ onSave, saving }: EditorToolbarProps) {
         variant: 'destructive',
       })
     }
-  }, [exportDesign, toast])
+  }, [exportDesign, pages, currentPageId, toast])
 
   const handleShare = React.useCallback(() => {
     toast({

@@ -61,7 +61,7 @@ export interface TemplateEditorContextValue {
   isExporting: boolean
   exportHistory: ExportRecord[]
   generateThumbnail: (maxWidth?: number) => Promise<string | null>
-  exportDesign: (format: 'png' | 'jpeg') => Promise<ExportRecord>
+  exportDesign: (format: 'png' | 'jpeg', pageName?: string) => Promise<ExportRecord>
   removeExport: (id: string) => void
   clearExports: () => void
   setStageInstance: (stage: Konva.Stage | null) => void
@@ -565,7 +565,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{ url: string
   )
 
   const exportDesign = React.useCallback(
-    async (format: 'png' | 'jpeg') => {
+    async (format: 'png' | 'jpeg', pageName?: string) => {
       const stage = stageInstanceRef.current
       if (!stage) {
         throw new Error('Canvas não está pronto para exportação.')
@@ -692,10 +692,29 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{ url: string
           sizeBytes = Math.round((base64.length * 3) / 4)
         }
 
-        const timestamp = Date.now()
-        const fileName = format === 'jpeg'
-          ? `template-instagram-${timestamp}.jpg`
-          : `template-${template.id}-${timestamp}.png`
+        // Gerar nome do arquivo com data e nome da página
+        const today = new Date()
+        const dateStr = today.toISOString().split('T')[0] // YYYY-MM-DD
+
+        // Se pageName foi fornecido, usar formato: 2025-12-12_Pag.01.png
+        // Se não, usar formato legado: template-{id}-{timestamp}.png
+        let fileName: string
+        if (pageName) {
+          const extension = format === 'jpeg' ? 'jpg' : 'png'
+          // Sanitizar: remover espaços, acentos e caracteres especiais
+          const sanitizedPageName = pageName
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '') // Remove acentos
+            .replace(/\s+/g, '') // Remove espaços
+            .replace(/[^\w.-]/g, '') // Remove caracteres especiais exceto . e -
+            .trim()
+          fileName = `${dateStr}_${sanitizedPageName}.${extension}`
+        } else {
+          const timestamp = Date.now()
+          fileName = format === 'jpeg'
+            ? `template-instagram-${timestamp}.jpg`
+            : `template-${template.id}-${timestamp}.png`
+        }
 
         // Salvar dataURL e fileName para enviar à API
         exportDataUrl = dataUrl
@@ -709,7 +728,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{ url: string
           height: canvasHeight,
           fileName,
           sizeBytes,
-          createdAt: timestamp,
+          createdAt: Date.now(),
         }
         setExportHistory((prev) => [record, ...prev].slice(0, 20))
 

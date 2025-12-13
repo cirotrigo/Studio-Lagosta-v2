@@ -242,10 +242,14 @@ export function PagesSidebar({ templateId, currentPageId, onPageChange, canvasDa
   // Adicionar nova página
   const handleAddPage = React.useCallback(async () => {
     try {
+      // Gerar nome no formato: Pag.01, Pag.02, etc.
+      const pageNumber = String(pages.length + 1).padStart(2, '0')
+      const pageName = `Pag.${pageNumber}`
+
       const newPage = await createPageMutation.mutateAsync({
         templateId,
         data: {
-          name: `Página ${pages.length + 1}`,
+          name: pageName,
           width: canvasData.canvas.width,
           height: canvasData.canvas.height,
           layers: [],

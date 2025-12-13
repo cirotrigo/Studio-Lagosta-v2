@@ -89,8 +89,8 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
             // Aguardar mais um pouco para garantir renderização completa
             await new Promise((resolve) => setTimeout(resolve, 500))
 
-            // Exportar a página atual
-            await exportDesign('jpeg')
+            // Exportar a página atual com nome da página
+            await exportDesign('jpeg', page.name)
 
             successes.push(pageId)
 

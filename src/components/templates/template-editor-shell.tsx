@@ -298,7 +298,9 @@ function TemplateEditorContent({
 
     // Se tem apenas 1 página, exportar diretamente
     try {
-      await exportDesign('jpeg')
+      // Pegar nome da única página disponível
+      const pageName = pages[0]?.name
+      await exportDesign('jpeg', pageName)
       toast({
         title: 'Criativo salvo com sucesso!',
         description: 'O criativo foi salvo e está disponível na biblioteca.',
@@ -311,7 +313,7 @@ function TemplateEditorContent({
         variant: 'destructive',
       })
     }
-  }, [pages.length, exportDesign, toast])
+  }, [pages, exportDesign, toast])
 
   const handleGenerateMultipleCreatives = React.useCallback(async (selectedPageIds: string[]) => {
     try {

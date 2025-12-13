@@ -187,13 +187,8 @@ export function useReorderPages() {
       templateId: number
       pageIds: string[]
     }) => {
-      // Atualizar order de cada página
-      await Promise.all(
-        pageIds.map((pageId, index) =>
-          api.patch(`/api/templates/${templateId}/pages/${pageId}`, { order: index })
-        )
-      )
-      return pageIds
+      // Usar endpoint dedicado que atualiza order e nomes
+      return api.post<PageResponse[]>(`/api/templates/${templateId}/pages/reorder`, { pageIds })
     },
     // Atualização otimista - aplica mudança ANTES da API responder
     onMutate: async ({ templateId, pageIds }) => {
@@ -208,12 +203,15 @@ export function useReorderPages() {
         if (!oldPages) return []
         // Criar um mapa para busca rápida
         const pageMap = new Map(oldPages.map((p) => [p.id, p]))
-        // Reordenar baseado nos IDs fornecidos e atualizar order
+
+        // Reordenar baseado nos IDs fornecidos e atualizar order + name
         return pageIds
           .map((id, index) => {
             const page = pageMap.get(id)
             if (!page) return null
-            return { ...page, order: index }
+            const pageNumber = String(index + 1).padStart(2, '0')
+            const newName = `Pag.${pageNumber}`
+            return { ...page, order: index, name: newName }
           })
           .filter((p): p is PageResponse => p !== null)
       })
@@ -227,9 +225,9 @@ export function useReorderPages() {
         queryClient.setQueryData(['pages', templateId], context.previousPages)
       }
     },
-    // Após sucesso, garantir que está sincronizado
-    onSettled: (_data, _error, { templateId }) => {
-      queryClient.invalidateQueries({ queryKey: ['pages', templateId] })
+    // Após sucesso, atualizar cache com dados do servidor
+    onSuccess: (updatedPages, { templateId }) => {
+      queryClient.setQueryData(['pages', templateId], updatedPages)
     },
   })
 }
