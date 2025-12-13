@@ -107,8 +107,12 @@ export async function POST(
     const blob = await put(fileName, buffer, {
       access: 'public',
       contentType: mimeType,
+      addRandomSuffix: true, // Adiciona sufixo aleatório para evitar colisão de nomes
     })
     console.log('[TEMPLATE_EXPORT] ✓ Uploaded successfully:', blob.url)
+
+    // Extrair nome real do arquivo gerado pelo Vercel Blob (com sufixo aleatório)
+    const actualFileName = blob.pathname || fileName
 
     // Deduzir créditos
     console.log('[TEMPLATE_EXPORT] Step 4: Deducting credits...')
@@ -119,7 +123,7 @@ export async function POST(
         templateId,
         format,
         exportType: 'konva_editor',
-        fileName,
+        fileName: actualFileName,
       },
       organizationId: orgId ?? undefined,
       projectId: template.Project.id,
@@ -131,7 +135,7 @@ export async function POST(
     console.log('[TEMPLATE_EXPORT] Data to save:', {
       templateId: template.id,
       projectId: template.Project.id,
-      fileName,
+      fileName: actualFileName,
       hasResultUrl: !!blob.url,
     })
 
@@ -141,7 +145,7 @@ export async function POST(
         projectId: template.Project.id,
         status: 'COMPLETED',
         resultUrl: blob.url,
-        fileName: fileName,
+        fileName: actualFileName, // Usar nome real com sufixo
         fieldValues: {},
         templateName: template.name,
         projectName: template.Project.name,
