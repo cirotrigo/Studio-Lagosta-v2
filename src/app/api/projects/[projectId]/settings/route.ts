@@ -45,6 +45,7 @@ export async function PATCH(
       googleDriveImagesFolderName?: string | null
       googleDriveVideosFolderId?: string | null
       googleDriveVideosFolderName?: string | null
+      aiChatBehavior?: string | null
     } = {}
 
     const assignField = <K extends keyof typeof dataToUpdate>(key: K) => {
@@ -59,6 +60,7 @@ export async function PATCH(
     assignField('googleDriveImagesFolderName')
     assignField('googleDriveVideosFolderId')
     assignField('googleDriveVideosFolderName')
+    assignField('aiChatBehavior')
 
     const updated = await db.project.update({
       where: { id: projectIdNum },
@@ -75,6 +77,7 @@ export async function PATCH(
         googleDriveImagesFolderName: true,
         googleDriveVideosFolderId: true,
         googleDriveVideosFolderName: true,
+        aiChatBehavior: true,
         createdAt: true,
         updatedAt: true,
       },

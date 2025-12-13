@@ -57,6 +57,7 @@ export const updateProjectSettingsSchema = z
     googleDriveImagesFolderName: driveField,
     googleDriveVideosFolderId: driveField,
     googleDriveVideosFolderName: driveField,
+    aiChatBehavior: z.string().max(10000, 'Comportamento do chat deve ter no máximo 10.000 caracteres').nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const pairs: Array<[keyof typeof data, keyof typeof data, string]> = [
@@ -102,10 +103,13 @@ export const updateProjectSettingsSchema = z
       }
     }
 
-    if (!touched) {
+    // Allow aiChatBehavior to be sent alone or with Google Drive fields
+    const hasAiChatBehavior = Object.prototype.hasOwnProperty.call(data, 'aiChatBehavior')
+
+    if (!touched && !hasAiChatBehavior) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Envie pelo menos um par de campos de pasta do Google Drive',
+        message: 'Envie pelo menos um par de campos de pasta do Google Drive ou o comportamento do chat',
       })
     }
   })

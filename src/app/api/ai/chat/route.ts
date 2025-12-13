@@ -163,6 +163,10 @@ export async function POST(req: Request) {
               : []),
           ],
         },
+        select: {
+          id: true,
+          aiChatBehavior: true,
+        },
       })
 
       if (!project) {
@@ -218,16 +222,40 @@ export async function POST(req: Request) {
             const ragUsed = ragContext.trim().length > 0
             console.log('[RAG] Context retrieved, length:', ragContext.length)
 
-            if (ragUsed) {
-              const contextMessage = {
-                role: 'system' as const,
-                content: `Use o seguinte contexto da base de conhecimento SOMENTE se for relevante para a pergunta do usuário. Se o contexto não for pertinente, ignore-o completamente e responda normalmente.
+            // Build optimized system prompt (Option C)
+            let systemPrompt = ''
 
-<context>
+            // 1. Custom AI behavior (if configured)
+            if (project.aiChatBehavior?.trim()) {
+              systemPrompt = project.aiChatBehavior.trim() + '\n\n'
+              console.log('[CHAT] Using custom AI behavior for project:', projectId)
+            }
+
+            // 2. RAG context instructions (if RAG context available)
+            if (ragUsed) {
+              systemPrompt += `---
+INSTRUÇÕES DE USO DO CONTEXTO:
+- Use o contexto da base de conhecimento abaixo quando relevante para a pergunta do usuário
+${project.aiChatBehavior ? '- Mantenha SEMPRE o tom de voz e estilo definidos acima em todas as suas respostas' : ''}
+- Priorize informações do contexto sobre conhecimento geral
+- Se o contexto não tiver informação relevante, responda normalmente com base no seu conhecimento
+
+---
+CONTEXTO DO PROJETO (Base de Conhecimento):
 ${ragContext}
-</context>`,
+
+---
+IMPORTANTE: ${project.aiChatBehavior ? 'Combine sua personalidade definida com as informações do contexto de forma natural e consistente.' : 'Responda de forma clara usando o contexto quando aplicável.'}`
+            }
+
+            // Inject optimized system prompt at the beginning
+            if (systemPrompt) {
+              const systemMessage = {
+                role: 'system' as const,
+                content: systemPrompt,
               }
-              modelMessages = [contextMessage, ...modelMessages]
+              modelMessages = [systemMessage, ...modelMessages]
+              console.log('[CHAT] System prompt injected, length:', systemPrompt.length)
             }
 
             // Attach RAG usage metadata for downstream saving

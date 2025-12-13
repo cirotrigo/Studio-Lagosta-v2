@@ -179,6 +179,9 @@ model Project {
   instagramUserId    String? @db.Text
   zapierWebhookUrl   String? @db.Text
 
+  // AI Chat configuration
+  aiChatBehavior String? @db.Text
+
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   BrandColor           BrandColor[]

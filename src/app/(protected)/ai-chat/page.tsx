@@ -404,26 +404,23 @@ export default function AIChatPage() {
     }
   }, [provider, mode, model, openRouterModelsData, isLoadingModels, currentProviderData])
 
-  const listRef = React.useRef<HTMLDivElement>(null)
+  const scrollViewportRef = React.useRef<HTMLDivElement>(null)
   const endRef = React.useRef<HTMLDivElement>(null)
-  const scrollRafRef = React.useRef<number | null>(null)
 
   React.useEffect(() => {
     // auto-scroll to bottom when messages update
-    if (scrollRafRef.current != null) {
-      cancelAnimationFrame(scrollRafRef.current)
-    }
-    scrollRafRef.current = requestAnimationFrame(() => {
-      endRef.current?.scrollIntoView({ block: 'end' })
-      scrollRafRef.current = null
+    const viewport = scrollViewportRef.current
+    if (!viewport) return
+
+    // Use requestAnimationFrame to ensure DOM has updated
+    const rafId = requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight
     })
+
     return () => {
-      if (scrollRafRef.current != null) {
-        cancelAnimationFrame(scrollRafRef.current)
-        scrollRafRef.current = null
-      }
+      cancelAnimationFrame(rafId)
     }
-  }, [deferredMessages])
+  }, [deferredMessages, status])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1013,8 +1010,20 @@ export default function AIChatPage() {
               </div>
             </div>
 
-            <ScrollArea className="mb-3">
-              <div ref={listRef} className="flex flex-col gap-3 pr-2">
+            <div className="mb-3 h-[calc(100vh-480px)] min-h-[400px] relative">
+              <ScrollArea className="h-full">
+                <div
+                  ref={(node) => {
+                    if (node) {
+                      // Get the viewport element (first child of ScrollArea)
+                      const viewport = node.parentElement?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLDivElement
+                      if (viewport) {
+                        scrollViewportRef.current = viewport
+                      }
+                    }
+                  }}
+                  className="flex flex-col gap-3 pr-4"
+                >
                 {messages.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     Selecione o provedor e o modelo, envie uma mensagem e acompanhe a resposta em tempo real.
@@ -1102,8 +1111,9 @@ export default function AIChatPage() {
                   </div>
                 )}
                 <div ref={endRef} />
-              </div>
-            </ScrollArea>
+                </div>
+              </ScrollArea>
+            </div>
 
             {/* Animated input concept */}
             <div className={"relative rounded-2xl border bg-background/90 " + (dragActive ? 'border-primary ring-2 ring-primary/30' : 'border-border/60')} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}>

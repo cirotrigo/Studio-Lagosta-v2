@@ -23,6 +23,7 @@ export interface ProjectResponse {
   googleDriveImagesFolderName: string | null
   googleDriveVideosFolderId: string | null
   googleDriveVideosFolderName: string | null
+  aiChatBehavior: string | null
   makeWebhookAnalyzeUrl: string | null
   makeWebhookCreativeUrl: string | null
   userId: string
@@ -53,6 +54,7 @@ export type UpdateProjectSettingsInput = Partial<{
   googleDriveImagesFolderName: string | null
   googleDriveVideosFolderId: string | null
   googleDriveVideosFolderName: string | null
+  aiChatBehavior: string | null
 }>
 
 export function useProject(projectId: number | null) {

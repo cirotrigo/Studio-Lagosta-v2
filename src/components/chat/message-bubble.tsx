@@ -151,15 +151,13 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
             ))}
           </div>
         ) : disableMarkdown ? (
-          <div className="p-4 text-sm leading-relaxed whitespace-pre-wrap">
+          <div className="text-sm whitespace-pre-wrap">
             {typeof (message as { content?: unknown }).content === 'string'
               ? (message as { content: string }).content
               : JSON.stringify((message as { content?: unknown }).content)}
           </div>
         ) : (
-          <div className="p-4">
-            <Markdown className="[&_p]:m-0">{typeof (message as { content?: unknown }).content === 'string' ? (message as { content: string }).content : JSON.stringify((message as { content?: unknown }).content)}</Markdown>
-          </div>
+          <Markdown className="prose-sm prose-p:leading-relaxed prose-p:my-2 first:prose-p:mt-0 last:prose-p:mb-0 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1">{typeof (message as { content?: unknown }).content === 'string' ? (message as { content: string }).content : JSON.stringify((message as { content?: unknown }).content)}</Markdown>
         )}
 
         {!isUser && ragUsed && (

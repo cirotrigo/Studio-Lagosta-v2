@@ -28,6 +28,7 @@ import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
+import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { useProject } from '@/hooks/use-project'
@@ -332,6 +333,12 @@ export default function ProjectDetailPage() {
               </Card>
             ) : projectDetails ? (
               <div className="space-y-6">
+                {/* AI Chat Behavior Configuration */}
+                <AIChatBehaviorConfig
+                  projectId={projectId}
+                  initialBehavior={projectDetails.aiChatBehavior}
+                />
+
                 {/* Instagram Account Configuration */}
                 <InstagramAccountConfig
                   projectId={projectId}
