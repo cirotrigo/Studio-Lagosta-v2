@@ -62,6 +62,8 @@ export async function POST(
     const body = await req.json()
     const { format, dataUrl, fileName } = body
 
+    console.log('[TEMPLATE_EXPORT] Received body:', { format, hasDataUrl: !!dataUrl, fileName })
+
     if (!dataUrl || !fileName) {
       return NextResponse.json(
         { error: 'dataUrl e fileName são obrigatórios' },
@@ -72,11 +74,14 @@ export async function POST(
     console.log('[TEMPLATE_EXPORT] Starting export for user:', userId, 'template:', templateId, 'format:', format)
 
     // Validar créditos disponíveis
+    console.log('[TEMPLATE_EXPORT] Step 1: Validating credits...')
     try {
       await validateCreditsForFeature(userId, 'creative_download', 1, {
         organizationId: orgId ?? undefined,
       })
+      console.log('[TEMPLATE_EXPORT] ✓ Credits validated')
     } catch (error) {
+      console.error('[TEMPLATE_EXPORT] ✗ Credit validation failed:', error)
       if (error instanceof InsufficientCreditsError) {
         return NextResponse.json(
           {
@@ -91,20 +96,22 @@ export async function POST(
     }
 
     // Converter dataURL para blob
+    console.log('[TEMPLATE_EXPORT] Step 2: Converting dataURL to buffer...')
     const base64Data = dataUrl.split(',')[1]
     const buffer = Buffer.from(base64Data, 'base64')
     const mimeType = format === 'png' ? 'image/png' : 'image/jpeg'
+    console.log('[TEMPLATE_EXPORT] ✓ Buffer created, size:', buffer.length, 'bytes')
 
     // Upload para Vercel Blob
-    console.log('[TEMPLATE_EXPORT] Uploading to Vercel Blob...')
+    console.log('[TEMPLATE_EXPORT] Step 3: Uploading to Vercel Blob...')
     const blob = await put(fileName, buffer, {
       access: 'public',
       contentType: mimeType,
     })
-
-    console.log('[TEMPLATE_EXPORT] Uploaded successfully:', blob.url)
+    console.log('[TEMPLATE_EXPORT] ✓ Uploaded successfully:', blob.url)
 
     // Deduzir créditos
+    console.log('[TEMPLATE_EXPORT] Step 4: Deducting credits...')
     const creditResult = await deductCreditsForFeature({
       clerkUserId: userId,
       feature: 'creative_download',
@@ -117,10 +124,17 @@ export async function POST(
       organizationId: orgId ?? undefined,
       projectId: template.Project.id,
     })
-
-    console.log('[TEMPLATE_EXPORT] Credits deducted. Remaining:', creditResult.creditsRemaining)
+    console.log('[TEMPLATE_EXPORT] ✓ Credits deducted. Remaining:', creditResult.creditsRemaining)
 
     // Salvar geração no banco de dados
+    console.log('[TEMPLATE_EXPORT] Step 5: Saving to database...')
+    console.log('[TEMPLATE_EXPORT] Data to save:', {
+      templateId: template.id,
+      projectId: template.Project.id,
+      fileName,
+      hasResultUrl: !!blob.url,
+    })
+
     const generation = await db.generation.create({
       data: {
         templateId: template.id,
@@ -135,10 +149,10 @@ export async function POST(
         completedAt: new Date(),
       },
     })
-
-    console.log('[TEMPLATE_EXPORT] Generation saved:', generation.id)
+    console.log('[TEMPLATE_EXPORT] ✓ Generation saved:', generation.id)
 
     // Backup automático para Google Drive (ARTES LAGOSTA)
+    console.log('[TEMPLATE_EXPORT] Step 6: Google Drive backup...')
     if (template.Project.googleDriveFolderId && googleDriveService.isEnabled()) {
       try {
         console.log('[TEMPLATE_EXPORT] Starting Google Drive backup...')
@@ -157,9 +171,9 @@ export async function POST(
           },
         })
 
-        console.log('✅ Backup Drive concluído:', backup.fileId)
+        console.log('[TEMPLATE_EXPORT] ✓ Backup Drive concluído:', backup.fileId)
       } catch (backupError) {
-        console.warn('⚠️ Backup Drive falhou (não afeta a geração):', backupError)
+        console.warn('[TEMPLATE_EXPORT] ⚠️ Backup Drive falhou (não afeta a geração):', backupError)
         // Não retornar erro - backup é opcional
       }
     } else {
