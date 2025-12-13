@@ -176,8 +176,21 @@ export async function POST(
     })
   } catch (error) {
     console.error('[TEMPLATE_EXPORT] Failed to process export:', error)
+
+    // Log detalhado do erro para debug
+    if (error instanceof Error) {
+      console.error('[TEMPLATE_EXPORT] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      })
+    }
+
     return NextResponse.json(
-      { error: 'Erro ao processar exportação' },
+      {
+        error: 'Erro ao processar exportação',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     )
   }
