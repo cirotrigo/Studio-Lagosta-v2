@@ -127,6 +127,7 @@ export async function POST(
         projectId: template.Project.id,
         status: 'COMPLETED',
         resultUrl: blob.url,
+        fileName: fileName,
         fieldValues: {},
         templateName: template.name,
         projectName: template.Project.name,
