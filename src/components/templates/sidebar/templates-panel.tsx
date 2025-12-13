@@ -16,6 +16,8 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { api } from '@/lib/api-client'
 import type { TemplateDto } from '@/hooks/use-template'
 import { useToast } from '@/hooks/use-toast'
+import { TemplatePageSelectorDialog } from './template-page-selector-dialog'
+import type { DesignData, Layer, DynamicField } from '@/types/template'
 
 const categories = [
   { id: 'all', label: 'Todos' },
@@ -42,6 +44,12 @@ export function TemplatesPanel() {
   const [search, setSearch] = React.useState('')
   const debouncedSearch = useDebouncedValue(search, 400)
   const [applyingId, setApplyingId] = React.useState<number | null>(null)
+  const [selectedTemplate, setSelectedTemplate] = React.useState<{
+    id: number
+    name: string
+    dynamicFields?: unknown[] | null
+  } | null>(null)
+  const [isDialogOpen, setIsDialogOpen] = React.useState(false)
 
   const { data, isLoading, isRefetching, refetch } = useTemplates({
     projectId,
@@ -53,15 +61,16 @@ export function TemplatesPanel() {
   const templates = data ?? []
 
   const handleApplyTemplate = React.useCallback(
-    async (id: number) => {
+    async (id: number, name: string) => {
       try {
         setApplyingId(id)
         const template = await api.get<TemplateDto>(`/api/templates/${id}`)
-        loadTemplate({ designData: template.designData, dynamicFields: template.dynamicFields, name: template.name })
-        toast({
-          title: 'Template carregado',
-          description: 'O layout selecionado foi aplicado ao editor.',
+        setSelectedTemplate({
+          id: template.id,
+          name: template.name,
+          dynamicFields: template.dynamicFields,
         })
+        setIsDialogOpen(true)
       } catch (_error) {
         console.error('[TemplatesPanel] Failed to load template', _error)
         toast({
@@ -74,7 +83,49 @@ export function TemplatesPanel() {
         setApplyingId(null)
       }
     },
-    [loadTemplate, toast],
+    [toast],
+  )
+
+  const handleSelectPage = React.useCallback(
+    (page: { id: string; name: string; width: number; height: number; layers: Layer[]; background: string | null }) => {
+      if (!selectedTemplate) return
+
+      try {
+        // Criar um DesignData com base na página selecionada
+        const designData: DesignData = {
+          canvas: {
+            width: page.width,
+            height: page.height,
+            backgroundColor: page.background ?? undefined,
+          },
+          layers: page.layers,
+        }
+
+        loadTemplate({
+          designData,
+          dynamicFields: Array.isArray(selectedTemplate.dynamicFields)
+            ? (selectedTemplate.dynamicFields as unknown as DynamicField[])
+            : null,
+        })
+
+        toast({
+          title: 'Página aplicada',
+          description: `A página "${page.name}" foi aplicada ao editor.`,
+        })
+
+        setIsDialogOpen(false)
+        setSelectedTemplate(null)
+      } catch (_error) {
+        console.error('[TemplatesPanel] Failed to apply page', _error)
+        toast({
+          title: 'Erro ao aplicar página',
+          description:
+            _error instanceof Error ? _error.message : 'Não foi possível aplicar a página selecionada.',
+          variant: 'destructive',
+        })
+      }
+    },
+    [selectedTemplate, loadTemplate, toast],
   )
 
   const isFetching = isLoading || isRefetching
@@ -190,7 +241,7 @@ export function TemplatesPanel() {
                     {isCurrent && <Badge variant="outline" className="text-[10px] px-1.5 py-0">Atual</Badge>}
                     <Button
                       size="sm"
-                      onClick={() => handleApplyTemplate(template.id)}
+                      onClick={() => handleApplyTemplate(template.id, template.name)}
                       disabled={isApplying}
                       className="ml-auto h-8 text-xs px-3"
                     >
@@ -204,6 +255,16 @@ export function TemplatesPanel() {
           })}
         </div>
       </ScrollArea>
+
+      {selectedTemplate && (
+        <TemplatePageSelectorDialog
+          open={isDialogOpen}
+          onOpenChange={setIsDialogOpen}
+          templateId={selectedTemplate.id}
+          templateName={selectedTemplate.name}
+          onSelectPage={handleSelectPage}
+        />
+      )}
     </div>
   )
 }
