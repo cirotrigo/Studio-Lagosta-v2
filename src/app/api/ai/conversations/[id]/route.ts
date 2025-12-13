@@ -7,12 +7,12 @@ export const runtime = 'nodejs'
 // GET /api/ai/conversations/[id] - Get conversation with messages
 export async function GET(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = params
+    const { id } = await params
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')
     const projectId = projectIdParam ? Number(projectIdParam) : NaN
@@ -78,12 +78,12 @@ export async function GET(
 // DELETE /api/ai/conversations/[id] - Delete conversation
 export async function DELETE(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = params
+    const { id } = await params
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')
     const projectId = projectIdParam ? Number(projectIdParam) : NaN
@@ -129,12 +129,12 @@ export async function DELETE(
 // PATCH /api/ai/conversations/[id] - Update conversation (e.g., title)
 export async function PATCH(
   req: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const clerkUserId = await validateUserAuthentication()
     const dbUser = await getUserFromClerkId(clerkUserId)
-    const { id } = params
+    const { id } = await params
     const body = await req.json()
     const searchParams = new URL(req.url).searchParams
     const projectIdParam = searchParams.get('projectId')

@@ -35,7 +35,7 @@ const KNOWLEDGE_CATEGORIES: KnowledgeCategory[] = [
 
 const entrySchema = z.object({
   projectId: z.number().int().positive('projectId é obrigatório'),
-  category: z.enum(KNOWLEDGE_CATEGORIES),
+  category: z.enum(KNOWLEDGE_CATEGORIES as [KnowledgeCategory, ...KnowledgeCategory[]]),
   title: z.string().min(1, 'Título é obrigatório').max(500),
   content: z.string().min(1, 'Conteúdo é obrigatório').max(MAX_CONTENT_LENGTH, `O conteúdo não pode exceder ${MAX_CONTENT_LENGTH.toLocaleString()} caracteres`),
   tags: z.string().optional(),
@@ -140,7 +140,7 @@ export function KnowledgeForm({
       const fileContent = await selectedFile.text()
       await onFileUpload({
         projectId: data.projectId,
-        category: data.category,
+        category: data.category as KnowledgeCategory,
         title: data.title,
         filename: selectedFile.name,
         fileContent,
@@ -151,7 +151,7 @@ export function KnowledgeForm({
       // Text entry mode
       await onSubmit({
         projectId: data.projectId,
-        category: data.category,
+        category: data.category as KnowledgeCategory,
         title: data.title,
         content: data.content,
         tags,

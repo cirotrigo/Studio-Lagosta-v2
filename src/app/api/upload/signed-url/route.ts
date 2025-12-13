@@ -23,16 +23,36 @@ export async function POST(request: Request): Promise<NextResponse> {
         const filename = pathname.split('/').pop() || ''
         const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(filename)
         const isVideo = /\.(mp4|mov|avi|webm)$/i.test(filename)
+        const isFont = /\.(ttf|otf|woff|woff2)$/i.test(filename)
 
-        if (!isImage && !isVideo) {
-          throw new Error('Only images and videos are allowed')
+        if (!isImage && !isVideo && !isFont) {
+          throw new Error('Only images, videos, and fonts are allowed')
+        }
+
+        // Determine allowed content types based on file type
+        let allowedContentTypes: string[]
+        if (isImage) {
+          allowedContentTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+        } else if (isVideo) {
+          allowedContentTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm']
+        } else {
+          // Font files
+          allowedContentTypes = [
+            'font/ttf',
+            'font/otf',
+            'font/woff',
+            'font/woff2',
+            'application/x-font-ttf',
+            'application/x-font-otf',
+            'application/font-woff',
+            'application/font-woff2',
+            'application/octet-stream', // Some browsers send fonts as binary
+          ]
         }
 
         // Generate token with user-specific path
         return {
-          allowedContentTypes: isImage
-            ? ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-            : ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm'],
+          allowedContentTypes,
           tokenPayload: JSON.stringify({
             userId,
             uploadedAt: new Date().toISOString(),

@@ -1030,7 +1030,11 @@ export default function AIChatPage() {
 
                   // Extract text content from parts
                   const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
-                  const metadata = (m as { metadata?: Record<string, unknown> }).metadata ?? messageMetadata[m.id]
+                  const metadataRaw = (m as { metadata?: unknown }).metadata ?? messageMetadata[m.id]
+                  const metadata: Record<string, unknown> | undefined =
+                    metadataRaw && typeof metadataRaw === 'object' && !Array.isArray(metadataRaw)
+                      ? metadataRaw as Record<string, unknown>
+                      : undefined
 
                   return (
                     <MessageBubble

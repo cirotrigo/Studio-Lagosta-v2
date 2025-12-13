@@ -564,7 +564,11 @@ export function TemplateAIChat({ projectId }: { projectId: number }) {
             {deferredMessages.map((m, idx) => {
               const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
               const disableMarkdown = normalizedRole === 'assistant' && status === 'streaming' && idx === deferredMessages.length - 1
-              const metadata = (m as { metadata?: Record<string, unknown> }).metadata ?? messageMetadata[m.id]
+              const metadataRaw = (m as { metadata?: unknown }).metadata ?? messageMetadata[m.id]
+              const metadata: Record<string, unknown> | undefined =
+                metadataRaw && typeof metadataRaw === 'object' && !Array.isArray(metadataRaw)
+                  ? metadataRaw as Record<string, unknown>
+                  : undefined
 
               // Extract text content from parts
               const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''

@@ -70,7 +70,8 @@ export async function upsertVectors(
     }
   }
 
-  await index.upsert(vectors as Parameters<Index['upsert']>[0])
+  // Type assertion needed because VectorMetadata has stricter types than Index expects
+  await index.upsert(vectors as unknown as Parameters<Index['upsert']>[0])
 }
 
 /**
@@ -119,7 +120,7 @@ export async function queryVectors(
   return results.map(result => ({
     id: String(result.id),
     score: result.score,
-    metadata: result.metadata as VectorMetadata,
+    metadata: result.metadata as unknown as VectorMetadata,
   }))
 }
 
@@ -128,8 +129,9 @@ export async function queryVectors(
  * Used when deleting a knowledge base entry
  * @param entryId Entry ID to delete
  * @param tenant Tenant isolation keys (requires projectId)
+ * @returns Number of vectors deleted
  */
-export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey) {
+export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey): Promise<number> {
   if (!tenant?.projectId) {
     throw new Error('projectId is required to delete vectors')
   }
@@ -147,7 +149,10 @@ export async function deleteVectorsByEntry(entryId: string, tenant: TenantKey) {
   if (results.length > 0) {
     const idsToDelete = results.map(r => String(r.id))
     await index.delete(idsToDelete)
+    return results.length
   }
+
+  return 0
 }
 
 /**

@@ -20,7 +20,9 @@ export const useProjectSelectionStore = create(
     }),
     {
       name: 'lagosta.project-selection',
-      partialize: (state) => ({ lastProjectId: state.lastProjectId }),
+      partialize: (state) => ({
+        lastProjectId: state.lastProjectId
+      } as any),
       onRehydrateStorage: () => (state, error) => {
         if (error) {
           console.error('[project-selection] Erro ao reidratar seleção de projeto', error)

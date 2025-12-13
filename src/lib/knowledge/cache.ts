@@ -4,9 +4,10 @@
  */
 
 import type { SearchResult } from './search'
+import type { Redis } from '@upstash/redis'
 
 // Redis client singleton (lazy loaded)
-let redisClient: typeof import('@upstash/redis').Redis | null = null
+let redisClient: Redis | null = null
 
 async function getRedisClient() {
   if (redisClient) {
@@ -140,7 +141,7 @@ export async function invalidateProjectCache(projectId: number): Promise<number>
 
   try {
     const pattern = getProjectCachePattern(projectId)
-    let cursor = 0
+    let cursor: string | number = 0
     let deletedCount = 0
     const batchSize = 100
 
@@ -153,7 +154,7 @@ export async function invalidateProjectCache(projectId: number): Promise<number>
         count: batchSize,
       })
 
-      cursor = nextCursor
+      cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
       if (keys.length > 0) {
         // Deletar em batch
@@ -182,7 +183,7 @@ export async function invalidateCategoryCache(projectId: number, category: strin
 
   try {
     const pattern = `rag:${projectId}:${category}:*`
-    let cursor = 0
+    let cursor: string | number = 0
     let deletedCount = 0
     const batchSize = 100
 
@@ -194,7 +195,7 @@ export async function invalidateCategoryCache(projectId: number, category: strin
         count: batchSize,
       })
 
-      cursor = nextCursor
+      cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
       if (keys.length > 0) {
         await redis.del(...keys)
@@ -220,7 +221,7 @@ export async function clearAllCache(): Promise<number> {
 
   try {
     const pattern = 'rag:*'
-    let cursor = 0
+    let cursor: string | number = 0
     let deletedCount = 0
     const batchSize = 100
 
@@ -232,7 +233,7 @@ export async function clearAllCache(): Promise<number> {
         count: batchSize,
       })
 
-      cursor = nextCursor
+      cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
       if (keys.length > 0) {
         await redis.del(...keys)

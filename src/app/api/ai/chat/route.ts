@@ -342,10 +342,10 @@ ${ragContext}
                     provider,
                     model,
                     metadata: ragMetadata
-                      ? {
+                      ? ({
                           ragUsed: ragMetadata.used,
                           knowledgeEntries: ragMetadata.entries,
-                        }
+                        } as any)
                       : null,
                   },
                 })
