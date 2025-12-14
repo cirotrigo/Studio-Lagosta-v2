@@ -85,11 +85,18 @@ export async function getCachedResults(
       return null
     }
 
-    // Parse e valida estrutura
-    const results = JSON.parse(cached as string) as SearchResult[]
+    // Upstash Redis já retorna dados parseados automaticamente
+    // Só fazer parse se for string
+    let results: SearchResult[]
+    if (typeof cached === 'string') {
+      results = JSON.parse(cached) as SearchResult[]
+    } else {
+      results = cached as SearchResult[]
+    }
 
     if (!Array.isArray(results)) {
-      console.warn('[cache] Invalid cached data structure')
+      console.warn('[cache] Invalid cached data structure, clearing bad cache')
+      await redis.del(key)
       return null
     }
 
