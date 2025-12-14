@@ -44,6 +44,12 @@ export async function searchKnowledgeBase(
     useCache?: boolean
   } = {}
 ): Promise<SearchResult[]> {
+  const telemetryEnabled =
+    process.env.RAG_TELEMETRY === '1' ||
+    process.env.RAG_TELEMETRY === 'true' ||
+    process.env.RAG_DEBUG === '1' ||
+    process.env.RAG_DEBUG === 'true'
+
   const {
     topK = parseInt(process.env.RAG_TOP_K || '5', 10),
     includeStatuses = ['ACTIVE'],
@@ -61,32 +67,88 @@ export async function searchKnowledgeBase(
     return []
   }
 
+  const overallStart = Date.now()
+
   // Try cache first (only for ACTIVE status queries)
   if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE') {
-    const cached = await getCachedResults(query, tenant.projectId, categoryFilter)
-    if (cached) {
+    const cacheStart = Date.now()
+    const cached = await getCachedResults(query, tenant.projectId, categoryFilter, {
+      topK,
+      minScore,
+      includeEntryMetadata,
+    })
+    if (cached != null) {
+      if (telemetryEnabled) {
+        console.log('[RAG]', {
+          event: 'cache_hit',
+          projectId: tenant.projectId,
+          category: categoryFilter ?? null,
+          topK,
+          minScore,
+          results: cached.length,
+          ms: Date.now() - overallStart,
+          cacheMs: Date.now() - cacheStart,
+        })
+      }
       return cached
+    }
+    if (telemetryEnabled) {
+      console.log('[RAG]', {
+        event: 'cache_miss',
+        projectId: tenant.projectId,
+        category: categoryFilter ?? null,
+        topK,
+        minScore,
+        ms: Date.now() - overallStart,
+        cacheMs: Date.now() - cacheStart,
+      })
     }
   }
 
   // Generate query embedding
+  const embeddingStart = Date.now()
   const queryEmbedding = await generateEmbedding(query)
+  const embeddingMs = Date.now() - embeddingStart
 
   // Query vectors with tenant filter
+  const vectorStart = Date.now()
   const vectorResults = await queryVectors(queryEmbedding, tenant, {
     topK,
     includeStatuses,
     category: categoryFilter,
   })
+  const vectorMs = Date.now() - vectorStart
 
   // Filter by minimum score
   const filteredResults = vectorResults.filter(r => r.score >= minScore)
 
   if (filteredResults.length === 0) {
+    if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE') {
+      await setCachedResults(query, tenant.projectId, [], categoryFilter, undefined, {
+        topK,
+        minScore,
+        includeEntryMetadata,
+      })
+    }
+    if (telemetryEnabled) {
+      console.log('[RAG]', {
+        event: 'no_results',
+        projectId: tenant.projectId,
+        category: categoryFilter ?? null,
+        topK,
+        minScore,
+        vectorResults: vectorResults.length,
+        filtered: 0,
+        embeddingMs,
+        vectorMs,
+        ms: Date.now() - overallStart,
+      })
+    }
     return []
   }
 
   // Get chunk details from database
+  const dbStart = Date.now()
   const chunkIds = filteredResults.map(r => String(r.id))
   const chunks = await db.knowledgeChunk.findMany({
     where: {
@@ -117,6 +179,7 @@ export async function searchKnowledgeBase(
         }
       : undefined,
   })
+  const dbMs = Date.now() - dbStart
 
   // Map results
   const results: SearchResult[] = filteredResults
@@ -138,9 +201,31 @@ export async function searchKnowledgeBase(
     })
     .filter((r): r is NonNullable<typeof r> => r !== null)
 
-  // Cache results if enabled (only for ACTIVE status queries)
-  if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE' && results.length > 0) {
-    await setCachedResults(query, tenant.projectId, results, categoryFilter)
+  // Cache results if enabled (only for ACTIVE status queries; includes empty result caching)
+  if (useCache && includeStatuses.length === 1 && includeStatuses[0] === 'ACTIVE') {
+    await setCachedResults(query, tenant.projectId, results, categoryFilter, undefined, {
+      topK,
+      minScore,
+      includeEntryMetadata,
+    })
+  }
+
+  if (telemetryEnabled) {
+    console.log('[RAG]', {
+      event: 'search_complete',
+      projectId: tenant.projectId,
+      category: categoryFilter ?? null,
+      topK,
+      minScore,
+      vectorResults: vectorResults.length,
+      filtered: filteredResults.length,
+      chunks: chunks.length,
+      results: results.length,
+      embeddingMs,
+      vectorMs,
+      dbMs,
+      ms: Date.now() - overallStart,
+    })
   }
 
   return results

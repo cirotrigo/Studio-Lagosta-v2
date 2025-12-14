@@ -209,8 +209,21 @@ export async function POST(req: Request) {
 
         if (userMessageText) {
           try {
-            console.log('[RAG] Attempting to get context for query:', userMessageText.substring(0, 100))
-            console.log('[RAG] DB User:', dbUser.id, 'Organization:', organizationId || 'none')
+            const ragTelemetryEnabled =
+              process.env.RAG_TELEMETRY === '1' ||
+              process.env.RAG_TELEMETRY === 'true' ||
+              process.env.RAG_DEBUG === '1' ||
+              process.env.RAG_DEBUG === 'true'
+
+            if (ragTelemetryEnabled) {
+              console.log('[RAG]', {
+                event: 'chat_context_fetch_start',
+                projectId,
+                userId: dbUser.id,
+                organizationId: organizationId ?? null,
+                queryChars: userMessageText.length,
+              })
+            }
 
             const tenantKey = {
               projectId,
@@ -220,16 +233,14 @@ export async function POST(req: Request) {
 
             const { context: ragContext, results: ragResults } = await getRAGContextWithResults(userMessageText, tenantKey)
             const ragUsed = ragContext.trim().length > 0
-            console.log('[RAG] Context retrieved, length:', ragContext.length)
 
             // Build optimized system prompt (Option C)
             let systemPrompt = ''
 
             // 1. Custom AI behavior (if configured)
-            if (project.aiChatBehavior?.trim()) {
-              systemPrompt = project.aiChatBehavior.trim() + '\n\n'
-              console.log('[CHAT] Using custom AI behavior for project:', projectId)
-            }
+            const behavior = project.aiChatBehavior?.trim()
+            const hasBehavior = Boolean(behavior)
+            if (hasBehavior) systemPrompt = `${behavior}\n\n`
 
             // 2. RAG context instructions (if RAG context available)
             if (ragUsed) {
@@ -241,7 +252,7 @@ O contexto abaixo contém informações relevantes encontradas na base de conhec
 COMO USAR O CONTEXTO:
 ✓ Use as informações do contexto quando forem relevantes para a pergunta do usuário
 ✓ Priorize dados factuais do contexto (preços, datas, detalhes específicos) sobre suposições
-${project.aiChatBehavior ? '✓ Mantenha SEMPRE o tom de voz e estilo definidos acima ao usar o contexto' : ''}
+${hasBehavior ? '✓ Mantenha SEMPRE o tom de voz e estilo definidos acima ao usar o contexto' : ''}
 ✓ Combine informações do contexto de forma natural em sua resposta
 
 QUANDO O CONTEXTO FOR INSUFICIENTE:
@@ -253,7 +264,7 @@ CONTEXTO DO PROJETO (Base de Conhecimento):
 ${ragContext}
 
 ---
-${project.aiChatBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima com as informações do contexto de forma natural e consistente.' : 'Use o contexto de forma inteligente quando aplicável.'}`
+${hasBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima com as informações do contexto de forma natural e consistente.' : 'Use o contexto de forma inteligente quando aplicável.'}`
             }
 
             // Inject optimized system prompt at the beginning
@@ -263,7 +274,6 @@ ${project.aiChatBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima 
                 content: systemPrompt,
               }
               modelMessages = [systemMessage, ...modelMessages]
-              console.log('[CHAT] System prompt injected, length:', systemPrompt.length)
             }
 
             // Attach RAG usage metadata for downstream saving
@@ -277,6 +287,18 @@ ${project.aiChatBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima 
                   projectId: r.entry?.projectId,
                   score: r.score,
                 })) ?? [],
+            }
+
+            if (ragTelemetryEnabled) {
+              console.log('[RAG]', {
+                event: 'chat_context_fetch_done',
+                projectId,
+                queryChars: userMessageText.length,
+                contextChars: ragContext.length,
+                results: ragResults?.length ?? 0,
+                used: ragUsed,
+                behavior: hasBehavior,
+              })
             }
           } catch (ragError) {
             // Log RAG error but continue without context
@@ -358,6 +380,23 @@ ${project.aiChatBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima 
                 attachments: attachments ? JSON.parse(JSON.stringify(attachments)) : null,
               },
             })
+
+            // Update conversation timestamps immediately (so history ordering/retention updates even if the provider fails)
+            try {
+              const now = new Date()
+              const newExpiresAt = new Date(now)
+              newExpiresAt.setDate(newExpiresAt.getDate() + 7)
+
+              await db.chatConversation.update({
+                where: { id: conversationDbId },
+                data: {
+                  lastMessageAt: now,
+                  expiresAt: newExpiresAt,
+                },
+              })
+            } catch (updateErr) {
+              console.error('[CHAT] Error updating conversation timestamps after user message:', updateErr)
+            }
           }
         }
 

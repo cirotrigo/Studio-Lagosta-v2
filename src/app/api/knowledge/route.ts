@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, indexFile } from '@/lib/knowledge/indexer'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
 
 // Schemas
@@ -216,6 +217,12 @@ export async function POST(req: NextRequest) {
         },
       })
 
+      try {
+        await invalidateProjectCache(projectId)
+      } catch (cacheError) {
+        console.error('[knowledge] Failed to invalidate RAG cache after file upload', cacheError)
+      }
+
       return NextResponse.json(result, { status: 201 })
     } else {
       // Validate text entry
@@ -257,6 +264,12 @@ export async function POST(req: NextRequest) {
           workspaceId: orgId, // Organization knowledge (legado)
         },
       })
+
+      try {
+        await invalidateProjectCache(projectId)
+      } catch (cacheError) {
+        console.error('[knowledge] Failed to invalidate RAG cache after entry create', cacheError)
+      }
 
       return NextResponse.json(result, { status: 201 })
     }

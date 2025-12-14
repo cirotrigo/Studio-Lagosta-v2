@@ -9,9 +9,26 @@ import { DropdownTriggerButton } from '@/components/ui/dropdown-trigger-button'
 import { Autocomplete } from '@/components/ui/autocomplete'
 import { MessageBubble } from '@/components/chat/message-bubble'
 import { Card } from '@/components/ui/card'
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
+import { Input } from '@/components/ui/input'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { usePageConfig } from '@/hooks/use-page-config'
-import { Bot, Loader2, Paperclip, Send, Square, Trash2, X as XIcon, Sparkles, Image as ImageIcon, MessageSquare } from 'lucide-react'
+import {
+  Bot,
+  ChevronDown,
+  History,
+  Image as ImageIcon,
+  Loader2,
+  MessageSquare,
+  MoreVertical,
+  Paperclip,
+  Plus,
+  Send,
+  Sparkles,
+  Square,
+  Trash2,
+  X as XIcon,
+} from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { useCredits } from '@/hooks/use-credits'
@@ -20,8 +37,6 @@ import { useOpenRouterModels } from '@/hooks/use-openrouter-models'
 import { useGenerateImage } from '@/hooks/use-ai-image'
 import { useAIProviders } from '@/hooks/use-ai-providers'
 import { useConversations, useConversation, useCreateConversation, useDeleteConversation } from '@/hooks/use-conversations'
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
-import { History, Plus, MoreVertical } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
 import { useProjects } from '@/hooks/use-project'
 import { ProjectSelector } from '@/app/(protected)/drive/_components/project-selector'
@@ -167,10 +182,14 @@ export default function AIChatPage() {
 
   // Conversation history state
   const [currentConversationId, setCurrentConversationId] = React.useState<string | null>(null)
-  const [historyOpen, setHistoryOpen] = React.useState(false)
+  const [historyCollapsed, setHistoryCollapsed] = React.useState(false)
+  const [historyMobileOpen, setHistoryMobileOpen] = React.useState(false)
+  const [conversationSearch, setConversationSearch] = React.useState('')
 
   // Fetch conversations and current conversation
-  const { data: conversationsData } = useConversations(hasProject ? selectedProjectId : undefined)
+  const { data: conversationsData, isLoading: isLoadingConversations } = useConversations(
+    hasProject ? selectedProjectId : undefined
+  )
   const {
     data: currentConversation,
     refetch: refetchConversation,
@@ -184,6 +203,27 @@ export default function AIChatPage() {
   const [editingPreview, setEditingPreview] = React.useState<TrainingPreview | null>(null)
   const [isTrainingLoading, setIsTrainingLoading] = React.useState(false)
   const [isSavingPreview, setIsSavingPreview] = React.useState(false)
+
+  // Persist desktop sidebar collapsed state
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    const saved = window.localStorage.getItem('aiChat.historyCollapsed')
+    if (saved != null) {
+      setHistoryCollapsed(saved === 'true')
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('aiChat.historyCollapsed', String(historyCollapsed))
+  }, [historyCollapsed])
+
+  const allConversations = conversationsData?.conversations ?? []
+  const filteredConversations = React.useMemo(() => {
+    const q = conversationSearch.trim().toLowerCase()
+    if (!q) return allConversations
+    return allConversations.filter((conv) => conv.title.toLowerCase().includes(q))
+  }, [allConversations, conversationSearch])
 
   // Set initial provider when providers are loaded
   React.useEffect(() => {
@@ -359,6 +399,8 @@ export default function AIChatPage() {
     setTrainingMode(false)
     setIsTrainingLoading(false)
     setIsSavingPreview(false)
+    setHistoryMobileOpen(false)
+    setConversationSearch('')
   }, [selectedProjectId, setMessages])
 
   const { credits, canPerformOperation, getCost, refresh } = useCredits()
@@ -818,7 +860,7 @@ export default function AIChatPage() {
       setMessageMetadata({})
       setHydratedConversationId(null)
       setPendingPreview(null)
-      setHistoryOpen(false)
+      setHistoryMobileOpen(false)
     } catch (error) {
       console.error('Error creating conversation:', error)
     }
@@ -831,7 +873,7 @@ export default function AIChatPage() {
     setMessageMetadata({})
     setHydratedConversationId(null)
     setPendingPreview(null)
-    setHistoryOpen(false)
+    setHistoryMobileOpen(false)
   }
 
   // Delete conversation
@@ -915,94 +957,237 @@ export default function AIChatPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {/* History Sidebar */}
-          <Sheet open={historyOpen} onOpenChange={setHistoryOpen}>
-            <SheetTrigger asChild>
-              <Button
-                variant="outline"
-                size="sm"
-                className="gap-2"
-                onClick={() => setHistoryOpen(true)}
-              >
-                <History className="h-4 w-4" />
-                Histórico de Conversas
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-80 overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>Histórico de Conversas</SheetTitle>
-              </SheetHeader>
-
-              <div className="mt-6 space-y-2">
-                <Button
-                  onClick={handleNewConversation}
-                  className="w-full gap-2"
-                  variant="default"
-                >
-                  <Plus className="h-4 w-4" />
-                  Nova Conversa
+          {/* Mobile: conversation history panel (non-modal) */}
+          <div className="md:hidden">
+            <Collapsible open={historyMobileOpen} onOpenChange={setHistoryMobileOpen}>
+              <CollapsibleTrigger asChild>
+                <Button variant="outline" size="sm" className="w-full justify-between gap-2">
+                  <span className="flex items-center gap-2">
+                    <History className="h-4 w-4" />
+                    Histórico de conversas
+                  </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform ${historyMobileOpen ? 'rotate-180' : ''}`}
+                  />
                 </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="mt-2">
+                <Card className="p-3">
+                  <Button onClick={handleNewConversation} className="w-full gap-2" variant="default">
+                    <Plus className="h-4 w-4" />
+                    Nova conversa
+                  </Button>
 
-                <div className="mt-4 space-y-1">
-                  {conversationsData?.conversations.map((conv) => (
-                    <div
-                      key={conv.id}
-                      className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
-                        currentConversationId === conv.id ? 'bg-accent border-primary' : ''
-                      }`}
-                      onClick={() => handleSelectConversation(conv.id)}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm truncate">
-                          {conv.title}
-                        </div>
-                        <div className="text-xs text-muted-foreground">
-                          {conv._count?.messages || 0} mensagens · {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
-                        </div>
-                      </div>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100">
-                            <MoreVertical className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
-                            }}
-                            className="text-destructive"
+                  <Input
+                    value={conversationSearch}
+                    onChange={(e) => setConversationSearch(e.target.value)}
+                    placeholder="Buscar conversa..."
+                    className="mt-2"
+                  />
+
+                  <ScrollArea className="mt-3 h-80">
+                    <div className="space-y-1 pr-2">
+                      {isLoadingConversations ? (
+                        <p className="text-center text-sm text-muted-foreground py-8">Carregando...</p>
+                      ) : filteredConversations.length === 0 ? (
+                        <p className="text-center text-sm text-muted-foreground py-8">
+                          {conversationSearch.trim()
+                            ? 'Nenhuma conversa encontrada.'
+                            : 'Nenhuma conversa ainda. Comece uma nova!'}
+                        </p>
+                      ) : (
+                        filteredConversations.map((conv) => (
+                          <div
+                            key={conv.id}
+                            className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
+                              currentConversationId === conv.id ? 'bg-accent border-primary' : ''
+                            }`}
+                            onClick={() => handleSelectConversation(conv.id)}
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{conv.title}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {conv._count?.messages || 0} mensagens ·{' '}
+                                {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
+                              </div>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                                  }}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ))
+                      )}
                     </div>
-                  ))}
-
-                  {(!conversationsData?.conversations || conversationsData.conversations.length === 0) && (
-                    <p className="text-center text-sm text-muted-foreground py-8">
-                      Nenhuma conversa ainda. Comece uma nova!
-                    </p>
-                  )}
-                </div>
-              </div>
-            </SheetContent>
-          </Sheet>
-
-          <div className="flex items-center justify-end">
-            <TrainingModeToggle
-              enabled={trainingMode}
-              onChange={(value) => {
-                setTrainingMode(value)
-                setPendingPreview(null)
-              }}
-            />
+                  </ScrollArea>
+                </Card>
+              </CollapsibleContent>
+            </Collapsible>
           </div>
 
-          <Card className="p-4">
+          <div className={`flex flex-col gap-4 md:flex-row ${historyCollapsed ? 'md:gap-0' : ''}`}>
+            {/* Desktop: collapsible sidebar (ChatGPT/Claude-style) */}
+            <div
+              className={`hidden md:block flex-shrink-0 transition-[width] duration-200 ${
+                historyCollapsed ? 'w-0' : 'w-80'
+              }`}
+            >
+              {!historyCollapsed && (
+                <Card className="h-[calc(100vh-260px)] min-h-[520px] p-3 flex flex-col">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <History className="h-4 w-4 text-muted-foreground" />
+                      <h2 className="text-sm font-semibold">Conversas</h2>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => setHistoryCollapsed(true)}
+                      aria-label="Recolher histórico"
+                    >
+                      <XIcon className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <Button onClick={handleNewConversation} className="w-full gap-2" variant="default">
+                    <Plus className="h-4 w-4" />
+                    Nova conversa
+                  </Button>
+
+                  <Input
+                    value={conversationSearch}
+                    onChange={(e) => setConversationSearch(e.target.value)}
+                    placeholder="Buscar conversa..."
+                    className="mt-2"
+                  />
+
+                  <ScrollArea className="mt-3 flex-1">
+                    <div className="space-y-1 pr-2">
+                      {isLoadingConversations ? (
+                        <p className="text-center text-sm text-muted-foreground py-8">Carregando...</p>
+                      ) : filteredConversations.length === 0 ? (
+                        <p className="text-center text-sm text-muted-foreground py-8">
+                          {conversationSearch.trim()
+                            ? 'Nenhuma conversa encontrada.'
+                            : 'Nenhuma conversa ainda. Comece uma nova!'}
+                        </p>
+                      ) : (
+                        filteredConversations.map((conv) => (
+                          <div
+                            key={conv.id}
+                            className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
+                              currentConversationId === conv.id ? 'bg-accent border-primary' : ''
+                            }`}
+                            onClick={() => handleSelectConversation(conv.id)}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-sm truncate">{conv.title}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {conv._count?.messages || 0} mensagens ·{' '}
+                                {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
+                              </div>
+                            </div>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 opacity-0 group-hover:opacity-100"
+                                >
+                                  <MoreVertical className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                                  }}
+                                  className="text-destructive"
+                                >
+                                  <Trash2 className="h-4 w-4 mr-2" />
+                                  Excluir
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </ScrollArea>
+                </Card>
+              )}
+            </div>
+
+            {/* Chat column */}
+            <div className="flex-1 space-y-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={handleNewConversation}
+                    className="gap-2 md:hidden"
+                    variant="outline"
+                    size="sm"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nova conversa
+                  </Button>
+
+                  {historyCollapsed && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="hidden md:inline-flex gap-2"
+                      onClick={() => setHistoryCollapsed(false)}
+                    >
+                      <History className="h-4 w-4" />
+                      Histórico
+                    </Button>
+                  )}
+
+                  {historyCollapsed && (
+                    <Button
+                      onClick={handleNewConversation}
+                      className="hidden md:inline-flex gap-2"
+                      variant="outline"
+                      size="sm"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Nova conversa
+                    </Button>
+                  )}
+                </div>
+
+                <TrainingModeToggle
+                  enabled={trainingMode}
+                  onChange={(value) => {
+                    setTrainingMode(value)
+                    setPendingPreview(null)
+                  }}
+                />
+              </div>
+
+              <Card className="p-4">
             <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
               <div>
                 Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
@@ -1287,6 +1472,8 @@ export default function AIChatPage() {
               </form>
             </div>
           </Card>
+            </div>
+          </div>
         </div>
       )}
     </div>

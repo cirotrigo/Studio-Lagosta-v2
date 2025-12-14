@@ -10,6 +10,7 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { reindexEntry, deleteEntry } from '@/lib/knowledge/indexer'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 
@@ -200,6 +201,12 @@ export async function PUT(
       }
     }
 
+    try {
+      await invalidateProjectCache(existingEntry.projectId)
+    } catch (cacheError) {
+      console.error('[knowledge] Failed to invalidate RAG cache after entry update', cacheError)
+    }
+
     return NextResponse.json(updatedEntry)
   } catch (error) {
     console.error('Error updating knowledge entry:', error)
@@ -267,6 +274,12 @@ export async function DELETE(
       userId: dbUser.id,
       workspaceId: orgId,
     })
+
+    try {
+      await invalidateProjectCache(entry.projectId)
+    } catch (cacheError) {
+      console.error('[knowledge] Failed to invalidate RAG cache after entry delete', cacheError)
+    }
 
     return NextResponse.json({ message: 'Entrada excluída com sucesso' })
   } catch (error) {

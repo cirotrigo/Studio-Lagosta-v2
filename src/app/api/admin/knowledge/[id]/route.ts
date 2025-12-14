@@ -11,6 +11,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { updateEntry, deleteEntry } from '@/lib/knowledge/indexer'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
 
 // Admin check utility
@@ -126,6 +127,12 @@ export async function PUT(
       userId: dbUser.id,
     })
 
+    try {
+      await invalidateProjectCache(existingEntry.projectId)
+    } catch (cacheError) {
+      console.error('[admin/knowledge] Failed to invalidate RAG cache after entry update', cacheError)
+    }
+
     return NextResponse.json(entry)
   } catch (error) {
     console.error('Error updating knowledge entry:', error)
@@ -178,6 +185,12 @@ export async function DELETE(
       projectId: existingEntry.projectId,
       userId: dbUser.id,
     })
+
+    try {
+      await invalidateProjectCache(existingEntry.projectId)
+    } catch (cacheError) {
+      console.error('[admin/knowledge] Failed to invalidate RAG cache after entry delete', cacheError)
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

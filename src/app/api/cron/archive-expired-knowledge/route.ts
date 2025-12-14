@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes
@@ -54,6 +55,11 @@ export async function GET(req: Request) {
       })
     }
 
+    const projectIdsToInvalidate = new Set<number>()
+    for (const entry of expiredEntries) {
+      projectIdsToInvalidate.add(entry.projectId)
+    }
+
     console.log(`[cron:archive-expired-knowledge] Found ${expiredEntries.length} expired entries`)
 
     let archivedCount = 0
@@ -93,6 +99,24 @@ export async function GET(req: Request) {
       }
     }
 
+    // Invalidate RAG cache for affected projects (best-effort)
+    const cacheInvalidationErrors: Array<{ projectId: number; error: string }> = []
+    await Promise.all(
+      Array.from(projectIdsToInvalidate).map(async (projectId) => {
+        try {
+          await invalidateProjectCache(projectId)
+        } catch (err) {
+          cacheInvalidationErrors.push({
+            projectId,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          })
+        }
+      })
+    )
+    if (cacheInvalidationErrors.length > 0) {
+      console.error('[cron:archive-expired-knowledge] Cache invalidation errors:', cacheInvalidationErrors)
+    }
+
     const durationMs = Date.now() - startTime
 
     console.log(
@@ -105,6 +129,8 @@ export async function GET(req: Request) {
       total: expiredEntries.length,
       vectorsDeleted: vectorsDeletedCount,
       errors: errors.length > 0 ? errors : undefined,
+      cacheInvalidatedProjects: projectIdsToInvalidate.size,
+      cacheInvalidationErrors: cacheInvalidationErrors.length > 0 ? cacheInvalidationErrors : undefined,
       durationMs,
     })
   } catch (error) {

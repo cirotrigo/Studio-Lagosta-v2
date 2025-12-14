@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { reindexEntry } from '@/lib/knowledge/indexer'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { db } from '@/lib/db'
 
 export const runtime = 'nodejs'
@@ -65,6 +66,12 @@ export async function POST(
       projectId: entry.projectId,
       userId: dbUser.id,
     })
+
+    try {
+      await invalidateProjectCache(entry.projectId)
+    } catch (cacheError) {
+      console.error('[admin/knowledge] Failed to invalidate RAG cache after reindex', cacheError)
+    }
 
     return NextResponse.json(result)
   } catch (error) {
