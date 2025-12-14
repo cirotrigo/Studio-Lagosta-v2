@@ -292,7 +292,6 @@ export default function AIChatPage() {
     },
   })
 
-  const deferredMessages = React.useDeferredValue(messages)
   const lastStatusRef = React.useRef<typeof status | null>(null)
   React.useEffect(() => {
     if (lastStatusRef.current === 'streaming' && status !== 'streaming') {
@@ -313,11 +312,18 @@ export default function AIChatPage() {
     if (!currentConversation?.id) return
     if (hydratedConversationId === currentConversation.id) return
 
-    const hasServerMessages = !!currentConversation.messages?.length
-    const hasLocalMessages = messages.length > 0
+    const serverMessagesCount = currentConversation.messages?.length || 0
+    const localMessagesCount = messages.length
+    const hasServerMessages = serverMessagesCount > 0
+    const hasLocalMessages = localMessagesCount > 0
 
-    // Se o servidor já tem mensagens, hidrata. Caso contrário, não sobrescreve o que já está em streaming.
-    if (hasServerMessages) {
+    // IMPORTANTE: Só carregar do servidor se tivermos MAIS ou IGUAL mensagens no servidor
+    // Isso previne race condition onde servidor ainda não salvou a última mensagem
+    const shouldLoadFromServer = hasServerMessages && serverMessagesCount >= localMessagesCount
+
+    console.log('[Chat Hydration] Server:', serverMessagesCount, 'Local:', localMessagesCount, 'Should load:', shouldLoadFromServer)
+
+    if (shouldLoadFromServer) {
       const loadedMessages = currentConversation.messages!.map((msg) => ({
         id: msg.id,
         role: msg.role as 'user' | 'assistant' | 'system',
@@ -336,8 +342,8 @@ export default function AIChatPage() {
       return
     }
 
-    // Se não há mensagens no servidor, mas o cliente já tem alguma (primeira pergunta), apenas marca como hidratado.
-    if (hasLocalMessages) {
+    // Se não deve carregar do servidor, marcar como hidratado para evitar loop infinito
+    if (hasLocalMessages || hasServerMessages) {
       setHydratedConversationId(currentConversation.id)
     }
   }, [currentConversation, hydratedConversationId, messages, setMessages])
@@ -412,15 +418,25 @@ export default function AIChatPage() {
     const viewport = scrollViewportRef.current
     if (!viewport) return
 
-    // Use requestAnimationFrame to ensure DOM has updated
+    // Debug: log message count
+    console.log('[Chat] Messages count:', messages.length)
+
+    // Double RAF + timeout to ensure DOM is fully rendered
     const rafId = requestAnimationFrame(() => {
-      viewport.scrollTop = viewport.scrollHeight
+      requestAnimationFrame(() => {
+        setTimeout(() => {
+          if (viewport) {
+            viewport.scrollTop = viewport.scrollHeight
+            console.log('[Chat] Scrolled to:', viewport.scrollTop, 'height:', viewport.scrollHeight)
+          }
+        }, 50)
+      })
     })
 
     return () => {
       cancelAnimationFrame(rafId)
     }
-  }, [deferredMessages, status])
+  }, [messages, status])
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -1022,20 +1038,22 @@ export default function AIChatPage() {
                       }
                     }
                   }}
-                  className="flex flex-col gap-3 pr-4"
+                  className="flex flex-col gap-3 pr-4 pb-4"
                 >
                 {messages.length === 0 && (
                   <p className="text-sm text-muted-foreground">
                     Selecione o provedor e o modelo, envie uma mensagem e acompanhe a resposta em tempo real.
                   </p>
                 )}
-                {deferredMessages.map((m, idx) => {
+                {messages.map((m, idx) => {
                   const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
-                  const disableMarkdown =
-                    mode === 'text' &&
-                    normalizedRole === 'assistant' &&
-                    status === 'streaming' &&
-                    idx === deferredMessages.length - 1
+                  // Sempre desabilitar Markdown para assistente em modo texto (mantém formatação original)
+                  const disableMarkdown = mode === 'text' && normalizedRole === 'assistant'
+
+                  // Debug: log each message being rendered
+                  if (idx === messages.length - 1) {
+                    console.log('[Chat] Rendering last message:', idx + 1, 'of', messages.length, 'role:', normalizedRole)
+                  }
 
                   // Extract text content from parts
                   const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
