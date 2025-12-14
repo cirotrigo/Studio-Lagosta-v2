@@ -28,6 +28,7 @@ import {
   Square,
   Trash2,
   X as XIcon,
+  FileText
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
@@ -46,6 +47,9 @@ import { KnowledgePreviewCard } from '@/components/chat/knowledge-preview-card'
 import { DuplicateWarningCard } from '@/components/chat/duplicate-warning-card'
 import { MultipleMatchesCard } from '@/components/chat/multiple-matches-card'
 import { EditPreviewForm } from '@/components/chat/edit-preview-form'
+import { ChatEmptyState } from '@/components/chat/chat-empty-state'
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
+import { cn } from '@/lib/utils'
 import type { TrainingPreview } from '@/lib/knowledge/training-pipeline'
 import {
   isDisambiguationResponse,
@@ -276,7 +280,7 @@ export default function AIChatPage() {
   // Upload state (declared before useChat so it can be referenced in request body)
   const fileInputRef = React.useRef<HTMLInputElement>(null)
   const uploadRefs = React.useRef<Record<string, XMLHttpRequest>>({})
-  type UploadItem = { id: string; name: string; size: number; url?: string; status: 'uploading'|'done'|'error'; progress: number; error?: string }
+  type UploadItem = { id: string; name: string; size: number; url?: string; status: 'uploading' | 'done' | 'error'; progress: number; error?: string }
   const [attachments, setAttachments] = React.useState<UploadItem[]>([])
   const [dragActive, setDragActive] = React.useState(false)
   const readyAttachments = React.useMemo(
@@ -543,7 +547,7 @@ export default function AIChatPage() {
       const attachmentCount = readyAttachments.length
       setMessages(prev => [
         ...prev,
-        { id: id1, role: 'user', parts: [{ type: 'text', text: prompt + (attachmentCount ? `\n\n(Anexada${attachmentCount>1?'s':''} ${attachmentCount} imagem${attachmentCount>1?'ns':''})` : '') }] },
+        { id: id1, role: 'user', parts: [{ type: 'text', text: prompt + (attachmentCount ? `\n\n(Anexada${attachmentCount > 1 ? 's' : ''} ${attachmentCount} imagem${attachmentCount > 1 ? 'ns' : ''})` : '') }] },
         { id: id2, role: 'assistant', parts: [{ type: 'text', text: JSON.stringify({ images }) }] },
       ])
       setAttachments([])
@@ -567,11 +571,10 @@ export default function AIChatPage() {
       }
     }
   }
-  
-  // Wrap text submit to clear input right after sending
-  const handleSubmitText = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    const prompt = input.trim()
+
+
+  const submitMessage = async (text: string) => {
+    const prompt = text.trim()
     if (!prompt) {
       return
     }
@@ -601,7 +604,13 @@ export default function AIChatPage() {
     setAttachments([])
     setTimeout(() => refresh(), 300)
   }
-  
+
+  // Wrap text submit to clear input right after sending
+  const handleSubmitText = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    await submitMessage(input)
+  }
+
 
   const handleAttachFile = () => {
     fileInputRef.current?.click()
@@ -609,7 +618,7 @@ export default function AIChatPage() {
   const removeAttachment = (i: number) => setAttachments((prev) => prev.filter((_, idx) => idx !== i))
 
   const startUpload = (file: File) => {
-    const id = `u-${Date.now()}-${Math.random().toString(36).slice(2,8)}`
+    const id = `u-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const item: UploadItem = { id, name: file.name, size: file.size, status: 'uploading', progress: 0 }
     setAttachments(prev => [...prev, item])
     const fd = new FormData()
@@ -634,7 +643,7 @@ export default function AIChatPage() {
           }
         } else {
           let msg = 'Falha no upload'
-          try { msg = (JSON.parse(xhr.responseText)?.error) || msg } catch {}
+          try { msg = (JSON.parse(xhr.responseText)?.error) || msg } catch { }
           setAttachments(prev => prev.map(a => a.id === id ? { ...a, status: 'error', error: msg } : a))
         }
       }
@@ -911,7 +920,7 @@ export default function AIChatPage() {
       try {
         // regenerate the last message
         regenerate?.()
-      } catch {}
+      } catch { }
     }
   }, [regenerate, setMessages])
 
@@ -926,531 +935,446 @@ export default function AIChatPage() {
       if (!hasTip) {
         const id = `sys-nocred-${Date.now()}`
         setMessages(prev => [...prev, { id, role: 'assistant', parts: [{ type: 'text', text: 'Você não tem mais créditos. [Ir para cobrança →](/billing)' }] }])
+
       }
     }
   }, [credits?.creditsRemaining])
 
   return (
-    <div className="space-y-4">
-      <Card className="p-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">Projeto selecionado</p>
-            <p className="font-semibold">
-              {selectedProject?.name ?? (isLoadingProjects ? 'Carregando...' : 'Nenhum projeto')}
-            </p>
-          </div>
-          <ProjectSelector
-            projects={projects || []}
-            value={selectedProjectId}
-            onChange={handleProjectChange}
-            isLoading={isLoadingProjects}
-          />
-        </div>
-      </Card>
-
-      {!hasProject ? (
-        <Card className="p-4">
-          <p className="text-sm text-muted-foreground">
-            Selecione um projeto para habilitar o chat com RAG isolado e histórico filtrado.
-          </p>
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          {/* Mobile: conversation history panel (non-modal) */}
-          <div className="md:hidden">
-            <Collapsible open={historyMobileOpen} onOpenChange={setHistoryMobileOpen}>
-              <CollapsibleTrigger asChild>
-                <Button variant="outline" size="sm" className="w-full justify-between gap-2">
-                  <span className="flex items-center gap-2">
-                    <History className="h-4 w-4" />
-                    Histórico de conversas
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${historyMobileOpen ? 'rotate-180' : ''}`}
-                  />
-                </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <Card className="p-3">
-                  <Button onClick={handleNewConversation} className="w-full gap-2" variant="default">
-                    <Plus className="h-4 w-4" />
-                    Nova conversa
-                  </Button>
-
-                  <Input
-                    value={conversationSearch}
-                    onChange={(e) => setConversationSearch(e.target.value)}
-                    placeholder="Buscar conversa..."
-                    className="mt-2"
-                  />
-
-                  <ScrollArea className="mt-3 h-80">
-                    <div className="space-y-1 pr-2">
-                      {isLoadingConversations ? (
-                        <p className="text-center text-sm text-muted-foreground py-8">Carregando...</p>
-                      ) : filteredConversations.length === 0 ? (
-                        <p className="text-center text-sm text-muted-foreground py-8">
-                          {conversationSearch.trim()
-                            ? 'Nenhuma conversa encontrada.'
-                            : 'Nenhuma conversa ainda. Comece uma nova!'}
-                        </p>
-                      ) : (
-                        filteredConversations.map((conv) => (
-                          <div
-                            key={conv.id}
-                            className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
-                              currentConversationId === conv.id ? 'bg-accent border-primary' : ''
-                            }`}
-                            onClick={() => handleSelectConversation(conv.id)}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">{conv.title}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {conv._count?.messages || 0} mensagens ·{' '}
-                                {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
-                              </div>
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
-                                  }}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Excluir
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </Card>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-
-          <div className={`flex flex-col gap-4 md:flex-row ${historyCollapsed ? 'md:gap-0' : ''}`}>
-            {/* Desktop: collapsible sidebar (ChatGPT/Claude-style) */}
-            <div
-              className={`hidden md:block flex-shrink-0 transition-[width] duration-200 ${
-                historyCollapsed ? 'w-0' : 'w-80'
-              }`}
-            >
-              {!historyCollapsed && (
-                <Card className="h-[calc(100vh-260px)] min-h-[520px] p-3 flex flex-col">
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <History className="h-4 w-4 text-muted-foreground" />
-                      <h2 className="text-sm font-semibold">Conversas</h2>
-                    </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8"
-                      onClick={() => setHistoryCollapsed(true)}
-                      aria-label="Recolher histórico"
+    <div className="flex h-[calc(100vh-6rem)] flex-col md:flex-row gap-4">
+      {/* Mobile History Sheet */}
+      <Sheet open={historyMobileOpen} onOpenChange={setHistoryMobileOpen}>
+        <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0">
+          <div className="flex flex-col h-full">
+            <div className="p-4 border-b">
+              <h2 className="font-semibold text-lg flex items-center gap-2">
+                <History className="h-5 w-5" />
+                Histórico
+              </h2>
+            </div>
+            <div className="p-4 space-y-4">
+              <Button onClick={handleNewConversation} className="w-full gap-2" variant="default">
+                <Plus className="h-4 w-4" />
+                Nova conversa
+              </Button>
+              <Input
+                value={conversationSearch}
+                onChange={(e) => setConversationSearch(e.target.value)}
+                placeholder="Buscar conversa..."
+              />
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="space-y-1 p-2">
+                {isLoadingConversations ? (
+                  <p className="text-center text-sm text-muted-foreground py-8">Carregando...</p>
+                ) : filteredConversations.length === 0 ? (
+                  <p className="text-center text-sm text-muted-foreground py-8">
+                    {conversationSearch.trim()
+                      ? 'Nenhuma conversa encontrada.'
+                      : 'Nenhuma conversa ainda.'}
+                  </p>
+                ) : (
+                  filteredConversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-all hover:bg-accent/50 ${currentConversationId === conv.id ? 'bg-accent border-primary/50 shadow-sm' : 'border-transparent'
+                        }`}
+                      onClick={() => handleSelectConversation(conv.id)}
                     >
-                      <XIcon className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <Button onClick={handleNewConversation} className="w-full gap-2" variant="default">
-                    <Plus className="h-4 w-4" />
-                    Nova conversa
-                  </Button>
-
-                  <Input
-                    value={conversationSearch}
-                    onChange={(e) => setConversationSearch(e.target.value)}
-                    placeholder="Buscar conversa..."
-                    className="mt-2"
-                  />
-
-                  <ScrollArea className="mt-3 flex-1">
-                    <div className="space-y-1 pr-2">
-                      {isLoadingConversations ? (
-                        <p className="text-center text-sm text-muted-foreground py-8">Carregando...</p>
-                      ) : filteredConversations.length === 0 ? (
-                        <p className="text-center text-sm text-muted-foreground py-8">
-                          {conversationSearch.trim()
-                            ? 'Nenhuma conversa encontrada.'
-                            : 'Nenhuma conversa ainda. Comece uma nova!'}
-                        </p>
-                      ) : (
-                        filteredConversations.map((conv) => (
-                          <div
-                            key={conv.id}
-                            className={`group relative flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors hover:bg-accent ${
-                              currentConversationId === conv.id ? 'bg-accent border-primary' : ''
-                            }`}
-                            onClick={() => handleSelectConversation(conv.id)}
-                          >
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-sm truncate">{conv.title}</div>
-                              <div className="text-xs text-muted-foreground">
-                                {conv._count?.messages || 0} mensagens ·{' '}
-                                {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
-                              </div>
-                            </div>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 opacity-0 group-hover:opacity-100"
-                                >
-                                  <MoreVertical className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
-                                  }}
-                                  className="text-destructive"
-                                >
-                                  <Trash2 className="h-4 w-4 mr-2" />
-                                  Excluir
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        ))
-                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-sm truncate">{conv.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {new Date(conv.lastMessageAt).toLocaleDateString('pt-BR')}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteConversation(conv.id, e as unknown as React.MouseEvent)
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
+                      </Button>
                     </div>
-                  </ScrollArea>
-                </Card>
-              )}
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </SheetContent>
+      </Sheet>
+
+      {/* Desktop Sidebar */}
+      <div
+        className={cn(
+          "hidden md:flex flex-col border rounded-xl bg-card overflow-hidden transition-all duration-300 ease-in-out",
+          historyCollapsed ? "w-[60px]" : "w-80"
+        )}
+      >
+        <div className="p-3 border-b flex items-center justify-between h-14">
+          {!historyCollapsed && <span className="font-semibold text-sm pl-1">Conversas</span>}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 ml-auto"
+            onClick={() => setHistoryCollapsed(!historyCollapsed)}
+            title={historyCollapsed ? "Expandir histórico" : "Recolher histórico"}
+          >
+            {historyCollapsed ? <History className="h-4 w-4" /> : <ChevronDown className="h-4 w-4 rotate-90" />}
+          </Button>
+        </div>
+
+        {!historyCollapsed && (
+          <div className="flex flex-col h-full overflow-hidden">
+            <div className="p-3 space-y-3">
+              <Button onClick={handleNewConversation} className="w-full gap-2 shadow-sm" variant="outline">
+                <Plus className="h-4 w-4" />
+                Nova Conversa
+              </Button>
+              <Input
+                value={conversationSearch}
+                onChange={(e) => setConversationSearch(e.target.value)}
+                placeholder="Buscar..."
+                className="h-9"
+              />
             </div>
 
-            {/* Chat column */}
-            <div className="flex-1 space-y-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Button
-                    onClick={handleNewConversation}
-                    className="gap-2 md:hidden"
-                    variant="outline"
-                    size="sm"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Nova conversa
-                  </Button>
-
-                  {historyCollapsed && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="hidden md:inline-flex gap-2"
-                      onClick={() => setHistoryCollapsed(false)}
+            <ScrollArea className="flex-1 px-3 pb-3">
+              <div className="space-y-1">
+                {isLoadingConversations ? (
+                  <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-muted-foreground" /></div>
+                ) : filteredConversations.length === 0 ? (
+                  <p className="text-center text-xs text-muted-foreground py-8">
+                    {conversationSearch.trim() ? 'Nada encontrado.' : 'Sem conversas.'}
+                  </p>
+                ) : (
+                  filteredConversations.map((conv) => (
+                    <div
+                      key={conv.id}
+                      className={cn(
+                        "group flex items-center justify-between rounded-md p-2 cursor-pointer text-sm transition-colors hover:bg-accent",
+                        currentConversationId === conv.id ? "bg-accent font-medium text-accent-foreground" : "text-muted-foreground"
+                      )}
+                      onClick={() => handleSelectConversation(conv.id)}
                     >
-                      <History className="h-4 w-4" />
-                      Histórico
-                    </Button>
-                  )}
+                      <span className="truncate">{conv.title}</span>
+                      {currentConversationId === conv.id && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100"
+                          onClick={(e) => handleDeleteConversation(conv.id, e as any)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+      </div>
 
-                  {historyCollapsed && (
-                    <Button
-                      onClick={handleNewConversation}
-                      className="hidden md:inline-flex gap-2"
-                      variant="outline"
-                      size="sm"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Nova conversa
-                    </Button>
-                  )}
-                </div>
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col min-w-0 bg-background/50 rounded-xl border relative overflow-hidden">
+        {/* Background drag overlay */}
+        {dragActive && (
+          <div className="absolute inset-0 z-50 bg-primary/10 backdrop-blur-sm flex items-center justify-center border-2 border-primary border-dashed rounded-xl" onDrop={onDrop} onDragLeave={onDragLeave} onDragOver={onDragOver}>
+            <div className="bg-background p-6 rounded-xl shadow-lg text-center animate-in zoom-in-95 duration-200">
+              <div className="mx-auto w-12 h-12 bg-primary/20 rounded-full flex items-center justify-center mb-3">
+                <Paperclip className="h-6 w-6 text-primary" />
+              </div>
+              <p className="font-semibold text-lg">Solte os arquivos aqui</p>
+              <p className="text-sm text-muted-foreground">para anexar ao chat</p>
+            </div>
+          </div>
+        )}
 
-                <TrainingModeToggle
-                  enabled={trainingMode}
-                  onChange={(value) => {
-                    setTrainingMode(value)
-                    setPendingPreview(null)
-                  }}
+        {/* Header */}
+        <div className="h-14 border-b flex items-center justify-between px-4 bg-background/80 backdrop-blur-sm z-10 shrink-0">
+          <div className="flex items-center gap-2 overflow-hidden">
+            {/* Mobile Toggle */}
+            <Button variant="ghost" size="icon" className="md:hidden -ml-2" onClick={() => setHistoryMobileOpen(true)}>
+              <History className="h-5 w-5" />
+            </Button>
+
+            <div className="flex items-center gap-2 overflow-hidden">
+              <div className="hidden sm:block">
+                <ProjectSelector
+                  projects={projects || []}
+                  value={selectedProjectId}
+                  onChange={handleProjectChange}
+                  isLoading={isLoadingProjects}
                 />
               </div>
+              <div className="h-4 w-[1px] bg-border mx-1 hidden sm:block" />
 
-              <Card className="p-4">
-            <div className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-              <div>
-                Modo: <span className="font-medium text-foreground">{mode === 'text' ? 'Texto' : 'Imagem'}</span> · Provedor: <span className="font-medium text-foreground">{availableProviders.find(p=>p.key===provider)?.name || 'N/A'}</span> · Modelo: <span className="font-medium text-foreground">{currentModels.find(m => m.id === model)?.label || model}</span>
-                {provider === 'openrouter' && model.includes(':free') && (
-                  <span className="ml-1 text-green-600 dark:text-green-400">(Gratuito)</span>
-                )}
+              {/* Provider/Model Selector Compact */}
+              <DropdownMenu open={mode === 'image' ? false : providerMenuOpen} onOpenChange={(o) => { if (mode !== 'image') setProviderMenuOpen(o) }}>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="gap-2 font-normal" disabled={mode === 'image' || isLoadingProviders}>
+                    <Bot className="h-4 w-4 text-primary" />
+                    <span className="truncate max-w-[100px] hidden sm:inline-block">{availableProviders.find((p) => p.key === provider)?.name || 'Provedor'}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start">
+                  {availableProviders.map((p) => (
+                    <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
+                      {p.name}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+
+              <div className="h-8 w-[180px]">
+                <Autocomplete
+                  items={modelItems}
+                  value={model}
+                  onChange={setModel}
+                  icon={<Sparkles className="h-3.5 w-3.5 text-amber-500" />}
+                  buttonAriaLabel="Selecionar modelo"
+                  placeholder="Modelo..."
+                />
               </div>
-              <div className="flex items-center gap-2">
-                {credits && (
-                  <div className="hidden sm:flex items-center gap-2 mr-2">
-                    <span className="text-xs">Créditos: <span className="font-medium text-foreground">{credits.creditsRemaining}</span></span>
-                  </div>
-                )}
-                <div className="hidden sm:block">
-                  <CreditStatus showUpgradeButton={false} />
-                </div>
-                <Button variant="ghost" size="icon" aria-label="Limpar chat" onClick={() => setMessages([])}>
-                  <Trash2 className="h-4 w-4" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <TrainingModeToggle
+              enabled={trainingMode}
+              onChange={(value) => {
+                setTrainingMode(value)
+                setPendingPreview(null)
+              }}
+            />
+
+            <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground">
+                  {mode === 'image' ? <ImageIcon className="h-4 w-4" /> : <MessageSquare className="h-4 w-4" />}
                 </Button>
-                {/* Stop button moved next to Enviar */}
-              </div>
-            </div>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => setMode('text')}>
+                  <MessageSquare className="h-4 w-4 mr-2" /> Modo Texto
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setMode('image')}>
+                  <ImageIcon className="h-4 w-4 mr-2" /> Modo Imagem
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-            <div className="mb-3 h-[calc(100vh-480px)] min-h-[400px] relative">
-              <ScrollArea className="h-full">
-                <div
-                  ref={(node) => {
-                    if (node) {
-                      // Get the viewport element (first child of ScrollArea)
-                      const viewport = node.parentElement?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLDivElement
-                      if (viewport) {
-                        scrollViewportRef.current = viewport
-                      }
-                    }
-                  }}
-                  className="flex flex-col gap-3 pr-4 pb-4"
-                >
-                {messages.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    Selecione o provedor e o modelo, envie uma mensagem e acompanhe a resposta em tempo real.
-                  </p>
-                )}
-                {messages.map((m, idx) => {
-                  const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
-                  // Sempre desabilitar Markdown para assistente em modo texto (mantém formatação original)
-                  const disableMarkdown = mode === 'text' && normalizedRole === 'assistant'
+            <div className="h-4 w-[1px] bg-border mx-1" />
+            <CreditStatus showUpgradeButton={false} />
+          </div>
+        </div>
 
-                  // Debug: log each message being rendered
-                  if (idx === messages.length - 1) {
-                    console.log('[Chat] Rendering last message:', idx + 1, 'of', messages.length, 'role:', normalizedRole)
-                  }
-
-                  // Extract text content from parts
-                  const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
-                  const metadataRaw = (m as { metadata?: unknown }).metadata ?? messageMetadata[m.id]
-                  const metadata: Record<string, unknown> | undefined =
-                    metadataRaw && typeof metadataRaw === 'object' && !Array.isArray(metadataRaw)
-                      ? metadataRaw as Record<string, unknown>
-                      : undefined
-
-                  return (
-                    <MessageBubble
-                      key={m.id}
-                      message={{
-                        id: m.id,
-                        role: normalizedRole,
-                        content,
-                        metadata,
-                      }}
-                      onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
-                      retryIndex={idx}
-                      disableMarkdown={disableMarkdown}
-                    />
-                  )
-                })}
-                {pendingPreview && !editingPreview && (
-                  <div className="space-y-3">
-                    {pendingPreview.matchType === 'duplicate_warning' ? (
-                      <DuplicateWarningCard
-                        preview={pendingPreview}
-                        onCreateNew={handleCreateNewFromDuplicate}
-                        onUpdateExisting={handleSelectMatch}
-                        onCancel={handleCancelPreview}
-                      />
-                    ) : pendingPreview.matchType === 'multiple' && pendingPreview.matches?.length ? (
-                      <MultipleMatchesCard
-                        preview={pendingPreview}
-                        onSelectMatch={(targetId) => {
-                          // Atualizar preview com targetEntryId selecionado
-                          setPendingPreview({
-                            ...pendingPreview,
-                            targetEntryId: targetId,
-                            matchType: 'single',
-                            matches: pendingPreview.matches?.filter(m => m.entryId === targetId),
-                          })
-                        }}
-                        onCancel={handleCancelPreview}
-                      />
-                    ) : (
-                      <KnowledgePreviewCard
-                        preview={pendingPreview}
-                        onConfirm={handleConfirmPreview}
-                        onEdit={() => setEditingPreview(pendingPreview)}
-                        onCancel={handleCancelPreview}
-                        isLoading={isSavingPreview}
-                      />
-                    )}
-                  </div>
-                )}
-                {editingPreview && (
-                  <EditPreviewForm
-                    preview={editingPreview}
-                    onSave={(updated) => {
-                      setPendingPreview(updated)
-                      setEditingPreview(null)
-                    }}
-                    onCancel={() => setEditingPreview(null)}
-                    isLoading={isSavingPreview}
-                  />
-                )}
-                {(status === 'streaming' || generateImage.isPending || isTrainingLoading) && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> {mode === 'image' ? 'Gerando imagem...' : trainingMode ? 'Gerando pré-visualização...' : 'Gerando resposta...'}
-                  </div>
-                )}
-                <div ref={endRef} />
+        {/* Messages Area */}
+        <div className={cn(
+          "flex-1 relative overflow-hidden",
+          trainingMode && "bg-amber-500/5"
+        )}>
+          <ScrollArea className="h-full">
+            <div
+              ref={(node) => {
+                if (node) {
+                  const viewport = node.parentElement?.querySelector('[data-slot="scroll-area-viewport"]') as HTMLDivElement
+                  if (viewport) scrollViewportRef.current = viewport
+                }
+              }}
+              className="flex flex-col gap-4 py-6 px-4 max-w-3xl mx-auto min-h-full"
+            >
+              {!hasProject ? (
+                <div className="flex flex-col items-center justify-center p-8 text-center h-full my-auto text-muted-foreground opacity-60">
+                  <p>Selecione um projeto para iniciar o chat.</p>
                 </div>
-              </ScrollArea>
+              ) : messages.length === 0 ? (
+                <ChatEmptyState
+                  onSelectPrompt={(text) => {
+                    setInput(text)
+                    // Focus logic could go here
+                  }}
+                  onSelectMode={(m) => setMode(m)}
+                />
+              ) : (
+                <>
+                  {messages.map((m, idx) => {
+                    const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
+                    const disableMarkdown = mode === 'text' && normalizedRole === 'assistant'
+                    const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
+                    const metadataRaw = (m as { metadata?: unknown }).metadata ?? messageMetadata[m.id]
+                    const metadata: Record<string, unknown> | undefined =
+                      metadataRaw && typeof metadataRaw === 'object' && !Array.isArray(metadataRaw)
+                        ? metadataRaw as Record<string, unknown>
+                        : undefined
+
+                    return (
+                      <MessageBubble
+                        key={m.id}
+                        message={{
+                          id: m.id,
+                          role: normalizedRole,
+                          content,
+                          metadata,
+                        }}
+                        onRetry={normalizedRole !== 'user' ? handleRetry : undefined}
+                        retryIndex={idx}
+                        disableMarkdown={disableMarkdown}
+                      />
+                    )
+                  })}
+
+                  {/* ... Preview Cards Logic ... */}
+                  {pendingPreview && !editingPreview && (
+                    <div className="space-y-3 pt-2">
+                      {pendingPreview.matchType === 'duplicate_warning' ? (
+                        <DuplicateWarningCard
+                          preview={pendingPreview}
+                          onCreateNew={handleCreateNewFromDuplicate}
+                          onUpdateExisting={handleSelectMatch}
+                          onCancel={handleCancelPreview}
+                        />
+                      ) : pendingPreview.matchType === 'multiple' && pendingPreview.matches?.length ? (
+                        <MultipleMatchesCard
+                          preview={pendingPreview}
+                          onSelectMatch={(targetId) => {
+                            setPendingPreview({
+                              ...pendingPreview,
+                              targetEntryId: targetId,
+                              matchType: 'single',
+                              matches: pendingPreview.matches?.filter(m => m.entryId === targetId),
+                            })
+                          }}
+                          onCancel={handleCancelPreview}
+                        />
+                      ) : (
+                        <KnowledgePreviewCard
+                          preview={pendingPreview}
+                          onConfirm={handleConfirmPreview}
+                          onEdit={() => setEditingPreview(pendingPreview)}
+                          onCancel={handleCancelPreview}
+                          isLoading={isSavingPreview}
+                        />
+                      )}
+                    </div>
+                  )}
+                  {editingPreview && (
+                    <EditPreviewForm
+                      preview={editingPreview}
+                      onSave={(updated) => {
+                        setPendingPreview(updated)
+                        setEditingPreview(null)
+                      }}
+                      onCancel={() => setEditingPreview(null)}
+                      isLoading={isSavingPreview}
+                    />
+                  )}
+
+                  {(status === 'streaming' || generateImage.isPending || isTrainingLoading) && (
+                    <div className="flex items-center gap-2 pl-10 pt-2 animate-pulse">
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <div className="h-2 w-2 rounded-full bg-primary/50 animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  )}
+                  <div ref={endRef} className="h-4" />
+                </>
+              )}
             </div>
+          </ScrollArea>
+        </div>
 
-            {/* Animated input concept */}
-            <div className={"relative rounded-2xl border bg-background/90 " + (dragActive ? 'border-primary ring-2 ring-primary/30' : 'border-border/60')} onDrop={onDrop} onDragOver={onDragOver} onDragLeave={onDragLeave}>
+        {/* Floating Input Capsule */}
+        <div className="p-4 bg-background/0 z-20" onDragEnter={onDragOver}>
+          <div className="max-w-3xl mx-auto">
+            {/* Attachments Preview */}
+            <AnimatePresence>
+              {attachments.length > 0 && (
+                <motion.div
+                  className="mb-2 flex flex-wrap gap-2 px-1"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                >
+                  {attachments.map((att, i) => (
+                    <div
+                      key={i}
+                      className="group flex items-center gap-2 rounded-lg bg-card border px-3 py-2 text-xs shadow-sm"
+                    >
+                      <div className="p-1 rounded bg-muted">
+                        {att.url ? <ImageIcon className="h-3 w-3" /> : <FileText className="h-3 w-3" />}
+                      </div>
+                      <div className="max-w-[150px] truncate">
+                        {att.url ? (
+                          <a href={att.url} target="_blank" rel="noreferrer" className="hover:underline font-medium">{att.name}</a>
+                        ) : (
+                          <span className="font-medium">{att.name}</span>
+                        )}
+                        <div className="flex justify-between items-center text-[10px] text-muted-foreground mt-0.5">
+                          {att.status === 'uploading' && <span>Enviando {att.progress}%</span>}
+                          {att.status === 'error' && <span className="text-destructive">Erro</span>}
+                          {att.status === 'done' && <span className="text-green-600">Pronto</span>}
+                        </div>
+                      </div>
+                      <button type="button" onClick={() => removeAttachment(i)} className="ml-2 text-muted-foreground hover:text-destructive opacity-0 group-hover:opacity-100 transition-opacity">
+                        <XIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-              <form onSubmit={mode === 'image' ? handleSubmitImage : handleSubmitText} className="p-3">
+            <form onSubmit={mode === 'image' ? handleSubmitImage : handleSubmitText} className="relative group">
+              <div className={cn(
+                "flex items-end gap-2 p-2 rounded-3xl border bg-background shadow-lg transition-all duration-200 ring-offset-background",
+                "focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2",
+                trainingMode ? "border-amber-500/30 shadow-amber-500/10" : "hover:border-primary/50"
+              )}>
+
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 rounded-full ml-1 shrink-0 text-muted-foreground hover:bg-muted"
+                  onClick={handleAttachFile}
+                  title="Anexar arquivos"
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+                <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected} multiple accept={mode === 'image' ? 'image/*' : undefined} />
+
                 <textarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="Digite sua mensagem... (Shift+Enter para nova linha)"
-                  rows={2}
-                  className="min-h-[60px] w-full resize-none rounded-md bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+                  placeholder={trainingMode ? "Digite dados para treinar a IA..." : "Envie uma mensagem..."}
+                  rows={1}
+                  className="flex-1 min-h-[44px] max-h-[200px] w-full resize-none bg-transparent py-3 px-2 text-sm outline-none placeholder:text-muted-foreground scrollbar-hide"
+                  style={{ height: '44px' }}
+                  onInput={(e) => {
+                    const target = e.target as HTMLTextAreaElement;
+                    target.style.height = '44px';
+                    target.style.height = `${Math.min(target.scrollHeight, 200)} px`;
+                  }}
                 />
-                <input ref={fileInputRef} type="file" className="hidden" onChange={onFileSelected} multiple accept={mode==='image' ? 'image/*' : undefined} />
-                <AnimatePresence>
-                  {attachments.length > 0 && (
-                    <motion.div
-                      className="mt-2 flex flex-wrap gap-2"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                    >
-                      {attachments.map((att, i) => (
-                        <motion.div
-                          key={i}
-                          className="flex items-center gap-2 rounded-lg bg-muted px-3 py-1.5 text-xs"
-                          initial={{ opacity: 0, scale: 0.95 }}
-                          animate={{ opacity: 1, scale: 1 }}
-                          exit={{ opacity: 0, scale: 0.95 }}
-                        >
-                          {att.url ? (
-                            <a href={att.url} target="_blank" rel="noreferrer" className="underline hover:no-underline">{att.name}</a>
-                          ) : (
-                            <span>{att.name}</span>
-                          )}
-                          {att.status === 'uploading' && (
-                            <span className="text-muted-foreground">{att.progress}%</span>
-                          )}
-                          {att.status === 'error' && (
-                            <span className="text-destructive">{att.error || 'Falhou'}</span>
-                          )}
-                          <button type="button" onClick={() => {
-                            const a = attachments[i]
-                            if (a && a.status === 'uploading') {
-                              const xhr = uploadRefs.current[a.id]
-                              try { xhr?.abort() } catch {}
-                              delete uploadRefs.current[a.id]
-                            }
-                            removeAttachment(i)
-                          }} className="text-muted-foreground hover:text-foreground">
-                            <XIcon className="h-3 w-3" />
-                          </button>
-                        </motion.div>
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
 
-                <div className="mt-3 flex items-center justify-between gap-3 border-t pt-3">
-                  <div className="flex items-center gap-2">
-                    <Button type="button" variant="ghost" size="icon" onClick={handleAttachFile} aria-label="Anexar">
-                      <Paperclip className="h-4 w-4" />
-                    </Button>
-                    
-                    {/* Mode selector */}
-                    <DropdownMenu open={modeMenuOpen} onOpenChange={setModeMenuOpen}>
-                      <DropdownMenuTrigger asChild>
-                        <DropdownTriggerButton isOpen={modeMenuOpen} aria-label="Selecionar modo">
-                          {mode === 'image' ? (
-                            <ImageIcon className="h-4 w-4" />
-                          ) : (
-                            <MessageSquare className="h-4 w-4" />
-                          )}
-                          <span className="truncate max-w-[100px]">{mode === 'text' ? 'Texto' : 'Imagem'}</span>
-                        </DropdownTriggerButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        <DropdownMenuItem onClick={() => setMode('text')}>
-                          <MessageSquare className="h-4 w-4 mr-2" /> Texto
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setMode('image')}>
-                          <ImageIcon className="h-4 w-4 mr-2" /> Imagem
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-
-                    {/* Provider selector */}
-                    <DropdownMenu open={mode === 'image' ? false : providerMenuOpen} onOpenChange={(o)=>{ if (mode !== 'image') setProviderMenuOpen(o) }}>
-                      <DropdownMenuTrigger asChild>
-                        <DropdownTriggerButton isOpen={providerMenuOpen} aria-label="Selecionar provedor" disabled={mode==='image' || isLoadingProviders}>
-                          <Bot className="h-4 w-4" />
-                          <span className="truncate max-w-[140px]">{availableProviders.find((p) => p.key === provider)?.name || 'Carregando...'}</span>
-                        </DropdownTriggerButton>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="start">
-                        {availableProviders.length === 0 ? (
-                          <DropdownMenuItem disabled>
-                            Nenhum provedor disponível
-                          </DropdownMenuItem>
-                        ) : (
-                          availableProviders.map((p) => (
-                            <DropdownMenuItem key={p.key} onClick={() => setProvider(p.key)}>
-                              {p.name}
-                            </DropdownMenuItem>
-                          ))
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    {/* Model selector */}
-                    <Autocomplete
-                      items={modelItems}
-                      value={model}
-                      onChange={setModel}
-                      icon={<Sparkles className="h-4 w-4" />}
-                      buttonAriaLabel="Selecionar modelo"
-                      placeholder="Buscar modelo..."
-                      className="min-w-[200px]"
-                    />
-                  </div>
-                  {mode === 'image' ? (
-                    <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_image_generation')} créditos</span>
-                  ) : (
-                    <span className="text-xs text-muted-foreground mr-2">Custo: {getCost('ai_chat')} crédito</span>
-                  )}
+                <div className="flex items-center gap-1 shrink-0 pb-1 pr-1">
+                  {/* Add more context buttons here later if needed */}
                   {status === 'streaming' ? (
                     <Button
                       type="button"
                       onClick={() => stop?.()}
                       variant="secondary"
-                      className="gap-2"
-                      aria-label="Parar geração"
+                      size="icon"
+                      className="h-8 w-8 rounded-full"
                     >
-                      <Square className="h-4 w-4" />
-                      Parar
+                      <Square className="h-3.5 w-3.5 fill-foreground" />
                     </Button>
                   ) : (
                     <Button
@@ -1459,23 +1383,27 @@ export default function AIChatPage() {
                         hasUploadingAttachments ||
                         (mode === 'image' && readyAttachments.length === 0) ||
                         !input.trim() ||
-                        status !== 'ready' ||
-                        (mode === 'image' ? !canPerformOperation('ai_image_generation') : !canPerformOperation('ai_chat'))
+                        status !== 'ready'
                       }
-                      className="gap-2"
+                      size="icon"
+                      className={cn("h-8 w-8 rounded-full transition-all", input.trim() ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground")}
                     >
-                      {generateImage.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      Enviar
+                      <Send className="h-4 w-4" />
                     </Button>
                   )}
                 </div>
-              </form>
-            </div>
-          </Card>
-            </div>
+              </div>
+
+              <div className="absolute -bottom-6 left-0 right-0 flex justify-center opacity-0 transition-opacity focus-within:opacity-100 pointer-events-none">
+                <span className="text-[10px] text-muted-foreground">
+                  {mode === 'image' ? `Custo aprox: ${getCost('ai_image_generation')} créditos` : trainingMode ? "Modo de Treinamento Ativo" : "Shift + Enter para quebrar linha"}
+                </span>
+              </div>
+            </form>
           </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }
+

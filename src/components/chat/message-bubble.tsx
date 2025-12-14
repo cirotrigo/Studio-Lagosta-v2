@@ -106,7 +106,7 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
       document.body.appendChild(a)
       a.click()
       a.remove()
-    } catch {}
+    } catch { }
   }
 
   const handleRetryClick = React.useCallback(() => {
@@ -115,24 +115,21 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
   }, [onRetry, retryIndex])
 
   return (
-    <div className={cn('flex items-start gap-3', isUser ? 'justify-end' : 'justify-start', className)}>
+    <div className={cn('flex w-full items-start gap-3', isUser ? 'justify-end' : 'justify-start', className)}>
       {!isUser && (
-        <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-primary/10">
-          <Bot className="h-3.5 w-3.5" />
+        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 border border-primary/20">
+          <Bot className="h-5 w-5 text-primary" />
         </div>
       )}
 
       <div
         className={cn(
-          'group relative max-w-[85%] rounded-lg p-3 text-sm whitespace-pre-wrap break-words shadow-sm',
-          isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
+          'group relative max-w-[85%] px-4 py-3 text-sm whitespace-pre-wrap break-words shadow-sm transition-all',
+          isUser
+            ? 'rounded-2xl rounded-tr-sm bg-primary text-primary-foreground'
+            : 'rounded-2xl rounded-tl-sm bg-muted/40 text-foreground border border-border/40'
         )}
       >
-        {/* Role label subtle */}
-        <div className={cn('mb-1 text-[10px] uppercase tracking-wide opacity-60', isUser ? 'text-primary-foreground' : 'text-foreground')}>
-          {isUser ? 'Você' : 'IA'}
-        </div>
-
         {isUser ? (
           <>{message.content}</>
         ) : parsedImages.length > 0 ? (
@@ -157,31 +154,35 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
               : JSON.stringify((message as { content?: unknown }).content)}
           </div>
         ) : (
-          <Markdown className="prose-sm prose-p:leading-relaxed prose-p:my-2 first:prose-p:mt-0 last:prose-p:mb-0 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-1">{typeof (message as { content?: unknown }).content === 'string' ? (message as { content: string }).content : JSON.stringify((message as { content?: unknown }).content)}</Markdown>
+          <Markdown className="prose-sm leading-relaxed [&_pre]:bg-zinc-900 [&_pre]:p-4 [&_pre]:rounded-lg [&_code]:bg-black/10 [&_code]:rounded [&_code]:px-1 [&_code]:py-0.5 dark:[&_code]:bg-white/10">{typeof (message as { content?: unknown }).content === 'string' ? (message as { content: string }).content : JSON.stringify((message as { content?: unknown }).content)}</Markdown>
         )}
 
         {!isUser && ragUsed && (
-          <div className="mt-2 flex items-center gap-2 text-[11px] text-muted-foreground">
-            <Database className="h-3.5 w-3.5" />
-            <span>Resposta baseada na base de conhecimento</span>
+          <div className="mt-3 flex items-center gap-2 border-t pt-2 text-[11px] text-muted-foreground/80">
+            <Database className="h-3 w-3" />
+            <span>Fontes do conhecimento</span>
             {knowledgeEntries.length > 0 && (
-              <Badge variant="outline" className="text-[10px] font-medium">
-                {knowledgeEntries.length} fonte{knowledgeEntries.length > 1 ? 's' : ''}
+              <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                {knowledgeEntries.length}
               </Badge>
             )}
           </div>
         )}
 
-        {/* Actions appear on hover for both roles */}
-        <div className={cn('absolute -right-1.5 -top-2.5 flex items-center gap-1 rounded-full bg-background/60 p-0.5 opacity-0 ring-1 ring-border transition-opacity group-hover:opacity-100', isUser ? 'text-foreground' : 'text-foreground')}>
+        {/* Actions - repositioned to be less intrusive */}
+        <div className={cn(
+          'absolute flex items-center gap-0.5 rounded-lg bg-background/80 backdrop-blur-sm p-0.5 opacity-0 border shadow-sm transition-opacity group-hover:opacity-100',
+          isUser ? 'bottom-0 right-full mr-2' : '-bottom-3 right-2' // User actions left, AI actions bottom-right
+        )}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label="Copiar" onClick={handleCopy}>
-                {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              <Button type="button" variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" aria-label="Copiar" onClick={handleCopy}>
+                {copied ? <Check className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>Copiar</TooltipContent>
+            <TooltipContent side="bottom">Copiar</TooltipContent>
           </Tooltip>
+
           {!isUser && parsedImages.length > 0 && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -189,32 +190,33 @@ function MessageBubbleComponent({ message, className, onRetry, retryIndex, disab
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6"
+                  className="h-6 w-6 hover:bg-muted"
                   aria-label="Baixar imagem"
                   onClick={() => downloadImage(parsedImages[0], 0)}
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Download className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Baixar</TooltipContent>
+              <TooltipContent side="bottom">Baixar</TooltipContent>
             </Tooltip>
           )}
+
           {!isUser && onRetry && typeof retryIndex === 'number' && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button type="button" variant="ghost" size="icon" className="h-6 w-6" aria-label="Tentar novamente" onClick={handleRetryClick}>
-                  <RefreshCw className="h-3.5 w-3.5" />
+                <Button type="button" variant="ghost" size="icon" className="h-6 w-6 hover:bg-muted" aria-label="Tentar novamente" onClick={handleRetryClick}>
+                  <RefreshCw className="h-3 w-3" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>Gerar novamente</TooltipContent>
+              <TooltipContent side="bottom">Regenerar</TooltipContent>
             </Tooltip>
           )}
         </div>
       </div>
 
       {isUser && (
-        <div className="mt-1 flex h-6 w-6 items-center justify-center rounded-full bg-muted">
-          <User className="h-3.5 w-3.5" />
+        <div className="mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted border border-border">
+          <User className="h-5 w-5 text-muted-foreground" />
         </div>
       )}
     </div>
