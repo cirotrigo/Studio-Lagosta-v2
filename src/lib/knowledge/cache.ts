@@ -156,14 +156,22 @@ export async function invalidateProjectCache(projectId: number): Promise<number>
 
     do {
       // SCAN retorna [nextCursor, keys]
-      const [nextCursor, keys] = await redis.scan(cursor, {
+      const scanResult = await redis.scan(cursor, {
         match: pattern,
         count: batchSize,
       })
 
+      // Defensive check - ensure scanResult is an array
+      if (!Array.isArray(scanResult) || scanResult.length < 2) {
+        console.warn('[cache] Invalid SCAN result, stopping iteration')
+        break
+      }
+
+      const [nextCursor, keys] = scanResult
       cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
-      if (keys.length > 0) {
+      // Ensure keys is an array before using it
+      if (Array.isArray(keys) && keys.length > 0) {
         // Deletar em batch
         await redis.del(...keys)
         deletedCount += keys.length
@@ -197,14 +205,22 @@ export async function invalidateCategoryCache(projectId: number, category: strin
     console.log(`[cache] Invalidating cache for project ${projectId} category ${category} (pattern: ${pattern})`)
 
     do {
-      const [nextCursor, keys] = await redis.scan(cursor, {
+      const scanResult = await redis.scan(cursor, {
         match: pattern,
         count: batchSize,
       })
 
+      // Defensive check - ensure scanResult is an array
+      if (!Array.isArray(scanResult) || scanResult.length < 2) {
+        console.warn('[cache] Invalid SCAN result, stopping iteration')
+        break
+      }
+
+      const [nextCursor, keys] = scanResult
       cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
-      if (keys.length > 0) {
+      // Ensure keys is an array before using it
+      if (Array.isArray(keys) && keys.length > 0) {
         await redis.del(...keys)
         deletedCount += keys.length
       }
@@ -235,14 +251,22 @@ export async function clearAllCache(): Promise<number> {
     console.log('[cache] CLEARING ALL CACHE (pattern: rag:*)')
 
     do {
-      const [nextCursor, keys] = await redis.scan(cursor, {
+      const scanResult = await redis.scan(cursor, {
         match: pattern,
         count: batchSize,
       })
 
+      // Defensive check - ensure scanResult is an array
+      if (!Array.isArray(scanResult) || scanResult.length < 2) {
+        console.warn('[cache] Invalid SCAN result, stopping iteration')
+        break
+      }
+
+      const [nextCursor, keys] = scanResult
       cursor = typeof nextCursor === 'string' ? parseInt(nextCursor, 10) : nextCursor
 
-      if (keys.length > 0) {
+      // Ensure keys is an array before using it
+      if (Array.isArray(keys) && keys.length > 0) {
         await redis.del(...keys)
         deletedCount += keys.length
       }
