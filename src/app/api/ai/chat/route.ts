@@ -234,18 +234,26 @@ export async function POST(req: Request) {
             // 2. RAG context instructions (if RAG context available)
             if (ragUsed) {
               systemPrompt += `---
-INSTRUÇÕES DE USO DO CONTEXTO:
-- Use o contexto da base de conhecimento abaixo quando relevante para a pergunta do usuário
-${project.aiChatBehavior ? '- Mantenha SEMPRE o tom de voz e estilo definidos acima em todas as suas respostas' : ''}
-- Priorize informações do contexto sobre conhecimento geral
-- Se o contexto não tiver informação relevante, responda normalmente com base no seu conhecimento
+INSTRUÇÕES DE USO DO CONTEXTO DA BASE DE CONHECIMENTO:
+
+O contexto abaixo contém informações relevantes encontradas na base de conhecimento do projeto.
+
+COMO USAR O CONTEXTO:
+✓ Use as informações do contexto quando forem relevantes para a pergunta do usuário
+✓ Priorize dados factuais do contexto (preços, datas, detalhes específicos) sobre suposições
+${project.aiChatBehavior ? '✓ Mantenha SEMPRE o tom de voz e estilo definidos acima ao usar o contexto' : ''}
+✓ Combine informações do contexto de forma natural em sua resposta
+
+QUANDO O CONTEXTO FOR INSUFICIENTE:
+• Se a pergunta for sobre informações factuais específicas (preços, eventos, dados) e o contexto não tiver: peça o cadastro
+• Se a pergunta for criativa/geral (sugestões, ideias, como fazer): responda normalmente
 
 ---
 CONTEXTO DO PROJETO (Base de Conhecimento):
 ${ragContext}
 
 ---
-IMPORTANTE: ${project.aiChatBehavior ? 'Combine sua personalidade definida com as informações do contexto de forma natural e consistente.' : 'Responda de forma clara usando o contexto quando aplicável.'}`
+${project.aiChatBehavior ? 'LEMBRE-SE: Combine sua personalidade definida acima com as informações do contexto de forma natural e consistente.' : 'Use o contexto de forma inteligente quando aplicável.'}`
             }
 
             // Inject optimized system prompt at the beginning
