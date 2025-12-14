@@ -239,6 +239,52 @@ export function KonvaEditorStage() {
     }
   }, [isMobile, canvasWidth, canvasHeight, setZoom])
 
+  // DESKTOP: Resize Observer para recentralizar quando o container mudar
+  React.useEffect(() => {
+    if (isMobile) return
+
+    const stage = stageRef.current
+    if (!stage) return
+
+    const container = stage.container().parentElement
+    if (!container) return
+
+    // Função para recentralizar
+    const centerCanvas = () => {
+      const stageWidth = container.clientWidth
+      const _stageHeight = container.clientHeight
+
+      // Atualizar tamanho do stage para corresponder ao container
+      stage.width(stageWidth)
+      stage.height(_stageHeight)
+
+      // Recalcular posição
+      const scaledCanvasWidth = canvasWidth * stage.scaleX()
+
+      let newX = 0
+      if (scaledCanvasWidth < stageWidth) {
+        newX = (stageWidth - scaledCanvasWidth) / 2
+      } else {
+        newX = 32 // Margem mínima à esquerda se não couber
+      }
+
+      const currentY = stage.y()
+      stage.position({ x: newX, y: currentY })
+      stage.batchDraw()
+    }
+
+    const resizeObserver = new ResizeObserver(() => {
+      // Pequeno debounce para evitar cálculos excessivos
+      requestAnimationFrame(centerCanvas)
+    })
+
+    resizeObserver.observe(container)
+
+    return () => {
+      resizeObserver.disconnect()
+    }
+  }, [isMobile, canvasWidth])
+
   // Sincronizar estado zoom com Konva stage.scale()
   // Desktop: mantém canvas centralizado horizontalmente
   // Mobile: aplica zoom mantendo margem fixa

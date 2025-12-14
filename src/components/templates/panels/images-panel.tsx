@@ -318,13 +318,19 @@ export function ImagesPanelContent() {
       />
 
       <Tabs defaultValue="drive" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="drive" className="text-xs">
-            <HardDrive className="mr-1 h-3 w-3" />
+        <TabsList className="grid w-full grid-cols-2 bg-muted/40 p-1 rounded-lg border border-border/20">
+          <TabsTrigger
+            value="drive"
+            className="text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
+          >
+            <HardDrive className="mr-1.5 h-3.5 w-3.5" />
             Google Drive
           </TabsTrigger>
-          <TabsTrigger value="upload" className="text-xs">
-            <Upload className="mr-1 h-3 w-3" />
+          <TabsTrigger
+            value="upload"
+            className="text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
+          >
+            <Upload className="mr-1.5 h-3.5 w-3.5" />
             Upload
           </TabsTrigger>
         </TabsList>
@@ -400,12 +406,15 @@ export function ImagesPanelContent() {
                       key={item.id}
                       onClick={() => handleDriveItemClick(item)}
                       disabled={isBusy}
-                      className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary hover:bg-primary/5 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
                     >
                       {isFolder ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-2" title={item.name}>
-                          <Folder className="h-12 w-12 text-primary/70" />
-                          <p className="px-1 text-xs font-medium text-foreground text-center line-clamp-3 break-words leading-tight opacity-90">
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-2" title={item.name}>
+                          <div className="relative">
+                            <Folder className="h-10 w-10 text-primary/80 transition-transform group-hover:scale-110" />
+                            <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary/20" />
+                          </div>
+                          <p className="w-full px-1 text-[10px] font-medium text-muted-foreground text-center line-clamp-2 break-words leading-tight group-hover:text-foreground">
                             {item.name}
                           </p>
                         </div>
@@ -415,17 +424,17 @@ export function ImagesPanelContent() {
                             src={item.thumbnailLink}
                             alt={item.name}
                             fill
-                            className="object-cover"
+                            className="object-cover transition-transform duration-500 group-hover:scale-105"
                           />
                         </div>
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
-                          <ImageIcon className="h-8 w-8 text-muted-foreground/50" />
+                          <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
                         </div>
                       )}
                       {!isFolder && (
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
-                          <p className="truncate text-xs font-medium text-white">
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                          <p className="truncate text-[10px] font-medium text-white/90">
                             {item.name}
                           </p>
                         </div>
@@ -467,9 +476,9 @@ export function ImagesPanelContent() {
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
-            className={`cursor-pointer rounded-lg border-2 border-dashed p-12 text-center transition ${isDragging
-                ? 'border-primary bg-primary/10'
-                : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
+            className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all duration-300 ${isDragging
+              ? 'border-primary bg-primary/5 scale-[0.99]'
+              : 'border-border/40 hover:border-primary/50 hover:bg-muted/30'
               }`}
             onClick={() => {
               if (!isBusy) {
@@ -478,17 +487,22 @@ export function ImagesPanelContent() {
             }}
           >
             {isUploading ? (
-              <div className="flex flex-col items-center justify-center">
-                <Loader2 className="mb-3 h-12 w-12 animate-spin text-primary" />
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="relative mb-4">
+                  <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                  <Loader2 className="relative h-10 w-10 animate-spin text-primary" />
+                </div>
                 <p className="text-sm font-medium text-foreground">Enviando imagem...</p>
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center">
-                <Upload className="mb-3 h-12 w-12 text-muted-foreground/50" />
+              <div className="flex flex-col items-center justify-center py-4">
+                <div className="mb-4 rounded-full bg-muted/50 p-3 ring-1 ring-border/50 transition-all group-hover:scale-110 group-hover:bg-primary/10 group-hover:text-primary">
+                  <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
+                </div>
                 <p className="mb-1 text-sm font-medium text-foreground">
-                  {isDragging ? 'Solte a imagem aqui' : 'Arraste uma imagem ou clique'}
+                  {isDragging ? 'Solte a imagem aqui' : 'Clique ou arraste imagens'}
                 </p>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs text-muted-foreground/70">
                   PNG, JPG, GIF até 100MB
                 </p>
               </div>
@@ -496,14 +510,16 @@ export function ImagesPanelContent() {
           </div>
         </TabsContent>
       </Tabs>
-      {isBusy && (
-        <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Aplicando imagem...
+      {
+        isBusy && (
+          <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Aplicando imagem...
+            </div>
           </div>
-        </div>
-      )}
-    </div>
+        )
+      }
+    </div >
   )
 }

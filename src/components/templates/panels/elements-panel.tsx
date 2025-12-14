@@ -291,25 +291,29 @@ export function ElementsPanelContent() {
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition ${
-            isDragging
-              ? 'border-primary bg-primary/10'
-              : 'border-border/60 hover:border-primary/50 hover:bg-muted/50'
-          }`}
+          className={`group cursor-pointer rounded-xl border-2 border-dashed p-8 text-center transition-all duration-300 ${isDragging
+              ? 'border-primary bg-primary/5 scale-[0.99]'
+              : 'border-border/40 hover:border-primary/50 hover:bg-muted/30'
+            }`}
           onClick={() => fileInputRef.current?.click()}
         >
           {isUploading ? (
             <div className="flex flex-col items-center justify-center py-4">
-              <Loader2 className="mb-2 h-10 w-10 animate-spin text-primary" />
+              <div className="relative mb-4">
+                <div className="absolute inset-0 animate-ping rounded-full bg-primary/20" />
+                <Loader2 className="relative h-10 w-10 animate-spin text-primary" />
+              </div>
               <p className="text-sm font-medium text-foreground">Enviando...</p>
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-4">
-              <Upload className="mb-2 h-10 w-10 text-muted-foreground/50" />
+              <div className="mb-4 rounded-full bg-muted/50 p-3 ring-1 ring-border/50 transition-all group-hover:scale-110 group-hover:bg-primary/10 group-hover:text-primary">
+                <Upload className="h-6 w-6 text-muted-foreground group-hover:text-primary" />
+              </div>
               <p className="mb-1 text-sm font-medium text-foreground">
                 {isDragging ? 'Solte as imagens aqui' : 'Clique ou arraste imagens'}
               </p>
-              <p className="text-xs text-muted-foreground">
+              <p className="text-xs text-muted-foreground/70">
                 Apenas PNG e JPEG (múltiplas seleções)
               </p>
             </div>
@@ -334,13 +338,13 @@ export function ElementsPanelContent() {
                 {elements.map((element) => (
                   <div
                     key={element.id}
-                    className="group relative aspect-square overflow-hidden rounded-lg border border-border/40 bg-muted/30 transition hover:border-primary"
+                    className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm"
                   >
                     <button
                       onClick={() => insertElementLayer(element)}
                       className="relative h-full w-full"
                     >
-                      <div className="relative h-full w-full p-2">
+                      <div className="relative h-full w-full p-3 transition-transform duration-300 group-hover:scale-105">
                         <Image
                           src={element.fileUrl}
                           alt={element.name}
@@ -348,8 +352,8 @@ export function ElementsPanelContent() {
                           className="object-contain"
                         />
                       </div>
-                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 transition group-hover:opacity-100">
-                        <p className="truncate text-xs font-medium text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                        <p className="truncate text-[10px] font-medium text-white/90">
                           {element.name}
                         </p>
                       </div>
@@ -359,10 +363,10 @@ export function ElementsPanelContent() {
                         e.stopPropagation()
                         removeElement(element.id)
                       }}
-                      className="absolute right-1 top-1 rounded-full bg-black/60 p-1 opacity-0 transition hover:bg-black/80 group-hover:opacity-100"
+                      className="absolute right-1 top-1 rounded-full bg-black/40 p-1.5 backdrop-blur-sm opacity-0 transition-all hover:bg-red-500 hover:text-white group-hover:opacity-100"
                       title="Remover elemento"
                     >
-                      <X className="h-3 w-3 text-white" />
+                      <X className="h-3.5 w-3.5 text-white/90" />
                     </button>
                   </div>
                 ))}
@@ -370,8 +374,8 @@ export function ElementsPanelContent() {
             </ScrollArea>
           </>
         ) : (
-          <div className="rounded-lg border border-dashed border-border/60 py-8 text-center">
-            <p className="text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed border-border/60 py-12 text-center bg-muted/10">
+            <p className="text-sm text-muted-foreground/70">
               Nenhum elemento carregado ainda.
             </p>
           </div>

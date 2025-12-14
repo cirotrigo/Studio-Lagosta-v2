@@ -768,18 +768,6 @@ function TemplateEditorContent({
 
           <div className="flex-1 h-full overflow-hidden relative">
             <EditorCanvas />
-
-            {/* Zoom Controls - Desktop minimalista */}
-            <ZoomControls
-              zoom={zoom}
-              onZoomChange={setZoom}
-              minZoom={0.1}
-              maxZoom={5}
-              onFitToScreen={() => {
-                setZoom(1)
-                setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
-              }}
-            />
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}
@@ -788,9 +776,8 @@ function TemplateEditorContent({
 
         {/* Right Side Panel with Expandable Content */}
         {activeRightPanel && (
-          <aside className={`flex flex-shrink-0 flex-col border-l border-border/40 bg-card shadow-lg overflow-hidden ${
-            activeRightPanel === 'layers' ? 'w-[420px]' : 'w-80'
-          }`}>
+          <aside className={`flex flex-shrink-0 flex-col border-l border-border/40 bg-card shadow-lg overflow-hidden ${activeRightPanel === 'layers' ? 'w-[420px]' : 'w-80'
+            }`}>
             <div className="flex-shrink-0 border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {activeRightPanel === 'properties' && 'Propriedades'}
@@ -1061,18 +1048,16 @@ function SortablePageThumbnail({ page, index, isActive, onClick }: SortablePageT
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`group relative flex flex-shrink-0 cursor-move flex-col items-center gap-1 transition-all ${
-        isActive ? 'scale-105' : 'hover:scale-102'
-      } ${isDragging ? 'z-50' : ''}`}
+      className={`group relative flex flex-shrink-0 cursor-move flex-col items-center gap-1 transition-all ${isActive ? 'scale-105' : 'hover:scale-102'
+        } ${isDragging ? 'z-50' : ''}`}
       title="Clique para selecionar, arraste para reordenar"
     >
       {/* Miniatura */}
       <div
-        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${
-          isActive
+        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${isActive
             ? 'border-primary shadow-md'
             : 'border-border/60 hover:border-primary/60'
-        } ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
+          } ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
       >
         {page.thumbnail ? (
           <Image src={page.thumbnail} alt={page.name} width={56} height={56} className="object-cover" unoptimized />
@@ -1085,9 +1070,8 @@ function SortablePageThumbnail({ page, index, isActive, onClick }: SortablePageT
 
       {/* Label */}
       <span
-        className={`text-[10px] transition-colors ${
-          isActive ? 'font-semibold text-primary' : 'text-muted-foreground'
-        }`}
+        className={`text-[10px] transition-colors ${isActive ? 'font-semibold text-primary' : 'text-muted-foreground'
+          }`}
       >
         Pág. {index + 1}
       </span>
@@ -1288,9 +1272,8 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   }, [sortedPages, currentPageId, setCurrentPageId])
 
   return (
-    <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${
-      isCollapsed ? 'h-10' : 'h-32'
-    }`}>
+    <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${isCollapsed ? 'h-10' : 'h-32'
+      }`}>
       {/* Estado colapsado - apenas contador e botão de expandir */}
       {isCollapsed ? (
         <div className="flex h-10 items-center justify-between px-4">
@@ -1459,9 +1442,8 @@ function ToolbarButton({ icon, label, active, onClick }: ToolbarButtonProps) {
   return (
     <button
       onClick={onClick}
-      className={`group relative flex h-16 w-full flex-col items-center justify-center gap-1 border-b border-border/40 transition-colors ${
-        active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-      }`}
+      className={`group relative flex h-16 w-full flex-col items-center justify-center gap-1 border-b border-border/40 transition-colors ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+        }`}
       title={label}
     >
       {icon}
