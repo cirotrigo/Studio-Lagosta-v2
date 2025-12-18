@@ -4,10 +4,18 @@ import { useMemo, useState, useCallback } from 'react'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
 import { useScheduledPostCounts } from '@/hooks/use-scheduled-counts'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useIsMobile } from '@/hooks/use-media-query'
+import { DndContext, DragOverlay, useSensor, useSensors, MouseSensor, TouchSensor, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { PostMiniCard } from './post-mini-card'
+import { toast } from 'sonner'
+import { Portal } from '@/components/ui/portal'
 import { CalendarHeader } from './calendar-header'
+
+
+// Removed invalid top-level return block
+
 import { CalendarGrid } from './calendar-grid'
 import { CalendarWeekView } from './calendar-week-view'
 import { CalendarDayView } from './calendar-day-view'
@@ -59,6 +67,8 @@ function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
 
 export function AgendaCalendarView() {
   const isMobile = useIsMobile()
+  const queryClient = useQueryClient()
+  const [activePost, setActivePost] = useState<SocialPost | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null)
@@ -71,6 +81,73 @@ export function AgendaCalendarView() {
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true) // Sidebar colapsada por padrão
   const [newPostDate, setNewPostDate] = useState<Date | null>(null)
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 10,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
+  )
+
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ post, date }: { post: SocialPost; date: Date }) => {
+      const newDate = new Date(date)
+      if (post.scheduledDatetime) {
+        const oldDate = new Date(post.scheduledDatetime)
+        newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0)
+      } else {
+        newDate.setHours(10, 0, 0, 0)
+      }
+
+      return api.put(`/api/projects/${post.projectId}/posts/${post.id}`, {
+        scheduledDatetime: newDate.toISOString(),
+        scheduleType: 'SCHEDULED',
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts'] })
+      queryClient.invalidateQueries({ queryKey: ['social-posts'] })
+      queryClient.invalidateQueries({ queryKey: ['scheduled-counts'] })
+      toast.success('Post reagendado com sucesso')
+    },
+    onError: (err) => {
+      console.error(err)
+      toast.error('Erro ao reagendar post')
+    },
+  })
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event
+    const post = active.data.current?.post as SocialPost
+    if (post) {
+      setActivePost(post)
+    }
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActivePost(null)
+
+    if (!over) return
+
+    const post = active.data.current?.post as SocialPost
+    const date = over.data.current?.date as Date
+
+    if (post && date) {
+      const postDate = post.scheduledDatetime ? new Date(post.scheduledDatetime) : null
+      if (postDate && postDate.toDateString() === date.toDateString()) {
+        return
+      }
+      updatePostMutation.mutate({ post, date })
+    }
+  }
 
   // Fetch user projects (channels)
   const { data: projectsData } = useQuery<ProjectResponse[]>({
@@ -236,117 +313,126 @@ export function AgendaCalendarView() {
   }, [editingPost, newPostDate])
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      {/* Sidebar de Canais - APENAS DESKTOP */}
-      {!isMobile && (
-        <ChannelsSidebar
-          projects={projectList}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={setSelectedProjectId}
-          isCollapsed={isSidebarCollapsed}
-          onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-        />
-      )}
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="flex h-screen overflow-hidden bg-background">
+        {/* Sidebar de Canais - APENAS DESKTOP */}
+        {!isMobile && (
+          <ChannelsSidebar
+            projects={projectList}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+            isCollapsed={isSidebarCollapsed}
+            onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          />
+        )}
 
-      {/* Drawer de Canais - APENAS MOBILE */}
-      {isMobile && (
-        <MobileChannelsDrawer
-          open={mobileDrawerOpen}
-          onOpenChange={setMobileDrawerOpen}
-          projects={projectList}
-          selectedProjectId={selectedProjectId}
-          onSelectProject={setSelectedProjectId}
-        />
-      )}
+        {/* Drawer de Canais - APENAS MOBILE */}
+        {isMobile && (
+          <MobileChannelsDrawer
+            open={mobileDrawerOpen}
+            onOpenChange={setMobileDrawerOpen}
+            projects={projectList}
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+          />
+        )}
 
-      {/* Área Principal */}
-      <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header */}
-        <CalendarHeader
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          selectedProject={selectedProject}
-          postTypeFilter={postTypeFilter}
-          onPostTypeFilterChange={setPostTypeFilter}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          timingFilter={timingFilter}
-          onTimingFilterChange={setTimingFilter}
-          onCreatePost={() => setIsComposerOpen(true)}
-          onOpenChannels={isMobile ? () => setMobileDrawerOpen(true) : undefined}
-          isMobile={isMobile}
-          nextScheduledDate={isNextScheduledOutOfRange ? nextScheduledDate : null}
-          onGoToNextScheduled={handleGoToNextScheduled}
-        />
+        {/* Área Principal */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          {/* Header */}
+          <CalendarHeader
+            selectedDate={selectedDate}
+            onDateChange={setSelectedDate}
+            viewMode={viewMode}
+            onViewModeChange={setViewMode}
+            selectedProject={selectedProject}
+            postTypeFilter={postTypeFilter}
+            onPostTypeFilterChange={setPostTypeFilter}
+            statusFilter={statusFilter}
+            onStatusFilterChange={setStatusFilter}
+            timingFilter={timingFilter}
+            onTimingFilterChange={setTimingFilter}
+            onCreatePost={() => setIsComposerOpen(true)}
+            onOpenChannels={isMobile ? () => setMobileDrawerOpen(true) : undefined}
+            isMobile={isMobile}
+            nextScheduledDate={isNextScheduledOutOfRange ? nextScheduledDate : null}
+            onGoToNextScheduled={handleGoToNextScheduled}
+          />
 
-        {/* Calendário/Lista */}
-        <div className="flex-1 overflow-auto">
-          {/* MOBILE: Lista por dia */}
-          {isMobile ? (
-            <MobileAgendaListView
-              posts={filteredPosts}
-              onPostClick={setSelectedPost}
-              onEditPost={handleEditPost}
-              isLoading={isLoading}
-            />
-          ) : (
-            /* DESKTOP: Grid/Week/Day existentes */
-            <>
-              {viewMode === 'month' && (
-                <CalendarGrid
-                  posts={filteredPosts}
-                  selectedDate={selectedDate}
-                  onPostClick={setSelectedPost}
-                  onAddPost={handleAddPost}
-                  isLoading={isLoading}
-                />
-              )}
+          {/* Calendário/Lista */}
+          <div className="flex-1 overflow-auto">
+            {/* MOBILE: Lista por dia */}
+            {isMobile ? (
+              <MobileAgendaListView
+                posts={filteredPosts}
+                onPostClick={setSelectedPost}
+                onEditPost={handleEditPost}
+                isLoading={isLoading}
+              />
+            ) : (
+              /* DESKTOP: Grid/Week/Day existentes */
+              <>
+                {viewMode === 'month' && (
+                  <CalendarGrid
+                    posts={filteredPosts}
+                    selectedDate={selectedDate}
+                    onPostClick={setSelectedPost}
+                    onAddPost={handleAddPost}
+                    isLoading={isLoading}
+                  />
+                )}
 
-              {viewMode === 'week' && (
-                <CalendarWeekView
-                  posts={filteredPosts}
-                  selectedDate={selectedDate}
-                  onPostClick={setSelectedPost}
-                  isLoading={isLoading}
-                />
-              )}
+                {viewMode === 'week' && (
+                  <CalendarWeekView
+                    posts={filteredPosts}
+                    selectedDate={selectedDate}
+                    onPostClick={setSelectedPost}
+                    isLoading={isLoading}
+                  />
+                )}
 
-              {viewMode === 'day' && (
-                <CalendarDayView
-                  posts={filteredPosts}
-                  selectedDate={selectedDate}
-                  onPostClick={setSelectedPost}
-                  isLoading={isLoading}
-                />
-              )}
-            </>
-          )}
+                {viewMode === 'day' && (
+                  <CalendarDayView
+                    posts={filteredPosts}
+                    selectedDate={selectedDate}
+                    onPostClick={setSelectedPost}
+                    isLoading={isLoading}
+                  />
+                )}
+              </>
+            )}
+          </div>
         </div>
+
+        {/* Modal de Preview/Ações */}
+        {selectedPost && (
+          <PostPreviewModal
+            post={selectedPost}
+            open={!!selectedPost}
+            onClose={() => setSelectedPost(null)}
+            onEdit={handleEditPost}
+          />
+        )}
+
+        {/* Post Composer */}
+        {selectedProjectId && (
+          <PostComposer
+            projectId={selectedProjectId}
+            open={isComposerOpen}
+            onClose={handleCloseComposer}
+            initialData={getInitialData}
+            postId={editingPost?.id}
+          />
+        )}
+        <DragOverlay>
+          {activePost ? (
+            <div className="w-[180px] opacity-80 rotate-2 cursor-grabbing">
+              <PostMiniCard post={activePost} onClick={() => { }} />
+            </div>
+          ) : null}
+        </DragOverlay>
       </div>
-
-      {/* Modal de Preview/Ações */}
-      {selectedPost && (
-        <PostPreviewModal
-          post={selectedPost}
-          open={!!selectedPost}
-          onClose={() => setSelectedPost(null)}
-          onEdit={handleEditPost}
-        />
-      )}
-
-      {/* Post Composer */}
-      {selectedProjectId && (
-        <PostComposer
-          projectId={selectedProjectId}
-          open={isComposerOpen}
-          onClose={handleCloseComposer}
-          initialData={getInitialData}
-          postId={editingPost?.id}
-        />
-      )}
-    </div>
+    </DndContext>
   )
 }
 

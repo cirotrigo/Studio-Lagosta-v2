@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { Button } from '@/components/ui/button'
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus, Clock, CheckCircle2, XCircle, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus, Clock, CheckCircle2, XCircle, Loader2, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
@@ -356,6 +356,14 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
                               )}>
                                 {postTypeLabel}
                               </span>
+
+                              {/* Lembrete Badge */}
+                              {post.publishType === 'REMINDER' && (
+                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
+                                  <Bell className="h-2.5 w-2.5" />
+                                  <span className="text-[9px] font-semibold uppercase">Lembrete</span>
+                                </span>
+                              )}
 
                               {/* Status indicator */}
                               {post.status === 'SCHEDULED' && (

@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
 import { PostMiniCard } from './post-mini-card'
+import { DraggablePost } from './draggable-post'
 import { sortPostsByDate } from './calendar-utils'
 import { ChevronDown, ChevronUp, Plus } from 'lucide-react'
+import { useDroppable } from '@dnd-kit/core'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarDayCellProps {
@@ -31,6 +33,10 @@ export function CalendarDayCell({
   onAddPost
 }: CalendarDayCellProps) {
   const [isExpanded, setIsExpanded] = useState(false)
+  const { setNodeRef, isOver } = useDroppable({
+    id: day.dateKey,
+    data: { date: day.date },
+  })
 
   // Ordenar posts por horário de exibição (agendado ou enviado)
   const sortedPosts = sortPostsByDate(posts)
@@ -39,10 +45,12 @@ export function CalendarDayCell({
 
   return (
     <div
+      ref={setNodeRef}
       className={cn(
         'relative bg-background p-1.5 sm:p-2 transition-all duration-300 ease-in-out',
         !isCurrentMonth && 'bg-muted/20 text-muted-foreground',
         isToday && 'ring-2 ring-inset ring-primary',
+        isOver && 'bg-primary/10 ring-2 ring-primary ring-inset z-10',
         isExpanded
           ? 'min-h-[280px] z-20 shadow-2xl rounded-lg border border-primary/30 bg-card'
           : 'min-h-[100px] sm:min-h-[120px] hover:bg-muted/10'
@@ -103,7 +111,7 @@ export function CalendarDayCell({
         isExpanded && "max-h-[200px] overflow-y-auto pr-1 scrollbar-thin"
       )}>
         {displayedPosts.map(post => (
-          <PostMiniCard
+          <DraggablePost
             key={post.id}
             post={post}
             onClick={() => onPostClick(post)}

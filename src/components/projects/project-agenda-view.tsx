@@ -7,9 +7,16 @@ import { CalendarHeader } from '@/components/agenda/calendar/calendar-header'
 import { CalendarGrid } from '@/components/agenda/calendar/calendar-grid'
 import { CalendarWeekView } from '@/components/agenda/calendar/calendar-week-view'
 import { CalendarDayView } from '@/components/agenda/calendar/calendar-day-view'
+
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import type { SocialPost, PostType } from '../../../prisma/generated/client'
+import { DndContext, DragOverlay, useSensor, useSensors, MouseSensor, TouchSensor, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
+import { PostMiniCard } from '@/components/agenda/calendar/post-mini-card'
+import { toast } from 'sonner'
+import { Portal } from '@/components/ui/portal'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api-client'
 import type { ProjectResponse } from '@/hooks/use-project'
 
 type ViewMode = 'month' | 'week' | 'day'
@@ -107,6 +114,74 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
   const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
+  const [activePost, setActivePost] = useState<SocialPost | null>(null)
+  const queryClient = useQueryClient()
+
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: {
+        distance: 10,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 250,
+        tolerance: 5,
+      },
+    })
+  )
+
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ post, date }: { post: SocialPost; date: Date }) => {
+      const newDate = new Date(date)
+      if (post.scheduledDatetime) {
+        const oldDate = new Date(post.scheduledDatetime)
+        newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0)
+      } else {
+        newDate.setHours(10, 0, 0, 0)
+      }
+
+      return api.put(`/api/projects/${post.projectId}/posts/${post.id}`, {
+        scheduledDatetime: newDate.toISOString(),
+        scheduleType: 'SCHEDULED',
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['agenda-posts'] })
+      queryClient.invalidateQueries({ queryKey: ['social-posts'] })
+      toast.success('Post reagendado com sucesso')
+    },
+    onError: (err) => {
+      console.error(err)
+      toast.error('Erro ao reagendar post')
+    },
+  })
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event
+    const post = active.data.current?.post as SocialPost
+    if (post) {
+      setActivePost(post)
+    }
+  }
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event
+    setActivePost(null)
+
+    if (!over) return
+
+    const post = active.data.current?.post as SocialPost
+    const date = over.data.current?.date as Date
+
+    if (post && date) {
+      const postDate = post.scheduledDatetime ? new Date(post.scheduledDatetime) : null
+      if (postDate && postDate.toDateString() === date.toDateString()) {
+        return
+      }
+      updatePostMutation.mutate({ post, date })
+    }
+  }
 
   // Determine date range based on view mode
   const { startDate, endDate } = useMemo(() => {
@@ -194,79 +269,88 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
 
   const initialFormData: Partial<PostFormData> | undefined = editingPost
     ? {
-        caption: editingPost.caption || '',
-        mediaUrls: editingPost.mediaUrls as string[],
-        postType: editingPost.postType,
-        scheduleType: editingPost.scheduleType,
-        scheduledDatetime: editingPost.scheduledDatetime || undefined,
-        recurringConfig: parseRecurringConfig(editingPost.recurringConfig),
-      }
+      caption: editingPost.caption || '',
+      mediaUrls: editingPost.mediaUrls as string[],
+      postType: editingPost.postType,
+      scheduleType: editingPost.scheduleType,
+      scheduledDatetime: editingPost.scheduledDatetime || undefined,
+      recurringConfig: parseRecurringConfig(editingPost.recurringConfig),
+    }
     : undefined
 
   return (
-    <div className="flex flex-col h-[calc(100vh-12rem)]">
-      <CalendarHeader
-        selectedDate={selectedDate}
-        onDateChange={setSelectedDate}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        selectedProject={project}
-        onCreatePost={handleCreatePost}
-        postTypeFilter={postTypeFilter}
-        onPostTypeFilterChange={setPostTypeFilter}
-        statusFilter={statusFilter}
-        onStatusFilterChange={setStatusFilter}
-        timingFilter={timingFilter}
-        onTimingFilterChange={setTimingFilter}
-        nextScheduledDate={nextScheduledDate}
-        onGoToNextScheduled={handleGoToNextScheduled}
-      />
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="flex flex-col h-[calc(100vh-12rem)]">
+        <CalendarHeader
+          selectedDate={selectedDate}
+          onDateChange={setSelectedDate}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          selectedProject={project}
+          onCreatePost={handleCreatePost}
+          postTypeFilter={postTypeFilter}
+          onPostTypeFilterChange={setPostTypeFilter}
+          statusFilter={statusFilter}
+          onStatusFilterChange={setStatusFilter}
+          timingFilter={timingFilter}
+          onTimingFilterChange={setTimingFilter}
+          nextScheduledDate={nextScheduledDate}
+          onGoToNextScheduled={handleGoToNextScheduled}
+        />
 
-      <div className="flex-1 overflow-auto">
-        {viewMode === 'month' && (
-          <CalendarGrid
-            selectedDate={selectedDate}
-            posts={filteredPosts}
-            isLoading={isLoading}
-            onPostClick={handlePostClick}
+        <div className="flex-1 overflow-auto">
+          {viewMode === 'month' && (
+            <CalendarGrid
+              selectedDate={selectedDate}
+              posts={filteredPosts}
+              isLoading={isLoading}
+              onPostClick={handlePostClick}
+            />
+          )}
+          {viewMode === 'week' && (
+            <CalendarWeekView
+              selectedDate={selectedDate}
+              posts={filteredPosts}
+              isLoading={isLoading}
+              onPostClick={handlePostClick}
+            />
+          )}
+          {viewMode === 'day' && (
+            <CalendarDayView
+              selectedDate={selectedDate}
+              posts={filteredPosts}
+              isLoading={isLoading}
+              onPostClick={handlePostClick}
+            />
+          )}
+        </div>
+
+        {selectedPost && (
+          <PostPreviewModal
+            post={selectedPost}
+            open={!!selectedPost}
+            onClose={() => setSelectedPost(null)}
+            onEdit={handleEditPost}
           />
         )}
-        {viewMode === 'week' && (
-          <CalendarWeekView
-            selectedDate={selectedDate}
-            posts={filteredPosts}
-            isLoading={isLoading}
-            onPostClick={handlePostClick}
+
+        {isComposerOpen && (
+          <PostComposer
+            projectId={projectId}
+            postId={editingPost?.id}
+            open={isComposerOpen}
+            onClose={handleComposerClose}
+            initialData={initialFormData}
           />
         )}
-        {viewMode === 'day' && (
-          <CalendarDayView
-            selectedDate={selectedDate}
-            posts={filteredPosts}
-            isLoading={isLoading}
-            onPostClick={handlePostClick}
-          />
-        )}
+        <DragOverlay>
+          {activePost ? (
+            <div className="w-[180px] opacity-80 rotate-2 cursor-grabbing">
+              <PostMiniCard post={activePost} onClick={() => { }} />
+            </div>
+          ) : null}
+        </DragOverlay>
       </div>
-
-      {selectedPost && (
-        <PostPreviewModal
-          post={selectedPost}
-          open={!!selectedPost}
-          onClose={() => setSelectedPost(null)}
-          onEdit={handleEditPost}
-        />
-      )}
-
-      {isComposerOpen && (
-        <PostComposer
-          projectId={projectId}
-          postId={editingPost?.id}
-          open={isComposerOpen}
-          onClose={handleComposerClose}
-          initialData={initialFormData}
-        />
-      )}
-    </div>
+    </DndContext>
   )
 }

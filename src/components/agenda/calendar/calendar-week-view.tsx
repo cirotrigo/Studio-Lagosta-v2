@@ -3,7 +3,10 @@
 import { useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PostMiniCard } from './post-mini-card'
+import { DraggablePost } from './draggable-post'
 import { getPostDateKey, sortPostsByDate } from './calendar-utils'
+import { useDroppable } from '@dnd-kit/core'
+import { cn } from '@/lib/utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarWeekViewProps {
@@ -48,36 +51,66 @@ export function CalendarWeekView({
           const dayPosts = sortPostsByDate(postsByDay[dayKey] || [])
 
           return (
-            <div
+            <WeekDayColumn
               key={dayKey}
-              className="rounded-lg border border-border/40 bg-card/40 p-3 space-y-3"
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase">
-                    {WEEKDAY_LABELS[day.date.getDay()]}
-                  </p>
-                  <p className="text-lg font-semibold">{day.date.getDate()}</p>
-                </div>
-                {day.isToday && (
-                  <span className="text-xs font-medium text-primary">Hoje</span>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {dayPosts.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Nenhum conteúdo agendado
-                  </p>
-                )}
-
-                {dayPosts.map((post) => (
-                  <PostMiniCard key={post.id} post={post} onClick={() => onPostClick(post)} />
-                ))}
-              </div>
-            </div>
+              day={day}
+              posts={dayPosts}
+              onPostClick={onPostClick}
+            />
           )
         })}
+      </div>
+    </div>
+  )
+}
+
+interface WeekDayColumnProps {
+  day: { date: Date; isToday: boolean }
+  posts: SocialPost[]
+  onPostClick: (post: SocialPost) => void
+}
+
+function WeekDayColumn({ day, posts, onPostClick }: WeekDayColumnProps) {
+  const dayKey = day.date.toISOString().split('T')[0]
+  const { setNodeRef, isOver } = useDroppable({
+    id: dayKey,
+    data: { date: day.date },
+  })
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={cn(
+        "rounded-lg border border-border/40 bg-card/40 p-3 space-y-3 transition-colors",
+        isOver && "bg-primary/10 ring-2 ring-primary ring-inset"
+      )}
+    >
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-xs text-muted-foreground uppercase">
+            {WEEKDAY_LABELS[day.date.getDay()]}
+          </p>
+          <p className="text-lg font-semibold">{day.date.getDate()}</p>
+        </div>
+        {day.isToday && (
+          <span className="text-xs font-medium text-primary">Hoje</span>
+        )}
+      </div>
+
+      <div className="space-y-2">
+        {posts.length === 0 && (
+          <p className="text-xs text-muted-foreground">
+            Nenhum conteúdo agendado
+          </p>
+        )}
+
+        {posts.map((post) => (
+          <DraggablePost
+            key={post.id}
+            post={post}
+            onClick={() => onPostClick(post)}
+          />
+        ))}
       </div>
     </div>
   )
