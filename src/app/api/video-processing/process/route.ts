@@ -134,6 +134,7 @@ async function processNextJob(): Promise<NextResponse> {
       await persistGeneration({ progress: 20 })
 
       console.log('[Video Processor] Convertendo WebM → MP4 com FFmpeg...')
+      console.log('[Video Processor] Dimensões de destino:', job.videoWidth, 'x', job.videoHeight)
       const { mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
         webmBuffer,
         async (progress) => {
@@ -150,6 +151,9 @@ async function processNextJob(): Promise<NextResponse> {
           crf: 23,
           generateThumbnail: true,
           durationSeconds: job.videoDuration,
+          // Passar dimensões de destino para garantir aspect ratio correto (crucial para Instagram Stories 9:16)
+          targetWidth: job.videoWidth ?? undefined,
+          targetHeight: job.videoHeight ?? undefined,
         },
       )
 

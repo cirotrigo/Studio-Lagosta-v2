@@ -13,18 +13,22 @@ export type ConversionProgress = {
 
 export type ConversionOptions = {
   preset?:
-    | 'ultrafast'
-    | 'superfast'
-    | 'veryfast'
-    | 'faster'
-    | 'fast'
-    | 'medium'
-    | 'slow'
-    | 'slower'
-    | 'veryslow'
+  | 'ultrafast'
+  | 'superfast'
+  | 'veryfast'
+  | 'faster'
+  | 'fast'
+  | 'medium'
+  | 'slow'
+  | 'slower'
+  | 'veryslow'
   crf?: number
   generateThumbnail?: boolean
   durationSeconds?: number
+  /** Largura de destino do vídeo (ex: 1080 para Stories) */
+  targetWidth?: number
+  /** Altura de destino do vídeo (ex: 1920 para Stories) */
+  targetHeight?: number
 }
 
 let cachedFfmpegPath: string | null = null
@@ -151,8 +155,7 @@ async function ensureFfmpegPath(): Promise<string> {
 
   if (!cachedFfmpegPath) {
     const errorMsg =
-      `FFmpeg não encontrado. Candidatos testados: ${
-        lastCandidatePaths.join(', ')
+      `FFmpeg não encontrado. Candidatos testados: ${lastCandidatePaths.join(', ')
       }. ` +
       `\n\nSOLUÇÃO IMEDIATA: Configure no Vercel Dashboard:\n` +
       `1. Vá em Settings → Environment Variables\n` +
@@ -232,6 +235,8 @@ export async function convertWebMToMP4ServerSide(
     crf = 23,
     generateThumbnail = true,
     durationSeconds,
+    targetWidth,
+    targetHeight,
   } = options
 
   const timestamp = Date.now()
@@ -275,7 +280,11 @@ export async function convertWebMToMP4ServerSide(
         '-max_muxing_queue_size',
         '1024',
         '-vf',
-        'fps=30',
+        // Se dimensões de destino forem fornecidas, aplicar escala e padding para garantir aspect ratio correto
+        // Isso é crucial para Instagram Stories (9:16) e outros formatos específicos
+        targetWidth && targetHeight
+          ? `fps=30,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black`
+          : 'fps=30',
         '-r',
         '30',
         '-vsync',
@@ -353,18 +362,16 @@ export async function convertWebMToMP4ServerSide(
   } catch (error) {
     console.error('[FFmpeg Server] Falha na conversão:', error)
     throw new Error(
-      `Falha ao converter vídeo: ${
-        error instanceof Error ? error.message : 'Erro desconhecido'
-      }. Caminho configurado: ${cachedFfmpegPath ?? 'nenhum'}. Candidatos testados: ${
-        lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
+      `Falha ao converter vídeo: ${error instanceof Error ? error.message : 'Erro desconhecido'
+      }. Caminho configurado: ${cachedFfmpegPath ?? 'nenhum'}. Candidatos testados: ${lastCandidatePaths.length ? lastCandidatePaths.join(', ') : 'nenhum'
       }`,
     )
   } finally {
     console.log('[FFmpeg Server] Limpando arquivos temporários...')
     await Promise.all([
-      unlink(inputPath).catch(() => {}),
-      unlink(outputPath).catch(() => {}),
-      unlink(thumbnailPath).catch(() => {}),
+      unlink(inputPath).catch(() => { }),
+      unlink(outputPath).catch(() => { }),
+      unlink(thumbnailPath).catch(() => { }),
     ])
   }
 }
