@@ -280,10 +280,11 @@ export async function convertWebMToMP4ServerSide(
         '-max_muxing_queue_size',
         '1024',
         '-vf',
-        // Se dimensões de destino forem fornecidas, aplicar escala e padding para garantir aspect ratio correto
+        // Se dimensões de destino forem fornecidas, aplicar escala e crop para preencher completamente sem letterboxing
         // Isso é crucial para Instagram Stories (9:16) e outros formatos específicos
+        // Usa 'increase' para preencher a área e crop para cortar o excesso, evitando tarjas pretas
         targetWidth && targetHeight
-          ? `fps=30,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black`
+          ? `fps=30,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight}`
           : 'fps=30',
         '-r',
         '30',
