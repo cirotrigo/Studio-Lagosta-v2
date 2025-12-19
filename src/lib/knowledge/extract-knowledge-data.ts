@@ -33,6 +33,8 @@ export async function extractKnowledgeData(
 ): Promise<ExtractedKnowledgeData> {
   const input = text.trim()
 
+  // Default to gpt-4o for structured extraction (better than mini for complex data)
+  // Can be overridden via CLASSIFICATION_MODEL env var to use newer models like gpt-5 or gpt-4.1
   const { object } = await generateObject({
     model: openai(process.env.CLASSIFICATION_MODEL || 'gpt-4o'),
     schema: ExtractionSchema,

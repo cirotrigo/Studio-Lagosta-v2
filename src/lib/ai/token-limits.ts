@@ -1,6 +1,16 @@
 /**
  * Token limits configuration for AI providers
  * Helps control costs and prevent excessive usage
+ *
+ * NOTE: Latest OpenAI models (GPT-4.1, GPT-5.x series) support up to 1,000,000 context tokens
+ * The defaults below are conservative for cost control. Increase via environment variables if needed:
+ * - MAX_TOKENS_OPENAI: Max output tokens (default: 4096)
+ * - MAX_CONTEXT_TOKENS_OPENAI: Max input/context tokens (default: 16000)
+ *
+ * Model capabilities (December 2025):
+ * - GPT-5.2, GPT-5.1, GPT-5, GPT-4.1 series: 1M context tokens
+ * - GPT-4o, GPT-4o-mini: 128K context tokens
+ * - o1, o3, o4-mini (reasoning): Variable context based on model
  */
 
 export const TOKEN_LIMITS = {

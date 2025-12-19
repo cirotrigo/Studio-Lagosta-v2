@@ -54,6 +54,8 @@ const INTENT_SYNONYMS: Record<string, UserIntent> = {
   'ASK': 'QUERY',
   'QUESTION': 'QUERY',
 }
+// Default to gpt-4o-mini for fast, cost-effective classification
+// Can be overridden via CLASSIFICATION_MODEL env var to use newer models like gpt-5-mini or gpt-4.1-mini
 const DEFAULT_MODEL = process.env.CLASSIFICATION_MODEL || 'gpt-4o-mini'
 const DEFAULT_TEMPERATURE = Number.isFinite(Number(process.env.CLASSIFICATION_TEMPERATURE))
   ? Number(process.env.CLASSIFICATION_TEMPERATURE)
