@@ -37,19 +37,30 @@ export function Markdown({ children, className }: MarkdownProps) {
       rehypePlugins={[rehypeHighlight]}
       className={cn(
         // Enhanced typography (no @tailwindcss/typography plugin)
-        '[&_p]:leading-relaxed [&_p:not(:first-child)]:mt-3',
-        '[&_a]:text-primary [&_a]:underline hover:[&_a]:opacity-80',
-        '[&_ul]:list-disc [&_ol]:list-decimal [&_ul, &_ol]:pl-5 [&_li]:mt-1.5',
-        '[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
-        '[&_hr]:my-5',
-        // Headings
-        '[&_h1]:text-xl [&_h1]:font-semibold [&_h1]:mt-4 [&_h1]:mb-2',
-        '[&_h2]:text-lg [&_h2]:font-semibold [&_h2]:mt-4 [&_h2]:mb-2',
-        '[&_h3]:text-base [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-1.5',
+        '[&_p]:leading-relaxed [&_p]:text-sm [&_p:not(:first-child)]:mt-3',
+        // Links - clickable and highlighted
+        '[&_a]:text-primary [&_a]:underline [&_a]:decoration-primary/50 hover:[&_a]:decoration-primary [&_a]:transition-colors [&_a]:font-medium',
+        // Lists - styled bullets and proper spacing
+        '[&_ul]:list-disc [&_ol]:list-decimal [&_ul,_&_ol]:pl-6 [&_ul,_&_ol]:my-3 [&_ul,_&_ol]:space-y-1.5',
+        '[&_li]:text-sm [&_li]:leading-relaxed',
+        // Nested lists
+        '[&_li>ul]:mt-1.5 [&_li>ol]:mt-1.5 [&_li>ul]:mb-0 [&_li>ol]:mb-0',
+        '[&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-primary/30 [&_blockquote]:pl-4 [&_blockquote]:italic [&_blockquote]:text-muted-foreground',
+        '[&_hr]:my-6 [&_hr]:border-border',
+        // Headings - clear hierarchy
+        '[&_h1]:text-2xl [&_h1]:font-bold [&_h1]:mt-6 [&_h1]:mb-3 [&_h1]:tracking-tight',
+        '[&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-5 [&_h2]:mb-2.5 [&_h2]:tracking-tight',
+        '[&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-4 [&_h3]:mb-2',
+        '[&_h4]:text-base [&_h4]:font-semibold [&_h4]:mt-3 [&_h4]:mb-1.5',
+        '[&_h5]:text-sm [&_h5]:font-semibold [&_h5]:mt-2 [&_h5]:mb-1',
+        '[&_h6]:text-sm [&_h6]:font-medium [&_h6]:mt-2 [&_h6]:mb-1',
         // Images
-        '[&_img]:my-2 [&_img]:rounded-md [&_img]:border max-w-full',
+        '[&_img]:my-3 [&_img]:rounded-lg [&_img]:border [&_img]:shadow-sm max-w-full',
         // Task lists
-        '[&_input[type=checkbox]]:mr-2',
+        '[&_input[type=checkbox]]:mr-2 [&_input[type=checkbox]]:cursor-pointer',
+        // Strong and emphasis
+        '[&_strong]:font-semibold [&_strong]:text-foreground',
+        '[&_em]:italic',
         className,
       )}
       components={{
@@ -57,11 +68,11 @@ export function Markdown({ children, className }: MarkdownProps) {
         code({ inline, className, children, ...props }: { inline?: boolean; className?: string; children?: React.ReactNode; [key: string]: unknown }) {
           const text = String(children).replace(/\n$/, '')
           return inline ? (
-            <code className={cn('rounded bg-muted px-1 py-0.5 text-xs', className)} {...props}>
+            <code className={cn('rounded bg-muted/60 px-1.5 py-0.5 text-xs font-mono border border-border/50', className)} {...props}>
               {text}
             </code>
           ) : (
-            <code className={className} {...props}>
+            <code className={cn('font-mono text-xs', className)} {...props}>
               {text}
             </code>
           )
@@ -86,14 +97,33 @@ export function Markdown({ children, className }: MarkdownProps) {
             }
           }
           return (
-            <div className="group relative my-3">
-              <div className="absolute right-2 top-2 z-10 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                {lang && <span className="rounded bg-background/70 px-1.5 py-0.5 text-[10px] uppercase tracking-wide ring-1 ring-border">{lang}</span>}
-                <Button type="button" size="icon" variant="ghost" className="h-7 w-7" aria-label="Copiar código" onClick={handleCopy}>
-                  {copied ? <span className="text-[10px]">OK</span> : <Copy className="h-3.5 w-3.5" />}
+            <div className="group relative my-4">
+              <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100">
+                {lang && (
+                  <span className="rounded-md bg-background/90 backdrop-blur-sm px-2 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground border border-border shadow-sm">
+                    {lang}
+                  </span>
+                )}
+                <Button
+                  type="button"
+                  size="icon"
+                  variant="secondary"
+                  className="h-7 w-7 shadow-sm"
+                  aria-label="Copiar código"
+                  onClick={handleCopy}
+                >
+                  {copied ? <span className="text-[10px] font-medium text-green-600">✓</span> : <Copy className="h-3.5 w-3.5" />}
                 </Button>
               </div>
-              <pre className={cn('max-w-full overflow-x-auto rounded-md bg-background p-3 text-xs ring-1 ring-border', className)} {...props}>
+              <pre
+                className={cn(
+                  'max-w-full overflow-x-auto rounded-lg bg-zinc-950 dark:bg-zinc-900 p-4 text-xs font-mono',
+                  'border border-zinc-800 shadow-lg',
+                  '[&_code]:text-zinc-100 [&_code]:bg-transparent',
+                  className
+                )}
+                {...props}
+              >
                 {children}
               </pre>
             </div>
@@ -119,18 +149,46 @@ export function Markdown({ children, className }: MarkdownProps) {
             />
           )
         },
+        // Enhanced table with zebra striping and better mobile support
         table({ className, ...props }) {
           return (
-            <div className="my-3 w-full overflow-x-auto">
+            <div className="my-4 w-full overflow-x-auto rounded-lg border border-border shadow-sm">
               <table className={cn('w-full border-collapse text-sm', className)} {...props} />
             </div>
           )
         },
+        thead({ className, ...props }) {
+          return <thead className={cn('bg-muted/80 border-b-2 border-border', className)} {...props} />
+        },
+        tbody({ className, ...props }) {
+          return <tbody className={cn('[&_tr:nth-child(even)]:bg-muted/30 [&_tr]:transition-colors hover:[&_tr]:bg-muted/50', className)} {...props} />
+        },
+        tr({ className, ...props }) {
+          return <tr className={cn('border-b border-border/50 last:border-0', className)} {...props} />
+        },
         th({ className, ...props }) {
-          return <th className={cn('border-b bg-muted/50 px-2 py-1 text-left font-medium', className)} {...props} />
+          return (
+            <th
+              className={cn(
+                'px-4 py-2.5 text-left font-semibold text-foreground',
+                'first:pl-4 last:pr-4',
+                className
+              )}
+              {...props}
+            />
+          )
         },
         td({ className, ...props }) {
-          return <td className={cn('border-b px-2 py-1 align-top', className)} {...props} />
+          return (
+            <td
+              className={cn(
+                'px-4 py-2.5 align-top',
+                'first:pl-4 last:pr-4',
+                className
+              )}
+              {...props}
+            />
+          )
         },
       }}
     >

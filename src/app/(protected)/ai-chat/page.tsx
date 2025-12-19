@@ -1205,7 +1205,8 @@ export default function AIChatPage() {
                 <>
                   {messages.map((m, idx) => {
                     const normalizedRole = (m.role === 'user' || m.role === 'assistant' || m.role === 'system') ? m.role : 'assistant'
-                    const disableMarkdown = mode === 'text' && normalizedRole === 'assistant'
+                    // Enable Markdown rendering for assistant messages (disable only for user messages)
+                    const disableMarkdown = normalizedRole === 'user'
                     const content = m.parts?.map(part => part.type === 'text' ? part.text : '').join('') || ''
                     const metadataRaw = (m as { metadata?: unknown }).metadata ?? messageMetadata[m.id]
                     const metadata: Record<string, unknown> | undefined =
