@@ -437,28 +437,41 @@ export function VideoExportButton() {
           ? audioConfig.endTime - audioConfig.startTime
           : videoDuration || videoLayer.videoMetadata?.duration || 10
 
+      const queuePayload = {
+        templateId,
+        projectId: resolvedProjectId,
+        videoName: designName || 'vídeo',
+        videoDuration: exportedDuration,
+        videoWidth: design.canvas.width,
+        videoHeight: design.canvas.height,
+        webmBlobUrl: videoUpload.url,
+        webmBlobSize: videoBlob.size,
+        thumbnailBlobUrl: thumbnailUpload.url,
+        thumbnailBlobSize: thumbnailBlob.size,
+        designData: design,
+      }
+
+      console.log('[Video Export] Enviando para fila:', {
+        ...queuePayload,
+        designData: '[omitido]' // Não logar design completo
+      })
+
       const queueResponse = await fetch('/api/video-processing/queue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          templateId,
-          projectId: resolvedProjectId,
-          videoName: designName || 'vídeo',
-          videoDuration: exportedDuration,
-          videoWidth: design.canvas.width,
-          videoHeight: design.canvas.height,
-          webmBlobUrl: videoUpload.url,
-          webmBlobSize: videoBlob.size,
-          thumbnailBlobUrl: thumbnailUpload.url,
-          thumbnailBlobSize: thumbnailBlob.size,
-          designData: design,
-        }),
+        body: JSON.stringify(queuePayload),
       })
 
       const queueJson = await queueResponse.json()
       if (!queueResponse.ok) {
+        console.error('[Video Export] Erro ao adicionar à fila:', {
+          status: queueResponse.status,
+          statusText: queueResponse.statusText,
+          response: queueJson
+        })
         const message = queueJson?.error || queueJson?.message || 'Falha ao adicionar vídeo à fila'
-        throw new Error(message)
+        const details = queueJson?.details ? ` - ${JSON.stringify(queueJson.details)}` : ''
+        throw new Error(message + details)
       }
 
       const { jobId, generationId } = queueJson as { jobId?: string; generationId?: string }

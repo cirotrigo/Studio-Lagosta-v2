@@ -19,6 +19,7 @@ interface StageCleanupState {
   previousSelection: string[]
   previousZoom: number
   previousPosition: { x: number; y: number }
+  previousSize: { width: number; height: number }
   guidesWasVisible: boolean
   invisibleLayersState: Array<{
     node: Konva.Node
@@ -43,6 +44,7 @@ async function prepareStageForExport(
   const previousSelection = [...selectedLayerIdsRef.current]
   const previousZoom = zoom
   const previousPosition = { x: stage.x(), y: stage.y() }
+  const previousSize = { width: stage.width(), height: stage.height() }
 
   const invisibleLayersState: Array<{
     node: Konva.Node
@@ -61,17 +63,22 @@ async function prepareStageForExport(
   stage.scale({ x: 1, y: 1 })
   stage.position({ x: 0, y: 0 })
 
-  // 4. Aguardar frame para zoom ser aplicado
+  // 4. IMPORTANTE: Forçar stage para dimensões do design
+  // Isso garante que o stage capture todo o conteúdo sem cortes
+  stage.width(design.canvas.width)
+  stage.height(design.canvas.height)
+
+  // 5. Aguardar frame para mudanças serem aplicadas
   await new Promise((resolve) => requestAnimationFrame(resolve))
 
-  // 5. Ocultar camada de guides temporariamente
+  // 6. Ocultar camada de guides temporariamente
   const guidesLayer = stage.findOne('.guides-layer')
   const guidesWasVisible = guidesLayer?.visible() ?? false
   if (guidesLayer) {
     guidesLayer.visible(false)
   }
 
-  // 6. Ocultar completamente camadas invisíveis (visible: false)
+  // 7. Ocultar completamente camadas invisíveis (visible: false)
   const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
 
   if (contentLayer) {
@@ -96,16 +103,17 @@ async function prepareStageForExport(
     })
   }
 
-  // 7. Forçar redraw para aplicar mudanças
+  // 8. Forçar redraw para aplicar mudanças
   stage.batchDraw()
 
-  // 8. Aguardar frame para garantir que mudanças foram aplicadas
+  // 9. Aguardar frame para garantir que mudanças foram aplicadas
   await new Promise((resolve) => requestAnimationFrame(resolve))
 
   return {
     previousSelection,
     previousZoom,
     previousPosition,
+    previousSize,
     guidesWasVisible,
     invisibleLayersState,
   }
@@ -120,7 +128,7 @@ function restoreStageState(
   setSelectedLayerIds: (ids: string[]) => void,
   setZoomState: (zoom: number) => void
 ): void {
-  const { previousSelection, previousZoom, previousPosition, guidesWasVisible, invisibleLayersState } =
+  const { previousSelection, previousZoom, previousPosition, previousSize, guidesWasVisible, invisibleLayersState } =
     cleanupState
 
   // Restaurar estado das camadas invisíveis PRIMEIRO
@@ -134,6 +142,10 @@ function restoreStageState(
   if (guidesLayer) {
     guidesLayer.visible(guidesWasVisible)
   }
+
+  // Restaurar tamanho original do stage
+  stage.width(previousSize.width)
+  stage.height(previousSize.height)
 
   // Restaurar zoom, posição e seleção original
   setZoomState(previousZoom)
@@ -368,14 +380,21 @@ export async function exportVideoWithLayers(
 
     // IMPORTANTE: Konva usa múltiplos canvas (um por layer)
     // Precisamos criar um canvas offscreen que combina todos os layers
-    // Usar dimensões EXATAS do design, não do stage (que pode ter zoom/padding)
-    const stageWidth = design.canvas.width
-    const stageHeight = design.canvas.height
+    // Usar dimensões EXATAS do design, não do stage (que pode ter padding/margens)
+    const stageWidth = stage.width()
+    const stageHeight = stage.height()
+    const designWidth = design.canvas.width
+    const designHeight = design.canvas.height
 
-    // Criar canvas offscreen para composição com dimensões exatas do design
+    console.log('[Video Export] Dimensões do Stage:', stageWidth, 'x', stageHeight)
+    console.log('[Video Export] Dimensões do Design:', designWidth, 'x', designHeight)
+
+    // Criar canvas offscreen com dimensões EXATAS do design
     const offscreenCanvas = document.createElement('canvas')
-    offscreenCanvas.width = stageWidth
-    offscreenCanvas.height = stageHeight
+    offscreenCanvas.width = designWidth
+    offscreenCanvas.height = designHeight
+
+    console.log('[Video Export] Canvas offscreen criado:', offscreenCanvas.width, 'x', offscreenCanvas.height)
     const offscreenCtx = offscreenCanvas.getContext('2d', {
       alpha: false, // Sem transparência = melhor performance
       willReadFrequently: false,
@@ -388,11 +407,24 @@ export async function exportVideoWithLayers(
     // Preencher fundo branco (ou usar cor de fundo do design) com o frame inicial
     videoNode.getLayer()?.batchDraw()
     stage.batchDraw()
-    const initialSnapshot = stage.toCanvas()
+
+    // Verificar se stage tem dimensões corretas (deve ter sido ajustado em prepareStageForExport)
+    if (stageWidth !== designWidth || stageHeight !== designHeight) {
+      console.warn('[Video Export] ⚠️ Stage não tem dimensões do design!', {stage: `${stageWidth}x${stageHeight}`, design: `${designWidth}x${designHeight}`})
+    }
+
+    // Capturar stage completo (agora ele já tem dimensões do design)
+    console.log('[Video Export] Capturando stage completo...')
+    const initialSnapshot = stage.toCanvas({ pixelRatio: 1 })
+    console.log('[Video Export] Snapshot capturado:', initialSnapshot.width, 'x', initialSnapshot.height)
+
+    // Desenhar snapshot no canvas offscreen
     offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
-    offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
-    // Desenhar snapshot com dimensões exatas do canvas de destino
-    offscreenCtx.drawImage(initialSnapshot, 0, 0, stageWidth, stageHeight)
+    offscreenCtx.fillRect(0, 0, designWidth, designHeight)
+    offscreenCtx.drawImage(initialSnapshot, 0, 0)
+
+    // AGUARDAR próximo frame para garantir que o canvas foi renderizado
+    await new Promise(resolve => requestAnimationFrame(resolve))
 
     // Verificar suporte a MediaRecorder (sempre WebM)
     const mimeType = 'video/webm;codecs=vp9'
@@ -410,9 +442,15 @@ export async function exportVideoWithLayers(
 
     onProgress?.({ phase: 'preparing', progress: 40 })
 
-    // Criar stream do canvas offscreen com frameRate fixo
+    // Criar stream do canvas offscreen com frameRate fixo APÓS primeiro desenho estar completo
     const canvasStream = offscreenCanvas.captureStream(captureFps)
     console.log(`[Video Export] Canvas stream criado com ${captureFps} FPS`)
+
+    // Forçar captura do primeiro frame desenhando novamente
+    offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
+    offscreenCtx.fillRect(0, 0, designWidth, designHeight)
+    offscreenCtx.drawImage(initialSnapshot, 0, 0)
+    console.log('[Video Export] Canvas redesenhado após criar stream')
 
     const primaryCanvasTrack = canvasStream.getVideoTracks()[0]
     if (primaryCanvasTrack) {
@@ -744,14 +782,12 @@ export async function exportVideoWithLayers(
       stage.batchDraw()
 
       // 2. Copiar o stage renderizado para o canvas offscreen
-      // Usar toCanvas() que retorna um snapshot do stage completo (todas as layers compostas)
-      const stageSnapshot = stage.toCanvas()
+      const stageSnapshot = stage.toCanvas({ pixelRatio: 1 })
 
-      // 3. Limpar canvas offscreen e desenhar o snapshot com dimensões exatas
+      // 3. Desenhar snapshot (stage já tem dimensões corretas)
       offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
-      offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
-      // Desenhar snapshot escalado para preencher exatamente o canvas de destino
-      offscreenCtx.drawImage(stageSnapshot, 0, 0, stageWidth, stageHeight)
+      offscreenCtx.fillRect(0, 0, designWidth, designHeight)
+      offscreenCtx.drawImage(stageSnapshot, 0, 0)
 
       const elapsed = (Date.now() - startTime) / 1000
       if (elapsed < videoDuration) {

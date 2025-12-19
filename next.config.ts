@@ -154,6 +154,14 @@ const nextConfig: NextConfig = {
         protocol: 'http',
         hostname: 'localhost',
       },
+      {
+        protocol: 'https',
+        hostname: 'i.ytimg.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.youtube.com',
+      },
     ],
     // OPTIMIZED: Image optimization settings
     formats: ['image/avif', 'image/webp'], // Use modern formats for better compression

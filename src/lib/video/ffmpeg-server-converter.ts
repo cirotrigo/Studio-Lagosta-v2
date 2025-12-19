@@ -282,10 +282,10 @@ export async function convertWebMToMP4ServerSide(
         '-vf',
         // Se dimensões de destino forem fornecidas, aplicar escala e crop para preencher completamente sem letterboxing
         // Isso é crucial para Instagram Stories (9:16) e outros formatos específicos
-        // Usa 'increase' para preencher a área e crop centralizado para cortar o excesso, evitando tarjas pretas ou bordas
-        // Garantindo dimensões pares (divisíveis por 2) para compatibilidade com codecs usando trunc
+        // Usa 'increase' para escalar até preencher, depois crop centralizado explícito para cortar excesso
+        // (iw-ow)/2 e (ih-oh)/2 calculam a posição central do crop
         targetWidth && targetHeight
-          ? `fps=30,scale='trunc(${targetWidth}/2)*2':'trunc(${targetHeight}/2)*2':force_original_aspect_ratio=increase,crop='trunc(${targetWidth}/2)*2':'trunc(${targetHeight}/2)*2'`
+          ? `fps=30,scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight}:(iw-ow)/2:(ih-oh)/2`
           : 'fps=30',
         '-r',
         '30',
