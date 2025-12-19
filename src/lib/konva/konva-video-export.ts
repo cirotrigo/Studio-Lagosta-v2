@@ -368,10 +368,11 @@ export async function exportVideoWithLayers(
 
     // IMPORTANTE: Konva usa múltiplos canvas (um por layer)
     // Precisamos criar um canvas offscreen que combina todos os layers
-    const stageWidth = stage.width()
-    const stageHeight = stage.height()
+    // Usar dimensões EXATAS do design, não do stage (que pode ter zoom/padding)
+    const stageWidth = design.canvas.width
+    const stageHeight = design.canvas.height
 
-    // Criar canvas offscreen para composição
+    // Criar canvas offscreen para composição com dimensões exatas do design
     const offscreenCanvas = document.createElement('canvas')
     offscreenCanvas.width = stageWidth
     offscreenCanvas.height = stageHeight
@@ -390,7 +391,8 @@ export async function exportVideoWithLayers(
     const initialSnapshot = stage.toCanvas()
     offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
     offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
-    offscreenCtx.drawImage(initialSnapshot, 0, 0)
+    // Desenhar snapshot com dimensões exatas do canvas de destino
+    offscreenCtx.drawImage(initialSnapshot, 0, 0, stageWidth, stageHeight)
 
     // Verificar suporte a MediaRecorder (sempre WebM)
     const mimeType = 'video/webm;codecs=vp9'
@@ -745,10 +747,11 @@ export async function exportVideoWithLayers(
       // Usar toCanvas() que retorna um snapshot do stage completo (todas as layers compostas)
       const stageSnapshot = stage.toCanvas()
 
-      // 3. Limpar canvas offscreen e desenhar o snapshot
+      // 3. Limpar canvas offscreen e desenhar o snapshot com dimensões exatas
       offscreenCtx.fillStyle = design.canvas.backgroundColor || '#FFFFFF'
       offscreenCtx.fillRect(0, 0, stageWidth, stageHeight)
-      offscreenCtx.drawImage(stageSnapshot, 0, 0)
+      // Desenhar snapshot escalado para preencher exatamente o canvas de destino
+      offscreenCtx.drawImage(stageSnapshot, 0, 0, stageWidth, stageHeight)
 
       const elapsed = (Date.now() - startTime) / 1000
       if (elapsed < videoDuration) {
