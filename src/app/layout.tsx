@@ -116,7 +116,7 @@ export default function RootLayout({
 }>) {
   return (
     <ClerkProvider>
-      <html lang="pt-br" suppressHydrationWarning>
+      <html lang="pt-br">
         <body
           className={`${montserrat.variable} antialiased text-foreground`}
           style={{ fontFamily: 'var(--font-montserrat), sans-serif' }}

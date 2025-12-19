@@ -19,17 +19,23 @@ export default function ProtectedLayout({
   const { isLoaded, isSignedIn } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [collapsed, setCollapsed] = React.useState(false);
+
+  // Initialize with hydration-safe function
+  const [collapsed, setCollapsed] = React.useState(() => {
+    // During SSR, always return false
+    if (typeof window === "undefined") return false;
+
+    // During client-side rendering, read from localStorage
+    try {
+      const saved = window.localStorage.getItem("app.sidebarCollapsed");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
 
   // Use TanStack Query for subscription status
   const { data: subscriptionStatus, isLoading: isLoadingSubscription } = useSubscription();
-
-  // hydrate from localStorage
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("app.sidebarCollapsed");
-    if (saved != null) setCollapsed(saved === "true");
-  }, []);
 
   const toggleCollapse = React.useCallback(() => {
     setCollapsed((c) => {

@@ -29,38 +29,62 @@ export function ThemeProvider({
   defaultTheme = "system",
   storageKey = "app.theme",
 }: ThemeProviderProps) {
-  const [theme, setThemeState] = React.useState<Theme>(defaultTheme);
-  const [resolved, setResolved] = React.useState<"light" | "dark">(getSystemTheme());
+  // Use hydration-safe initialization
+  const [mounted, setMounted] = React.useState(false);
 
-  // Initialize from localStorage
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem(storageKey) as Theme | null;
-    if (saved) {
-      setThemeState(saved);
-    } else {
-      setThemeState(defaultTheme);
+  // Initialize theme state with a function to avoid calling getSystemTheme during SSR
+  const [theme, setThemeState] = React.useState<Theme>(() => {
+    // During SSR, always return defaultTheme
+    if (typeof window === "undefined") return defaultTheme;
+
+    // During client-side rendering, try to get from localStorage
+    try {
+      const saved = window.localStorage.getItem(storageKey) as Theme | null;
+      return saved || defaultTheme;
+    } catch {
+      return defaultTheme;
     }
-  }, [defaultTheme, storageKey]);
+  });
 
-  // Listen for system changes
+  const [resolved, setResolved] = React.useState<"light" | "dark">(() => {
+    // During SSR, use a consistent default
+    if (typeof window === "undefined") return "light";
+    return getSystemTheme();
+  });
+
+  // Mark component as mounted after hydration
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
+    setMounted(true);
+
+    // Update theme from localStorage after hydration if needed
+    if (typeof window !== "undefined") {
+      const saved = window.localStorage.getItem(storageKey) as Theme | null;
+      if (saved && saved !== theme) {
+        setThemeState(saved);
+      }
+    }
+  }, [storageKey, theme]);
+
+  // Listen for system theme changes
+  React.useEffect(() => {
+    if (!mounted || typeof window === "undefined") return;
+
     const mql = window.matchMedia("(prefers-color-scheme: dark)");
     const onChange = () => setResolved(mql.matches ? "dark" : "light");
     onChange();
     mql.addEventListener?.("change", onChange);
     return () => mql.removeEventListener?.("change", onChange);
-  }, []);
+  }, [mounted]);
 
   // Apply theme to documentElement
   React.useEffect(() => {
-    if (typeof document === "undefined") return;
+    if (!mounted || typeof document === "undefined") return;
+
     const root = document.documentElement;
     const applied = theme === "system" ? resolved : theme;
     root.classList.remove("light", "dark");
     root.classList.add(applied);
-  }, [theme, resolved]);
+  }, [mounted, theme, resolved]);
 
   const setTheme = React.useCallback(
     (t: Theme) => {

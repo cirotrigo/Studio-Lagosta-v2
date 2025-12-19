@@ -9,14 +9,20 @@ import { PublicHeader } from "@/components/app/public-header";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { isSignedIn } = useAuth();
-  const [collapsed, setCollapsed] = React.useState(false);
 
-  // hydrate from localStorage
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const saved = window.localStorage.getItem("app.sidebarCollapsed");
-    if (saved != null) setCollapsed(saved === "true");
-  }, []);
+  // Initialize with hydration-safe function
+  const [collapsed, setCollapsed] = React.useState(() => {
+    // During SSR, always return false
+    if (typeof window === "undefined") return false;
+
+    // During client-side rendering, read from localStorage
+    try {
+      const saved = window.localStorage.getItem("app.sidebarCollapsed");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
 
   const toggleCollapse = React.useCallback(() => {
     setCollapsed((c) => {

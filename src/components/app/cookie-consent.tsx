@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { Button } from "@/components/ui/button"
+import { useHydrated } from "@/hooks/use-hydrated"
 
 const CONSENT_COOKIE = "cookie_consent"
 
@@ -18,11 +19,15 @@ function setConsentCookie() {
 }
 
 export function CookieConsent() {
+  const hydrated = useHydrated()
   const [visible, setVisible] = React.useState(false)
 
   React.useEffect(() => {
-    setVisible(!hasConsent())
-  }, [])
+    // Only check consent after hydration
+    if (hydrated) {
+      setVisible(!hasConsent())
+    }
+  }, [hydrated])
 
   const onAccept = React.useCallback(() => {
     setConsentCookie()
