@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -17,9 +17,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Upload, Music, Download, Image as ImageIcon } from 'lucide-react';
+import { ArrowLeft, Upload, Music, Download, Image as ImageIcon, FileAudio, Youtube, FolderOpen, Tag, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isYoutubeUrl } from '@/lib/youtube/utils';
+import { cn } from '@/lib/utils';
 
 const GENEROS = [
   'Rock',
@@ -50,8 +51,10 @@ export default function EnviarMusicaPage() {
   const enviarMusica = useEnviarMusica();
   const baixarDoYoutube = useBaixarDoYoutube();
   const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [uploadMode, setUploadMode] = useState<'file' | 'youtube'>('file');
+  const [isDragging, setIsDragging] = useState(false);
 
   const [nome, setNome] = useState('');
   const [artista, setArtista] = useState('');
@@ -72,10 +75,28 @@ export default function EnviarMusicaPage() {
   const [nomeManual, setNomeManual] = useState(false);
   const [artistaManual, setArtistaManual] = useState(false);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
+  // Drag and drop handlers
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
 
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      processFile(files[0]);
+    }
+  };
+
+  const processFile = async (selectedFile: File) => {
     if (!selectedFile.type.startsWith('audio/')) {
       toast({
         title: 'Tipo de arquivo inválido',
@@ -125,6 +146,13 @@ export default function EnviarMusicaPage() {
       });
     } finally {
       setExtraindo(false);
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      processFile(selectedFile);
     }
   };
 
@@ -303,231 +331,272 @@ export default function EnviarMusicaPage() {
     }
   };
 
-  const renderInformacoesBasicas = (requireNome: boolean) => (
-    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900">Informações Básicas</h3>
-      <div className="space-y-2">
-        <Label htmlFor="nome">
-          Nome da Faixa {requireNome && <span className="text-red-500">*</span>}
-        </Label>
-        <Input
-          id="nome"
-          value={nome}
-          onChange={(e) => handleNomeInput(e.target.value)}
-          placeholder="Summer Vibes"
-          required={requireNome}
-        />
-      </div>
-      <div className="space-y-2">
-        <Label htmlFor="artista">Artista</Label>
-        <Input
-          id="artista"
-          value={artista}
-          onChange={(e) => handleArtistaInput(e.target.value)}
-          placeholder="John Doe"
-        />
-      </div>
-    </div>
-  );
-
-  const renderClassificacao = () => (
-    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900">Classificação</h3>
-      <div className="grid gap-4 md:grid-cols-2">
-        <div className="space-y-2">
-          <Label htmlFor="genero">Gênero</Label>
-          <Select value={genero} onValueChange={setGenero}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o gênero" />
-            </SelectTrigger>
-            <SelectContent className="max-h-[300px] overflow-y-auto">
-              {GENEROS.map((g) => (
-                <SelectItem key={g} value={g}>
-                  {g}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="humor">Humor</Label>
-          <Select value={humor} onValueChange={setHumor}>
-            <SelectTrigger>
-              <SelectValue placeholder="Selecione o humor" />
-            </SelectTrigger>
-            <SelectContent className="max-h-[300px] overflow-y-auto">
-              {HUMORES.map((h) => (
-                <SelectItem key={h} value={h}>
-                  {h}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-
-  const renderVinculacao = (options: { includeDuration: boolean }) => (
-    <div className="space-y-4 rounded-lg border bg-white p-6 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-900">Vinculação e Metadados</h3>
-      <div className="space-y-2">
-        <Label htmlFor="projectId">Projeto Vinculado</Label>
-        <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="Sem projeto (música global)" />
-          </SelectTrigger>
-          <SelectContent
-            position="popper"
-            sideOffset={4}
-            className="max-h-[min(var(--radix-select-content-available-height),400px)] w-[var(--radix-select-trigger-width)]"
-          >
-            <SelectItem value="none" className="cursor-pointer">
-              <div className="flex items-center gap-2">
-                <Music className="h-4 w-4 text-gray-400" />
-                <span className="font-medium">Sem projeto (música global)</span>
-              </div>
-            </SelectItem>
-            <div className="my-1 h-px bg-gray-200" />
-            {isLoadingProjetos ? (
-              <div className="py-6 text-center text-sm text-gray-500">
-                Carregando projetos...
-              </div>
-            ) : projetos.length === 0 ? (
-              <div className="py-6 text-center text-sm text-gray-500">
-                Nenhum projeto disponível
-              </div>
-            ) : (
-              projetos.map((projeto) => (
-                <SelectItem
-                  key={projeto.id}
-                  value={projeto.id.toString()}
-                  className="cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="flex h-6 w-6 items-center justify-center rounded bg-blue-100 text-xs font-semibold text-blue-700">
-                      {projeto.name.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="truncate">{projeto.name}</span>
-                  </div>
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-        <p className="text-sm text-gray-500">
-          {isLoadingProjetos
-            ? 'Carregando projetos...'
-            : projetos.length === 0
-            ? 'Crie um projeto primeiro para vincular músicas'
-            : `${projetos.length} ${projetos.length === 1 ? 'projeto disponível' : 'projetos disponíveis'}`
-          }
-        </p>
-      </div>
-      {options.includeDuration && (
-        <div className="space-y-2">
-          <Label htmlFor="duracao">
-            Duração (segundos) <span className="text-red-500">*</span>
-          </Label>
-          <Input
-            id="duracao"
-            type="number"
-            value={duracao || ''}
-            onChange={(e) => setDuracao(parseFloat(e.target.value))}
-            placeholder="180"
-            min="1"
-            step="0.1"
-            required
-            disabled={extraindo}
-          />
-          {extraindo && <p className="text-sm text-gray-500">Extraindo metadados...</p>}
-          {duracao > 0 && (
-            <p className="text-sm text-green-600">
-              ✓ {Math.floor(duracao / 60)}:{String(Math.floor(duracao % 60)).padStart(2, '0')} min
-            </p>
-          )}
-        </div>
-      )}
-    </div>
-  );
-
   return (
-    <div className="container mx-auto max-w-2xl px-4 py-8">
+    <div className="container mx-auto max-w-3xl px-4 py-8">
+      {/* Header */}
       <div className="mb-8">
         <Link href="/biblioteca-musicas">
-          <Button variant="ghost" className="mb-4">
+          <Button variant="ghost" size="sm" className="mb-4 -ml-2 text-muted-foreground hover:text-foreground">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Voltar para Biblioteca
           </Button>
         </Link>
-        <h1 className="text-3xl font-bold">Enviar Música</h1>
-        <p className="mt-2 text-gray-600">Adicione uma nova faixa à biblioteca</p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 dark:bg-primary/20">
+            <Music className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">Enviar Música</h1>
+            <p className="text-sm text-muted-foreground">Adicione uma nova faixa à sua biblioteca</p>
+          </div>
+        </div>
       </div>
 
-      <div className="mb-6 flex gap-2 rounded-lg bg-gray-100 p-1">
+      {/* Upload Mode Toggle */}
+      <div className="mb-8 flex gap-2 rounded-xl bg-muted/50 p-1.5 border border-border">
         <button
           type="button"
           onClick={() => setUploadMode('file')}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
-            uploadMode === 'file' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-          }`}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-all',
+            uploadMode === 'file'
+              ? 'bg-card shadow-sm text-foreground border border-border'
+              : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+          )}
         >
-          📁 Upload de Arquivo
+          <FileAudio className="h-4 w-4" />
+          Upload de Arquivo
         </button>
         <button
           type="button"
           onClick={() => setUploadMode('youtube')}
-          className={`flex-1 rounded-md px-4 py-2 text-sm font-medium transition ${
-            uploadMode === 'youtube' ? 'bg-white shadow-sm' : 'text-gray-600 hover:text-gray-900'
-          }`}
+          className={cn(
+            'flex-1 flex items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-medium transition-all',
+            uploadMode === 'youtube'
+              ? 'bg-card shadow-sm text-foreground border border-border'
+              : 'text-muted-foreground hover:text-foreground hover:bg-card/50'
+          )}
         >
-          🔗 Link do YouTube
+          <Youtube className="h-4 w-4" />
+          Link do YouTube
         </button>
       </div>
 
+      {/* File Upload Mode */}
       {uploadMode === 'file' && (
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-2 rounded-lg border bg-white p-6 shadow-sm">
-            <Label htmlFor="arquivo" className="text-base font-semibold">
-              Arquivo de Áudio <span className="text-red-500">*</span>
-            </Label>
-            <div className="flex flex-col gap-4">
-              <Input
-                id="arquivo"
-                type="file"
-                accept="audio/*"
-                onChange={handleFileChange}
-                className="flex-1"
-                required
-              />
-              {arquivo && (
-                <div className="flex items-center justify-between rounded-md border border-green-200 bg-green-50 p-3">
-                  <div className="flex items-center gap-2 text-sm text-green-700">
-                    <Music className="h-4 w-4" />
-                    <span className="font-medium">{arquivo.name}</span>
-                  </div>
-                  <span className="text-sm text-green-600">
-                    {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
-                  </span>
+          {/* Drag & Drop Zone */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              'relative cursor-pointer rounded-xl border-2 border-dashed p-8 transition-all text-center',
+              isDragging
+                ? 'border-primary bg-primary/5 dark:bg-primary/10'
+                : arquivo
+                  ? 'border-green-500/50 bg-green-500/5 dark:bg-green-500/10'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/30'
+            )}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="audio/*"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+
+            {arquivo ? (
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10 dark:bg-green-500/20">
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
                 </div>
-              )}
-            </div>
-            <p className="text-sm text-gray-500">
-              Formatos suportados: MP3, WAV, OGG, AAC, M4A (max 50MB)
-            </p>
+                <div>
+                  <p className="font-semibold text-foreground">{arquivo.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(arquivo.size / (1024 * 1024)).toFixed(2)} MB
+                    {duracao > 0 && ` • ${Math.floor(duracao / 60)}:${String(Math.floor(duracao % 60)).padStart(2, '0')}`}
+                  </p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); setArquivo(null); setDuracao(0); }}>
+                  Alterar arquivo
+                </Button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-3">
+                <div className={cn(
+                  'flex h-16 w-16 items-center justify-center rounded-full transition-colors',
+                  isDragging ? 'bg-primary/20' : 'bg-muted'
+                )}>
+                  <Upload className={cn('h-8 w-8', isDragging ? 'text-primary' : 'text-muted-foreground')} />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">
+                    {isDragging ? 'Solte o arquivo aqui' : 'Arraste um arquivo de áudio ou clique para selecionar'}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    MP3, WAV, OGG, AAC, M4A (máx 50MB)
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {renderInformacoesBasicas(true)}
-          {renderClassificacao()}
-          {renderVinculacao({ includeDuration: true })}
+          {/* Basic Info Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Informações Básicas
+            </div>
 
-          <div className="flex gap-4 pt-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="nome">
+                  Nome da Faixa <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="nome"
+                  value={nome}
+                  onChange={(e) => handleNomeInput(e.target.value)}
+                  placeholder="Ex: Summer Vibes"
+                  className="h-11"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="artista">Artista</Label>
+                <Input
+                  id="artista"
+                  value={artista}
+                  onChange={(e) => handleArtistaInput(e.target.value)}
+                  placeholder="Ex: John Doe"
+                  className="h-11"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Classification Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Tag className="h-4 w-4 text-primary" />
+              Classificação
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="genero">Gênero</Label>
+                <Select value={genero} onValueChange={setGenero}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione o gênero" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {GENEROS.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="humor">Humor</Label>
+                <Select value={humor} onValueChange={setHumor}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione o humor" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {HUMORES.map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Project Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <FolderOpen className="h-4 w-4 text-primary" />
+              Vinculação
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="projectId">Projeto Vinculado</Label>
+              <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="Sem projeto (música global)" />
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  sideOffset={4}
+                  className="max-h-[min(var(--radix-select-content-available-height),400px)] w-[var(--radix-select-trigger-width)]"
+                >
+                  <SelectItem value="none" className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Music className="h-4 w-4 text-muted-foreground" />
+                      <span>Sem projeto (música global)</span>
+                    </div>
+                  </SelectItem>
+                  <div className="my-1 h-px bg-border" />
+                  {isLoadingProjetos ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Carregando projetos...
+                    </div>
+                  ) : projetos.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhum projeto disponível
+                    </div>
+                  ) : (
+                    projetos.map((projeto) => (
+                      <SelectItem
+                        key={projeto.id}
+                        value={projeto.id.toString()}
+                        className="cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-xs font-semibold text-primary">
+                            {projeto.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="truncate">{projeto.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {isLoadingProjetos
+                  ? 'Carregando projetos...'
+                  : projetos.length === 0
+                    ? 'Crie um projeto primeiro para vincular músicas'
+                    : `${projetos.length} ${projetos.length === 1 ? 'projeto disponível' : 'projetos disponíveis'}`
+                }
+              </p>
+            </div>
+
+            {/* Duration (hidden input, auto-extracted) */}
+            {duracao > 0 && (
+              <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                <CheckCircle2 className="h-4 w-4" />
+                Duração detectada: {Math.floor(duracao / 60)}:{String(Math.floor(duracao % 60)).padStart(2, '0')}
+              </div>
+            )}
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-2">
             <Link href="/biblioteca-musicas" className="flex-1">
-              <Button type="button" variant="outline" className="w-full">
+              <Button type="button" variant="outline" className="w-full h-11">
                 Cancelar
               </Button>
             </Link>
-            <Button type="submit" className="flex-1" disabled={enviarMusica.isPending || !arquivo}>
+            <Button type="submit" className="flex-1 h-11" disabled={enviarMusica.isPending || !arquivo}>
               {enviarMusica.isPending ? (
                 <>
                   <Upload className="mr-2 h-4 w-4 animate-spin" />
@@ -544,87 +613,238 @@ export default function EnviarMusicaPage() {
         </form>
       )}
 
+      {/* YouTube Mode */}
       {uploadMode === 'youtube' && (
         <form onSubmit={handleYoutubeSubmit} className="space-y-6">
-          <div className="space-y-2 rounded-lg border bg-white p-6 shadow-sm">
-            <Label htmlFor="youtubeUrl" className="text-base font-semibold">
-              URL do YouTube <span className="text-red-500">*</span>
-            </Label>
-            <Input
-              id="youtubeUrl"
-              type="url"
-              value={youtubeUrl}
-              onChange={(e) => setYoutubeUrl(e.target.value)}
-              placeholder="https://www.youtube.com/watch?v=..."
-              required
-            />
-            <p className="text-sm text-gray-500">Cole o link completo do vídeo do YouTube</p>
+          {/* YouTube URL Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Youtube className="h-4 w-4 text-red-500" />
+              URL do YouTube
+            </div>
+
+            <div className="space-y-2">
+              <Input
+                id="youtubeUrl"
+                type="url"
+                value={youtubeUrl}
+                onChange={(e) => setYoutubeUrl(e.target.value)}
+                placeholder="https://www.youtube.com/watch?v=..."
+                className="h-11"
+                required
+              />
+              <p className="text-xs text-muted-foreground">Cole o link completo do vídeo do YouTube</p>
+            </div>
+
+            {/* Status Messages */}
             {youtubeMetadataStatus === 'loading' && (
-              <p className="text-sm text-blue-600">Buscando informações do vídeo...</p>
+              <div className="flex items-center gap-2 text-sm text-primary">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                Buscando informações do vídeo...
+              </div>
             )}
             {youtubeMetadataStatus === 'error' && youtubeMetadataMessage && (
-              <p className="text-sm text-red-600">{youtubeMetadataMessage}</p>
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertTriangle className="h-4 w-4" />
+                {youtubeMetadataMessage}
+              </div>
             )}
             {youtubeMetadataStatus === 'success' && (
-              <div className="mt-2 flex gap-3 rounded-md border border-blue-100 bg-blue-50 p-3 text-xs text-blue-900">
+              <div className="flex gap-4 rounded-lg border border-border bg-muted/30 p-4">
                 {youtubeMetadataThumb ? (
                   <Image
                     src={youtubeMetadataThumb}
                     alt="Thumbnail do vídeo"
-                    width={48}
-                    height={48}
-                    className="h-12 w-12 rounded object-cover"
+                    width={80}
+                    height={60}
+                    className="h-[60px] w-[80px] rounded-lg object-cover"
                   />
                 ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded bg-blue-100">
-                    <ImageIcon className="h-5 w-5 text-blue-500" />
+                  <div className="flex h-[60px] w-[80px] items-center justify-center rounded-lg bg-muted">
+                    <ImageIcon className="h-6 w-6 text-muted-foreground" />
                   </div>
                 )}
-                <div>
-                  <p>Preenchemos automaticamente os campos com as informações do vídeo.</p>
-                  {nome && <p className="mt-1 font-semibold text-blue-950">{nome}</p>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs text-muted-foreground mb-1">Campos preenchidos automaticamente</p>
+                  {nome && <p className="font-medium text-foreground truncate">{nome}</p>}
+                  {artista && <p className="text-sm text-muted-foreground truncate">{artista}</p>}
                 </div>
               </div>
             )}
           </div>
 
-          <div className="rounded-lg border-2 border-red-300 bg-red-50 p-6">
-            <h3 className="mb-3 text-base font-bold text-red-900">⚠️ Aviso legal importante</h3>
-            <div className="space-y-2 text-sm text-red-800">
-              <p>
-                Baixar conteúdo protegido pode violar os <strong>Termos de Serviço do YouTube</strong>.
-              </p>
-              <p>Use apenas quando tiver autorização legal (Creative Commons, próprio conteúdo, domínio público).</p>
-              <p className="font-semibold">Você é o responsável por qualquer uso indevido.</p>
-            </div>
-            <div className="mt-4 flex items-start gap-3">
-              <input
-                type="checkbox"
-                id="aceitouTermos"
-                checked={aceitouTermos}
-                onChange={(e) => setAceitouTermos(e.target.checked)}
-                className="mt-1 h-4 w-4"
-                required
-              />
-              <label htmlFor="aceitouTermos" className="text-sm text-red-900">
-                Confirmo que tenho direitos legais para usar o conteúdo deste link.
-              </label>
+          {/* Legal Warning */}
+          <div className="rounded-xl border-2 border-amber-500/30 bg-amber-500/5 dark:bg-amber-500/10 p-6">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 dark:bg-amber-500/20">
+                <AlertTriangle className="h-5 w-5 text-amber-500" />
+              </div>
+              <div className="flex-1 space-y-3">
+                <h3 className="font-semibold text-foreground">Aviso Legal Importante</h3>
+                <div className="space-y-2 text-sm text-muted-foreground">
+                  <p>Baixar conteúdo protegido pode violar os <strong className="text-foreground">Termos de Serviço do YouTube</strong>.</p>
+                  <p>Use apenas quando tiver autorização legal (Creative Commons, próprio conteúdo, domínio público).</p>
+                </div>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={aceitouTermos}
+                    onChange={(e) => setAceitouTermos(e.target.checked)}
+                    className="mt-0.5 h-5 w-5 rounded border-border text-primary focus:ring-primary"
+                    required
+                  />
+                  <span className="text-sm text-foreground">
+                    Confirmo que tenho direitos legais para usar o conteúdo deste link.
+                  </span>
+                </label>
+              </div>
             </div>
           </div>
 
-          {renderInformacoesBasicas(false)}
-          {renderClassificacao()}
-          {renderVinculacao({ includeDuration: false })}
+          {/* Basic Info Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Sparkles className="h-4 w-4 text-primary" />
+              Informações Básicas
+            </div>
 
-          <div className="flex gap-4 pt-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="nome-yt">Nome da Faixa</Label>
+                <Input
+                  id="nome-yt"
+                  value={nome}
+                  onChange={(e) => handleNomeInput(e.target.value)}
+                  placeholder="Ex: Summer Vibes"
+                  className="h-11"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="artista-yt">Artista</Label>
+                <Input
+                  id="artista-yt"
+                  value={artista}
+                  onChange={(e) => handleArtistaInput(e.target.value)}
+                  placeholder="Ex: John Doe"
+                  className="h-11"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Classification Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <Tag className="h-4 w-4 text-primary" />
+              Classificação
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="genero-yt">Gênero</Label>
+                <Select value={genero} onValueChange={setGenero}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione o gênero" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {GENEROS.map((g) => (
+                      <SelectItem key={g} value={g}>
+                        {g}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="humor-yt">Humor</Label>
+                <Select value={humor} onValueChange={setHumor}>
+                  <SelectTrigger className="h-11">
+                    <SelectValue placeholder="Selecione o humor" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-[300px] overflow-y-auto">
+                    {HUMORES.map((h) => (
+                      <SelectItem key={h} value={h}>
+                        {h}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+
+          {/* Project Card */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-5">
+            <div className="flex items-center gap-2 text-foreground font-semibold">
+              <FolderOpen className="h-4 w-4 text-primary" />
+              Vinculação
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="projectId-yt">Projeto Vinculado</Label>
+              <Select value={projectId} onValueChange={setProjectId} disabled={isLoadingProjetos}>
+                <SelectTrigger className="h-11 w-full">
+                  <SelectValue placeholder="Sem projeto (música global)" />
+                </SelectTrigger>
+                <SelectContent
+                  position="popper"
+                  sideOffset={4}
+                  className="max-h-[min(var(--radix-select-content-available-height),400px)] w-[var(--radix-select-trigger-width)]"
+                >
+                  <SelectItem value="none" className="cursor-pointer">
+                    <div className="flex items-center gap-2">
+                      <Music className="h-4 w-4 text-muted-foreground" />
+                      <span>Sem projeto (música global)</span>
+                    </div>
+                  </SelectItem>
+                  <div className="my-1 h-px bg-border" />
+                  {isLoadingProjetos ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Carregando projetos...
+                    </div>
+                  ) : projetos.length === 0 ? (
+                    <div className="py-6 text-center text-sm text-muted-foreground">
+                      Nenhum projeto disponível
+                    </div>
+                  ) : (
+                    projetos.map((projeto) => (
+                      <SelectItem
+                        key={projeto.id}
+                        value={projeto.id.toString()}
+                        className="cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-6 w-6 items-center justify-center rounded bg-primary/10 text-xs font-semibold text-primary">
+                            {projeto.name.charAt(0).toUpperCase()}
+                          </div>
+                          <span className="truncate">{projeto.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {isLoadingProjetos
+                  ? 'Carregando projetos...'
+                  : projetos.length === 0
+                    ? 'Crie um projeto primeiro para vincular músicas'
+                    : `${projetos.length} ${projetos.length === 1 ? 'projeto disponível' : 'projetos disponíveis'}`
+                }
+              </p>
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-2">
             <Link href="/biblioteca-musicas" className="flex-1">
-              <Button type="button" variant="outline" className="w-full">
+              <Button type="button" variant="outline" className="w-full h-11">
                 Cancelar
               </Button>
             </Link>
             <Button
               type="submit"
-              className="flex-1"
+              className="flex-1 h-11"
               disabled={baixarDoYoutube.isPending || !aceitouTermos}
             >
               {baixarDoYoutube.isPending ? (

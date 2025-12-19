@@ -9,6 +9,7 @@ import { Topbar } from "@/components/app/topbar";
 import { PageHeader } from "@/components/app/page-header";
 import { ContextIndicator } from "@/components/app/context-indicator";
 import { PageMetadataProvider } from "@/contexts/page-metadata";
+import { AudioPlayerProvider } from "@/contexts/audio-player-context";
 import { useSubscription } from "@/hooks/use-subscription";
 
 export default function ProtectedLayout({
@@ -79,40 +80,42 @@ export default function ProtectedLayout({
 
   // Authenticated layout with sidebar
   return (
-    <PageMetadataProvider>
-      <div className="min-h-dvh w-full text-foreground overflow-x-hidden">
-        <div className="flex max-w-full">
-          <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />
-          <div className="flex min-h-dvh flex-1 flex-col p-4 max-w-full overflow-x-hidden">
-            <Topbar onToggleSidebar={toggleCollapse} sidebarCollapsed={collapsed} />
-            <main
-              className={cn(
-                "container mx-auto w-full max-w-full lg:max-w-[1400px] pb-10 pt-6 overflow-x-hidden"
-              )}
-            >
-              {/* layered glow behind the main content for futuristic feel */}
-              <div className="relative">
-                <div
-                  className="pointer-events-none absolute -inset-6 -z-10 rounded-2xl"
-                  style={{
-                    background:
-                      "radial-gradient(60% 40% at 10% 0%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 70%), radial-gradient(50% 40% at 90% 10%, color-mix(in oklch, var(--retro-magenta) 18%, transparent), transparent 70%)",
-                    filter: "blur(30px)",
-                    opacity: 0.6,
-                  }}
-                  aria-hidden="true"
-                />
-                <div className="glass-panel border-border/40 bg-card/30 p-6">
-                  {/* Mostrar ContextIndicator apenas no dashboard */}
-                  {pathname === '/studio' && <ContextIndicator />}
-                  <PageHeader />
-                  {children}
+    <AudioPlayerProvider>
+      <PageMetadataProvider>
+        <div className="min-h-dvh w-full text-foreground overflow-x-hidden">
+          <div className="flex max-w-full">
+            <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />
+            <div className="flex min-h-dvh flex-1 flex-col p-4 max-w-full overflow-x-hidden">
+              <Topbar onToggleSidebar={toggleCollapse} sidebarCollapsed={collapsed} />
+              <main
+                className={cn(
+                  "container mx-auto w-full max-w-full lg:max-w-[1400px] pb-10 pt-6 overflow-x-hidden"
+                )}
+              >
+                {/* layered glow behind the main content for futuristic feel */}
+                <div className="relative">
+                  <div
+                    className="pointer-events-none absolute -inset-6 -z-10 rounded-2xl"
+                    style={{
+                      background:
+                        "radial-gradient(60% 40% at 10% 0%, color-mix(in oklch, var(--primary) 20%, transparent), transparent 70%), radial-gradient(50% 40% at 90% 10%, color-mix(in oklch, var(--retro-magenta) 18%, transparent), transparent 70%)",
+                      filter: "blur(30px)",
+                      opacity: 0.6,
+                    }}
+                    aria-hidden="true"
+                  />
+                  <div className="glass-panel border-border/40 bg-card/30 p-6">
+                    {/* Mostrar ContextIndicator apenas no dashboard */}
+                    {pathname === '/studio' && <ContextIndicator />}
+                    <PageHeader />
+                    {children}
+                  </div>
                 </div>
-              </div>
-            </main>
+              </main>
+            </div>
           </div>
         </div>
-      </div>
-    </PageMetadataProvider>
+      </PageMetadataProvider>
+    </AudioPlayerProvider>
   );
 }

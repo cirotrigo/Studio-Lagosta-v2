@@ -2,14 +2,15 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useBibliotecaMusicas, useDeletarMusica, type FaixaMusica } from '@/hooks/use-music-library';
 import { useMusicStemStatus } from '@/hooks/use-music-stem';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Music, Plus, Search, Trash2, Edit, MicOff, Loader2, Download } from 'lucide-react';
+import { Music, Plus, Search, MicOff, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { MusicPlayer } from '@/components/music/music-player';
+import { MusicWaveformPlayer } from '@/components/music/music-waveform-player';
 import { YoutubeJobsList } from '@/components/youtube/youtube-jobs-list';
 import {
   AlertDialog,
@@ -51,7 +52,7 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
   // Pendente
   if (stemStatus.job?.status === 'pending') {
     return (
-      <Badge variant="outline" className="text-xs text-gray-500">
+      <Badge variant="outline" className="text-xs text-muted-foreground">
         <Loader2 className="h-3 w-3 mr-1 animate-spin" />
         Na fila
       </Badge>
@@ -70,20 +71,36 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
   return null;
 }
 
-// Componente auxiliar para player com busca de stems
-function MusicPlayerWithStems({ faixa }: { faixa: FaixaMusica }) {
+// Componente para renderizar cada item de música
+interface MusicItemProps {
+  faixa: FaixaMusica;
+  onDownload: (faixa: FaixaMusica) => void;
+  onEdit: (id: number) => void;
+  onDelete: (faixa: FaixaMusica) => void;
+  isDownloading: boolean;
+}
+
+function MusicItem({ faixa, onDownload, onEdit, onDelete, isDownloading }: MusicItemProps) {
   const { data: stemStatus } = useMusicStemStatus(faixa.id);
 
   return (
-    <MusicPlayer
+    <MusicWaveformPlayer
       originalUrl={faixa.blobUrl}
       instrumentalUrl={stemStatus?.instrumentalUrl}
       musicName={faixa.name}
+      artist={faixa.artist}
+      duration={faixa.duration}
+      onDownload={() => onDownload(faixa)}
+      onEdit={() => onEdit(faixa.id)}
+      onDelete={() => onDelete(faixa)}
+      isDownloading={isDownloading}
+      stemBadge={<MusicStemBadge musicId={faixa.id} />}
     />
   );
 }
 
 export default function BibliotecaMusicasPage() {
+  const router = useRouter();
   const { data: faixasMusica, isLoading } = useBibliotecaMusicas();
   const deletarMusica = useDeletarMusica();
   const { toast } = useToast();
@@ -158,80 +175,86 @@ export default function BibliotecaMusicasPage() {
     }
   };
 
+  // Helper function to get stem status for a music track
+  const getStemStatus = (musicId: number) => {
+    // This would need to be implemented with the actual hook
+    // For now, return null
+    return null;
+  };
+
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
+      {/* Header */}
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Biblioteca de Músicas</h1>
-          <p className="mt-2 text-gray-600">Gerencie faixas de música para exportações de vídeo</p>
+          <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text">
+            Biblioteca de Músicas
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            Gerencie faixas de música para exportações de vídeo
+          </p>
         </div>
         <Link href="/biblioteca-musicas/enviar">
-          <Button><Plus className="mr-2 h-4 w-4" />Enviar Música</Button>
+          <Button className="gap-2">
+            <Plus className="h-4 w-4" />
+            Enviar Música
+          </Button>
         </Link>
       </div>
 
+      {/* Search */}
       <div className="mb-6">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Buscar por nome ou artista..."
             value={termoBusca}
             onChange={(e) => setTermoBusca(e.target.value)}
-            className="pl-10"
+            className="pl-10 h-11"
           />
         </div>
       </div>
 
-      <YoutubeJobsList />
+      {/* YouTube Jobs List */}
+      <div className="mb-6">
+        <YoutubeJobsList />
+      </div>
 
-      <div className="rounded-lg border bg-white p-4">
+      {/* Music List */}
+      <div className="space-y-4">
         {isLoading ? (
-          <p>Carregando...</p>
-        ) : faixasFiltradas && faixasFiltradas.length > 0 ? (
-          <div className="grid gap-4">
-            {faixasFiltradas.map((faixa) => (
-              <div key={faixa.id} className="flex items-center justify-between border-b pb-4">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
-                    <p className="font-medium">{faixa.name}</p>
-                    <MusicStemBadge musicId={faixa.id} />
-                  </div>
-                  <p className="text-sm text-gray-500">{faixa.artist || 'Sem artista'}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <MusicPlayerWithStems faixa={faixa} />
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => handleDownloadZip(faixa)}
-                    disabled={downloadingId === faixa.id}
-                    title="Baixar ZIP com versões original e instrumental"
-                  >
-                    {downloadingId === faixa.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                  </Button>
-                  <Link href={`/biblioteca-musicas/${faixa.id}/editar`}>
-                    <Button size="sm" variant="ghost"><Edit className="h-4 w-4" /></Button>
-                  </Link>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => setMusicaParaDeletar(faixa)}
-                  >
-                    <Trash2 className="h-4 w-4 text-red-500" />
-                  </Button>
-                </div>
-              </div>
-            ))}
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
+        ) : faixasFiltradas && faixasFiltradas.length > 0 ? (
+          faixasFiltradas.map((faixa) => (
+            <MusicItem
+              key={faixa.id}
+              faixa={faixa}
+              onDownload={handleDownloadZip}
+              onEdit={(id) => router.push(`/biblioteca-musicas/${id}/editar`)}
+              onDelete={setMusicaParaDeletar}
+              isDownloading={downloadingId === faixa.id}
+            />
+          ))
         ) : (
-          <div className="text-center py-8">
-            <Music className="mx-auto h-12 w-12 text-gray-300 mb-4" />
-            <p className="text-gray-500">Nenhuma música encontrada</p>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="rounded-full bg-muted p-6 mb-4">
+              <Music className="h-12 w-12 text-muted-foreground" />
+            </div>
+            <h3 className="text-lg font-semibold mb-2">Nenhuma música encontrada</h3>
+            <p className="text-muted-foreground mb-6">
+              {termoBusca
+                ? 'Tente ajustar sua busca ou adicione uma nova música'
+                : 'Comece adicionando músicas à sua biblioteca'}
+            </p>
+            <Link href="/biblioteca-musicas/enviar">
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Enviar Música
+              </Button>
+            </Link>
           </div>
         )}
       </div>
@@ -250,7 +273,7 @@ export default function BibliotecaMusicasPage() {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeletar}
-              className="bg-red-500 hover:bg-red-600"
+              className="bg-destructive hover:bg-destructive/90"
               disabled={deletarMusica.isPending}
             >
               {deletarMusica.isPending ? 'Excluindo...' : 'Excluir'}
