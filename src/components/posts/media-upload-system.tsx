@@ -5,8 +5,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ImageIcon, FolderIcon, UploadIcon, X, Loader2 } from 'lucide-react'
+import { ImageIcon, FolderIcon, UploadIcon, X, Loader2, Sparkles } from 'lucide-react'
 import { GenerationsSelector } from './generations-selector'
+import { AIImagesSelector } from './ai-images-selector'
 import { LocalFileUploader } from './local-file-uploader'
 import { SortableMediaItem } from './sortable-media-item'
 import { GoogleDriveInlineSelector } from './google-drive-inline-selector'
@@ -34,7 +35,7 @@ import {
 
 interface MediaItem {
   id: string
-  type: 'generation' | 'google-drive' | 'upload'
+  type: 'generation' | 'ai-image' | 'google-drive' | 'upload'
   url: string
   pathname?: string // Blob pathname for cleanup
   thumbnailUrl?: string
@@ -59,6 +60,17 @@ interface Generation {
   createdAt: string
 }
 
+interface AIGeneratedImage {
+  id: string
+  name: string
+  prompt: string
+  fileUrl: string
+  thumbnailUrl?: string | null
+  width: number
+  height: number
+  createdAt: string
+}
+
 interface DownloadedDriveFile {
   id: string
   url: string
@@ -77,8 +89,20 @@ interface UploadedFile {
   preview: string
 }
 
+interface DownloadedAIImage {
+  id: string
+  url: string
+  pathname: string
+  name: string
+}
+
 interface GoogleDriveDownloadResponse {
   files: DownloadedDriveFile[]
+  uploaded: number
+}
+
+interface AIImagesDownloadResponse {
+  files: DownloadedAIImage[]
   uploaded: number
 }
 
@@ -161,6 +185,33 @@ export function MediaUploadSystem({
     },
   })
 
+  // Mutation para download e upload de imagens de IA
+  const downloadAIImagesMutation = useMutation<AIImagesDownloadResponse, Error, string[]>({
+    mutationFn: async (imageIds) => {
+      return api.post(`/api/ai-images-download`, { projectId, imageIds }) as Promise<AIImagesDownloadResponse>
+    },
+    onSuccess: (data) => {
+      // Convert downloaded images to MediaItem format
+      const newMedia: MediaItem[] = data.files.map((file) => ({
+        id: file.id,
+        type: 'ai-image' as const,
+        url: file.url,
+        pathname: file.pathname,
+        name: file.name,
+      }))
+
+      // Keep non-ai-image media and replace all ai-image media with the new list
+      // This prevents duplicates when downloading multiple times
+      const otherMedia = selectedMedia.filter(m => m.type !== 'ai-image')
+      onSelectionChange([...otherMedia, ...newMedia])
+      toast.success(`${data.uploaded} imagem(ns) de IA preparada(s)`)
+    },
+    onError: (error) => {
+      console.error('Error downloading AI images:', error)
+      toast.error('Erro ao processar imagens de IA')
+    },
+  })
+
   // Calculate remaining slots
   const remainingSlots = maxSelection - selectedMedia.length
 
@@ -193,6 +244,25 @@ export function MediaUploadSystem({
       onSelectionChangeRef.current([...otherMedia, ...newMedia])
     })
   }, [])
+
+  // Handler para seleção de AI Images
+  const handleAIImagesChange = useCallback(async (ids: string[], aiImages: AIGeneratedImage[]) => {
+    if (ids.length === 0) {
+      // Remove all ai-image items
+      const otherMedia = selectedMedia.filter(m => m.type !== 'ai-image')
+      onSelectionChange(otherMedia)
+      return
+    }
+
+    try {
+      // Download and process the newly selected AI images
+      await downloadAIImagesMutation.mutateAsync(ids)
+
+      // The mutation already updates the selection, so we don't need to do anything else here
+    } catch (_error) {
+      // Error already handled in mutation
+    }
+  }, [selectedMedia, onSelectionChange, downloadAIImagesMutation])
 
   // Handler para Google Drive inline selector
   const handleGoogleDriveChange = useCallback(async (items: GoogleDriveItem[]) => {
@@ -276,6 +346,18 @@ export function MediaUploadSystem({
     [remainingSlots, selectedMedia]
   )
 
+  const selectedAIImageIds = useMemo(() =>
+    selectedMedia
+      .filter(m => m.type === 'ai-image')
+      .map(m => m.id),
+    [selectedMedia]
+  )
+
+  const aiImagesMaxSelection = useMemo(() =>
+    remainingSlots + selectedMedia.filter(m => m.type === 'ai-image').length,
+    [remainingSlots, selectedMedia]
+  )
+
   return (
     <div className="space-y-4">
       {/* Header com contador */}
@@ -296,15 +378,20 @@ export function MediaUploadSystem({
 
       {/* Tabs de Fonte */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-3 w-full">
+        <TabsList className="grid grid-cols-4 w-full">
           <TabsTrigger value="generations" className="gap-2">
             <ImageIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Criativos</span>
           </TabsTrigger>
 
+          <TabsTrigger value="ai-images" className="gap-2">
+            <Sparkles className="w-4 h-4" />
+            <span className="hidden sm:inline">Img. IA</span>
+          </TabsTrigger>
+
           <TabsTrigger value="google-drive" className="gap-2">
             <FolderIcon className="w-4 h-4" />
-            <span className="hidden sm:inline">Google Drive</span>
+            <span className="hidden sm:inline">Drive</span>
           </TabsTrigger>
 
           <TabsTrigger value="upload" className="gap-2">
@@ -320,6 +407,16 @@ export function MediaUploadSystem({
             selectedIds={selectedGenerationIds}
             onSelectionChange={handleGenerationsChange}
             maxSelection={generationsMaxSelection}
+          />
+        </TabsContent>
+
+        {/* Tab: AI Images */}
+        <TabsContent value="ai-images" className="mt-4">
+          <AIImagesSelector
+            projectId={projectId}
+            selectedIds={selectedAIImageIds}
+            onSelectionChange={handleAIImagesChange}
+            maxSelection={aiImagesMaxSelection}
           />
         </TabsContent>
 
@@ -393,6 +490,13 @@ export function MediaUploadSystem({
         <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-4">
           <Loader2 className="w-4 h-4 animate-spin" />
           <span>Processando arquivos do Google Drive...</span>
+        </div>
+      )}
+
+      {downloadAIImagesMutation.isPending && (
+        <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground py-4">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          <span>Redimensionando imagens de IA...</span>
         </div>
       )}
     </div>

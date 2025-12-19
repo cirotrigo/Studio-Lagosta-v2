@@ -2,7 +2,7 @@
 
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, X, Play } from 'lucide-react'
+import { GripVertical, X, Play, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Image from 'next/image'
@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils'
 
 interface MediaItem {
   id: string
-  type: 'generation' | 'google-drive' | 'upload'
+  type: 'generation' | 'ai-image' | 'google-drive' | 'upload'
   url: string
   pathname?: string
   thumbnailUrl?: string
@@ -183,8 +183,16 @@ export function SortableMediaItem({
 
         {/* Type badge - Bottom right */}
         <div className="absolute bottom-1 right-1 pointer-events-none">
-          <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
+          <Badge
+            variant="secondary"
+            className={cn(
+              "text-[10px] px-1.5 py-0 gap-0.5",
+              item.type === 'ai-image' && "bg-purple-600 text-white"
+            )}
+          >
+            {item.type === 'ai-image' && <Sparkles className="w-2.5 h-2.5" />}
             {item.type === 'generation' ? 'Criativo' :
+             item.type === 'ai-image' ? 'IA' :
              item.type === 'google-drive' ? 'Drive' : 'Upload'}
           </Badge>
         </div>

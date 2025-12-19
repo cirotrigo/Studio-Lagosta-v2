@@ -50,7 +50,7 @@ export type PostFormData = z.infer<typeof postSchema>
 
 interface MediaItem {
   id: string
-  type: 'generation' | 'google-drive' | 'upload'
+  type: 'generation' | 'ai-image' | 'google-drive' | 'upload'
   url: string
   pathname?: string // Blob pathname for cleanup
   thumbnailUrl?: string

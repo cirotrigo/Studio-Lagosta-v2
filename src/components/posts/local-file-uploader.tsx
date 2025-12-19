@@ -8,6 +8,7 @@ import { UploadIcon, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { upload } from '@vercel/blob/client'
+import { resizeToInstagramFeed, isImageFile, isVideoFile } from '@/lib/images/client-resize'
 
 interface UploadedFile {
   id: string
@@ -49,17 +50,38 @@ export function LocalFileUploader({
           throw new Error(`O arquivo "${file.name}" é muito grande. O tamanho máximo é 50MB.`)
         }
 
-        // 1. Upload directly to Vercel Blob using client-side upload
-        console.log('[Upload] Starting direct upload for:', file.name)
+        let fileToUpload = file
 
-        const blob = await upload(file.name, file, {
+        // Auto-resize images to Instagram feed format (4:5 ratio - 1080x1350)
+        // Only resize images, not videos
+        // Only resize when mode is 'images' (for POST and CAROUSEL types)
+        if (isImageFile(file) && mediaMode === 'images') {
+          try {
+            console.log('[Upload] Resizing image for Instagram feed:', file.name)
+            fileToUpload = await resizeToInstagramFeed(file)
+            console.log('[Upload] Image resized successfully')
+          } catch (resizeError) {
+            console.warn('[Upload] Failed to resize image, using original:', resizeError)
+            // Continue with original file if resize fails
+          }
+        }
+
+        // 1. Upload directly to Vercel Blob using client-side upload
+        // Generate unique filename to prevent conflicts
+        const timestamp = Date.now()
+        const randomString = Math.random().toString(36).substring(2, 8)
+        const uniqueName = `${timestamp}-${randomString}-${fileToUpload.name}`
+
+        console.log('[Upload] Starting direct upload for:', uniqueName)
+
+        const blob = await upload(uniqueName, fileToUpload, {
           access: 'public',
           handleUploadUrl: '/api/upload/signed-url',
         })
 
         console.log('[Upload] Upload successful:', blob.url)
 
-        // 2. Create preview
+        // 2. Create preview from original file (better quality for preview)
         const preview = URL.createObjectURL(file)
 
         newFiles.push({
@@ -83,7 +105,7 @@ export function LocalFileUploader({
     } finally {
       setUploading(false)
     }
-  }, [uploadedFiles, maxFiles, onUploadComplete])
+  }, [uploadedFiles, maxFiles, onUploadComplete, mediaMode])
 
   // Configure accepted file types based on mediaMode
   const acceptedFiles = React.useMemo(() => {
