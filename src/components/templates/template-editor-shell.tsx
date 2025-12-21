@@ -1434,7 +1434,6 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                     templateId={templateId}
                     pageId={currentPageId}
                     isTemplate={sortedPages.find(p => p.id === currentPageId)?.isTemplate || false}
-                    templateName={sortedPages.find(p => p.id === currentPageId)?.templateName}
                   />
                 </div>
               )}

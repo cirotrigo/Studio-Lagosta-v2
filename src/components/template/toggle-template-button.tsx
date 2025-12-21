@@ -1,17 +1,14 @@
 'use client'
 
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Bookmark, BookmarkX } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Switch } from '@/components/ui/switch'
+import { Label } from '@/components/ui/label'
 import { useToggleTemplate } from '@/hooks/use-toggle-template'
-import { TemplateNameModal } from './template-name-modal'
 
 interface ToggleTemplateButtonProps {
   templateId: number
   pageId: string
   isTemplate: boolean
-  templateName?: string | null
   disabled?: boolean
 }
 
@@ -19,70 +16,54 @@ export function ToggleTemplateButton({
   templateId,
   pageId,
   isTemplate,
-  templateName,
   disabled = false,
 }: ToggleTemplateButtonProps) {
-  const [isModalOpen, setIsModalOpen] = useState(false)
   const toggleTemplate = useToggleTemplate(templateId)
 
-  const handleToggle = () => {
-    if (!isTemplate) {
-      // Abrir modal para nomear o modelo
-      setIsModalOpen(true)
-    } else {
-      // Desmarcar como modelo
-      toggleTemplate.mutate({
-        pageId,
-        isTemplate: false,
-      })
-    }
-  }
+  // Estado local para UI otimista
+  const [localChecked, setLocalChecked] = useState(isTemplate)
 
-  const handleConfirmTemplate = (name: string) => {
-    toggleTemplate.mutate({
-      pageId,
-      isTemplate: true,
-      templateName: name,
-    })
-    setIsModalOpen(false)
+  // Sincronizar com prop quando ela mudar (após mutação bem-sucedida ou troca de página)
+  useEffect(() => {
+    setLocalChecked(isTemplate)
+  }, [isTemplate, pageId])
+
+  const handleToggle = (checked: boolean) => {
+    // Guardar estado anterior para rollback
+    const previousState = localChecked
+
+    // Atualizar UI imediatamente (otimista)
+    setLocalChecked(checked)
+
+    // Enviar mutação
+    toggleTemplate.mutate(
+      {
+        pageId,
+        isTemplate: checked,
+      },
+      {
+        onError: () => {
+          // Reverter estado local em caso de erro
+          setLocalChecked(previousState)
+        },
+      }
+    )
   }
 
   return (
-    <>
-      {isTemplate ? (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="font-medium">
-            Modelo: {templateName}
-          </Badge>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={handleToggle}
-            disabled={disabled || toggleTemplate.isPending}
-            title="Desmarcar como modelo"
-          >
-            <BookmarkX className="h-4 w-4" />
-          </Button>
-        </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="ghost"
-          onClick={handleToggle}
-          disabled={disabled || toggleTemplate.isPending}
-          title="Marcar como modelo"
-        >
-          <Bookmark className="h-4 w-4" />
-          <span className="ml-2">Marcar como Modelo</span>
-        </Button>
-      )}
-
-      <TemplateNameModal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        onConfirm={handleConfirmTemplate}
-        isLoading={toggleTemplate.isPending}
+    <div className="flex items-center gap-2">
+      <Switch
+        id={`template-toggle-${pageId}`}
+        checked={localChecked}
+        onCheckedChange={handleToggle}
+        disabled={disabled || toggleTemplate.isPending}
       />
-    </>
+      <Label
+        htmlFor={`template-toggle-${pageId}`}
+        className="text-sm font-medium cursor-pointer"
+      >
+        Página Modelo
+      </Label>
+    </div>
   )
 }

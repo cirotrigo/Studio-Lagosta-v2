@@ -6,7 +6,7 @@ import {
   hasTemplateReadAccess,
 } from '@/lib/templates/access'
 
-// GET - Listar páginas modelo de um template
+// GET - Listar páginas modelo de todos os templates do projeto
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -27,19 +27,23 @@ export async function GET(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
-    // Buscar todas as páginas marcadas como modelo
+    // Buscar todas as páginas marcadas como modelo de TODOS os templates do projeto
     const templatePages = await db.page.findMany({
       where: {
-        templateId,
+        Template: {
+          projectId: template.projectId, // Buscar em todos os templates do projeto
+        },
         isTemplate: true,
       },
-      orderBy: {
-        order: 'asc',
-      },
+      orderBy: [
+        { Template: { name: 'asc' } }, // Agrupar por template
+        { order: 'asc' }, // Ordenar por ordem dentro do template
+      ],
       select: {
         id: true,
         name: true,
         templateName: true,
+        templateId: true, // Incluir para identificar de qual template veio
         width: true,
         height: true,
         layers: true,
@@ -48,6 +52,11 @@ export async function GET(
         order: true,
         createdAt: true,
         updatedAt: true,
+        Template: {
+          select: {
+            name: true, // Incluir nome do template de origem
+          },
+        },
       },
     })
 

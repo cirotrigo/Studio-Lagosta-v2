@@ -7,6 +7,7 @@ interface TemplatePage {
   id: string
   name: string
   templateName: string | null
+  templateId: number
   width: number
   height: number
   layers: any[]
@@ -15,6 +16,9 @@ interface TemplatePage {
   order: number
   createdAt: string
   updatedAt: string
+  Template: {
+    name: string
+  }
 }
 
 export function useTemplatePages(templateId: number, enabled = true) {
@@ -24,8 +28,10 @@ export function useTemplatePages(templateId: number, enabled = true) {
       const response = await api.get<TemplatePage[]>(`/api/templates/${templateId}/template-pages`)
       return response
     },
-    staleTime: 30_000, // 30 segundos
-    gcTime: 10 * 60_000, // 10 minutos
+    staleTime: 5 * 60_000, // 5 minutos - modelos devem persistir em cache
+    gcTime: 30 * 60_000, // 30 minutos - manter em cache por mais tempo
     enabled: enabled && !!templateId,
+    refetchOnMount: true, // Sempre recarregar ao montar para garantir modelos atualizados
+    refetchOnWindowFocus: false, // Não recarregar ao focar janela
   })
 }

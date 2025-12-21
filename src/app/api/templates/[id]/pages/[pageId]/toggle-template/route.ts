@@ -9,7 +9,6 @@ import {
 
 const toggleTemplateSchema = z.object({
   isTemplate: z.boolean(),
-  templateName: z.string().min(3).max(50).optional(),
 })
 
 // PATCH - Alternar status de modelo da página
@@ -48,24 +47,12 @@ export async function PATCH(
     const body = await request.json()
     const validatedData = toggleTemplateSchema.parse(body)
 
-    // Se marcar como modelo, exigir templateName
-    if (validatedData.isTemplate && !validatedData.templateName) {
-      return NextResponse.json(
-        { error: 'Template name is required when marking as template' },
-        { status: 400 }
-      )
-    }
-
-    // Se desmarcar como modelo, limpar templateName
-    const updateData = {
-      isTemplate: validatedData.isTemplate,
-      templateName: validatedData.isTemplate ? validatedData.templateName : null,
-    }
-
     // Atualizar página
     const page = await db.page.update({
       where: { id: pageId },
-      data: updateData,
+      data: {
+        isTemplate: validatedData.isTemplate,
+      },
     })
 
     // Deserializar layers na resposta

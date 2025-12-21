@@ -60,46 +60,50 @@ export function TemplateSelector({
 
   return (
     <div className="space-y-4">
-      <h3 className="text-lg font-semibold">Selecione um Modelo</h3>
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         {templatePages.map((page) => (
           <button
             key={page.id}
             onClick={() => onSelect(page.id, page)}
             className={cn(
-              'group relative aspect-[9/16] overflow-hidden rounded-lg border-2 transition-all',
-              'hover:ring-2 hover:ring-primary hover:ring-offset-2',
+              'group relative aspect-[9/16] overflow-hidden rounded-xl border-2 transition-all',
+              'hover:scale-[1.02] hover:shadow-xl',
               selectedPageId === page.id
-                ? 'border-primary ring-2 ring-primary ring-offset-2'
-                : 'border-gray-200'
+                ? 'border-primary ring-4 ring-primary/30 shadow-xl'
+                : 'border-border hover:border-primary/50'
             )}
           >
             {/* Thumbnail ou placeholder */}
             {page.thumbnail ? (
               <img
                 src={page.thumbnail}
-                alt={page.templateName || page.name}
+                alt={page.name}
                 className="h-full w-full object-cover"
               />
             ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gray-100">
-                <FileText className="h-12 w-12 text-gray-400" />
+              <div className="flex h-full w-full items-center justify-center bg-muted">
+                <FileText className="h-16 w-16 text-muted-foreground" />
               </div>
             )}
 
-            {/* Overlay com nome */}
-            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3">
-              <p className="text-xs font-medium text-white">
-                {page.templateName || page.name}
-              </p>
-            </div>
+            {/* Badge do template de origem */}
+            {'Template' in page && page.Template && (
+              <div className="absolute left-2 top-2 rounded-md bg-black/60 backdrop-blur-sm px-2 py-1">
+                <p className="text-[10px] font-medium text-white">
+                  {page.Template.name}
+                </p>
+              </div>
+            )}
 
             {/* Indicador de seleção */}
             {selectedPageId === page.id && (
-              <div className="absolute right-2 top-2 rounded-full bg-primary p-1">
-                <Check className="h-4 w-4 text-white" />
+              <div className="absolute right-3 top-3 rounded-full bg-primary p-2 shadow-lg">
+                <Check className="h-5 w-5 text-primary-foreground" />
               </div>
             )}
+
+            {/* Hover overlay */}
+            <div className="absolute inset-0 bg-primary/5 opacity-0 transition-opacity group-hover:opacity-100" />
           </button>
         ))}
       </div>

@@ -40,6 +40,8 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       background: p.background ?? undefined,
       order: p.order,
       thumbnail: p.thumbnail ?? undefined,
+      isTemplate: p.isTemplate,
+      templateName: p.templateName ?? undefined,
       createdAt: new Date(p.createdAt),
       updatedAt: new Date(p.updatedAt),
     }))

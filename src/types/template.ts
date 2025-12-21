@@ -211,6 +211,8 @@ export interface Page {
   background?: string
   order: number
   thumbnail?: string
+  isTemplate?: boolean
+  templateName?: string
   createdAt?: Date
   updatedAt?: Date
 }

@@ -7,25 +7,52 @@ import { toast } from '@/hooks/use-toast'
 interface ToggleTemplateData {
   pageId: string
   isTemplate: boolean
-  templateName?: string
+}
+
+interface PageResponse {
+  id: string
+  name: string
+  width: number
+  height: number
+  layers: unknown
+  background: string | null
+  order: number
+  thumbnail: string | null
+  templateId: number
+  isTemplate: boolean
+  templateName: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export function useToggleTemplate(templateId: number) {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ pageId, isTemplate, templateName }: ToggleTemplateData) => {
+    mutationFn: async ({ pageId, isTemplate }: ToggleTemplateData) => {
       const response = await api.patch(
         `/api/templates/${templateId}/pages/${pageId}/toggle-template`,
-        { isTemplate, templateName }
+        { isTemplate }
       )
       return response
     },
-    onSuccess: (_, variables) => {
-      // Invalidar queries relacionadas
-      queryClient.invalidateQueries({ queryKey: ['pages', templateId] })
+    onSuccess: (updatedPage: PageResponse, variables) => {
+      // Atualizar cache manualmente para garantir UI atualizada imediatamente
+      queryClient.setQueryData(['page', templateId, variables.pageId], updatedPage)
+
+      // Atualizar a página na lista de páginas
+      queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
+        if (!oldPages) return oldPages
+
+        return oldPages.map((page) =>
+          page.id === variables.pageId
+            ? { ...page, isTemplate: variables.isTemplate }
+            : page
+        )
+      })
+
+      // Invalidar template-pages para atualizar seletor de modelos
       queryClient.invalidateQueries({ queryKey: ['template-pages', templateId] })
-      queryClient.invalidateQueries({ queryKey: ['page', templateId, variables.pageId] })
 
       // Mostrar mensagem de sucesso
       const message = variables.isTemplate
