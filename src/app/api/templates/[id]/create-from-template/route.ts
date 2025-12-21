@@ -1,0 +1,160 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
+import { db } from '@/lib/db'
+import { z } from 'zod'
+import {
+  fetchTemplateWithProject,
+  hasTemplateWriteAccess,
+} from '@/lib/templates/access'
+
+const createFromTemplateSchema = z.object({
+  templatePageId: z.string(),
+  imageSource: z.object({
+    type: z.string(),
+    url: z.string(),
+  }),
+  texts: z.record(z.string()), // layerId -> text content
+})
+
+// POST - Criar página a partir de modelo
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { userId, orgId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const { id } = await params
+    const templateId = Number(id)
+
+    // Verificar acesso ao template
+    const template = await fetchTemplateWithProject(templateId)
+
+    if (!hasTemplateWriteAccess(template, { userId, orgId })) {
+      return NextResponse.json({ error: 'Template not found' }, { status: 404 })
+    }
+
+    const body = await request.json()
+    const { templatePageId, imageSource, texts } = createFromTemplateSchema.parse(body)
+
+    // Buscar a página modelo
+    const templatePage = await db.page.findFirst({
+      where: {
+        id: templatePageId,
+        templateId,
+        isTemplate: true,
+      },
+    })
+
+    if (!templatePage) {
+      return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
+    }
+
+    // Deserializar layers do modelo
+    const templateLayers = typeof templatePage.layers === 'string'
+      ? JSON.parse(templatePage.layers)
+      : templatePage.layers
+
+    console.log('[create-from-template] Template has', (templateLayers as any[]).length, 'layers')
+    console.log('[create-from-template] Image source URL:', imageSource.url)
+
+    // Encontrar o índice da PRIMEIRA layer de imagem (a que está mais embaixo, no fundo)
+    let firstImageLayerIndex = -1
+    for (let i = 0; i < (templateLayers as any[]).length; i++) {
+      if ((templateLayers as any[])[i].type === 'image') {
+        firstImageLayerIndex = i
+        break
+      }
+    }
+
+    console.log('[create-from-template] First image layer index (background):', firstImageLayerIndex)
+
+    // Clonar e modificar layers
+    const modifiedLayers = (templateLayers as any[]).map((layer, index) => {
+      const newLayer = { ...layer }
+
+      // Atualizar textos se fornecidos
+      if (layer.type === 'text' && texts[layer.id]) {
+        newLayer.content = texts[layer.id]
+        newLayer.text = texts[layer.id]
+      }
+
+      // Aplicar a imagem apenas na PRIMEIRA layer de imagem (a que está no fundo)
+      if (layer.type === 'image' && index === firstImageLayerIndex) {
+        console.log('[create-from-template] Replacing FIRST image layer (background):', layer.id, 'old URL:', layer.fileUrl)
+        newLayer.fileUrl = imageSource.url
+        console.log('[create-from-template] Applied new URL:', imageSource.url)
+      }
+
+      return newLayer
+    })
+
+    // Contar páginas existentes para determinar order
+    const pageCount = await db.page.count({
+      where: { templateId },
+    })
+
+    // Criar nova página (NÃO é modelo)
+    const newPage = await db.page.create({
+      data: {
+        name: `Criativo ${new Date().toLocaleDateString('pt-BR')}`,
+        width: templatePage.width,
+        height: templatePage.height,
+        layers: JSON.stringify(modifiedLayers),
+        background: templatePage.background,
+        order: pageCount,
+        templateId,
+        isTemplate: false, // Importante: páginas criadas não são modelos
+      },
+    })
+
+    // Criar registro AICreativeGeneration para marcar como página criativa
+    await db.aICreativeGeneration.create({
+      data: {
+        projectId: template.projectId,
+        templateId,
+        pageId: newPage.id,
+        layoutType: `template:${templatePageId}`, // Salvar o ID do template usado
+        imageSource: JSON.stringify(imageSource),
+        textsData: JSON.stringify(texts),
+        creditsUsed: 0,
+        createdBy: userId,
+      },
+    })
+
+    console.log('[create-from-template] Created AICreativeGeneration record for page:', newPage.id)
+
+    // Deserializar layers na resposta
+    const pageWithParsedLayers = {
+      ...newPage,
+      layers: typeof newPage.layers === 'string' ? JSON.parse(newPage.layers) : newPage.layers,
+    }
+
+    console.log('[create-from-template] Returning page with', pageWithParsedLayers.layers.length, 'layers')
+    const imageLayer = pageWithParsedLayers.layers.find((l: any) => l.type === 'image')
+    if (imageLayer) {
+      console.log('[create-from-template] Image layer in response:', imageLayer.id, 'URL:', imageLayer.fileUrl)
+    }
+
+    return NextResponse.json({
+      page: pageWithParsedLayers,
+      success: true,
+    })
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Invalid data', details: error.errors },
+        { status: 400 }
+      )
+    }
+
+    console.error('Error creating page from template:', error)
+    return NextResponse.json(
+      { error: 'Failed to create page from template' },
+      { status: 500 }
+    )
+  }
+}

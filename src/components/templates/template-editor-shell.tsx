@@ -29,12 +29,14 @@ import { VideoExportButton } from './video-export-button'
 import { TemplateAIChat } from './template-ai-chat'
 import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { AgendaPanel } from './panels/agenda-panel'
+import { CreativeGeneratorPanel } from '../ai-creative-generator/creative-generator-panel'
 import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { useGenerateMultipleCreatives } from '@/hooks/use-generate-multiple-creatives'
 import { useCredits } from '@/hooks/use-credits'
+import { ToggleTemplateButton } from '@/components/template/toggle-template-button'
 import {
   DndContext,
   closestCenter,
@@ -152,7 +154,7 @@ export function TemplateEditorShell({ template, prefillDriveImage }: TemplateEdi
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'ai-creative' | null
 type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | 'agenda' | null
 
 function TemplateEditorContent({
@@ -169,6 +171,7 @@ function TemplateEditorContent({
     type: templateType,
     design,
     addLayer,
+    updateLayer,
     dynamicFields,
     markSaved,
     dirty,
@@ -557,6 +560,14 @@ function TemplateEditorContent({
             <Wand2 className="h-5 w-5" />
             <span className="text-xs">IA ✨</span>
           </Button>
+          <Button
+            variant={activePanel === 'ai-creative' ? 'default' : 'outline'}
+            className="h-16 flex flex-col gap-1"
+            onClick={() => setActivePanel('ai-creative')}
+          >
+            <Sparkles className="h-5 w-5" />
+            <span className="text-xs">Criativo IA</span>
+          </Button>
         </div>
 
         {/* Tool Panel Content */}
@@ -572,6 +583,7 @@ function TemplateEditorContent({
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
+                {activePanel === 'ai-creative' && 'Criativo IA'}
               </h3>
             </div>
             {activePanel === 'text' && <TextToolsPanel />}
@@ -582,6 +594,15 @@ function TemplateEditorContent({
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
+            {activePanel === 'ai-creative' && (
+              <CreativeGeneratorPanel
+                projectId={projectId}
+                templateId={templateId}
+                onLayerUpdate={(layerId, updates) => {
+                  updateLayer(layerId, (layer) => ({ ...layer, ...updates }))
+                }}
+              />
+            )}
           </div>
         )}
       </MobileToolsDrawer>
@@ -675,6 +696,12 @@ function TemplateEditorContent({
             active={activePanel === 'ai-images'}
             onClick={() => togglePanel('ai-images')}
           />
+          <ToolbarButton
+            icon={<Sparkles className="h-5 w-5" />}
+            label="Criativo IA"
+            active={activePanel === 'ai-creative'}
+            onClick={() => togglePanel('ai-creative')}
+          />
           <div className="flex-1" />
           <ToolbarButton
             icon={<FileText className="h-5 w-5" />}
@@ -698,6 +725,7 @@ function TemplateEditorContent({
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
+                {activePanel === 'ai-creative' && 'Gerador de Criativos IA'}
               </h2>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
@@ -710,6 +738,15 @@ function TemplateEditorContent({
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
+              {activePanel === 'ai-creative' && (
+                <CreativeGeneratorPanel
+                  projectId={projectId}
+                  templateId={templateId}
+                  onLayerUpdate={(layerId, updates) => {
+                    updateLayer(layerId, (layer) => ({ ...layer, ...updates }))
+                  }}
+                />
+              )}
             </div>
           </aside>
         )}
@@ -1389,6 +1426,18 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                 <Plus className="mr-2 h-3.5 w-3.5" />
                 Nova Página
               </Button>
+
+              {/* Botão de Template - só mostra se houver página selecionada */}
+              {currentPageId && (
+                <div className="ml-2 border-l pl-2">
+                  <ToggleTemplateButton
+                    templateId={templateId}
+                    pageId={currentPageId}
+                    isTemplate={sortedPages.find(p => p.id === currentPageId)?.isTemplate || false}
+                    templateName={sortedPages.find(p => p.id === currentPageId)?.templateName}
+                  />
+                </div>
+              )}
             </div>
           </div>
 

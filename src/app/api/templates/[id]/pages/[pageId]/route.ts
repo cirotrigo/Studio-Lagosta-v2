@@ -183,6 +183,17 @@ export async function DELETE(
       return NextResponse.json({ error: 'Page not found' }, { status: 404 })
     }
 
+    // Verificar se a página é um modelo
+    if (existingPage.isTemplate) {
+      return NextResponse.json(
+        {
+          error: 'template_page',
+          message: 'Não é possível excluir página modelo. Desmarque como modelo primeiro.'
+        },
+        { status: 403 }
+      )
+    }
+
     // Obter order da página a ser deletada
     const pageOrder = existingPage.order
 

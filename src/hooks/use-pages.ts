@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import { toast } from '@/hooks/use-toast'
 
 interface CreatePageData {
   name: string
@@ -30,6 +31,8 @@ interface PageResponse {
   order: number
   thumbnail: string | null
   templateId: number
+  isTemplate: boolean
+  templateName: string | null
   createdAt: string
   updatedAt: string
 }
@@ -148,9 +151,24 @@ export function useDeletePage() {
       return { previousPages }
     },
     // Se der erro, reverter para estado anterior
-    onError: (_err, { templateId }, context) => {
+    onError: (err: any, { templateId }, context) => {
       if (context?.previousPages) {
         queryClient.setQueryData(['pages', templateId], context.previousPages)
+      }
+
+      // Verificar se é erro de página modelo
+      if (err?.status === 403 && err?.error === 'template_page') {
+        toast({
+          title: 'Não é possível excluir',
+          description: err?.message || 'Página modelo não pode ser excluída. Desmarque como modelo primeiro.',
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: 'Erro ao excluir página',
+          description: err?.message || 'Ocorreu um erro ao tentar excluir a página.',
+          variant: 'destructive',
+        })
       }
     },
     // Após sucesso, garantir que está sincronizado

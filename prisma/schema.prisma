@@ -437,21 +437,24 @@ model Template {
 }
 
 model Page {
-  id         String   @id @default(cuid())
-  name       String
-  width      Int
-  height     Int
-  layers     Json     @default("[]")
-  background String?
-  order      Int      @default(0)
-  thumbnail  String?
-  templateId Int
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  Template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  name         String
+  width        Int
+  height       Int
+  layers       Json     @default("[]")
+  background   String?
+  order        Int      @default(0)
+  thumbnail    String?
+  templateId   Int
+  isTemplate   Boolean  @default(false)
+  templateName String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  Template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@index([templateId])
   @@index([order])
+  @@index([isTemplate])
 }
 
 model UsageHistory {
@@ -1535,4 +1538,28 @@ model YoutubeDownloadJob {
   @@index([youtubeUrl])
   @@index([createdAt])
   @@index([videoApiJobId])
+}
+
+// =============================================================================
+// AI Creative Generator
+// =============================================================================
+
+model AICreativeGeneration {
+  id          String   @id @default(cuid())
+  projectId   Int
+  templateId  Int
+  pageId      String
+
+  layoutType  String   // 'story-promo' | 'story-default' | 'story-minimal'
+  imageSource Json     // { type, url, ... }
+  textsData   Json     // { title?, subtitle?, ... }
+
+  creditsUsed Int      @default(0)
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([templateId])
+  @@index([createdBy])
+  @@index([createdAt])
 }

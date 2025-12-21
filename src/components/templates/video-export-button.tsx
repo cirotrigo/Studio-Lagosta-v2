@@ -121,23 +121,30 @@ export function VideoExportButton() {
         // Procurar em todos os stages
         for (const stage of stages) {
           // Buscar o Image node com o ID do videoLayer
-          const imageNode = stage.findOne(`#${videoLayer.id}`) as Konva.Image | null
+          const node = stage.findOne(`#${videoLayer.id}`)
 
-          if (imageNode) {
-            console.log('[Video Export] 🎯 Konva Image node encontrado:', videoLayer.id)
+          if (node) {
+            console.log('[Video Export] 🎯 Konva node encontrado:', videoLayer.id)
 
-            // Pegar o elemento de vídeo HTML do Konva Image
-            const videoElement = imageNode.image() as HTMLVideoElement
+            // Verificar se é realmente um Konva.Image antes de chamar .image()
+            if (node instanceof Konva.Image) {
+              console.log('[Video Export] ✅ Node é um Konva.Image')
 
-            if (videoElement && videoElement.tagName === 'VIDEO') {
-              console.log('[Video Export] ✅ Elemento de vídeo obtido do Konva Image:', {
-                src: videoElement.src?.substring(0, 50) + '...',
-                duration: videoElement.duration,
-                readyState: videoElement.readyState,
-              })
-              return videoElement
+              // Pegar o elemento de vídeo HTML do Konva Image
+              const videoElement = node.image() as HTMLVideoElement
+
+              if (videoElement && videoElement.tagName === 'VIDEO') {
+                console.log('[Video Export] ✅ Elemento de vídeo obtido do Konva Image:', {
+                  src: videoElement.src?.substring(0, 50) + '...',
+                  duration: videoElement.duration,
+                  readyState: videoElement.readyState,
+                })
+                return videoElement
+              } else {
+                console.log('[Video Export] ⚠️ Image node não contém vídeo válido')
+              }
             } else {
-              console.log('[Video Export] ⚠️ Image node não contém vídeo válido')
+              console.log('[Video Export] ⚠️ Node encontrado mas não é um Konva.Image:', node.getType())
             }
           }
         }
