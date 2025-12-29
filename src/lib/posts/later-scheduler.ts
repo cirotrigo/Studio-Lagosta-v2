@@ -343,12 +343,12 @@ export class LaterPostScheduler {
       const logMessage =
         post.scheduleType === ScheduleType.IMMEDIATE
           ? 'Post enviado para Later - publicação imediata'
-          : `Post agendado no Later para ${publishAt}`
+          : `Post agendado no Later para ${scheduledFor}`
 
       await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
         laterPostId: laterPost.id,
         laterStatus: laterPost.status,
-        publishAt,
+        scheduledFor,
       })
 
       console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)
