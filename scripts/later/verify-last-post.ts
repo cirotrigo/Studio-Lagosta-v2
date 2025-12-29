@@ -13,7 +13,7 @@ async function verifyLastPost() {
     const lastPost = await db.socialPost.findFirst({
       orderBy: { createdAt: 'desc' },
       include: {
-        project: {
+        Project: {
           select: {
             id: true,
             name: true,
@@ -33,18 +33,18 @@ async function verifyLastPost() {
     console.log('📝 Último Post Criado:')
     console.log('━'.repeat(60))
     console.log(`ID: ${lastPost.id}`)
-    console.log(`Projeto: ${lastPost.project.name} (ID: ${lastPost.project.id})`)
-    console.log(`Provider: ${lastPost.project.postingProvider || 'ZAPIER'}`)
+    console.log(`Projeto: ${lastPost.Project.name} (ID: ${lastPost.Project.id})`)
+    console.log(`Provider: ${lastPost.Project.postingProvider || 'ZAPIER'}`)
     console.log(`Tipo: ${lastPost.postType}`)
     console.log(`Status: ${lastPost.status}`)
     console.log(`Caption: ${lastPost.caption?.substring(0, 50)}...`)
     console.log(`Criado em: ${lastPost.createdAt.toISOString()}`)
     console.log('━'.repeat(60))
 
-    if (lastPost.project.postingProvider === 'LATER') {
+    if (lastPost.Project.postingProvider === 'LATER') {
       console.log('\n✅ POST USANDO LATER API!')
-      console.log(`Later Account ID: ${lastPost.project.laterAccountId}`)
-      console.log(`Later Profile ID: ${lastPost.project.laterProfileId}`)
+      console.log(`Later Account ID: ${lastPost.Project.laterAccountId}`)
+      console.log(`Later Profile ID: ${lastPost.Project.laterProfileId}`)
       console.log(`Later Post ID: ${lastPost.laterPostId || '(ainda não recebido)'}`)
 
       if (lastPost.laterPostId) {
