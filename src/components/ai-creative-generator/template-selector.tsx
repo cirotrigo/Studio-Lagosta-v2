@@ -86,15 +86,6 @@ export function TemplateSelector({
               </div>
             )}
 
-            {/* Badge do template de origem */}
-            {'Template' in page && page.Template && (
-              <div className="absolute left-2 top-2 rounded-md bg-black/60 backdrop-blur-sm px-2 py-1">
-                <p className="text-[10px] font-medium text-white">
-                  {page.Template.name}
-                </p>
-              </div>
-            )}
-
             {/* Indicador de seleção */}
             {selectedPageId === page.id && (
               <div className="absolute right-3 top-3 rounded-full bg-primary p-2 shadow-lg">
