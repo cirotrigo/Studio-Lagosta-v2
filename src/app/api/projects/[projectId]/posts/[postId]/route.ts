@@ -131,6 +131,8 @@ export async function PUT(
     }
 
     const body = await req.json()
+    console.log(`[PUT /posts/${postId}] Request received with body:`, JSON.stringify(body, null, 2))
+
     const {
       postType,
       caption,
@@ -217,16 +219,20 @@ export async function PUT(
         // Update scheduled time if changed
         if (scheduledDatetime !== undefined) {
           const newScheduledTime = scheduledDatetime ? new Date(scheduledDatetime) : null
+          // Ensure oldScheduledTime is properly parsed as Date if it's a string
           const oldScheduledTime = existingPost.scheduledDatetime
+            ? new Date(existingPost.scheduledDatetime)
+            : null
 
           console.log('[PUT /posts] 📅 Comparing times:', {
             new: newScheduledTime?.toISOString(),
             old: oldScheduledTime?.toISOString(),
             newTimestamp: newScheduledTime?.getTime(),
             oldTimestamp: oldScheduledTime?.getTime(),
+            changed: newScheduledTime?.getTime() !== oldScheduledTime?.getTime(),
           })
 
-          // Check if time actually changed
+          // Check if time actually changed (comparing timestamps to avoid timezone issues)
           if (newScheduledTime?.getTime() !== oldScheduledTime?.getTime()) {
             console.log('[PUT /posts] ⏰ Time changed, will update Later')
             laterPayload.publishAt = newScheduledTime?.toISOString()
