@@ -11,8 +11,14 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { useIsCreativePage } from '@/hooks/use-is-creative-page'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Loader2, Sparkles, Check } from 'lucide-react'
+import { Loader2, Sparkles, Check, Image, Type } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion'
 import type {
   ImageSource,
 } from '@/lib/ai-creative-generator/layout-types'
@@ -30,7 +36,7 @@ export function CreativeGeneratorPanel({
 }: CreativeGeneratorPanelProps) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
-  const { currentPageId, currentPage, setCurrentPageId } = useMultiPage()
+  const { currentPageId, currentPage, setCurrentPageId, savePageLayers } = useMultiPage()
   const { data: creativePageData } = useIsCreativePage(currentPageId)
 
   // Estados do formulário
@@ -151,48 +157,103 @@ export function CreativeGeneratorPanel({
     setIsCreatingPage(true)
 
     try {
-      // Usar o novo endpoint para criar página a partir do modelo
-      const result = await createFromTemplate.mutateAsync({
-        templatePageId: selectedTemplatePageId,
-        images: selectedImages,
-        texts,
-      })
+      // Se há uma página atual, aplicar template nela ao invés de criar nova
+      if (currentPage && currentPageId) {
+        console.log('[CreativeGenerator] Applying template to existing page:', currentPageId)
 
-      console.log('[CreativeGenerator] Page created:', result.page)
-      console.log('[CreativeGenerator] Page has', result.page.layers.length, 'layers')
+        // Buscar as layers do template
+        const templateLayers = selectedTemplatePage.layers || []
 
-      // Ativar modo de edição
-      setEditingPageId(result.page.id)
+        // Aplicar modificações (substituir imagens e textos)
+        const modifiedLayers = templateLayers.map((layer: any) => {
+          const newLayer = { ...layer }
 
-      // Criar mapeamento de layer IDs para TODOS os tipos (texto E imagem)
-      const bindingsMap: Record<string, string> = {}
+          // Atualizar textos se fornecidos
+          if (layer.type === 'text' && texts[layer.id]) {
+            newLayer.content = texts[layer.id]
+            newLayer.text = texts[layer.id]
+          }
 
-      result.page.layers.forEach((layer: any) => {
-        // Mapear textos e imagens
-        if (layer.type === 'text' || layer.type === 'image') {
-          bindingsMap[layer.id] = layer.id
-        }
-      })
+          // Aplicar imagens APENAS em layers dinâmicas
+          if (layer.type === 'image' && layer.isDynamic && selectedImages[layer.id]) {
+            newLayer.fileUrl = selectedImages[layer.id].url
+          }
 
-      console.log('[CreativeGenerator] Created bindings for layers:', Object.keys(bindingsMap).length)
-      setLayerBindings(bindingsMap)
+          return newLayer
+        })
 
-      // Aguardar o refetch das páginas completar
-      console.log('[CreativeGenerator] Refetching pages...')
-      await queryClient.refetchQueries({
-        queryKey: ['pages', templateId],
-      })
+        // Aplicar as layers na página atual
+        await savePageLayers(currentPageId, modifiedLayers)
 
-      // Navegar para a página criada
-      console.log('[CreativeGenerator] Navigating to page:', result.page.id)
-      setCurrentPageId(result.page.id)
+        // Ativar modo de edição
+        setEditingPageId(currentPageId)
 
-      // Resetar modo de criação
-      setIsStartingCreation(false)
+        // Criar mapeamento de layer IDs para TODOS os tipos (texto E imagem)
+        const bindingsMap: Record<string, string> = {}
+        modifiedLayers.forEach((layer: any) => {
+          if (layer.type === 'text' || layer.type === 'image') {
+            bindingsMap[layer.id] = layer.id
+          }
+        })
 
-      toast({
-        description: '✨ Criativo gerado! Edite os campos abaixo e veja em tempo real no canvas.',
-      })
+        console.log('[CreativeGenerator] Created bindings for layers:', Object.keys(bindingsMap).length)
+        setLayerBindings(bindingsMap)
+
+        // Recarregar páginas
+        await queryClient.refetchQueries({
+          queryKey: ['pages', templateId],
+        })
+
+        // Resetar modo de criação
+        setIsStartingCreation(false)
+
+        toast({
+          description: '✨ Template aplicado! Edite os campos abaixo e veja em tempo real no canvas.',
+        })
+      } else {
+        // Criar nova página
+        const result = await createFromTemplate.mutateAsync({
+          templatePageId: selectedTemplatePageId,
+          images: selectedImages,
+          texts,
+        })
+
+        console.log('[CreativeGenerator] Page created:', result.page)
+        console.log('[CreativeGenerator] Page has', result.page.layers.length, 'layers')
+
+        // Ativar modo de edição
+        setEditingPageId(result.page.id)
+
+        // Criar mapeamento de layer IDs para TODOS os tipos (texto E imagem)
+        const bindingsMap: Record<string, string> = {}
+
+        result.page.layers.forEach((layer: any) => {
+          // Mapear textos e imagens
+          if (layer.type === 'text' || layer.type === 'image') {
+            bindingsMap[layer.id] = layer.id
+          }
+        })
+
+        console.log('[CreativeGenerator] Created bindings for layers:', Object.keys(bindingsMap).length)
+        setLayerBindings(bindingsMap)
+
+        // Aguardar o refetch das páginas completar
+        console.log('[CreativeGenerator] Refetching pages...')
+        await queryClient.refetchQueries({
+          queryKey: ['pages', templateId],
+        })
+
+        // Navegar para a página criada
+        console.log('[CreativeGenerator] Navigating to page:', result.page.id)
+        setCurrentPageId(result.page.id)
+
+        // Resetar modo de criação
+        setIsStartingCreation(false)
+
+        toast({
+          description: '✨ Criativo gerado! Edite os campos abaixo e veja em tempo real no canvas.',
+        })
+      }
     } catch (error) {
       console.error('[CreativeGenerator] Erro ao criar página:', error)
       toast({
@@ -259,7 +320,7 @@ export function CreativeGeneratorPanel({
     return (
       <div className="flex flex-col h-full items-center justify-center p-6 text-center">
         <Sparkles className="h-16 w-16 text-primary/50 mb-4" />
-        <h3 className="text-lg font-semibold mb-2">Gerador de Criativos IA</h3>
+        <h3 className="text-lg font-semibold mb-2">Editor</h3>
         <p className="text-sm text-muted-foreground max-w-sm mb-6">
           Crie páginas profissionais em poucos cliques: escolha template, personalize imagens e textos.
         </p>
@@ -312,39 +373,52 @@ export function CreativeGeneratorPanel({
           </Card>
         )}
 
-        {/* Campos de Imagens Dinâmicas - Renderiza quando editando página existente OU tem template selecionado */}
+        {/* Campos de Imagens e Textos organizados com Accordion */}
         {(isEditing || selectedTemplatePage) && (
-          <Card className="p-4">
-            <DynamicImageFieldsForm
-              layers={isEditing && currentPage ? currentPage.layers : (selectedTemplatePage?.layers || [])}
-              projectId={projectId}
-              imageValues={selectedImages}
-              onImageChange={handleImageChange}
-            />
-          </Card>
-        )}
+          <Accordion type="multiple" defaultValue={['texts']} className="space-y-4">
+            {/* Seção de Imagens */}
+            <AccordionItem value="images" className="border rounded-lg px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Image className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Imagens</h3>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <DynamicImageFieldsForm
+                  layers={isEditing && currentPage ? currentPage.layers : (selectedTemplatePage?.layers || [])}
+                  projectId={projectId}
+                  imageValues={selectedImages}
+                  onImageChange={handleImageChange}
+                />
+              </AccordionContent>
+            </AccordionItem>
 
-        {/* Campos de Texto - Renderiza quando editando página existente OU tem template selecionado */}
-        {(isEditing || selectedTemplatePage) && (
-          <Card className="p-4">
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <h3 className="text-lg font-semibold">Textos</h3>
-              </div>
-              <p className="text-sm text-muted-foreground -mt-2">
-                {isEditing
-                  ? 'Edite os textos da página. Todas as alterações são salvas automaticamente.'
-                  : 'Personalize os textos. Se deixar vazio, o texto original do template será mantido.'}
-              </p>
-              <DynamicTextFieldsForm
-                layers={isEditing && currentPage ? currentPage.layers : (selectedTemplatePage?.layers || [])}
-                textValues={texts}
-                onTextChange={handleTextChange}
-                onLayerUpdate={onLayerUpdate}
-              />
-            </div>
-          </Card>
+            {/* Seção de Textos */}
+            <AccordionItem value="texts" className="border rounded-lg px-4">
+              <AccordionTrigger className="hover:no-underline">
+                <div className="flex items-center gap-2">
+                  <Type className="h-5 w-5 text-primary" />
+                  <h3 className="text-lg font-semibold">Textos</h3>
+                </div>
+              </AccordionTrigger>
+              <AccordionContent className="pt-4">
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    {isEditing
+                      ? 'Edite os textos da página. Todas as alterações são salvas automaticamente.'
+                      : 'Personalize os textos. Se deixar vazio, o texto original do template será mantido.'}
+                  </p>
+                  <DynamicTextFieldsForm
+                    layers={isEditing && currentPage ? currentPage.layers : (selectedTemplatePage?.layers || [])}
+                    textValues={texts}
+                    onTextChange={handleTextChange}
+                    onLayerUpdate={onLayerUpdate}
+                  />
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
         )}
 
         {/* Info de edição em tempo real */}

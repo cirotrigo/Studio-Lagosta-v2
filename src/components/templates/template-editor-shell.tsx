@@ -566,7 +566,7 @@ function TemplateEditorContent({
             onClick={() => setActivePanel('ai-creative')}
           >
             <Sparkles className="h-5 w-5" />
-            <span className="text-xs">Criativo IA</span>
+            <span className="text-xs">Editor</span>
           </Button>
         </div>
 
@@ -583,7 +583,7 @@ function TemplateEditorContent({
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
-                {activePanel === 'ai-creative' && 'Criativo IA'}
+                {activePanel === 'ai-creative' && 'Editor'}
               </h3>
             </div>
             {activePanel === 'text' && <TextToolsPanel />}
@@ -698,7 +698,7 @@ function TemplateEditorContent({
           />
           <ToolbarButton
             icon={<Sparkles className="h-5 w-5" />}
-            label="Criativo IA"
+            label="Editor"
             active={activePanel === 'ai-creative'}
             onClick={() => togglePanel('ai-creative')}
           />
@@ -725,7 +725,7 @@ function TemplateEditorContent({
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
-                {activePanel === 'ai-creative' && 'Gerador de Criativos IA'}
+                {activePanel === 'ai-creative' && 'Editor'}
               </h2>
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto p-4">
