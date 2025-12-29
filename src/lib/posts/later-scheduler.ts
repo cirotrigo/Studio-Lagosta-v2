@@ -292,16 +292,14 @@ export class LaterPostScheduler {
           {
             platform: 'instagram',
             accountId: post.Project.laterAccountId,
+            platformSpecificData: {
+              contentType,
+            },
           },
         ],
         mediaItems,
         scheduledFor,
         publishNow: post.scheduleType === ScheduleType.IMMEDIATE,
-        platformSpecificData: {
-          instagram: {
-            contentType,
-          },
-        },
       }
 
       console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
