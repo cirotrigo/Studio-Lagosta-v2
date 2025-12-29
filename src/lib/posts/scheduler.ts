@@ -8,9 +8,11 @@ import {
   PostStatus,
   PostLogEvent,
   PublishType,
-  VerificationStatus
+  VerificationStatus,
+  PostingProvider
 } from '../../../prisma/generated/client'
 import { appendTagToCaption, generateVerificationTag } from '@/lib/posts/verification/tag-generator'
+import { LaterPostScheduler } from './later-scheduler'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -37,8 +39,44 @@ interface CreatePostData {
 
 export class PostScheduler {
   private globalZapierWebhookUrl = process.env.ZAPIER_WEBHOOK_URL || ''
+  private laterScheduler = new LaterPostScheduler()
 
   async createPost(data: CreatePostData) {
+    // ============================================================
+    // DUAL-MODE ROUTING: Later vs Zapier/Buffer
+    // ============================================================
+
+    // Fetch project to determine posting provider
+    const project = await db.project.findUnique({
+      where: { id: data.projectId },
+      select: {
+        id: true,
+        name: true,
+        postingProvider: true,
+        laterAccountId: true,
+      },
+    })
+
+    if (!project) {
+      throw new Error(`Project not found: ${data.projectId}`)
+    }
+
+    // Route to Later if configured
+    if (project.postingProvider === PostingProvider.LATER) {
+      console.log(`📤 [Dual-Mode Router] Using Later API for project "${project.name}"`)
+      return this.laterScheduler.createPost(data)
+    }
+
+    // Default to Zapier/Buffer
+    console.log(`📤 [Dual-Mode Router] Using Zapier/Buffer for project "${project.name}"`)
+    return this.createPostViaZapier(data)
+  }
+
+  /**
+   * Create post via Zapier/Buffer (legacy method)
+   * Renamed from createPost to make routing explicit
+   */
+  private async createPostViaZapier(data: CreatePostData) {
     // Validate post type and media count
     this.validatePost(data)
 

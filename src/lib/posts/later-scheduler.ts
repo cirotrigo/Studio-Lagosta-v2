@@ -1,0 +1,479 @@
+/**
+ * Later Post Scheduler
+ * Alternative scheduler using Later API instead of Zapier/Buffer
+ */
+
+import { db } from '@/lib/db'
+import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import {
+  Prisma,
+  PostType,
+  ScheduleType,
+  RecurrenceFrequency,
+  PostStatus,
+  PostLogEvent,
+  PublishType,
+  VerificationStatus,
+} from '../../../prisma/generated/client'
+import { generateVerificationTag } from '@/lib/posts/verification/tag-generator'
+import { getLaterClient } from '@/lib/later'
+import type { InstagramContentType } from '@/lib/later/types'
+import {
+  LaterApiError,
+  LaterRateLimitError,
+  isRateLimitError,
+} from '@/lib/later/errors'
+
+interface RecurringConfig {
+  frequency: RecurrenceFrequency
+  daysOfWeek?: number[]
+  time: string
+  endDate?: string
+}
+
+interface CreatePostData {
+  projectId: number
+  userId: string
+  generationId?: string
+  postType: PostType
+  caption: string
+  mediaUrls: string[]
+  blobPathnames?: string[]
+  scheduleType: ScheduleType
+  scheduledDatetime?: string
+  recurringConfig?: RecurringConfig
+  altText?: string[]
+  firstComment?: string
+  publishType?: PublishType
+}
+
+/**
+ * Later Post Scheduler
+ * Handles post creation and scheduling via Later API
+ */
+export class LaterPostScheduler {
+  private laterClient = getLaterClient()
+
+  /**
+   * Create a new post using Later API
+   */
+  async createPost(data: CreatePostData) {
+    // Validate post type and media count
+    this.validatePost(data)
+
+    // Check for REMINDER publish type (not supported by Later)
+    if (data.publishType === PublishType.REMINDER) {
+      throw new Error(
+        'Lembretes não são suportados com Later. Use publicação direta ou mantenha no Zapier/Buffer.'
+      )
+    }
+
+    // For IMMEDIATE posts, use current date/time
+    const currentDateTime = new Date()
+    const scheduledDatetime =
+      data.scheduleType === ScheduleType.IMMEDIATE
+        ? currentDateTime
+        : data.scheduledDatetime
+          ? new Date(data.scheduledDatetime)
+          : null
+
+    console.log('[Later Scheduler] Creating post with schedule type:', data.scheduleType)
+    console.log('[Later Scheduler] Scheduled datetime:', scheduledDatetime)
+
+    // Generate verification tag for stories
+    let verificationTag: string | null = null
+    if (data.postType === PostType.STORY) {
+      // Tag will be generated after post creation (need post.id)
+      console.log('[Later Scheduler] Story detected - verification tag will be generated')
+    }
+
+    // Create post in database with SCHEDULED status
+    let post = await db.socialPost.create({
+      data: {
+        projectId: data.projectId,
+        userId: data.userId,
+        generationId: data.generationId,
+        postType: data.postType,
+        caption: data.caption,
+        mediaUrls: data.mediaUrls,
+        blobPathnames: data.blobPathnames || [],
+        altText: data.altText || [],
+        firstComment: data.firstComment,
+        publishType: data.publishType || PublishType.DIRECT,
+        scheduleType: data.scheduleType,
+        scheduledDatetime,
+        recurringConfig: data.recurringConfig
+          ? JSON.parse(JSON.stringify(data.recurringConfig))
+          : null,
+        status: PostStatus.SCHEDULED,
+        originalScheduleType: data.scheduleType,
+      },
+    })
+
+    // Generate verification tag for stories
+    if (post.postType === PostType.STORY) {
+      verificationTag = generateVerificationTag(post.id)
+
+      post = await db.socialPost.update({
+        where: { id: post.id },
+        data: {
+          verificationTag,
+          verificationStatus: VerificationStatus.PENDING,
+          verificationAttempts: 0,
+          nextVerificationAt: null,
+          lastVerificationAt: null,
+          verifiedByFallback: false,
+          verificationError: null,
+          verifiedStoryId: null,
+          verifiedPermalink: null,
+          verifiedTimestamp: null,
+        },
+      })
+
+      console.log(`[Later Scheduler] Verification tag generated: ${verificationTag}`)
+    }
+
+    // Log creation
+    await this.createLog(post.id, PostLogEvent.CREATED, 'Post criado via Later')
+
+    // Send to Later API
+    try {
+      await this.sendToLater(post.id)
+    } catch (error) {
+      console.error('[Later Scheduler] Failed to send post:', error)
+
+      // Update status to FAILED
+      await db.socialPost.update({
+        where: { id: post.id },
+        data: {
+          status: PostStatus.FAILED,
+          errorMessage: error instanceof Error ? error.message : 'Unknown error',
+          failedAt: new Date(),
+        },
+      })
+
+      await this.createLog(
+        post.id,
+        PostLogEvent.FAILED,
+        `Erro ao enviar para Later: ${error instanceof Error ? error.message : 'Unknown'}`
+      )
+
+      throw error
+    }
+
+    // If RECURRING, create series (handled separately)
+    if (data.scheduleType === 'RECURRING') {
+      console.log('[Later Scheduler] Recurring posts not yet implemented for Later')
+      // TODO: Implement recurring series for Later in future
+    }
+
+    return { success: true, postId: post.id }
+  }
+
+  /**
+   * Validate post data
+   */
+  validatePost(data: CreatePostData) {
+    // Validate media count
+    if (data.postType === 'CAROUSEL') {
+      if (data.mediaUrls.length < 2 || data.mediaUrls.length > 10) {
+        throw new Error('Carrossel deve ter entre 2 e 10 imagens')
+      }
+    } else if (['STORY', 'REEL'].includes(data.postType)) {
+      if (data.mediaUrls.length !== 1) {
+        throw new Error(`${data.postType} deve ter exatamente 1 mídia`)
+      }
+    }
+
+    // Validate scheduled time is in the future
+    if (data.scheduleType === 'SCHEDULED' && data.scheduledDatetime) {
+      const scheduledTime = new Date(data.scheduledDatetime)
+      if (scheduledTime <= new Date()) {
+        throw new Error('Data/hora deve ser no futuro')
+      }
+    }
+
+    // Validate media URLs are present
+    if (data.mediaUrls.length === 0) {
+      throw new Error('Pelo menos uma mídia é necessária')
+    }
+  }
+
+  /**
+   * Send post to Later API
+   */
+  async sendToLater(postId: string) {
+    try {
+      const post = await db.socialPost.findUnique({
+        where: { id: postId },
+        include: {
+          Project: {
+            select: {
+              id: true,
+              name: true,
+              laterAccountId: true,
+              laterProfileId: true,
+              instagramAccountId: true,
+              instagramUsername: true,
+              organizationProjects: {
+                select: {
+                  organization: {
+                    select: {
+                      clerkOrgId: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      })
+
+      if (!post) {
+        throw new Error('Post não encontrado')
+      }
+
+      // Validate Later account is configured
+      if (!post.Project.laterAccountId) {
+        throw new Error(
+          `Later account not configured for project "${post.Project.name}" (ID: ${post.projectId}). ` +
+            `Please set laterAccountId in the project settings.`
+        )
+      }
+
+      // Get post author for credit deduction
+      const postAuthor = await db.user.findUnique({
+        where: { id: post.userId },
+        select: { clerkId: true },
+      })
+
+      if (!postAuthor?.clerkId) {
+        throw new Error('Clerk user ID not found for post author')
+      }
+
+      console.log(`[Later Scheduler] Sending post ${post.id} to Later API`)
+      console.log(`[Later Scheduler] Project: ${post.Project.name} (ID: ${post.projectId})`)
+      console.log(`[Later Scheduler] Later Account: ${post.Project.laterAccountId}`)
+
+      // 1. Upload media to Later
+      console.log(`[Later Scheduler] Uploading ${post.mediaUrls.length} media files...`)
+      const mediaIds = await this.uploadMediaToLater(post.mediaUrls)
+      console.log(`[Later Scheduler] Media uploaded: ${mediaIds.join(', ')}`)
+
+      // 2. Prepare caption (with verification tag for stories)
+      const captionWithTag =
+        post.postType === PostType.STORY && post.verificationTag
+          ? `${post.caption}\n\n${post.verificationTag}`
+          : post.caption
+
+      // 3. Map PostType to Instagram content type
+      const contentType = this.mapPostTypeToLater(post.postType)
+
+      // 4. Prepare publish time (ISO string)
+      const publishAt =
+        post.scheduleType === ScheduleType.IMMEDIATE
+          ? undefined // Publish immediately
+          : post.scheduledDatetime?.toISOString()
+
+      // 5. Create post in Later
+      console.log('[Later Scheduler] Creating post in Later...')
+      const laterPost = await this.laterClient.createPost({
+        text: captionWithTag,
+        accounts: [post.Project.laterAccountId],
+        mediaIds,
+        publishAt,
+        platformSpecificData: {
+          instagram: {
+            contentType,
+            firstComment: post.firstComment || undefined,
+          },
+        },
+      })
+
+      console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
+
+      // 6. Deduct credits AFTER successful post creation
+      const organizationId =
+        post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
+      console.log('[Later Scheduler] Deducting credits...')
+      await deductCreditsForFeature({
+        clerkUserId: postAuthor.clerkId,
+        feature: 'social_media_post',
+        details: {
+          postId: post.id,
+          postType: post.postType,
+          projectId: post.projectId,
+          laterPostId: laterPost.id,
+        },
+        organizationId,
+        projectId: post.projectId,
+      })
+
+      // 7. Update post in database
+      const newStatus =
+        laterPost.status === 'published'
+          ? PostStatus.POSTED
+          : laterPost.status === 'failed'
+            ? PostStatus.FAILED
+            : PostStatus.SCHEDULED
+
+      await db.socialPost.update({
+        where: { id: post.id },
+        data: {
+          laterPostId: laterPost.id,
+          status: newStatus,
+          publishedUrl: laterPost.permalink || null,
+          instagramMediaId: laterPost.platformPostId || null,
+        },
+      })
+
+      // 8. Create log
+      const logMessage =
+        post.scheduleType === ScheduleType.IMMEDIATE
+          ? 'Post enviado para Later - publicação imediata'
+          : `Post agendado no Later para ${publishAt}`
+
+      await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
+        laterPostId: laterPost.id,
+        laterStatus: laterPost.status,
+        publishAt,
+      })
+
+      console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)
+
+      return { success: true, laterPostId: laterPost.id }
+    } catch (error) {
+      console.error(`[Later Scheduler] ❌ Error sending post ${postId}:`, error)
+
+      // Handle rate limit errors
+      if (isRateLimitError(error)) {
+        const rateLimitError = error as LaterRateLimitError
+        console.error(
+          `[Later Scheduler] Rate limit exceeded. Retry after ${rateLimitError.retryAfterSeconds}s`
+        )
+
+        // Update post with retry info
+        await db.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: PostStatus.FAILED,
+            errorMessage: `Rate limit exceeded. Retry after ${rateLimitError.retryAfterSeconds} seconds.`,
+            failedAt: new Date(),
+          },
+        })
+
+        await this.createLog(
+          postId,
+          PostLogEvent.FAILED,
+          `Later API rate limit exceeded - retry after ${rateLimitError.retryAfterSeconds}s`,
+          {
+            rateLimitInfo: rateLimitError.rateLimitInfo,
+          }
+        )
+      } else if (error instanceof LaterApiError) {
+        // Handle Later API errors
+        await db.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: PostStatus.FAILED,
+            errorMessage: error.message,
+            failedAt: new Date(),
+          },
+        })
+
+        await this.createLog(
+          postId,
+          PostLogEvent.FAILED,
+          `Later API error: ${error.message}`,
+          {
+            statusCode: error.statusCode,
+            errorCode: error.errorCode,
+          }
+        )
+      } else {
+        // Generic error handling
+        await db.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: PostStatus.FAILED,
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            failedAt: new Date(),
+          },
+        })
+
+        await this.createLog(
+          postId,
+          PostLogEvent.FAILED,
+          `Error: ${error instanceof Error ? error.message : 'Unknown'}`
+        )
+      }
+
+      throw error
+    }
+  }
+
+  /**
+   * Upload media files to Later
+   * Returns array of Later media IDs
+   */
+  private async uploadMediaToLater(mediaUrls: string[]): Promise<string[]> {
+    const mediaIds: string[] = []
+
+    for (const url of mediaUrls) {
+      console.log(`[Later Scheduler] Uploading media: ${url}`)
+
+      try {
+        const upload = await this.laterClient.uploadMediaFromUrl(url)
+        mediaIds.push(upload.id)
+
+        console.log(
+          `[Later Scheduler] Media uploaded: ${upload.id} (${upload.type})`
+        )
+      } catch (error) {
+        console.error(`[Later Scheduler] Failed to upload media ${url}:`, error)
+        throw new Error(
+          `Failed to upload media: ${error instanceof Error ? error.message : 'Unknown error'}`
+        )
+      }
+    }
+
+    return mediaIds
+  }
+
+  /**
+   * Map PostType to Later Instagram content type
+   */
+  private mapPostTypeToLater(postType: PostType): InstagramContentType {
+    switch (postType) {
+      case PostType.STORY:
+        return 'story'
+      case PostType.REEL:
+        return 'reel'
+      case PostType.CAROUSEL:
+        return 'carousel'
+      case PostType.POST:
+      default:
+        return 'post'
+    }
+  }
+
+  /**
+   * Create log entry for post
+   */
+  private async createLog(
+    postId: string,
+    event: PostLogEvent,
+    message: string,
+    metadata?: unknown
+  ) {
+    await db.postLog.create({
+      data: {
+        postId,
+        event,
+        message,
+        metadata: metadata as Prisma.InputJsonValue | undefined,
+      },
+    })
+  }
+}

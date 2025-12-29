@@ -179,6 +179,11 @@ model Project {
   instagramUserId    String? @db.Text
   zapierWebhookUrl   String? @db.Text
 
+  // Later API integration (new posting provider)
+  laterAccountId  String?          @db.Text
+  laterProfileId  String?          @db.Text
+  postingProvider PostingProvider? @default(ZAPIER)
+
   // AI Chat configuration
   aiChatBehavior String? @db.Text
 
@@ -997,6 +1002,11 @@ enum PublishType {
   REMINDER
 }
 
+enum PostingProvider {
+  ZAPIER
+  LATER
+}
+
 enum PostLogEvent {
   CREATED
   SCHEDULED
@@ -1052,6 +1062,9 @@ model SocialPost {
   bufferId         String?   @db.Text // Buffer update ID
   bufferSentAt     DateTime? // Timestamp from Buffer confirmation
 
+  // Later API tracking (new posting provider)
+  laterPostId String? @db.Text // Later post/update ID
+
   // Story verification
   verificationTag      String?
   verificationStatus   VerificationStatus @default(SKIPPED)
@@ -1098,6 +1111,8 @@ model SocialPost {
   @@index([projectId, status, scheduleType])
   @@index([projectId, scheduleType, status])
   @@index([status, scheduleType, scheduledDatetime])
+  // Later API tracking
+  @@index([laterPostId])
 }
 
 model PostRetry {
