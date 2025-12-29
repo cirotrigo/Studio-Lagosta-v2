@@ -121,6 +121,13 @@ export function LayersPanelAdvanced() {
     updateLayer(layerId, (layer) => ({ ...layer, name }))
   }
 
+  const handleToggleDynamic = (layerId: string) => {
+    const layer = design.layers.find((l) => l.id === layerId)
+    if (layer) {
+      updateLayer(layerId, (layer) => ({ ...layer, isDynamic: !layer.isDynamic }))
+    }
+  }
+
   // Atalhos de teclado
   React.useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -212,6 +219,7 @@ export function LayersPanelAdvanced() {
                   }}
                   onToggleVisibility={() => toggleLayerVisibility(layer.id)}
                   onToggleLock={() => toggleLayerLock(layer.id)}
+                  onToggleDynamic={() => handleToggleDynamic(layer.id)}
                   onDelete={() => handleDeleteLayer(layer.id)}
                   onDuplicate={() => duplicateLayer(layer.id)}
                   onRename={(name) => handleRename(layer.id, name)}

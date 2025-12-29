@@ -6,7 +6,13 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
-import { Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown } from 'lucide-react'
+import { Eye, EyeOff, Lock, Unlock, ChevronUp, ChevronDown, Sparkles } from 'lucide-react'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 function layerTypeLabel(type: string) {
   switch (type) {
@@ -34,9 +40,21 @@ export function LayersPanel() {
     toggleLayerVisibility,
     toggleLayerLock,
     reorderLayers,
+    updateLayer,
   } = useTemplateEditor()
 
   const orderedLayers = React.useMemo(() => [...design.layers].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [design.layers])
+
+  const toggleDynamic = React.useCallback(
+    (layerId: string, event: React.MouseEvent) => {
+      event.stopPropagation()
+      const layer = design.layers.find((l) => l.id === layerId)
+      if (layer) {
+        updateLayer(layerId, { isDynamic: !layer.isDynamic })
+      }
+    },
+    [design.layers, updateLayer],
+  )
 
   const moveLayer = React.useCallback(
     (id: string, direction: 'up' | 'down') => {
@@ -84,25 +102,71 @@ export function LayersPanel() {
                   }
                 }}
                 className={cn(
-                  'group flex items-center justify-between rounded-md border border-transparent bg-muted/40 px-3 py-2 text-xs shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
+                  'group flex items-center justify-between gap-2 rounded-md border border-transparent bg-muted/40 px-3 py-2 text-xs shadow-sm transition hover:bg-muted/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50',
                   isSelected && 'border-primary bg-primary/10 text-foreground',
                 )}
               >
-                <div className="flex min-w-0 items-center gap-2">
+                {/* Nome e Info da Camada - Com largura máxima fixa */}
+                <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
                   <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-sm bg-gradient-to-br from-primary/30 to-primary/10 text-[10px] font-semibold text-primary-foreground/80">
                     {(layer.name || layerTypeLabel(layer.type)).slice(0, 2).toUpperCase()}
                   </div>
-                  <div className="min-w-0">
-                    <div className="truncate font-medium">{layer.name || layerTypeLabel(layer.type)}</div>
-                    <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                      <span>{layerTypeLabel(layer.type)}</span>
-                      <span>
-                        {Math.round(layer.position?.x ?? 0)} × {Math.round(layer.position?.y ?? 0)}
-                      </span>
-                    </div>
-                  </div>
+                  <TooltipProvider delayDuration={300}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="min-w-0 flex-1 overflow-hidden">
+                          <div className="truncate font-medium" style={{ maxWidth: '120px' }}>
+                            {layer.name || layerTypeLabel(layer.type)}
+                          </div>
+                          <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                            <span>{layerTypeLabel(layer.type)}</span>
+                            {layer.type === 'image' && layer.isDynamic && (
+                              <Badge variant="secondary" className="h-4 px-1 text-[9px]">
+                                <Sparkles className="mr-0.5 h-2.5 w-2.5" />
+                                Dinâmica
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p className="text-xs">{layer.name || layerTypeLabel(layer.type)}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
                 </div>
-                <div className="flex items-center gap-1">
+
+                {/* Botões de Ação - Largura fixa */}
+                <div className="flex shrink-0 items-center gap-1">
+                  {/* Toggle Imagem Dinâmica - Apenas para imagens */}
+                  {layer.type === 'image' && (
+                    <TooltipProvider delayDuration={300}>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className={cn(
+                              'h-7 w-7',
+                              layer.isDynamic && 'bg-primary/20 text-primary hover:bg-primary/30'
+                            )}
+                            onClick={(event) => toggleDynamic(layer.id, event)}
+                          >
+                            <Sparkles className={cn('h-4 w-4', layer.isDynamic && 'fill-current')} />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p className="text-xs">
+                            {layer.isDynamic ? 'Imagem dinâmica ativa' : 'Marcar como dinâmica'}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground">
+                            Permite substituição no gerador de criativos
+                          </p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
+                  )}
+
                   <Button
                     size="icon"
                     variant="ghost"

@@ -52,7 +52,7 @@ export interface TextsData {
 }
 
 export interface ImageSource {
-  type: 'ai-generate' | 'google-drive' | 'ai-gallery'
+  type: 'ai-generate' | 'google-drive' | 'ai-gallery' | 'local-upload'
   url: string
   // Campos específicos por tipo
   prompt?: string
@@ -60,6 +60,7 @@ export interface ImageSource {
   model?: 'nano-banana' | 'nano-banana-pro' | 'flux-schnell' | 'flux-1.1-pro' | string
   driveFileId?: string
   aiImageId?: string
+  pathname?: string // Para upload local (Vercel Blob pathname)
 }
 
 export interface LayerBinding {

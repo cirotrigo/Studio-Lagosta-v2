@@ -8,6 +8,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Switch } from '@/components/ui/switch'
 import {
   Settings,
   Layers,
@@ -1220,6 +1221,24 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
           onChange={(event) => updateLayerPartial(layer.id, { fileUrl: event.target.value })}
         />
       </div>
+
+      {/* Toggle para marcar imagem como dinâmica (editável no gerador de criativos) */}
+      <div className="flex items-center justify-between rounded-md border border-border/30 bg-muted/30 p-2">
+        <div className="space-y-0.5">
+          <Label htmlFor="layer-is-dynamic" className="text-[10px] font-semibold">
+            Imagem Dinâmica
+          </Label>
+          <p className="text-[9px] text-muted-foreground">
+            Permitir substituição no gerador de criativos
+          </p>
+        </div>
+        <Switch
+          id="layer-is-dynamic"
+          checked={layer.isDynamic ?? false}
+          onCheckedChange={(checked) => updateLayerPartial(layer.id, { isDynamic: checked })}
+        />
+      </div>
+
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label className="text-[10px]">Object Fit</Label>

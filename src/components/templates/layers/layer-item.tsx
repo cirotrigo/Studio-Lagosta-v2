@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
 import {
   Eye,
   EyeOff,
@@ -16,6 +17,7 @@ import {
   Copy,
   MoveUp,
   MoveDown,
+  Sparkles,
 } from 'lucide-react'
 import type { Layer } from '@/types/template'
 import { getLayerIcon } from './layer-icons'
@@ -26,6 +28,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 interface LayerItemProps {
   layer: Layer
@@ -33,6 +41,7 @@ interface LayerItemProps {
   onSelect: (event: React.MouseEvent) => void
   onToggleVisibility: () => void
   onToggleLock: () => void
+  onToggleDynamic?: () => void
   onDelete: () => void
   onDuplicate: () => void
   onRename: (name: string) => void
@@ -46,6 +55,7 @@ export function LayerItem({
   onSelect,
   onToggleVisibility,
   onToggleLock,
+  onToggleDynamic,
   onDelete,
   onDuplicate,
   onRename,
@@ -132,7 +142,7 @@ export function LayerItem({
       </div>
 
       {/* Layer Info */}
-      <div className="min-w-0 flex-1" onClick={onSelect} onDoubleClick={handleDoubleClick}>
+      <div className="min-w-0 flex-1 overflow-hidden" onClick={onSelect} onDoubleClick={handleDoubleClick}>
         {isRenaming ? (
           <Input
             ref={inputRef}
@@ -144,26 +154,77 @@ export function LayerItem({
             onClick={(e) => e.stopPropagation()}
           />
         ) : (
-          <div className="cursor-pointer">
-            <div className="truncate text-xs font-medium">{layer.name}</div>
-            <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
-              <span className="capitalize">{layer.type}</span>
-              {layer.position && (
-                <span>
-                  {Math.round(layer.position.x)} × {Math.round(layer.position.y)}
-                </span>
-              )}
-            </div>
-          </div>
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="cursor-pointer overflow-hidden">
+                  <div
+                    className="truncate text-xs font-medium"
+                    style={{ maxWidth: '140px' }}
+                  >
+                    {layer.name}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <span className="capitalize">{layer.type}</span>
+                    {layer.type === 'image' && layer.isDynamic && (
+                      <Badge variant="secondary" className="h-3.5 px-1 text-[9px] font-medium">
+                        <Sparkles className="mr-0.5 h-2 w-2" />
+                        Dinâmica
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="left" className="max-w-xs">
+                <p className="text-xs font-medium">{layer.name}</p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  {layer.type} • {layer.position && `${Math.round(layer.position.x)} × ${Math.round(layer.position.y)}`}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
       </div>
 
       {/* Actions (visible on hover or selected) */}
       <div className={cn(
-        'flex items-center gap-1 opacity-0 transition-opacity',
+        'flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity',
         (isSelected || isDragging) && 'opacity-100',
         'group-hover:opacity-100'
       )}>
+        {/* Toggle Imagem Dinâmica - Apenas para imagens */}
+        {layer.type === 'image' && onToggleDynamic && (
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className={cn(
+                    'h-6 w-6',
+                    layer.isDynamic && 'bg-primary/20 text-primary hover:bg-primary/30'
+                  )}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleDynamic()
+                  }}
+                  title={layer.isDynamic ? 'Imagem dinâmica ativa' : 'Marcar como dinâmica'}
+                >
+                  <Sparkles className={cn('h-3.5 w-3.5', layer.isDynamic && 'fill-current')} />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <p className="text-xs font-medium">
+                  {layer.isDynamic ? 'Imagem dinâmica ativa' : 'Marcar como dinâmica'}
+                </p>
+                <p className="text-[10px] text-muted-foreground mt-0.5">
+                  Permite substituição no gerador de criativos
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
         {/* Visibility Toggle */}
         <Button
           size="icon"

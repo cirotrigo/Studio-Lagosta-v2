@@ -3,13 +3,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { toast } from '@/hooks/use-toast'
+import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
 
 interface CreateFromTemplateData {
   templatePageId: string
-  imageSource: {
-    type: string
-    url: string
-  }
+  images: Record<string, ImageSource> // layerId -> ImageSource (múltiplas imagens)
   texts: Record<string, string> // layerId -> text content
 }
 

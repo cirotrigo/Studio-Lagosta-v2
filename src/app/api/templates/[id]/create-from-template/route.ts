@@ -9,11 +9,17 @@ import {
 
 const createFromTemplateSchema = z.object({
   templatePageId: z.string(),
-  imageSource: z.object({
+  images: z.record(z.object({
     type: z.string(),
     url: z.string(),
-  }),
-  texts: z.record(z.string()), // layerId -> text content
+    pathname: z.string().optional(),
+    prompt: z.string().optional(),
+    references: z.array(z.string()).optional(),
+    model: z.string().optional(),
+    driveFileId: z.string().optional(),
+    aiImageId: z.string().optional(),
+  })).optional().default({}), // layerId -> ImageSource (múltiplas imagens)
+  texts: z.record(z.string()).optional().default({}), // layerId -> text content
 })
 
 // POST - Criar página a partir de modelo
@@ -38,7 +44,7 @@ export async function POST(
     }
 
     const body = await request.json()
-    const { templatePageId, imageSource, texts } = createFromTemplateSchema.parse(body)
+    const { templatePageId, images, texts } = createFromTemplateSchema.parse(body)
 
     // Buscar a página modelo
     const templatePage = await db.page.findFirst({
@@ -59,34 +65,25 @@ export async function POST(
       : templatePage.layers
 
     console.log('[create-from-template] Template has', (templateLayers as any[]).length, 'layers')
-    console.log('[create-from-template] Image source URL:', imageSource.url)
-
-    // Encontrar o índice da PRIMEIRA layer de imagem (a que está mais embaixo, no fundo)
-    let firstImageLayerIndex = -1
-    for (let i = 0; i < (templateLayers as any[]).length; i++) {
-      if ((templateLayers as any[])[i].type === 'image') {
-        firstImageLayerIndex = i
-        break
-      }
-    }
-
-    console.log('[create-from-template] First image layer index (background):', firstImageLayerIndex)
+    console.log('[create-from-template] Images to apply:', Object.keys(images).length)
+    console.log('[create-from-template] Texts to apply:', Object.keys(texts).length)
 
     // Clonar e modificar layers
-    const modifiedLayers = (templateLayers as any[]).map((layer, index) => {
+    const modifiedLayers = (templateLayers as any[]).map((layer: any) => {
       const newLayer = { ...layer }
 
       // Atualizar textos se fornecidos
       if (layer.type === 'text' && texts[layer.id]) {
         newLayer.content = texts[layer.id]
         newLayer.text = texts[layer.id]
+        console.log('[create-from-template] Updated text layer:', layer.id)
       }
 
-      // Aplicar a imagem apenas na PRIMEIRA layer de imagem (a que está no fundo)
-      if (layer.type === 'image' && index === firstImageLayerIndex) {
-        console.log('[create-from-template] Replacing FIRST image layer (background):', layer.id, 'old URL:', layer.fileUrl)
-        newLayer.fileUrl = imageSource.url
-        console.log('[create-from-template] Applied new URL:', imageSource.url)
+      // Aplicar imagens apenas em layers marcadas como dinâmicas
+      if (layer.type === 'image' && layer.isDynamic && images[layer.id]) {
+        console.log('[create-from-template] Replacing dynamic image layer:', layer.id, 'old URL:', layer.fileUrl)
+        newLayer.fileUrl = images[layer.id].url
+        console.log('[create-from-template] Applied new URL:', images[layer.id].url)
       }
 
       return newLayer
@@ -118,7 +115,7 @@ export async function POST(
         templateId,
         pageId: newPage.id,
         layoutType: `template:${templatePageId}`, // Salvar o ID do template usado
-        imageSource: JSON.stringify(imageSource),
+        imageSource: JSON.stringify(images), // Salvar múltiplas imagens
         textsData: JSON.stringify(texts),
         creditsUsed: 0,
         createdBy: userId,
