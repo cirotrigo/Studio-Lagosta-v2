@@ -97,14 +97,22 @@ export interface LaterPost {
 
 /**
  * Payload for creating a new Later post
+ * Based on Later API v1 documentation
  */
 export interface CreateLaterPostPayload {
-  text: string // Caption (required)
-  accounts: string[] // Array of Later account IDs (required)
-  mediaIds?: string[] // Array of media IDs (optional)
-  mediaItems?: Array<{ url: string }> // Array of direct media URLs (alternative to mediaIds)
-  publishAt?: string // ISO timestamp (optional - immediate if not provided)
-  platformSpecificData?: PlatformSpecificData
+  content: string // Post text/caption (required)
+  platforms: Array<{
+    platform: string // e.g., "instagram", "twitter", etc.
+    accountId: string // Later account ID
+  }> // Platforms to post to (required)
+  mediaItems?: Array<{
+    type: 'image' | 'video'
+    image_url?: string // For images
+    video_url?: string // For videos
+  }> // Media files (optional but required for Instagram)
+  scheduledFor?: string // ISO 8601 timestamp (optional - publishes now if not provided)
+  publishNow?: boolean // Publish immediately (optional)
+  timezone?: string // Timezone for scheduling (default: UTC)
 }
 
 /**

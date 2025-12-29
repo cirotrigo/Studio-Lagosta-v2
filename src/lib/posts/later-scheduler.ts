@@ -256,9 +256,16 @@ export class LaterPostScheduler {
       console.log(`[Later Scheduler] Project: ${post.Project.name} (ID: ${post.projectId})`)
       console.log(`[Later Scheduler] Later Account: ${post.Project.laterAccountId}`)
 
-      // 1. Prepare media URLs (direct URLs, no upload needed)
-      console.log(`[Later Scheduler] Using ${post.mediaUrls.length} media URLs directly`)
-      const mediaItems = post.mediaUrls.map(url => ({ url }))
+      // 1. Prepare media items with correct structure
+      console.log(`[Later Scheduler] Preparing ${post.mediaUrls.length} media items`)
+      const mediaItems = post.mediaUrls.map(url => {
+        // Detect media type from URL
+        const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi|webm)/)
+        return {
+          type: (isVideo ? 'video' : 'image') as 'image' | 'video',
+          ...(isVideo ? { video_url: url } : { image_url: url }),
+        }
+      })
 
       // 2. Prepare caption (with verification tag for stories)
       const captionWithTag =
@@ -266,28 +273,25 @@ export class LaterPostScheduler {
           ? `${post.caption}\n\n${post.verificationTag}`
           : post.caption
 
-      // 3. Map PostType to Instagram content type
-      const contentType = this.mapPostTypeToLater(post.postType)
-
-      // 4. Prepare publish time (ISO string)
-      const publishAt =
+      // 3. Prepare publish time (ISO 8601 string)
+      const scheduledFor =
         post.scheduleType === ScheduleType.IMMEDIATE
           ? undefined // Publish immediately
           : post.scheduledDatetime?.toISOString()
 
-      // 5. Create post in Later
+      // 4. Create post in Later with correct API structure
       console.log('[Later Scheduler] Creating post in Later...')
       const laterPost = await this.laterClient.createPost({
-        text: captionWithTag,
-        accounts: [post.Project.laterAccountId],
-        mediaItems, // Use direct URLs instead of mediaIds
-        publishAt,
-        platformSpecificData: {
-          instagram: {
-            contentType,
-            firstComment: post.firstComment || undefined,
+        content: captionWithTag,
+        platforms: [
+          {
+            platform: 'instagram',
+            accountId: post.Project.laterAccountId,
           },
-        },
+        ],
+        mediaItems,
+        scheduledFor,
+        publishNow: post.scheduleType === ScheduleType.IMMEDIATE,
       })
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
