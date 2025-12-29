@@ -256,10 +256,9 @@ export class LaterPostScheduler {
       console.log(`[Later Scheduler] Project: ${post.Project.name} (ID: ${post.projectId})`)
       console.log(`[Later Scheduler] Later Account: ${post.Project.laterAccountId}`)
 
-      // 1. Upload media to Later
-      console.log(`[Later Scheduler] Uploading ${post.mediaUrls.length} media files...`)
-      const mediaIds = await this.uploadMediaToLater(post.mediaUrls)
-      console.log(`[Later Scheduler] Media uploaded: ${mediaIds.join(', ')}`)
+      // 1. Prepare media URLs (direct URLs, no upload needed)
+      console.log(`[Later Scheduler] Using ${post.mediaUrls.length} media URLs directly`)
+      const mediaItems = post.mediaUrls.map(url => ({ url }))
 
       // 2. Prepare caption (with verification tag for stories)
       const captionWithTag =
@@ -281,7 +280,7 @@ export class LaterPostScheduler {
       const laterPost = await this.laterClient.createPost({
         text: captionWithTag,
         accounts: [post.Project.laterAccountId],
-        mediaIds,
+        mediaItems, // Use direct URLs instead of mediaIds
         publishAt,
         platformSpecificData: {
           instagram: {

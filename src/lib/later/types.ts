@@ -101,7 +101,8 @@ export interface LaterPost {
 export interface CreateLaterPostPayload {
   text: string // Caption (required)
   accounts: string[] // Array of Later account IDs (required)
-  mediaIds?: string[] // Array of media IDs (optional, but required for Instagram)
+  mediaIds?: string[] // Array of media IDs (optional)
+  mediaItems?: Array<{ url: string }> // Array of direct media URLs (alternative to mediaIds)
   publishAt?: string // ISO timestamp (optional - immediate if not provided)
   platformSpecificData?: PlatformSpecificData
 }
