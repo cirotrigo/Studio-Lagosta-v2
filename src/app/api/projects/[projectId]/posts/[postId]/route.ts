@@ -194,6 +194,15 @@ export async function PUT(
     // Sync with Later if this post was created via Later
     if (existingPost.laterPostId) {
       console.log(`[PUT /posts/${postId}] Syncing update with Later post ${existingPost.laterPostId}`)
+      console.log(`[PUT /posts] Received fields:`, {
+        caption: caption !== undefined ? 'YES' : 'NO',
+        scheduledDatetime: scheduledDatetime !== undefined ? scheduledDatetime : 'NO',
+        scheduleType: scheduleType !== undefined ? scheduleType : 'NO',
+      })
+      console.log(`[PUT /posts] Existing values:`, {
+        caption: existingPost.caption?.substring(0, 50) + '...',
+        scheduledDatetime: existingPost.scheduledDatetime?.toISOString(),
+      })
 
       try {
         const laterClient = getLaterClient()
@@ -201,6 +210,7 @@ export async function PUT(
 
         // Update caption if changed
         if (caption !== undefined && caption !== existingPost.caption) {
+          console.log('[PUT /posts] 📝 Caption changed, will update Later')
           laterPayload.text = caption
         }
 
@@ -209,19 +219,29 @@ export async function PUT(
           const newScheduledTime = scheduledDatetime ? new Date(scheduledDatetime) : null
           const oldScheduledTime = existingPost.scheduledDatetime
 
+          console.log('[PUT /posts] 📅 Comparing times:', {
+            new: newScheduledTime?.toISOString(),
+            old: oldScheduledTime?.toISOString(),
+            newTimestamp: newScheduledTime?.getTime(),
+            oldTimestamp: oldScheduledTime?.getTime(),
+          })
+
           // Check if time actually changed
           if (newScheduledTime?.getTime() !== oldScheduledTime?.getTime()) {
+            console.log('[PUT /posts] ⏰ Time changed, will update Later')
             laterPayload.publishAt = newScheduledTime?.toISOString()
+          } else {
+            console.log('[PUT /posts] ⏰ Time unchanged, skipping')
           }
         }
 
         // If there are changes to sync, send to Later
         if (Object.keys(laterPayload).length > 0) {
-          console.log('[PUT /posts] Later update payload:', laterPayload)
+          console.log('[PUT /posts] 🚀 Sending update to Later:', laterPayload)
           await laterClient.updatePost(existingPost.laterPostId, laterPayload)
           console.log('[PUT /posts] ✅ Later post updated successfully')
         } else {
-          console.log('[PUT /posts] No changes to sync with Later')
+          console.log('[PUT /posts] ⚠️ No changes detected to sync with Later')
         }
       } catch (error) {
         console.error('[PUT /posts] ❌ Failed to sync with Later:', error)
