@@ -46,16 +46,26 @@ export async function POST(
     const body = await request.json()
     const { templatePageId, images, texts } = createFromTemplateSchema.parse(body)
 
-    // Buscar a página modelo
+    // Buscar a página modelo (pode ser de qualquer template do projeto)
     const templatePage = await db.page.findFirst({
       where: {
         id: templatePageId,
-        templateId,
         isTemplate: true,
+        Template: {
+          projectId: template.projectId, // Garantir que pertence ao projeto
+        },
+      },
+      include: {
+        Template: true, // Incluir para validação adicional
       },
     })
 
     if (!templatePage) {
+      return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
+    }
+
+    // Verificar se a página modelo pertence ao mesmo projeto
+    if (templatePage.Template.projectId !== template.projectId) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
     }
 
