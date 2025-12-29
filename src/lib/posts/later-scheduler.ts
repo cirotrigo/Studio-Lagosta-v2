@@ -281,10 +281,12 @@ export class LaterPostScheduler {
 
       // 4. Map PostType to Instagram content type
       const contentType = this.mapPostTypeToLater(post.postType)
+      console.log(`[Later Scheduler] Instagram contentType: ${contentType}`)
 
       // 5. Create post in Later with correct API structure
       console.log('[Later Scheduler] Creating post in Later...')
-      const laterPost = await this.laterClient.createPost({
+
+      const payload = {
         content: captionWithTag,
         platforms: [
           {
@@ -300,7 +302,11 @@ export class LaterPostScheduler {
             contentType,
           },
         },
-      })
+      }
+
+      console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+
+      const laterPost = await this.laterClient.createPost(payload)
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
 
