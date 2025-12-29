@@ -61,12 +61,8 @@ export class LaterPostScheduler {
     // Validate post type and media count
     this.validatePost(data)
 
-    // Check for REMINDER publish type (not supported by Later)
-    if (data.publishType === PublishType.REMINDER) {
-      throw new Error(
-        'Lembretes não são suportados com Later. Use publicação direta ou mantenha no Zapier/Buffer.'
-      )
-    }
+    // Note: Reminders work differently with Later - they're just scheduled posts
+    // that users need to manually publish. We'll treat them as scheduled posts.
 
     // For IMMEDIATE posts, use current date/time
     const currentDateTime = new Date()
