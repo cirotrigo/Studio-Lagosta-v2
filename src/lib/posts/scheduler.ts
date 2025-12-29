@@ -39,7 +39,17 @@ interface CreatePostData {
 
 export class PostScheduler {
   private globalZapierWebhookUrl = process.env.ZAPIER_WEBHOOK_URL || ''
-  private laterScheduler = new LaterPostScheduler()
+  private laterScheduler: LaterPostScheduler | null = null
+
+  /**
+   * Get or create LaterPostScheduler instance (lazy loading)
+   */
+  private getLaterScheduler(): LaterPostScheduler {
+    if (!this.laterScheduler) {
+      this.laterScheduler = new LaterPostScheduler()
+    }
+    return this.laterScheduler
+  }
 
   async createPost(data: CreatePostData) {
     // ============================================================
@@ -64,7 +74,7 @@ export class PostScheduler {
     // Route to Later if configured
     if (project.postingProvider === PostingProvider.LATER) {
       console.log(`📤 [Dual-Mode Router] Using Later API for project "${project.name}"`)
-      return this.laterScheduler.createPost(data)
+      return this.getLaterScheduler().createPost(data)
     }
 
     // Default to Zapier/Buffer
