@@ -61,6 +61,17 @@ export async function POST(req: NextRequest) {
 
     // 3. Parse payload
     const payload = JSON.parse(rawBody)
+
+    // Handle Later test webhook (uses "evento" in Portuguese)
+    if (payload.evento === 'webhook.test' || payload.event === 'webhook.test') {
+      console.log('✅ Later test webhook received successfully')
+      console.log('   Message:', payload.mensagem || payload.message)
+      return NextResponse.json({
+        success: true,
+        message: 'Webhook test received successfully',
+      })
+    }
+
     const { event, timestamp: eventTimestamp, data } = payload
 
     console.log('📩 Later webhook event:', {
