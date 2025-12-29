@@ -169,6 +169,8 @@ export class LaterClient {
 
     try {
       errorResponse = await response.json()
+      // Log full error response for debugging
+      console.error('[Later Client] API Error Response:', JSON.stringify(errorResponse, null, 2))
     } catch {
       // If JSON parsing fails, use response text
     }
@@ -418,9 +420,13 @@ export class LaterClient {
   async createPost(payload: CreateLaterPostPayload): Promise<LaterPost> {
     console.log('[Later Client] Creating post', {
       accounts: payload.accounts,
-      mediaCount: payload.mediaIds?.length || 0,
+      mediaCount: payload.mediaIds?.length || payload.mediaItems?.length || 0,
+      mediaType: payload.mediaIds ? 'mediaIds' : payload.mediaItems ? 'mediaItems' : 'none',
       hasSchedule: !!payload.publishAt,
     })
+
+    // Log full payload for debugging
+    console.log('[Later Client] Full payload:', JSON.stringify(payload, null, 2))
 
     const post = await this.request<LaterPost>('/posts', {
       method: 'POST',
