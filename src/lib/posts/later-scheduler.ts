@@ -384,11 +384,38 @@ export class LaterPostScheduler {
         )
       } else if (error instanceof LaterApiError) {
         // Handle Later API errors
+        let userFriendlyMessage = error.message
+
+        // Detect aspect ratio errors and provide helpful message
+        if (error.message.includes('Aspect ratio') || error.message.includes('aspect ratio')) {
+          const aspectRatioMatch = error.message.match(/Aspect ratio ([0-9.]+):1/)
+          const currentAspectRatio = aspectRatioMatch ? aspectRatioMatch[1] : 'desconhecido'
+
+          // Get post type to provide specific guidance
+          const post = await db.socialPost.findUnique({
+            where: { id: postId },
+            select: { postType: true },
+          })
+
+          if (post?.postType === PostType.POST) {
+            userFriendlyMessage = `❌ Formato de imagem incompatível com POST de feed\n\n` +
+              `Sua imagem tem aspect ratio ${currentAspectRatio}:1, mas posts de feed no Instagram aceitam apenas de 0.75:1 (4:5 retrato) até 1.91:1 (paisagem).\n\n` +
+              `💡 Dica: Sua imagem parece estar em formato vertical de Story (9:16). Para postar no feed:\n` +
+              `1️⃣ Use o tipo "POST" apenas para imagens entre 4:5 e 1.91:1\n` +
+              `2️⃣ OU recorte a imagem para formato 4:5 (retrato) ou 1:1 (quadrado)\n` +
+              `3️⃣ OU mude o tipo de post para "STORY" ou "REEL" se quiser manter o formato vertical`
+          } else if (post?.postType === PostType.CAROUSEL) {
+            userFriendlyMessage = `❌ Formato de imagem incompatível com CAROUSEL\n\n` +
+              `Sua imagem tem aspect ratio ${currentAspectRatio}:1, mas carrosséis no Instagram aceitam apenas de 0.75:1 (4:5 retrato) até 1.91:1 (paisagem).\n\n` +
+              `💡 Todas as imagens do carrossel devem ter aspect ratio entre 4:5 e 1.91:1.`
+          }
+        }
+
         await db.socialPost.update({
           where: { id: postId },
           data: {
             status: PostStatus.FAILED,
-            errorMessage: error.message,
+            errorMessage: userFriendlyMessage,
             failedAt: new Date(),
           },
         })
@@ -396,10 +423,11 @@ export class LaterPostScheduler {
         await this.createLog(
           postId,
           PostLogEvent.FAILED,
-          `Later API error: ${error.message}`,
+          `Later API error: ${userFriendlyMessage}`,
           {
             statusCode: error.statusCode,
             errorCode: error.errorCode,
+            originalError: error.message,
           }
         )
       } else {
