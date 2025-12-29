@@ -43,10 +43,17 @@ export class PostScheduler {
 
   /**
    * Get or create LaterPostScheduler instance (lazy loading)
+   * Returns null if Later is not configured properly
    */
-  private getLaterScheduler(): LaterPostScheduler {
+  private getLaterScheduler(): LaterPostScheduler | null {
     if (!this.laterScheduler) {
-      this.laterScheduler = new LaterPostScheduler()
+      try {
+        this.laterScheduler = new LaterPostScheduler()
+      } catch (error) {
+        console.error('[PostScheduler] Failed to initialize LaterPostScheduler:', error)
+        console.error('[PostScheduler] Later API is not properly configured. Posts will fall back to Zapier.')
+        return null
+      }
     }
     return this.laterScheduler
   }
@@ -74,7 +81,16 @@ export class PostScheduler {
     // Route to Later if configured
     if (project.postingProvider === PostingProvider.LATER) {
       console.log(`📤 [Dual-Mode Router] Using Later API for project "${project.name}"`)
-      return this.getLaterScheduler().createPost(data)
+
+      const laterScheduler = this.getLaterScheduler()
+      if (!laterScheduler) {
+        console.warn(
+          `⚠️ [Dual-Mode Router] Later is not configured. Falling back to Zapier for project "${project.name}"`
+        )
+        return this.createPostViaZapier(data)
+      }
+
+      return laterScheduler.createPost(data)
     }
 
     // Default to Zapier/Buffer
