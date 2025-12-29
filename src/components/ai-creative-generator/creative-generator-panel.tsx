@@ -116,17 +116,21 @@ export function CreativeGeneratorPanel({
         }
       })
     } else {
-      // Caso contrário, mapear todas as camadas de texto diretamente
+      // Caso contrário, mapear todas as camadas de texto E imagem diretamente
       currentPage.layers.forEach((layer: any) => {
         if (layer.type === 'text') {
           bindingsMap[layer.id] = layer.id
           if (layer.content || layer.text) {
             loadedTexts[layer.id] = layer.content || layer.text || ''
           }
+        } else if (layer.type === 'image') {
+          // Incluir imagens no mapeamento para permitir atualização em tempo real
+          bindingsMap[layer.id] = layer.id
         }
       })
     }
 
+    console.log('[CreativeGenerator] Bindings criados:', Object.keys(bindingsMap).length)
     setLayerBindings(bindingsMap)
     setTexts(loadedTexts)
     setEditingPageId(currentPage.id)
@@ -160,14 +164,17 @@ export function CreativeGeneratorPanel({
       // Ativar modo de edição
       setEditingPageId(result.page.id)
 
-      // Criar mapeamento de layer IDs para texts
-      const textLayers = result.page.layers.filter((layer: any) => layer.type === 'text')
+      // Criar mapeamento de layer IDs para TODOS os tipos (texto E imagem)
       const bindingsMap: Record<string, string> = {}
 
-      textLayers.forEach((layer: any) => {
-        bindingsMap[layer.id] = layer.id
+      result.page.layers.forEach((layer: any) => {
+        // Mapear textos e imagens
+        if (layer.type === 'text' || layer.type === 'image') {
+          bindingsMap[layer.id] = layer.id
+        }
       })
 
+      console.log('[CreativeGenerator] Created bindings for layers:', Object.keys(bindingsMap).length)
       setLayerBindings(bindingsMap)
 
       // Aguardar o refetch das páginas completar
@@ -208,12 +215,16 @@ export function CreativeGeneratorPanel({
   }
 
   function handleImageChange(layerId: string, imageSource: ImageSource) {
+    console.log('[CreativeGenerator] Image changed:', { layerId, url: imageSource.url, isEditing, hasBinding: !!layerBindings[layerId] })
     setSelectedImages((prev) => ({ ...prev, [layerId]: imageSource }))
 
     // Atualizar layer em tempo real (apenas se estiver editando)
     if (isEditing && layerBindings[layerId]) {
+      console.log('[CreativeGenerator] Updating image layer in real-time:', layerBindings[layerId])
       onLayerUpdate?.(layerBindings[layerId], { fileUrl: imageSource.url })
       autoSave(layerBindings[layerId], { fileUrl: imageSource.url })
+    } else {
+      console.log('[CreativeGenerator] Not updating - isEditing:', isEditing, 'hasBinding:', !!layerBindings[layerId])
     }
   }
 
