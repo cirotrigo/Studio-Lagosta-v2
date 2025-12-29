@@ -263,7 +263,7 @@ export class LaterPostScheduler {
         const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi|webm)/)
         return {
           type: (isVideo ? 'video' : 'image') as 'image' | 'video',
-          ...(isVideo ? { video_url: url } : { image_url: url }),
+          url, // Use simple "url" field (not image_url or video_url)
         }
       })
 
@@ -279,7 +279,10 @@ export class LaterPostScheduler {
           ? undefined // Publish immediately
           : post.scheduledDatetime?.toISOString()
 
-      // 4. Create post in Later with correct API structure
+      // 4. Map PostType to Instagram content type
+      const contentType = this.mapPostTypeToLater(post.postType)
+
+      // 5. Create post in Later with correct API structure
       console.log('[Later Scheduler] Creating post in Later...')
       const laterPost = await this.laterClient.createPost({
         content: captionWithTag,
@@ -292,6 +295,11 @@ export class LaterPostScheduler {
         mediaItems,
         scheduledFor,
         publishNow: post.scheduleType === ScheduleType.IMMEDIATE,
+        platformSpecificData: {
+          instagram: {
+            contentType,
+          },
+        },
       })
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)

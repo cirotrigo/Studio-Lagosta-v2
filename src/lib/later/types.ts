@@ -107,12 +107,16 @@ export interface CreateLaterPostPayload {
   }> // Platforms to post to (required)
   mediaItems?: Array<{
     type: 'image' | 'video'
-    image_url?: string // For images
-    video_url?: string // For videos
+    url: string // Media URL (required)
   }> // Media files (optional but required for Instagram)
   scheduledFor?: string // ISO 8601 timestamp (optional - publishes now if not provided)
   publishNow?: boolean // Publish immediately (optional)
   timezone?: string // Timezone for scheduling (default: UTC)
+  platformSpecificData?: {
+    instagram?: {
+      contentType?: 'post' | 'story' | 'reel' | 'carousel'
+    }
+  } // Platform-specific settings (optional)
 }
 
 /**
