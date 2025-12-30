@@ -75,8 +75,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string; postId: string }> }
 ) {
+  console.log('🚨🚨🚨 PUT HANDLER STARTED 🚨🚨🚨')
   try {
     const { projectId: projectIdParam, postId } = await params
+    console.log(`🔵 PUT /api/projects/${projectIdParam}/posts/${postId}`)
     const projectId = parseInt(projectIdParam, 10)
 
     if (isNaN(projectId)) {
