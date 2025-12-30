@@ -75,10 +75,10 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: Promise<{ projectId: string; postId: string }> }
 ) {
-  console.log('🚨🚨🚨 PUT HANDLER STARTED 🚨🚨🚨')
+  console.error('🚨🚨🚨 PUT HANDLER STARTED 🚨🚨🚨')
   try {
     const { projectId: projectIdParam, postId } = await params
-    console.log(`🔵 PUT /api/projects/${projectIdParam}/posts/${postId}`)
+    console.error(`🔵 PUT /api/projects/${projectIdParam}/posts/${postId}`)
     const projectId = parseInt(projectIdParam, 10)
 
     if (isNaN(projectId)) {
@@ -133,7 +133,7 @@ export async function PUT(
     }
 
     const body = await req.json()
-    console.log(`[PUT /posts/${postId}] Request received with body:`, JSON.stringify(body, null, 2))
+    console.error(`[PUT /posts/${postId}] Request received with body:`, JSON.stringify(body, null, 2))
 
     const {
       postType,
@@ -197,13 +197,13 @@ export async function PUT(
 
     // Sync with Later if this post was created via Later
     if (existingPost.laterPostId) {
-      console.log(`[PUT /posts/${postId}] Syncing update with Later post ${existingPost.laterPostId}`)
-      console.log(`[PUT /posts] Received fields:`, {
+      console.error(`[PUT /posts/${postId}] Syncing update with Later post ${existingPost.laterPostId}`)
+      console.error(`[PUT /posts] Received fields:`, {
         caption: caption !== undefined ? 'YES' : 'NO',
         scheduledDatetime: scheduledDatetime !== undefined ? scheduledDatetime : 'NO',
         scheduleType: scheduleType !== undefined ? scheduleType : 'NO',
       })
-      console.log(`[PUT /posts] Existing values:`, {
+      console.error(`[PUT /posts] Existing values:`, {
         caption: existingPost.caption?.substring(0, 50) + '...',
         scheduledDatetime: existingPost.scheduledDatetime?.toISOString(),
       })
@@ -214,7 +214,7 @@ export async function PUT(
 
         // Update caption if changed
         if (caption !== undefined && caption !== existingPost.caption) {
-          console.log('[PUT /posts] 📝 Caption changed, will update Later')
+          console.error('[PUT /posts] 📝 Caption changed, will update Later')
           laterPayload.text = caption
         }
 
@@ -226,7 +226,7 @@ export async function PUT(
             ? new Date(existingPost.scheduledDatetime)
             : null
 
-          console.log('[PUT /posts] 📅 Comparing times:', {
+          console.error('[PUT /posts] 📅 Comparing times:', {
             new: newScheduledTime?.toISOString(),
             old: oldScheduledTime?.toISOString(),
             newTimestamp: newScheduledTime?.getTime(),
@@ -236,20 +236,20 @@ export async function PUT(
 
           // Check if time actually changed (comparing timestamps to avoid timezone issues)
           if (newScheduledTime?.getTime() !== oldScheduledTime?.getTime()) {
-            console.log('[PUT /posts] ⏰ Time changed, will update Later')
+            console.error('[PUT /posts] ⏰ Time changed, will update Later')
             laterPayload.publishAt = newScheduledTime?.toISOString()
           } else {
-            console.log('[PUT /posts] ⏰ Time unchanged, skipping')
+            console.error('[PUT /posts] ⏰ Time unchanged, skipping')
           }
         }
 
         // If there are changes to sync, send to Later
         if (Object.keys(laterPayload).length > 0) {
-          console.log('[PUT /posts] 🚀 Sending update to Later:', laterPayload)
+          console.error('[PUT /posts] 🚀 Sending update to Later:', laterPayload)
           await laterClient.updatePost(existingPost.laterPostId, laterPayload)
-          console.log('[PUT /posts] ✅ Later post updated successfully')
+          console.error('[PUT /posts] ✅ Later post updated successfully')
         } else {
-          console.log('[PUT /posts] ⚠️ No changes detected to sync with Later')
+          console.error('[PUT /posts] ⚠️ No changes detected to sync with Later')
         }
       } catch (error) {
         console.error('[PUT /posts] ❌ Failed to sync with Later:', error)
