@@ -303,6 +303,14 @@ export class LaterPostScheduler {
       const laterPost = await this.laterClient.createPost(payload)
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
+      console.log(`[Later Scheduler] 🔍 Later API Response:`, {
+        id: laterPost.id,
+        status: laterPost.status,
+        permalink: laterPost.permalink,
+        platformPostId: laterPost.platformPostId,
+        hasId: !!laterPost.id,
+        idType: typeof laterPost.id,
+      })
 
       // 6. Deduct credits AFTER successful post creation
       const organizationId =
@@ -329,6 +337,12 @@ export class LaterPostScheduler {
             ? PostStatus.FAILED
             : PostStatus.SCHEDULED
 
+      console.log(`[Later Scheduler] 💾 Saving laterPostId to database:`, {
+        postId: post.id,
+        laterPostId: laterPost.id,
+        newStatus,
+      })
+
       await db.socialPost.update({
         where: { id: post.id },
         data: {
@@ -338,6 +352,8 @@ export class LaterPostScheduler {
           instagramMediaId: laterPost.platformPostId || null,
         },
       })
+
+      console.log(`[Later Scheduler] ✅ Database updated successfully`)
 
       // 8. Create log
       const logMessage =
