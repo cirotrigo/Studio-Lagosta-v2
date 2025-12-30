@@ -195,6 +195,13 @@ export async function PUT(
       },
     })
 
+    // Debug: Check if post has laterPostId
+    console.error(`[PUT /posts] 🔍 Checking laterPostId:`, {
+      postId: existingPost.id,
+      laterPostId: existingPost.laterPostId,
+      hasLaterPostId: !!existingPost.laterPostId,
+    })
+
     // Sync with Later if this post was created via Later
     if (existingPost.laterPostId) {
       console.error(`[PUT /posts/${postId}] Syncing update with Later post ${existingPost.laterPostId}`)
