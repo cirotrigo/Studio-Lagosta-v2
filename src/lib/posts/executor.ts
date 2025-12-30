@@ -24,6 +24,15 @@ export class PostExecutor {
             lte: windowEnd,
           },
         },
+        include: {
+          Project: {
+            select: {
+              id: true,
+              name: true,
+              postingProvider: true,
+            },
+          },
+        },
       })
 
       // CATCH-UP: Find overdue posts (scheduled in the past but not sent)
@@ -35,6 +44,15 @@ export class PostExecutor {
           scheduledDatetime: {
             gte: sixHoursAgo,
             lt: windowStart, // Before the current window
+          },
+        },
+        include: {
+          Project: {
+            select: {
+              id: true,
+              name: true,
+              postingProvider: true,
+            },
           },
         },
         take: 5, // Process max 5 overdue posts per execution
@@ -68,7 +86,14 @@ export class PostExecutor {
         }
 
         try {
-          await this.scheduler.sendToZapier(post.id)
+          // Route to appropriate scheduler based on posting provider
+          if (post.Project.postingProvider === 'LATER') {
+            console.log(`📤 Sending Later post ${post.id} to Later API...`)
+            await this.scheduler.sendToLater(post.id)
+          } else {
+            console.log(`📤 Sending Zapier post ${post.id} to Zapier...`)
+            await this.scheduler.sendToZapier(post.id)
+          }
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
@@ -109,7 +134,17 @@ export class PostExecutor {
           },
         },
         include: {
-          post: true,
+          post: {
+            include: {
+              Project: {
+                select: {
+                  id: true,
+                  name: true,
+                  postingProvider: true,
+                },
+              },
+            },
+          },
         },
       })
 
@@ -127,8 +162,14 @@ export class PostExecutor {
             data: { status: RetryStatus.PROCESSING, executedAt: new Date() },
           })
 
-          // Try to send again
-          await this.scheduler.sendToZapier(retry.postId)
+          // Try to send again - route to appropriate scheduler
+          if (retry.post.Project.postingProvider === 'LATER') {
+            console.log(`🔄 Retrying Later post ${retry.postId}...`)
+            await this.scheduler.sendToLater(retry.postId)
+          } else {
+            console.log(`🔄 Retrying Zapier post ${retry.postId}...`)
+            await this.scheduler.sendToZapier(retry.postId)
+          }
 
           // Mark retry as success
           await db.postRetry.update({

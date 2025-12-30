@@ -132,29 +132,42 @@ export class LaterPostScheduler {
     // Log creation
     await this.createLog(post.id, PostLogEvent.CREATED, 'Post criado via Later')
 
-    // Send to Later API
-    try {
-      await this.sendToLater(post.id)
-    } catch (error) {
-      console.error('[Later Scheduler] Failed to send post:', error)
+    // For IMMEDIATE posts, send to Later API now
+    // For SCHEDULED posts, keep in database and send via cron job later
+    if (data.scheduleType === ScheduleType.IMMEDIATE) {
+      console.log('[Later Scheduler] 🚀 IMMEDIATE post - sending to Later API now')
+      try {
+        await this.sendToLater(post.id)
+      } catch (error) {
+        console.error('[Later Scheduler] Failed to send immediate post:', error)
 
-      // Update status to FAILED
-      await db.socialPost.update({
-        where: { id: post.id },
-        data: {
-          status: PostStatus.FAILED,
-          errorMessage: error instanceof Error ? error.message : 'Unknown error',
-          failedAt: new Date(),
-        },
-      })
+        // Update status to FAILED
+        await db.socialPost.update({
+          where: { id: post.id },
+          data: {
+            status: PostStatus.FAILED,
+            errorMessage: error instanceof Error ? error.message : 'Unknown error',
+            failedAt: new Date(),
+          },
+        })
+
+        await this.createLog(
+          post.id,
+          PostLogEvent.FAILED,
+          `Erro ao enviar para Later: ${error instanceof Error ? error.message : 'Unknown'}`
+        )
+
+        throw error
+      }
+    } else {
+      console.log('[Later Scheduler] 📅 SCHEDULED post - keeping in database, will send via cron job')
+      console.log(`[Later Scheduler] Scheduled for: ${scheduledDatetime?.toISOString()}`)
 
       await this.createLog(
         post.id,
-        PostLogEvent.FAILED,
-        `Erro ao enviar para Later: ${error instanceof Error ? error.message : 'Unknown'}`
+        PostLogEvent.CREATED,
+        `Post agendado para ${scheduledDatetime?.toISOString()} - será enviado via cron job`
       )
-
-      throw error
     }
 
     // If RECURRING, create series (handled separately)
@@ -269,18 +282,13 @@ export class LaterPostScheduler {
           ? `${post.caption}\n\n${post.verificationTag}`
           : post.caption
 
-      // 3. Prepare publish time (ISO 8601 string)
-      const scheduledFor =
-        post.scheduleType === ScheduleType.IMMEDIATE
-          ? undefined // Publish immediately
-          : post.scheduledDatetime?.toISOString()
-
-      // 4. Map PostType to Instagram content type
+      // 3. Map PostType to Instagram content type
       const contentType = this.mapPostTypeToLater(post.postType)
       console.log(`[Later Scheduler] Instagram contentType: ${contentType}`)
 
-      // 5. Create post in Later with correct API structure
-      console.log('[Later Scheduler] Creating post in Later...')
+      // 4. Create post in Later - ALWAYS publish immediately
+      // Scheduling is handled locally, Later just publishes when we call this
+      console.log('[Later Scheduler] Creating post in Later (immediate publish)...')
 
       const payload = {
         content: captionWithTag,
@@ -294,8 +302,8 @@ export class LaterPostScheduler {
           },
         ],
         mediaItems,
-        scheduledFor,
-        publishNow: post.scheduleType === ScheduleType.IMMEDIATE,
+        // NO scheduledFor - always publish immediately
+        publishNow: true, // Always true - scheduling done locally
       }
 
       console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
@@ -365,15 +373,11 @@ export class LaterPostScheduler {
       }
 
       // 8. Create log
-      const logMessage =
-        post.scheduleType === ScheduleType.IMMEDIATE
-          ? 'Post enviado para Later - publicação imediata'
-          : `Post agendado no Later para ${scheduledFor}`
+      const logMessage = 'Post enviado para Later - publicação imediata'
 
       await this.createLog(post.id, PostLogEvent.SENT, logMessage, {
         laterPostId: laterPost.id,
         laterStatus: laterPost.status,
-        scheduledFor,
       })
 
       console.log(`[Later Scheduler] ✅ Post ${post.id} processed successfully`)

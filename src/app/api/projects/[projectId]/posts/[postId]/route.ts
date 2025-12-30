@@ -222,7 +222,7 @@ export async function PUT(
         // Update caption if changed
         if (caption !== undefined && caption !== existingPost.caption) {
           console.error('[PUT /posts] 📝 Caption changed, will update Later')
-          laterPayload.text = caption
+          laterPayload.content = caption // ✅ Use 'content' not 'text'
         }
 
         // Update scheduled time if changed
@@ -244,7 +244,7 @@ export async function PUT(
           // Check if time actually changed (comparing timestamps to avoid timezone issues)
           if (newScheduledTime?.getTime() !== oldScheduledTime?.getTime()) {
             console.error('[PUT /posts] ⏰ Time changed, will update Later')
-            laterPayload.publishAt = newScheduledTime?.toISOString()
+            laterPayload.scheduledFor = newScheduledTime?.toISOString() // ✅ Use 'scheduledFor' not 'publishAt'
           } else {
             console.error('[PUT /posts] ⏰ Time unchanged, skipping')
           }
@@ -256,19 +256,12 @@ export async function PUT(
 
           try {
             await laterClient.updatePost(existingPost.laterPostId, laterPayload)
-            console.error('[PUT /posts] ✅ Later post updated successfully')
+            console.error('[PUT /posts] ✅ Later post updated successfully via PUT /posts/:id')
           } catch (updateError: any) {
-            // Later API might not support PATCH updates (405 Method Not Allowed)
-            // Try alternative approach: delete + recreate
-            if (updateError.statusCode === 405) {
-              console.error('[PUT /posts] ⚠️ Later API does not support PATCH updates')
-              console.error('[PUT /posts] 💡 Alternative: Edits will only update our database')
-              console.error('[PUT /posts] 📝 User needs to manually update in Later dashboard')
-              // Don't throw - let the local update succeed
-              // User will see the change in our UI but needs to update Later manually
-            } else {
-              throw updateError
-            }
+            // Log error but don't fail the whole request - local update succeeded
+            console.error('[PUT /posts] ❌ Failed to sync with Later API:', updateError)
+            // User will see the change in our UI even if Later sync failed
+            // They may need to manually update in Later dashboard
           }
         } else {
           console.error('[PUT /posts] ⚠️ No changes detected to sync with Later')

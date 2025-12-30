@@ -464,16 +464,18 @@ export class LaterClient {
 
   /**
    * Update a post
-   * PATCH /posts/:postId
+   * PUT /posts/:postId
+   * Only posts with status: draft, scheduled, failed, or partial can be edited
    */
   async updatePost(
     postId: string,
     payload: UpdateLaterPostPayload
   ): Promise<LaterPost> {
     console.log(`[Later Client] Updating post: ${postId}`)
+    console.log(`[Later Client] Update payload:`, JSON.stringify(payload, null, 2))
 
     const post = await this.request<LaterPost>(`/posts/${postId}`, {
-      method: 'PATCH',
+      method: 'PUT',
       body: JSON.stringify(payload),
     })
 

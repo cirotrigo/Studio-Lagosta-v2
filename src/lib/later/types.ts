@@ -119,11 +119,25 @@ export interface CreateLaterPostPayload {
 
 /**
  * Payload for updating an existing Later post
+ * Only posts with status: draft, scheduled, failed, or partial can be edited
+ * Posts with status: published, publishing, or cancelled CANNOT be edited
  */
 export interface UpdateLaterPostPayload {
-  text?: string
-  publishAt?: string
-  platformSpecificData?: PlatformSpecificData
+  content?: string // Post text/caption
+  scheduledFor?: string // ISO 8601 timestamp
+  title?: string // Post title
+  mediaItems?: Array<{
+    type?: 'image' | 'video'
+    url: string
+  }> // Update media files
+  platforms?: Array<{
+    platform: string
+    accountId: string
+    platformSpecificData?: {
+      contentType?: 'post' | 'story' | 'reel' | 'carousel'
+    }
+  }> // Update platforms
+  timezone?: string // Timezone for scheduling
 }
 
 /**

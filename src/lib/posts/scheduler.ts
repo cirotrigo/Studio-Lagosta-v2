@@ -185,6 +185,14 @@ export class PostScheduler {
     }
   }
 
+  /**
+   * Send an existing post to Later API
+   * Used by cron job to send scheduled posts
+   */
+  async sendToLater(postId: string) {
+    return this.getLaterScheduler().sendToLater(postId)
+  }
+
   async sendToZapier(postId: string) {
     try {
       const post = await db.socialPost.findUnique({

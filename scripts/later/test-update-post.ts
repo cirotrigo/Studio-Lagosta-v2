@@ -39,7 +39,7 @@ async function testUpdatePost() {
     console.log('\n2️⃣ Testing caption update...')
     try {
       const updatePayload = {
-        text: `${currentPost.text || ''} [TESTE ATUALIZAÇÃO]`,
+        content: `${currentPost.text || ''} [TESTE ATUALIZAÇÃO]`,
       }
       console.log('Update payload:', updatePayload)
 
@@ -61,7 +61,7 @@ async function testUpdatePost() {
       tomorrow.setHours(15, 0, 0, 0)
 
       const updatePayload = {
-        publishAt: tomorrow.toISOString(),
+        scheduledFor: tomorrow.toISOString(),
       }
       console.log('Update payload:', updatePayload)
 
