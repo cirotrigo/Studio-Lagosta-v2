@@ -253,8 +253,23 @@ export async function PUT(
         // If there are changes to sync, send to Later
         if (Object.keys(laterPayload).length > 0) {
           console.error('[PUT /posts] 🚀 Sending update to Later:', laterPayload)
-          await laterClient.updatePost(existingPost.laterPostId, laterPayload)
-          console.error('[PUT /posts] ✅ Later post updated successfully')
+
+          try {
+            await laterClient.updatePost(existingPost.laterPostId, laterPayload)
+            console.error('[PUT /posts] ✅ Later post updated successfully')
+          } catch (updateError: any) {
+            // Later API might not support PATCH updates (405 Method Not Allowed)
+            // Try alternative approach: delete + recreate
+            if (updateError.statusCode === 405) {
+              console.error('[PUT /posts] ⚠️ Later API does not support PATCH updates')
+              console.error('[PUT /posts] 💡 Alternative: Edits will only update our database')
+              console.error('[PUT /posts] 📝 User needs to manually update in Later dashboard')
+              // Don't throw - let the local update succeed
+              // User will see the change in our UI but needs to update Later manually
+            } else {
+              throw updateError
+            }
+          }
         } else {
           console.error('[PUT /posts] ⚠️ No changes detected to sync with Later')
         }

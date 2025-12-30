@@ -428,10 +428,20 @@ export class LaterClient {
     // Log full payload for debugging
     console.log('[Later Client] Full payload:', JSON.stringify(payload, null, 2))
 
-    const post = await this.request<LaterPost>('/posts', {
+    const response = await this.request<any>('/posts', {
       method: 'POST',
       body: JSON.stringify(payload),
     })
+
+    console.log('[Later Client] 🔍 RAW RESPONSE:', JSON.stringify(response, null, 2))
+
+    // Later API returns { post: {...}, message: "..." }
+    // Extract the post object and normalize _id to id
+    const postData = response.post || response
+    const post: LaterPost = {
+      ...postData,
+      id: postData._id || postData.id, // Normalize _id to id
+    }
 
     console.log(`[Later Client] Post created: ${post.id} (${post.status})`)
 

@@ -343,17 +343,26 @@ export class LaterPostScheduler {
         newStatus,
       })
 
-      await db.socialPost.update({
-        where: { id: post.id },
-        data: {
-          laterPostId: laterPost.id,
-          status: newStatus,
-          publishedUrl: laterPost.permalink || null,
-          instagramMediaId: laterPost.platformPostId || null,
-        },
-      })
+      try {
+        const updatedPost = await db.socialPost.update({
+          where: { id: post.id },
+          data: {
+            laterPostId: laterPost.id,
+            status: newStatus,
+            publishedUrl: laterPost.permalink || null,
+            instagramMediaId: laterPost.platformPostId || null,
+          },
+        })
 
-      console.log(`[Later Scheduler] ✅ Database updated successfully`)
+        console.log(`[Later Scheduler] ✅ Database updated successfully`)
+        console.log(`[Later Scheduler] 🔍 Verify save:`, {
+          savedLaterPostId: updatedPost.laterPostId,
+          matches: updatedPost.laterPostId === laterPost.id,
+        })
+      } catch (updateError) {
+        console.error(`[Later Scheduler] ❌❌❌ DATABASE UPDATE FAILED:`, updateError)
+        throw updateError
+      }
 
       // 8. Create log
       const logMessage =
