@@ -58,6 +58,15 @@
     },
     "app/api/export/video/save/route.ts": {
       "maxDuration": 300
+    },
+    "app/api/cron/fetch-later-analytics/route.ts": {
+      "maxDuration": 300
+    },
+    "app/api/projects/[id]/analytics/route.ts": {
+      "maxDuration": 30
+    },
+    "app/api/posts/[id]/analytics/route.ts": {
+      "maxDuration": 30
     }
   },
   "crons": [
@@ -79,6 +88,10 @@
     },
     {
       "path": "/api/cron/analytics",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/fetch-later-analytics",
       "schedule": "0 */6 * * *"
     },
     {

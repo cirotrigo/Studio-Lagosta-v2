@@ -161,13 +161,14 @@ export async function GET() {
       if (!accountId) return null
       try {
         const account = await laterClient.getAccount(accountId)
-        const followers = (account as any)?.metadata?.profileData?.followersCount || null
+        const followers = account.metadata?.profileData?.followersCount || null
         if (followers !== null) {
           followersMap.set(accountId, followers)
         }
+        console.log(`[Projects API] ✅ Fetched followers for ${accountId}: ${followers}`)
         return { accountId, followers }
       } catch (error) {
-        console.error(`[Projects API] Failed to fetch Later account ${accountId}:`, error)
+        console.error(`[Projects API] ❌ Failed to fetch Later account ${accountId}:`, error)
         return null
       }
     })

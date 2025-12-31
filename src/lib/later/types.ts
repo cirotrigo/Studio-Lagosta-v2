@@ -20,6 +20,13 @@ export interface LaterAccount {
   profilePicture?: string
   profileUrl?: string
   isActive: boolean
+  metadata?: {
+    profileData?: {
+      followersCount?: number
+      followingCount?: number
+      postsCount?: number
+    }
+  }
   createdAt?: string // ISO timestamp
   updatedAt?: string // ISO timestamp
 }

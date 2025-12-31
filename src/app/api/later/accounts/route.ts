@@ -24,16 +24,14 @@ export async function GET(req: NextRequest) {
 
     // Map to simpler format for frontend
     const mappedAccounts = accounts.map((account) => {
-      const accountData = account as any
-
       return {
         id: account._id,
         username: account.username,
         displayName: account.displayName,
         platform: account.platform,
         isActive: account.isActive,
-        profileId: accountData.profileId || account._id,
-        followers: accountData.metadata?.profileData?.followersCount || null,
+        profileId: typeof account.profileId === 'string' ? account.profileId : account.profileId._id,
+        followers: account.metadata?.profileData?.followersCount || null,
       }
     })
 
