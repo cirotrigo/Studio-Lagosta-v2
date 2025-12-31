@@ -1065,6 +1065,21 @@ model SocialPost {
   // Later API tracking (new posting provider)
   laterPostId String? @db.Text // Later post/update ID
 
+  // Late Status Sync (NEW - Analytics + Webhook)
+  lateStatus       String?   // 'scheduled' | 'published' | 'failed' | 'publishing'
+  latePublishedAt  DateTime? // Quando Late publicou
+  latePlatformUrl  String?   // URL do post no Instagram
+  lastSyncAt       DateTime? // Última sincronização
+
+  // Late Analytics (NEW - requires Analytics add-on $10/month)
+  analyticsLikes       Int?      // Curtidas
+  analyticsComments    Int?      // Comentários
+  analyticsShares      Int?      // Compartilhamentos
+  analyticsReach       Int?      // Alcance
+  analyticsImpressions Int?      // Impressões
+  analyticsEngagement  Int?      // likes + comments + shares
+  analyticsFetchedAt   DateTime? // Quando buscou analytics
+
   // Story verification
   verificationTag      String?
   verificationStatus   VerificationStatus @default(SKIPPED)
@@ -1113,6 +1128,12 @@ model SocialPost {
   @@index([status, scheduleType, scheduledDatetime])
   // Later API tracking
   @@index([laterPostId])
+  // Late Status Sync indexes (performance for cron jobs)
+  @@index([laterPostId, status])
+  @@index([status, lastSyncAt])
+  // Late Analytics indexes (performance for analytics fetch)
+  @@index([status, analyticsFetchedAt])
+  @@index([latePublishedAt])
 }
 
 model PostRetry {
