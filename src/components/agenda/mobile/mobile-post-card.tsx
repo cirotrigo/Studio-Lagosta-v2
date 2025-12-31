@@ -186,11 +186,11 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
               </Badge>
             )}
 
-            {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
+            {/* Badge de Lembrete - publicação manual */}
             {post.publishType === 'REMINDER' && (
               <Badge
                 className="text-[9px] bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-0.5 px-1.5 py-0.5 font-semibold"
-                title="Lembrete no Buffer - não publicado no Instagram"
+                title="Lembrete - publicação manual"
               >
                 <Bell className="w-2.5 h-2.5" />
                 <span>Lembrete</span>

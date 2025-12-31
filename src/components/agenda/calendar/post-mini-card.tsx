@@ -159,11 +159,11 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
             </Badge>
           )}
 
-          {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
+          {/* Badge de Lembrete - publicação manual */}
           {post.publishType === 'REMINDER' && (
             <Badge
               className="h-3 px-1 text-[8px] bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-0.5 font-semibold"
-              title="Lembrete no Buffer - não publicado no Instagram"
+              title="Lembrete - publicação manual"
             >
               <Bell className="w-2 h-2" />
               <span className="hidden sm:inline">Lembrete</span>
