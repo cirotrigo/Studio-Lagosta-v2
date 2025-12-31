@@ -243,11 +243,11 @@ export class LaterPostScheduler {
         throw new Error('Post não encontrado')
       }
 
-      // Validate Later account is configured
-      if (!post.Project.laterAccountId) {
+      // Validate Later profile is configured
+      if (!post.Project.laterProfileId) {
         throw new Error(
-          `Later account not configured for project "${post.Project.name}" (ID: ${post.projectId}). ` +
-            `Please set laterAccountId in the project settings.`
+          `Later profile not configured for project "${post.Project.name}" (ID: ${post.projectId}). ` +
+            `Please set laterProfileId in the project settings.`
         )
       }
 
@@ -263,7 +263,8 @@ export class LaterPostScheduler {
 
       console.log(`[Later Scheduler] Sending post ${post.id} to Later API`)
       console.log(`[Later Scheduler] Project: ${post.Project.name} (ID: ${post.projectId})`)
-      console.log(`[Later Scheduler] Later Account: ${post.Project.laterAccountId}`)
+      console.log(`[Later Scheduler] Later Profile ID: ${post.Project.laterProfileId}`)
+      console.log(`[Later Scheduler] Instagram Username: ${post.Project.instagramUsername}`)
 
       // 1. Prepare media items with correct structure
       console.log(`[Later Scheduler] Preparing ${post.mediaUrls.length} media items`)
@@ -295,7 +296,7 @@ export class LaterPostScheduler {
         platforms: [
           {
             platform: 'instagram',
-            accountId: post.Project.laterAccountId,
+            accountId: post.Project.laterProfileId, // FIXED: Use Profile ID, not Account ID
             platformSpecificData: {
               contentType,
             },
