@@ -82,6 +82,10 @@
       "schedule": "0 */6 * * *"
     },
     {
+      "path": "/api/cron/reminders",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/refill-org-credits",
       "schedule": "0 0 1 * *"
     },
