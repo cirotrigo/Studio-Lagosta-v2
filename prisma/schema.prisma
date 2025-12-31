@@ -184,6 +184,9 @@ model Project {
   laterProfileId  String?          @db.Text
   postingProvider PostingProvider? @default(ZAPIER)
 
+  // Webhook for reminder notifications (n8n integration)
+  webhookReminderUrl String? @db.Text
+
   // AI Chat configuration
   aiChatBehavior String? @db.Text
 
@@ -1040,6 +1043,10 @@ model SocialPost {
   altText       String[]    @default([])
   firstComment  String?     @db.Text
   publishType   PublishType @default(DIRECT)
+
+  // Reminder notifications (for manual publishing)
+  reminderExtraInfo String?   @db.Text // Extra info/link for reminder
+  reminderSentAt    DateTime? // When reminder webhook was sent
 
   // Scheduling
   scheduleType      ScheduleType
