@@ -47,6 +47,8 @@ export async function PATCH(
       googleDriveVideosFolderName?: string | null
       aiChatBehavior?: string | null
       webhookReminderUrl?: string | null
+      laterProfileId?: string | null
+      postingProvider?: 'ZAPIER' | 'LATER' | null
     } = {}
 
     const assignField = <K extends keyof typeof dataToUpdate>(key: K) => {
@@ -63,6 +65,8 @@ export async function PATCH(
     assignField('googleDriveVideosFolderName')
     assignField('aiChatBehavior')
     assignField('webhookReminderUrl')
+    assignField('laterProfileId')
+    assignField('postingProvider')
 
     const updated = await db.project.update({
       where: { id: projectIdNum },
@@ -81,6 +85,8 @@ export async function PATCH(
         googleDriveVideosFolderName: true,
         aiChatBehavior: true,
         webhookReminderUrl: true,
+        laterProfileId: true,
+        postingProvider: true,
         createdAt: true,
         updatedAt: true,
       },

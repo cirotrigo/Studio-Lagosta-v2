@@ -28,6 +28,7 @@ import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
+import { LaterProviderConfig } from '@/components/projects/later-provider-config'
 import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
@@ -346,6 +347,13 @@ export default function ProjectDetailPage() {
                   instagramAccountId={projectDetails.instagramAccountId}
                   instagramUsername={projectDetails.instagramUsername}
                   zapierWebhookUrl={projectDetails.zapierWebhookUrl}
+                />
+
+                {/* Later API Provider Configuration */}
+                <LaterProviderConfig
+                  projectId={projectId}
+                  laterProfileId={projectDetails.laterProfileId}
+                  postingProvider={projectDetails.postingProvider}
                 />
 
                 {/* Reminder Webhook Configuration */}
