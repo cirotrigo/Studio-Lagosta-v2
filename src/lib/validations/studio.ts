@@ -58,6 +58,7 @@ export const updateProjectSettingsSchema = z
     googleDriveVideosFolderId: driveField,
     googleDriveVideosFolderName: driveField,
     aiChatBehavior: z.string().max(10000, 'Comportamento do chat deve ter no máximo 10.000 caracteres').nullable().optional(),
+    webhookReminderUrl: z.string().url('URL do webhook inválida').nullable().optional().or(z.literal('')),
   })
   .superRefine((data, ctx) => {
     const pairs: Array<[keyof typeof data, keyof typeof data, string]> = [
@@ -103,13 +104,14 @@ export const updateProjectSettingsSchema = z
       }
     }
 
-    // Allow aiChatBehavior to be sent alone or with Google Drive fields
+    // Allow aiChatBehavior or webhookReminderUrl to be sent alone or with Google Drive fields
     const hasAiChatBehavior = Object.prototype.hasOwnProperty.call(data, 'aiChatBehavior')
+    const hasWebhookReminderUrl = Object.prototype.hasOwnProperty.call(data, 'webhookReminderUrl')
 
-    if (!touched && !hasAiChatBehavior) {
+    if (!touched && !hasAiChatBehavior && !hasWebhookReminderUrl) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: 'Envie pelo menos um par de campos de pasta do Google Drive ou o comportamento do chat',
+        message: 'Envie pelo menos um campo para atualizar',
       })
     }
   })
