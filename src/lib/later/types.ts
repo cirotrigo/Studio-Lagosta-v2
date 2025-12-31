@@ -218,3 +218,61 @@ export interface LaterClientConfig {
   timeout?: number // Request timeout in ms (default: 30000)
   retryAttempts?: number // Number of retry attempts for failed requests (default: 3)
 }
+
+// =============================================================================
+// ANALYTICS TYPES (requires Analytics add-on $10/month)
+// =============================================================================
+
+/**
+ * Analytics response from Later API
+ * GET /api/v1/analytics
+ * Requires Analytics add-on ($10/month)
+ */
+export interface LaterAnalyticsResponse {
+  posts: LaterPostAnalytics[]
+  overview?: {
+    totalPosts: number
+    totalLikes: number
+    totalComments: number
+    avgEngagement: number
+  }
+  pagination?: {
+    page: number
+    limit: number
+    total: number
+  }
+}
+
+/**
+ * Analytics for a single post
+ */
+export interface LaterPostAnalytics {
+  postId: string
+  platform: string
+  publishedAt: string
+  platformPostUrl?: string
+  metrics: {
+    likes: number
+    comments: number
+    shares?: number
+    impressions?: number
+    reach?: number
+    engagement: number // likes + comments + shares
+    engagementRate?: number // engagement / reach
+  }
+}
+
+/**
+ * Parameters for analytics query
+ */
+export interface AnalyticsQueryParams {
+  platform?: 'instagram' | 'all'
+  profileId?: string // Filter by profile
+  fromDate?: string // ISO date '2025-01-01'
+  toDate?: string // ISO date '2025-01-31'
+  limit?: number // Max 100
+  page?: number
+  sortBy?: 'date' | 'engagement'
+  order?: 'asc' | 'desc'
+  postId?: string // Get analytics for specific post
+}

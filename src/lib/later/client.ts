@@ -31,6 +31,9 @@ import type {
   RateLimitInfo,
   LaterClientConfig,
   MediaUploadOptions,
+  LaterAnalyticsResponse,
+  LaterPostAnalytics,
+  AnalyticsQueryParams,
 } from './types'
 
 /**
@@ -591,6 +594,67 @@ export class LaterClient {
     )
 
     return post
+  }
+
+  // =============================================================================
+  // ANALYTICS API (requires Analytics add-on $10/month)
+  // =============================================================================
+
+  /**
+   * Get analytics for posts
+   * Requires Analytics add-on ($10/month)
+   * Rate limit: Check docs (assuming 30 requests/hour)
+   *
+   * GET /api/v1/analytics
+   */
+  async getAnalytics(params?: AnalyticsQueryParams): Promise<LaterAnalyticsResponse> {
+    const queryParams = new URLSearchParams({
+      platform: params?.platform || 'instagram',
+      limit: String(params?.limit || 100),
+      page: String(params?.page || 1),
+      sortBy: params?.sortBy || 'date',
+      order: params?.order || 'desc',
+    })
+
+    // Add optional params
+    if (params?.profileId) {
+      queryParams.set('profileId', params.profileId)
+    }
+    if (params?.fromDate) {
+      queryParams.set('fromDate', params.fromDate)
+    }
+    if (params?.toDate) {
+      queryParams.set('toDate', params.toDate)
+    }
+    if (params?.postId) {
+      queryParams.set('postId', params.postId)
+    }
+
+    console.log('[Later Analytics] Fetching analytics:', queryParams.toString())
+
+    const response = await this.request<LaterAnalyticsResponse>(
+      `/analytics?${queryParams}`
+    )
+
+    console.log(`[Later Analytics] Fetched ${response.posts?.length || 0} posts`)
+
+    return response
+  }
+
+  /**
+   * Get analytics for specific post
+   * GET /api/v1/analytics?postId={POST_ID}
+   */
+  async getPostAnalytics(postId: string): Promise<LaterPostAnalytics> {
+    console.log('[Later Analytics] Fetching analytics for post:', postId)
+
+    const response = await this.getAnalytics({ postId })
+
+    if (!response.posts || response.posts.length === 0) {
+      throw new LaterNotFoundError(`Analytics not found for post: ${postId}`)
+    }
+
+    return response.posts[0]
   }
 }
 
