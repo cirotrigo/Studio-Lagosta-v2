@@ -33,6 +33,8 @@ import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-co
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
+import { InstagramTabContent } from '@/components/projects/instagram-tab-content'
+import { AnalyticsTabContent } from '@/components/projects/analytics-tab-content'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -325,27 +327,11 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="instagram" className="mt-6">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Instagram Analytics</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Visualize o relatório completo do Instagram com metas semanais e heatmap de stories.
-            </p>
-            <Button onClick={() => router.push(`/projects/${projectId}/instagram`)}>
-              Abrir Relatório Instagram
-            </Button>
-          </Card>
+          <InstagramTabContent projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-6">
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4">Later Analytics</h2>
-            <p className="text-sm text-muted-foreground mb-4">
-              Visualize analytics completos dos posts publicados via Later: engagement, alcance, impressões e mais.
-            </p>
-            <Button onClick={() => router.push(`/projects/${projectId}/analytics`)}>
-              Abrir Dashboard de Analytics
-            </Button>
-          </Card>
+          <AnalyticsTabContent projectId={projectId} projectName={projectDetails?.name} />
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-6">

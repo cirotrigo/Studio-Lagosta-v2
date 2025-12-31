@@ -152,31 +152,32 @@ export async function GET() {
   const followersMap = new Map<string, number>()
 
   try {
-    const laterClient = getLaterClient()
     const projectsWithLater = combined.filter(p => p.laterAccountId)
-    const uniqueLaterAccountIds = [...new Set(projectsWithLater.map(p => p.laterAccountId))]
 
-    // Fetch account data in parallel for all unique Later accounts
-    const accountPromises = uniqueLaterAccountIds.map(async (accountId) => {
-      if (!accountId) return null
-      try {
-        const account = await laterClient.getAccount(accountId)
-        const followers = account.metadata?.profileData?.followersCount || null
-        if (followers !== null) {
+    if (projectsWithLater.length > 0) {
+      const laterClient = getLaterClient()
+
+      // Fetch ALL accounts once from Later API (more efficient than individual calls)
+      const accounts = await laterClient.listAccounts()
+      console.log(`[Projects API] 📋 Fetched ${accounts.length} accounts from Later`)
+
+      // Create map of accountId -> followers
+      accounts.forEach((account) => {
+        const accountId = account._id || account.id
+        const accountData = account as any
+        const followers = accountData?.metadata?.profileData?.followersCount || null
+
+        if (accountId && followers !== null) {
           followersMap.set(accountId, followers)
+          console.log(`[Projects API] ✅ Account ${accountId} (${account.username}): ${followers} followers`)
         }
-        console.log(`[Projects API] ✅ Fetched followers for ${accountId}: ${followers}`)
-        return { accountId, followers }
-      } catch (error) {
-        console.error(`[Projects API] ❌ Failed to fetch Later account ${accountId}:`, error)
-        return null
-      }
-    })
+      })
 
-    await Promise.allSettled(accountPromises)
+      console.log(`[Projects API] 📊 Total accounts with followers: ${followersMap.size}/${accounts.length}`)
+    }
   } catch (error) {
-    console.error('[Projects API] Error fetching Later followers:', error)
-    // Continue without followers data
+    console.error('[Projects API] ❌ Error fetching Later followers:', error)
+    // Continue without followers data - graceful degradation
   }
 
   // OPTIMIZATION: Return projects immediately without scheduled post counts

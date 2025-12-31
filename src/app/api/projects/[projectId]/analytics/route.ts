@@ -6,42 +6,40 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
 /**
- * GET /api/projects/[id]/analytics
+ * GET /api/projects/[projectId]/analytics
  * Returns aggregated analytics for all posts in a project
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
-    const { userId } = await auth()
+    const { userId, orgId } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = await params
+    const { projectId: id } = await params
     const projectId = parseInt(id, 10)
 
     if (isNaN(projectId)) {
       return NextResponse.json({ error: 'Invalid project ID' }, { status: 400 })
     }
 
-    // Verify project ownership
-    const project = await db.project.findUnique({
-      where: { id: projectId },
-      select: { id: true, userId: true },
-    })
+    // Verify project access (handles both user and organization ownership)
+    const project = await fetchProjectWithShares(projectId)
 
     if (!project) {
       return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     }
 
-    if (project.userId !== userId) {
+    if (!hasProjectReadAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

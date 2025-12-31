@@ -13,12 +13,12 @@ export const runtime = 'nodejs'
 export const maxDuration = 30
 
 /**
- * GET /api/posts/[id]/analytics
+ * GET /api/posts/[postId]/analytics
  * Returns cached analytics data from database
  */
 export async function GET(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -26,7 +26,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = await params
+    const { postId: id } = await params
 
     // Fetch post with analytics
     const post = await db.socialPost.findUnique({
@@ -75,12 +75,12 @@ export async function GET(
 }
 
 /**
- * POST /api/posts/[id]/analytics
+ * POST /api/posts/[postId]/analytics
  * Force refresh analytics from Later API
  */
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ postId: string }> }
 ) {
   try {
     const { userId } = await auth()
@@ -88,7 +88,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const { id } = await params
+    const { postId: id } = await params
 
     // Fetch post
     const post = await db.socialPost.findUnique({
