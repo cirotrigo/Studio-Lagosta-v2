@@ -12,27 +12,35 @@ import crypto from 'crypto'
 
 /**
  * Verify webhook signature for security
- * IMPORTANT: Implement when Late provides webhook secret
+ * Late uses HMAC SHA-256 with X-Late-Signature header
  */
 function verifyWebhookSignature(
   payload: string,
   signature: string | null,
   secret: string
 ): boolean {
-  if (!signature || !secret) {
-    // For now, accept without verification
-    // TODO: Implement HMAC when Late provides documentation
+  // If no secret configured, log warning but allow (development only)
+  if (!secret) {
+    console.warn('[Late Webhook] ⚠️ LATE_WEBHOOK_SECRET not configured - webhook verification disabled')
     return true
+  }
+
+  if (!signature) {
+    console.error('[Late Webhook] Missing X-Late-Signature header')
+    return false
   }
 
   try {
     const hmac = crypto.createHmac('sha256', secret)
     const digest = hmac.update(payload).digest('hex')
+
+    // Compare signatures securely
     return crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(digest)
     )
-  } catch {
+  } catch (error) {
+    console.error('[Late Webhook] Signature verification failed:', error)
     return false
   }
 }
@@ -61,12 +69,24 @@ export async function POST(req: NextRequest) {
 
     // Process events
     switch (event.type) {
+      case 'post.scheduled':
+        await handlePostScheduled(event.data)
+        break
+
       case 'post.published':
         await handlePostPublished(event.data)
         break
 
       case 'post.failed':
         await handlePostFailed(event.data)
+        break
+
+      case 'post.partial':
+        await handlePartialPublish(event.data)
+        break
+
+      case 'account.disconnected':
+        await handleAccountDisconnected(event.data)
         break
 
       case 'post.analytics_updated':
@@ -216,8 +236,177 @@ async function handlePostFailed(data: {
 }
 
 /**
+ * Post scheduled (audit log)
+ */
+async function handlePostScheduled(data: {
+  post: {
+    _id: string
+    scheduledFor?: string
+  }
+}) {
+  console.log('[Late Webhook] Processing post.scheduled:', data.post._id)
+
+  const post = await db.socialPost.findFirst({
+    where: { laterPostId: data.post._id }
+  })
+
+  if (!post) {
+    console.warn(`[Late Webhook] Post not found: ${data.post._id}`)
+    return
+  }
+
+  // Create audit log
+  await db.postLog.create({
+    data: {
+      postId: post.id,
+      event: PostLogEvent.SCHEDULED,
+      message: 'Post scheduled in Late',
+      metadata: {
+        laterPostId: data.post._id,
+        scheduledFor: data.post.scheduledFor
+      }
+    }
+  })
+
+  console.log(`📅 [Late Webhook] Post ${post.id} scheduled logged`)
+}
+
+/**
+ * Partial publish (some platforms succeeded, others failed)
+ */
+async function handlePartialPublish(data: {
+  post: {
+    _id: string
+    status: 'partial'
+    platforms: Array<{
+      platform: string
+      status: 'published' | 'failed'
+      error?: string
+      platformPostUrl?: string
+    }>
+  }
+}) {
+  console.log('[Late Webhook] Processing post.partial:', data.post._id)
+
+  const post = await db.socialPost.findFirst({
+    where: { laterPostId: data.post._id }
+  })
+
+  if (!post) {
+    console.warn(`[Late Webhook] Post not found: ${data.post._id}`)
+    return
+  }
+
+  const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
+
+  // If Instagram succeeded, mark as POSTED
+  if (igPlatform?.status === 'published') {
+    await db.socialPost.update({
+      where: { id: post.id },
+      data: {
+        status: PostStatus.POSTED,
+        lateStatus: 'partial',
+        latePlatformUrl: igPlatform.platformPostUrl || null,
+        sentAt: new Date(),
+        lastSyncAt: new Date()
+      }
+    })
+
+    await db.postLog.create({
+      data: {
+        postId: post.id,
+        event: PostLogEvent.SENT,
+        message: 'Instagram published (partial success)',
+        metadata: {
+          laterPostId: data.post._id,
+          platformUrl: igPlatform.platformPostUrl,
+          otherPlatformsFailed: true
+        }
+      }
+    })
+
+    console.log(`⚠️ [Late Webhook] Post ${post.id} partially published (Instagram OK)`)
+  } else {
+    // If Instagram failed, mark as FAILED
+    await db.socialPost.update({
+      where: { id: post.id },
+      data: {
+        status: PostStatus.FAILED,
+        lateStatus: 'partial',
+        errorMessage: igPlatform?.error || 'Instagram failed in partial publish',
+        failedAt: new Date(),
+        lastSyncAt: new Date()
+      }
+    })
+
+    await db.postLog.create({
+      data: {
+        postId: post.id,
+        event: PostLogEvent.FAILED,
+        message: 'Instagram failed in partial publish',
+        metadata: {
+          laterPostId: data.post._id,
+          error: igPlatform?.error
+        }
+      }
+    })
+
+    console.log(`❌ [Late Webhook] Post ${post.id} partially published (Instagram FAILED)`)
+  }
+}
+
+/**
+ * Account disconnected (CRITICAL ALERT)
+ */
+async function handleAccountDisconnected(data: {
+  account: {
+    _id: string
+    platform: string
+    username: string
+  }
+}) {
+  console.error('🚨 [Late Webhook] ACCOUNT DISCONNECTED:', data.account.username)
+
+  // Find all projects using this account
+  const projects = await db.project.findMany({
+    where: {
+      laterAccountId: data.account._id
+    },
+    select: {
+      id: true,
+      name: true,
+      userId: true
+    }
+  })
+
+  if (projects.length === 0) {
+    console.warn('[Late Webhook] No projects found with this account')
+    return
+  }
+
+  console.error(`🚨 ${projects.length} project(s) affected by account disconnection`)
+
+  // TODO: Send urgent notification to project owners
+  // - Email alert
+  // - In-app notification
+  // - SMS (critical)
+
+  for (const project of projects) {
+    console.error(`🚨 Project affected: ${project.name} (ID: ${project.id})`)
+
+    // Could create a notification record here
+    // await createNotification({
+    //   userId: project.userId,
+    //   type: 'CRITICAL',
+    //   title: 'Conta Instagram Desconectada',
+    //   message: `A conta @${data.account.username} foi desconectada do Late. Postagens agendadas não serão publicadas!`,
+    //   projectId: project.id
+    // })
+  }
+}
+
+/**
  * Analytics updated
- * Note: Verify if Late sends this event in documentation
  */
 async function handleAnalyticsUpdated(data: {
   postId: string
