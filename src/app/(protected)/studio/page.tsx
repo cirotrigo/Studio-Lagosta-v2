@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Plus, Users } from "lucide-react";
+import { Building2, Plus, Users, Plug } from "lucide-react";
 import { useMemo } from "react";
 import dynamic from "next/dynamic";
 
@@ -208,9 +208,22 @@ function ProjectCard({
                 </span>
               )}
               {project.laterAccountId && (
-                <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                  Later
-                </Badge>
+                <div
+                  className="flex items-center justify-center"
+                  title={
+                    project.followers !== null && project.followers !== undefined
+                      ? "Conexão Later ativa"
+                      : "Conexão Later com problema"
+                  }
+                >
+                  <Plug
+                    className={`h-4 w-4 ${
+                      project.followers !== null && project.followers !== undefined
+                        ? "text-green-600"
+                        : "text-red-600"
+                    }`}
+                  />
+                </div>
               )}
               {project.followers !== null && project.followers !== undefined && (
                 <span className="text-xs text-muted-foreground flex items-center gap-1">
