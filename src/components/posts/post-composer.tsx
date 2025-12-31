@@ -72,6 +72,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   const { createPost, updatePost } = useSocialPosts(projectId)
   const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
   const [hasInitializedMedia, setHasInitializedMedia] = useState(false)
+  const isSubmittingRef = useRef(false) // Prevent double-submit
 
   const form = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
@@ -224,9 +225,18 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   }, [])
 
   const onSubmit = async (data: PostFormData) => {
+    // Prevent double-submit
+    if (isSubmittingRef.current) {
+      console.warn('🚫 Prevented double-submit - already processing')
+      return
+    }
+
     try {
+      isSubmittingRef.current = true
+
       // Validate caption for non-Story posts
       if (postType !== 'STORY' && (!data.caption || data.caption.trim() === '')) {
+        isSubmittingRef.current = false
         toast.error('Legenda é obrigatória')
         form.setError('caption', {
           type: 'manual',
@@ -237,19 +247,23 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
       // Validate media selection based on post type
       if (selectedMedia.length === 0) {
+        isSubmittingRef.current = false
         toast.error('Selecione ao menos uma mídia')
         return
       }
 
       if (postType === 'CAROUSEL' && selectedMedia.length < 2) {
+        isSubmittingRef.current = false
         toast.error('Carrossel deve ter pelo menos 2 imagens')
         return
       }
       if (postType === 'CAROUSEL' && selectedMedia.length > 10) {
+        isSubmittingRef.current = false
         toast.error('Carrossel deve ter no máximo 10 imagens')
         return
       }
       if (['STORY', 'REEL', 'POST'].includes(postType) && selectedMedia.length !== 1) {
+        isSubmittingRef.current = false
         toast.error(`${postType} deve ter exatamente 1 mídia`)
         return
       }
@@ -257,10 +271,12 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       // Validate scheduled datetime for SCHEDULED type
       if (data.scheduleType === 'SCHEDULED') {
         if (!data.scheduledDatetime) {
+          isSubmittingRef.current = false
           toast.error('Selecione uma data e hora para agendar')
           return
         }
         if (data.scheduledDatetime <= new Date()) {
+          isSubmittingRef.current = false
           toast.error('Data/hora deve ser no futuro')
           return
         }
@@ -269,14 +285,17 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       // Validate recurring config
       if (data.scheduleType === 'RECURRING') {
         if (!data.recurringConfig) {
+          isSubmittingRef.current = false
           toast.error('Configure a recorrência')
           return
         }
         if (!data.recurringConfig.time) {
+          isSubmittingRef.current = false
           toast.error('Selecione um horário para a recorrência')
           return
         }
         if (!data.recurringConfig.frequency) {
+          isSubmittingRef.current = false
           toast.error('Selecione a frequência da recorrência')
           return
         }
@@ -390,6 +409,9 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       }
 
       toast.error('❌ Erro ao processar post. Verifique os dados e tente novamente.')
+    } finally {
+      // Always reset the submitting flag
+      isSubmittingRef.current = false
     }
   }
 
