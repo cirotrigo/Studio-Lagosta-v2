@@ -44,6 +44,7 @@ const postSchema = z.object({
   altText: z.array(z.string()).optional(),
   firstComment: z.string().optional(),
   publishType: z.enum(['DIRECT', 'REMINDER']).default('DIRECT'),
+  reminderExtraInfo: z.string().optional(),
 })
 
 export type PostFormData = z.infer<typeof postSchema>
@@ -83,6 +84,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       altText: [],
       firstComment: '',
       publishType: 'DIRECT',
+      reminderExtraInfo: '',
       ...initialData,
     },
   })
@@ -91,6 +93,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   const scheduleType = form.watch('scheduleType')
   const caption = form.watch('caption')
   const recurringConfig = form.watch('recurringConfig')
+  const publishType = form.watch('publishType')
 
   // Calculate max media based on post type
   const maxMedia = postType === 'CAROUSEL' ? 10 : 1
@@ -302,6 +305,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
         altText: data.altText,
         firstComment: data.firstComment,
         publishType: data.publishType as PublishType,
+        reminderExtraInfo: data.reminderExtraInfo,
       }
 
       console.log('📤 Sending post data:', postData)
@@ -544,13 +548,32 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <span className="font-medium">Lembrete no Buffer</span>
+                  <span className="font-medium">Lembrete (Publicação Manual)</span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    Criar um lembrete para publicação manual
+                    Receba uma notificação para publicar manualmente
                   </p>
                 </div>
               </label>
             </div>
+
+            {/* Campo de Informações Extras (condicional) */}
+            {publishType === 'REMINDER' && (
+              <div className="mt-3 p-3 rounded-lg border bg-muted/30">
+                <Label htmlFor="reminderExtraInfo" className="text-sm font-medium">
+                  Informações Extras para o Lembrete
+                </Label>
+                <Textarea
+                  id="reminderExtraInfo"
+                  {...form.register('reminderExtraInfo')}
+                  placeholder="Cole um link ou adicione instruções especiais para este post..."
+                  rows={3}
+                  className="mt-2 resize-none"
+                />
+                <p className="text-xs text-muted-foreground mt-2">
+                  💡 Exemplo: Link para adicionar no story, instruções de aprovação, etc.
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Tipo de Agendamento */}
