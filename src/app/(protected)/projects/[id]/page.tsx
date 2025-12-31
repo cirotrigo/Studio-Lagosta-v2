@@ -28,6 +28,7 @@ import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
+import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
@@ -345,6 +346,12 @@ export default function ProjectDetailPage() {
                   instagramAccountId={projectDetails.instagramAccountId}
                   instagramUsername={projectDetails.instagramUsername}
                   zapierWebhookUrl={projectDetails.zapierWebhookUrl}
+                />
+
+                {/* Reminder Webhook Configuration */}
+                <ReminderWebhookConfig
+                  projectId={projectId}
+                  webhookReminderUrl={projectDetails.webhookReminderUrl}
                 />
 
                 {/* Google Drive Folders */}
