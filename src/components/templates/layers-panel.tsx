@@ -41,6 +41,7 @@ export function LayersPanel() {
     toggleLayerLock,
     reorderLayers,
     updateLayer,
+    updateLayerPartial,
   } = useTemplateEditor()
 
   const orderedLayers = React.useMemo(() => [...design.layers].sort((a, b) => (b.order ?? 0) - (a.order ?? 0)), [design.layers])
@@ -50,10 +51,10 @@ export function LayersPanel() {
       event.stopPropagation()
       const layer = design.layers.find((l) => l.id === layerId)
       if (layer) {
-        updateLayer(layerId, { isDynamic: !layer.isDynamic })
+        updateLayerPartial(layerId, { isDynamic: !layer.isDynamic })
       }
     },
-    [design.layers, updateLayer],
+    [design.layers, updateLayerPartial],
   )
 
   const moveLayer = React.useCallback(

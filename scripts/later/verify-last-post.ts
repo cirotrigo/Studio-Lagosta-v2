@@ -72,9 +72,9 @@ async function verifyLastPost() {
     } else {
       for (const log of logs) {
         const timestamp = log.createdAt.toISOString().split('T')[1].split('.')[0]
-        console.log(`[${timestamp}] ${log.action}: ${log.message}`)
-        if (log.error) {
-          console.log(`  ❌ Error: ${log.error}`)
+        console.log(`[${timestamp}] ${log.event}: ${log.message}`)
+        if (log.metadata && typeof log.metadata === 'object' && 'error' in log.metadata) {
+          console.log(`  ❌ Error: ${JSON.stringify(log.metadata.error)}`)
         }
       }
     }

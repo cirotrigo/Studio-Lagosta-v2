@@ -99,7 +99,8 @@ export async function POST(req: NextRequest) {
           const imageInfo = await getImageInfo(buffer)
           console.log(`📷 AI image: ${imageInfo.width}x${imageInfo.height} (${aiImage.name})`)
 
-          buffer = await cropToInstagramFeed(buffer)
+          const croppedBuffer = await cropToInstagramFeed(buffer)
+          buffer = Buffer.from(croppedBuffer)
           console.log('✂️ Image cropped to 1080x1350')
         } catch (cropError) {
           console.warn('⚠️ Using original image (crop failed):', cropError)

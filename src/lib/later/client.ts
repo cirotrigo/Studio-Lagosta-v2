@@ -419,10 +419,10 @@ export class LaterClient {
    */
   async createPost(payload: CreateLaterPostPayload): Promise<LaterPost> {
     console.log('[Later Client] Creating post', {
-      accounts: payload.accounts,
-      mediaCount: payload.mediaIds?.length || payload.mediaItems?.length || 0,
-      mediaType: payload.mediaIds ? 'mediaIds' : payload.mediaItems ? 'mediaItems' : 'none',
-      hasSchedule: !!payload.publishAt,
+      platforms: payload.platforms,
+      mediaCount: payload.mediaItems?.length || 0,
+      mediaType: payload.mediaItems ? 'mediaItems' : 'none',
+      hasSchedule: !!payload.scheduledFor,
     })
 
     // Log full payload for debugging
@@ -562,7 +562,7 @@ export class LaterClient {
    * Uploads media first, then creates the post
    */
   async createPostWithMedia(
-    payload: Omit<CreateLaterPostPayload, 'mediaIds'>,
+    payload: Omit<CreateLaterPostPayload, 'mediaItems'>,
     mediaUrls: string[]
   ): Promise<LaterPost> {
     console.log(
@@ -578,10 +578,10 @@ export class LaterClient {
       )
     }
 
-    // Create post with uploaded media IDs
+    // Create post with uploaded media
     const postPayload: CreateLaterPostPayload = {
       ...payload,
-      mediaIds: uploadedMedia.map((m) => m.id),
+      mediaItems: uploadedMedia.map((m) => ({ type: m.type, url: m.url })),
     }
 
     const post = await this.createPost(postPayload)
