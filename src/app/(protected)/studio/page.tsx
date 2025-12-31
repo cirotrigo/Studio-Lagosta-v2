@@ -8,9 +8,10 @@ import { useInstagramSummaries } from "@/hooks/use-instagram-analytics";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import Image from "next/image";
 import Link from "next/link";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, Users } from "lucide-react";
 import { useMemo } from "react";
 import dynamic from "next/dynamic";
 
@@ -150,6 +151,8 @@ function ProjectCard({
     description: string | null;
     Logo?: Array<{ fileUrl: string }>;
     _count?: { Template: number; Generation: number };
+    laterAccountId?: string | null;
+    followers?: number | null;
   };
   instagramSummary?: {
     projectId: number;
@@ -159,6 +162,16 @@ function ProjectCard({
 }) {
   const projectLogo = project.Logo?.[0];
   const hasInstagram = instagramSummary?.hasInstagram && instagramSummary?.data;
+
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`
+    }
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}k`
+    }
+    return num.toString()
+  }
 
   return (
     <Link href={`/projects/${project.id}`}>
@@ -188,17 +201,33 @@ function ProjectCard({
                 {project.description}
               </p>
             )}
-            {project._count && (
-              <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
-                <span>{project._count.Generation} criativos</span>
-              </div>
-            )}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {project._count && (
+                <span className="text-xs text-muted-foreground">
+                  {project._count.Generation} criativos
+                </span>
+              )}
+              {project.laterAccountId && (
+                <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                  Later
+                </Badge>
+              )}
+              {project.followers !== null && project.followers !== undefined && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Users className="h-3 w-3" />
+                  {formatNumber(project.followers)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Instagram Mini Widget */}
         {hasInstagram && (
-          <InstagramMiniWidget summary={instagramSummary.data} />
+          <InstagramMiniWidget
+            summary={instagramSummary.data}
+            followers={project.followers}
+          />
         )}
       </Card>
     </Link>

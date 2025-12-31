@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { createProjectSchema } from '@/lib/validations/studio'
 import { fulfillInviteForUser } from '@/lib/services/client-invite-service'
+import { getLaterClient } from '@/lib/later/client'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Complex queries with multiple JOINs and aggregations
@@ -51,6 +52,8 @@ export async function GET() {
         googleDriveVideosFolderName: true,
         instagramAccountId: true,
         instagramUsername: true,
+        laterAccountId: true,
+        laterProfileId: true,
         createdAt: true,
         updatedAt: true,
         userId: true,
@@ -107,6 +110,8 @@ export async function GET() {
         googleDriveVideosFolderName: true,
         instagramAccountId: true,
         instagramUsername: true,
+        laterAccountId: true,
+        laterProfileId: true,
         createdAt: true,
         updatedAt: true,
         userId: true,
@@ -143,6 +148,36 @@ export async function GET() {
   const ownedIds = new Set(ownedProjects.map((project) => project.id))
   const combined = [...ownedProjects, ...sharedProjects.filter((project) => !ownedIds.has(project.id))]
 
+  // Fetch followers count from Later API for projects with laterAccountId
+  const followersMap = new Map<string, number>()
+
+  try {
+    const laterClient = getLaterClient()
+    const projectsWithLater = combined.filter(p => p.laterAccountId)
+    const uniqueLaterAccountIds = [...new Set(projectsWithLater.map(p => p.laterAccountId))]
+
+    // Fetch account data in parallel for all unique Later accounts
+    const accountPromises = uniqueLaterAccountIds.map(async (accountId) => {
+      if (!accountId) return null
+      try {
+        const account = await laterClient.getAccount(accountId)
+        const followers = (account as any)?.metadata?.profileData?.followersCount || null
+        if (followers !== null) {
+          followersMap.set(accountId, followers)
+        }
+        return { accountId, followers }
+      } catch (error) {
+        console.error(`[Projects API] Failed to fetch Later account ${accountId}:`, error)
+        return null
+      }
+    })
+
+    await Promise.allSettled(accountPromises)
+  } catch (error) {
+    console.error('[Projects API] Error fetching Later followers:', error)
+    // Continue without followers data
+  }
+
   // OPTIMIZATION: Return projects immediately without scheduled post counts
   // Scheduled post counts can be fetched separately on-demand via /api/projects/scheduled-counts
   const response = combined.map((project) => {
@@ -151,6 +186,7 @@ export async function GET() {
     return {
       ...rest,
       scheduledPostCount: 0, // Default to 0, fetch separately if needed
+      followers: rest.laterAccountId ? (followersMap.get(rest.laterAccountId) || null) : null,
       organizationShares: organizationProjects.map((share) => ({
         organizationId: share.organization.clerkOrgId,
         organizationName: share.organization.name,

@@ -49,6 +49,7 @@ export interface ProjectWithLogoResponse extends ProjectResponse {
     Generation: number
   }
   organizationShares?: ProjectShareInfo[]
+  followers?: number | null
 }
 
 export type UpdateProjectSettingsInput = Partial<{

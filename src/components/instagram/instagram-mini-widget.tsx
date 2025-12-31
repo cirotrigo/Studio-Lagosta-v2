@@ -1,13 +1,14 @@
 'use client'
 
 import { InstagramSummary } from '@/hooks/use-instagram-analytics'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, Users } from 'lucide-react'
 
 interface InstagramMiniWidgetProps {
   summary: InstagramSummary
+  followers?: number | null
 }
 
-export function InstagramMiniWidget({ summary }: InstagramMiniWidgetProps) {
+export function InstagramMiniWidget({ summary, followers }: InstagramMiniWidgetProps) {
   const getScoreColor = (score: string) => {
     switch (score) {
       case 'A':
@@ -47,6 +48,16 @@ export function InstagramMiniWidget({ summary }: InstagramMiniWidgetProps) {
   const criticalAlerts = summary.alerts.filter(a => a.severity === 'critical')
   const hasAlerts = criticalAlerts.length > 0
 
+  const formatNumber = (num: number) => {
+    if (num >= 1000000) {
+      return `${(num / 1000000).toFixed(1)}M`
+    }
+    if (num >= 1000) {
+      return `${(num / 1000).toFixed(1)}k`
+    }
+    return num.toLocaleString()
+  }
+
   return (
     <div className="mt-3 pt-3 border-t border-border/40">
       <div className="flex items-center justify-between mb-2">
@@ -60,6 +71,14 @@ export function InstagramMiniWidget({ summary }: InstagramMiniWidgetProps) {
           {summary.score}
         </div>
       </div>
+
+      {/* Followers Count */}
+      {followers !== null && followers !== undefined && (
+        <div className="flex items-center gap-1 mb-2 text-[10px] text-muted-foreground">
+          <Users className="h-2.5 w-2.5" />
+          <span>{formatNumber(followers)} seguidores</span>
+        </div>
+      )}
 
       {/* Progress Bars */}
       <div className="space-y-1.5">
