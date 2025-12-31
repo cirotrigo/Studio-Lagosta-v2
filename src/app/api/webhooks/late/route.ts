@@ -1,0 +1,258 @@
+/**
+ * Late API Webhook Handler
+ * Receives real-time status updates from Late API
+ * Documentation: https://docs.getlate.dev/webhooks
+ */
+
+import { NextRequest, NextResponse } from 'next/server'
+import { headers } from 'next/headers'
+import { db } from '@/lib/db'
+import { PostStatus, PostLogEvent } from '@prisma/client'
+import crypto from 'crypto'
+
+/**
+ * Verify webhook signature for security
+ * IMPORTANT: Implement when Late provides webhook secret
+ */
+function verifyWebhookSignature(
+  payload: string,
+  signature: string | null,
+  secret: string
+): boolean {
+  if (!signature || !secret) {
+    // For now, accept without verification
+    // TODO: Implement HMAC when Late provides documentation
+    return true
+  }
+
+  try {
+    const hmac = crypto.createHmac('sha256', secret)
+    const digest = hmac.update(payload).digest('hex')
+    return crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(digest)
+    )
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Webhook POST handler
+ * Processes events from Late API
+ */
+export async function POST(req: NextRequest) {
+  try {
+    const headersList = await headers()
+    const signature = headersList.get('x-late-signature')
+
+    const payload = await req.text()
+    const secret = process.env.LATE_WEBHOOK_SECRET || ''
+
+    // Verify authenticity
+    if (!verifyWebhookSignature(payload, signature, secret)) {
+      console.error('[Late Webhook] Invalid signature')
+      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    }
+
+    const event = JSON.parse(payload)
+
+    console.log(`[Late Webhook] Received: ${event.type}`, event.data?.postId)
+
+    // Process events
+    switch (event.type) {
+      case 'post.published':
+        await handlePostPublished(event.data)
+        break
+
+      case 'post.failed':
+        await handlePostFailed(event.data)
+        break
+
+      case 'post.analytics_updated':
+        await handleAnalyticsUpdated(event.data)
+        break
+
+      default:
+        console.log(`[Late Webhook] Unknown event type: ${event.type}`)
+    }
+
+    return NextResponse.json({ received: true })
+
+  } catch (error) {
+    console.error('[Late Webhook] Error:', error)
+    return NextResponse.json(
+      { error: 'Webhook processing failed' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * Post published successfully
+ * Payload based on confirmed structure (getlate.dev/twitter-api)
+ */
+async function handlePostPublished(data: {
+  post: {
+    _id: string // MongoDB style ID
+    status: 'published'
+    platforms: Array<{
+      platform: string
+      accountId: { _id: string; username: string }
+      status: string
+      platformPostId?: string
+      platformPostUrl?: string
+    }>
+    publishedAt: string
+  }
+}) {
+  console.log('[Late Webhook] Processing post.published:', data.post._id)
+
+  // Find post by laterPostId (stores the _id from Late)
+  const post = await db.socialPost.findFirst({
+    where: { laterPostId: data.post._id }
+  })
+
+  if (!post) {
+    console.warn(`[Late Webhook] Post not found: ${data.post._id}`)
+    return
+  }
+
+  // Extract Instagram platform data
+  const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
+
+  // Update post status
+  await db.socialPost.update({
+    where: { id: post.id },
+    data: {
+      status: PostStatus.POSTED,
+      lateStatus: 'published',
+      latePublishedAt: new Date(data.post.publishedAt),
+      latePlatformUrl: igPlatform?.platformPostUrl || null,
+      sentAt: new Date(data.post.publishedAt),
+      lastSyncAt: new Date()
+    }
+  })
+
+  // Create success log
+  await db.postLog.create({
+    data: {
+      postId: post.id,
+      event: PostLogEvent.SENT,
+      message: 'Post published via Late (webhook)',
+      metadata: {
+        laterPostId: data.post._id,
+        publishedAt: data.post.publishedAt,
+        platformPostId: igPlatform?.platformPostId,
+        platformUrl: igPlatform?.platformPostUrl
+      }
+    }
+  })
+
+  console.log(`✅ [Late Webhook] Post ${post.id} marked as published`)
+
+  // TODO: Notify user (email, push notification, etc)
+}
+
+/**
+ * Post failed
+ * Payload based on confirmed structure
+ */
+async function handlePostFailed(data: {
+  post: {
+    _id: string
+    status: 'failed'
+    error?: string
+    platforms: Array<{
+      platform: string
+      status: string
+      error?: string
+    }>
+  }
+}) {
+  console.log('[Late Webhook] Processing post.failed:', data.post._id)
+
+  const post = await db.socialPost.findFirst({
+    where: { laterPostId: data.post._id }
+  })
+
+  if (!post) {
+    console.warn(`[Late Webhook] Post not found: ${data.post._id}`)
+    return
+  }
+
+  // Extract Instagram error if available
+  const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
+  const errorMessage = igPlatform?.error || data.post.error || 'Failed via Late API'
+
+  await db.socialPost.update({
+    where: { id: post.id },
+    data: {
+      status: PostStatus.FAILED,
+      lateStatus: 'failed',
+      errorMessage: errorMessage,
+      failedAt: new Date(),
+      lastSyncAt: new Date()
+    }
+  })
+
+  // Create error log
+  await db.postLog.create({
+    data: {
+      postId: post.id,
+      event: PostLogEvent.FAILED,
+      message: `Post failed: ${errorMessage}`,
+      metadata: {
+        laterPostId: data.post._id,
+        error: errorMessage,
+        platformStatus: igPlatform?.status
+      }
+    }
+  })
+
+  console.log(`❌ [Late Webhook] Post ${post.id} marked as failed`)
+
+  // TODO: Notify user about failure
+}
+
+/**
+ * Analytics updated
+ * Note: Verify if Late sends this event in documentation
+ */
+async function handleAnalyticsUpdated(data: {
+  postId: string
+  metrics: {
+    likes: number
+    comments: number
+    shares?: number
+    reach?: number
+    impressions?: number
+    engagement: number
+  }
+}) {
+  console.log('[Late Webhook] Processing analytics_updated:', data.postId)
+
+  const post = await db.socialPost.findFirst({
+    where: { laterPostId: data.postId }
+  })
+
+  if (!post) {
+    console.warn(`[Late Webhook] Post not found: ${data.postId}`)
+    return
+  }
+
+  await db.socialPost.update({
+    where: { id: post.id },
+    data: {
+      analyticsLikes: data.metrics.likes,
+      analyticsComments: data.metrics.comments,
+      analyticsShares: data.metrics.shares || 0,
+      analyticsReach: data.metrics.reach,
+      analyticsImpressions: data.metrics.impressions,
+      analyticsEngagement: data.metrics.engagement,
+      analyticsFetchedAt: new Date()
+    }
+  })
+
+  console.log(`📊 [Late Webhook] Analytics updated for post ${post.id}`)
+}
