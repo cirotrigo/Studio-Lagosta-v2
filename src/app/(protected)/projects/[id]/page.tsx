@@ -352,8 +352,10 @@ export default function ProjectDetailPage() {
                 {/* Later API Provider Configuration */}
                 <LaterProviderConfig
                   projectId={projectId}
+                  laterAccountId={projectDetails.laterAccountId}
                   laterProfileId={projectDetails.laterProfileId}
                   postingProvider={projectDetails.postingProvider}
+                  instagramUsername={projectDetails.instagramUsername}
                 />
 
                 {/* Reminder Webhook Configuration */}

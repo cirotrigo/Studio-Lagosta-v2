@@ -18,6 +18,7 @@ export interface ProjectResponse {
   instagramUsername: string | null
   zapierWebhookUrl: string | null
   webhookReminderUrl: string | null
+  laterAccountId: string | null
   laterProfileId: string | null
   postingProvider: 'ZAPIER' | 'LATER' | null
   googleDriveFolderId: string | null
@@ -59,6 +60,7 @@ export type UpdateProjectSettingsInput = Partial<{
   googleDriveVideosFolderName: string | null
   aiChatBehavior: string | null
   webhookReminderUrl: string | null
+  laterAccountId: string | null
   laterProfileId: string | null
   postingProvider: 'ZAPIER' | 'LATER' | null
 }>

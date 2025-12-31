@@ -4,34 +4,47 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { Card } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { CheckCircle2, Rocket, AlertCircle, Radio } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { CheckCircle2, Rocket, AlertCircle, Radio, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { useLaterAccounts } from '@/hooks/use-later-accounts'
 
 interface LaterProviderConfigProps {
   projectId: number
+  laterAccountId?: string | null
   laterProfileId?: string | null
   postingProvider?: 'ZAPIER' | 'LATER' | null
+  instagramUsername?: string | null
 }
 
 interface UpdateLaterData {
+  laterAccountId?: string | null
   laterProfileId?: string | null
   postingProvider?: 'ZAPIER' | 'LATER' | null
 }
 
-const LATER_ACCOUNT_ID = '6951bef24207e06f4ca82e68' // Account ID fixo
-
 export function LaterProviderConfig({
   projectId,
+  laterAccountId: initialAccountId,
   laterProfileId: initialProfileId,
   postingProvider: initialProvider,
+  instagramUsername,
 }: LaterProviderConfigProps) {
   const queryClient = useQueryClient()
-  const [profileId, setProfileId] = useState(initialProfileId || '')
+  const [selectedAccountId, setSelectedAccountId] = useState(initialAccountId || '')
   const [provider, setProvider] = useState<'ZAPIER' | 'LATER'>(initialProvider || 'ZAPIER')
+
+  // Fetch Later accounts
+  const { data: laterAccountsData, isLoading: isLoadingAccounts } = useLaterAccounts()
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateLaterData) =>
@@ -48,20 +61,26 @@ export function LaterProviderConfig({
   })
 
   const handleSave = () => {
-    // Se mudou para LATER, validar profile ID
-    if (provider === 'LATER' && !profileId.trim()) {
-      toast.error('Profile ID do Late é obrigatório para usar Late API')
+    // Se mudou para LATER, validar account ID selecionado
+    if (provider === 'LATER' && !selectedAccountId.trim()) {
+      toast.error('Selecione uma conta do Instagram para usar Late API')
       return
     }
 
+    // Find selected account to get both Account ID and Profile ID
+    const selectedAccount = laterAccountsData?.accounts.find(
+      (acc) => acc.id === selectedAccountId
+    )
+
     updateMutation.mutate({
-      laterProfileId: profileId.trim() || null,
+      laterAccountId: selectedAccountId.trim() || null,
+      laterProfileId: selectedAccount?.profileId || null,
       postingProvider: provider,
     })
   }
 
   const hasChanges =
-    profileId !== (initialProfileId || '') ||
+    selectedAccountId !== (initialAccountId || '') ||
     provider !== (initialProvider || 'ZAPIER')
 
   const isUsingLater = provider === 'LATER'
@@ -124,33 +143,91 @@ export function LaterProviderConfig({
           </div>
         </div>
 
-        {/* Later Profile ID - só aparece se LATER selecionado */}
+        {/* Later Account Selection - só aparece se LATER selecionado */}
         {isUsingLater && (
           <div className="p-3 rounded-lg border bg-muted/30">
-            <Label htmlFor="laterProfileId" className="flex items-center gap-2">
-              Profile ID do Late
+            <Label htmlFor="laterAccount" className="flex items-center gap-2">
+              Conta do Instagram
               <span className="text-xs text-red-500">*</span>
             </Label>
-            <Input
-              id="laterProfileId"
-              placeholder="ex: 6950a7dfbf2041fa31e82829"
-              value={profileId}
-              onChange={(e) => setProfileId(e.target.value)}
-              className="mt-2 font-mono text-sm"
-            />
-            <div className="mt-2 space-y-1">
-              <p className="text-xs text-muted-foreground">
-                Account ID (fixo): <code className="bg-muted px-1 py-0.5 rounded">{LATER_ACCOUNT_ID}</code>
-              </p>
+
+            {isLoadingAccounts ? (
+              <div className="flex items-center gap-2 mt-2 p-3 border rounded-lg bg-muted/50">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span className="text-sm text-muted-foreground">Carregando contas...</span>
+              </div>
+            ) : (
+              <Select
+                value={selectedAccountId}
+                onValueChange={setSelectedAccountId}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue placeholder="Selecione uma conta do Instagram" />
+                </SelectTrigger>
+                <SelectContent>
+                  {laterAccountsData?.accounts.map((account) => (
+                    <SelectItem key={account.id} value={account.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">@{account.username}</span>
+                        <span className="text-xs text-muted-foreground">
+                          ({account.displayName})
+                        </span>
+                        {account.followers !== null && (
+                          <span className="text-xs text-muted-foreground">
+                            • {account.followers.toLocaleString()} seguidores
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))}
+                  {laterAccountsData?.accounts.length === 0 && (
+                    <div className="p-4 text-center text-sm text-muted-foreground">
+                      Nenhuma conta conectada no Later
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+
+            {/* Info about selected account */}
+            {selectedAccountId && laterAccountsData?.accounts && (
+              <div className="mt-2 p-2 rounded bg-muted/50 space-y-1">
+                {(() => {
+                  const selected = laterAccountsData.accounts.find(
+                    (acc) => acc.id === selectedAccountId
+                  )
+                  return selected ? (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-semibold">Conta:</span> @{selected.username}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        <span className="font-semibold">Account ID:</span> {selected.id}
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono">
+                        <span className="font-semibold">Profile ID:</span> {selected.profileId}
+                      </p>
+                    </>
+                  ) : null
+                })()}
+              </div>
+            )}
+
+            <div className="mt-3 space-y-1">
               <p className="text-xs text-blue-600 dark:text-blue-400">
-                💡 Para obter o Profile ID:
+                💡 Dica: As contas listadas são as que estão conectadas no painel do Later
               </p>
-              <ol className="text-xs text-muted-foreground ml-4 space-y-0.5">
-                <li>1. Acesse <a href="https://getlate.dev/dashboard" target="_blank" rel="noopener" className="text-blue-500 hover:underline">getlate.dev/dashboard</a></li>
-                <li>2. Vá em Settings → Profiles</li>
-                <li>3. Clique no perfil do Instagram deste projeto</li>
-                <li>4. Copie o Profile ID</li>
-              </ol>
+              <p className="text-xs text-muted-foreground">
+                Se não encontrar a conta desejada, conecte-a primeiro em{' '}
+                <a
+                  href="https://getlate.dev/dashboard"
+                  target="_blank"
+                  rel="noopener"
+                  className="text-blue-500 hover:underline"
+                >
+                  getlate.dev/dashboard
+                </a>
+              </p>
             </div>
           </div>
         )}
@@ -159,7 +236,7 @@ export function LaterProviderConfig({
         <div className="flex justify-end pt-2">
           <Button
             onClick={handleSave}
-            disabled={updateMutation.isPending || !hasChanges || (isUsingLater && !profileId.trim())}
+            disabled={updateMutation.isPending || !hasChanges || (isUsingLater && !selectedAccountId.trim())}
           >
             {updateMutation.isPending ? 'Salvando...' : 'Salvar Configuração'}
           </Button>
@@ -172,9 +249,25 @@ export function LaterProviderConfig({
             <AlertTitle>✅ Usando Late API</AlertTitle>
             <AlertDescription>
               Este projeto está configurado para publicar via Late API.
-              {initialProfileId && (
-                <div className="mt-2 text-xs font-mono bg-muted px-2 py-1 rounded">
-                  Profile: {initialProfileId}
+              {initialAccountId && laterAccountsData?.accounts && (
+                <div className="mt-2 text-xs bg-muted px-2 py-1 rounded space-y-1">
+                  {(() => {
+                    const account = laterAccountsData.accounts.find(
+                      (acc) => acc.id === initialAccountId
+                    )
+                    return account ? (
+                      <>
+                        <div>
+                          <span className="font-semibold">Conta:</span> @{account.username}
+                        </div>
+                        <div className="font-mono">
+                          <span className="font-semibold">Account ID:</span> {account.id}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="font-mono">Account ID: {initialAccountId}</div>
+                    )
+                  })()}
                 </div>
               )}
             </AlertDescription>
