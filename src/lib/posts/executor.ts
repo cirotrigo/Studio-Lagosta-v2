@@ -17,12 +17,16 @@ export class PostExecutor {
       const windowEnd = new Date(now.getTime() + 60000) // +1 minute
 
       // Find posts scheduled for this time window
+      // EXCLUDE REMINDER posts - they should ONLY trigger webhook, not be sent automatically
       const postsInWindow = await db.socialPost.findMany({
         where: {
           status: PostStatus.SCHEDULED,
           scheduledDatetime: {
             gte: windowStart,
             lte: windowEnd,
+          },
+          publishType: {
+            not: 'REMINDER', // ⚠️ REMINDER posts are handled by /api/cron/reminders
           },
         },
         include: {
@@ -38,6 +42,7 @@ export class PostExecutor {
 
       // CATCH-UP: Find overdue posts (scheduled in the past but not sent)
       // Limit to last 6 hours to avoid processing very old posts
+      // EXCLUDE REMINDER posts - they should ONLY trigger webhook, not be sent automatically
       const sixHoursAgo = new Date(now.getTime() - 6 * 60 * 60 * 1000)
       const overduePosts = await db.socialPost.findMany({
         where: {
@@ -45,6 +50,9 @@ export class PostExecutor {
           scheduledDatetime: {
             gte: sixHoursAgo,
             lt: windowStart, // Before the current window
+          },
+          publishType: {
+            not: 'REMINDER', // ⚠️ REMINDER posts are handled by /api/cron/reminders
           },
         },
         include: {
