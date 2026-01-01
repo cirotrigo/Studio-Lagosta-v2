@@ -33,6 +33,8 @@ import type {
   MediaUploadOptions,
   LaterAnalyticsResponse,
   LaterPostAnalytics,
+  LaterRawAnalyticsPost,
+  LaterAnalyticsData,
   AnalyticsQueryParams,
 } from './types'
 
@@ -642,19 +644,89 @@ export class LaterClient {
   }
 
   /**
+   * Transform raw analytics post to normalized format
+   */
+  private transformAnalyticsPost(rawPost: LaterRawAnalyticsPost): LaterPostAnalytics {
+    const analytics = rawPost.analytics
+
+    // Calculate engagement (likes + comments + shares)
+    const engagement = (analytics.likes || 0) + (analytics.comments || 0) + (analytics.shares || 0)
+
+    // Calculate engagement rate (engagement / reach)
+    const engagementRate = analytics.reach > 0
+      ? (engagement / analytics.reach) * 100
+      : 0
+
+    return {
+      postId: rawPost._id,
+      platform: rawPost.platform,
+      publishedAt: rawPost.publishedAt,
+      platformPostUrl: rawPost.platformPostUrl,
+      metrics: {
+        likes: analytics.likes || 0,
+        comments: analytics.comments || 0,
+        shares: analytics.shares || 0,
+        impressions: analytics.impressions || 0,
+        reach: analytics.reach || 0,
+        engagement,
+        engagementRate,
+        views: analytics.views || 0,
+        clicks: analytics.clicks || 0,
+      },
+    }
+  }
+
+  /**
+   * Get analytics for all posts
+   * Returns a map of postId -> analytics for easy lookup
+   * GET /api/v1/analytics
+   */
+  async getAllPostAnalytics(params?: Omit<AnalyticsQueryParams, 'postId'>): Promise<Map<string, LaterPostAnalytics>> {
+    console.log('[Later Analytics] Fetching all post analytics')
+
+    const response = await this.getAnalytics(params)
+
+    if (!response.posts || response.posts.length === 0) {
+      console.log('[Later Analytics] No posts with analytics found')
+      return new Map()
+    }
+
+    // Transform and create map
+    const analyticsMap = new Map<string, LaterPostAnalytics>()
+
+    response.posts.forEach((rawPost) => {
+      const normalized = this.transformAnalyticsPost(rawPost)
+      analyticsMap.set(normalized.postId, normalized)
+    })
+
+    console.log(`[Later Analytics] Fetched analytics for ${analyticsMap.size} posts`)
+
+    return analyticsMap
+  }
+
+  /**
    * Get analytics for specific post
-   * GET /api/v1/analytics?postId={POST_ID}
+   * Since Later API doesn't support postId filter, we fetch all and find the match
    */
   async getPostAnalytics(postId: string): Promise<LaterPostAnalytics> {
     console.log('[Later Analytics] Fetching analytics for post:', postId)
 
-    const response = await this.getAnalytics({ postId })
+    const analyticsMap = await this.getAllPostAnalytics()
 
-    if (!response.posts || response.posts.length === 0) {
+    const analytics = analyticsMap.get(postId)
+
+    if (!analytics) {
       throw new LaterNotFoundError(`Analytics not found for post: ${postId}`)
     }
 
-    return response.posts[0]
+    console.log('[Later Analytics] Found analytics:', {
+      postId: analytics.postId,
+      likes: analytics.metrics.likes,
+      engagement: analytics.metrics.engagement,
+      reach: analytics.metrics.reach,
+    })
+
+    return analytics
   }
 }
 

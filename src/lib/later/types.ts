@@ -231,17 +231,60 @@ export interface LaterClientConfig {
 // =============================================================================
 
 /**
+ * Raw analytics object structure from Later API
+ */
+export interface LaterAnalyticsData {
+  impressions: number
+  reach: number
+  likes: number
+  comments: number
+  shares: number
+  clicks: number
+  views: number
+  engagementRate?: number
+  lastUpdated: string
+}
+
+/**
+ * Raw post from Later API /analytics endpoint
+ */
+export interface LaterRawAnalyticsPost {
+  _id: string
+  content?: string
+  publishedAt: string
+  scheduledFor: string
+  status: string
+  analytics: LaterAnalyticsData
+  platforms: Array<{
+    platform: string
+    status: string
+    analytics: LaterAnalyticsData
+  }>
+  platform: string
+  platformPostUrl?: string
+  isExternal?: boolean
+  profileId: string
+  thumbnailUrl?: string
+  mediaType?: string
+  mediaItems?: Array<{
+    type: string
+    url: string
+    thumbnail?: string
+  }>
+}
+
+/**
  * Analytics response from Later API
  * GET /api/v1/analytics
  * Requires Analytics add-on ($10/month)
  */
 export interface LaterAnalyticsResponse {
-  posts: LaterPostAnalytics[]
+  posts: LaterRawAnalyticsPost[]
   overview?: {
     totalPosts: number
-    totalLikes: number
-    totalComments: number
-    avgEngagement: number
+    publishedPosts: number
+    scheduledPosts: number
+    lastSync: string
   }
   pagination?: {
     page: number
@@ -251,7 +294,7 @@ export interface LaterAnalyticsResponse {
 }
 
 /**
- * Analytics for a single post
+ * Analytics for a single post (normalized format for our app)
  */
 export interface LaterPostAnalytics {
   postId: string
@@ -266,6 +309,8 @@ export interface LaterPostAnalytics {
     reach?: number
     engagement: number // likes + comments + shares
     engagementRate?: number // engagement / reach
+    views?: number
+    clicks?: number
   }
 }
 

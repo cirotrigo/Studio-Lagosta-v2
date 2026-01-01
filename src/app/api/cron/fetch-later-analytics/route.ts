@@ -86,62 +86,100 @@ export async function GET(req: NextRequest) {
       })
     }
 
-    // Fetch analytics from Later API
+    // Fetch ALL analytics from Later API at once (more efficient)
     const laterClient = getLaterClient()
     const results = {
       success: 0,
       failed: 0,
       skipped: 0,
+      notFound: 0,
     }
 
-    for (const post of postsToFetch) {
-      try {
-        if (!post.laterPostId) {
-          results.skipped++
+    try {
+      console.log('[Later Analytics Cron] Fetching all analytics from Later API...')
+
+      // Fetch all analytics at once
+      const analyticsMap = await laterClient.getAllPostAnalytics({
+        platform: 'instagram',
+        limit: 100,
+      })
+
+      console.log(
+        `[Later Analytics Cron] Retrieved ${analyticsMap.size} posts with analytics from Later`
+      )
+
+      // Match with our database posts
+      for (const post of postsToFetch) {
+        try {
+          if (!post.laterPostId) {
+            results.skipped++
+            continue
+          }
+
+          const analytics = analyticsMap.get(post.laterPostId)
+
+          if (!analytics) {
+            console.log(
+              `[Later Analytics Cron] ⚠️  Analytics not found for post ${post.id} (Later: ${post.laterPostId})`
+            )
+            results.notFound++
+            continue
+          }
+
+          console.log(
+            `[Later Analytics Cron] Updating post ${post.id} with analytics from Later ${post.laterPostId}`
+          )
+
+          // Update post with analytics data
+          await db.socialPost.update({
+            where: { id: post.id },
+            data: {
+              analyticsLikes: analytics.metrics.likes,
+              analyticsComments: analytics.metrics.comments,
+              analyticsShares: analytics.metrics.shares || null,
+              analyticsReach: analytics.metrics.reach || null,
+              analyticsImpressions: analytics.metrics.impressions || null,
+              analyticsEngagement: analytics.metrics.engagement,
+              analyticsFetchedAt: new Date(),
+            },
+          })
+
+          console.log(
+            `[Later Analytics Cron] ✅ Updated analytics for post ${post.id}:`,
+            {
+              likes: analytics.metrics.likes,
+              comments: analytics.metrics.comments,
+              engagement: analytics.metrics.engagement,
+              reach: analytics.metrics.reach,
+            }
+          )
+
+          results.success++
+        } catch (error) {
+          console.error(
+            `[Later Analytics Cron] ❌ Failed to update post ${post.id}:`,
+            error
+          )
+          results.failed++
+
+          // Continue with next post even if this one fails
           continue
         }
-
-        console.log(
-          `[Later Analytics Cron] Fetching analytics for post ${post.id} (Later: ${post.laterPostId})`
-        )
-
-        // Fetch analytics from Later API
-        const analytics = await laterClient.getPostAnalytics(post.laterPostId)
-
-        // Update post with analytics data
-        await db.socialPost.update({
-          where: { id: post.id },
-          data: {
-            analyticsLikes: analytics.metrics.likes,
-            analyticsComments: analytics.metrics.comments,
-            analyticsShares: analytics.metrics.shares || null,
-            analyticsReach: analytics.metrics.reach || null,
-            analyticsImpressions: analytics.metrics.impressions || null,
-            analyticsEngagement: analytics.metrics.engagement,
-            analyticsFetchedAt: new Date(),
-          },
-        })
-
-        console.log(
-          `[Later Analytics Cron] ✅ Updated analytics for post ${post.id}:`,
-          {
-            likes: analytics.metrics.likes,
-            comments: analytics.metrics.comments,
-            engagement: analytics.metrics.engagement,
-          }
-        )
-
-        results.success++
-      } catch (error) {
-        console.error(
-          `[Later Analytics Cron] ❌ Failed to fetch analytics for post ${post.id}:`,
-          error
-        )
-        results.failed++
-
-        // Continue with next post even if this one fails
-        continue
       }
+    } catch (error) {
+      console.error(
+        '[Later Analytics Cron] ❌ Failed to fetch analytics from Later API:',
+        error
+      )
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Failed to fetch analytics from Later API',
+          details: error instanceof Error ? error.message : 'Unknown error',
+        },
+        { status: 500 }
+      )
     }
 
     console.log('[Later Analytics Cron] Finished analytics fetch:', results)
