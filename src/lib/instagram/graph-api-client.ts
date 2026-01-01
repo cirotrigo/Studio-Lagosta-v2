@@ -7,6 +7,28 @@ export interface InstagramStory {
   media_url?: string
 }
 
+export interface InstagramStoryInsights {
+  impressions: number
+  reach: number
+  replies?: number
+  exits?: number
+  taps_forward?: number
+  taps_back?: number
+}
+
+interface InstagramInsightValue {
+  value: number
+}
+
+interface InstagramInsightData {
+  name: string
+  period: string
+  values: InstagramInsightValue[]
+  title: string
+  description: string
+  id: string
+}
+
 interface InstagramApiError {
   message: string
   type: string
@@ -100,5 +122,90 @@ export class InstagramGraphApiClient {
     console.log('[Instagram API] Stories fetched for account', igUserId)
 
     return stories
+  }
+
+  /**
+   * Get insights (analytics) for a specific Story
+   * Must be called within 24 hours of story publication
+   *
+   * Available metrics for Stories:
+   * - impressions: Total number of times the story was seen
+   * - reach: Total number of unique accounts that saw the story
+   * - replies: Number of replies to the story
+   * - exits: Number of times someone exited the story
+   * - taps_forward: Number of taps to see next story
+   * - taps_back: Number of taps to see previous story
+   */
+  async getStoryInsights(storyId: string): Promise<InstagramStoryInsights> {
+    const metrics = [
+      'impressions',
+      'reach',
+      'replies',
+      'exits',
+      'taps_forward',
+      'taps_back',
+    ]
+
+    const url = new URL(`${this.baseUrl}/${this.version}/${storyId}/insights`)
+    url.searchParams.set('metric', metrics.join(','))
+    url.searchParams.set('access_token', this.accessToken)
+
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/json',
+      },
+      cache: 'no-store',
+    })
+
+    const rawBody = await response.text()
+    let body: any
+
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {}
+    } catch (_error) {
+      throw new InstagramApiException('Invalid JSON response from Instagram API', response.status)
+    }
+
+    if (!response.ok) {
+      const apiError = body?.error as InstagramApiError | undefined
+      const message = sanitizeErrorMessage(apiError?.message || 'Instagram API error')
+      throw new InstagramApiException(message, response.status, apiError)
+    }
+
+    const insights = (body?.data ?? []) as InstagramInsightData[]
+
+    // Transform insights array to object
+    const result: InstagramStoryInsights = {
+      impressions: 0,
+      reach: 0,
+    }
+
+    insights.forEach((insight) => {
+      const value = insight.values?.[0]?.value ?? 0
+      switch (insight.name) {
+        case 'impressions':
+          result.impressions = value
+          break
+        case 'reach':
+          result.reach = value
+          break
+        case 'replies':
+          result.replies = value
+          break
+        case 'exits':
+          result.exits = value
+          break
+        case 'taps_forward':
+          result.taps_forward = value
+          break
+        case 'taps_back':
+          result.taps_back = value
+          break
+      }
+    })
+
+    console.log('[Instagram API] Story insights fetched:', storyId, result)
+
+    return result
   }
 }
