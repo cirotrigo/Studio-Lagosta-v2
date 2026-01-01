@@ -110,56 +110,53 @@ export function EngagementAlerts({ summary, posts }: EngagementAlertsProps) {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-amber-600" />
+      <CardHeader className="pb-3">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
           Alertas e Recomendações
-          <Badge variant="secondary" className="ml-auto">
+          <Badge variant="secondary" className="ml-auto text-xs">
             {alerts.length}
           </Badge>
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-2">
         {alerts.map((alert, index) => (
-          <Alert
+          <div
             key={index}
-            variant={alert.type === 'warning' ? 'destructive' : 'default'}
-            className={
+            className={`flex items-start gap-3 p-3 rounded-lg border ${
               alert.type === 'warning'
-                ? 'border-amber-200 bg-amber-50'
-                : 'border-blue-200 bg-blue-50'
-            }
+                ? 'border-amber-200 bg-amber-50/50'
+                : 'border-blue-200 bg-blue-50/50'
+            }`}
           >
-            <div className="flex items-start gap-2">
-              <div
-                className={
-                  alert.type === 'warning' ? 'text-amber-600' : 'text-blue-600'
-                }
-              >
-                {alert.icon}
-              </div>
-              <div className="flex-1">
-                <AlertTitle
-                  className={
-                    alert.type === 'warning'
-                      ? 'text-amber-900'
-                      : 'text-blue-900'
-                  }
-                >
-                  {alert.title}
-                </AlertTitle>
-                <AlertDescription
-                  className={
-                    alert.type === 'warning'
-                      ? 'text-amber-700'
-                      : 'text-blue-700'
-                  }
-                >
-                  {alert.description}
-                </AlertDescription>
-              </div>
+            <div
+              className={`flex-shrink-0 ${
+                alert.type === 'warning' ? 'text-amber-600' : 'text-blue-600'
+              }`}
+            >
+              {alert.icon}
             </div>
-          </Alert>
+            <div className="flex-1 min-w-0">
+              <p
+                className={`text-sm font-medium mb-1 ${
+                  alert.type === 'warning'
+                    ? 'text-amber-900'
+                    : 'text-blue-900'
+                }`}
+              >
+                {alert.title}
+              </p>
+              <p
+                className={`text-xs leading-relaxed ${
+                  alert.type === 'warning'
+                    ? 'text-amber-700'
+                    : 'text-blue-700'
+                }`}
+              >
+                {alert.description}
+              </p>
+            </div>
+          </div>
         ))}
       </CardContent>
     </Card>
