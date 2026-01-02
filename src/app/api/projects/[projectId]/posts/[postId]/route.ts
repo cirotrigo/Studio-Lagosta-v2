@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { PostType, ScheduleType, PostStatus, PublishType, Prisma, PostingProvider } from '../../../../../../../prisma/generated/client'
+import { PostType, ScheduleType, PostStatus, PublishType, Prisma } from '../../../../../../../prisma/generated/client'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
@@ -189,7 +189,7 @@ export async function PUT(
         Generation: true,
         Project: {
           select: {
-            postingProvider: true,
+            laterAccountId: true,
           },
         },
       },
@@ -277,19 +277,16 @@ export async function PUT(
     if (scheduleType === 'IMMEDIATE') {
       const scheduler = new PostScheduler()
 
-      // Determine which method to use based on posting provider
-      if (updatedPost.Project.postingProvider === PostingProvider.LATER && existingPost.laterPostId) {
+      if (existingPost.laterPostId) {
         console.log('[PUT /posts] Publishing Later post immediately')
-        // For Later posts, we can use publishPost API
         const laterClient = getLaterClient()
         laterClient.publishPost(existingPost.laterPostId).catch((error) => {
           console.error('Error publishing Later post immediately:', error)
         })
       } else {
-        // For Zapier posts, use existing flow
-        console.log('[PUT /posts] Sending to Zapier immediately')
-        scheduler.sendToZapier(postId).catch((error) => {
-          console.error('Error sending immediate post to Zapier:', error)
+        console.log('[PUT /posts] Sending post immediately via Late API')
+        scheduler.sendToLater(postId).catch((error) => {
+          console.error('Error sending immediate post via Late API:', error)
         })
       }
     }

@@ -15,25 +15,21 @@ interface InstagramAccountConfigProps {
   projectId: number
   instagramAccountId?: string | null
   instagramUsername?: string | null
-  zapierWebhookUrl?: string | null
 }
 
 interface UpdateInstagramData {
   instagramAccountId?: string
   instagramUsername?: string
-  zapierWebhookUrl?: string
 }
 
 export function InstagramAccountConfig({
   projectId,
   instagramAccountId: initialAccountId,
   instagramUsername: initialUsername,
-  zapierWebhookUrl: initialWebhookUrl,
 }: InstagramAccountConfigProps) {
   const queryClient = useQueryClient()
   const [accountId, setAccountId] = useState(initialAccountId || '')
   const [username, setUsername] = useState(initialUsername || '')
-  const [webhookUrl, setWebhookUrl] = useState(initialWebhookUrl || '')
 
   const updateMutation = useMutation({
     mutationFn: (data: UpdateInstagramData) =>
@@ -55,23 +51,15 @@ export function InstagramAccountConfig({
       return
     }
 
-    // Validate webhook URL if provided
-    if (webhookUrl.trim() && !webhookUrl.startsWith('https://hooks.zapier.com/')) {
-      toast.error('URL do webhook deve ser do Zapier (https://hooks.zapier.com/...)')
-      return
-    }
-
     updateMutation.mutate({
       instagramAccountId: accountId.trim(),
       instagramUsername: username.trim() || undefined,
-      zapierWebhookUrl: webhookUrl.trim() || undefined,
     })
   }
 
   const hasChanges =
     accountId !== (initialAccountId || '') ||
-    username !== (initialUsername || '') ||
-    webhookUrl !== (initialWebhookUrl || '')
+    username !== (initialUsername || '')
 
   const isConfigured = Boolean(initialAccountId)
 
@@ -104,7 +92,7 @@ export function InstagramAccountConfig({
             className="mt-2"
           />
           <p className="text-xs text-muted-foreground mt-1.5">
-            Identificador único usado no webhook do Zapier para rotear posts para a conta correta.
+            Identificador usado para mapear a conta do Instagram no Studio.
             Pode ser o username, um número, ou qualquer ID que você preferir.
           </p>
         </div>
@@ -121,25 +109,6 @@ export function InstagramAccountConfig({
           />
           <p className="text-xs text-muted-foreground mt-1.5">
             Username do Instagram para exibição na interface
-          </p>
-        </div>
-
-        {/* Zapier Webhook URL (Optional) */}
-        <div>
-          <Label htmlFor="zapierWebhookUrl">Zapier Webhook URL (opcional)</Label>
-          <Input
-            id="zapierWebhookUrl"
-            type="url"
-            placeholder="https://hooks.zapier.com/hooks/catch/123456/abcdef"
-            value={webhookUrl}
-            onChange={(e) => setWebhookUrl(e.target.value)}
-            className="mt-2 font-mono text-sm"
-          />
-          <p className="text-xs text-muted-foreground mt-1.5">
-            URL do webhook do Zapier específico para este projeto. Se não configurado, usa o webhook global.
-          </p>
-          <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-            💡 Como obter: No Zapier, crie um Zap com trigger "Webhooks by Zapier" → "Catch Hook" → Copie a URL
           </p>
         </div>
 
@@ -172,15 +141,6 @@ export function InstagramAccountConfig({
                     </>
                   )}
                 </p>
-                {initialWebhookUrl ? (
-                  <p className="text-xs mt-2">
-                    ✅ Webhook específico: <code className="bg-green-500/20 px-1 rounded">{initialWebhookUrl.substring(0, 50)}...</code>
-                  </p>
-                ) : (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
-                    ⚠️ Usando webhook global (não configurado para este projeto)
-                  </p>
-                )}
               </div>
             </AlertDescription>
           </Alert>
@@ -202,28 +162,9 @@ export function InstagramAccountConfig({
 
       {/* Help Section */}
       <div className="mt-6 pt-6 border-t">
-        <details className="group">
-          <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-            Como configurar webhook por projeto?
-          </summary>
-          <div className="mt-3 text-xs text-muted-foreground space-y-2 pl-4 border-l-2">
-            <p>
-              <strong className="text-foreground">1. Criar Zap no Zapier:</strong> Acesse Zapier e crie um novo Zap com trigger "Webhooks by Zapier" → "Catch Hook".
-            </p>
-            <p>
-              <strong className="text-foreground">2. Copiar Webhook URL:</strong> O Zapier vai gerar uma URL como https://hooks.zapier.com/hooks/catch/123456/abcdef - copie ela.
-            </p>
-            <p>
-              <strong className="text-foreground">3. Configurar Ação:</strong> No Zapier, configure a ação para enviar para Buffer usando o instagram_account_id do payload.
-            </p>
-            <p>
-              <strong className="text-foreground">4. Colar Aqui:</strong> Cole a URL do webhook no campo acima e salve.
-            </p>
-            <p className="text-amber-600 dark:text-amber-400">
-              <strong>⚠️ Fallback:</strong> Se não configurar um webhook específico, o sistema usará o webhook global configurado em ZAPIER_WEBHOOK_URL.
-            </p>
-          </div>
-        </details>
+        <p className="text-xs text-muted-foreground">
+          Esta conta é usada para verificações e identificação do Instagram dentro do Studio.
+        </p>
       </div>
     </Card>
   )

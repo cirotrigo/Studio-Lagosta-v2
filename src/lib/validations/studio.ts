@@ -59,8 +59,9 @@ export const updateProjectSettingsSchema = z
     googleDriveVideosFolderName: driveField,
     aiChatBehavior: z.string().max(10000, 'Comportamento do chat deve ter no máximo 10.000 caracteres').nullable().optional(),
     webhookReminderUrl: z.string().url('URL do webhook inválida').nullable().optional().or(z.literal('')),
+    laterAccountId: z.string().nullable().optional().or(z.literal('')),
     laterProfileId: z.string().nullable().optional().or(z.literal('')),
-    postingProvider: z.enum(['ZAPIER', 'LATER']).nullable().optional(),
+    postingProvider: z.enum(['LATER']).nullable().optional(),
   })
   .superRefine((data, ctx) => {
     const pairs: Array<[keyof typeof data, keyof typeof data, string]> = [
@@ -109,10 +110,11 @@ export const updateProjectSettingsSchema = z
     // Allow individual fields to be sent alone or with Google Drive fields
     const hasAiChatBehavior = Object.prototype.hasOwnProperty.call(data, 'aiChatBehavior')
     const hasWebhookReminderUrl = Object.prototype.hasOwnProperty.call(data, 'webhookReminderUrl')
+    const hasLaterAccountId = Object.prototype.hasOwnProperty.call(data, 'laterAccountId')
     const hasLaterProfileId = Object.prototype.hasOwnProperty.call(data, 'laterProfileId')
     const hasPostingProvider = Object.prototype.hasOwnProperty.call(data, 'postingProvider')
 
-    if (!touched && !hasAiChatBehavior && !hasWebhookReminderUrl && !hasLaterProfileId && !hasPostingProvider) {
+    if (!touched && !hasAiChatBehavior && !hasWebhookReminderUrl && !hasLaterAccountId && !hasLaterProfileId && !hasPostingProvider) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Envie pelo menos um campo para atualizar',

@@ -87,10 +87,6 @@
       "schedule": "0 * * * *"
     },
     {
-      "path": "/api/cron/analytics",
-      "schedule": "0 */6 * * *"
-    },
-    {
       "path": "/api/cron/fetch-later-analytics",
       "schedule": "0 */6 * * *"
     },

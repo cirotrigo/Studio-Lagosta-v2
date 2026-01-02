@@ -11,7 +11,7 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { useIsCreativePage } from '@/hooks/use-is-creative-page'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { Loader2, Sparkles, Check, Image, Type } from 'lucide-react'
+import { Loader2, Sparkles, Check, Image as ImageIcon, Type } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
 import {
   Accordion,
@@ -380,7 +380,7 @@ export function CreativeGeneratorPanel({
             <AccordionItem value="images" className="border rounded-lg px-4">
               <AccordionTrigger className="hover:no-underline">
                 <div className="flex items-center gap-2">
-                  <Image className="h-5 w-5 text-primary" />
+                  <ImageIcon className="h-5 w-5 text-primary" />
                   <h3 className="text-lg font-semibold">Imagens</h3>
                 </div>
               </AccordionTrigger>

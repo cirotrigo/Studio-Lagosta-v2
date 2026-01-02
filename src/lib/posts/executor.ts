@@ -21,6 +21,7 @@ export class PostExecutor {
       const postsInWindow = await db.socialPost.findMany({
         where: {
           status: PostStatus.SCHEDULED,
+          laterPostId: null,
           scheduledDatetime: {
             gte: windowStart,
             lte: windowEnd,
@@ -34,7 +35,6 @@ export class PostExecutor {
             select: {
               id: true,
               name: true,
-              postingProvider: true,
             },
           },
         },
@@ -47,6 +47,7 @@ export class PostExecutor {
       const overduePosts = await db.socialPost.findMany({
         where: {
           status: PostStatus.SCHEDULED,
+          laterPostId: null,
           scheduledDatetime: {
             gte: sixHoursAgo,
             lt: windowStart, // Before the current window
@@ -60,7 +61,6 @@ export class PostExecutor {
             select: {
               id: true,
               name: true,
-              postingProvider: true,
             },
           },
         },
@@ -95,14 +95,8 @@ export class PostExecutor {
         }
 
         try {
-          // Route to appropriate scheduler based on posting provider
-          if (post.Project.postingProvider === 'LATER') {
-            console.log(`📤 Sending Later post ${post.id} to Later API...`)
-            await this.scheduler.sendToLater(post.id)
-          } else {
-            console.log(`📤 Sending Zapier post ${post.id} to Zapier...`)
-            await this.scheduler.sendToZapier(post.id)
-          }
+          console.log(`📤 Sending post ${post.id} to Late API...`)
+          await this.scheduler.sendToLater(post.id)
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
@@ -149,7 +143,6 @@ export class PostExecutor {
                 select: {
                   id: true,
                   name: true,
-                  postingProvider: true,
                 },
               },
             },
@@ -172,13 +165,8 @@ export class PostExecutor {
           })
 
           // Try to send again - route to appropriate scheduler
-          if (retry.post.Project.postingProvider === 'LATER') {
-            console.log(`🔄 Retrying Later post ${retry.postId}...`)
-            await this.scheduler.sendToLater(retry.postId)
-          } else {
-            console.log(`🔄 Retrying Zapier post ${retry.postId}...`)
-            await this.scheduler.sendToZapier(retry.postId)
-          }
+          console.log(`🔄 Retrying post ${retry.postId} via Late API...`)
+          await this.scheduler.sendToLater(retry.postId)
 
           // Mark retry as success
           await db.postRetry.update({
@@ -327,8 +315,14 @@ export class PostExecutor {
           const igPlatform = laterPost.platforms?.find(
             (p: any) => p.platform === 'instagram'
           )
-          if (igPlatform?.platformPostUrl) {
-            updateData.latePlatformUrl = igPlatform.platformPostUrl
+          const platformUrl = igPlatform?.platformPostUrl || laterPost.permalink
+          if (platformUrl) {
+            updateData.latePlatformUrl = platformUrl
+            updateData.publishedUrl = platformUrl
+          }
+          const platformPostId = igPlatform?.platformPostId || laterPost.platformPostId
+          if (platformPostId) {
+            updateData.instagramMediaId = platformPostId
           }
 
           // Create success log

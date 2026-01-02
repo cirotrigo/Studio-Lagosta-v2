@@ -243,6 +243,27 @@ export class LaterPostScheduler {
         throw new Error('Post não encontrado')
       }
 
+      if (post.laterPostId) {
+        if (post.status === PostStatus.SCHEDULED) {
+          await db.socialPost.update({
+            where: { id: post.id },
+            data: { status: PostStatus.POSTING },
+          })
+        }
+
+        console.log(
+          `[Later Scheduler] Post ${post.id} already sent to Later (${post.laterPostId}) - skipping duplicate send`
+        )
+        return { success: true, laterPostId: post.laterPostId, skipped: true }
+      }
+
+      if (post.status !== PostStatus.POSTING) {
+        await db.socialPost.update({
+          where: { id: post.id },
+          data: { status: PostStatus.POSTING },
+        })
+      }
+
       // Validate Later account is configured
       if (!post.Project.laterAccountId) {
         throw new Error(
@@ -344,13 +365,18 @@ export class LaterPostScheduler {
           ? PostStatus.POSTED
           : laterPost.status === 'failed'
             ? PostStatus.FAILED
-            : PostStatus.SCHEDULED
+            : PostStatus.POSTING
 
       console.log(`[Later Scheduler] 💾 Saving laterPostId to database:`, {
         postId: post.id,
         laterPostId: laterPost.id,
         newStatus,
       })
+
+      const publishedAt =
+        laterPost.status === 'published'
+          ? new Date(laterPost.publishedAt || Date.now())
+          : null
 
       try {
         const updatedPost = await db.socialPost.update({
@@ -360,6 +386,11 @@ export class LaterPostScheduler {
             status: newStatus,
             publishedUrl: laterPost.permalink || null,
             instagramMediaId: laterPost.platformPostId || null,
+            lateStatus: laterPost.status,
+            latePublishedAt: publishedAt,
+            latePlatformUrl: laterPost.permalink || null,
+            sentAt: publishedAt || null,
+            lastSyncAt: new Date(),
           },
         })
 

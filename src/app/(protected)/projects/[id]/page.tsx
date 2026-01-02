@@ -362,7 +362,6 @@ export default function ProjectDetailPage() {
                   projectId={projectId}
                   instagramAccountId={projectDetails.instagramAccountId}
                   instagramUsername={projectDetails.instagramUsername}
-                  zapierWebhookUrl={projectDetails.zapierWebhookUrl}
                 />
 
                 {/* Later API Provider Configuration */}

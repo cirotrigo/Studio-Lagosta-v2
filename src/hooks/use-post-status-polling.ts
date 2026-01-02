@@ -28,7 +28,7 @@ interface UsePostStatusPollingOptions {
  * Hook for polling post status after publishing
  *
  * Monitors a post's status and calls success/failure callbacks when
- * the post is confirmed as SENT or FAILED by the Buffer webhook.
+ * the post is confirmed as POSTED or FAILED via Late status updates.
  *
  * @param postId - ID of the post to monitor
  * @param enabled - Whether polling is active

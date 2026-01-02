@@ -12,7 +12,7 @@ import { Card, CardHeader, CardContent, CardTitle } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
-import { Calendar, Image, Video } from 'lucide-react'
+import { Calendar, Image as ImageIcon, Video } from 'lucide-react'
 
 interface AnalyticsTabContentProps {
   projectId: number
@@ -119,7 +119,7 @@ export function AnalyticsTabContent({ projectId, projectName }: AnalyticsTabCont
           <Tabs defaultValue="posts" className="w-full">
             <TabsList>
               <TabsTrigger value="posts">
-                <Image className="mr-2 h-4 w-4" />
+                <ImageIcon className="mr-2 h-4 w-4" />
                 Posts
               </TabsTrigger>
               <TabsTrigger value="stories">
