@@ -459,11 +459,20 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               {/* Badge de Lembrete - quando é apenas um reminder no Buffer */}
               {post.publishType === 'REMINDER' && (
                 <Badge
-                  className="bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-1 font-semibold text-xs"
-                  title="Lembrete no Buffer - não publicado no Instagram"
+                  className={cn(
+                    "text-white flex items-center gap-1 font-semibold text-xs",
+                    post.reminderSentAt
+                      ? "bg-green-500 hover:bg-green-600"
+                      : "bg-amber-500 hover:bg-amber-600"
+                  )}
+                  title={
+                    post.reminderSentAt
+                      ? `Lembrete enviado em ${new Date(post.reminderSentAt).toLocaleString('pt-BR')}`
+                      : "Lembrete agendado - aguardando disparo do webhook"
+                  }
                 >
                   <Bell className="w-3 h-3" />
-                  <span>Lembrete</span>
+                  <span>{post.reminderSentAt ? 'Lembrete Enviado ✓' : 'Lembrete Agendado'}</span>
                 </Badge>
               )}
 

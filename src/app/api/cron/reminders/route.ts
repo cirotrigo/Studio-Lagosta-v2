@@ -87,6 +87,9 @@ export async function GET(req: NextRequest) {
         }
 
         // Send webhook
+        console.log(`📤 [Reminders] Sending webhook to: ${post.Project.webhookReminderUrl}`)
+        console.log(`📦 [Reminders] Payload:`, JSON.stringify(payload, null, 2))
+
         const response = await fetch(post.Project.webhookReminderUrl, {
           method: 'POST',
           headers: {
@@ -97,15 +100,21 @@ export async function GET(req: NextRequest) {
           signal: AbortSignal.timeout(10000) // 10s timeout
         })
 
+        console.log(`📥 [Reminders] Webhook response status: ${response.status}`)
+
         if (!response.ok) {
+          const errorText = await response.text()
+          console.error(`❌ [Reminders] Webhook error response:`, errorText)
           throw new Error(`Webhook returned ${response.status}: ${response.statusText}`)
         }
 
         // Mark reminder as sent
+        console.log(`💾 [Reminders] Updating reminderSentAt for post ${post.id}`)
         await db.socialPost.update({
           where: { id: post.id },
           data: { reminderSentAt: new Date() }
         })
+        console.log(`✅ [Reminders] reminderSentAt updated successfully`)
 
         sent++
         console.log(`✅ [Reminders] Sent reminder for post ${post.id} (${post.Project.name})`)

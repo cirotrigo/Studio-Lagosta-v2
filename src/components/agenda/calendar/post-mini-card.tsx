@@ -162,12 +162,23 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
           {/* Badge de Lembrete - publicação manual */}
           {post.publishType === 'REMINDER' && (
             <Badge
-              className="h-3 px-1 text-[8px] bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-0.5 font-semibold"
-              title="Lembrete - publicação manual"
+              className={cn(
+                "h-3 px-1 text-[8px] text-white flex items-center gap-0.5 font-semibold",
+                post.reminderSentAt
+                  ? "bg-green-500 hover:bg-green-600"
+                  : "bg-amber-500 hover:bg-amber-600"
+              )}
+              title={
+                post.reminderSentAt
+                  ? `Lembrete enviado em ${new Date(post.reminderSentAt).toLocaleString('pt-BR')}`
+                  : "Lembrete agendado - aguardando disparo"
+              }
             >
               <Bell className="w-2 h-2" />
-              <span className="hidden sm:inline">Lembrete</span>
-              <span className="sm:hidden">🔔</span>
+              <span className="hidden sm:inline">
+                {post.reminderSentAt ? 'Lembrete ✓' : 'Lembrete'}
+              </span>
+              <span className="sm:hidden">{post.reminderSentAt ? '✓' : '🔔'}</span>
             </Badge>
           )}
 

@@ -99,6 +99,14 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   // Calculate max media based on post type
   const maxMedia = postType === 'CAROUSEL' ? 10 : 1
 
+  // Reset publishType to DIRECT when changing to IMMEDIATE
+  // (since publishType field is hidden for IMMEDIATE posts)
+  useEffect(() => {
+    if (scheduleType === 'IMMEDIATE') {
+      form.setValue('publishType', 'DIRECT')
+    }
+  }, [scheduleType, form])
+
   // Fetch creatives to populate initial media selection
   const { data: allCreatives } = useQuery<Array<{
     id: string
@@ -343,6 +351,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       }
 
       console.log('📤 Sending post data:', postData)
+      console.log('🔔 publishType being sent:', data.publishType)
 
       if (postId) {
         // Update existing post

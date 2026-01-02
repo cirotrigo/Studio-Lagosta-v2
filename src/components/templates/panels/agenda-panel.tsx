@@ -359,9 +359,23 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
 
                               {/* Lembrete Badge */}
                               {post.publishType === 'REMINDER' && (
-                                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-yellow-500/20 text-yellow-600 dark:text-yellow-400">
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full",
+                                    post.reminderSentAt
+                                      ? "bg-green-500/20 text-green-600 dark:text-green-400"
+                                      : "bg-yellow-500/20 text-yellow-600 dark:text-yellow-400"
+                                  )}
+                                  title={
+                                    post.reminderSentAt
+                                      ? `Lembrete enviado em ${new Date(post.reminderSentAt).toLocaleString('pt-BR')}`
+                                      : "Lembrete agendado - aguardando disparo"
+                                  }
+                                >
                                   <Bell className="h-2.5 w-2.5" />
-                                  <span className="text-[9px] font-semibold uppercase">Lembrete</span>
+                                  <span className="text-[9px] font-semibold uppercase">
+                                    {post.reminderSentAt ? 'Enviado ✓' : 'Lembrete'}
+                                  </span>
                                 </span>
                               )}
 

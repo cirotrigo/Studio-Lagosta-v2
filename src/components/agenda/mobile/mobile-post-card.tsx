@@ -189,11 +189,20 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
             {/* Badge de Lembrete - publicação manual */}
             {post.publishType === 'REMINDER' && (
               <Badge
-                className="text-[9px] bg-amber-500 text-white hover:bg-amber-600 flex items-center gap-0.5 px-1.5 py-0.5 font-semibold"
-                title="Lembrete - publicação manual"
+                className={cn(
+                  "text-[9px] text-white flex items-center gap-0.5 px-1.5 py-0.5 font-semibold",
+                  post.reminderSentAt
+                    ? "bg-green-500 hover:bg-green-600"
+                    : "bg-amber-500 hover:bg-amber-600"
+                )}
+                title={
+                  post.reminderSentAt
+                    ? `Lembrete enviado em ${new Date(post.reminderSentAt).toLocaleString('pt-BR')}`
+                    : "Lembrete agendado - aguardando disparo"
+                }
               >
                 <Bell className="w-2.5 h-2.5" />
-                <span>Lembrete</span>
+                <span>{post.reminderSentAt ? 'Lembrete ✓' : 'Lembrete'}</span>
               </Badge>
             )}
 
