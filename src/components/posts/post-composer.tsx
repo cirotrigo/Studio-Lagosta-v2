@@ -268,6 +268,21 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
         return
       }
 
+      // Validate REEL has video (not image)
+      if (postType === 'REEL') {
+        const hasVideo = selectedMedia.some(media => {
+          const url = media.url.toLowerCase()
+          return url.includes('.mp4') || url.includes('.mov') || url.includes('.avi') ||
+                 url.includes('.webm') || url.includes('video') || url.includes('.m4v')
+        })
+
+        if (!hasVideo) {
+          isSubmittingRef.current = false
+          toast.error('Reel deve conter um vídeo (.mp4, .mov, .avi, .webm)')
+          return
+        }
+      }
+
       // Validate scheduled datetime for SCHEDULED type
       if (data.scheduleType === 'SCHEDULED') {
         if (!data.scheduledDatetime) {
@@ -468,12 +483,18 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
                   variant={postType === type.value ? 'default' : 'outline'}
                   onClick={() => {
                     form.setValue('postType', type.value as PostFormData['postType'])
+
                     // Reset media if switching to/from carousel
                     if ((type.value === 'CAROUSEL' && selectedMedia.length > 10) ||
                       (type.value !== 'CAROUSEL' && selectedMedia.length > 1)) {
                       setSelectedMedia([])
                       form.setValue('mediaUrls', [])
                       form.setValue('generationIds', [])
+                    }
+
+                    // Clear firstComment if switching to STORY or REEL (they don't support first comment)
+                    if (type.value === 'STORY' || type.value === 'REEL') {
+                      form.setValue('firstComment', '')
                     }
                   }}
                   className="flex flex-col items-center gap-1 h-auto py-3"
@@ -487,15 +508,18 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
           {/* Seletor de Mídia */}
           <div>
-            <Label className="text-base font-semibold">Mídia</Label>
+            <Label className="text-base font-semibold">
+              Mídia
+              <span className="text-red-500 ml-1">*</span>
+            </Label>
             <p className="text-sm text-muted-foreground mb-3">
               {postType === 'CAROUSEL'
-                ? 'Selecione de 2 a 10 imagens para o carrossel'
+                ? '📸 Selecione de 2 a 10 imagens para o carrossel (apenas imagens)'
                 : postType === 'REEL'
-                  ? 'Selecione 1 vídeo para o reel'
+                  ? '🎬 Selecione 1 vídeo para o reel (.mp4, .mov, .avi ou .webm)'
                   : postType === 'STORY'
-                    ? 'Selecione 1 imagem ou vídeo para o story'
-                    : 'Selecione 1 imagem'}
+                    ? '⭐ Selecione 1 imagem ou vídeo para o story (24h de duração)'
+                    : '📷 Selecione 1 imagem para o post'}
             </p>
             <MediaUploadSystem
               projectId={projectId}
@@ -510,6 +534,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
           <div>
             <Label htmlFor="caption" className="text-base font-semibold">
               {postType === 'STORY' ? 'Texto do Story (Opcional)' : 'Legenda'}
+              {postType !== 'STORY' && <span className="text-red-500 ml-1">*</span>}
             </Label>
             <Textarea
               id="caption"
@@ -521,81 +546,16 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
             />
             <div className="flex justify-between mt-1">
               <p className="text-xs text-muted-foreground">
-                {postType === 'STORY' ? 'Texto opcional para exibir no story' : 'Máximo de 2.200 caracteres'}
+                {postType === 'STORY'
+                  ? '💡 Texto opcional. Stories são temporários e duram 24 horas'
+                  : postType === 'REEL'
+                    ? '💡 Use hashtags e mencione perfis para aumentar o alcance'
+                    : '💡 Máximo de 2.200 caracteres. Use hashtags relevantes'}
               </p>
               <p className="text-xs font-medium">
                 {caption?.length || 0}/2200
               </p>
             </div>
-          </div>
-
-          {/* Primeiro Comentário (Opcional) */}
-          <div>
-            <Label htmlFor="firstComment" className="text-base font-semibold">
-              Primeiro Comentário (Opcional)
-            </Label>
-            <Textarea
-              id="firstComment"
-              {...form.register('firstComment')}
-              placeholder="Adicione um comentário que será postado automaticamente..."
-              rows={2}
-              className="mt-2 resize-none"
-            />
-          </div>
-
-          {/* Tipo de Publicação */}
-          <div>
-            <Label className="text-base font-semibold">Tipo de Publicação</Label>
-            <div className="grid grid-cols-2 gap-3 mt-3">
-              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-                <input
-                  type="radio"
-                  value="DIRECT"
-                  {...form.register('publishType')}
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <span className="font-medium">Publicar Direto</span>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    O post será enviado diretamente para o Instagram
-                  </p>
-                </div>
-              </label>
-
-              <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
-                <input
-                  type="radio"
-                  value="REMINDER"
-                  {...form.register('publishType')}
-                  className="mt-1"
-                />
-                <div className="flex-1">
-                  <span className="font-medium">Lembrete (Publicação Manual)</span>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Receba uma notificação para publicar manualmente
-                  </p>
-                </div>
-              </label>
-            </div>
-
-            {/* Campo de Informações Extras (condicional) */}
-            {publishType === 'REMINDER' && (
-              <div className="mt-3 p-3 rounded-lg border bg-muted/30">
-                <Label htmlFor="reminderExtraInfo" className="text-sm font-medium">
-                  Informações Extras para o Lembrete
-                </Label>
-                <Textarea
-                  id="reminderExtraInfo"
-                  {...form.register('reminderExtraInfo')}
-                  placeholder="Cole um link ou adicione instruções especiais para este post..."
-                  rows={3}
-                  className="mt-2 resize-none"
-                />
-                <p className="text-xs text-muted-foreground mt-2">
-                  💡 Exemplo: Link para adicionar no story, instruções de aprovação, etc.
-                </p>
-              </div>
-            )}
           </div>
 
           {/* Tipo de Agendamento */}
@@ -675,6 +635,82 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
               )}
             </div>
           </div>
+
+          {/* Tipo de Publicação - Apenas para posts agendados */}
+          {scheduleType !== 'IMMEDIATE' && (
+            <div>
+              <Label className="text-base font-semibold">Tipo de Publicação</Label>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                  <input
+                    type="radio"
+                    value="DIRECT"
+                    {...form.register('publishType')}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium">Publicar Direto</span>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      O post será enviado automaticamente para o Instagram
+                    </p>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer hover:bg-muted/50 transition-colors">
+                  <input
+                    type="radio"
+                    value="REMINDER"
+                    {...form.register('publishType')}
+                    className="mt-1"
+                  />
+                  <div className="flex-1">
+                    <span className="font-medium">Lembrete (Publicação Manual)</span>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Receba uma notificação no N8N para publicar manualmente
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* Campo de Informações Extras (condicional) */}
+              {publishType === 'REMINDER' && (
+                <div className="mt-3 p-3 rounded-lg border bg-muted/30">
+                  <Label htmlFor="reminderExtraInfo" className="text-sm font-medium">
+                    Informações Extras para o Lembrete
+                  </Label>
+                  <Textarea
+                    id="reminderExtraInfo"
+                    {...form.register('reminderExtraInfo')}
+                    placeholder="Cole um link ou adicione instruções especiais para este post..."
+                    rows={3}
+                    className="mt-2 resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Exemplo: Link para adicionar no story, instruções de aprovação, etc.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Primeiro Comentário - Apenas para POST e CAROUSEL */}
+          {(postType === 'POST' || postType === 'CAROUSEL') && (
+            <div>
+              <Label htmlFor="firstComment" className="text-base font-semibold">
+                Primeiro Comentário (Opcional)
+              </Label>
+              <Textarea
+                id="firstComment"
+                {...form.register('firstComment')}
+                placeholder="Adicione um comentário que será postado automaticamente..."
+                rows={2}
+                className="mt-2 resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                💡 Ideal para adicionar hashtags extras ou CTAs sem poluir a legenda
+              </p>
+            </div>
+          )}
 
           {/* Ações */}
           <div className="flex justify-end gap-3 pt-4 border-t">
