@@ -144,6 +144,7 @@ export async function PUT(
       altText,
       firstComment,
       publishType,
+      reminderExtraInfo,
       mediaUrls,
       generationIds,
       blobPathnames,
@@ -166,6 +167,7 @@ export async function PUT(
       }),
       ...(altText !== undefined && { altText }),
       ...(firstComment !== undefined && { firstComment }),
+      ...(reminderExtraInfo !== undefined && { reminderExtraInfo }),
       ...(publishType !== undefined && { publishType: publishType as PublishType }),
       ...(mediaUrls !== undefined && { mediaUrls }),
       ...(generationIds !== undefined && {

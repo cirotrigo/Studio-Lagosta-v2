@@ -32,6 +32,7 @@ const createPostValidationSchema = (postType?: PostType) => {
     }).optional(),
     altText: z.array(z.string()).optional(),
     firstComment: z.string().optional(),
+    reminderExtraInfo: z.string().optional(),
     publishType: z.nativeEnum(PublishType).optional().default(PublishType.DIRECT),
   })
 }
@@ -159,6 +160,7 @@ export async function POST(
       altText: data.altText,
       firstComment: data.firstComment,
       publishType: data.publishType || PublishType.DIRECT,
+      reminderExtraInfo: data.reminderExtraInfo,
     })
 
     return NextResponse.json(result)

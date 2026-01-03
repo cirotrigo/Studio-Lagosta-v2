@@ -31,6 +31,7 @@ interface CreatePostData {
   altText?: string[]
   firstComment?: string
   publishType?: PublishType
+  reminderExtraInfo?: string
 }
 
 export class PostScheduler {

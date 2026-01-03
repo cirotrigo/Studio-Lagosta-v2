@@ -45,6 +45,7 @@ interface CreatePostData {
   altText?: string[]
   firstComment?: string
   publishType?: PublishType
+  reminderExtraInfo?: string
 }
 
 /**
@@ -96,6 +97,7 @@ export class LaterPostScheduler {
         altText: data.altText || [],
         firstComment: data.firstComment,
         publishType: data.publishType || PublishType.DIRECT,
+        reminderExtraInfo: data.reminderExtraInfo,
         scheduleType: data.scheduleType,
         scheduledDatetime,
         recurringConfig: data.recurringConfig
