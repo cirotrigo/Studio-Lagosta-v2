@@ -1,6 +1,6 @@
 import { db } from '@/lib/db'
 import { InstagramApiException, InstagramGraphApiClient, InstagramStory } from '@/lib/instagram/graph-api-client'
-import { PostType, VerificationStatus } from '../../../../prisma/generated/client'
+import { PostType, PublishType, VerificationStatus } from '../../../../prisma/generated/client'
 import { SocialPostWithProject, VerificationErrorCode, VerificationSummary } from './types'
 
 const MAX_ATTEMPTS = 3
@@ -89,6 +89,12 @@ export class StoryVerifier {
 
     for (const post of posts) {
       const baseTimestamp = this.getBaseTimestamp(post)
+
+      if (this.shouldVerifyFromLate(post)) {
+        await this.markVerifiedFromLate(post, now)
+        summary.verified++
+        continue
+      }
 
       if (this.isStoryExpired(baseTimestamp)) {
         await this.markFailure(post, 'TTL_EXPIRED', now)
@@ -502,6 +508,40 @@ export class StoryVerifier {
       projectId: post.projectId,
       verifiedByFallback: options.verifiedByFallback,
       storyId: story.id,
+    })
+  }
+
+  private shouldVerifyFromLate(post: SocialPostWithProject): boolean {
+    if (post.postType !== PostType.STORY) return false
+    if (post.publishType !== PublishType.DIRECT) return false
+    return post.lateStatus === 'published'
+  }
+
+  private async markVerifiedFromLate(post: SocialPostWithProject, now: Date) {
+    const publishedAt = post.latePublishedAt || post.sentAt || now
+    const platformUrl = post.publishedUrl || post.latePlatformUrl || null
+    const platformPostId = post.instagramMediaId || null
+    const attempts = Math.max(post.verificationAttempts || 0, 1)
+
+    await db.socialPost.update({
+      where: { id: post.id },
+      data: {
+        verificationStatus: VerificationStatus.VERIFIED,
+        verificationAttempts: attempts,
+        verifiedByFallback: true,
+        verifiedStoryId: platformPostId,
+        verifiedPermalink: platformUrl,
+        verifiedTimestamp: publishedAt,
+        lastVerificationAt: now,
+        nextVerificationAt: null,
+        verificationError: null,
+      },
+    })
+
+    console.log('[Verification] Post verified via Late', {
+      postId: post.id,
+      projectId: post.projectId,
+      storyId: platformPostId,
     })
   }
 

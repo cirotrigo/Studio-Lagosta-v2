@@ -378,6 +378,23 @@ export class LaterPostScheduler {
           ? new Date(laterPost.publishedAt || Date.now())
           : null
 
+      const verificationUpdate =
+        post.postType === PostType.STORY &&
+        post.publishType === PublishType.DIRECT &&
+        laterPost.status === 'published'
+          ? {
+              verificationStatus: VerificationStatus.VERIFIED,
+              verificationAttempts: Math.max(post.verificationAttempts || 0, 1),
+              verifiedByFallback: true,
+              verifiedStoryId: laterPost.platformPostId || null,
+              verifiedPermalink: laterPost.permalink || null,
+              verifiedTimestamp: publishedAt || new Date(),
+              lastVerificationAt: new Date(),
+              nextVerificationAt: null,
+              verificationError: null,
+            }
+          : {}
+
       try {
         const updatedPost = await db.socialPost.update({
           where: { id: post.id },
@@ -391,6 +408,7 @@ export class LaterPostScheduler {
             latePlatformUrl: laterPost.permalink || null,
             sentAt: publishedAt || null,
             lastSyncAt: new Date(),
+            ...verificationUpdate,
           },
         })
 

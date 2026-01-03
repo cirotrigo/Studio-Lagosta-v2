@@ -14,7 +14,6 @@ import {
   PublishType,
   VerificationStatus,
 } from '@prisma/client'
-import { INITIAL_VERIFICATION_DELAY_MINUTES } from '@/lib/posts/verification/story-verifier'
 import crypto from 'crypto'
 
 /**
@@ -52,8 +51,38 @@ function verifyWebhookSignature(
   }
 }
 
-const addMinutes = (date: Date, minutes: number) =>
-  new Date(date.getTime() + minutes * 60 * 1000)
+const buildLateStoryVerification = (
+  post: {
+    postType: PostType
+    publishType: PublishType
+    verificationAttempts: number
+  },
+  options: {
+    publishedAt: Date
+    platformPostId?: string | null
+    platformPostUrl?: string | null
+  }
+) => {
+  if (post.postType !== PostType.STORY) return {}
+
+  if (post.publishType === PublishType.REMINDER) {
+    return { verificationStatus: VerificationStatus.SKIPPED }
+  }
+
+  const attempts = Math.max(post.verificationAttempts || 0, 1)
+
+  return {
+    verificationStatus: VerificationStatus.VERIFIED,
+    verificationAttempts: attempts,
+    verifiedByFallback: true,
+    verifiedStoryId: options.platformPostId || null,
+    verifiedPermalink: options.platformPostUrl || null,
+    verifiedTimestamp: options.publishedAt,
+    lastVerificationAt: new Date(),
+    nextVerificationAt: null,
+    verificationError: null,
+  }
+}
 
 /**
  * Webhook POST handler
@@ -134,6 +163,8 @@ async function handlePostPublished(data: {
       platformPostUrl?: string
     }>
     publishedAt: string
+    permalink?: string
+    platformPostId?: string
   }
 }) {
   console.log('[Late Webhook] Processing post.published:', data.post._id)
@@ -151,25 +182,14 @@ async function handlePostPublished(data: {
   // Extract Instagram platform data
   const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
   const publishedAt = new Date(data.post.publishedAt)
+  const platformPostUrl = igPlatform?.platformPostUrl || data.post.permalink || null
+  const platformPostId = igPlatform?.platformPostId || data.post.platformPostId || null
 
-  const verificationData =
-    post.postType === PostType.STORY && post.publishType === PublishType.DIRECT
-      ? {
-          verificationStatus: VerificationStatus.PENDING,
-          verificationAttempts: 0,
-          nextVerificationAt: addMinutes(publishedAt, INITIAL_VERIFICATION_DELAY_MINUTES),
-          lastVerificationAt: null,
-          verificationError: null,
-          verifiedByFallback: false,
-          verifiedStoryId: null,
-          verifiedPermalink: null,
-          verifiedTimestamp: null,
-        }
-      : post.postType === PostType.STORY && post.publishType === PublishType.REMINDER
-      ? {
-          verificationStatus: VerificationStatus.SKIPPED,
-        }
-      : {}
+  const verificationData = buildLateStoryVerification(post, {
+    publishedAt,
+    platformPostId,
+    platformPostUrl,
+  })
 
   // Update post status
   await db.socialPost.update({
@@ -178,9 +198,9 @@ async function handlePostPublished(data: {
       status: PostStatus.POSTED,
       lateStatus: 'published',
       latePublishedAt: publishedAt,
-      latePlatformUrl: igPlatform?.platformPostUrl || null,
-      publishedUrl: igPlatform?.platformPostUrl || null,
-      instagramMediaId: igPlatform?.platformPostId || null,
+      latePlatformUrl: platformPostUrl,
+      publishedUrl: platformPostUrl,
+      instagramMediaId: platformPostId,
       sentAt: publishedAt,
       lastSyncAt: new Date(),
       ...verificationData,
@@ -318,6 +338,8 @@ async function handlePartialPublish(data: {
       platformPostId?: string
       platformPostUrl?: string
     }>
+    permalink?: string
+    platformPostId?: string
   }
 }) {
   console.log('[Late Webhook] Processing post.partial:', data.post._id)
@@ -333,25 +355,14 @@ async function handlePartialPublish(data: {
 
   const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
   const publishedAt = new Date()
+  const platformPostUrl = igPlatform?.platformPostUrl || data.post.permalink || null
+  const platformPostId = igPlatform?.platformPostId || data.post.platformPostId || null
 
-  const verificationData =
-    post.postType === PostType.STORY && post.publishType === PublishType.DIRECT
-      ? {
-          verificationStatus: VerificationStatus.PENDING,
-          verificationAttempts: 0,
-          nextVerificationAt: addMinutes(publishedAt, INITIAL_VERIFICATION_DELAY_MINUTES),
-          lastVerificationAt: null,
-          verificationError: null,
-          verifiedByFallback: false,
-          verifiedStoryId: null,
-          verifiedPermalink: null,
-          verifiedTimestamp: null,
-        }
-      : post.postType === PostType.STORY && post.publishType === PublishType.REMINDER
-      ? {
-          verificationStatus: VerificationStatus.SKIPPED,
-        }
-      : {}
+  const verificationData = buildLateStoryVerification(post, {
+    publishedAt,
+    platformPostId,
+    platformPostUrl,
+  })
 
   // If Instagram succeeded, mark as POSTED
   if (igPlatform?.status === 'published') {
@@ -361,9 +372,9 @@ async function handlePartialPublish(data: {
         status: PostStatus.POSTED,
         lateStatus: 'partial',
         latePublishedAt: publishedAt,
-        latePlatformUrl: igPlatform.platformPostUrl || null,
-        publishedUrl: igPlatform.platformPostUrl || null,
-        instagramMediaId: igPlatform.platformPostId || null,
+        latePlatformUrl: platformPostUrl,
+        publishedUrl: platformPostUrl,
+        instagramMediaId: platformPostId,
         sentAt: publishedAt,
         lastSyncAt: new Date(),
         ...verificationData,

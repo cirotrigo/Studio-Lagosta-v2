@@ -1,6 +1,13 @@
 import { db } from '@/lib/db'
 import { PostScheduler } from './scheduler'
-import { PostStatus, RetryStatus, PostLogEvent } from '../../../prisma/generated/client'
+import {
+  PostStatus,
+  RetryStatus,
+  PostLogEvent,
+  PostType,
+  PublishType,
+  VerificationStatus,
+} from '../../../prisma/generated/client'
 import { getLaterClient } from '@/lib/later/client'
 
 export class PostExecutor {
@@ -279,7 +286,14 @@ export class PostExecutor {
   ): Promise<boolean> {
     const currentPost = await db.socialPost.findUnique({
       where: { id: postId },
-      select: { status: true, lateStatus: true }
+      select: {
+        status: true,
+        lateStatus: true,
+        postType: true,
+        publishType: true,
+        verificationStatus: true,
+        verificationAttempts: true,
+      }
     })
 
     if (!currentPost) return false
@@ -323,6 +337,22 @@ export class PostExecutor {
           const platformPostId = igPlatform?.platformPostId || laterPost.platformPostId
           if (platformPostId) {
             updateData.instagramMediaId = platformPostId
+          }
+
+          if (
+            currentPost.postType === PostType.STORY &&
+            currentPost.publishType === PublishType.DIRECT &&
+            currentPost.verificationStatus !== VerificationStatus.VERIFIED
+          ) {
+            updateData.verificationStatus = VerificationStatus.VERIFIED
+            updateData.verificationAttempts = Math.max(currentPost.verificationAttempts || 0, 1)
+            updateData.verifiedByFallback = true
+            updateData.verifiedStoryId = platformPostId || null
+            updateData.verifiedPermalink = platformUrl || null
+            updateData.verifiedTimestamp = updateData.latePublishedAt || new Date()
+            updateData.lastVerificationAt = new Date()
+            updateData.nextVerificationAt = null
+            updateData.verificationError = null
           }
 
           // Create success log
