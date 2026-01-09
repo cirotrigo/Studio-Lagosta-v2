@@ -216,6 +216,17 @@ export async function PUT(
       }
     }
 
+    // If rescheduling, reset status to SCHEDULED and clear failure fields
+    if (
+      scheduleType === 'SCHEDULED' ||
+      (scheduleType === undefined && scheduledDatetime !== undefined)
+    ) {
+      updateData.status = PostStatus.SCHEDULED
+      updateData.errorMessage = null
+      updateData.failedAt = null
+      updateData.processingStartedAt = null
+    }
+
     // Update post
     const updatedPost = await db.socialPost.update({
       where: { id: postId },
