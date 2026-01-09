@@ -204,11 +204,16 @@ export async function PUT(
       ...(blobPathnames !== undefined && { blobPathnames }),
     }
 
-    // If changing to IMMEDIATE, set status to POSTING and clear error fields
+    // If changing to IMMEDIATE, clear error fields (status will be set by sender)
     if (scheduleType === 'IMMEDIATE') {
-      updateData.status = PostStatus.POSTING
       updateData.errorMessage = null
       updateData.failedAt = null
+      updateData.processingStartedAt = null
+
+      // If post already exists in Later, mark as POSTING before publish
+      if (existingPost.laterPostId) {
+        updateData.status = PostStatus.POSTING
+      }
     }
 
     // Update post
