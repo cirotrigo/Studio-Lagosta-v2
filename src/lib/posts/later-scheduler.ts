@@ -215,8 +215,12 @@ export class LaterPostScheduler {
    */
   async sendToLater(postId: string) {
     try {
+      console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`)
+
       // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
       const post = await db.$transaction(async (tx) => {
+        console.log(`[Later Scheduler] Transaction started for post ${postId}`)
+
         // Busca e lock pessimista do post
         const lockedPost = await tx.socialPost.findUnique({
           where: { id: postId },
@@ -265,19 +269,53 @@ export class LaterPostScheduler {
         }
 
         // Marca imediatamente como POSTING com timestamp de início do processamento
-        await tx.socialPost.update({
+        const updateData: any = {
+          status: PostStatus.POSTING
+        }
+
+        // Adiciona processingStartedAt apenas se o campo existir no schema
+        // Isso previne erros caso o campo não tenha sido migrado ainda
+        if ('processingStartedAt' in lockedPost) {
+          updateData.processingStartedAt = new Date()
+        }
+
+        const updatedPost = await tx.socialPost.update({
           where: { id: postId },
-          data: {
-            status: PostStatus.POSTING,
-            processingStartedAt: new Date() // Novo campo para tracking
+          data: updateData,
+          include: {
+            Project: {
+              select: {
+                id: true,
+                name: true,
+                laterAccountId: true,
+                laterProfileId: true,
+                instagramAccountId: true,
+                instagramUsername: true,
+                organizationProjects: {
+                  select: {
+                    organization: {
+                      select: {
+                        clerkOrgId: true,
+                      },
+                    },
+                  },
+                  take: 1,
+                },
+              },
+            },
           },
         })
 
-        return lockedPost // Retorna o post para continuar processamento
+        return updatedPost // Retorna o post atualizado com status POSTING e dados do Project
+      }, {
+        timeout: 10000 // 10 second timeout for transaction
       })
+
+      console.log(`[Later Scheduler] Transaction completed, post status: ${post?.status}`)
 
       // Se o post foi skipado (null), retornar sucesso com flag skipped
       if (!post) {
+        console.log(`[Later Scheduler] Post was skipped (already processing or sent)`)
         return { success: true, skipped: true }
       }
 
