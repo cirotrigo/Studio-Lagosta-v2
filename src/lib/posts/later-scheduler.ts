@@ -5,6 +5,7 @@
 
 import { db } from '@/lib/db'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
+import { put } from '@vercel/blob'
 import {
   Prisma,
   PostType,
@@ -23,6 +24,7 @@ import {
   LaterRateLimitError,
   isRateLimitError,
 } from '@/lib/later/errors'
+import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -54,6 +56,61 @@ interface CreatePostData {
  */
 export class LaterPostScheduler {
   private laterClient = getLaterClient()
+
+  private isVideoUrl(url: string) {
+    return /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url)
+  }
+
+  private async normalizeMediaUrlsForFeed(post: {
+    id: string
+    userId: string
+    postType: PostType
+    mediaUrls: string[]
+  }) {
+    if (![PostType.POST, PostType.CAROUSEL].includes(post.postType)) {
+      return { urls: post.mediaUrls, newPathnames: [] }
+    }
+
+    const normalizedUrls: string[] = []
+    const newPathnames: string[] = []
+
+    for (const [index, url] of post.mediaUrls.entries()) {
+      if (this.isVideoUrl(url)) {
+        normalizedUrls.push(url)
+        continue
+      }
+
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to fetch media ${index + 1} (${response.status})`)
+      }
+
+      const buffer = Buffer.from(await response.arrayBuffer())
+      const info = await getImageInfo(buffer)
+      const needsCrop = Math.abs(info.ratio - 4 / 5) > 0.01
+
+      if (!needsCrop) {
+        normalizedUrls.push(url)
+        continue
+      }
+
+      const croppedBuffer = await cropToInstagramFeed(buffer)
+      const blob = await put(
+        `posts/${post.userId}/normalized/${Date.now()}-${post.id}-${index + 1}.jpg`,
+        croppedBuffer,
+        {
+          access: 'public',
+          addRandomSuffix: true,
+          contentType: 'image/jpeg',
+        }
+      )
+
+      normalizedUrls.push(blob.url)
+      newPathnames.push(blob.pathname)
+    }
+
+    return { urls: normalizedUrls, newPathnames }
+  }
 
   /**
    * Create a new post using Later API
@@ -218,7 +275,7 @@ export class LaterPostScheduler {
       console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`)
 
       // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
-      const post = await db.$transaction(async (tx) => {
+      let post = await db.$transaction(async (tx) => {
         console.log(`[Later Scheduler] Transaction started for post ${postId}`)
 
         // Busca e lock pessimista do post
@@ -310,6 +367,24 @@ export class LaterPostScheduler {
       if (!post) {
         console.log(`[Later Scheduler] Post was skipped (already processing or sent)`)
         return { success: true, skipped: true }
+      }
+
+      const normalization = await this.normalizeMediaUrlsForFeed(post)
+      if (normalization.newPathnames.length > 0) {
+        const updatedPost = await db.socialPost.update({
+          where: { id: post.id },
+          data: {
+            mediaUrls: normalization.urls,
+            blobPathnames: {
+              push: normalization.newPathnames,
+            },
+          },
+        })
+
+        post = {
+          ...post,
+          mediaUrls: updatedPost.mediaUrls,
+        }
       }
 
       // Validate Later account is configured
