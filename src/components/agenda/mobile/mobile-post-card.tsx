@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell } from 'lucide-react'
+import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ExternalLink } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from '../calendar/calendar-utils'
@@ -284,6 +284,22 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
 
       {/* Ações rápidas */}
       <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+        {/* Botão para ver no Instagram - aparece quando post está publicado e tem URL */}
+        {post.status === 'POSTED' && (post.publishedUrl || post.latePlatformUrl || post.verifiedPermalink) && (
+          <Button
+            variant="default"
+            size="sm"
+            className="flex-1 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+            onClick={() => {
+              const url = post.verifiedPermalink || post.publishedUrl || post.latePlatformUrl
+              if (url) window.open(url, '_blank', 'noopener,noreferrer')
+            }}
+          >
+            <ExternalLink className="w-4 h-4 mr-2" />
+            Instagram
+          </Button>
+        )}
+
         <Button
           variant="outline"
           size="sm"
@@ -299,6 +315,7 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
           size="sm"
           className="flex-1"
           onClick={onEdit}
+          disabled={post.status === 'POSTED' || post.status === 'POSTING'}
         >
           <Edit className="w-4 h-4 mr-2" />
           Editar

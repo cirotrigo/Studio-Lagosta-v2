@@ -513,21 +513,24 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
             {/* Ações */}
             <div className="flex items-center gap-2 pt-4 border-t">
-              {/* Botão para abrir story verificado no Instagram */}
-              {isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink && (
+              {/* Botão para abrir story/post no Instagram - agora funciona para todos os posts com URL */}
+              {post.status === 'POSTED' && (post.publishedUrl || post.latePlatformUrl || post.verifiedPermalink) && (
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={() => window.open(post.verifiedPermalink!, '_blank', 'noopener,noreferrer')}
+                  onClick={() => {
+                    const url = post.verifiedPermalink || post.publishedUrl || post.latePlatformUrl
+                    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+                  }}
                   className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
                 >
                   <ExternalLink className="w-4 h-4" />
-                  <span>Ver Story no Instagram</span>
+                  <span>Ver {isStory ? 'Story' : 'Post'} no Instagram</span>
                 </Button>
               )}
 
-              {/* Mensagem quando post foi publicado */}
-              {post.status === 'POSTED' && !(isStory && post.verificationStatus === 'VERIFIED' && post.verifiedPermalink) && (
+              {/* Mensagem quando post foi publicado mas sem link */}
+              {post.status === 'POSTED' && !post.publishedUrl && !post.latePlatformUrl && !post.verifiedPermalink && (
                 <div className="flex-1 text-sm text-green-600 dark:text-green-400 italic text-center py-2 bg-green-50 dark:bg-green-950/20 rounded-md">
                   ✓ Post publicado com sucesso!
                 </div>
