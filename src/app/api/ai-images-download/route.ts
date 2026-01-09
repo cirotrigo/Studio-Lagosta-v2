@@ -108,7 +108,10 @@ export async function POST(req: NextRequest) {
         }
 
         // Upload to Vercel Blob
-        const processedFileName = aiImage.name.replace(/\.[^/.]+$/, '.jpg')
+        const baseName = aiImage.name.replace(/\.[^/.]+$/, '')
+        const sanitizedBaseName =
+          baseName.replace(/[\\/]/g, '-').replace(/[.\s]+$/g, '').trim() || 'ai-image'
+        const processedFileName = `${sanitizedBaseName}.jpg`
         const blob = await put(
           `posts/${user.id}/ai-images/${Date.now()}-${processedFileName}`,
           buffer,

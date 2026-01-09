@@ -293,7 +293,11 @@ async function handlePostFailed(data: {
 
   // Extract Instagram error if available
   const igPlatform = data.post.platforms?.find(p => p.platform === 'instagram')
-  const errorMessage = igPlatform?.error || data.post.error || 'Failed via Late API'
+  const webhookErrors = Array.isArray(data.post.errors)
+    ? data.post.errors.filter((error) => typeof error === 'string')
+    : []
+  const errorMessage =
+    igPlatform?.error || data.post.error || (webhookErrors.length ? webhookErrors.join(' | ') : null) || 'Failed via Late API'
 
   await db.socialPost.update({
     where: { id: post.id },
@@ -316,6 +320,7 @@ async function handlePostFailed(data: {
         eventId, // SOLUÇÃO 5: Adiciona eventId para evitar duplicação
         laterPostId: data.post._id,
         error: errorMessage,
+        errors: webhookErrors,
         platformStatus: igPlatform?.status
       }
     }

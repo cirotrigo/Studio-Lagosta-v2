@@ -390,9 +390,14 @@ export class PostExecutor {
       case 'failed':
       case 'partial':
         if (currentPost.status !== PostStatus.FAILED) {
+          const laterErrors = Array.isArray(laterPost.errors)
+            ? laterPost.errors.filter((error: unknown) => typeof error === 'string')
+            : []
+          const fallbackError =
+            laterPost.error || (laterErrors.length ? laterErrors.join(' | ') : null)
           updateData.status = PostStatus.FAILED
           updateData.failedAt = new Date()
-          updateData.errorMessage = laterPost.error || 'Failed via Late API'
+          updateData.errorMessage = fallbackError || 'Failed via Late API'
           statusChanged = true
 
           // Create error log
@@ -400,8 +405,12 @@ export class PostExecutor {
             data: {
               postId,
               event: PostLogEvent.FAILED,
-              message: `Failed detected via Late: ${laterPost.error || 'Unknown'}`,
-              metadata: { laterPostId: laterPost.id, laterError: laterPost.error }
+              message: `Failed detected via Late: ${fallbackError || 'Unknown'}`,
+              metadata: {
+                laterPostId: laterPost.id,
+                laterError: fallbackError || null,
+                laterErrors,
+              }
             }
           })
         }
