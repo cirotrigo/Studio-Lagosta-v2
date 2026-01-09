@@ -7,6 +7,32 @@ import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/acce
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
 
+const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
+  const leftValue = left ?? []
+  const rightValue = right ?? []
+  if (leftValue.length !== rightValue.length) return false
+  return leftValue.every((value, index) => value === rightValue[index])
+}
+
+const mapPostTypeToLater = (postType: PostType) => {
+  switch (postType) {
+    case PostType.STORY:
+      return 'story'
+    case PostType.REEL:
+      return 'reel'
+    case PostType.CAROUSEL:
+      return 'carousel'
+    default:
+      return 'post'
+  }
+}
+
+const buildLaterMediaItems = (mediaUrls: string[]) =>
+  mediaUrls.map((url) => ({
+    type: /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url) ? 'video' : 'image',
+    url,
+  }))
+
 // GET: Fetch individual post
 export async function GET(
   req: NextRequest,
@@ -125,6 +151,8 @@ export async function PUT(
         laterPostId: true,
         caption: true,
         scheduledDatetime: true,
+        postType: true,
+        mediaUrls: true,
       },
     })
 
@@ -211,6 +239,8 @@ export async function PUT(
         caption: caption !== undefined ? 'YES' : 'NO',
         scheduledDatetime: scheduledDatetime !== undefined ? scheduledDatetime : 'NO',
         scheduleType: scheduleType !== undefined ? scheduleType : 'NO',
+        mediaUrls: mediaUrls !== undefined ? 'YES' : 'NO',
+        postType: postType !== undefined ? 'YES' : 'NO',
       })
       console.error(`[PUT /posts] Existing values:`, {
         caption: existingPost.caption?.substring(0, 50) + '...',
@@ -249,6 +279,30 @@ export async function PUT(
             laterPayload.scheduledFor = newScheduledTime?.toISOString() // ✅ Use 'scheduledFor' not 'publishAt'
           } else {
             console.error('[PUT /posts] ⏰ Time unchanged, skipping')
+          }
+        }
+
+        const mediaUrlsChanged =
+          Array.isArray(mediaUrls) && !areStringArraysEqual(mediaUrls, existingPost.mediaUrls)
+        if (mediaUrlsChanged) {
+          console.error('[PUT /posts] 🖼️ Media changed, will update Later')
+          laterPayload.mediaItems = buildLaterMediaItems(mediaUrls)
+        }
+
+        const postTypeChanged = postType !== undefined && postType !== existingPost.postType
+        if (mediaUrlsChanged || postTypeChanged) {
+          const targetPostType = (postType ?? existingPost.postType) as PostType
+          const laterAccountId = updatedPost.Project?.laterAccountId
+          if (laterAccountId) {
+            laterPayload.platforms = [
+              {
+                platform: 'instagram',
+                accountId: laterAccountId,
+                platformSpecificData: {
+                  contentType: mapPostTypeToLater(targetPostType),
+                },
+              },
+            ]
           }
         }
 
