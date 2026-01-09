@@ -14,6 +14,23 @@ export async function GET(req: NextRequest) {
 
     console.log('[CRON] Processing YouTube download queue...')
 
+    // Limpar jobs stuck que estão downloading há mais de 2 horas
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000)
+    const stuckJobs = await db.youtubeDownloadJob.updateMany({
+      where: {
+        status: 'downloading',
+        startedAt: { lt: twoHoursAgo },
+      },
+      data: {
+        status: 'failed',
+        error: 'Download timeout - job stuck for more than 2 hours',
+      },
+    })
+
+    if (stuckJobs.count > 0) {
+      console.log(`[CRON] Cleaned ${stuckJobs.count} stuck download jobs`)
+    }
+
     const downloadingJobs = await db.youtubeDownloadJob.findMany({
       where: { status: 'downloading' },
       orderBy: { createdAt: 'asc' },

@@ -57,6 +57,25 @@ export async function checkYoutubeDownloadStatus(jobId: number) {
     const response = await fetch(url)
 
     if (!response.ok) {
+      // Se é 404 e o job tem mais de 1 hora, provavelmente expirou na API externa
+      if (response.status === 404) {
+        const jobAge = Date.now() - new Date(job.createdAt).getTime()
+        const oneHour = 60 * 60 * 1000
+
+        if (jobAge > oneHour || job.retryCount >= 3) {
+          // Job expirou ou teve muitas tentativas - marcar como falho
+          await db.youtubeDownloadJob.update({
+            where: { id: job.id },
+            data: {
+              status: 'failed',
+              error: 'Download job expired or not found in external API',
+            },
+          })
+          console.log(`[VIDEO-API] Job ${job.id} marked as failed (404 error, age: ${Math.round(jobAge / 1000 / 60)} minutes)`)
+          return null
+        }
+      }
+
       throw new Error(`Failed to fetch progress: ${response.status}`)
     }
 
