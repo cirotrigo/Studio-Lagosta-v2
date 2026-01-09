@@ -21,6 +21,7 @@ import { getLaterClient } from '@/lib/later'
 import type { InstagramContentType } from '@/lib/later/types'
 import {
   LaterApiError,
+  LaterMediaUploadError,
   LaterRateLimitError,
   isRateLimitError,
 } from '@/lib/later/errors'
@@ -453,7 +454,21 @@ export class LaterPostScheduler {
 
       if (post.postType === PostType.CAROUSEL || post.postType === PostType.POST) {
         console.log('[Later Scheduler] Uploading media to Later before creating post...')
-        laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
+        try {
+          laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
+        } catch (error) {
+          if (
+            error instanceof LaterMediaUploadError ||
+            (error instanceof LaterApiError && [401, 403].includes(error.statusCode))
+          ) {
+            console.error('[Later Scheduler] Media upload failed, falling back to URL-based create:', error)
+            payload.mediaItems = mediaItems
+            console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+            laterPost = await this.laterClient.createPost(payload)
+          } else {
+            throw error
+          }
+        }
       } else {
         payload.mediaItems = mediaItems
         console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
