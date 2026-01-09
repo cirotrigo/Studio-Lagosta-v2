@@ -1,0 +1,1 @@
+ALTER TABLE "SocialPost" ADD COLUMN "processingStartedAt" TIMESTAMP(3);
