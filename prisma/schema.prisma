@@ -77,7 +77,6 @@ model Generation {
   templateId           Int
   fieldValues          Json
   resultUrl            String?
-  fileName             String?
   projectId            Int
   authorName           String?
   templateName         String?
@@ -87,10 +86,11 @@ model Generation {
   completedAt          DateTime?
   googleDriveFileId    String?
   googleDriveBackupUrl String?
+  fileName             String?
   Project              Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
   Template             Template            @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  socialPosts          SocialPost[]
   VideoProcessingJob   VideoProcessingJob? @relation("GenerationVideoJob")
-  socialPosts          SocialPost[] // Posts that use this creative
 
   @@index([createdAt])
   @@index([createdBy])
@@ -105,8 +105,8 @@ model Logo {
   fileUrl       String
   projectId     Int
   uploadedBy    String
-  isProjectLogo Boolean  @default(false)
   createdAt     DateTime @default(now())
+  isProjectLogo Boolean  @default(false)
   Project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
@@ -156,65 +156,54 @@ model Plan {
 }
 
 model Project {
-  id                          Int           @id @default(autoincrement())
+  id                          Int                     @id @default(autoincrement())
   name                        String
   description                 String?
-  status                      ProjectStatus @default(ACTIVE)
+  status                      ProjectStatus           @default(ACTIVE)
   logoUrl                     String?
   googleDriveFolderId         String?
+  makeWebhookAnalyzeUrl       String?
+  makeWebhookCreativeUrl      String?
+  userId                      String
+  workspaceId                 Int?
+  createdAt                   DateTime                @default(now())
+  updatedAt                   DateTime                @updatedAt
   googleDriveFolderName       String?
   googleDriveImagesFolderId   String?
   googleDriveImagesFolderName String?
   googleDriveVideosFolderId   String?
   googleDriveVideosFolderName String?
-  makeWebhookAnalyzeUrl       String?
-  makeWebhookCreativeUrl      String?
-  userId                      String
-  workspaceId                 Int?
-  isClientProject             Boolean       @default(false)
-
-  // Instagram account configuration
-  instagramAccountId String? @db.Text
-  instagramUsername  String? @db.Text
-  instagramUserId    String? @db.Text
-  zapierWebhookUrl   String? @db.Text
-
-  // Later API integration (new posting provider)
-  laterAccountId  String?          @db.Text
-  laterProfileId  String?          @db.Text
-  postingProvider PostingProvider? @default(ZAPIER)
-
-  // Webhook for reminder notifications (n8n integration)
-  webhookReminderUrl String? @db.Text
-
-  // AI Chat configuration
-  aiChatBehavior String? @db.Text
-
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  BrandColor           BrandColor[]
-  CustomFont           CustomFont[]
-  Element              Element[]
-  Generation           Generation[]
-  Logo                 Logo[]
-  Template             Template[]
-  AIGeneratedImage     AIGeneratedImage[]
-  PromptLibrary        PromptLibrary[]
-  organizationProjects OrganizationProject[]
-  OrganizationUsage    OrganizationUsage[]
-  SocialPost           SocialPost[] // Social media posts for this account
-  musicLibrary         MusicLibrary[]        @relation("ProjectMusicLibrary")
-  youtubeDownloads     YoutubeDownloadJob[]
-  knowledgeEntries     KnowledgeBaseEntry[]
-  chatConversations    ChatConversation[]
-
-  // Instagram Analytics
-  instagramStories       InstagramStory[]
-  instagramFeeds         InstagramFeed[]
-  instagramDailySummary  InstagramDailySummary[]
-  instagramWeeklyReports InstagramWeeklyReport[]
-  instagramGoalSettings  InstagramGoalSettings?
-  clientInvite           ClientInvite?
+  instagramAccountId          String?
+  instagramUsername           String?
+  zapierWebhookUrl            String?
+  isClientProject             Boolean                 @default(false)
+  instagramUserId             String?
+  aiChatBehavior              String?
+  laterAccountId              String?
+  laterProfileId              String?
+  postingProvider             PostingProvider?        @default(ZAPIER)
+  webhookReminderUrl          String?
+  AIGeneratedImage            AIGeneratedImage[]
+  BrandColor                  BrandColor[]
+  chatConversations           ChatConversation[]
+  clientInvite                ClientInvite?
+  CustomFont                  CustomFont[]
+  Element                     Element[]
+  Generation                  Generation[]
+  instagramDailySummary       InstagramDailySummary[]
+  instagramFeeds              InstagramFeed[]
+  instagramGoalSettings       InstagramGoalSettings?
+  instagramStories            InstagramStory[]
+  instagramWeeklyReports      InstagramWeeklyReport[]
+  Logo                        Logo[]
+  musicLibrary                MusicLibrary[]          @relation("ProjectMusicLibrary")
+  organizationProjects        OrganizationProject[]
+  OrganizationUsage           OrganizationUsage[]
+  PromptLibrary               PromptLibrary[]
+  SocialPost                  SocialPost[]
+  Template                    Template[]
+  youtubeDownloads            YoutubeDownloadJob[]
+  knowledgeEntries            KnowledgeBaseEntry[]
 
   @@index([status])
   @@index([userId])
@@ -238,35 +227,27 @@ model ClientInvite {
   googleDriveVideosFolderName String?
   instagramAccountId          String?
   instagramUsername           String?
-  zapierWebhookUrl            String?            @db.Text
+  zapierWebhookUrl            String?
   clerkInvitationId           String?            @unique
-  inviteUrl                   String?            @db.Text
+  inviteUrl                   String?
   status                      ClientInviteStatus @default(PENDING)
   invitedBy                   String
   invitedByName               String?
   userId                      String?            @unique
-  user                        User?              @relation(fields: [userId], references: [id])
   projectId                   Int?               @unique
-  project                     Project?           @relation(fields: [projectId], references: [id])
   createdAt                   DateTime           @default(now())
   updatedAt                   DateTime           @updatedAt
   acceptedAt                  DateTime?
   completedAt                 DateTime?
   cancelledAt                 DateTime?
   expiresAt                   DateTime?
+  project                     Project?           @relation(fields: [projectId], references: [id])
+  user                        User?              @relation(fields: [userId], references: [id])
 
   @@index([email])
   @@index([status])
   @@index([createdAt])
   @@index([invitedBy])
-}
-
-enum ClientInviteStatus {
-  PENDING
-  ACCEPTED
-  COMPLETED
-  CANCELLED
-  EXPIRED
 }
 
 model DriveSettings {
@@ -301,31 +282,29 @@ model DriveFileCache {
 }
 
 model Organization {
-  id              String                        @id @default(cuid())
-  clerkOrgId      String                        @unique
-  name            String
-  slug            String                        @unique
-  imageUrl        String?
-  isActive        Boolean                       @default(true)
-  maxMembers      Int                           @default(5)
-  maxProjects     Int                           @default(10)
-  creditsPerMonth Int                           @default(1000)
-  ownerClerkId    String?
-  createdAt       DateTime                      @default(now())
-  updatedAt       DateTime                      @updatedAt
-  projects        OrganizationProject[]
-  creditBalance   OrganizationCreditBalance?
-  usage           OrganizationUsage[]
-  memberAnalytics OrganizationMemberAnalytics[]
-  usageHistory    UsageHistory[]
-  Prompt          Prompt[]
-
-  // Instagram Analytics
-  instagramStories       InstagramStory[]
-  instagramFeeds         InstagramFeed[]
+  id                     String                        @id @default(cuid())
+  clerkOrgId             String                        @unique
+  name                   String
+  slug                   String                        @unique
+  imageUrl               String?
+  isActive               Boolean                       @default(true)
+  maxMembers             Int                           @default(5)
+  maxProjects            Int                           @default(10)
+  creditsPerMonth        Int                           @default(1000)
+  createdAt              DateTime                      @default(now())
+  updatedAt              DateTime                      @updatedAt
+  ownerClerkId           String?
   instagramDailySummary  InstagramDailySummary[]
-  instagramWeeklyReports InstagramWeeklyReport[]
+  instagramFeeds         InstagramFeed[]
   instagramGoalSettings  InstagramGoalSettings[]
+  instagramStories       InstagramStory[]
+  instagramWeeklyReports InstagramWeeklyReport[]
+  creditBalance          OrganizationCreditBalance?
+  memberAnalytics        OrganizationMemberAnalytics[]
+  projects               OrganizationProject[]
+  usage                  OrganizationUsage[]
+  Prompt                 Prompt[]
+  usageHistory           UsageHistory[]
 
   @@index([clerkOrgId])
   @@index([slug])
@@ -352,10 +331,10 @@ model OrganizationUsage {
   feature        String
   credits        Int
   metadata       Json?
-  projectId      Int?
   createdAt      DateTime     @default(now())
+  projectId      Int?
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  project        Project?     @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  project        Project?     @relation(fields: [projectId], references: [id])
 
   @@index([organizationId])
   @@index([userId])
@@ -425,17 +404,17 @@ model Template {
   designData    Json
   dynamicFields Json         @default("[]")
   thumbnailUrl  String?
-  category      String?
-  tags          String[]     @default([])
-  isPublic      Boolean      @default(false)
-  isPremium     Boolean      @default(false)
   projectId     Int
   createdBy     String
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+  category      String?
+  isPremium     Boolean      @default(false)
+  isPublic      Boolean      @default(false)
+  tags          String[]     @default([])
   Generation    Generation[]
-  Project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
   Page          Page[]
+  Project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([createdBy])
   @@index([projectId])
@@ -454,10 +433,10 @@ model Page {
   order        Int      @default(0)
   thumbnail    String?
   templateId   Int
-  isTemplate   Boolean  @default(false)
-  templateName String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  isTemplate   Boolean  @default(false)
+  templateName String?
   Template     Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
 
   @@index([templateId])
@@ -475,8 +454,8 @@ model UsageHistory {
   timestamp       DateTime      @default(now())
   organizationId  String?
   CreditBalance   CreditBalance @relation(fields: [creditBalanceId], references: [id])
-  User            User          @relation(fields: [userId], references: [id])
   Organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  User            User          @relation(fields: [userId], references: [id])
 
   @@index([creditBalanceId])
   @@index([operationType])
@@ -501,8 +480,8 @@ model OrganizationMemberAnalytics {
   lastActivityAt        DateTime?
   createdAt             DateTime     @default(now())
   updatedAt             DateTime     @updatedAt
+  member                User?        @relation(fields: [memberUserId], references: [id])
   organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  member                User?        @relation(fields: [memberUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, memberClerkId, periodStart])
   @@index([organizationId, periodStart])
@@ -519,13 +498,13 @@ model User {
   isActive                    Boolean                       @default(true)
   createdAt                   DateTime                      @default(now())
   updatedAt                   DateTime                      @updatedAt
+  clientInvite                ClientInvite?
   CreditBalance               CreditBalance?
+  driveSettings               DriveSettings?
+  OrganizationMemberAnalytics OrganizationMemberAnalytics[]
   StorageObject               StorageObject[]
   SubscriptionEvent           SubscriptionEvent[]
   UsageHistory                UsageHistory[]
-  OrganizationMemberAnalytics OrganizationMemberAnalytics[]
-  driveSettings               DriveSettings?
-  clientInvite                ClientInvite?
 
   @@index([createdAt])
   @@index([email])
@@ -533,61 +512,11 @@ model User {
   @@index([name])
 }
 
-enum GenerationStatus {
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
-enum OperationType {
-  AI_TEXT_CHAT
-  AI_IMAGE_GENERATION
-  CREATIVE_DOWNLOAD
-  VIDEO_EXPORT
-  SOCIAL_MEDIA_POST
-}
-
-enum ProjectStatus {
-  ACTIVE
-  INACTIVE
-  ARCHIVED
-}
-
-enum TemplateType {
-  STORY
-  FEED
-  SQUARE
-}
-
-enum EntryStatus {
-  ACTIVE
-  DRAFT
-  ARCHIVED
-}
-
-enum KnowledgeCategory {
-  ESTABELECIMENTO_INFO
-  HORARIOS
-  CARDAPIO
-  DELIVERY
-  POLITICAS
-  TOM_DE_VOZ
-  CAMPANHAS
-  DIFERENCIAIS
-  FAQ
-}
-
-enum AIImageMode {
-  GENERATE
-  EDIT
-  OUTPAINT
-}
-
 model AIGeneratedImage {
   id            String      @id @default(cuid())
   projectId     Int
   name          String
-  prompt        String      @db.Text
+  prompt        String
   mode          AIImageMode
   fileUrl       String
   thumbnailUrl  String?
@@ -601,8 +530,7 @@ model AIGeneratedImage {
   createdBy     String
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
-
-  Project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  Project       Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@index([createdBy])
@@ -611,22 +539,22 @@ model AIGeneratedImage {
 }
 
 model KnowledgeBaseEntry {
-  id          String           @id @default(cuid())
-  projectId   Int
-  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  category    KnowledgeCategory
+  id          String            @id @default(cuid())
   title       String
-  content     String           @db.Text
+  content     String
   tags        String[]
-  metadata    Json?
-  expiresAt   DateTime? // Para campanhas/promoções com data de validade
-  status      EntryStatus      @default(ACTIVE)
-  createdBy   String
-  updatedBy   String?
+  status      EntryStatus       @default(ACTIVE)
   userId      String?
   workspaceId String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  projectId   Int
+  category    KnowledgeCategory
+  metadata    Json?
+  createdBy   String
+  updatedBy   String?
+  expiresAt   DateTime?
+  project     Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
   chunks      KnowledgeChunk[]
 
   @@index([projectId])
@@ -636,8 +564,8 @@ model KnowledgeBaseEntry {
   @@index([workspaceId])
   @@index([status])
   @@index([createdBy])
-  @@index([expiresAt]) // Para queries de limpeza
-  @@index([projectId, expiresAt]) // Para queries de RAG filtradas
+  @@index([expiresAt])
+  @@index([projectId, expiresAt])
   @@map("knowledge_base_entries")
 }
 
@@ -645,7 +573,7 @@ model KnowledgeChunk {
   id        String             @id @default(cuid())
   entryId   String
   ordinal   Int
-  content   String             @db.Text
+  content   String
   tokens    Int?
   vectorId  String
   createdAt DateTime           @default(now())
@@ -657,36 +585,16 @@ model KnowledgeChunk {
   @@map("knowledge_chunks")
 }
 
-// =============================================================================
-// CMS Models - Content Management System
-// =============================================================================
-
-enum CMSPageStatus {
-  DRAFT
-  PUBLISHED
-  ARCHIVED
-}
-
-enum CMSSectionType {
-  HERO
-  BENTO_GRID
-  FAQ
-  AI_STARTER
-  PRICING
-  CTA
-  CUSTOM
-}
-
 model CMSPage {
   id          String        @id @default(cuid())
   title       String
   slug        String        @unique
   path        String        @unique
-  description String?       @db.Text
+  description String?
   status      CMSPageStatus @default(DRAFT)
   isHome      Boolean       @default(false)
   metaTitle   String?
-  metaDesc    String?       @db.Text
+  metaDesc    String?
   ogImage     String?
   publishedAt DateTime?
   createdBy   String
@@ -759,7 +667,7 @@ model CMSComponent {
   id          String   @id @default(cuid())
   name        String
   slug        String   @unique
-  description String?  @db.Text
+  description String?
   type        String
   content     Json
   thumbnail   String?
@@ -784,7 +692,7 @@ model CMSMedia {
   width        Int?
   height       Int?
   alt          String?
-  caption      String?  @db.Text
+  caption      String?
   folder       String?
   uploadedBy   String
   createdAt    DateTime @default(now())
@@ -796,63 +704,45 @@ model CMSMedia {
 }
 
 model SiteSettings {
-  id String @id @default(cuid())
-
-  // Brand
-  siteName    String @default("Studio Lagosta")
-  shortName   String @default("Studio Lagosta")
-  description String @db.Text
-
-  // Logo (Icon)
-  logoLight String @default("/logo-light.svg")
-  logoDark  String @default("/logo-dark.svg")
-
-  // Logo Full (Complete logo with text)
-  logoFullLight String?
-  logoFullDark  String?
-
-  // Icons
-  favicon   String  @default("/favicon.ico")
-  appleIcon String?
-
-  // SEO
-  metaTitle String?
-  metaDesc  String?  @db.Text
-  ogImage   String?
-  keywords  String[] @default([])
-
-  // Contact
-  supportEmail String?
-
-  // Social
-  twitter   String?
-  facebook  String?
-  instagram String?
-  linkedin  String?
-  github    String?
-
-  // Analytics
+  id              String   @id @default(cuid())
+  siteName        String   @default("Studio Lagosta")
+  shortName       String   @default("Studio Lagosta")
+  description     String
+  logoLight       String   @default("/logo-light.svg")
+  logoDark        String   @default("/logo-dark.svg")
+  favicon         String   @default("/favicon.ico")
+  appleIcon       String?
+  metaTitle       String?
+  metaDesc        String?
+  ogImage         String?
+  keywords        String[] @default([])
+  supportEmail    String?
+  twitter         String?
+  facebook        String?
+  instagram       String?
+  linkedin        String?
+  github          String?
   gtmId           String?
   gaId            String?
   facebookPixelId String?
-
-  // General
-  isActive  Boolean  @default(true)
-  updatedBy String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive        Boolean  @default(true)
+  updatedBy       String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  logoFullDark    String?
+  logoFullLight   String?
 
   @@index([isActive])
 }
 
 model FeatureGridItem {
   id          String   @id @default(cuid())
-  icon        String // Nome do ícone Lucide (ex: "Sparkles")
-  iconColor   String? // Classe Tailwind (ex: "text-sky-500")
+  icon        String
+  iconColor   String?
   title       String
-  description String   @db.Text
-  gridArea    String? // CSS grid-area (ex: "md:[grid-area:1/1/2/2]")
-  order       Int      @default(0) // Ordem de exibição
+  description String
+  gridArea    String?
+  order       Int      @default(0)
   isActive    Boolean  @default(true)
   createdBy   String
   updatedBy   String?
@@ -866,7 +756,7 @@ model FeatureGridItem {
 model PromptLibrary {
   id        String   @id @default(cuid())
   title     String
-  prompt    String   @db.Text
+  prompt    String
   category  String?
   projectId Int
   createdBy String
@@ -878,19 +768,18 @@ model PromptLibrary {
   @@index([createdBy])
 }
 
-// Global Prompts - User-level prompts (reusable across all projects)
 model Prompt {
   id              String        @id @default(cuid())
   userId          String
   title           String
-  content         String        @db.Text
+  content         String
   category        String?
   tags            String[]      @default([])
-  referenceImages String[]      @default([])
-  organizationId  String?
-  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+  organizationId  String?
+  referenceImages String[]      @default([])
+  organization    Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([category])
@@ -898,60 +787,40 @@ model Prompt {
   @@index([organizationId])
 }
 
-// Video Processing Queue - Background video conversion jobs
-enum VideoProcessingStatus {
-  PENDING
-  PROCESSING
-  COMPLETED
-  FAILED
-}
-
 model VideoProcessingJob {
-  id          String @id @default(cuid())
-  userId      String
-  clerkUserId String
-  templateId  Int
-  projectId   Int
-
-  // Job data
-  status       VideoProcessingStatus @default(PENDING)
-  webmBlobUrl  String // Temporary WebM blob URL or storage path
-  webmFileSize Int // Size in bytes
-  mp4ResultUrl String? // Final MP4 URL after conversion
-  thumbnailUrl String? // Thumbnail URL
-
-  // Metadata
-  videoName     String
-  videoDuration Float // Duration in seconds
-  videoWidth    Int
-  videoHeight   Int
-  designData    Json // Template design data for reference
-
-  // Progress tracking
-  progress     Int     @default(0) // 0-100
-  errorMessage String?
-
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  // Credits
-  creditsDeducted Boolean     @default(false)
-  creditsUsed     Int         @default(10)
-  generationId    String?     @unique
-  generation      Generation? @relation("GenerationVideoJob", fields: [generationId], references: [id])
-
-  // Audio configuration
-  audioSource    String? // 'original' | 'music' | 'none'
-  musicId        Int? // FK para MusicLibrary
-  music          MusicLibrary? @relation(fields: [musicId], references: [id])
-  musicStartTime Float? // Início do trecho selecionado (segundos)
-  musicEndTime   Float? // Fim do trecho selecionado (segundos)
-  audioVolume    Float?        @default(1.0) // 0.0 a 1.0
-  audioFadeIn    Float? // duração do fade in (segundos)
-  audioFadeOut   Float? // duração do fade out (segundos)
-  audioLoop      Boolean?      @default(false) // se música deve fazer loop
+  id              String                @id @default(cuid())
+  userId          String
+  clerkUserId     String
+  templateId      Int
+  projectId       Int
+  status          VideoProcessingStatus @default(PENDING)
+  webmBlobUrl     String
+  webmFileSize    Int
+  mp4ResultUrl    String?
+  thumbnailUrl    String?
+  videoName       String
+  videoDuration   Float
+  videoWidth      Int
+  videoHeight     Int
+  designData      Json
+  progress        Int                   @default(0)
+  errorMessage    String?
+  createdAt       DateTime              @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  creditsDeducted Boolean               @default(false)
+  creditsUsed     Int                   @default(10)
+  generationId    String?               @unique
+  audioFadeIn     Float?
+  audioFadeOut    Float?
+  audioLoop       Boolean?              @default(false)
+  audioSource     String?
+  audioVolume     Float?                @default(1.0)
+  musicEndTime    Float?
+  musicId         Int?
+  musicStartTime  Float?
+  generation      Generation?           @relation("GenerationVideoJob", fields: [generationId], references: [id])
+  music           MusicLibrary?         @relation(fields: [musicId], references: [id])
 
   @@index([userId])
   @@index([clerkUserId])
@@ -962,9 +831,488 @@ model VideoProcessingJob {
   @@index([musicId])
 }
 
-// =============================================================================
-// Social Media Post Scheduling System
-// =============================================================================
+model SocialPost {
+  id                   String             @id @default(cuid())
+  projectId            Int
+  generationId         String?
+  userId               String
+  postType             PostType
+  caption              String
+  mediaUrls            String[]
+  altText              String[]           @default([])
+  firstComment         String?
+  scheduleType         ScheduleType
+  scheduledDatetime    DateTime?
+  recurringConfig      Json?
+  status               PostStatus         @default(DRAFT)
+  sentAt               DateTime?
+  failedAt             DateTime?
+  errorMessage         String?
+  webhookResponse      Json?
+  zapierWebhookUrl     String?
+  isRecurring          Boolean            @default(false)
+  parentPostId         String?
+  originalScheduleType ScheduleType?
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  publishType          PublishType        @default(DIRECT)
+  blobPathnames        String[]           @default([])
+  bufferId             String?
+  bufferSentAt         DateTime?
+  instagramMediaId     String?
+  publishedUrl         String?
+  verificationTag      String?
+  verificationStatus   VerificationStatus @default(SKIPPED)
+  verificationAttempts Int                @default(0)
+  nextVerificationAt   DateTime?
+  lastVerificationAt   DateTime?
+  verifiedStoryId      String?
+  verifiedPermalink    String?
+  verifiedTimestamp    DateTime?
+  verifiedByFallback   Boolean            @default(false)
+  verificationError    String?
+  laterPostId          String?
+  analyticsComments    Int?
+  analyticsEngagement  Int?
+  analyticsFetchedAt   DateTime?
+  analyticsImpressions Int?
+  analyticsLikes       Int?
+  analyticsReach       Int?
+  analyticsShares      Int?
+  lastSyncAt           DateTime?
+  latePlatformUrl      String?
+  latePublishedAt      DateTime?
+  lateStatus           String?
+  reminderExtraInfo    String?
+  reminderSentAt       DateTime?
+  processingStartedAt  DateTime?
+  logs                 PostLog[]
+  retries              PostRetry[]
+  Generation           Generation?        @relation(fields: [generationId], references: [id])
+  parentPost           SocialPost?        @relation("PostRecurrence", fields: [parentPostId], references: [id], onDelete: Cascade)
+  childPosts           SocialPost[]       @relation("PostRecurrence")
+  Project              Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledDatetime])
+  @@index([createdAt])
+  @@index([projectId, status])
+  @@index([status, scheduledDatetime])
+  @@index([scheduleType])
+  @@index([generationId])
+  @@index([parentPostId])
+  @@index([verificationStatus, nextVerificationAt])
+  @@index([verificationTag])
+  @@index([projectId, scheduledDatetime])
+  @@index([projectId, status, scheduleType])
+  @@index([projectId, scheduleType, status])
+  @@index([status, scheduleType, scheduledDatetime])
+  @@index([laterPostId])
+  @@index([laterPostId, status])
+  @@index([status, lastSyncAt])
+  @@index([status, analyticsFetchedAt])
+  @@index([latePublishedAt])
+  @@index([processingStartedAt])
+}
+
+model PostRetry {
+  id            String      @id @default(cuid())
+  postId        String
+  attemptNumber Int
+  scheduledFor  DateTime
+  status        RetryStatus @default(PENDING)
+  errorMessage  String?
+  executedAt    DateTime?
+  createdAt     DateTime    @default(now())
+  post          SocialPost  @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([scheduledFor])
+  @@index([status])
+}
+
+model PostLog {
+  id        String       @id @default(cuid())
+  postId    String
+  event     PostLogEvent
+  message   String
+  metadata  Json?
+  createdAt DateTime     @default(now())
+  post      SocialPost   @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([createdAt])
+  @@index([event])
+}
+
+model ChatConversation {
+  id             String        @id @default(cuid())
+  userId         String
+  clerkUserId    String
+  organizationId String?
+  title          String        @default("Nova Conversa")
+  lastMessageAt  DateTime      @default(now())
+  expiresAt      DateTime
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  projectId      Int?
+  project        Project?      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  messages       ChatMessage[]
+
+  @@index([userId])
+  @@index([clerkUserId])
+  @@index([organizationId])
+  @@index([projectId])
+  @@index([projectId, userId])
+  @@index([lastMessageAt])
+  @@index([expiresAt])
+}
+
+model ChatMessage {
+  id             String           @id @default(cuid())
+  conversationId String
+  role           String
+  content        String
+  provider       String?
+  model          String?
+  attachments    Json?
+  createdAt      DateTime         @default(now())
+  metadata       Json?
+  conversation   ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+  @@index([createdAt])
+}
+
+model InstagramStory {
+  id             String             @id @default(cuid())
+  projectId      Int
+  organizationId String?
+  mediaId        String             @unique
+  username       String
+  mediaType      InstagramMediaType
+  mediaUrl       String
+  thumbnailUrl   String?
+  caption        String?
+  publishedAt    DateTime
+  capturedAt     DateTime
+  impressions    Int                @default(0)
+  reach          Int                @default(0)
+  tapsForward    Int                @default(0)
+  tapsBack       Int                @default(0)
+  exits          Int                @default(0)
+  replies        Int                @default(0)
+  countedInGoal  Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([username])
+  @@index([publishedAt])
+  @@index([countedInGoal])
+  @@index([username, publishedAt])
+}
+
+model InstagramFeed {
+  id             String             @id @default(cuid())
+  projectId      Int
+  organizationId String?
+  mediaId        String             @unique
+  username       String
+  mediaType      InstagramMediaType
+  caption        String?
+  mediaUrl       String
+  thumbnailUrl   String?
+  permalink      String
+  publishedAt    DateTime
+  capturedAt     DateTime
+  likes          Int                @default(0)
+  comments       Int                @default(0)
+  engagement     Int                @default(0)
+  impressions    Int                @default(0)
+  reach          Int                @default(0)
+  saved          Int                @default(0)
+  countedInGoal  Boolean            @default(true)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  organization   Organization?      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([organizationId])
+  @@index([username])
+  @@index([publishedAt])
+  @@index([countedInGoal])
+  @@index([permalink])
+  @@index([username, publishedAt])
+}
+
+model InstagramDailySummary {
+  id                    String        @id @default(cuid())
+  projectId             Int
+  organizationId        String?
+  username              String
+  date                  DateTime      @db.Date
+  storiesGoal           Int           @default(3)
+  storiesPublished      Int           @default(0)
+  feedsPublished        Int           @default(0)
+  storiesCompletionRate Float         @default(0)
+  goalMet               Boolean       @default(false)
+  totalStoryReach       Int           @default(0)
+  totalStoryImpressions Int           @default(0)
+  totalFeedEngagement   Int           @default(0)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  organization          Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project               Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, date])
+  @@index([organizationId])
+  @@index([username])
+  @@index([date])
+  @@index([goalMet])
+}
+
+model InstagramWeeklyReport {
+  id                    String        @id @default(cuid())
+  projectId             Int
+  organizationId        String?
+  username              String
+  weekStart             DateTime      @db.Date
+  weekEnd               DateTime      @db.Date
+  year                  Int
+  weekNumber            Int
+  feedsGoal             Int           @default(4)
+  storiesGoal           Int           @default(21)
+  feedsPublished        Int           @default(0)
+  storiesPublished      Int           @default(0)
+  feedsCompletionRate   Float         @default(0)
+  storiesCompletionRate Float         @default(0)
+  overallCompletionRate Float         @default(0)
+  score                 String        @db.Char(1)
+  daysWithoutPost       Int           @default(0)
+  bestPerformingFeedId  String?
+  totalEngagement       Int           @default(0)
+  metricsJson           Json
+  alerts                Json?
+  generatedAt           DateTime
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  organization          Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project               Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, weekStart])
+  @@index([organizationId])
+  @@index([username])
+  @@index([weekStart])
+  @@index([score])
+  @@index([overallCompletionRate])
+}
+
+model InstagramGoalSettings {
+  id             String        @id @default(cuid())
+  projectId      Int           @unique
+  organizationId String?
+  weeklyFeedGoal Int           @default(4)
+  dailyStoryGoal Int           @default(3)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([isActive])
+}
+
+model MusicLibrary {
+  id                  Int                  @id @default(autoincrement())
+  name                String
+  artist              String?
+  duration            Float
+  blobUrl             String
+  blobSize            Int
+  genre               String?
+  mood                String?
+  isActive            Boolean              @default(true)
+  isPublic            Boolean              @default(true)
+  thumbnailUrl        String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  createdBy           String?
+  projectId           Int?
+  stemsProcessedAt    DateTime?
+  hasInstrumentalStem Boolean              @default(false)
+  instrumentalSize    Int?
+  instrumentalUrl     String?
+  project             Project?             @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
+  stemJob             MusicStemJob?
+  usedInVideos        VideoProcessingJob[]
+  youtubeDownloadJob  YoutubeDownloadJob?  @relation("YoutubeDownloadMusic")
+
+  @@index([projectId])
+  @@index([genre])
+  @@index([mood])
+  @@index([isActive, isPublic])
+  @@index([hasInstrumentalStem])
+}
+
+model MusicStemJob {
+  id                Int          @id @default(autoincrement())
+  musicId           Int          @unique
+  status            String       @default("pending")
+  progress          Int          @default(0)
+  mvsepJobHash      String?
+  mvsepStatus       String?
+  percussionBlobUrl String?
+  error             String?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  startedAt         DateTime?
+  completedAt       DateTime?
+  music             MusicLibrary @relation(fields: [musicId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@index([mvsepJobHash])
+  @@index([createdAt])
+}
+
+model YoutubeDownloadJob {
+  id              Int           @id @default(autoincrement())
+  youtubeUrl      String
+  youtubeId       String?
+  requestedName   String?
+  requestedArtist String?
+  requestedGenre  String?
+  requestedMood   String?
+  projectId       Int?
+  status          String        @default("pending")
+  progress        Int           @default(0)
+  videoApiJobId   String?
+  videoApiStatus  String?
+  musicId         Int?          @unique
+  title           String?
+  duration        Float?
+  thumbnail       String?
+  error           String?
+  retryCount      Int           @default(0)
+  createdBy       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  startedAt       DateTime?
+  completedAt     DateTime?
+  music           MusicLibrary? @relation("YoutubeDownloadMusic", fields: [musicId], references: [id])
+  project         Project?      @relation(fields: [projectId], references: [id])
+
+  @@index([status])
+  @@index([youtubeUrl])
+  @@index([createdAt])
+  @@index([videoApiJobId])
+}
+
+model AICreativeGeneration {
+  id          String   @id @default(cuid())
+  projectId   Int
+  templateId  Int
+  pageId      String
+  layoutType  String
+  imageSource Json
+  textsData   Json
+  creditsUsed Int      @default(0)
+  createdBy   String
+  createdAt   DateTime @default(now())
+
+  @@index([projectId])
+  @@index([templateId])
+  @@index([createdBy])
+  @@index([createdAt])
+}
+
+enum ClientInviteStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+  EXPIRED
+}
+
+enum GenerationStatus {
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum OperationType {
+  AI_TEXT_CHAT
+  AI_IMAGE_GENERATION
+  CREATIVE_DOWNLOAD
+  VIDEO_EXPORT
+  SOCIAL_MEDIA_POST
+}
+
+enum ProjectStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum TemplateType {
+  STORY
+  FEED
+  SQUARE
+}
+
+enum EntryStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum KnowledgeCategory {
+  ESTABELECIMENTO_INFO
+  HORARIOS
+  CARDAPIO
+  DELIVERY
+  POLITICAS
+  TOM_DE_VOZ
+  CAMPANHAS
+  DIFERENCIAIS
+  FAQ
+}
+
+enum AIImageMode {
+  GENERATE
+  EDIT
+  OUTPAINT
+}
+
+enum CMSPageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+enum CMSSectionType {
+  HERO
+  BENTO_GRID
+  FAQ
+  AI_STARTER
+  PRICING
+  CTA
+  CUSTOM
+}
+
+enum VideoProcessingStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
 
 enum PostType {
   POST
@@ -976,8 +1324,8 @@ enum PostType {
 enum PostStatus {
   DRAFT
   SCHEDULED
-  POSTING // Enviado para Buffer/Zapier, aguardando confirmação
-  POSTED // Confirmado pelo webhook como publicado
+  POSTING
+  POSTED
   FAILED
 }
 
@@ -1027,583 +1375,8 @@ enum RetryStatus {
   FAILED
 }
 
-model SocialPost {
-  id String @id @default(cuid())
-
-  // Relationships
-  projectId    Int
-  generationId String? // Link to existing creative
-  userId       String
-
-  // Content
-  postType      PostType
-  caption       String      @db.Text
-  mediaUrls     String[] // URLs of creatives (from Generation)
-  blobPathnames String[]    @default([]) // Vercel Blob pathnames for cleanup
-  altText       String[]    @default([])
-  firstComment  String?     @db.Text
-  publishType   PublishType @default(DIRECT)
-
-  // Reminder notifications (for manual publishing)
-  reminderExtraInfo String?   @db.Text // Extra info/link for reminder
-  reminderSentAt    DateTime? // When reminder webhook was sent
-
-  // Scheduling
-  scheduleType      ScheduleType
-  scheduledDatetime DateTime?
-  recurringConfig   Json? // RecurringConfig
-
-  // Status and control
-  status       PostStatus @default(DRAFT)
-  sentAt       DateTime?
-  failedAt     DateTime?
-  errorMessage String?    @db.Text
-  processingStartedAt DateTime? // When processing started (for duplicate prevention)
-
-  // Webhook integration
-  webhookResponse  Json?
-  zapierWebhookUrl String? // Specific Zapier URL for this post
-
-  // Buffer & Instagram tracking (for post validation and reporting)
-  publishedUrl     String?   @db.Text // Instagram public URL (permalink)
-  instagramMediaId String?   @db.Text // Instagram media_id (service_update_id from Buffer)
-  bufferId         String?   @db.Text // Buffer update ID
-  bufferSentAt     DateTime? // Timestamp from Buffer confirmation
-
-  // Later API tracking (new posting provider)
-  laterPostId String? @db.Text // Later post/update ID
-
-  // Late Status Sync (NEW - Analytics + Webhook)
-  lateStatus       String?   // 'scheduled' | 'published' | 'failed' | 'publishing'
-  latePublishedAt  DateTime? // Quando Late publicou
-  latePlatformUrl  String?   // URL do post no Instagram
-  lastSyncAt       DateTime? // Última sincronização
-
-  // Late Analytics (NEW - requires Analytics add-on $10/month)
-  analyticsLikes       Int?      // Curtidas
-  analyticsComments    Int?      // Comentários
-  analyticsShares      Int?      // Compartilhamentos
-  analyticsReach       Int?      // Alcance
-  analyticsImpressions Int?      // Impressões
-  analyticsEngagement  Int?      // likes + comments + shares
-  analyticsFetchedAt   DateTime? // Quando buscou analytics
-
-  // Story verification
-  verificationTag      String?
-  verificationStatus   VerificationStatus @default(SKIPPED)
-  verificationAttempts Int                @default(0)
-  nextVerificationAt   DateTime?
-  lastVerificationAt   DateTime?
-  verifiedStoryId      String?            @db.Text
-  verifiedPermalink    String?            @db.Text
-  verifiedTimestamp    DateTime?
-  verifiedByFallback   Boolean            @default(false)
-  verificationError    String?            @db.Text
-
-  // Metadata
-  isRecurring          Boolean       @default(false)
-  parentPostId         String? // For recurring posts
-  originalScheduleType ScheduleType? // Original type reference
-
-  // Timestamps
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  Project    Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  Generation Generation?  @relation(fields: [generationId], references: [id], onDelete: SetNull)
-  parentPost SocialPost?  @relation("PostRecurrence", fields: [parentPostId], references: [id], onDelete: Cascade)
-  childPosts SocialPost[] @relation("PostRecurrence")
-  retries    PostRetry[]
-  logs       PostLog[]
-
-  @@index([projectId])
-  @@index([userId])
-  @@index([status])
-  @@index([scheduledDatetime])
-  @@index([createdAt])
-  @@index([projectId, status])
-  @@index([status, scheduledDatetime])
-  @@index([scheduleType])
-  @@index([generationId])
-  @@index([parentPostId])
-  @@index([verificationStatus, nextVerificationAt])
-  @@index([verificationTag])
-  // Performance indexes for calendar queries
-  @@index([projectId, scheduledDatetime])
-  @@index([projectId, status, scheduleType])
-  @@index([projectId, scheduleType, status])
-  @@index([status, scheduleType, scheduledDatetime])
-  // Later API tracking
-  @@index([laterPostId])
-  // Late Status Sync indexes (performance for cron jobs)
-  @@index([laterPostId, status])
-  @@index([status, lastSyncAt])
-  // Late Analytics indexes (performance for analytics fetch)
-  @@index([status, analyticsFetchedAt])
-  @@index([latePublishedAt])
-}
-
-model PostRetry {
-  id            String      @id @default(cuid())
-  postId        String
-  attemptNumber Int
-  scheduledFor  DateTime
-  status        RetryStatus @default(PENDING)
-  errorMessage  String?     @db.Text
-  executedAt    DateTime?
-  createdAt     DateTime    @default(now())
-
-  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([scheduledFor])
-  @@index([status])
-}
-
-model PostLog {
-  id        String       @id @default(cuid())
-  postId    String
-  event     PostLogEvent
-  message   String       @db.Text
-  metadata  Json?
-  createdAt DateTime     @default(now())
-
-  post SocialPost @relation(fields: [postId], references: [id], onDelete: Cascade)
-
-  @@index([postId])
-  @@index([createdAt])
-  @@index([event])
-}
-
-// =============================================================================
-// AI Chat Conversation History (7-day retention)
-// =============================================================================
-
-model ChatConversation {
-  id             String  @id @default(cuid())
-  userId         String
-  clerkUserId    String
-  organizationId String?
-  projectId      Int?
-  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  // Conversation metadata
-  title         String   @default("Nova Conversa")
-  lastMessageAt DateTime @default(now())
-
-  // Automatic cleanup after 7 days
-  expiresAt DateTime // Auto-calculated: lastMessageAt + 7 days
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  messages ChatMessage[]
-
-  @@index([userId])
-  @@index([clerkUserId])
-  @@index([organizationId])
-  @@index([projectId])
-  @@index([projectId, userId])
-  @@index([lastMessageAt])
-  @@index([expiresAt]) // For cleanup queries
-}
-
-model ChatMessage {
-  id             String @id @default(cuid())
-  conversationId String
-
-  // Message content
-  role    String // 'user' | 'assistant' | 'system'
-  content String @db.Text
-
-  // AI metadata
-  provider    String? // 'openai', 'anthropic', etc.
-  model       String? // Model used for this message
-  attachments Json? // Array of attachment objects
-  metadata    Json?
-
-  createdAt DateTime @default(now())
-
-  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-
-  @@index([conversationId])
-  @@index([createdAt])
-}
-
-// =============================================================================
-// Instagram Analytics & Goal Tracking
-// =============================================================================
-
 enum InstagramMediaType {
   IMAGE
   VIDEO
   CAROUSEL_ALBUM
-}
-
-model InstagramStory {
-  id             String  @id @default(cuid())
-  projectId      Int
-  organizationId String?
-
-  // Dados da mídia
-  mediaId      String             @unique
-  username     String
-  mediaType    InstagramMediaType
-  mediaUrl     String
-  thumbnailUrl String?
-  caption      String?            @db.Text
-
-  // Timestamps
-  publishedAt DateTime
-  capturedAt  DateTime
-
-  // Insights
-  impressions Int @default(0)
-  reach       Int @default(0)
-  tapsForward Int @default(0)
-  tapsBack    Int @default(0)
-  exits       Int @default(0)
-  replies     Int @default(0)
-
-  // Controle de contabilização
-  countedInGoal Boolean @default(true)
-
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([organizationId])
-  @@index([username])
-  @@index([publishedAt])
-  @@index([countedInGoal])
-  @@index([username, publishedAt])
-}
-
-model InstagramFeed {
-  id             String  @id @default(cuid())
-  projectId      Int
-  organizationId String?
-
-  // Dados da mídia
-  mediaId      String             @unique
-  username     String
-  mediaType    InstagramMediaType
-  caption      String?            @db.Text
-  mediaUrl     String
-  thumbnailUrl String?
-  permalink    String
-
-  // Timestamps
-  publishedAt DateTime
-  capturedAt  DateTime
-
-  // Contadores públicos
-  likes    Int @default(0)
-  comments Int @default(0)
-
-  // Insights
-  engagement  Int @default(0)
-  impressions Int @default(0)
-  reach       Int @default(0)
-  saved       Int @default(0)
-
-  // Controle de contabilização
-  countedInGoal Boolean @default(true)
-
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([projectId])
-  @@index([organizationId])
-  @@index([username])
-  @@index([publishedAt])
-  @@index([countedInGoal])
-  @@index([permalink])
-  @@index([username, publishedAt])
-}
-
-model InstagramDailySummary {
-  id             String  @id @default(cuid())
-  projectId      Int
-  organizationId String?
-  username       String
-
-  // Data
-  date DateTime @db.Date
-
-  // Metas
-  storiesGoal Int @default(3)
-
-  // Resultados
-  storiesPublished Int @default(0)
-  feedsPublished   Int @default(0)
-
-  // Taxa de cumprimento (stories)
-  storiesCompletionRate Float   @default(0)
-  goalMet               Boolean @default(false)
-
-  // Estatísticas
-  totalStoryReach       Int @default(0)
-  totalStoryImpressions Int @default(0)
-  totalFeedEngagement   Int @default(0)
-
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([projectId, date])
-  @@index([organizationId])
-  @@index([username])
-  @@index([date])
-  @@index([goalMet])
-}
-
-model InstagramWeeklyReport {
-  id             String  @id @default(cuid())
-  projectId      Int
-  organizationId String?
-  username       String
-
-  // Período
-  weekStart  DateTime @db.Date
-  weekEnd    DateTime @db.Date
-  year       Int
-  weekNumber Int
-
-  // Metas
-  feedsGoal   Int @default(4)
-  storiesGoal Int @default(21)
-
-  // Resultados
-  feedsPublished   Int @default(0)
-  storiesPublished Int @default(0)
-
-  // Taxas de cumprimento
-  feedsCompletionRate   Float @default(0)
-  storiesCompletionRate Float @default(0)
-  overallCompletionRate Float @default(0)
-
-  // Score (A, B, C, D, F)
-  score String @db.Char(1)
-
-  // Estatísticas adicionais
-  daysWithoutPost      Int     @default(0)
-  bestPerformingFeedId String?
-  totalEngagement      Int     @default(0)
-
-  // Dados completos em JSON
-  metricsJson Json
-  alerts      Json?
-
-  // Metadata
-  generatedAt DateTime
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@unique([projectId, weekStart])
-  @@index([organizationId])
-  @@index([username])
-  @@index([weekStart])
-  @@index([score])
-  @@index([overallCompletionRate])
-}
-
-model InstagramGoalSettings {
-  id             String  @id @default(cuid())
-  projectId      Int     @unique
-  organizationId String?
-
-  // Metas configuráveis
-  weeklyFeedGoal Int @default(4)
-  dailyStoryGoal Int @default(3)
-
-  // Status
-  isActive Boolean @default(true)
-
-  // Metadata
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // Relations
-  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-
-  @@index([organizationId])
-  @@index([isActive])
-}
-
-// =============================================================================
-// Music Library for Video Exports
-// =============================================================================
-
-model MusicLibrary {
-  id           Int     @id @default(autoincrement())
-  name         String
-  artist       String?
-  duration     Float // duração em segundos
-  blobUrl      String // URL do arquivo no Vercel Blob
-  blobSize     Int // tamanho em bytes
-  genre        String? // Rock, Pop, Electronic, etc.
-  mood         String? // Happy, Sad, Energetic, Calm, etc.
-  isActive     Boolean @default(true)
-  isPublic     Boolean @default(true) // futuro: músicas privadas por usuário
-  thumbnailUrl String? // capa/artwork da música
-
-  // Instrumental stem (música sem vocais)
-  instrumentalUrl     String? // URL do stem instrumental
-  instrumentalSize    Int? // Tamanho do arquivo instrumental
-  hasInstrumentalStem Boolean   @default(false)
-  stemsProcessedAt    DateTime?
-
-  // Vinculação com projeto (opcional - músicas globais não têm projeto)
-  projectId Int?
-  project   Project? @relation("ProjectMusicLibrary", fields: [projectId], references: [id], onDelete: Cascade)
-
-  // Relacionamento com download do YouTube
-  youtubeDownloadJob YoutubeDownloadJob? @relation("YoutubeDownloadMusic")
-
-  // Metadados
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String? // admin que fez upload
-
-  // Relação com vídeos gerados (audit trail)
-  usedInVideos VideoProcessingJob[]
-
-  // Relação com job de processamento
-  stemJob MusicStemJob?
-
-  @@index([projectId])
-  @@index([genre])
-  @@index([mood])
-  @@index([isActive, isPublic])
-  @@index([hasInstrumentalStem])
-}
-
-// =============================================================================
-// Music Stem Separation Jobs (MVSEP Integration)
-// =============================================================================
-
-model MusicStemJob {
-  id      Int          @id @default(autoincrement())
-  musicId Int          @unique // Um job por música
-  music   MusicLibrary @relation(fields: [musicId], references: [id], onDelete: Cascade)
-
-  // Status do job
-  status   String @default("pending") // pending, processing, completed, failed
-  progress Int    @default(0) // 0-100
-
-  // MVSEP API
-  mvsepJobHash String? // Hash retornado pela API
-  mvsepStatus  String? // waiting, processing, done, failed
-
-  // Resultado
-  percussionBlobUrl String? // URL temporária antes de mover para MusicLibrary
-  error             String? @db.Text
-
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime? // Quando começou o processamento MVSEP
-  completedAt DateTime? // Quando finalizou tudo
-
-  @@index([status])
-  @@index([mvsepJobHash])
-  @@index([createdAt])
-}
-
-// =============================================================================
-// YouTube Download Queue
-// =============================================================================
-
-model YoutubeDownloadJob {
-  id         Int     @id @default(autoincrement())
-  youtubeUrl String
-  youtubeId  String?
-
-  // Metadados fornecidos pelo usuário
-  requestedName   String?
-  requestedArtist String?
-  requestedGenre  String?
-  requestedMood   String?
-  projectId       Int?
-  project         Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-
-  // Status: pending → downloading → uploading → completed/failed
-  status   String @default("pending")
-  progress Int    @default(0)
-
-  // video-download-api.com metadata
-  videoApiJobId  String?
-  videoApiStatus String?
-
-  // Result
-  musicId Int?          @unique
-  music   MusicLibrary? @relation("YoutubeDownloadMusic", fields: [musicId], references: [id], onDelete: SetNull)
-
-  // Extra metadata
-  title     String?
-  duration  Float?
-  thumbnail String?
-
-  // Error / retries
-  error      String? @db.Text
-  retryCount Int     @default(0)
-
-  // Audit
-  createdBy String?
-
-  // Timestamps
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  startedAt   DateTime?
-  completedAt DateTime?
-
-  @@index([status])
-  @@index([youtubeUrl])
-  @@index([createdAt])
-  @@index([videoApiJobId])
-}
-
-// =============================================================================
-// AI Creative Generator
-// =============================================================================
-
-model AICreativeGeneration {
-  id          String   @id @default(cuid())
-  projectId   Int
-  templateId  Int
-  pageId      String
-
-  layoutType  String   // 'story-promo' | 'story-default' | 'story-minimal'
-  imageSource Json     // { type, url, ... }
-  textsData   Json     // { title?, subtitle?, ... }
-
-  creditsUsed Int      @default(0)
-  createdBy   String
-  createdAt   DateTime @default(now())
-
-  @@index([projectId])
-  @@index([templateId])
-  @@index([createdBy])
-  @@index([createdAt])
 }
