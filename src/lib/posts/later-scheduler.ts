@@ -452,7 +452,10 @@ export class LaterPostScheduler {
       }
       let laterPost
 
-      if (post.postType === PostType.CAROUSEL || post.postType === PostType.POST) {
+      const useMediaUpload =
+        process.env.LATER_MEDIA_UPLOAD === 'true' || process.env.LATER_MEDIA_UPLOAD === '1'
+
+      if (useMediaUpload && (post.postType === PostType.CAROUSEL || post.postType === PostType.POST)) {
         console.log('[Later Scheduler] Uploading media to Later before creating post...')
         try {
           laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
@@ -470,6 +473,9 @@ export class LaterPostScheduler {
           }
         }
       } else {
+        if (!useMediaUpload && (post.postType === PostType.CAROUSEL || post.postType === PostType.POST)) {
+          console.log('[Later Scheduler] Media upload disabled, using URL-based create for feed post')
+        }
         payload.mediaItems = mediaItems
         console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
         laterPost = await this.laterClient.createPost(payload)
