@@ -149,7 +149,7 @@ export async function POST(req: NextRequest) {
 
 /**
  * Post published successfully
- * Payload based on confirmed structure (getlate.dev/twitter-api)
+ * SOLUÇÃO 5: Implementada idempotência para evitar processamento duplicado
  */
 async function handlePostPublished(data: {
   post: {
@@ -168,6 +168,24 @@ async function handlePostPublished(data: {
   }
 }) {
   console.log('[Late Webhook] Processing post.published:', data.post._id)
+
+  // SOLUÇÃO 5: Gerar eventId único para este evento
+  const eventId = `${data.post._id}-published-${data.post.publishedAt}`
+
+  // Verificar se este evento já foi processado
+  const existingLog = await db.postLog.findFirst({
+    where: {
+      metadata: {
+        path: ['eventId'],
+        equals: eventId
+      }
+    }
+  })
+
+  if (existingLog) {
+    console.log(`[Late Webhook] Event ${eventId} already processed, skipping duplicate`)
+    return
+  }
 
   // Find post by laterPostId (stores the _id from Late)
   const post = await db.socialPost.findFirst({
@@ -207,13 +225,14 @@ async function handlePostPublished(data: {
     }
   })
 
-  // Create success log
+  // Create success log com eventId para idempotência
   await db.postLog.create({
     data: {
       postId: post.id,
       event: PostLogEvent.SENT,
       message: 'Post published via Late (webhook)',
       metadata: {
+        eventId, // SOLUÇÃO 5: Adiciona eventId para evitar duplicação
         laterPostId: data.post._id,
         publishedAt: data.post.publishedAt,
         platformPostId: igPlatform?.platformPostId,
@@ -229,7 +248,7 @@ async function handlePostPublished(data: {
 
 /**
  * Post failed
- * Payload based on confirmed structure
+ * SOLUÇÃO 5: Implementada idempotência para evitar processamento duplicado
  */
 async function handlePostFailed(data: {
   post: {
@@ -244,6 +263,24 @@ async function handlePostFailed(data: {
   }
 }) {
   console.log('[Late Webhook] Processing post.failed:', data.post._id)
+
+  // SOLUÇÃO 5: Gerar eventId único para este evento
+  const eventId = `${data.post._id}-failed-${new Date().toISOString()}`
+
+  // Verificar se este evento já foi processado
+  const existingLog = await db.postLog.findFirst({
+    where: {
+      metadata: {
+        path: ['eventId'],
+        equals: eventId
+      }
+    }
+  })
+
+  if (existingLog) {
+    console.log(`[Late Webhook] Event ${eventId} already processed, skipping duplicate`)
+    return
+  }
 
   const post = await db.socialPost.findFirst({
     where: { laterPostId: data.post._id }
@@ -269,13 +306,14 @@ async function handlePostFailed(data: {
     }
   })
 
-  // Create error log
+  // Create error log com eventId para idempotência
   await db.postLog.create({
     data: {
       postId: post.id,
       event: PostLogEvent.FAILED,
       message: `Post failed: ${errorMessage}`,
       metadata: {
+        eventId, // SOLUÇÃO 5: Adiciona eventId para evitar duplicação
         laterPostId: data.post._id,
         error: errorMessage,
         platformStatus: igPlatform?.status
@@ -326,6 +364,7 @@ async function handlePostScheduled(data: {
 
 /**
  * Partial publish (some platforms succeeded, others failed)
+ * SOLUÇÃO 5: Implementada idempotência para evitar processamento duplicado
  */
 async function handlePartialPublish(data: {
   post: {
@@ -343,6 +382,24 @@ async function handlePartialPublish(data: {
   }
 }) {
   console.log('[Late Webhook] Processing post.partial:', data.post._id)
+
+  // SOLUÇÃO 5: Gerar eventId único para este evento
+  const eventId = `${data.post._id}-partial-${new Date().toISOString()}`
+
+  // Verificar se este evento já foi processado
+  const existingLog = await db.postLog.findFirst({
+    where: {
+      metadata: {
+        path: ['eventId'],
+        equals: eventId
+      }
+    }
+  })
+
+  if (existingLog) {
+    console.log(`[Late Webhook] Event ${eventId} already processed, skipping duplicate`)
+    return
+  }
 
   const post = await db.socialPost.findFirst({
     where: { laterPostId: data.post._id }
@@ -387,6 +444,7 @@ async function handlePartialPublish(data: {
         event: PostLogEvent.SENT,
         message: 'Instagram published (partial success)',
         metadata: {
+          eventId, // SOLUÇÃO 5: Adiciona eventId para evitar duplicação
           laterPostId: data.post._id,
           platformUrl: igPlatform.platformPostUrl,
           otherPlatformsFailed: true
@@ -414,6 +472,7 @@ async function handlePartialPublish(data: {
         event: PostLogEvent.FAILED,
         message: 'Instagram failed in partial publish',
         metadata: {
+          eventId, // SOLUÇÃO 5: Adiciona eventId para evitar duplicação
           laterPostId: data.post._id,
           error: igPlatform?.error
         }

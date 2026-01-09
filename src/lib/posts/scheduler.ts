@@ -85,20 +85,33 @@ export class PostScheduler {
   }
 
   /**
-   * Check for posts stuck in POSTING status for more than 10 minutes
+   * SOLUÇÃO 3: Check for posts stuck in POSTING status for more than 30 minutes
    * and mark them as FAILED
+   * Increased from 10 to 30 minutes to avoid marking posts as failed while Later is still processing
    */
   async checkStuckPosts() {
-    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000) // Aumentado de 10 para 30 minutos
 
-    // Find posts that have been in POSTING status for more than 10 minutes
+    // Find posts that have been in POSTING status for more than 30 minutes
+    // Only mark as stuck if no laterPostId (not sent to Later yet)
     const stuckPosts = await db.socialPost.findMany({
       where: {
         status: PostStatus.POSTING,
-        laterPostId: null,
-        updatedAt: {
-          lt: tenMinutesAgo,
-        },
+        laterPostId: null, // Só marca como stuck se não foi enviado
+        // Usa processingStartedAt se disponível, senão usa updatedAt
+        OR: [
+          {
+            processingStartedAt: {
+              lt: thirtyMinutesAgo,
+            },
+          },
+          {
+            processingStartedAt: null,
+            updatedAt: {
+              lt: thirtyMinutesAgo,
+            },
+          },
+        ],
       },
     })
 
@@ -118,7 +131,7 @@ export class PostScheduler {
       },
       data: {
         status: PostStatus.FAILED,
-        errorMessage: 'Post travado em POSTING por mais de 10 minutos - criação no Late não confirmada',
+        errorMessage: 'Post travado em POSTING por mais de 30 minutos - criação no Later não confirmada',
         failedAt: new Date(),
       },
     })
@@ -129,7 +142,7 @@ export class PostScheduler {
         this.createLog(
           post.id,
           PostLogEvent.FAILED,
-          'Post travado em POSTING - marcado como FAILED automaticamente (Late)'
+          'Post travado em POSTING por 30+ minutos - marcado como FAILED automaticamente (Later API timeout)'
         )
       )
     )

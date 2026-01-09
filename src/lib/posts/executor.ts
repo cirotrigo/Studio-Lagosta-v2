@@ -93,21 +93,37 @@ export class PostExecutor {
       let failureCount = 0
       let catchUpCount = 0
 
-      // Send each post
+      // SOLUÇÃO 4: Send each post com rate limiting para posts atrasados
       for (const post of postsToSend) {
         const isOverdue = post.scheduledDatetime < windowStart
         if (isOverdue) {
           catchUpCount++
           console.log(`⏰ Processando post atrasado: ${post.id} (agendado para ${post.scheduledDatetime.toISOString()})`)
+
+          // Adicionar delay de 2 segundos entre posts atrasados para evitar rate limit
+          if (catchUpCount > 1) {
+            console.log(`⏸️ Aguardando 2 segundos antes de processar próximo post atrasado (rate limiting)...`)
+            await new Promise(resolve => setTimeout(resolve, 2000))
+          }
         }
 
         try {
-          console.log(`📤 Sending post ${post.id} to Late API...`)
+          console.log(`📤 Sending post ${post.id} to Later API...`)
           await this.scheduler.sendToLater(post.id)
           successCount++
         } catch (error) {
           console.error(`❌ Erro ao enviar post ${post.id}:`, error)
           failureCount++
+
+          // Se for rate limit error, parar o processamento de posts atrasados
+          if (error instanceof Error && (
+            error.name === 'RateLimitError' ||
+            error.message.includes('rate limit') ||
+            error.message.includes('Rate limit')
+          )) {
+            console.error('🛑 Rate limit atingido, parando catch-up de posts atrasados')
+            break // Para o loop para evitar mais erros
+          }
 
           // Don't schedule retry if it's an insufficient credits error
           const isInsufficientCredits = error instanceof Error && error.name === 'InsufficientCreditsError'

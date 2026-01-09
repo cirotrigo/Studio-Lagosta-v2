@@ -511,10 +511,20 @@ export class StoryVerifier {
     })
   }
 
+  /**
+   * SOLUÇÃO 2: Removida verificação automática de stories do Later
+   * Todos os stories devem ser verificados via Instagram Graph API
+   * para garantir que foram realmente publicados
+   */
   private shouldVerifyFromLate(post: SocialPostWithProject): boolean {
-    if (post.postType !== PostType.STORY) return false
-    if (post.publishType !== PublishType.DIRECT) return false
-    return post.lateStatus === 'published'
+    // Reminders ainda podem confiar no Later status pois não são críticos
+    if (post.publishType === PublishType.REMINDER) {
+      return post.lateStatus === 'published'
+    }
+
+    // DIRECT posts SEMPRE devem ser verificados via Instagram API
+    // Não confiar cegamente no status do Later
+    return false
   }
 
   private async markVerifiedFromLate(post: SocialPostWithProject, now: Date) {

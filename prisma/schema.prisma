@@ -1058,6 +1058,7 @@ model SocialPost {
   sentAt       DateTime?
   failedAt     DateTime?
   errorMessage String?    @db.Text
+  processingStartedAt DateTime? // When processing started (for duplicate prevention)
 
   // Webhook integration
   webhookResponse  Json?

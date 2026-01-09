@@ -215,55 +215,70 @@ export class LaterPostScheduler {
    */
   async sendToLater(postId: string) {
     try {
-      const post = await db.socialPost.findUnique({
-        where: { id: postId },
-        include: {
-          Project: {
-            select: {
-              id: true,
-              name: true,
-              laterAccountId: true,
-              laterProfileId: true,
-              instagramAccountId: true,
-              instagramUsername: true,
-              organizationProjects: {
-                select: {
-                  organization: {
-                    select: {
-                      clerkOrgId: true,
+      // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
+      const post = await db.$transaction(async (tx) => {
+        // Busca e lock pessimista do post
+        const lockedPost = await tx.socialPost.findUnique({
+          where: { id: postId },
+          include: {
+            Project: {
+              select: {
+                id: true,
+                name: true,
+                laterAccountId: true,
+                laterProfileId: true,
+                instagramAccountId: true,
+                instagramUsername: true,
+                organizationProjects: {
+                  select: {
+                    organization: {
+                      select: {
+                        clerkOrgId: true,
+                      },
                     },
                   },
+                  take: 1,
                 },
-                take: 1,
               },
             },
           },
-        },
-      })
+        })
 
-      if (!post) {
-        throw new Error('Post não encontrado')
-      }
-
-      if (post.laterPostId) {
-        if (post.status === PostStatus.SCHEDULED) {
-          await db.socialPost.update({
-            where: { id: post.id },
-            data: { status: PostStatus.POSTING },
-          })
+        if (!lockedPost) {
+          throw new Error('Post não encontrado')
         }
 
-        console.log(
-          `[Later Scheduler] Post ${post.id} already sent to Later (${post.laterPostId}) - skipping duplicate send`
-        )
-        return { success: true, laterPostId: post.laterPostId, skipped: true }
-      }
+        // Se já tem laterPostId, já foi enviado - skip
+        if (lockedPost.laterPostId) {
+          console.log(
+            `[Later Scheduler] Post ${lockedPost.id} already sent to Later (${lockedPost.laterPostId}) - skipping duplicate send`
+          )
+          return null // Retorna null para indicar skip
+        }
 
-      if (post.status !== PostStatus.POSTING) {
-        await db.socialPost.update({
-          where: { id: post.id },
-          data: { status: PostStatus.POSTING },
+        // Se já está sendo processado, skip
+        if (lockedPost.status === PostStatus.POSTING) {
+          console.log(
+            `[Later Scheduler] Post ${lockedPost.id} already in POSTING status - skipping to prevent duplicate`
+          )
+          return null // Retorna null para indicar skip
+        }
+
+        // Marca imediatamente como POSTING com timestamp de início do processamento
+        await tx.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: PostStatus.POSTING,
+            processingStartedAt: new Date() // Novo campo para tracking
+          },
         })
+
+        return lockedPost // Retorna o post para continuar processamento
+      })
+
+      // Se o post foi skipado (null), retornar sucesso com flag skipped
+      if (!post) {
+        return { success: true, skipped: true }
       }
 
       // Validate Later account is configured
