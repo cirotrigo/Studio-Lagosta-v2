@@ -269,19 +269,12 @@ export class LaterPostScheduler {
         }
 
         // Marca imediatamente como POSTING com timestamp de início do processamento
-        const updateData: any = {
-          status: PostStatus.POSTING
-        }
-
-        // Adiciona processingStartedAt apenas se o campo existir no schema
-        // Isso previne erros caso o campo não tenha sido migrado ainda
-        if ('processingStartedAt' in lockedPost) {
-          updateData.processingStartedAt = new Date()
-        }
-
         const updatedPost = await tx.socialPost.update({
           where: { id: postId },
-          data: updateData,
+          data: {
+            status: PostStatus.POSTING,
+            processingStartedAt: new Date() // Campo agora existe no banco
+          },
           include: {
             Project: {
               select: {

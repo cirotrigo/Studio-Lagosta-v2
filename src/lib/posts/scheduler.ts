@@ -94,24 +94,14 @@ export class PostScheduler {
 
     // Find posts that have been in POSTING status for more than 30 minutes
     // Only mark as stuck if no laterPostId (not sent to Later yet)
+    // Use updatedAt as fallback for backwards compatibility
     const stuckPosts = await db.socialPost.findMany({
       where: {
         status: PostStatus.POSTING,
         laterPostId: null, // Só marca como stuck se não foi enviado
-        // Usa processingStartedAt se disponível, senão usa updatedAt
-        OR: [
-          {
-            processingStartedAt: {
-              lt: thirtyMinutesAgo,
-            },
-          },
-          {
-            processingStartedAt: null,
-            updatedAt: {
-              lt: thirtyMinutesAgo,
-            },
-          },
-        ],
+        updatedAt: {
+          lt: thirtyMinutesAgo, // Usa updatedAt que sempre existe
+        },
       },
     })
 
