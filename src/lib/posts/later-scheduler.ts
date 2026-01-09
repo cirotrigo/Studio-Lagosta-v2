@@ -268,13 +268,12 @@ export class LaterPostScheduler {
           return null // Retorna null para indicar skip
         }
 
-        // Marca imediatamente como POSTING
-        // Removido processingStartedAt temporariamente até o campo existir em produção
+        // Marca imediatamente como POSTING com timestamp de processamento
         const updatedPost = await tx.socialPost.update({
           where: { id: postId },
           data: {
-            status: PostStatus.POSTING
-            // processingStartedAt será adicionado quando o campo existir em todos os ambientes
+            status: PostStatus.POSTING,
+            processingStartedAt: new Date() // Campo agora existe em produção
           },
           include: {
             Project: {

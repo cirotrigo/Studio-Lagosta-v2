@@ -1058,7 +1058,7 @@ model SocialPost {
   sentAt       DateTime?
   failedAt     DateTime?
   errorMessage String?    @db.Text
-  // processingStartedAt DateTime? // Commented out temporarily until migration is complete
+  processingStartedAt DateTime? // When processing started (for duplicate prevention)
 
   // Webhook integration
   webhookResponse  Json?
