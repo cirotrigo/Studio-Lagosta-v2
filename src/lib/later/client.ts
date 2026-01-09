@@ -582,6 +582,11 @@ export class LaterClient {
         'Failed to upload any media files'
       )
     }
+    if (uploadedMedia.length !== mediaUrls.length) {
+      throw new LaterMediaUploadError(
+        `Failed to upload ${mediaUrls.length - uploadedMedia.length} media file(s)`
+      )
+    }
 
     // Create post with uploaded media
     const postPayload: CreateLaterPostPayload = {

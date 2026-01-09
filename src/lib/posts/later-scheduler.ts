@@ -446,14 +446,19 @@ export class LaterPostScheduler {
             },
           },
         ],
-        mediaItems,
         // NO scheduledFor - always publish immediately
         publishNow: true, // Always true - scheduling done locally
       }
+      let laterPost
 
-      console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
-
-      const laterPost = await this.laterClient.createPost(payload)
+      if (post.postType === PostType.CAROUSEL || post.postType === PostType.POST) {
+        console.log('[Later Scheduler] Uploading media to Later before creating post...')
+        laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
+      } else {
+        payload.mediaItems = mediaItems
+        console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+        laterPost = await this.laterClient.createPost(payload)
+      }
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
       console.log(`[Later Scheduler] 🔍 Later API Response:`, {
