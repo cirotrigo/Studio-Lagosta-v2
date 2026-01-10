@@ -519,6 +519,18 @@ export class LaterPostScheduler {
       // Scheduling is handled locally, Later just publishes when we call this
       console.log('[Later Scheduler] Creating post in Later (immediate publish)...')
 
+      // CRITICAL FIX: Timezone issue - posts fail with UTC, work with local timezone
+      // User discovered: automatic posts show "UTC" and fail, manual posts show "GMT-3" and work
+      // Solution: Send scheduledFor as "1 minute ago" to force immediate publish
+      const now = new Date()
+      const oneMinuteAgo = new Date(now.getTime() - 60 * 1000) // 1 minute in the past
+      const scheduledForISO = oneMinuteAgo.toISOString()
+
+      console.log('[Later Scheduler] 🕐 Current server time:', now.toString())
+      console.log('[Later Scheduler] 🕐 Scheduled time (1 min ago):', oneMinuteAgo.toString())
+      console.log('[Later Scheduler] 🕐 ISO timestamp:', scheduledForISO)
+      console.log('[Later Scheduler] 🕐 This forces Later to publish immediately, not schedule for future')
+
       const payload: any = {
         content: captionWithTag,
         platforms: [
@@ -530,8 +542,10 @@ export class LaterPostScheduler {
             },
           },
         ],
-        // NO scheduledFor - always publish immediately
-        publishNow: true, // Always true - scheduling done locally
+        // Send scheduledFor as 1 minute ago to ensure immediate publish
+        // This prevents Later from treating it as future scheduled post
+        scheduledFor: scheduledForISO,
+        timezone: 'America/Sao_Paulo', // Explicit timezone for Brazil (GMT-3)
         mediaItems: undefined as any, // Will be set conditionally below
       }
       let laterPost
@@ -595,6 +609,32 @@ export class LaterPostScheduler {
       }
 
       console.log('[Later Scheduler] ✅ All URLs are publicly accessible')
+
+      // CRITICAL FIX: Add delay to allow URLs to propagate in CDN
+      // Users reported that manual posts work but automatic posts fail
+      // This suggests URLs need time to propagate through Vercel's CDN
+      console.log('[Later Scheduler] ⏳ Waiting 3 seconds for URLs to propagate in CDN...')
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      console.log('[Later Scheduler] ✅ CDN propagation delay completed')
+
+      // Re-validate URLs one more time after delay
+      console.log('[Later Scheduler] 🔄 Final validation after CDN delay...')
+      for (const [index, url] of post.mediaUrls.entries()) {
+        try {
+          const finalCheck = await fetch(url, {
+            method: 'HEAD',
+            signal: AbortSignal.timeout(10000),
+            cache: 'no-store', // Force fresh request, bypass cache
+          })
+          if (!finalCheck.ok) {
+            throw new Error(`URL ${index + 1} not ready after delay: HTTP ${finalCheck.status}`)
+          }
+          console.log(`[Later Scheduler]   ✅ URL ${index + 1} confirmed ready`)
+        } catch (error) {
+          console.error(`[Later Scheduler]   ❌ URL ${index + 1} still not ready:`, error)
+          throw new Error(`Media URL ${index + 1} not ready after CDN delay`)
+        }
+      }
 
       // Add media items to payload
       payload.mediaItems = mediaItems
