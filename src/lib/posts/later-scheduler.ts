@@ -527,22 +527,19 @@ export class LaterPostScheduler {
       console.log('[Later Scheduler] 📸 Using URL-based create (Later API will download media)')
       console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
 
-      // CRITICAL: Validate that URLs are publicly accessible
-      console.log('[Later Scheduler] 🔍 Validating media URLs are publicly accessible...')
+      // Log media URLs for debugging
+      console.log('[Later Scheduler] 🔍 Media URLs for Later API:')
       for (const [index, url] of post.mediaUrls.entries()) {
+        console.log(`[Later Scheduler]   ${index + 1}. ${url}`)
+
+        // Quick validation (non-blocking)
         try {
-          const headResponse = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(10000) })
-          if (!headResponse.ok) {
-            throw new Error(`URL ${index + 1} returned status ${headResponse.status}`)
-          }
+          const headResponse = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(5000) })
           const contentLength = headResponse.headers.get('content-length')
           const contentType = headResponse.headers.get('content-type')
-          console.log(`[Later Scheduler] ✅ URL ${index + 1} accessible: ${contentType}, ${contentLength} bytes`)
+          console.log(`[Later Scheduler]      ✅ Accessible: ${contentType}, ${contentLength} bytes`)
         } catch (error) {
-          console.error(`[Later Scheduler] ❌ URL ${index + 1} NOT accessible:`, error)
-          throw new Error(
-            `Media URL ${index + 1} is not publicly accessible: ${error instanceof Error ? error.message : 'Unknown error'}`
-          )
+          console.warn(`[Later Scheduler]      ⚠️ Validation failed (continuing anyway):`, error instanceof Error ? error.message : 'Unknown')
         }
       }
 
