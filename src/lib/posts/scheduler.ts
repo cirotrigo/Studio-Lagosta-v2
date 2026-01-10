@@ -48,7 +48,21 @@ export class PostScheduler {
   }
 
   async createPost(data: CreatePostData) {
-    return this.getLaterScheduler().createPost(data)
+    console.log('[PostScheduler] ====================================')
+    console.log('[PostScheduler] 📝 Creating post via Later scheduler')
+    console.log('[PostScheduler] Post type:', data.postType)
+    console.log('[PostScheduler] Schedule type:', data.scheduleType)
+    console.log('[PostScheduler] Media URLs count:', data.mediaUrls.length)
+    console.log('[PostScheduler] ====================================')
+
+    const result = await this.getLaterScheduler().createPost(data)
+
+    console.log('[PostScheduler] ====================================')
+    console.log('[PostScheduler] ✅ Post creation completed')
+    console.log('[PostScheduler] Result:', JSON.stringify(result))
+    console.log('[PostScheduler] ====================================')
+
+    return result
   }
 
   /**

@@ -175,8 +175,17 @@ export class LaterPostScheduler {
    * Create a new post using Later API
    */
   async createPost(data: CreatePostData) {
+    console.log('========================================')
+    console.log('[Later Scheduler] 🚀 createPost() STARTED')
+    console.log('[Later Scheduler] Schedule type:', data.scheduleType)
+    console.log('[Later Scheduler] Post type:', data.postType)
+    console.log('[Later Scheduler] Media count:', data.mediaUrls.length)
+    console.log('========================================')
+
     // Validate post type and media count
+    console.log('[Later Scheduler] Validating post...')
     this.validatePost(data)
+    console.log('[Later Scheduler] ✅ Validation passed')
 
     // Note: Reminders work differently with Later - they're just scheduled posts
     // that users need to manually publish. We'll treat them as scheduled posts.
@@ -317,6 +326,12 @@ export class LaterPostScheduler {
       console.log('[Later Scheduler] Recurring posts not yet implemented for Later')
       // TODO: Implement recurring series for Later in future
     }
+
+    console.log('========================================')
+    console.log('[Later Scheduler] ✅ createPost() COMPLETED')
+    console.log('[Later Scheduler] Post ID:', post.id)
+    console.log('[Later Scheduler] Success: true')
+    console.log('========================================')
 
     return { success: true, postId: post.id }
   }
