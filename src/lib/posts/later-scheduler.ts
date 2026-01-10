@@ -18,7 +18,6 @@ import {
 } from '../../../prisma/generated/client'
 import { generateVerificationTag } from '@/lib/posts/verification/tag-generator'
 import { getLaterClient } from '@/lib/later'
-import type { InstagramContentType } from '@/lib/later/types'
 import {
   LaterApiError,
   LaterMediaUploadError,
@@ -511,9 +510,15 @@ export class LaterPostScheduler {
           ? `${post.caption}\n\n${post.verificationTag}`
           : post.caption
 
-      // 3. Map PostType to Instagram content type
-      const contentType = this.mapPostTypeToLater(post.postType)
-      console.log(`[Later Scheduler] Instagram contentType: ${contentType}`)
+      // 3. Late docs only require contentType for Stories; feed/carousel are inferred
+      const platformSpecificData =
+        post.postType === PostType.STORY ? { contentType: 'story' as const } : undefined
+
+      if (platformSpecificData) {
+        console.log(
+          `[Later Scheduler] Instagram contentType: ${platformSpecificData.contentType}`
+        )
+      }
 
       // 4. Create post in Later - ALWAYS publish immediately
       // Scheduling is handled locally, Later just publishes when we call this
@@ -530,9 +535,7 @@ export class LaterPostScheduler {
           {
             platform: 'instagram',
             accountId: post.Project.laterAccountId, // Later Account ID (unique per Instagram account)
-            platformSpecificData: {
-              contentType,
-            },
+            ...(platformSpecificData ? { platformSpecificData } : {}),
           },
         ],
         publishNow: true, // Triggers immediate publishing, bypasses scheduling
@@ -858,23 +861,6 @@ export class LaterPostScheduler {
     }
 
     return mediaIds
-  }
-
-  /**
-   * Map PostType to Later Instagram content type
-   */
-  private mapPostTypeToLater(postType: PostType): InstagramContentType {
-    switch (postType) {
-      case PostType.STORY:
-        return 'story'
-      case PostType.REEL:
-        return 'reel'
-      case PostType.CAROUSEL:
-        return 'carousel'
-      case PostType.POST:
-      default:
-        return 'post'
-    }
   }
 
   /**

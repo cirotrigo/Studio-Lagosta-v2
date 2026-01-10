@@ -14,19 +14,6 @@ const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) =
   return leftValue.every((value, index) => value === rightValue[index])
 }
 
-const mapPostTypeToLater = (postType: PostType) => {
-  switch (postType) {
-    case PostType.STORY:
-      return 'story'
-    case PostType.REEL:
-      return 'reel'
-    case PostType.CAROUSEL:
-      return 'carousel'
-    default:
-      return 'post'
-  }
-}
-
 const buildLaterMediaItems = (mediaUrls: string[]): Array<{ type: 'image' | 'video'; url: string }> =>
   mediaUrls.map((url) => ({
     type: /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url) ? ('video' as const) : ('image' as const),
@@ -310,14 +297,17 @@ export async function PUT(
           const targetPostType = (postType ?? existingPost.postType) as PostType
           const laterAccountId = updatedPost.Project?.laterAccountId
           if (laterAccountId) {
+            const platform: UpdateLaterPostPayload['platforms'][number] = {
+              platform: 'instagram',
+              accountId: laterAccountId,
+            }
+
+            if (targetPostType === PostType.STORY) {
+              platform.platformSpecificData = { contentType: 'story' }
+            }
+
             laterPayload.platforms = [
-              {
-                platform: 'instagram',
-                accountId: laterAccountId,
-                platformSpecificData: {
-                  contentType: mapPostTypeToLater(targetPostType),
-                },
-              },
+              platform,
             ]
           }
         }
