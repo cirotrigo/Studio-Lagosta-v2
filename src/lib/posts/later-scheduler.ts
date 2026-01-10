@@ -62,13 +62,56 @@ export class LaterPostScheduler {
     return /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url)
   }
 
+  /**
+   * Fetch URL with retry logic
+   * Retries up to 3 times with exponential backoff
+   */
+  private async fetchWithRetry(
+    url: string,
+    maxRetries = 3,
+    initialDelay = 1000
+  ): Promise<Response> {
+    let lastError: Error | null = null
+
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      try {
+        console.log(`[Later Scheduler] Fetching media (attempt ${attempt + 1}/${maxRetries}): ${url}`)
+
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(30000), // 30s timeout
+        })
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+        }
+
+        console.log(`[Later Scheduler] ✅ Media fetched successfully (${response.headers.get('content-length')} bytes)`)
+        return response
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        console.error(`[Later Scheduler] ❌ Fetch attempt ${attempt + 1} failed:`, lastError.message)
+
+        // Don't retry on last attempt
+        if (attempt < maxRetries - 1) {
+          const delay = initialDelay * Math.pow(2, attempt) // Exponential backoff
+          console.log(`[Later Scheduler] ⏳ Retrying in ${delay}ms...`)
+          await new Promise(resolve => setTimeout(resolve, delay))
+        }
+      }
+    }
+
+    throw new Error(
+      `Failed to fetch media after ${maxRetries} attempts: ${lastError?.message || 'Unknown error'}`
+    )
+  }
+
   private async normalizeMediaUrlsForFeed(post: {
     id: string
     userId: string
     postType: PostType
     mediaUrls: string[]
   }) {
-    if (![PostType.POST, PostType.CAROUSEL].includes(post.postType)) {
+    if (post.postType !== PostType.POST && post.postType !== PostType.CAROUSEL) {
       return { urls: post.mediaUrls, newPathnames: [] }
     }
 
@@ -76,7 +119,10 @@ export class LaterPostScheduler {
     const newPathnames: string[] = []
 
     for (const [index, url] of post.mediaUrls.entries()) {
+      console.log(`[Later Scheduler] Processing media ${index + 1}/${post.mediaUrls.length}`)
+
       if (this.isVideoUrl(url)) {
+        console.log(`[Later Scheduler] ⏩ Skipping normalization for video: ${url}`)
         normalizedUrls.push(url)
         continue
       }
@@ -84,29 +130,42 @@ export class LaterPostScheduler {
       const alreadyNormalized =
         url.includes('/normalized/') && /\.(jpe?g)(\?.*)?$/i.test(url)
       if (alreadyNormalized) {
+        console.log(`[Later Scheduler] ⏩ Already normalized: ${url}`)
         normalizedUrls.push(url)
         continue
       }
 
-      const response = await fetch(url)
-      if (!response.ok) {
-        throw new Error(`Failed to fetch media ${index + 1} (${response.status})`)
+      try {
+        console.log(`[Later Scheduler] 🔄 Normalizing image ${index + 1}: ${url}`)
+
+        // Fetch with retry logic
+        const response = await this.fetchWithRetry(url)
+        const buffer = Buffer.from(await response.arrayBuffer())
+
+        console.log(`[Later Scheduler] 📐 Cropping to Instagram feed aspect ratio...`)
+        const croppedBuffer = await cropToInstagramFeed(buffer)
+
+        console.log(`[Later Scheduler] ☁️ Uploading normalized image to Vercel Blob...`)
+        const blob = await put(
+          `posts/${post.userId}/normalized/${Date.now()}-${post.id}-${index + 1}.jpg`,
+          croppedBuffer,
+          {
+            access: 'public',
+            addRandomSuffix: true,
+            contentType: 'image/jpeg',
+          }
+        )
+
+        console.log(`[Later Scheduler] ✅ Normalized image uploaded: ${blob.url}`)
+        normalizedUrls.push(blob.url)
+        newPathnames.push(blob.pathname)
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error)
+        console.error(`[Later Scheduler] ❌ Failed to normalize media ${index + 1}:`, errorMessage)
+        throw new Error(
+          `Failed to normalize media ${index + 1} (${url}): ${errorMessage}`
+        )
       }
-
-      const buffer = Buffer.from(await response.arrayBuffer())
-      const croppedBuffer = await cropToInstagramFeed(buffer)
-      const blob = await put(
-        `posts/${post.userId}/normalized/${Date.now()}-${post.id}-${index + 1}.jpg`,
-        croppedBuffer,
-        {
-          access: 'public',
-          addRandomSuffix: true,
-          contentType: 'image/jpeg',
-        }
-      )
-
-      normalizedUrls.push(blob.url)
-      newPathnames.push(blob.pathname)
     }
 
     return { urls: normalizedUrls, newPathnames }
@@ -134,6 +193,30 @@ export class LaterPostScheduler {
     console.log('[Later Scheduler] Creating post with schedule type:', data.scheduleType)
     console.log('[Later Scheduler] Scheduled datetime:', scheduledDatetime)
 
+    // PRE-NORMALIZE media URLs for FEED and CAROUSEL posts BEFORE database creation
+    // This ensures Later can always access the media URLs
+    let normalizedMediaUrls = data.mediaUrls
+    let normalizedBlobPathnames = data.blobPathnames || []
+
+    if (data.postType === PostType.POST || data.postType === PostType.CAROUSEL) {
+      console.log('[Later Scheduler] 🔄 Pre-normalizing media for FEED/CAROUSEL post...')
+      console.log('[Later Scheduler] Original URLs:', data.mediaUrls)
+
+      const tempPost = {
+        id: 'temp-' + Date.now(), // Temporary ID for normalization
+        userId: data.userId,
+        postType: data.postType,
+        mediaUrls: data.mediaUrls,
+      }
+
+      const normalization = await this.normalizeMediaUrlsForFeed(tempPost)
+      normalizedMediaUrls = normalization.urls
+      normalizedBlobPathnames = [...normalizedBlobPathnames, ...normalization.newPathnames]
+
+      console.log('[Later Scheduler] ✅ Normalized URLs:', normalizedMediaUrls)
+      console.log('[Later Scheduler] New blob pathnames:', normalization.newPathnames)
+    }
+
     // Generate verification tag for stories
     let verificationTag: string | null = null
     if (data.postType === PostType.STORY) {
@@ -141,7 +224,7 @@ export class LaterPostScheduler {
       console.log('[Later Scheduler] Story detected - verification tag will be generated')
     }
 
-    // Create post in database with SCHEDULED status
+    // Create post in database with SCHEDULED status (using normalized URLs)
     let post = await db.socialPost.create({
       data: {
         projectId: data.projectId,
@@ -149,8 +232,8 @@ export class LaterPostScheduler {
         generationId: data.generationId,
         postType: data.postType,
         caption: data.caption,
-        mediaUrls: data.mediaUrls,
-        blobPathnames: data.blobPathnames || [],
+        mediaUrls: normalizedMediaUrls, // Use normalized URLs
+        blobPathnames: normalizedBlobPathnames, // Include normalized blobs
         altText: data.altText || [],
         firstComment: data.firstComment,
         publishType: data.publishType || PublishType.DIRECT,
@@ -369,23 +452,9 @@ export class LaterPostScheduler {
         return { success: true, skipped: true }
       }
 
-      const normalization = await this.normalizeMediaUrlsForFeed(post)
-      if (normalization.newPathnames.length > 0) {
-        const updatedPost = await db.socialPost.update({
-          where: { id: post.id },
-          data: {
-            mediaUrls: normalization.urls,
-            blobPathnames: {
-              push: normalization.newPathnames,
-            },
-          },
-        })
-
-        post = {
-          ...post,
-          mediaUrls: updatedPost.mediaUrls,
-        }
-      }
+      // NOTE: Media normalization already done in createPost() - no need to re-normalize here
+      console.log('[Later Scheduler] Using pre-normalized media URLs from database')
+      console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
 
       // Validate Later account is configured
       if (!post.Project.laterAccountId) {
@@ -435,7 +504,7 @@ export class LaterPostScheduler {
       // Scheduling is handled locally, Later just publishes when we call this
       console.log('[Later Scheduler] Creating post in Later (immediate publish)...')
 
-      const payload = {
+      const payload: any = {
         content: captionWithTag,
         platforms: [
           {
@@ -448,33 +517,41 @@ export class LaterPostScheduler {
         ],
         // NO scheduledFor - always publish immediately
         publishNow: true, // Always true - scheduling done locally
+        mediaItems: undefined as any, // Will be set conditionally below
       }
       let laterPost
 
-      const useMediaUpload =
-        process.env.LATER_MEDIA_UPLOAD === 'true' || process.env.LATER_MEDIA_UPLOAD === '1'
+      // CRITICAL: FEED and CAROUSEL posts MUST use direct upload to avoid "Media fetch failed" errors
+      // Stories and Reels can use URL-based approach
+      const requiresDirectUpload = (post.postType === PostType.POST || post.postType === PostType.CAROUSEL)
 
-      if (useMediaUpload && (post.postType === PostType.CAROUSEL || post.postType === PostType.POST)) {
+      if (requiresDirectUpload) {
+        console.log('[Later Scheduler] 📤 FEED/CAROUSEL detected - using DIRECT UPLOAD (required)')
         console.log('[Later Scheduler] Uploading media to Later before creating post...')
+
         try {
           laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
+          console.log('[Later Scheduler] ✅ Direct upload successful')
         } catch (error) {
+          console.error('[Later Scheduler] ❌ Direct upload failed:', error)
+
+          // If upload fails with auth/permission error, try URL-based as last resort
           if (
             error instanceof LaterMediaUploadError ||
             (error instanceof LaterApiError && [401, 403].includes(error.statusCode))
           ) {
-            console.error('[Later Scheduler] Media upload failed, falling back to URL-based create:', error)
+            console.warn('[Later Scheduler] ⚠️ Falling back to URL-based create (last resort)...')
             payload.mediaItems = mediaItems
-            console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+            console.log('[Later Scheduler] Fallback payload:', JSON.stringify(payload, null, 2))
             laterPost = await this.laterClient.createPost(payload)
           } else {
+            // For other errors, don't retry - just fail
             throw error
           }
         }
       } else {
-        if (!useMediaUpload && (post.postType === PostType.CAROUSEL || post.postType === PostType.POST)) {
-          console.log('[Later Scheduler] Media upload disabled, using URL-based create for feed post')
-        }
+        // STORY and REEL: Use URL-based approach (works fine for these types)
+        console.log('[Later Scheduler] 📸 STORY/REEL detected - using URL-based create')
         payload.mediaItems = mediaItems
         console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
         laterPost = await this.laterClient.createPost(payload)

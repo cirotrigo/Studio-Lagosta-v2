@@ -27,9 +27,9 @@ const mapPostTypeToLater = (postType: PostType) => {
   }
 }
 
-const buildLaterMediaItems = (mediaUrls: string[]) =>
+const buildLaterMediaItems = (mediaUrls: string[]): Array<{ type: 'image' | 'video'; url: string }> =>
   mediaUrls.map((url) => ({
-    type: /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url) ? 'video' : 'image',
+    type: /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url) ? ('video' as const) : ('image' as const),
     url,
   }))
 

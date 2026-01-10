@@ -294,25 +294,34 @@ export class LaterClient {
     url: string,
     options?: MediaUploadOptions
   ): Promise<LaterMediaUpload> {
-    console.log(`[Later Client] Uploading media from URL: ${url}`)
+    console.log(`[Later Client] 📤 Uploading media from URL: ${url}`)
 
     try {
       // Fetch media as buffer
+      console.log(`[Later Client] ⬇️ Downloading media from URL...`)
       const buffer = await fetchMediaAsBuffer(url)
+      console.log(`[Later Client] ✅ Downloaded ${buffer.length} bytes`)
 
       // Prepare upload options
       const uploadOptions = options || prepareUploadOptions(url)
+      console.log(`[Later Client] 📋 Upload options:`, {
+        filename: uploadOptions.filename,
+        contentType: uploadOptions.contentType,
+        bufferSize: buffer.length,
+      })
 
       // Create FormData
       const formData = createMediaFormData(buffer, uploadOptions)
 
       // Upload to Later
+      console.log(`[Later Client] ⬆️ Uploading to Later API...`)
       const response = await this.request<LaterMediaUpload>('/media', {
         method: 'POST',
         body: formData,
       })
 
       if (!validateUploadResponse(response)) {
+        console.error('[Later Client] ❌ Invalid upload response:', response)
         throw new LaterMediaUploadError(
           'Invalid upload response from Later API',
           url
@@ -320,11 +329,14 @@ export class LaterClient {
       }
 
       console.log(
-        `[Later Client] Media uploaded successfully: ${response.id} (${response.type})`
+        `[Later Client] ✅ Media uploaded successfully: ${response.id} (${response.type})`
       )
+      console.log(`[Later Client] Later media URL: ${response.url}`)
 
       return response
     } catch (error) {
+      console.error(`[Later Client] ❌ Upload failed for ${url}:`, error)
+
       if (error instanceof LaterMediaUploadError) {
         throw error
       }
@@ -573,20 +585,29 @@ export class LaterClient {
     console.log(
       `[Later Client] Creating post with ${mediaUrls.length} media files`
     )
+    console.log(`[Later Client] Media URLs to upload:`, mediaUrls)
 
     // Upload all media files
+    console.log(`[Later Client] 📤 Starting batch upload of ${mediaUrls.length} media files...`)
     const uploadedMedia = await this.uploadMultipleMedia(mediaUrls)
 
+    console.log(`[Later Client] 📊 Upload results: ${uploadedMedia.length}/${mediaUrls.length} successful`)
+
     if (uploadedMedia.length === 0) {
+      console.error('[Later Client] ❌ All media uploads failed')
       throw new LaterMediaUploadError(
         'Failed to upload any media files'
       )
     }
     if (uploadedMedia.length !== mediaUrls.length) {
+      const failedCount = mediaUrls.length - uploadedMedia.length
+      console.error(`[Later Client] ❌ ${failedCount} media file(s) failed to upload`)
       throw new LaterMediaUploadError(
-        `Failed to upload ${mediaUrls.length - uploadedMedia.length} media file(s)`
+        `Failed to upload ${failedCount} media file(s)`
       )
     }
+
+    console.log(`[Later Client] ✅ All media uploaded successfully`)
 
     // Create post with uploaded media
     const postPayload: CreateLaterPostPayload = {
@@ -594,10 +615,13 @@ export class LaterClient {
       mediaItems: uploadedMedia.map((m) => ({ type: m.type, url: m.url })),
     }
 
+    console.log(`[Later Client] 📝 Creating post with uploaded media...`)
+    console.log(`[Later Client] Media items for payload:`, postPayload.mediaItems)
+
     const post = await this.createPost(postPayload)
 
     console.log(
-      `[Later Client] Post created with ${uploadedMedia.length} media files: ${post.id}`
+      `[Later Client] ✅ Post created successfully with ${uploadedMedia.length} media files: ${post.id}`
     )
 
     return post
