@@ -42,6 +42,11 @@ export async function POST(
   { params }: { params: Promise<{ projectId: string }> }
 ) {
   const { projectId: projectIdParam } = await params
+
+  // CRITICAL DEBUG LOG - Version timestamp to confirm new code is deployed
+  console.log('🚀🚀🚀 [API Route POST /posts] ENTRY POINT - Build timestamp:', new Date().toISOString())
+  console.log('🚀🚀🚀 [API Route] ProjectId param:', projectIdParam)
+
   try {
     const { userId: clerkUserId, orgId } = await auth()
     if (!clerkUserId) {
@@ -140,7 +145,18 @@ export async function POST(
     }
 
     // Create post using the scheduler
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
+    console.log('[API Route] BEFORE calling PostScheduler.createPost()')
+    console.log('[API Route] postType:', data.postType)
+    console.log('[API Route] scheduleType:', data.scheduleType)
+    console.log('[API Route] mediaUrls:', mediaUrls)
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
+
     const scheduler = new PostScheduler()
+
+    console.log('[API Route] PostScheduler instance created')
+    console.log('[API Route] Calling scheduler.createPost()...')
+
     const result = await scheduler.createPost({
       projectId,
       userId: user.id,
@@ -162,6 +178,11 @@ export async function POST(
       publishType: data.publishType || PublishType.DIRECT,
       reminderExtraInfo: data.reminderExtraInfo,
     })
+
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
+    console.log('[API Route] AFTER scheduler.createPost()')
+    console.log('[API Route] Result:', JSON.stringify(result))
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
 
     return NextResponse.json(result)
 
