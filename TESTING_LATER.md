@@ -25,8 +25,7 @@ Adicione ao seu `.env`:
 ```env
 # Later API Integration
 LATER_API_KEY=sua_api_key_aqui
-LATER_WEBHOOK_SECRET=gere_um_secret_aleatorio
-ENABLE_LATER=true
+LATE_WEBHOOK_SECRET=gere_um_secret_aleatorio
 ```
 
 **Gere o webhook secret:**
@@ -158,10 +157,8 @@ Monitore o terminal onde `npm run dev` está rodando:
 ```
 📤 [Dual-Mode Router] Using Later API for project "Lagosta Criativa"
 [Later Scheduler] Creating post with schedule type: IMMEDIATE
-[Later Scheduler] Uploading 1 media files...
-[Later Client] Uploading media from URL: https://...
-[Later Client] Media uploaded successfully: media_xyz (image)
-[Later Scheduler] Media uploaded: media_xyz
+[Later Client] 📤 Uploading media from URL: https://...
+[Later Client] ✅ Media uploaded successfully via presign: ... (image)
 [Later Scheduler] Creating post in Later...
 [Later Client] Post created: post_abc (publishing)
 [Later Scheduler] Deducting credits...
@@ -215,7 +212,7 @@ Para receber confirmações de publicação:
 
 2. **Adicione ao `.env`:**
    ```env
-   LATER_WEBHOOK_SECRET=secret_copiado_aqui
+   LATE_WEBHOOK_SECRET=secret_copiado_aqui
    ```
 
 3. **Reinicie o servidor:**
@@ -231,8 +228,15 @@ Para receber confirmações de publicação:
    ```
    📥 LATER WEBHOOK RECEIVED
    ✨ Processing post.published event...
-   ✅ Post cm123 confirmed as POSTED
-   ```
+✅ Post cm123 confirmed as POSTED
+```
+
+---
+
+## 🔐 Segurança
+
+- Nunca publique logs que contenham tokens ou chaves.
+- Se um token aparecer em logs, **rotacione imediatamente**.
 
 ---
 
@@ -306,7 +310,7 @@ npx tsx scripts/later/configure-project.ts "Nome do Projeto" acc_xxxxx
 **Solução:**
 1. Verifique URL no Later: `https://seu-dominio.com/api/webhooks/later`
 2. Teste webhook localmente: use ngrok para expor localhost
-3. Verifique `LATER_WEBHOOK_SECRET` no `.env`
+3. Verifique `LATE_WEBHOOK_SECRET` no `.env`
 
 ---
 

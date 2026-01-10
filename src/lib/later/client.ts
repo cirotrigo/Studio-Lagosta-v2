@@ -194,6 +194,88 @@ export class LaterClient {
     }
   }
 
+  private isSensitiveKey(key: string): boolean {
+    const normalized = key.toLowerCase()
+    return (
+      normalized === 'accesstoken' ||
+      normalized === 'refreshtoken' ||
+      normalized === 'api_key' ||
+      normalized === 'apikey' ||
+      normalized === 'authorization' ||
+      normalized === 'secret' ||
+      normalized === 'password' ||
+      normalized === 'access_token' ||
+      normalized === 'refresh_token'
+    )
+  }
+
+  private redactSensitive(value: unknown): unknown {
+    if (Array.isArray(value)) {
+      return value.map((entry) => this.redactSensitive(entry))
+    }
+
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      const redacted: Record<string, unknown> = {}
+
+      for (const [key, entry] of Object.entries(record)) {
+        if (this.isSensitiveKey(key)) {
+          redacted[key] = '[REDACTED]'
+        } else {
+          redacted[key] = this.redactSensitive(entry)
+        }
+      }
+
+      return redacted
+    }
+
+    return value
+  }
+
+  private summarizePostResponse(response: unknown): Record<string, unknown> {
+    if (!response || typeof response !== 'object') {
+      return { response }
+    }
+
+    const raw = response as Record<string, unknown>
+    const post = (raw.post ?? raw) as Record<string, unknown>
+
+    const platforms = Array.isArray(post.platforms)
+      ? post.platforms.map((platform) => {
+          if (!platform || typeof platform !== 'object') {
+            return platform
+          }
+
+          const platformData = platform as Record<string, unknown>
+          const accountId =
+            typeof platformData.accountId === 'string'
+              ? platformData.accountId
+              : typeof platformData.accountId === 'object' && platformData.accountId
+                ? (platformData.accountId as Record<string, unknown>)._id
+                : undefined
+
+          return this.redactSensitive({
+            platform: platformData.platform,
+            status: platformData.status,
+            accountId,
+            profileId: platformData.profileId,
+            platformPostId: platformData.platformPostId,
+            platformPostUrl: platformData.platformPostUrl,
+            errorMessage: platformData.errorMessage,
+          })
+        })
+      : undefined
+
+    return this.redactSensitive({
+      id: post._id ?? post.id,
+      status: post.status,
+      scheduledFor: post.scheduledFor,
+      publishedAt: post.publishedAt,
+      mediaCount: Array.isArray(post.mediaItems) ? post.mediaItems.length : 0,
+      platforms,
+    }) as Record<string, unknown>
+  }
+
   /**
    * Handle error responses from Later API
    */
@@ -205,7 +287,8 @@ export class LaterClient {
     try {
       errorResponse = await response.json()
       // Log full error response for debugging
-      console.error('[Later Client] API Error Response:', JSON.stringify(errorResponse, null, 2))
+      const sanitized = this.redactSensitive(errorResponse)
+      console.error('[Later Client] API Error Response:', JSON.stringify(sanitized, null, 2))
     } catch {
       // If JSON parsing fails, use response text
     }
@@ -560,7 +643,7 @@ export class LaterClient {
       body: JSON.stringify(payload),
     })
 
-    console.log('[Later Client] 🔍 RAW RESPONSE:', JSON.stringify(response, null, 2))
+    console.log('[Later Client] 🔍 Response summary:', JSON.stringify(this.summarizePostResponse(response), null, 2))
 
     // Later API returns { post: {...}, message: "..." }
     // Extract the post object and normalize _id to id

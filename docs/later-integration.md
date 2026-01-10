@@ -26,7 +26,7 @@ The Later API integration provides a modern alternative to the Zapier/Buffer pos
 - ✅ **Type-Safe Client** - Full TypeScript support
 - ✅ **Robust Error Handling** - Comprehensive error classes
 - ✅ **Rate Limit Detection** - Automatic rate limit tracking
-- ✅ **Media Upload** - Upload images/videos from URLs or buffers
+- ✅ **Presigned Media Upload** - Reliable uploads via `/media/presign` to avoid 413 errors
 - ✅ **Batch Operations** - Upload multiple media files in parallel
 
 ### Architecture
@@ -58,9 +58,13 @@ Add to your `.env` file:
 ```env
 # Later API Integration
 LATER_API_KEY=your_api_key_here
-LATER_WEBHOOK_SECRET=your_webhook_secret_here
-ENABLE_LATER=false
+# Webhook verification (recommended in production)
+LATE_WEBHOOK_SECRET=your_webhook_secret_here
+# Cron auth for scheduled posts (recommended in production)
+CRON_SECRET=your_cron_secret_here
 ```
+
+**Note:** `LATER_WEBHOOK_SECRET` is still accepted for backward compatibility, but prefer `LATE_WEBHOOK_SECRET`.
 
 ### 3. Connect Instagram Account
 
@@ -121,13 +125,13 @@ console.log('Connected accounts:', accounts)
 ### Upload Media
 
 ```typescript
-// Upload from URL
+// Upload from URL (uses /media/presign under the hood)
 const media = await client.uploadMediaFromUrl(
   'https://example.com/image.jpg'
 )
 
-console.log('Uploaded media:', media.id)
-// media_789
+console.log('Uploaded media:', media.url)
+// https://media.getlate.dev/media/...
 ```
 
 ### Create Post
@@ -135,26 +139,28 @@ console.log('Uploaded media:', media.id)
 ```typescript
 // Create immediate post
 const post = await client.createPost({
-  text: 'Check out our new design! 🎨',
-  accounts: ['acc_123'],
-  mediaIds: [media.id],
+  content: 'Check out our new design! 🎨',
+  mediaItems: [{ type: 'image', url: media.url }],
+  platforms: [{ platform: 'instagram', accountId: 'acc_123' }],
+  publishNow: true,
 })
 
 console.log('Post created:', post.id, post.status)
-// post_abc, 'publishing'
+// post_abc, 'published' | 'publishing'
 ```
 
 ### Create Scheduled Post
 
 ```typescript
 const scheduledPost = await client.createPost({
-  text: 'Coming soon! 🚀',
-  accounts: ['acc_123'],
-  mediaIds: [media.id],
-  publishAt: new Date('2024-12-30T14:00:00Z').toISOString(),
+  content: 'Coming soon! 🚀',
+  mediaItems: [{ type: 'image', url: media.url }],
+  platforms: [{ platform: 'instagram', accountId: 'acc_123' }],
+  scheduledFor: new Date('2024-12-30T14:00:00Z').toISOString(),
+  timezone: 'America/Sao_Paulo',
 })
 
-console.log('Scheduled for:', scheduledPost.publishAt)
+console.log('Scheduled for:', scheduledPost.scheduledFor)
 ```
 
 ### Create Post with Media (One Step)
@@ -162,9 +168,9 @@ console.log('Scheduled for:', scheduledPost.publishAt)
 ```typescript
 const post = await client.createPostWithMedia(
   {
-    text: 'New artwork! 🎨',
-    accounts: ['acc_123'],
-    publishAt: new Date('2024-12-30T15:00:00Z').toISOString(),
+    content: 'New artwork! 🎨',
+    platforms: [{ platform: 'instagram', accountId: 'acc_123' }],
+    publishNow: true,
   },
   [
     'https://example.com/image1.jpg',
@@ -175,6 +181,43 @@ const post = await client.createPostWithMedia(
 
 console.log('Post created with media:', post.id)
 ```
+
+---
+
+## Media Upload Strategy (Presigned URLs)
+
+To avoid `413 Request Entity Too Large` and intermittent `Media fetch failed`, the client uses the
+Late presign flow for uploads:
+
+1. `POST /media/presign` with `filename`, `contentType`, and `size`
+2. `PUT` the file buffer directly to `uploadUrl`
+3. Use the returned `publicUrl` in `mediaItems`
+
+This flow is implemented in:
+- `LaterClient.uploadMediaFromUrl`
+- `LaterClient.uploadMediaFromBuffer`
+
+`createPostWithMedia(...)` always uses this flow.
+
+---
+
+## Production Checklist
+
+- ✅ Deploy code with presigned upload support (`src/lib/later/client.ts`).
+- ✅ Set `LATER_API_KEY` in the production environment.
+- ✅ Set `LATE_WEBHOOK_SECRET` in production to verify webhooks.
+- ✅ Set `CRON_SECRET` if you use `/api/cron/posts`.
+- ✅ Configure the webhook in Late: `/api/webhooks/late`.
+- ✅ Ensure `next.config.ts` allows external image hosts used by posts.
+
+---
+
+## Security & Logging
+
+- Never log raw Later API responses in production (they may include tokens).
+- The client now logs a **sanitized response summary** only.
+- If deep debugging is needed, instrument logs locally and remove before deploy.
+- Rotate keys immediately if any token or API key appears in logs.
 
 ---
 
@@ -263,7 +306,7 @@ publishPost(postId: string): Promise<LaterPost>
 ```typescript
 // Create post with media upload in one step
 createPostWithMedia(
-  payload: Omit<CreateLaterPostPayload, 'mediaIds'>,
+  payload: Omit<CreateLaterPostPayload, 'mediaItems'>,
   mediaUrls: string[]
 ): Promise<LaterPost>
 ```
@@ -302,11 +345,17 @@ interface LaterMediaUpload {
 ```typescript
 interface LaterPost {
   id: string
-  text: string
+  content: string
   status: 'draft' | 'scheduled' | 'publishing' | 'published' | 'failed'
-  accounts: LaterAccount[]
-  mediaIds?: string[]
-  publishAt?: string // ISO timestamp
+  platforms: Array<{
+    platform: string
+    accountId: string
+    status?: string
+    platformPostId?: string
+    platformPostUrl?: string
+  }>
+  mediaItems?: Array<{ type: 'image' | 'video'; url: string }>
+  scheduledFor?: string // ISO timestamp
   publishedAt?: string // ISO timestamp
   errors?: string[]
   permalink?: string
@@ -318,16 +367,18 @@ interface LaterPost {
 
 ```typescript
 interface CreateLaterPostPayload {
-  text: string // Caption (required)
-  accounts: string[] // Account IDs (required)
-  mediaIds?: string[] // Media IDs (optional)
-  publishAt?: string // ISO timestamp (optional)
-  platformSpecificData?: {
-    instagram?: {
+  content?: string // Caption (optional for Stories)
+  platforms: Array<{
+    platform: string
+    accountId: string
+    platformSpecificData?: {
       contentType?: 'post' | 'story' | 'reel' | 'carousel'
-      firstComment?: string
     }
-  }
+  }>
+  mediaItems?: Array<{ type?: 'image' | 'video'; url: string }>
+  scheduledFor?: string // ISO timestamp (optional)
+  publishNow?: boolean // Publish immediately (optional)
+  timezone?: string // Timezone for scheduling (optional)
 }
 ```
 
@@ -404,7 +455,7 @@ Validation failed (HTTP 422).
 ```typescript
 if (error instanceof LaterValidationError) {
   console.error('Validation errors:', error.validationErrors)
-  // { text: ['Caption is required'], accounts: ['At least one account required'] }
+  // { content: ['Caption is required'], platforms: ['At least one platform required'] }
 }
 ```
 
@@ -463,14 +514,16 @@ async function createStory(imageUrl: string, caption: string) {
 
     // Create story
     const post = await client.createPost({
-      text: caption,
-      accounts: ['acc_lagostacriativa'],
-      mediaIds: [media.id],
-      platformSpecificData: {
-        instagram: {
-          contentType: 'story',
+      content: caption,
+      mediaItems: [{ type: 'image', url: media.url }],
+      platforms: [
+        {
+          platform: 'instagram',
+          accountId: 'acc_lagostacriativa',
+          platformSpecificData: { contentType: 'story' },
         },
-      },
+      ],
+      publishNow: true,
     })
 
     console.log('✅ Story created:', post.id)
@@ -489,20 +542,15 @@ async function createCarousel(imageUrls: string[], caption: string) {
   const client = getLaterClient()
 
   try {
-    // Upload all images
-    const mediaUploads = await client.uploadMultipleMedia(imageUrls)
-
-    // Create carousel post
-    const post = await client.createPost({
-      text: caption,
-      accounts: ['acc_lagostacriativa'],
-      mediaIds: mediaUploads.map((m) => m.id),
-      platformSpecificData: {
-        instagram: {
-          contentType: 'carousel',
-        },
+    // Upload + create in one step (carousel inferred by multiple items)
+    const post = await client.createPostWithMedia(
+      {
+        content: caption,
+        platforms: [{ platform: 'instagram', accountId: 'acc_lagostacriativa' }],
+        publishNow: true,
       },
-    })
+      imageUrls
+    )
 
     console.log('✅ Carousel created:', post.id)
     return post
@@ -524,21 +572,21 @@ async function scheduleReel(
   const client = getLaterClient()
 
   try {
-    const post = await client.createPostWithMedia(
-      {
-        text: caption,
-        accounts: ['acc_lagostacriativa'],
-        publishAt: publishDate.toISOString(),
-        platformSpecificData: {
-          instagram: {
-            contentType: 'reel',
-          },
+    const post = await client.createPost({
+      content: caption,
+      mediaItems: [{ type: 'video', url: videoUrl }],
+      platforms: [
+        {
+          platform: 'instagram',
+          accountId: 'acc_lagostacriativa',
+          platformSpecificData: { contentType: 'reel' },
         },
-      },
-      [videoUrl]
-    )
+      ],
+      scheduledFor: publishDate.toISOString(),
+      timezone: 'America/Sao_Paulo',
+    })
 
-    console.log('✅ Reel scheduled for:', post.publishAt)
+    console.log('✅ Reel scheduled for:', post.scheduledFor)
     return post
   } catch (error) {
     console.error('❌ Failed to schedule reel:', error)
@@ -642,18 +690,28 @@ async function createPostWithRetry(payload: CreateLaterPostPayload) {
 - Check media file size (Images: 8MB, Videos: 100MB)
 - Ensure media format is supported (JPG, PNG, MP4, etc.)
 - Check network connectivity
+- If you see `413 Request Entity Too Large`, ensure the client is using `/media/presign` (default).
 
-#### 4. Validation Error (422)
+#### 4. Media fetch failed (Instagram/Late)
+
+**Problem:** `Media fetch failed, please try again.`
+
+**Solutions:**
+- For images, use presigned uploads (`createPostWithMedia` or `uploadMediaFromUrl`)
+- For videos, ensure the URL is public and stable (no auth, no expiring URLs)
+- Confirm the media URL is reachable from the public internet
+
+#### 5. Validation Error (422)
 
 **Problem:** `LaterValidationError: Validation failed`
 
 **Solutions:**
-- Check required fields: `text`, `accounts`
+- Check required fields: `content`, `platforms`, `mediaItems`
 - Verify account IDs exist
-- Ensure media IDs are valid
-- Check date format for `publishAt` (ISO 8601)
+- Ensure media URLs are valid and public
+- Check date format for `scheduledFor` (ISO 8601)
 
-#### 5. Account Not Found (404)
+#### 6. Account Not Found (404)
 
 **Problem:** `LaterNotFoundError: Resource not found`
 
@@ -669,7 +727,7 @@ Enable detailed logging:
 ```typescript
 const client = new LaterClient({
   apiKey: process.env.LATER_API_KEY,
-  // Logs are automatically enabled in the client
+  // Logs are sanitized by default
 })
 
 // Check rate limit info
@@ -696,29 +754,16 @@ try {
 
 ## Next Steps
 
-### Phase 3: Implement LaterPostScheduler
+Later scheduling and webhook handling are already implemented:
 
-After completing Phases 1 & 2, the next step is to implement the `LaterPostScheduler` class that integrates this client with the existing post scheduling system.
+- `src/lib/posts/later-scheduler.ts`
+- `src/app/api/webhooks/late/route.ts`
+- `src/lib/posts/executor.ts` (cron scheduling)
 
-**Key Tasks:**
-
-1. Create `/src/lib/posts/later-scheduler.ts`
-2. Implement dual-mode routing in `PostScheduler`
-3. Map `PostType` to Instagram content types
-4. Handle verification tags for stories
-5. Add logging and error tracking
-
-**Reference:** See `/prompts/plano-later.md` for detailed implementation plan.
-
-### Phase 4: Webhooks
-
-Implement webhook handling for Later events:
-
-- `post.published` - Update status to POSTED
-- `post.failed` - Update status to FAILED
-- `post.scheduled` - Confirmation of scheduling
-
-**Endpoint:** `/api/webhooks/later/route.ts`
+Focus future work on:
+- Monitoring and alerting
+- Better UI feedback for failed posts
+- Additional platform support
 
 ### Testing Checklist
 
@@ -746,5 +791,5 @@ Implement webhook handling for Later events:
 
 ---
 
-**Last Updated:** 2024-12-28
-**Version:** 1.0 (Phases 1 & 2 Complete)
+**Last Updated:** 2026-01-10
+**Version:** 2.0 (Presigned uploads + sanitised logs)

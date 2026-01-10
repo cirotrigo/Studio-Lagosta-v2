@@ -40,7 +40,7 @@ npx tsx scripts/later/generate-webhook-secret.ts
 Copie o secret gerado e adicione ao `.env`:
 
 ```env
-LATER_WEBHOOK_SECRET=cole_o_secret_gerado_aqui
+LATE_WEBHOOK_SECRET=cole_o_secret_gerado_aqui
 ```
 
 ---
@@ -102,8 +102,8 @@ npm run dev
 No terminal, procure por:
 
 ```
-📤 [Dual-Mode Router] Using Later API for project "..."
-[Later Client] Post created: post_abc (publishing)
+[Later Client] ✅ Media uploaded successfully via presign: ... (image)
+[Later Client] Post created: post_abc (published|publishing)
 [Later Scheduler] ✅ Post processed successfully
 ```
 
@@ -177,3 +177,11 @@ npx tsx scripts/later/rollback-to-zapier.ts "Nome do Projeto"
 ---
 
 **🎉 Pronto! Você configurou Later em seu projeto!**
+
+---
+
+## 🔐 Produção & Segurança
+
+- Configure `LATE_WEBHOOK_SECRET` e `CRON_SECRET` no ambiente de produção.
+- Não compartilhe logs que contenham tokens ou chaves.
+- Se uma chave aparecer em logs, **rotacione imediatamente**.

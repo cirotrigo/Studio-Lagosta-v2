@@ -18,7 +18,7 @@ This interactive script will guide you through the entire setup process.
 2. **Later API key** in `.env`:
    ```env
    LATER_API_KEY=your_api_key_here
-   LATER_WEBHOOK_SECRET=your_webhook_secret
+   LATE_WEBHOOK_SECRET=your_webhook_secret
    ```
 
 ## Available Scripts
@@ -195,7 +195,7 @@ Configure Later webhook to receive confirmations:
 3. Copy webhook secret
 4. Add to `.env`:
    ```env
-   LATER_WEBHOOK_SECRET=your_webhook_secret_here
+   LATE_WEBHOOK_SECRET=your_webhook_secret_here
    ```
 5. Select events:
    - `post.scheduled`

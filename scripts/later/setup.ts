@@ -67,8 +67,8 @@ async function setup() {
   console.log('✅ LATER_API_KEY found: ' + apiKey.substring(0, 10) + '...')
   console.log('')
 
-  // Check if LATER_WEBHOOK_SECRET is set
-  const webhookSecret = process.env.LATER_WEBHOOK_SECRET
+  // Check if LATE_WEBHOOK_SECRET is set (fallback to legacy name)
+  const webhookSecret = process.env.LATE_WEBHOOK_SECRET || process.env.LATER_WEBHOOK_SECRET
 
   if (!webhookSecret) {
     console.log('📋 STEP 2: Generate Webhook Secret')
@@ -87,20 +87,20 @@ async function setup() {
       console.log('')
       console.log('Add this to your .env file:')
       console.log('')
-      console.log('   LATER_WEBHOOK_SECRET=' + secret)
+      console.log('   LATE_WEBHOOK_SECRET=' + secret)
       console.log('')
       console.log('='.repeat(80) + '\n')
 
       const added = await question('Have you added it to .env? (y/n): ')
 
       if (added.toLowerCase() !== 'y') {
-        console.log('\n⚠️  Please add LATER_WEBHOOK_SECRET to .env, then run this script again.\n')
+        console.log('\n⚠️  Please add LATE_WEBHOOK_SECRET to .env, then run this script again.\n')
         rl.close()
         return
       }
     }
   } else {
-    console.log('✅ LATER_WEBHOOK_SECRET found')
+    console.log('✅ LATE_WEBHOOK_SECRET found')
     console.log('')
   }
 

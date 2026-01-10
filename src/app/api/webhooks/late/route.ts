@@ -27,7 +27,7 @@ function verifyWebhookSignature(
 ): boolean {
   // If no secret configured, log warning but allow (development only)
   if (!secret) {
-    console.warn('[Late Webhook] ⚠️ LATE_WEBHOOK_SECRET not configured - webhook verification disabled')
+    console.warn('[Late Webhook] ⚠️ LATE_WEBHOOK_SECRET (or LATER_WEBHOOK_SECRET) not configured - webhook verification disabled')
     return true
   }
 
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     const signature = headersList.get('x-late-signature')
 
     const payload = await req.text()
-    const secret = process.env.LATE_WEBHOOK_SECRET || ''
+    const secret = process.env.LATE_WEBHOOK_SECRET || process.env.LATER_WEBHOOK_SECRET || ''
 
     // Verify authenticity
     if (!verifyWebhookSignature(payload, signature, secret)) {

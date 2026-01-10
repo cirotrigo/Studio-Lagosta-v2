@@ -33,6 +33,7 @@ If you're new to this project, start here:
 - **[Backend](./backend.md)** - API routes, server-side logic, and data processing
 - **[Components](./components.md)** - UI component library, patterns, and usage guidelines
 - **[API](./api.md)** - Complete API reference with endpoints and examples
+- **[Later Integration](./later-integration.md)** - Later API setup, media uploads, and production checklist
 - **[AI Chat](./ai-chat.md)** - Vercel AI SDK integration, providers, and chat UI
   - Credits: 1 credit per text chat, 5 per image request, enforced in API routes
 

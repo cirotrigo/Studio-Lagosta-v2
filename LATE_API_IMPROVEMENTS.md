@@ -1,5 +1,51 @@
 # Melhorias Implementadas na Integração com LATE API
 
+## Data: 10/01/2026
+
+### Problemas Identificados e Resolvidos (2026-01-10)
+
+## 6. ✅ "Media fetch failed" em Posts/Carrossel (CRÍTICO)
+
+### Problema
+- Later/Instagram falhando ao buscar mídia direto do Vercel Blob
+- Erro recorrente: `Media fetch failed, please try again`
+
+### Solução Implementada
+**Arquivos:** `src/lib/later/client.ts`, `src/lib/posts/later-scheduler.ts`
+
+- Upload de imagens via **/media/presign** (presigned URL)
+- Upload direto para o storage do Late e uso do `publicUrl`
+- Mantido URL-based para vídeos/Reels (sem reupload)
+
+---
+
+## 7. ✅ Vazamento de Tokens em Logs (CRÍTICO)
+
+### Problema
+- Resposta bruta da API do Late incluía `accessToken` e `refreshToken` nos logs
+- Risco de segurança em produção e em ambientes compartilhados
+
+### Solução Implementada
+**Arquivo:** `src/lib/later/client.ts`
+
+- Logs passaram a usar **resumo sanitizado** da resposta
+- Campos sensíveis são redatados automaticamente
+- Mantido detalhamento suficiente para debugging
+
+---
+
+## Arquivos Modificados (2026-01-10)
+
+1. **src/lib/later/client.ts**
+   - Upload via `/media/presign`
+   - Sanitização de logs (sem tokens)
+2. **src/lib/posts/later-scheduler.ts**
+   - Upload de imagens via presign para POST/CAROUSEL
+3. **src/app/api/webhooks/late/route.ts**
+   - Suporte a `LATE_WEBHOOK_SECRET` e fallback para `LATER_WEBHOOK_SECRET`
+
+---
+
 ## Data: 09/01/2025
 
 ### Problemas Identificados e Resolvidos

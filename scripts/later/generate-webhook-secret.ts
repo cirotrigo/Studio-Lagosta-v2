@@ -27,7 +27,7 @@ function generateWebhookSecret() {
   console.log('')
   console.log('1. Add this secret to your .env file:')
   console.log('')
-  console.log('   LATER_WEBHOOK_SECRET=' + secret)
+  console.log('   LATE_WEBHOOK_SECRET=' + secret)
   console.log('')
   console.log('2. Configure webhook in Later dashboard:')
   console.log('   - Go to: https://app.getlate.dev/settings/webhooks')
