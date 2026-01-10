@@ -519,17 +519,10 @@ export class LaterPostScheduler {
       // Scheduling is handled locally, Later just publishes when we call this
       console.log('[Later Scheduler] Creating post in Later (immediate publish)...')
 
-      // CRITICAL FIX: Timezone issue - posts fail with UTC, work with local timezone
-      // User discovered: automatic posts show "UTC" and fail, manual posts show "GMT-3" and work
-      // Solution: Send scheduledFor as "1 minute ago" to force immediate publish
-      const now = new Date()
-      const oneMinuteAgo = new Date(now.getTime() - 60 * 1000) // 1 minute in the past
-      const scheduledForISO = oneMinuteAgo.toISOString()
-
-      console.log('[Later Scheduler] 🕐 Current server time:', now.toString())
-      console.log('[Later Scheduler] 🕐 Scheduled time (1 min ago):', oneMinuteAgo.toString())
-      console.log('[Later Scheduler] 🕐 ISO timestamp:', scheduledForISO)
-      console.log('[Later Scheduler] 🕐 This forces Later to publish immediately, not schedule for future')
+      // CORRECT APPROACH per Later API documentation:
+      // For immediate posts, use ONLY "publishNow: true"
+      // DO NOT send scheduledFor or timezone - they are ignored when publishNow is true
+      console.log('[Later Scheduler] ⚡ Using publishNow: true (no scheduling fields needed)')
 
       const payload: any = {
         content: captionWithTag,
@@ -542,10 +535,7 @@ export class LaterPostScheduler {
             },
           },
         ],
-        // Send scheduledFor as 1 minute ago to ensure immediate publish
-        // This prevents Later from treating it as future scheduled post
-        scheduledFor: scheduledForISO,
-        timezone: 'America/Sao_Paulo', // Explicit timezone for Brazil (GMT-3)
+        publishNow: true, // Triggers immediate publishing, bypasses scheduling
         mediaItems: undefined as any, // Will be set conditionally below
       }
       let laterPost
