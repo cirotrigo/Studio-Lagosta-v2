@@ -45,10 +45,18 @@ export async function cropToInstagramFeed(buffer: Buffer): Promise<Buffer> {
         fit: 'cover',
         position: 'centre',
       })
-      .jpeg({ quality: 90 }) // High quality JPEG
+      .jpeg({
+        quality: 85, // Good quality, optimized file size
+        mozjpeg: true // Use mozjpeg for better compression
+      })
       .toBuffer()
 
+    const originalSize = (buffer.length / 1024).toFixed(2)
+    const newSize = (processedBuffer.length / 1024).toFixed(2)
+    const reduction = (((buffer.length - processedBuffer.length) / buffer.length) * 100).toFixed(1)
+
     console.log(`📐 Image cropped from ${sourceWidth}x${sourceHeight} to ${TARGET_WIDTH}x${TARGET_HEIGHT}`)
+    console.log(`📦 Size: ${originalSize}KB → ${newSize}KB (${reduction}% reduction)`)
 
     return processedBuffer
   } catch (error) {

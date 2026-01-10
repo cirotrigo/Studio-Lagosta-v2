@@ -521,41 +521,37 @@ export class LaterPostScheduler {
       }
       let laterPost
 
-      // CRITICAL: FEED and CAROUSEL posts MUST use direct upload to avoid "Media fetch failed" errors
-      // Stories and Reels can use URL-based approach
-      const requiresDirectUpload = (post.postType === PostType.POST || post.postType === PostType.CAROUSEL)
+      // Use URL-based approach for ALL post types
+      // Later API downloads media from URLs (recommended approach per documentation)
+      // Our normalized URLs are public and accessible via Vercel Blob
+      console.log('[Later Scheduler] 📸 Using URL-based create (Later API will download media)')
+      console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
 
-      if (requiresDirectUpload) {
-        console.log('[Later Scheduler] 📤 FEED/CAROUSEL detected - using DIRECT UPLOAD (required)')
-        console.log('[Later Scheduler] Uploading media to Later before creating post...')
-
+      // CRITICAL: Validate that URLs are publicly accessible
+      console.log('[Later Scheduler] 🔍 Validating media URLs are publicly accessible...')
+      for (const [index, url] of post.mediaUrls.entries()) {
         try {
-          laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
-          console.log('[Later Scheduler] ✅ Direct upload successful')
-        } catch (error) {
-          console.error('[Later Scheduler] ❌ Direct upload failed:', error)
-
-          // If upload fails with auth/permission error, try URL-based as last resort
-          if (
-            error instanceof LaterMediaUploadError ||
-            (error instanceof LaterApiError && [401, 403].includes(error.statusCode))
-          ) {
-            console.warn('[Later Scheduler] ⚠️ Falling back to URL-based create (last resort)...')
-            payload.mediaItems = mediaItems
-            console.log('[Later Scheduler] Fallback payload:', JSON.stringify(payload, null, 2))
-            laterPost = await this.laterClient.createPost(payload)
-          } else {
-            // For other errors, don't retry - just fail
-            throw error
+          const headResponse = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(10000) })
+          if (!headResponse.ok) {
+            throw new Error(`URL ${index + 1} returned status ${headResponse.status}`)
           }
+          const contentLength = headResponse.headers.get('content-length')
+          const contentType = headResponse.headers.get('content-type')
+          console.log(`[Later Scheduler] ✅ URL ${index + 1} accessible: ${contentType}, ${contentLength} bytes`)
+        } catch (error) {
+          console.error(`[Later Scheduler] ❌ URL ${index + 1} NOT accessible:`, error)
+          throw new Error(
+            `Media URL ${index + 1} is not publicly accessible: ${error instanceof Error ? error.message : 'Unknown error'}`
+          )
         }
-      } else {
-        // STORY and REEL: Use URL-based approach (works fine for these types)
-        console.log('[Later Scheduler] 📸 STORY/REEL detected - using URL-based create')
-        payload.mediaItems = mediaItems
-        console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
-        laterPost = await this.laterClient.createPost(payload)
       }
+
+      // Add media items to payload
+      payload.mediaItems = mediaItems
+      console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+
+      // Create post - Later will download media from our public URLs
+      laterPost = await this.laterClient.createPost(payload)
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
       console.log(`[Later Scheduler] 🔍 Later API Response:`, {
