@@ -495,7 +495,7 @@ export class LaterPostScheduler {
 
       // 1. Prepare media items with correct structure
       console.log(`[Later Scheduler] Preparing ${post.mediaUrls.length} media items`)
-      const mediaItems = post.mediaUrls.map(url => {
+      const mediaItems = post.mediaUrls.map((url) => {
         // Detect media type from URL
         const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi|webm)/)
         return {
@@ -539,102 +539,113 @@ export class LaterPostScheduler {
           },
         ],
         publishNow: true, // Triggers immediate publishing, bypasses scheduling
-        mediaItems: undefined as any, // Will be set conditionally below
       }
       let laterPost
 
-      // Use URL-based approach for ALL post types
-      // Later API downloads media from URLs (recommended approach per documentation)
-      // Our normalized URLs are public and accessible via Vercel Blob
-      console.log('[Later Scheduler] 📸 Using URL-based create (Later API will download media)')
-      console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
+      const hasVideoMedia = mediaItems.some((item) => item.type === 'video')
+      const shouldUploadMediaToLater =
+        (post.postType === PostType.POST || post.postType === PostType.CAROUSEL) &&
+        !hasVideoMedia
 
-      // CRITICAL: Test if URLs are publicly accessible
-      console.log('[Later Scheduler] 🔍 Testing if URLs are publicly accessible by Later...')
-      const urlTests = []
+      if (shouldUploadMediaToLater) {
+        // Avoid "Media fetch failed" by uploading images to Late first.
+        console.log('[Later Scheduler] 📤 Uploading media to Late before creating post')
+        console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
+        laterPost = await this.laterClient.createPostWithMedia(payload, post.mediaUrls)
+      } else {
+        // Use URL-based approach for other post types (videos, reels, stories).
+        // Later API downloads media from URLs (recommended approach per documentation)
+        // Our normalized URLs are public and accessible via Vercel Blob
+        console.log('[Later Scheduler] 📸 Using URL-based create (Later API will download media)')
+        console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
 
-      for (const [index, url] of post.mediaUrls.entries()) {
-        console.log(`[Later Scheduler]   Testing URL ${index + 1}:`)
-        console.log(`[Later Scheduler]   ${url}`)
+        // CRITICAL: Test if URLs are publicly accessible
+        console.log('[Later Scheduler] 🔍 Testing if URLs are publicly accessible by Later...')
+        const urlTests = []
 
-        try {
-          // Test with HEAD request (like Later does)
-          const headResponse = await fetch(url, {
-            method: 'HEAD',
-            signal: AbortSignal.timeout(10000),
-            headers: {
-              'User-Agent': 'Later-Media-Fetcher/1.0' // Simulate Later's user agent
+        for (const [index, url] of post.mediaUrls.entries()) {
+          console.log(`[Later Scheduler]   Testing URL ${index + 1}:`)
+          console.log(`[Later Scheduler]   ${url}`)
+
+          try {
+            // Test with HEAD request (like Later does)
+            const headResponse = await fetch(url, {
+              method: 'HEAD',
+              signal: AbortSignal.timeout(10000),
+              headers: {
+                'User-Agent': 'Later-Media-Fetcher/1.0' // Simulate Later's user agent
+              }
+            })
+
+            if (!headResponse.ok) {
+              console.error(`[Later Scheduler]      ❌ FAILED: HTTP ${headResponse.status}`)
+              console.error(`[Later Scheduler]      This URL is NOT accessible - Later will fail!`)
+              urlTests.push({ url, status: headResponse.status, ok: false })
+            } else {
+              const contentLength = headResponse.headers.get('content-length')
+              const contentType = headResponse.headers.get('content-type')
+              const cacheControl = headResponse.headers.get('cache-control')
+              console.log(`[Later Scheduler]      ✅ ACCESSIBLE: ${contentType}, ${contentLength} bytes`)
+              console.log(`[Later Scheduler]      Cache-Control: ${cacheControl}`)
+              urlTests.push({ url, status: headResponse.status, ok: true, contentType, contentLength })
             }
-          })
-
-          if (!headResponse.ok) {
-            console.error(`[Later Scheduler]      ❌ FAILED: HTTP ${headResponse.status}`)
-            console.error(`[Later Scheduler]      This URL is NOT accessible - Later will fail!`)
-            urlTests.push({ url, status: headResponse.status, ok: false })
-          } else {
-            const contentLength = headResponse.headers.get('content-length')
-            const contentType = headResponse.headers.get('content-type')
-            const cacheControl = headResponse.headers.get('cache-control')
-            console.log(`[Later Scheduler]      ✅ ACCESSIBLE: ${contentType}, ${contentLength} bytes`)
-            console.log(`[Later Scheduler]      Cache-Control: ${cacheControl}`)
-            urlTests.push({ url, status: headResponse.status, ok: true, contentType, contentLength })
+          } catch (error) {
+            console.error(`[Later Scheduler]      ❌ FETCH FAILED:`, error instanceof Error ? error.message : 'Unknown')
+            console.error(`[Later Scheduler]      Later will NOT be able to access this URL!`)
+            urlTests.push({ url, error: error instanceof Error ? error.message : 'Unknown', ok: false })
           }
-        } catch (error) {
-          console.error(`[Later Scheduler]      ❌ FETCH FAILED:`, error instanceof Error ? error.message : 'Unknown')
-          console.error(`[Later Scheduler]      Later will NOT be able to access this URL!`)
-          urlTests.push({ url, error: error instanceof Error ? error.message : 'Unknown', ok: false })
         }
-      }
 
-      // Check if all URLs are accessible
-      const failedUrls = urlTests.filter(t => !t.ok)
-      if (failedUrls.length > 0) {
-        console.error('[Later Scheduler] ❌❌❌ CRITICAL ERROR ❌❌❌')
-        console.error(`[Later Scheduler] ${failedUrls.length}/${post.mediaUrls.length} URLs are NOT accessible`)
-        console.error('[Later Scheduler] Later API will fail with "Media fetch failed"')
-        console.error('[Later Scheduler] Failed URLs:', failedUrls)
+        // Check if all URLs are accessible
+        const failedUrls = urlTests.filter(t => !t.ok)
+        if (failedUrls.length > 0) {
+          console.error('[Later Scheduler] ❌❌❌ CRITICAL ERROR ❌❌❌')
+          console.error(`[Later Scheduler] ${failedUrls.length}/${post.mediaUrls.length} URLs are NOT accessible`)
+          console.error('[Later Scheduler] Later API will fail with "Media fetch failed"')
+          console.error('[Later Scheduler] Failed URLs:', failedUrls)
 
-        throw new Error(
-          `Media URLs are not publicly accessible. Later cannot download them. ` +
-          `Failed: ${failedUrls.length}/${post.mediaUrls.length} URLs. ` +
-          `Check Vercel Blob permissions and firewall settings.`
-        )
-      }
+          throw new Error(
+            `Media URLs are not publicly accessible. Later cannot download them. ` +
+            `Failed: ${failedUrls.length}/${post.mediaUrls.length} URLs. ` +
+            `Check Vercel Blob permissions and firewall settings.`
+          )
+        }
 
-      console.log('[Later Scheduler] ✅ All URLs are publicly accessible')
+        console.log('[Later Scheduler] ✅ All URLs are publicly accessible')
 
-      // CRITICAL FIX: Add delay to allow URLs to propagate in CDN
-      // Users reported that manual posts work but automatic posts fail
-      // This suggests URLs need time to propagate through Vercel's CDN
-      console.log('[Later Scheduler] ⏳ Waiting 3 seconds for URLs to propagate in CDN...')
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      console.log('[Later Scheduler] ✅ CDN propagation delay completed')
+        // CRITICAL FIX: Add delay to allow URLs to propagate in CDN
+        // Users reported that manual posts work but automatic posts fail
+        // This suggests URLs need time to propagate through Vercel's CDN
+        console.log('[Later Scheduler] ⏳ Waiting 3 seconds for URLs to propagate in CDN...')
+        await new Promise(resolve => setTimeout(resolve, 3000))
+        console.log('[Later Scheduler] ✅ CDN propagation delay completed')
 
-      // Re-validate URLs one more time after delay
-      console.log('[Later Scheduler] 🔄 Final validation after CDN delay...')
-      for (const [index, url] of post.mediaUrls.entries()) {
-        try {
-          const finalCheck = await fetch(url, {
-            method: 'HEAD',
-            signal: AbortSignal.timeout(10000),
-            cache: 'no-store', // Force fresh request, bypass cache
-          })
-          if (!finalCheck.ok) {
-            throw new Error(`URL ${index + 1} not ready after delay: HTTP ${finalCheck.status}`)
+        // Re-validate URLs one more time after delay
+        console.log('[Later Scheduler] 🔄 Final validation after CDN delay...')
+        for (const [index, url] of post.mediaUrls.entries()) {
+          try {
+            const finalCheck = await fetch(url, {
+              method: 'HEAD',
+              signal: AbortSignal.timeout(10000),
+              cache: 'no-store', // Force fresh request, bypass cache
+            })
+            if (!finalCheck.ok) {
+              throw new Error(`URL ${index + 1} not ready after delay: HTTP ${finalCheck.status}`)
+            }
+            console.log(`[Later Scheduler]   ✅ URL ${index + 1} confirmed ready`)
+          } catch (error) {
+            console.error(`[Later Scheduler]   ❌ URL ${index + 1} still not ready:`, error)
+            throw new Error(`Media URL ${index + 1} not ready after CDN delay`)
           }
-          console.log(`[Later Scheduler]   ✅ URL ${index + 1} confirmed ready`)
-        } catch (error) {
-          console.error(`[Later Scheduler]   ❌ URL ${index + 1} still not ready:`, error)
-          throw new Error(`Media URL ${index + 1} not ready after CDN delay`)
         }
+
+        // Add media items to payload
+        payload.mediaItems = mediaItems
+        console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
+
+        // Create post - Later will download media from our public URLs
+        laterPost = await this.laterClient.createPost(payload)
       }
-
-      // Add media items to payload
-      payload.mediaItems = mediaItems
-      console.log('[Later Scheduler] Full payload:', JSON.stringify(payload, null, 2))
-
-      // Create post - Later will download media from our public URLs
-      laterPost = await this.laterClient.createPost(payload)
 
       console.log(`[Later Scheduler] Later post created: ${laterPost.id} (${laterPost.status})`)
       console.log(`[Later Scheduler] 🔍 Later API Response:`, {

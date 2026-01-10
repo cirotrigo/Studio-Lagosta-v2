@@ -162,6 +162,10 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'img.youtube.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'via.placeholder.com',
+      },
     ],
     // OPTIMIZED: Image optimization settings
     formats: ['image/avif', 'image/webp'], // Use modern formats for better compression

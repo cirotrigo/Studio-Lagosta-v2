@@ -16,10 +16,9 @@ import {
   LaterMediaUploadError,
 } from './errors'
 import {
+  detectMediaType,
   fetchMediaAsBuffer,
   prepareUploadOptions,
-  createMediaFormData,
-  validateUploadResponse,
 } from './media-upload'
 import type {
   LaterAccount,
@@ -117,11 +116,18 @@ export class LaterClient {
         headers: Object.keys(headers),
       })
 
-      const response = await fetch(url, {
+      const requestInit: RequestInit & { duplex?: 'half' } = {
         ...options,
         headers,
         signal: controller.signal,
-      })
+      }
+
+      if (options.body && options.body instanceof FormDataNode) {
+        // Required by Node.js fetch when streaming multipart bodies.
+        requestInit.duplex = 'half'
+      }
+
+      const response = await fetch(url, requestInit)
 
       clearTimeout(timeoutId)
 
@@ -334,26 +340,63 @@ export class LaterClient {
         bufferSize: buffer.length,
       })
 
-      // Create FormData (using form-data library for Node.js compatibility)
-      const formData = createMediaFormData(buffer, uploadOptions)
+      const uploadContentType = uploadOptions.contentType || 'application/octet-stream'
 
-      // Upload to Later
-      console.log(`[Later Client] ⬆️ Uploading to Later API (POST /media)...`)
-      const response = await this.request<LaterMediaUpload>('/media', {
+      console.log('[Later Client] 🔗 Requesting presigned upload URL...')
+      const presign = await this.request<{
+        uploadUrl: string
+        publicUrl: string
+        key?: string
+        type?: 'image' | 'video' | 'document'
+      }>('/media/presign', {
         method: 'POST',
-        body: formData as any, // Cast to any because form-data is not in RequestInit type
+        body: JSON.stringify({
+          filename: uploadOptions.filename || 'media',
+          contentType: uploadContentType,
+          size: buffer.length,
+        }),
       })
 
-      if (!validateUploadResponse(response)) {
-        console.error('[Later Client] ❌ Invalid upload response:', response)
+      console.log('[Later Client] ⬆️ Uploading media via presigned URL...')
+      const uploadResponse = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        body: buffer,
+        headers: {
+          'Content-Type': uploadContentType,
+        },
+        signal: AbortSignal.timeout(this.timeout),
+      })
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text().catch(() => '')
         throw new LaterMediaUploadError(
-          'Invalid upload response from Later API',
+          `Failed to upload to presigned URL: ${uploadResponse.status} ${uploadResponse.statusText} ${errorText}`.trim(),
           url
         )
       }
 
+      const detectedType = detectMediaType(url)
+      const resolvedType =
+        presign.type === 'image' || presign.type === 'video'
+          ? presign.type
+          : uploadContentType.startsWith('video/')
+            ? 'video'
+            : uploadContentType.startsWith('image/')
+              ? 'image'
+              : detectedType === 'video'
+                ? 'video'
+                : 'image'
+
+      const response: LaterMediaUpload = {
+        id: presign.key || presign.publicUrl,
+        url: presign.publicUrl,
+        type: resolvedType,
+        filename: uploadOptions.filename,
+        size: buffer.length,
+      }
+
       console.log(
-        `[Later Client] ✅ Media uploaded successfully: ${response.id} (${response.type})`
+        `[Later Client] ✅ Media uploaded successfully via presign: ${response.id} (${response.type})`
       )
       console.log(`[Later Client] Later media URL: ${response.url}`)
 
@@ -384,19 +427,62 @@ export class LaterClient {
     console.log(`[Later Client] Uploading media from buffer (${buffer.length} bytes)`)
 
     try {
-      const formData = createMediaFormData(buffer, options)
+      const uploadContentType = options.contentType || 'application/octet-stream'
 
-      const response = await this.request<LaterMediaUpload>('/media', {
+      console.log('[Later Client] 🔗 Requesting presigned upload URL...')
+      const presign = await this.request<{
+        uploadUrl: string
+        publicUrl: string
+        key?: string
+        type?: 'image' | 'video' | 'document'
+      }>('/media/presign', {
         method: 'POST',
-        body: formData as any, // Cast to any because form-data is not in RequestInit type
+        body: JSON.stringify({
+          filename: options.filename || 'media',
+          contentType: uploadContentType,
+          size: buffer.length,
+        }),
       })
 
-      if (!validateUploadResponse(response)) {
-        throw new LaterMediaUploadError('Invalid upload response from Later API')
+      console.log('[Later Client] ⬆️ Uploading media via presigned URL...')
+      const uploadResponse = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        body: buffer,
+        headers: {
+          'Content-Type': uploadContentType,
+        },
+        signal: AbortSignal.timeout(this.timeout),
+      })
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text().catch(() => '')
+        throw new LaterMediaUploadError(
+          `Failed to upload to presigned URL: ${uploadResponse.status} ${uploadResponse.statusText} ${errorText}`.trim()
+        )
+      }
+
+      const detectedType = detectMediaType(options.filename || '')
+      const resolvedType =
+        presign.type === 'image' || presign.type === 'video'
+          ? presign.type
+          : uploadContentType.startsWith('video/')
+            ? 'video'
+            : uploadContentType.startsWith('image/')
+              ? 'image'
+              : detectedType === 'video'
+                ? 'video'
+                : 'image'
+
+      const response: LaterMediaUpload = {
+        id: presign.key || presign.publicUrl,
+        url: presign.publicUrl,
+        type: resolvedType,
+        filename: options.filename,
+        size: buffer.length,
       }
 
       console.log(
-        `[Later Client] Media uploaded successfully: ${response.id} (${response.type})`
+        `[Later Client] Media uploaded successfully via presign: ${response.id} (${response.type})`
       )
 
       return response
