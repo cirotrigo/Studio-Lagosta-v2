@@ -4,6 +4,7 @@
  * API Documentation: https://docs.getlate.dev
  */
 
+import FormDataNode from 'form-data'
 import {
   LaterApiError,
   LaterAuthError,
@@ -79,13 +80,28 @@ export class LaterClient {
   ): Promise<T> {
     const url = `${this.baseUrl}${endpoint}`
 
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       Authorization: `Bearer ${this.apiKey}`,
-      ...options.headers,
+      ...(options.headers as Record<string, string> || {}),
     }
 
-    // Only add Content-Type for non-FormData requests
-    if (!(options.body instanceof FormData)) {
+    // Handle form-data library (FormDataNode)
+    if (options.body && options.body instanceof FormDataNode) {
+      console.log('[Later Client] 📤 Sending FormData request (form-data library) to:', endpoint)
+
+      // Get headers from form-data (includes Content-Type with boundary)
+      const formHeaders = options.body.getHeaders()
+      Object.assign(headers, formHeaders)
+
+      console.log('[Later Client] FormData headers:', formHeaders)
+    }
+    // Handle native FormData (browser/Node.js 20+)
+    else if (options.body instanceof FormData) {
+      console.log('[Later Client] 📤 Sending native FormData request to:', endpoint)
+      // Don't set Content-Type for FormData - let fetch handle it
+    }
+    // Handle JSON requests
+    else if (!(options.body instanceof FormData) && !(options.body instanceof FormDataNode)) {
       headers['Content-Type'] = 'application/json'
     }
 
@@ -93,6 +109,14 @@ export class LaterClient {
     const timeoutId = setTimeout(() => controller.abort(), this.timeout)
 
     try {
+      console.log('[Later Client] 🌐 Making request:', {
+        url,
+        method: options.method || 'GET',
+        hasBody: !!options.body,
+        bodyType: options.body?.constructor.name,
+        headers: Object.keys(headers),
+      })
+
       const response = await fetch(url, {
         ...options,
         headers,
@@ -310,14 +334,14 @@ export class LaterClient {
         bufferSize: buffer.length,
       })
 
-      // Create FormData
+      // Create FormData (using form-data library for Node.js compatibility)
       const formData = createMediaFormData(buffer, uploadOptions)
 
       // Upload to Later
-      console.log(`[Later Client] ⬆️ Uploading to Later API...`)
+      console.log(`[Later Client] ⬆️ Uploading to Later API (POST /media)...`)
       const response = await this.request<LaterMediaUpload>('/media', {
         method: 'POST',
-        body: formData,
+        body: formData as any, // Cast to any because form-data is not in RequestInit type
       })
 
       if (!validateUploadResponse(response)) {
@@ -364,7 +388,7 @@ export class LaterClient {
 
       const response = await this.request<LaterMediaUpload>('/media', {
         method: 'POST',
-        body: formData,
+        body: formData as any, // Cast to any because form-data is not in RequestInit type
       })
 
       if (!validateUploadResponse(response)) {

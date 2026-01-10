@@ -2,6 +2,7 @@
  * Media upload utilities for Later API
  */
 
+import FormDataNode from 'form-data'
 import { LaterMediaUploadError } from './errors'
 import type { LaterMediaUpload, MediaUploadOptions } from './types'
 
@@ -220,22 +221,37 @@ export function formatMediaForLog(media: {
 /**
  * Create FormData for media upload
  * Used by the Later API client
+ * Node.js compatible implementation using form-data library
  */
 export function createMediaFormData(
   buffer: Buffer,
   options: MediaUploadOptions
-): FormData {
-  const formData = new FormData()
-
-  // Convert Buffer to Uint8Array for Blob compatibility
-  const uint8Array = new Uint8Array(buffer)
-  const blob = new Blob([uint8Array], {
-    type: options.contentType || 'application/octet-stream',
+): FormDataNode {
+  console.log('[Later Media Upload] Creating FormData with form-data library:', {
+    bufferSize: buffer.length,
+    filename: options.filename,
+    contentType: options.contentType,
   })
 
-  formData.append('file', blob, options.filename || 'media')
+  try {
+    const formData = new FormDataNode()
 
-  return formData
+    // Append buffer with proper options for form-data library
+    // form-data library expects: append(field, value, options)
+    formData.append('file', buffer, {
+      filename: options.filename || 'media.jpg',
+      contentType: options.contentType || 'application/octet-stream',
+    })
+
+    console.log('[Later Media Upload] ✅ FormData created successfully with form-data library')
+
+    return formData
+  } catch (error) {
+    console.error('[Later Media Upload] ❌ Error creating FormData:', error)
+    throw new LaterMediaUploadError(
+      `Failed to create FormData: ${error instanceof Error ? error.message : 'Unknown error'}`
+    )
+  }
 }
 
 /**
