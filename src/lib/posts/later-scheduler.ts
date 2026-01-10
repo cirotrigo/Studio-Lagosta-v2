@@ -25,7 +25,7 @@ import {
   LaterRateLimitError,
   isRateLimitError,
 } from '@/lib/later/errors'
-import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
+import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -81,20 +81,19 @@ export class LaterPostScheduler {
         continue
       }
 
+      const alreadyNormalized =
+        url.includes('/normalized/') && /\.(jpe?g)(\?.*)?$/i.test(url)
+      if (alreadyNormalized) {
+        normalizedUrls.push(url)
+        continue
+      }
+
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error(`Failed to fetch media ${index + 1} (${response.status})`)
       }
 
       const buffer = Buffer.from(await response.arrayBuffer())
-      const info = await getImageInfo(buffer)
-      const needsCrop = Math.abs(info.ratio - 4 / 5) > 0.01
-
-      if (!needsCrop) {
-        normalizedUrls.push(url)
-        continue
-      }
-
       const croppedBuffer = await cropToInstagramFeed(buffer)
       const blob = await put(
         `posts/${post.userId}/normalized/${Date.now()}-${post.id}-${index + 1}.jpg`,
