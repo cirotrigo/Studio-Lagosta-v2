@@ -443,7 +443,7 @@ export class LaterClient {
       console.log('[Later Client] ⬆️ Uploading media via presigned URL...')
       const uploadResponse = await fetch(presign.uploadUrl, {
         method: 'PUT',
-        body: buffer,
+        body: buffer as unknown as BodyInit,
         headers: {
           'Content-Type': uploadContentType,
         },
@@ -530,7 +530,7 @@ export class LaterClient {
       console.log('[Later Client] ⬆️ Uploading media via presigned URL...')
       const uploadResponse = await fetch(presign.uploadUrl, {
         method: 'PUT',
-        body: buffer,
+        body: buffer as unknown as BodyInit,
         headers: {
           'Content-Type': uploadContentType,
         },

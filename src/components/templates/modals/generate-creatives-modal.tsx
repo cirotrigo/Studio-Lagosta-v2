@@ -50,12 +50,12 @@ export function GenerateCreativesModal({
     return [...pages].sort((a, b) => a.order - b.order)
   }, [pages])
 
-  // Inicializar com todas as páginas selecionadas
+  // Inicializar com apenas a página atual selecionada
   React.useEffect(() => {
-    if (open && sortedPages.length > 0) {
-      setSelectedPageIds(new Set(sortedPages.map((p) => p.id)))
+    if (open && currentPageId) {
+      setSelectedPageIds(new Set([currentPageId]))
     }
-  }, [open, sortedPages])
+  }, [open, currentPageId])
 
   const allSelected = selectedPageIds.size === sortedPages.length
   const noneSelected = selectedPageIds.size === 0
