@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { PostStatus } from '@prisma/client'
+import { PostStatus, PublishType } from '../../../../../prisma/generated/client'
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,8 +17,13 @@ export async function GET(req: NextRequest) {
     }
 
     const now = new Date()
+    console.log(`[Reminders] ⏰ Cron started at: ${now.toISOString()}`)
+
     const fiveMinutesFromNow = new Date(now.getTime() + 5 * 60 * 1000)
     const tenMinutesFromNow = new Date(now.getTime() + 10 * 60 * 1000)
+
+    console.log(`[Reminders] 🔍 Looking for posts scheduled between:`)
+    console.log(`[Reminders]    ${fiveMinutesFromNow.toISOString()} and ${tenMinutesFromNow.toISOString()}`)
 
     // Find posts that:
     // 1. Have publishType = REMINDER
@@ -27,7 +32,7 @@ export async function GET(req: NextRequest) {
     // 4. Haven't sent reminder yet (reminderSentAt = null)
     const postsNeedingReminder = await db.socialPost.findMany({
       where: {
-        publishType: 'REMINDER',
+        publishType: PublishType.REMINDER,
         status: PostStatus.SCHEDULED,
         scheduledDatetime: {
           gte: fiveMinutesFromNow,
@@ -49,8 +54,45 @@ export async function GET(req: NextRequest) {
     })
 
     if (postsNeedingReminder.length === 0) {
-      console.log('✅ [Reminders] No reminders to send')
-      return NextResponse.json({ success: true, sent: 0 })
+      // Diagnostic: Count all scheduled reminder posts to help debug
+      const allReminderPosts = await db.socialPost.count({
+        where: {
+          publishType: PublishType.REMINDER,
+          status: PostStatus.SCHEDULED,
+          reminderSentAt: null
+        }
+      })
+
+      console.log(`[Reminders] ✅ No reminders in current window (5-10 min from now)`)
+      console.log(`[Reminders] 📊 Total pending reminder posts in DB: ${allReminderPosts}`)
+
+      // If there are pending reminders, show when the next one is scheduled
+      if (allReminderPosts > 0) {
+        const nextReminder = await db.socialPost.findFirst({
+          where: {
+            publishType: PublishType.REMINDER,
+            status: PostStatus.SCHEDULED,
+            reminderSentAt: null,
+            scheduledDatetime: { gte: now }
+          },
+          orderBy: { scheduledDatetime: 'asc' },
+          select: {
+            id: true,
+            scheduledDatetime: true,
+            Project: { select: { name: true, webhookReminderUrl: true } }
+          }
+        })
+
+        if (nextReminder) {
+          const minutesUntil = Math.round((nextReminder.scheduledDatetime!.getTime() - now.getTime()) / 60000)
+          console.log(`[Reminders] ⏳ Next reminder scheduled for: ${nextReminder.scheduledDatetime?.toISOString()}`)
+          console.log(`[Reminders]    Project: ${nextReminder.Project.name}`)
+          console.log(`[Reminders]    Minutes until: ${minutesUntil}`)
+          console.log(`[Reminders]    Webhook configured: ${nextReminder.Project.webhookReminderUrl ? 'YES' : 'NO ⚠️'}`)
+        }
+      }
+
+      return NextResponse.json({ success: true, sent: 0, pending: allReminderPosts })
     }
 
     console.log(`📬 [Reminders] Sending ${postsNeedingReminder.length} reminder(s)...`)
