@@ -353,20 +353,31 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
       console.log('📤 Sending post data:', postData)
       console.log('🔔 publishType being sent:', data.publishType)
 
+      // Close modal immediately and process in background
+      // This improves UX especially for carousel posts that take longer
+      onClose()
+      form.reset()
+      setSelectedMedia([])
+
       if (postId) {
         // Update existing post
-        await updatePost.mutateAsync({
+        updatePost.mutate({
           postId,
           data: postData,
+        }, {
+          onSuccess: () => {
+            toast.success('✅ Post atualizado com sucesso!')
+          },
+          onError: (error) => {
+            console.error('Error updating post:', error)
+            const message = error instanceof Error ? error.message : 'Erro ao atualizar post'
+            toast.error(`❌ ${message}`)
+          }
         })
-
-        toast.success('✅ Post atualizado com sucesso!')
       } else {
-        // Create new post
-        await createPost.mutateAsync(postData)
-
+        // Show immediate feedback
         if (data.scheduleType === 'IMMEDIATE') {
-          toast.success('✅ Post enviado com sucesso! Será publicado em instantes.')
+          toast.success('📤 Enviando post... Acompanhe o status na agenda.')
         } else if (data.scheduleType === 'SCHEDULED') {
           const dateStr = data.scheduledDatetime?.toLocaleDateString('pt-BR', {
             day: '2-digit',
@@ -375,64 +386,41 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
             hour: '2-digit',
             minute: '2-digit'
           })
-          toast.success(`✅ Post agendado para ${dateStr}!`)
+          toast.success(`📅 Agendando post para ${dateStr}...`)
         } else {
-          toast.success('✅ Série recorrente criada com sucesso!')
+          toast.success('🔄 Criando série recorrente...')
         }
+
+        // Create new post in background
+        createPost.mutate(postData, {
+          onSuccess: () => {
+            if (data.scheduleType === 'IMMEDIATE') {
+              toast.success('✅ Post publicado com sucesso!')
+            } else if (data.scheduleType === 'SCHEDULED') {
+              toast.success('✅ Post agendado com sucesso!')
+            } else {
+              toast.success('✅ Série recorrente criada!')
+            }
+          },
+          onError: (error) => {
+            console.error('Error creating post:', error)
+            const message = error instanceof Error ? error.message : 'Erro ao criar post'
+            toast.error(`❌ ${message}`)
+          }
+        })
       }
 
-      onClose()
-      form.reset()
-      setSelectedMedia([])
+      // Return early since we already closed the modal
+      return
     } catch (error) {
-      console.error('Error creating/updating post:', error)
-
-      // Check if it's an ApiError with status code
-      if (error && typeof error === 'object' && 'status' in error && 'message' in error) {
-        const apiError = error as { status: number; message: string }
-
-        // Handle specific error cases
-        if (apiError.status === 402 || apiError.message.includes('Insufficient credits') || apiError.message.includes('créditos insuficientes')) {
-          toast.error('❌ Créditos insuficientes para publicar este post. Por favor, adquira mais créditos.')
-          return
-        }
-
-        if (apiError.status === 400) {
-          toast.error(`❌ Erro de validação: ${apiError.message}`)
-          return
-        }
-
-        if (apiError.status === 404) {
-          toast.error('❌ Recurso não encontrado. Verifique se o projeto ainda existe.')
-          return
-        }
-
-        if (apiError.status === 500) {
-          toast.error('❌ Erro no servidor. Tente novamente em alguns instantes.')
-          return
-        }
-
-        toast.error(`❌ Erro: ${apiError.message}`)
-        return
-      }
+      // This catch block handles validation errors before mutation starts
+      console.error('Error preparing post:', error)
 
       if (error instanceof Error) {
-        // Check for specific error messages
-        if (error.message.includes('Insufficient credits') || error.message.includes('créditos insuficientes')) {
-          toast.error('❌ Créditos insuficientes para publicar este post. Por favor, adquira mais créditos.')
-          return
-        }
-
         toast.error(`❌ Erro: ${error.message}`)
-        return
+      } else {
+        toast.error('❌ Erro ao preparar post. Verifique os dados e tente novamente.')
       }
-
-      if (error && typeof error === 'object' && 'details' in error) {
-        toast.error(`❌ Erro de validação: ${JSON.stringify((error as { details: unknown }).details)}`)
-        return
-      }
-
-      toast.error('❌ Erro ao processar post. Verifique os dados e tente novamente.')
     } finally {
       // Always reset the submitting flag
       isSubmittingRef.current = false

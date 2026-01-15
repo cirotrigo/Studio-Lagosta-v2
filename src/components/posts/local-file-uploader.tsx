@@ -55,13 +55,28 @@ export function LocalFileUploader({
         // Auto-resize images to Instagram feed format (4:5 ratio - 1080x1350)
         // Only resize images, not videos
         // Only resize when mode is 'images' (for POST and CAROUSEL types)
-        if (isImageFile(file) && mediaMode === 'images') {
+        const isImage = isImageFile(file)
+        console.log('[Upload] Processing file:', {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          isImage,
+          mediaMode,
+          willResize: isImage && mediaMode === 'images'
+        })
+
+        if (isImage && mediaMode === 'images') {
           try {
-            console.log('[Upload] Resizing image for Instagram feed:', file.name)
+            console.log('[Upload] Starting resize for Instagram feed (1080x1350):', file.name)
+            const originalSize = file.size
             fileToUpload = await resizeToInstagramFeed(file)
-            console.log('[Upload] Image resized successfully')
+            console.log('[Upload] Image resized successfully:', {
+              originalSize,
+              newSize: fileToUpload.size,
+              reduction: `${Math.round((1 - fileToUpload.size / originalSize) * 100)}%`
+            })
           } catch (resizeError) {
-            console.warn('[Upload] Failed to resize image, using original:', resizeError)
+            console.error('[Upload] Failed to resize image, using original:', resizeError)
             // Continue with original file if resize fails
           }
         }
@@ -81,15 +96,16 @@ export function LocalFileUploader({
 
         console.log('[Upload] Upload successful:', blob.url)
 
-        // 2. Create preview from original file (better quality for preview)
-        const preview = URL.createObjectURL(file)
+        // 2. Create preview from the uploaded file (resized if applicable)
+        // This shows the user exactly what was uploaded
+        const preview = URL.createObjectURL(fileToUpload)
 
         newFiles.push({
           id: crypto.randomUUID(),
           url: blob.url,
           pathname: blob.pathname,
           name: file.name,
-          size: file.size,
+          size: fileToUpload.size, // Use resized file size
           preview,
         })
       }

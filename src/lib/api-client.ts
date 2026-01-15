@@ -35,7 +35,9 @@ export async function apiClient<T = unknown>(
 
     try {
       const errorJson = JSON.parse(errorText);
-      errorMessage = errorJson.message || errorJson.error || `HTTP ${response.status}`;
+      // Include details if available (from server-side error responses)
+      const details = errorJson.details ? `: ${errorJson.details}` : '';
+      errorMessage = (errorJson.message || errorJson.error || `HTTP ${response.status}`) + details;
     } catch {
       errorMessage = errorText || `HTTP ${response.status}`;
     }

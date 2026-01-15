@@ -228,6 +228,13 @@ export function MediaUploadSystem({
     [remainingSlots, selectedMedia]
   )
 
+  // Calculate max uploads for LocalFileUploader
+  // Add back upload items to avoid double counting (since LocalFileUploader tracks its own state)
+  const uploadMaxSelection = useMemo(() =>
+    remainingSlots + selectedMedia.filter(m => m.type === 'upload').length,
+    [remainingSlots, selectedMedia]
+  )
+
   // Handler para seleção de Generations
   const handleGenerationsChange = useCallback((ids: string[], generations: Generation[]) => {
     startTransition(() => {
@@ -436,7 +443,7 @@ export function MediaUploadSystem({
         <TabsContent value="upload" className="mt-4">
           <LocalFileUploader
             onUploadComplete={handleLocalUpload}
-            maxFiles={remainingSlots}
+            maxFiles={uploadMaxSelection}
             mediaMode={mediaMode}
           />
         </TabsContent>

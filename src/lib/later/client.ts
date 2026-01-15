@@ -59,7 +59,9 @@ export class LaterClient {
 
     this.apiKey = apiKey
     this.baseUrl = config?.baseUrl || 'https://getlate.dev/api/v1'
-    this.timeout = config?.timeout || 30000
+    // Increased timeout to 120 seconds to handle carousel posts with up to 10 images
+    // Later API can take a long time to process multiple images
+    this.timeout = config?.timeout || 120000
     this.retryAttempts = config?.retryAttempts || 3
   }
 

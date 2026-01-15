@@ -27,22 +27,41 @@ export async function resizeImage(
 ): Promise<File> {
   const { targetWidth, targetHeight, quality = 0.92 } = options
 
+  console.log('[Resize] Starting resize:', {
+    fileName: file.name,
+    fileType: file.type,
+    fileSize: file.size,
+    targetWidth,
+    targetHeight
+  })
+
   return new Promise((resolve, reject) => {
-    const img = new Image()
+    const img = new window.Image()
     const reader = new FileReader()
 
     reader.onload = (e) => {
       if (!e.target?.result) {
+        console.error('[Resize] Failed to read file - no result')
         reject(new Error('Failed to read file'))
         return
       }
 
+      console.log('[Resize] File read successfully, loading image...')
+
       img.onload = () => {
         try {
+          console.log('[Resize] Image loaded:', {
+            width: img.width,
+            height: img.height,
+            naturalWidth: img.naturalWidth,
+            naturalHeight: img.naturalHeight
+          })
+
           const canvas = document.createElement('canvas')
           const ctx = canvas.getContext('2d')
 
           if (!ctx) {
+            console.error('[Resize] Failed to get canvas 2d context')
             reject(new Error('Failed to get canvas context'))
             return
           }
@@ -69,6 +88,15 @@ export async function resizeImage(
             offsetY = Math.round((sourceHeight - cropHeight) / 2)
           }
 
+          console.log('[Resize] Crop calculation:', {
+            sourceRatio: sourceRatio.toFixed(2),
+            targetRatio: targetRatio.toFixed(2),
+            cropWidth,
+            cropHeight,
+            offsetX,
+            offsetY
+          })
+
           // Set canvas to target dimensions
           canvas.width = targetWidth
           canvas.height = targetHeight
@@ -86,10 +114,13 @@ export async function resizeImage(
             targetHeight
           )
 
+          console.log('[Resize] Image drawn to canvas, converting to blob...')
+
           // Convert canvas to blob
           canvas.toBlob(
             (blob) => {
               if (!blob) {
+                console.error('[Resize] Failed to create blob from canvas')
                 reject(new Error('Failed to create blob'))
                 return
               }
@@ -101,7 +132,7 @@ export async function resizeImage(
               })
 
               console.log(
-                `📐 Client-side resize: ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight}`
+                `📐 [Resize] Complete: ${sourceWidth}x${sourceHeight} → ${targetWidth}x${targetHeight} (${Math.round(resizedFile.size / 1024)}KB)`
               )
 
               resolve(resizedFile)
@@ -110,18 +141,21 @@ export async function resizeImage(
             quality
           )
         } catch (error) {
+          console.error('[Resize] Error during canvas processing:', error)
           reject(error)
         }
       }
 
-      img.onerror = () => {
+      img.onerror = (e) => {
+        console.error('[Resize] Failed to load image:', e)
         reject(new Error('Failed to load image'))
       }
 
       img.src = e.target.result as string
     }
 
-    reader.onerror = () => {
+    reader.onerror = (e) => {
+      console.error('[Resize] Failed to read file:', e)
       reject(new Error('Failed to read file'))
     }
 
@@ -141,15 +175,42 @@ export async function resizeToInstagramFeed(file: File): Promise<File> {
 }
 
 /**
+ * Image file extensions for fallback detection
+ */
+const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.svg']
+
+/**
  * Check if a file is an image
+ * Uses MIME type first, falls back to extension check for drag-and-drop scenarios
+ * where browser may not set the file.type correctly
  */
 export function isImageFile(file: File): boolean {
-  return file.type.startsWith('image/')
+  // First, check MIME type (most reliable when available)
+  if (file.type && file.type.startsWith('image/')) {
+    return true
+  }
+
+  // Fallback: check file extension (for drag-and-drop scenarios)
+  const fileName = file.name.toLowerCase()
+  return IMAGE_EXTENSIONS.some(ext => fileName.endsWith(ext))
 }
 
 /**
+ * Video file extensions for fallback detection
+ */
+const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
+
+/**
  * Check if a file is a video
+ * Uses MIME type first, falls back to extension check for drag-and-drop scenarios
  */
 export function isVideoFile(file: File): boolean {
-  return file.type.startsWith('video/')
+  // First, check MIME type (most reliable when available)
+  if (file.type && file.type.startsWith('video/')) {
+    return true
+  }
+
+  // Fallback: check file extension
+  const fileName = file.name.toLowerCase()
+  return VIDEO_EXTENSIONS.some(ext => fileName.endsWith(ext))
 }
