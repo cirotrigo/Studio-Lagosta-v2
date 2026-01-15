@@ -245,6 +245,8 @@ export async function POST(req: Request) {
           logoUrl: parsed.logoUrl,
           status: parsed.status ?? 'ACTIVE',
           userId,
+          // Default webhook URL for reminders
+          webhookReminderUrl: process.env.DEFAULT_WEBHOOK_REMINDER_URL || 'https://n8n.lagostacriativa.com.br/webhook/notifica-lagosta',
         },
       })
 
