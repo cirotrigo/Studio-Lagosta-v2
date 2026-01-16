@@ -60,3 +60,7 @@ This file is a navigation hub for agents working in this repository. It avoids d
 - Static assets: public
 
 For setup, scripts, and workflows, follow [docs/README.md](docs/README.md).
+## AI Context References
+- Documentation index: `.context/docs/README.md`
+- Agent playbooks: `.context/agents/README.md`
+

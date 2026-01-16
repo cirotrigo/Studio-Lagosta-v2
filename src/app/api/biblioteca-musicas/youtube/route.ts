@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { extractYoutubeId } from '@/lib/youtube/utils'
+import { getYoutubeDownloadLink } from '@/lib/youtube/video-download-client'
 
 const youtubeDownloadSchema = z.object({
   youtubeUrl: z.string().url(),
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    if (!process.env.VIDEO_DOWNLOAD_API_KEY) {
+    if (!process.env.RAPIDAPI_KEY) {
       return NextResponse.json({ error: 'Video download service not configured' }, { status: 500 })
     }
 
@@ -41,9 +42,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'URL do YouTube inválida' }, { status: 400 })
     }
 
+    // Verificar se já existe job ativo
     const existingJob = await db.youtubeDownloadJob.findFirst({
       where: {
-        youtubeUrl: data.youtubeUrl,
+        youtubeId,
+        createdBy: userId,
         status: { in: ['pending', 'downloading', 'uploading'] },
       },
     })
@@ -58,6 +61,56 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // Obter metadados do YouTube
+    let metadata: { title?: string; thumbnail_url?: string } | null = null
+    try {
+      const oembedUrl = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${youtubeId}&format=json`
+      const metaResponse = await fetch(oembedUrl)
+      if (metaResponse.ok) {
+        metadata = await metaResponse.json()
+      }
+    } catch {
+      // Ignorar erro de metadata
+    }
+
+    // Obter link de download da API
+    const downloadResult = await getYoutubeDownloadLink(youtubeId)
+
+    if (!downloadResult.success) {
+      // Se está processando, criar job e retornar para polling
+      if (downloadResult.error === 'processing') {
+        const job = await db.youtubeDownloadJob.create({
+          data: {
+            youtubeUrl: data.youtubeUrl,
+            youtubeId,
+            requestedName: data.nome ?? null,
+            requestedArtist: data.artista ?? null,
+            requestedGenre: data.genero ?? null,
+            requestedMood: data.humor ?? null,
+            projectId: data.projectId ?? null,
+            createdBy: userId,
+            title: metadata?.title ?? data.nome ?? null,
+            thumbnail: metadata?.thumbnail_url ?? null,
+            status: 'pending',
+            videoApiStatus: 'processing',
+          },
+        })
+
+        return NextResponse.json({
+          success: true,
+          jobId: job.id,
+          status: 'processing',
+          message: 'Vídeo está sendo convertido. Tente novamente em alguns segundos.',
+        })
+      }
+
+      return NextResponse.json(
+        { error: downloadResult.error || 'Falha ao obter link de download' },
+        { status: 500 }
+      )
+    }
+
+    // Criar job com link de download
     const job = await db.youtubeDownloadJob.create({
       data: {
         youtubeUrl: data.youtubeUrl,
@@ -68,16 +121,26 @@ export async function POST(req: NextRequest) {
         requestedMood: data.humor ?? null,
         projectId: data.projectId ?? null,
         createdBy: userId,
-        title: data.nome ?? null,
+        title: downloadResult.title ?? metadata?.title ?? data.nome ?? null,
+        thumbnail: metadata?.thumbnail_url ?? null,
+        duration: downloadResult.duration ?? null,
+        status: 'downloading',
+        videoApiStatus: 'ready',
+        startedAt: new Date(),
+        progress: 50,
       },
     })
 
-    console.log('[YOUTUBE] Job criado:', { jobId: job.id, youtubeUrl: data.youtubeUrl, userId })
+    console.log('[YOUTUBE] Job criado com link:', { jobId: job.id, youtubeId })
 
     return NextResponse.json({
       success: true,
       jobId: job.id,
-      message: 'Download iniciado. Você será notificado quando estiver pronto.',
+      downloadLink: downloadResult.link,
+      title: downloadResult.title ?? metadata?.title,
+      thumbnail: metadata?.thumbnail_url,
+      duration: downloadResult.duration,
+      message: 'Link de download obtido. Baixe o arquivo e faça upload.',
     })
   } catch (error) {
     console.error('[YOUTUBE] Erro ao iniciar download:', error)

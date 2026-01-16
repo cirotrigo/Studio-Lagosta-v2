@@ -1,0 +1,2888 @@
+{
+  "version": "1.0.0",
+  "generated": "2026-01-15T15:02:57.385Z",
+  "stack": {
+    "primaryLanguage": "typescript",
+    "languages": [
+      "javascript",
+      "typescript"
+    ],
+    "frameworks": [
+      "nextjs"
+    ],
+    "buildTools": [],
+    "testFrameworks": [
+      "playwright"
+    ],
+    "packageManager": "npm",
+    "isMonorepo": false,
+    "hasDocker": false,
+    "hasCI": false
+  },
+  "structure": {
+    "totalFiles": 1231,
+    "topDirectories": [
+      {
+        "name": "ADMIN_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "agents",
+        "fileCount": 7
+      },
+      {
+        "name": "AGENTS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ANALISE_SISTEMA_POSTAGEM.md",
+        "fileCount": 1
+      },
+      {
+        "name": "BACKUP_COMPLETE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "BACKUP_SECURITY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "backups",
+        "fileCount": 23
+      },
+      {
+        "name": "BOOST_SPACE_CONFIG_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "check-entry-details.js",
+        "fileCount": 1
+      },
+      {
+        "name": "check-instagram-setup.ts",
+        "fileCount": 1
+      },
+      {
+        "name": "check-migration-status.sql",
+        "fileCount": 1
+      },
+      {
+        "name": "check-status.js",
+        "fileCount": 1
+      },
+      {
+        "name": "CLAUDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "CLOUDFLARE_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "COMO_GERAR_TOKEN_INSTAGRAM.md",
+        "fileCount": 1
+      },
+      {
+        "name": "COMO-ALTERAR-LOGO.md",
+        "fileCount": 1
+      },
+      {
+        "name": "components.json",
+        "fileCount": 1
+      },
+      {
+        "name": "configure-reminder-webhook.js",
+        "fileCount": 1
+      },
+      {
+        "name": "CONTEXT_FOR_NEXT_SESSION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "create-test-reminder.js",
+        "fileCount": 1
+      },
+      {
+        "name": "CURVED_TEXT_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "DASHBOARD_INTEGRATION_COMPLETE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "DEPLOY_COMMANDS.sh",
+        "fileCount": 1
+      },
+      {
+        "name": "DEPLOY-CHECKLIST.md",
+        "fileCount": 1
+      },
+      {
+        "name": "DEPLOY-DATABASE-MIGRATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "DEPLOY-GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "DEPLOY-QUICKSTART.md",
+        "fileCount": 1
+      },
+      {
+        "name": "docs",
+        "fileCount": 52
+      },
+      {
+        "name": "DOMAIN_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "EFFECTS_SYSTEM.md",
+        "fileCount": 1
+      },
+      {
+        "name": "EFFECTS_TROUBLESHOOTING.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ENV_VARIABLES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "eslint.config.mjs",
+        "fileCount": 1
+      },
+      {
+        "name": "EXPORT_FIX_V2.md",
+        "fileCount": 1
+      },
+      {
+        "name": "EXPORT_FIX.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FASE-6-COMPLETA.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FFMPEG_VERCEL_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FINAL_SOLUTION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FINAL_TEXT_IMPLEMENTATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FIX_AGENDAMENTO_ERROR_500.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FIX_PROCESSING_STARTED_AT_FIELD.md",
+        "fileCount": 1
+      },
+      {
+        "name": "FIX_YOUTUBE_DOWNLOAD_404.md",
+        "fileCount": 1
+      },
+      {
+        "name": "GERAR_TOKEN_AGORA.md",
+        "fileCount": 1
+      },
+      {
+        "name": "GUIA_RAPIDO_DEPLOY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "GUIA-COMPONENTES-CMS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "GUIA-CONFIGURACOES-SITE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "GUIA-DE-TESTES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "HANDOFF_REPORT_MIGRATIONS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "implementation_plan.md",
+        "fileCount": 1
+      },
+      {
+        "name": "INSTAGRAM_ANALYTICS_IMPLEMENTATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "LATE_API_IMPROVEMENTS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "LATER_ANALYTICS_IMPLEMENTATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "LAYERS_PANEL_OPTIMIZATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "migrate-enum-final.sql",
+        "fileCount": 1
+      },
+      {
+        "name": "migrate-enum-step1.sql",
+        "fileCount": 1
+      },
+      {
+        "name": "migrate-enum-step2.sql",
+        "fileCount": 1
+      },
+      {
+        "name": "migrate-post-status.sql",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_APPLY_INSTRUCTIONS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_CHECKLIST.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_COMPLETION_REPORT.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_DOCS_INDEX.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_FIX_REPORT.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_FIX_SUMMARY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_NORMALIZATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_PRODUCTION_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION_SUMMARY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATION-SUMMARY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MIGRATIONS_README.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOBILE_EDITOR_IMPLEMENTATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOBILE_IMPROVEMENTS_SUMMARY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOBILE_OVERFLOW_FIX.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOBILE_UI_FIXES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOBILE_UX_FIX_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "MOCK-DESENVOLVIMENTO.md",
+        "fileCount": 1
+      },
+      {
+        "name": "monitor-reminders.js",
+        "fileCount": 1
+      },
+      {
+        "name": "N8N_REMINDER_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "next-env.d.ts",
+        "fileCount": 1
+      },
+      {
+        "name": "next.config.ts",
+        "fileCount": 1
+      },
+      {
+        "name": "package-lock.json",
+        "fileCount": 1
+      },
+      {
+        "name": "package.json",
+        "fileCount": 1
+      },
+      {
+        "name": "PERFORMANCE_OPTIMIZATIONS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "PHASE_2_IMPLEMENTATION_STATUS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "playwright.config.ts",
+        "fileCount": 1
+      },
+      {
+        "name": "postcss.config.mjs",
+        "fileCount": 1
+      },
+      {
+        "name": "POSTING_SCHEDULING_ANALYSIS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "prevc-template.md",
+        "fileCount": 1
+      },
+      {
+        "name": "prisma",
+        "fileCount": 64
+      },
+      {
+        "name": "PRODUCTION_CHECKLIST.md",
+        "fileCount": 1
+      },
+      {
+        "name": "PRODUCTION-ENV.md",
+        "fileCount": 1
+      },
+      {
+        "name": "PROGRESSO-BIBLIOTECA-MUSICAS.md",
+        "fileCount": 1
+      },
+      {
+        "name": "prompt",
+        "fileCount": 3
+      },
+      {
+        "name": "PROMPT_FOR_NEXT_CONVERSATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "prompts",
+        "fileCount": 15
+      },
+      {
+        "name": "public",
+        "fileCount": 18
+      },
+      {
+        "name": "QUICK_HANDOFF.md",
+        "fileCount": 1
+      },
+      {
+        "name": "QUICK_START_LATER.md",
+        "fileCount": 1
+      },
+      {
+        "name": "QUICKSTART-BLOB.md",
+        "fileCount": 1
+      },
+      {
+        "name": "README_SIMPLIFICATION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "README-DEPLOY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "README.md",
+        "fileCount": 1
+      },
+      {
+        "name": "SAFARI_FIX_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "scripts",
+        "fileCount": 82
+      },
+      {
+        "name": "SETUP_AI_IMAGES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "SETUP-BLOB.md",
+        "fileCount": 1
+      },
+      {
+        "name": "SIMPLIFICATION_SUMMARY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "SMART_GUIDES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "src",
+        "fileCount": 831
+      },
+      {
+        "name": "STORY_INSIGHTS_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "tailwind.config.ts",
+        "fileCount": 1
+      },
+      {
+        "name": "TEMPORARY_FIX_OPTION.md",
+        "fileCount": 1
+      },
+      {
+        "name": "TEMPORARY_FIX_PROCESSING_STARTED_AT.md",
+        "fileCount": 1
+      },
+      {
+        "name": "test-credit-deduction.js",
+        "fileCount": 1
+      },
+      {
+        "name": "test-update-reminder.js",
+        "fileCount": 1
+      },
+      {
+        "name": "test-webhook-failure.sh",
+        "fileCount": 1
+      },
+      {
+        "name": "test-webhook-local.sh",
+        "fileCount": 1
+      },
+      {
+        "name": "test-webhook-simplified.sh",
+        "fileCount": 1
+      },
+      {
+        "name": "TESTING_LATER.md",
+        "fileCount": 1
+      },
+      {
+        "name": "tests",
+        "fileCount": 8
+      },
+      {
+        "name": "TEXT_BEHAVIOR_CHANGES.md",
+        "fileCount": 1
+      },
+      {
+        "name": "TEXT_REFACTOR.md",
+        "fileCount": 1
+      },
+      {
+        "name": "TOKEN_CONFIGURADO.md",
+        "fileCount": 1
+      },
+      {
+        "name": "TROUBLESHOOTING.md",
+        "fileCount": 1
+      },
+      {
+        "name": "tsconfig.json",
+        "fileCount": 1
+      },
+      {
+        "name": "tsconfig.tsbuildinfo",
+        "fileCount": 1
+      },
+      {
+        "name": "URGENT_DATABASE_CHECK.md",
+        "fileCount": 1
+      },
+      {
+        "name": "VERCEL_AI_IMAGE_DEBUG.md",
+        "fileCount": 1
+      },
+      {
+        "name": "VERCEL_VIDEO_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "VERCEL-DEPLOY.md",
+        "fileCount": 1
+      },
+      {
+        "name": "vercel.json",
+        "fileCount": 1
+      },
+      {
+        "name": "VIDEO_PROCESSING_QUEUE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "WEBHOOK_DEBUG_GUIDE.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_BUFFER_CONFIG.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_COPILOT_PROMPT.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_FINAL_MAPPING_V2.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_FINAL_MAPPING.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_QUICK_SETUP.md",
+        "fileCount": 1
+      },
+      {
+        "name": "ZAPIER_SETUP_SIMPLIFIED.md",
+        "fileCount": 1
+      }
+    ],
+    "languageDistribution": [
+      {
+        "extension": ".ts",
+        "count": 527
+      },
+      {
+        "extension": ".tsx",
+        "count": 391
+      },
+      {
+        "extension": ".md",
+        "count": 180
+      },
+      {
+        "extension": ".sql",
+        "count": 53
+      },
+      {
+        "extension": ".js",
+        "count": 28
+      },
+      {
+        "extension": ".png",
+        "count": 11
+      },
+      {
+        "extension": ".sh",
+        "count": 10
+      },
+      {
+        "extension": ".json",
+        "count": 9
+      },
+      {
+        "extension": ".mjs",
+        "count": 6
+      },
+      {
+        "extension": ".svg",
+        "count": 6
+      }
+    ]
+  },
+  "architecture": {
+    "layers": [
+      {
+        "name": "Config",
+        "description": "Configuration and constants",
+        "directories": [
+          ".",
+          "scripts",
+          "prisma",
+          "tests/e2e",
+          "src/hooks",
+          "scripts/later",
+          "src/hooks/admin"
+        ],
+        "symbolCount": 19,
+        "dependsOn": [
+          "Components"
+        ]
+      },
+      {
+        "name": "Components",
+        "description": "UI components and views",
+        "directories": [
+          "scripts",
+          "prisma",
+          "src/hooks",
+          "src/hooks/admin",
+          "src/components/plans",
+          "src/components/canvas/effects",
+          "src/components/admin/plans",
+          "src/contexts",
+          "src/app",
+          "src/components",
+          "src/app/subscribe",
+          "src/app/admin",
+          "src/components/youtube",
+          "src/components/verification",
+          "src/components/ui",
+          "src/components/templates",
+          "src/components/template",
+          "src/components/sales",
+          "src/components/providers",
+          "src/components/prompts",
+          "src/components/projects",
+          "src/components/posts",
+          "src/components/organizations",
+          "src/components/organization",
+          "src/components/navigation",
+          "src/components/music",
+          "src/components/members",
+          "src/components/marketing",
+          "src/components/instagram",
+          "src/components/filters",
+          "src/components/credits",
+          "src/components/cms",
+          "src/components/chat",
+          "src/components/charts",
+          "src/components/calendar",
+          "src/components/billing",
+          "src/components/audio",
+          "src/components/app",
+          "src/components/analytics",
+          "src/components/admin",
+          "src/app/admin/users",
+          "src/app/admin/usage",
+          "src/app/admin/storage",
+          "src/app/admin/site-settings",
+          "src/app/admin/settings",
+          "src/app/admin/knowledge",
+          "src/app/admin/credits",
+          "src/app/admin/clients",
+          "src/app/admin/client-projects",
+          "src/app/(public)/privacy-policy",
+          "src/app/(public)/google-drive-callback",
+          "src/app/(public)/[...slug]",
+          "src/app/(protected)/studio",
+          "src/app/(protected)/prompts",
+          "src/app/(protected)/projects",
+          "src/app/(protected)/organization",
+          "src/app/(protected)/knowledge",
+          "src/app/(protected)/drive",
+          "src/app/(protected)/billing",
+          "src/app/(protected)/biblioteca-musicas",
+          "src/app/(protected)/ai-chat",
+          "src/app/(protected)/agenda",
+          "src/components/templates/sidebar",
+          "src/components/templates/presets",
+          "src/components/templates/panels",
+          "src/components/templates/modals",
+          "src/components/templates/layers",
+          "src/components/cms/sections",
+          "src/components/agenda/post-actions",
+          "src/components/agenda/mobile",
+          "src/components/agenda/channels-sidebar",
+          "src/components/agenda/calendar",
+          "src/components/admin/knowledge",
+          "src/components/admin/feature-grid",
+          "src/components/admin/cms",
+          "src/app/admin/settings/site",
+          "src/app/admin/settings/plans",
+          "src/app/admin/settings/features",
+          "src/app/admin/knowledge/new",
+          "src/app/admin/knowledge/migrate",
+          "src/app/admin/knowledge/[id]",
+          "src/app/admin/content/pages",
+          "src/app/admin/content/menus",
+          "src/app/admin/content/media",
+          "src/app/admin/content/feature-grid",
+          "src/app/admin/content/components",
+          "src/app/admin/clients/_components",
+          "src/app/admin/client-projects/_components",
+          "src/app/admin/client-projects/[projectId]",
+          "src/app/(public)/sign-up/[[...sign-up]]",
+          "src/app/(public)/sign-in/[[...sign-in]]",
+          "src/app/(protected)/projects/[id]",
+          "src/app/(protected)/organization/[orgId]",
+          "src/app/(protected)/knowledge/[id]",
+          "src/app/(protected)/drive/_components",
+          "src/app/(protected)/biblioteca-musicas/enviar",
+          "src/components/admin/cms/editors",
+          "src/app/admin/knowledge/[id]/edit",
+          "src/app/admin/content/pages/[id]",
+          "src/app/admin/content/menus/[id]",
+          "src/app/admin/content/components/[id]",
+          "src/app/(protected)/templates/[id]/editor",
+          "src/app/(protected)/projects/[id]/instagram",
+          "src/app/(protected)/projects/[id]/creativos",
+          "src/app/(protected)/projects/[id]/analytics",
+          "src/app/(protected)/organization/[orgId]/projects",
+          "src/app/(protected)/organization/[orgId]/credits",
+          "src/app/(protected)/organization/[orgId]/analytics",
+          "src/app/(protected)/knowledge/[id]/edit",
+          "src/app/(protected)/biblioteca-musicas/[id]/editar",
+          "src/app/(protected)/organization/[orgId]/members/[[...rest]]"
+        ],
+        "symbolCount": 529,
+        "dependsOn": [
+          "Utils"
+        ]
+      },
+      {
+        "name": "Repositories",
+        "description": "Data access and persistence",
+        "directories": [
+          "scripts",
+          "src/lib/knowledge",
+          "src/contexts",
+          "src/components/ui"
+        ],
+        "symbolCount": 11,
+        "dependsOn": [
+          "Components"
+        ]
+      },
+      {
+        "name": "Services",
+        "description": "Business logic and orchestration",
+        "directories": [
+          "src/server",
+          "src/lib/services",
+          "src/lib/organizations",
+          "src/app/(public)/terms-of-service"
+        ],
+        "symbolCount": 44,
+        "dependsOn": [
+          "Components",
+          "Controllers"
+        ]
+      },
+      {
+        "name": "Utils",
+        "description": "Shared utilities and helpers",
+        "directories": [
+          "src/lib",
+          "src/hooks",
+          "src/lib/video",
+          "src/lib/youtube",
+          "src/lib/validations",
+          "src/lib/templates",
+          "src/lib/studio",
+          "src/lib/rendering",
+          "src/lib/queries",
+          "src/lib/projects",
+          "src/lib/posts",
+          "src/lib/organizations",
+          "src/lib/mvsep",
+          "src/lib/later",
+          "src/lib/konva",
+          "src/lib/knowledge",
+          "src/lib/instagram",
+          "src/lib/images",
+          "src/lib/google-drive",
+          "src/lib/credits",
+          "src/lib/cms",
+          "src/lib/clerk",
+          "src/lib/cleanup",
+          "src/lib/assets",
+          "src/lib/ai-creative-generator",
+          "src/lib/ai",
+          "src/components/plans",
+          "src/lib/posts/verification",
+          "src/lib/konva/filters",
+          "src/lib/konva/effects",
+          "src/components/agenda/calendar",
+          "src/components/admin/plans",
+          "prisma/generated/client/runtime"
+        ],
+        "symbolCount": 511,
+        "dependsOn": [
+          "Components",
+          "Controllers",
+          "Models"
+        ]
+      },
+      {
+        "name": "Controllers",
+        "description": "Request handling and routing",
+        "directories": [
+          "src/lib",
+          "src/hooks",
+          "scripts/later",
+          "src/lib/instagram",
+          "src/app/api/upload",
+          "src/app/api/test-ffmpeg",
+          "src/app/api/templates",
+          "src/app/api/site-config",
+          "src/app/api/prompts",
+          "src/app/api/projects",
+          "src/app/api/knowledge",
+          "src/app/api/google-drive-download",
+          "src/app/api/feature-grid",
+          "src/app/api/biblioteca-musicas",
+          "src/app/api/ai-images-download",
+          "src/app/api/webhooks/reminder-confirm",
+          "src/app/api/webhooks/later",
+          "src/app/api/webhooks/late",
+          "src/app/api/webhooks/clerk",
+          "src/app/api/video-processing/upload",
+          "src/app/api/video-processing/queue",
+          "src/app/api/video-processing/process",
+          "src/app/api/verification/stats",
+          "src/app/api/verification/failed",
+          "src/app/api/upload/signed-url",
+          "src/app/api/upload/google-drive",
+          "src/app/api/templates/generate-thumbnail",
+          "src/app/api/templates/export",
+          "src/app/api/templates/[id]",
+          "src/app/api/subscription/status",
+          "src/app/api/public/plans",
+          "src/app/api/public/pages",
+          "src/app/api/public/menu",
+          "src/app/api/prompts/[promptId]",
+          "src/app/api/projects/scheduled-counts",
+          "src/app/api/projects/[projectId]",
+          "src/app/api/posts/calendar",
+          "src/app/api/organizations/sync",
+          "src/app/api/organizations/limits",
+          "src/app/api/later/accounts",
+          "src/app/api/knowledge/confirm",
+          "src/app/api/knowledge/[id]",
+          "src/app/api/instagram/summaries",
+          "src/app/api/instagram/settings",
+          "src/app/api/google-drive/test",
+          "src/app/api/google-drive/start-oauth",
+          "src/app/api/google-drive/files",
+          "src/app/api/google-drive/callback",
+          "src/app/api/generations/bulk-delete",
+          "src/app/api/generations/[id]",
+          "src/app/api/drive/list",
+          "src/app/api/drive/breadcrumbs",
+          "src/app/api/debug/posts",
+          "src/app/api/debug/org",
+          "src/app/api/debug/auth",
+          "src/app/api/cron/verify-stories",
+          "src/app/api/cron/test-process-stems",
+          "src/app/api/cron/status-sync",
+          "src/app/api/cron/reminders",
+          "src/app/api/cron/refill-org-credits",
+          "src/app/api/cron/process-youtube-downloads",
+          "src/app/api/cron/process-music-stems",
+          "src/app/api/cron/posts",
+          "src/app/api/cron/fetch-story-insights",
+          "src/app/api/cron/fetch-later-analytics",
+          "src/app/api/cron/cleanup-db",
+          "src/app/api/cron/cleanup-blobs",
+          "src/app/api/cron/check-stuck-posts",
+          "src/app/api/cron/backup-database",
+          "src/app/api/cron/archive-expired-knowledge",
+          "src/app/api/cron/analytics",
+          "src/app/api/credits/settings",
+          "src/app/api/credits/me",
+          "src/app/api/cms/sections",
+          "src/app/api/cms/pages",
+          "src/app/api/cms/menus",
+          "src/app/api/cms/menu-items",
+          "src/app/api/cms/media",
+          "src/app/api/cms/components",
+          "src/app/api/calendar/analytics",
+          "src/app/api/biblioteca-musicas/youtube",
+          "src/app/api/biblioteca-musicas/upload-url",
+          "src/app/api/biblioteca-musicas/confirm",
+          "src/app/api/biblioteca-musicas/buscar",
+          "src/app/api/biblioteca-musicas/[id]",
+          "src/app/api/ai/providers",
+          "src/app/api/ai/models",
+          "src/app/api/ai/image",
+          "src/app/api/ai/generate-image",
+          "src/app/api/ai/generate-creative",
+          "src/app/api/ai/conversations",
+          "src/app/api/ai/chat",
+          "src/app/api/admin/verify",
+          "src/app/api/admin/users",
+          "src/app/api/admin/usage",
+          "src/app/api/admin/test-mvsep",
+          "src/app/api/admin/studio",
+          "src/app/api/admin/storage",
+          "src/app/api/admin/site-settings",
+          "src/app/api/admin/settings",
+          "src/app/api/admin/retry-all-failed",
+          "src/app/api/admin/plans",
+          "src/app/api/admin/knowledge",
+          "src/app/api/admin/inspect-files",
+          "src/app/api/admin/feature-grid",
+          "src/app/api/admin/feature-costs",
+          "src/app/api/admin/debug-stem-job",
+          "src/app/api/admin/debug-mvsep-response",
+          "src/app/api/admin/debug-mvsep-files",
+          "src/app/api/admin/credits",
+          "src/app/api/admin/clients",
+          "src/app/api/admin/client-projects",
+          "src/app/api/webhooks/instagram/story",
+          "src/app/api/webhooks/instagram/report",
+          "src/app/api/webhooks/instagram/feed",
+          "src/app/api/webhooks/buffer/test",
+          "src/app/api/webhooks/buffer/post-sent",
+          "src/app/api/video-processing/status/[jobId]",
+          "src/app/api/templates/[id]/thumbnail",
+          "src/app/api/templates/[id]/template-pages",
+          "src/app/api/templates/[id]/pages",
+          "src/app/api/templates/[id]/export",
+          "src/app/api/templates/[id]/duplicate",
+          "src/app/api/templates/[id]/creatives",
+          "src/app/api/templates/[id]/create-from-template",
+          "src/app/api/projects/[projectId]/test-webhook",
+          "src/app/api/projects/[projectId]/templates",
+          "src/app/api/projects/[projectId]/stories-report",
+          "src/app/api/projects/[projectId]/settings",
+          "src/app/api/projects/[projectId]/prompts",
+          "src/app/api/projects/[projectId]/posts",
+          "src/app/api/projects/[projectId]/logos",
+          "src/app/api/projects/[projectId]/instagram",
+          "src/app/api/projects/[projectId]/generations",
+          "src/app/api/projects/[projectId]/fonts",
+          "src/app/api/projects/[projectId]/elements",
+          "src/app/api/projects/[projectId]/creatives",
+          "src/app/api/projects/[projectId]/colors",
+          "src/app/api/projects/[projectId]/analytics",
+          "src/app/api/projects/[projectId]/ai-images",
+          "src/app/api/posts/[postId]/status",
+          "src/app/api/posts/[postId]/analytics",
+          "src/app/api/organizations/webhooks/clerk",
+          "src/app/api/organizations/[orgId]/settings",
+          "src/app/api/organizations/[orgId]/projects",
+          "src/app/api/organizations/[orgId]/credits",
+          "src/app/api/organizations/[orgId]/analytics",
+          "src/app/api/knowledge/training/preview",
+          "src/app/api/instagram/[projectId]/studio",
+          "src/app/api/google-drive/thumbnail/[fileId]",
+          "src/app/api/google-drive/image/[fileId]",
+          "src/app/api/generations/[id]/download",
+          "src/app/api/export/video/validate",
+          "src/app/api/export/video/upload-url",
+          "src/app/api/export/video/save",
+          "src/app/api/export/video/confirm",
+          "src/app/api/drive/thumbnail/[fileId]",
+          "src/app/api/drive/folders/download",
+          "src/app/api/drive/folders/create",
+          "src/app/api/drive/files/upload",
+          "src/app/api/drive/files/move",
+          "src/app/api/drive/files/delete",
+          "src/app/api/debug/post/[postId]",
+          "src/app/api/cms/sections/[id]",
+          "src/app/api/cms/pages/[id]",
+          "src/app/api/cms/menus/[id]",
+          "src/app/api/cms/menu-items/reorder",
+          "src/app/api/cms/menu-items/[id]",
+          "src/app/api/cms/media/upload",
+          "src/app/api/cms/media/bulk-delete",
+          "src/app/api/cms/media/[id]",
+          "src/app/api/cms/components/[id]",
+          "src/app/api/biblioteca-musicas/youtube/metadata",
+          "src/app/api/biblioteca-musicas/youtube/jobs",
+          "src/app/api/biblioteca-musicas/youtube/[jobId]",
+          "src/app/api/biblioteca-musicas/[id]/stem-status",
+          "src/app/api/biblioteca-musicas/[id]/reprocess-stem",
+          "src/app/api/biblioteca-musicas/[id]/download-zip",
+          "src/app/api/ai/openrouter/models",
+          "src/app/api/ai/creative-page/[pageId]",
+          "src/app/api/ai/conversations/cleanup",
+          "src/app/api/ai/conversations/[id]",
+          "src/app/api/admin/verify-story/[postId]",
+          "src/app/api/admin/users/sync",
+          "src/app/api/admin/users/invite",
+          "src/app/api/admin/users/invitations",
+          "src/app/api/admin/users/[id]",
+          "src/app/api/admin/storage/[id]",
+          "src/app/api/admin/plans/refresh-pricing",
+          "src/app/api/admin/plans/[clerkId]",
+          "src/app/api/admin/knowledge/migrate-workspace",
+          "src/app/api/admin/knowledge/[id]",
+          "src/app/api/admin/health/credits-enum",
+          "src/app/api/admin/feature-grid/[id]",
+          "src/app/api/admin/credits/[id]",
+          "src/app/api/admin/clients/[id]",
+          "src/app/api/admin/client-projects/[projectId]",
+          "src/app/api/admin/clerk/plans",
+          "src/app/api/templates/[id]/pages/reorder",
+          "src/app/api/templates/[id]/pages/[pageId]",
+          "src/app/api/projects/[projectId]/prompts/[promptId]",
+          "src/app/api/projects/[projectId]/posts/next-scheduled",
+          "src/app/api/projects/[projectId]/posts/calendar",
+          "src/app/api/projects/[projectId]/posts/[postId]",
+          "src/app/api/projects/[projectId]/logos/[logoId]",
+          "src/app/api/projects/[projectId]/google-drive/images",
+          "src/app/api/projects/[projectId]/google-drive/download",
+          "src/app/api/projects/[projectId]/generations/carousel",
+          "src/app/api/projects/[projectId]/fonts/[fontId]",
+          "src/app/api/projects/[projectId]/elements/[elementId]",
+          "src/app/api/projects/[projectId]/colors/[colorId]",
+          "src/app/api/projects/[projectId]/ai-images/[imageId]",
+          "src/app/api/pages/[pageId]/layers/[layerId]",
+          "src/app/api/organizations/[orgId]/projects/[projectId]",
+          "src/app/api/organizations/[orgId]/credits/usage",
+          "src/app/api/organizations/[orgId]/analytics/timeline",
+          "src/app/api/organizations/[orgId]/analytics/members",
+          "src/app/api/cms/sections/[id]/toggle-visibility",
+          "src/app/api/cms/sections/[id]/duplicate",
+          "src/app/api/cms/pages/[id]/publish",
+          "src/app/api/cms/pages/[id]/duplicate",
+          "src/app/api/cms/menus/[id]/items",
+          "src/app/api/biblioteca-musicas/youtube/[jobId]/status",
+          "src/app/api/admin/users/[id]/credits",
+          "src/app/api/admin/users/[id]/activate",
+          "src/app/api/admin/knowledge/[id]/reindex",
+          "src/app/api/admin/clients/[id]/resend",
+          "src/app/api/admin/clients/[id]/cancel",
+          "src/app/api/templates/[id]/pages/[pageId]/toggle-template",
+          "src/app/api/templates/[id]/pages/[pageId]/duplicate",
+          "src/app/api/admin/users/invitations/[id]/revoke",
+          "src/app/api/admin/users/invitations/[id]/resend",
+          "scripts"
+        ],
+        "symbolCount": 417,
+        "dependsOn": [
+          "Components"
+        ]
+      },
+      {
+        "name": "Models",
+        "description": "Data structures and domain objects",
+        "directories": [
+          "src/lib/ai",
+          "src/components/ai"
+        ],
+        "symbolCount": 9,
+        "dependsOn": []
+      },
+      {
+        "name": "Generators",
+        "description": "Content and object generation",
+        "directories": [
+          "src/components/ai-creative-generator",
+          "src/components/ai-creative-generator/tabs"
+        ],
+        "symbolCount": 32,
+        "dependsOn": []
+      }
+    ],
+    "patterns": [
+      {
+        "name": "Service Layer",
+        "confidence": 0.85,
+        "description": "Encapsulates business logic in service classes",
+        "occurrences": 1
+      }
+    ],
+    "entryPoints": [
+      "src/lib/organizations/index.ts",
+      "src/lib/later/index.ts",
+      "src/components/plans/index.ts",
+      "src/lib/posts/verification/index.ts",
+      "src/lib/konva/filters/index.ts",
+      "src/lib/konva/effects/index.ts",
+      "src/components/canvas/effects/index.ts",
+      "src/components/admin/plans/index.ts",
+      "prisma/generated/client/index.js"
+    ]
+  },
+  "symbols": {
+    "classes": [
+      {
+        "name": "ApiError",
+        "kind": "class",
+        "file": "src/lib/api-client.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "BackgroundEffect",
+        "kind": "class",
+        "file": "src/lib/konva/effects/BackgroundEffect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "BlurEffect",
+        "kind": "class",
+        "file": "src/lib/konva/effects/BlurEffect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "CanvasRenderer",
+        "kind": "class",
+        "file": "src/lib/canvas-renderer.ts",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "CurvedTextEffect",
+        "kind": "class",
+        "file": "src/lib/konva/effects/CurvedTextEffect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "Decimal",
+        "kind": "class",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 44,
+        "exported": true
+      },
+      {
+        "name": "EffectsManager",
+        "kind": "class",
+        "file": "src/lib/konva/effects/EffectsManager.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "FontManager",
+        "kind": "class",
+        "file": "src/lib/font-manager.ts",
+        "line": 25,
+        "exported": true
+      },
+      {
+        "name": "GoogleDriveService",
+        "kind": "class",
+        "file": "src/server/google-drive-service.ts",
+        "line": 70,
+        "exported": true
+      },
+      {
+        "name": "InstagramApiException",
+        "kind": "class",
+        "file": "src/lib/instagram/graph-api-client.ts",
+        "line": 40,
+        "exported": true
+      },
+      {
+        "name": "InstagramGraphApiClient",
+        "kind": "class",
+        "file": "src/lib/instagram/graph-api-client.ts",
+        "line": 75,
+        "exported": true
+      },
+      {
+        "name": "InsufficientCreditsError",
+        "kind": "class",
+        "file": "src/lib/credits/errors.ts",
+        "line": 1,
+        "exported": true
+      },
+      {
+        "name": "LaterApiError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "LaterAuthError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 103,
+        "exported": true
+      },
+      {
+        "name": "LaterAuthorizationError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 113,
+        "exported": true
+      },
+      {
+        "name": "LaterClient",
+        "kind": "class",
+        "file": "src/lib/later/client.ts",
+        "line": 44,
+        "exported": true
+      },
+      {
+        "name": "LaterMediaUploadError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 199,
+        "exported": true
+      },
+      {
+        "name": "LaterNetworkError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 174,
+        "exported": true
+      },
+      {
+        "name": "LaterNotFoundError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 123,
+        "exported": true
+      },
+      {
+        "name": "LaterRateLimitError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 64,
+        "exported": true
+      },
+      {
+        "name": "LaterValidationError",
+        "kind": "class",
+        "file": "src/lib/later/errors.ts",
+        "line": 150,
+        "exported": true
+      },
+      {
+        "name": "OrganizationAccessError",
+        "kind": "class",
+        "file": "src/lib/organizations/permissions.ts",
+        "line": 12,
+        "exported": true
+      },
+      {
+        "name": "PermissionError",
+        "kind": "class",
+        "file": "src/lib/permissions.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "PostExecutor",
+        "kind": "class",
+        "file": "src/lib/posts/executor.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "PostScheduler",
+        "kind": "class",
+        "file": "src/lib/posts/scheduler.ts",
+        "line": 37,
+        "exported": true
+      },
+      {
+        "name": "RateLimitError",
+        "kind": "class",
+        "file": "src/lib/rate-limit.ts",
+        "line": 24,
+        "exported": true
+      },
+      {
+        "name": "RenderEngine",
+        "kind": "class",
+        "file": "src/lib/render-engine.ts",
+        "line": 28,
+        "exported": true
+      },
+      {
+        "name": "ShadowEffect",
+        "kind": "class",
+        "file": "src/lib/konva/effects/ShadowEffect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "StoryVerifier",
+        "kind": "class",
+        "file": "src/lib/posts/verification/story-verifier.ts",
+        "line": 49,
+        "exported": true
+      },
+      {
+        "name": "StrokeEffect",
+        "kind": "class",
+        "file": "src/lib/konva/effects/StrokeEffect.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "AnyNull",
+        "kind": "class",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 1,
+        "exported": false
+      },
+      {
+        "name": "DbNull",
+        "kind": "class",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 17,
+        "exported": false
+      },
+      {
+        "name": "JsonNull",
+        "kind": "class",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 302,
+        "exported": false
+      },
+      {
+        "name": "k",
+        "kind": "class",
+        "file": "prisma/generated/client/query_engine_bg.js",
+        "line": 2,
+        "exported": false
+      },
+      {
+        "name": "NullTypesEnumValue",
+        "kind": "class",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 326,
+        "exported": false
+      },
+      {
+        "name": "SimpleCache",
+        "kind": "class",
+        "file": "src/lib/cache.ts",
+        "line": 7,
+        "exported": false
+      }
+    ],
+    "interfaces": [
+      {
+        "name": "AdminSettings",
+        "kind": "interface",
+        "file": "src/hooks/use-admin-settings.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "AIImageModelConfig",
+        "kind": "interface",
+        "file": "src/lib/ai/image-models-config.ts",
+        "line": 19,
+        "exported": true
+      },
+      {
+        "name": "AIProvider",
+        "kind": "interface",
+        "file": "src/hooks/use-ai-providers.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "AIProvidersResponse",
+        "kind": "interface",
+        "file": "src/hooks/use-ai-providers.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "Alert",
+        "kind": "interface",
+        "file": "src/lib/instagram/types.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "AlignmentNode",
+        "kind": "interface",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsQueryParams",
+        "kind": "interface",
+        "file": "src/lib/later/types.ts",
+        "line": 320,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsSummaryCardsProps",
+        "kind": "interface",
+        "file": "src/components/organization/analytics-summary-cards.tsx",
+        "line": 32,
+        "exported": true
+      },
+      {
+        "name": "ApplyPresetOptions",
+        "kind": "interface",
+        "file": "src/hooks/use-text-presets.ts",
+        "line": 25,
+        "exported": true
+      },
+      {
+        "name": "AtualizarMusicaData",
+        "kind": "interface",
+        "file": "src/hooks/use-music-library.ts",
+        "line": 43,
+        "exported": true
+      },
+      {
+        "name": "AudioConfig",
+        "kind": "interface",
+        "file": "src/components/audio/audio-selection-modal.tsx",
+        "line": 35,
+        "exported": true
+      },
+      {
+        "name": "BackgroundEffectConfig",
+        "kind": "interface",
+        "file": "src/lib/konva/effects/types.ts",
+        "line": 25,
+        "exported": true
+      },
+      {
+        "name": "BackgroundPreset",
+        "kind": "interface",
+        "file": "src/lib/assets/background-presets.ts",
+        "line": 3,
+        "exported": true
+      },
+      {
+        "name": "BlurEffectConfig",
+        "kind": "interface",
+        "file": "src/lib/konva/effects/types.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "BorderStyle",
+        "kind": "interface",
+        "file": "src/types/template.ts",
+        "line": 128,
+        "exported": true
+      },
+      {
+        "name": "BrandAssets",
+        "kind": "interface",
+        "file": "src/lib/ai-creative-generator/layout-types.ts",
+        "line": 39,
+        "exported": true
+      },
+      {
+        "name": "BreadcrumbItem",
+        "kind": "interface",
+        "file": "src/contexts/page-metadata.tsx",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "BuildLayersResult",
+        "kind": "interface",
+        "file": "src/lib/ai-creative-generator/template-page-builder.ts",
+        "line": 37,
+        "exported": true
+      },
+      {
+        "name": "CanvasConfig",
+        "kind": "interface",
+        "file": "src/types/template.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "CanvasRendererOptions",
+        "kind": "interface",
+        "file": "src/lib/rendering/canvas-renderer.ts",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "CanvasRenderResult",
+        "kind": "interface",
+        "file": "src/lib/rendering/canvas-renderer.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "ChatConversation",
+        "kind": "interface",
+        "file": "src/hooks/use-conversations.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "ChatMessage",
+        "kind": "interface",
+        "file": "src/hooks/use-conversations.ts",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "Chunk",
+        "kind": "interface",
+        "file": "src/lib/knowledge/chunking.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "ClerkOrganizationPayload",
+        "kind": "interface",
+        "file": "src/lib/organizations/service.ts",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "ClerkPlanFeature",
+        "kind": "interface",
+        "file": "src/lib/clerk/commerce-plan-types.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "ClerkPlanMoney",
+        "kind": "interface",
+        "file": "src/lib/clerk/commerce-plan-types.ts",
+        "line": 1,
+        "exported": true
+      },
+      {
+        "name": "ClerkPlanNormalized",
+        "kind": "interface",
+        "file": "src/lib/clerk/commerce-plan-types.ts",
+        "line": 16,
+        "exported": true
+      },
+      {
+        "name": "ClerkPlansResponse",
+        "kind": "interface",
+        "file": "src/hooks/use-admin-plans.ts",
+        "line": 38,
+        "exported": true
+      },
+      {
+        "name": "ClientInvite",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-client-invites.ts",
+        "line": 25,
+        "exported": true
+      },
+      {
+        "name": "ClientInviteSummaryProject",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-client-invites.ts",
+        "line": 20,
+        "exported": true
+      },
+      {
+        "name": "ClientInviteSummaryUser",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-client-invites.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "ClientProject",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-client-projects.ts",
+        "line": 24,
+        "exported": true
+      },
+      {
+        "name": "ClientProjectInviteSummary",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-client-projects.ts",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "Config",
+        "kind": "interface",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 31,
+        "exported": true
+      },
+      {
+        "name": "ConversationsResponse",
+        "kind": "interface",
+        "file": "src/hooks/use-conversations.ts",
+        "line": 34,
+        "exported": true
+      },
+      {
+        "name": "CreateClientInviteRecordParams",
+        "kind": "interface",
+        "file": "src/lib/services/client-invite-service.ts",
+        "line": 148,
+        "exported": true
+      },
+      {
+        "name": "CreateEntryInput",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-admin-knowledge.ts",
+        "line": 55,
+        "exported": true
+      },
+      {
+        "name": "CreateLaterPostPayload",
+        "kind": "interface",
+        "file": "src/lib/later/types.ts",
+        "line": 109,
+        "exported": true
+      },
+      {
+        "name": "CreateOrgEntryInput",
+        "kind": "interface",
+        "file": "src/hooks/use-org-knowledge.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "CreatePromptData",
+        "kind": "interface",
+        "file": "src/types/prompt.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "CreateTemplateData",
+        "kind": "interface",
+        "file": "src/hooks/use-templates.ts",
+        "line": 37,
+        "exported": true
+      },
+      {
+        "name": "Creative",
+        "kind": "interface",
+        "file": "src/hooks/use-template-creatives.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "CreativeFieldValues",
+        "kind": "interface",
+        "file": "src/hooks/use-template-creatives.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "CreditActivityFeedProps",
+        "kind": "interface",
+        "file": "src/components/organization/credit-activity-feed.tsx",
+        "line": 20,
+        "exported": true
+      },
+      {
+        "name": "CreditBalance",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-admin-credits.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "CreditData",
+        "kind": "interface",
+        "file": "src/hooks/use-credits.ts",
+        "line": 29,
+        "exported": true
+      },
+      {
+        "name": "CreditsParams",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-admin-credits.ts",
+        "line": 31,
+        "exported": true
+      },
+      {
+        "name": "CreditsResponse",
+        "kind": "interface",
+        "file": "src/hooks/admin/use-admin-credits.ts",
+        "line": 21,
+        "exported": true
+      },
+      {
+        "name": "CreditUsageCardProps",
+        "kind": "interface",
+        "file": "src/components/organization/credit-usage-card.tsx",
+        "line": 16,
+        "exported": true
+      }
+    ],
+    "functions": [
+      {
+        "name": "addUserCredits",
+        "kind": "function",
+        "file": "src/lib/credits/validate-credits.ts",
+        "line": 99,
+        "exported": true
+      },
+      {
+        "name": "AdminPagesPage",
+        "kind": "function",
+        "file": "src/app/admin/content/pages/page.tsx",
+        "line": 18,
+        "exported": true
+      },
+      {
+        "name": "AdminSettingsPage",
+        "kind": "function",
+        "file": "src/app/admin/settings/page.tsx",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "AdminSidebar",
+        "kind": "function",
+        "file": "src/components/admin/admin-sidebar.tsx",
+        "line": 90,
+        "exported": true
+      },
+      {
+        "name": "AdminTopbar",
+        "kind": "function",
+        "file": "src/components/admin/admin-topbar.tsx",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "AgendaCalendarView",
+        "kind": "function",
+        "file": "src/components/agenda/calendar/agenda-calendar-view.tsx",
+        "line": 68,
+        "exported": true
+      },
+      {
+        "name": "AgendaPage",
+        "kind": "function",
+        "file": "src/app/(protected)/agenda/page.tsx",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AIGenerationTab",
+        "kind": "function",
+        "file": "src/components/ai-creative-generator/tabs/ai-generation-tab.tsx",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "AIStarter",
+        "kind": "function",
+        "file": "src/components/marketing/ai-starter.tsx",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "AIStarterEditor",
+        "kind": "function",
+        "file": "src/components/admin/cms/editors/ai-starter-editor.tsx",
+        "line": 12,
+        "exported": true
+      },
+      {
+        "name": "alignBottom",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 147,
+        "exported": true
+      },
+      {
+        "name": "alignCenterH",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 45,
+        "exported": true
+      },
+      {
+        "name": "alignLeft",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 20,
+        "exported": true
+      },
+      {
+        "name": "alignMiddleV",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 122,
+        "exported": true
+      },
+      {
+        "name": "alignRight",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 71,
+        "exported": true
+      },
+      {
+        "name": "alignToCanvasCenterH",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 273,
+        "exported": true
+      },
+      {
+        "name": "alignToCanvasCenterV",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 353,
+        "exported": true
+      },
+      {
+        "name": "alignTop",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 99,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsExport",
+        "kind": "function",
+        "file": "src/components/analytics/analytics-export.tsx",
+        "line": 21,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsOverviewCards",
+        "kind": "function",
+        "file": "src/components/analytics/analytics-overview-cards.tsx",
+        "line": 18,
+        "exported": true
+      },
+      {
+        "name": "apiClient",
+        "kind": "function",
+        "file": "src/lib/api-client.ts",
+        "line": 20,
+        "exported": true
+      },
+      {
+        "name": "appendTagToCaption",
+        "kind": "function",
+        "file": "src/lib/posts/verification/tag-generator.ts",
+        "line": 27,
+        "exported": true
+      },
+      {
+        "name": "applyTextTransform",
+        "kind": "function",
+        "file": "src/lib/text-presets.ts",
+        "line": 248,
+        "exported": true
+      },
+      {
+        "name": "AppShell",
+        "kind": "function",
+        "file": "src/components/app/app-shell.tsx",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "archivePage",
+        "kind": "function",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 112,
+        "exported": true
+      },
+      {
+        "name": "assertRateLimit",
+        "kind": "function",
+        "file": "src/lib/rate-limit.ts",
+        "line": 74,
+        "exported": true
+      },
+      {
+        "name": "AudioPlayerProvider",
+        "kind": "function",
+        "file": "src/contexts/audio-player-context.tsx",
+        "line": 26,
+        "exported": true
+      },
+      {
+        "name": "AudioWaveformTimeline",
+        "kind": "function",
+        "file": "src/components/audio/audio-waveform-timeline.tsx",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "BackgroundsPanel",
+        "kind": "function",
+        "file": "src/components/templates/sidebar/backgrounds-panel.tsx",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "BentoGridEditor",
+        "kind": "function",
+        "file": "src/components/admin/cms/editors/bento-grid-editor.tsx",
+        "line": 15,
+        "exported": true
+      },
+      {
+        "name": "bringToFront",
+        "kind": "function",
+        "file": "src/lib/konva-alignment.ts",
+        "line": 420,
+        "exported": true
+      },
+      {
+        "name": "buildCreditsInsights",
+        "kind": "function",
+        "file": "src/app/(protected)/organization/[orgId]/page.tsx",
+        "line": 263,
+        "exported": true
+      },
+      {
+        "name": "buildKonvaLayers",
+        "kind": "function",
+        "file": "src/lib/ai-creative-generator/template-page-builder.ts",
+        "line": 42,
+        "exported": true
+      },
+      {
+        "name": "buildPlanTiers",
+        "kind": "function",
+        "file": "src/components/plans/plan-tier-config.tsx",
+        "line": 91,
+        "exported": true
+      },
+      {
+        "name": "bulkDeleteMedia",
+        "kind": "function",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 528,
+        "exported": true
+      },
+      {
+        "name": "calculateContainScale",
+        "kind": "function",
+        "file": "src/lib/image-crop-utils.ts",
+        "line": 137,
+        "exported": true
+      },
+      {
+        "name": "calculateContextTokens",
+        "kind": "function",
+        "file": "src/lib/ai/token-limits.ts",
+        "line": 84,
+        "exported": true
+      },
+      {
+        "name": "calculateCoverScale",
+        "kind": "function",
+        "file": "src/lib/image-crop-utils.ts",
+        "line": 154,
+        "exported": true
+      },
+      {
+        "name": "calculateCreditsForModel",
+        "kind": "function",
+        "file": "src/lib/ai/image-models-config.ts",
+        "line": 369,
+        "exported": true
+      },
+      {
+        "name": "calculateImageCrop",
+        "kind": "function",
+        "file": "src/lib/image-crop-utils.ts",
+        "line": 58,
+        "exported": true
+      },
+      {
+        "name": "calculateTextHeight",
+        "kind": "function",
+        "file": "src/lib/text-presets.ts",
+        "line": 240,
+        "exported": true
+      },
+      {
+        "name": "cancelClientInvite",
+        "kind": "function",
+        "file": "src/lib/services/client-invite-service.ts",
+        "line": 252,
+        "exported": true
+      },
+      {
+        "name": "CanvasPreview",
+        "kind": "function",
+        "file": "src/components/templates/canvas-preview.tsx",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "ChatEmptyState",
+        "kind": "function",
+        "file": "src/components/chat/chat-empty-state.tsx",
+        "line": 45,
+        "exported": true
+      },
+      {
+        "name": "checkMvsepJobStatus",
+        "kind": "function",
+        "file": "src/lib/mvsep/mvsep-client.ts",
+        "line": 136,
+        "exported": true
+      },
+      {
+        "name": "checkRateLimit",
+        "kind": "function",
+        "file": "src/lib/rate-limit.ts",
+        "line": 41,
+        "exported": true
+      },
+      {
+        "name": "checkYoutubeDownloadStatus",
+        "kind": "function",
+        "file": "src/lib/youtube/video-download-client.ts",
+        "line": 40,
+        "exported": true
+      },
+      {
+        "name": "chunkText",
+        "kind": "function",
+        "file": "src/lib/knowledge/chunking.ts",
+        "line": 26,
+        "exported": true
+      },
+      {
+        "name": "classifyCategory",
+        "kind": "function",
+        "file": "src/lib/knowledge/classify-category.ts",
+        "line": 110,
+        "exported": true
+      },
+      {
+        "name": "classifyIntent",
+        "kind": "function",
+        "file": "src/lib/knowledge/classify-intent.ts",
+        "line": 82,
+        "exported": true
+      }
+    ],
+    "types": [
+      {
+        "name": "AdminSettingsPayload",
+        "kind": "type",
+        "file": "src/lib/credits/settings.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "AIImageMode",
+        "kind": "type",
+        "file": "src/lib/ai/image-models-config.ts",
+        "line": 17,
+        "exported": true
+      },
+      {
+        "name": "AIImageModel",
+        "kind": "type",
+        "file": "src/lib/ai/image-models-config.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "AIProvider",
+        "kind": "type",
+        "file": "src/lib/ai/token-limits.ts",
+        "line": 43,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsConfig",
+        "kind": "type",
+        "file": "src/lib/brand-config.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsPeriodKey",
+        "kind": "type",
+        "file": "src/lib/organizations/analytics.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "AnalyticsPeriodRange",
+        "kind": "type",
+        "file": "src/lib/organizations/analytics.ts",
+        "line": 6,
+        "exported": true
+      },
+      {
+        "name": "AudioVersion",
+        "kind": "type",
+        "file": "src/components/audio/audio-selection-modal.tsx",
+        "line": 33,
+        "exported": true
+      },
+      {
+        "name": "AutocompleteItem",
+        "kind": "type",
+        "file": "src/components/ui/autocomplete.tsx",
+        "line": 10,
+        "exported": true
+      },
+      {
+        "name": "BillingPeriod",
+        "kind": "type",
+        "file": "src/components/plans/pricing-utils.ts",
+        "line": 3,
+        "exported": true
+      },
+      {
+        "name": "BillingPlan",
+        "kind": "type",
+        "file": "src/components/admin/plans/types.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "ChatMessage",
+        "kind": "type",
+        "file": "src/components/chat/message-bubble.tsx",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "ClerkPlan",
+        "kind": "type",
+        "file": "src/hooks/use-admin-plans.ts",
+        "line": 32,
+        "exported": true
+      },
+      {
+        "name": "ClientInviteFilters",
+        "kind": "type",
+        "file": "src/lib/validations/client-invite.ts",
+        "line": 89,
+        "exported": true
+      },
+      {
+        "name": "ClientInviteStatus",
+        "kind": "type",
+        "file": "src/lib/validations/client-invite.ts",
+        "line": 90,
+        "exported": true
+      },
+      {
+        "name": "ClientInviteWithRelations",
+        "kind": "type",
+        "file": "src/lib/services/client-invite-service.ts",
+        "line": 99,
+        "exported": true
+      },
+      {
+        "name": "ClientProjectFilters",
+        "kind": "type",
+        "file": "src/lib/validations/client-project.ts",
+        "line": 63,
+        "exported": true
+      },
+      {
+        "name": "ClientProjectWithRelations",
+        "kind": "type",
+        "file": "src/lib/services/client-project-service.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "CMSComponent",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-components.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "CMSMedia",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-media.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "CMSMenu",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-menus.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "CMSMenuItem",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-menus.ts",
+        "line": 19,
+        "exported": true
+      },
+      {
+        "name": "CMSPage",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 18,
+        "exported": true
+      },
+      {
+        "name": "CMSPageStatus",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "CMSSection",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 37,
+        "exported": true
+      },
+      {
+        "name": "CMSSectionType",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "Constructor",
+        "kind": "type",
+        "file": "prisma/generated/client/runtime/index-browser.d.ts",
+        "line": 24,
+        "exported": true
+      },
+      {
+        "name": "ConversionOptions",
+        "kind": "type",
+        "file": "src/lib/video/ffmpeg-server-converter.ts",
+        "line": 14,
+        "exported": true
+      },
+      {
+        "name": "ConversionProgress",
+        "kind": "type",
+        "file": "src/lib/video/ffmpeg-server-converter.ts",
+        "line": 7,
+        "exported": true
+      },
+      {
+        "name": "CreateClientInviteInput",
+        "kind": "type",
+        "file": "src/lib/validations/client-invite.ts",
+        "line": 87,
+        "exported": true
+      },
+      {
+        "name": "CreateComponentInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 416,
+        "exported": true
+      },
+      {
+        "name": "CreateComponentInput",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-components.ts",
+        "line": 22,
+        "exported": true
+      },
+      {
+        "name": "CreateFeatureGridItemData",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-feature-grid.ts",
+        "line": 19,
+        "exported": true
+      },
+      {
+        "name": "CreateMediaInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 475,
+        "exported": true
+      },
+      {
+        "name": "CreateMenuInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 293,
+        "exported": true
+      },
+      {
+        "name": "CreateMenuInput",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-menus.ts",
+        "line": 34,
+        "exported": true
+      },
+      {
+        "name": "CreateMenuItemInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 307,
+        "exported": true
+      },
+      {
+        "name": "CreateMenuItemInput",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-menus.ts",
+        "line": 48,
+        "exported": true
+      },
+      {
+        "name": "CreatePageInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "CreatePageInput",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 51,
+        "exported": true
+      },
+      {
+        "name": "CreateSectionInput",
+        "kind": "type",
+        "file": "src/lib/cms/mutations.ts",
+        "line": 175,
+        "exported": true
+      },
+      {
+        "name": "CreateSectionInput",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-cms.ts",
+        "line": 75,
+        "exported": true
+      },
+      {
+        "name": "CreditActivityEntry",
+        "kind": "type",
+        "file": "src/components/organization/credit-activity-feed.tsx",
+        "line": 9,
+        "exported": true
+      },
+      {
+        "name": "CropPosition",
+        "kind": "type",
+        "file": "src/lib/image-crop-utils.ts",
+        "line": 11,
+        "exported": true
+      },
+      {
+        "name": "CTAAction",
+        "kind": "type",
+        "file": "src/components/plans/cta-button.tsx",
+        "line": 5,
+        "exported": true
+      },
+      {
+        "name": "DriveFolderType",
+        "kind": "type",
+        "file": "src/types/drive.ts",
+        "line": 3,
+        "exported": true
+      },
+      {
+        "name": "ExtractedKnowledgeData",
+        "kind": "type",
+        "file": "src/lib/knowledge/extract-knowledge-data.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "FeatureGridItem",
+        "kind": "type",
+        "file": "src/hooks/admin/use-admin-feature-grid.ts",
+        "line": 4,
+        "exported": true
+      },
+      {
+        "name": "FeatureKey",
+        "kind": "type",
+        "file": "src/lib/credits/feature-config.ts",
+        "line": 13,
+        "exported": true
+      },
+      {
+        "name": "FieldValues",
+        "kind": "type",
+        "file": "src/types/template.ts",
+        "line": 202,
+        "exported": true
+      }
+    ],
+    "enums": [
+      {
+        "name": "AlertSeverity",
+        "kind": "enum",
+        "file": "src/lib/instagram/types.ts",
+        "line": 8,
+        "exported": true
+      },
+      {
+        "name": "AlertType",
+        "kind": "enum",
+        "file": "src/lib/instagram/types.ts",
+        "line": 1,
+        "exported": true
+      }
+    ]
+  },
+  "publicAPI": [
+    {
+      "name": "addUserCredits",
+      "kind": "function",
+      "file": "src/lib/credits/validate-credits.ts",
+      "line": 99,
+      "exported": true
+    },
+    {
+      "name": "AdminPagesPage",
+      "kind": "function",
+      "file": "src/app/admin/content/pages/page.tsx",
+      "line": 18,
+      "exported": true
+    },
+    {
+      "name": "AdminSettings",
+      "kind": "interface",
+      "file": "src/hooks/use-admin-settings.ts",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "AdminSettingsPage",
+      "kind": "function",
+      "file": "src/app/admin/settings/page.tsx",
+      "line": 8,
+      "exported": true
+    },
+    {
+      "name": "AdminSettingsPayload",
+      "kind": "type",
+      "file": "src/lib/credits/settings.ts",
+      "line": 4,
+      "exported": true
+    },
+    {
+      "name": "AdminSidebar",
+      "kind": "function",
+      "file": "src/components/admin/admin-sidebar.tsx",
+      "line": 90,
+      "exported": true
+    },
+    {
+      "name": "AdminTopbar",
+      "kind": "function",
+      "file": "src/components/admin/admin-topbar.tsx",
+      "line": 8,
+      "exported": true
+    },
+    {
+      "name": "AgendaCalendarView",
+      "kind": "function",
+      "file": "src/components/agenda/calendar/agenda-calendar-view.tsx",
+      "line": 68,
+      "exported": true
+    },
+    {
+      "name": "AgendaPage",
+      "kind": "function",
+      "file": "src/app/(protected)/agenda/page.tsx",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AIGenerationTab",
+      "kind": "function",
+      "file": "src/components/ai-creative-generator/tabs/ai-generation-tab.tsx",
+      "line": 22,
+      "exported": true
+    },
+    {
+      "name": "AIImageMode",
+      "kind": "type",
+      "file": "src/lib/ai/image-models-config.ts",
+      "line": 17,
+      "exported": true
+    },
+    {
+      "name": "AIImageModel",
+      "kind": "type",
+      "file": "src/lib/ai/image-models-config.ts",
+      "line": 7,
+      "exported": true
+    },
+    {
+      "name": "AIImageModelConfig",
+      "kind": "interface",
+      "file": "src/lib/ai/image-models-config.ts",
+      "line": 19,
+      "exported": true
+    },
+    {
+      "name": "AIProvider",
+      "kind": "interface",
+      "file": "src/hooks/use-ai-providers.ts",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "AIProvider",
+      "kind": "type",
+      "file": "src/lib/ai/token-limits.ts",
+      "line": 43,
+      "exported": true
+    },
+    {
+      "name": "AIProvidersResponse",
+      "kind": "interface",
+      "file": "src/hooks/use-ai-providers.ts",
+      "line": 13,
+      "exported": true
+    },
+    {
+      "name": "AIStarter",
+      "kind": "function",
+      "file": "src/components/marketing/ai-starter.tsx",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "AIStarterEditor",
+      "kind": "function",
+      "file": "src/components/admin/cms/editors/ai-starter-editor.tsx",
+      "line": 12,
+      "exported": true
+    },
+    {
+      "name": "Alert",
+      "kind": "interface",
+      "file": "src/lib/instagram/types.ts",
+      "line": 14,
+      "exported": true
+    },
+    {
+      "name": "alignBottom",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 147,
+      "exported": true
+    },
+    {
+      "name": "alignCenterH",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 45,
+      "exported": true
+    },
+    {
+      "name": "alignLeft",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 20,
+      "exported": true
+    },
+    {
+      "name": "AlignmentNode",
+      "kind": "interface",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 11,
+      "exported": true
+    },
+    {
+      "name": "alignMiddleV",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 122,
+      "exported": true
+    },
+    {
+      "name": "alignRight",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 71,
+      "exported": true
+    },
+    {
+      "name": "alignToCanvasCenterH",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 273,
+      "exported": true
+    },
+    {
+      "name": "alignToCanvasCenterV",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 353,
+      "exported": true
+    },
+    {
+      "name": "alignTop",
+      "kind": "function",
+      "file": "src/lib/konva-alignment.ts",
+      "line": 99,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsConfig",
+      "kind": "type",
+      "file": "src/lib/brand-config.ts",
+      "line": 14,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsExport",
+      "kind": "function",
+      "file": "src/components/analytics/analytics-export.tsx",
+      "line": 21,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsOverviewCards",
+      "kind": "function",
+      "file": "src/components/analytics/analytics-overview-cards.tsx",
+      "line": 18,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsPeriodKey",
+      "kind": "type",
+      "file": "src/lib/organizations/analytics.ts",
+      "line": 4,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsPeriodRange",
+      "kind": "type",
+      "file": "src/lib/organizations/analytics.ts",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsQueryParams",
+      "kind": "interface",
+      "file": "src/lib/later/types.ts",
+      "line": 320,
+      "exported": true
+    },
+    {
+      "name": "AnalyticsSummaryCardsProps",
+      "kind": "interface",
+      "file": "src/components/organization/analytics-summary-cards.tsx",
+      "line": 32,
+      "exported": true
+    },
+    {
+      "name": "apiClient",
+      "kind": "function",
+      "file": "src/lib/api-client.ts",
+      "line": 20,
+      "exported": true
+    },
+    {
+      "name": "ApiError",
+      "kind": "class",
+      "file": "src/lib/api-client.ts",
+      "line": 6,
+      "exported": true
+    },
+    {
+      "name": "appendTagToCaption",
+      "kind": "function",
+      "file": "src/lib/posts/verification/tag-generator.ts",
+      "line": 27,
+      "exported": true
+    },
+    {
+      "name": "ApplyPresetOptions",
+      "kind": "interface",
+      "file": "src/hooks/use-text-presets.ts",
+      "line": 25,
+      "exported": true
+    },
+    {
+      "name": "applyTextTransform",
+      "kind": "function",
+      "file": "src/lib/text-presets.ts",
+      "line": 248,
+      "exported": true
+    },
+    {
+      "name": "AppShell",
+      "kind": "function",
+      "file": "src/components/app/app-shell.tsx",
+      "line": 10,
+      "exported": true
+    },
+    {
+      "name": "archivePage",
+      "kind": "function",
+      "file": "src/lib/cms/mutations.ts",
+      "line": 112,
+      "exported": true
+    },
+    {
+      "name": "assertRateLimit",
+      "kind": "function",
+      "file": "src/lib/rate-limit.ts",
+      "line": 74,
+      "exported": true
+    },
+    {
+      "name": "AtualizarMusicaData",
+      "kind": "interface",
+      "file": "src/hooks/use-music-library.ts",
+      "line": 43,
+      "exported": true
+    },
+    {
+      "name": "AudioConfig",
+      "kind": "interface",
+      "file": "src/components/audio/audio-selection-modal.tsx",
+      "line": 35,
+      "exported": true
+    },
+    {
+      "name": "AudioPlayerProvider",
+      "kind": "function",
+      "file": "src/contexts/audio-player-context.tsx",
+      "line": 26,
+      "exported": true
+    },
+    {
+      "name": "AudioVersion",
+      "kind": "type",
+      "file": "src/components/audio/audio-selection-modal.tsx",
+      "line": 33,
+      "exported": true
+    },
+    {
+      "name": "AudioWaveformTimeline",
+      "kind": "function",
+      "file": "src/components/audio/audio-waveform-timeline.tsx",
+      "line": 22,
+      "exported": true
+    },
+    {
+      "name": "AutocompleteItem",
+      "kind": "type",
+      "file": "src/components/ui/autocomplete.tsx",
+      "line": 10,
+      "exported": true
+    },
+    {
+      "name": "BackgroundEffect",
+      "kind": "class",
+      "file": "src/lib/konva/effects/BackgroundEffect.ts",
+      "line": 9,
+      "exported": true
+    }
+  ],
+  "dependencies": {
+    "mostImported": [
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/prisma/generated/client/index.js",
+        "importedBy": 87
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/db.ts",
+        "importedBy": 26
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/agenda/calendar/calendar-utils.ts",
+        "importedBy": 8
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/konva/effects/types.ts",
+        "importedBy": 6
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/agenda/calendar/post-mini-card.tsx",
+        "importedBy": 5
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/admin/plans/types.ts",
+        "importedBy": 4
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/knowledge/embeddings.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/knowledge/vector-client.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/later/client.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/later/types.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/ai-creative-generator/layout-types.ts",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/canvas/effects/ColorPicker.tsx",
+        "importedBy": 3
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/knowledge/indexer.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/render-engine.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/later/errors.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/knowledge/find-similar-entries.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/lib/knowledge/search.ts",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/prompts/reference-images-grid.tsx",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/plans/plan-tier-config.tsx",
+        "importedBy": 2
+      },
+      {
+        "file": "/Users/cirotrigo/Documents/Studio-Lagosta-v2/src/components/plans/pricing-utils.ts",
+        "importedBy": 2
+      }
+    ]
+  },
+  "stats": {
+    "totalSymbols": 2184,
+    "exportedSymbols": 1267,
+    "analysisTimeMs": 3190
+  }
+}
