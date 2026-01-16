@@ -96,12 +96,17 @@ export async function checkYoutubeDownloadStatus(jobId: number) {
       await downloadAndSaveYoutubeMp3(job.id, data)
     }
 
-    if (data.text && /error|fail/i.test(data.text)) {
+    // Detectar erros da API externa (incluindo "No Files - Code XXXX")
+    const isErrorText = data.text && /error|fail|no files/i.test(data.text)
+    const isCompletedWithoutUrl = rawProgress >= 1000 && !data.download_url
+
+    if (isErrorText || isCompletedWithoutUrl) {
+      const errorMessage = data.text || 'Download completed but no file was provided'
       await db.youtubeDownloadJob.update({
         where: { id: job.id },
         data: {
           status: 'failed',
-          error: data.text,
+          error: errorMessage,
         },
       })
     }
