@@ -393,6 +393,7 @@ async function processStem(job: MusicStemJob, stem: any) {
   const blob = await put(fileName, buffer, {
     access: 'public',
     contentType: 'audio/mpeg',
+    addRandomSuffix: true,
   })
 
   console.log(`[MVSEP] ✅ Uploaded to Vercel Blob: ${blob.url}`)

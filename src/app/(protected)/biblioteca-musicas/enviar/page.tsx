@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useEnviarMusica } from '@/hooks/use-music-library';
 import { useProjects } from '@/hooks/use-project';
-import { useBaixarDoYoutube } from '@/hooks/use-youtube-download';
+import { useBaixarDoYoutube, useUploadYoutubeMp3, StartYoutubeDownloadResponse } from '@/hooks/use-youtube-download';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Upload, Music, Download, Image as ImageIcon, FileAudio, Youtube, FolderOpen, Tag, Sparkles, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Upload, Music, Download, Image as ImageIcon, FileAudio, Youtube, FolderOpen, Tag, Sparkles, CheckCircle2, AlertTriangle, ExternalLink, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { isYoutubeUrl } from '@/lib/youtube/utils';
 import { cn } from '@/lib/utils';
@@ -50,8 +50,10 @@ export default function EnviarMusicaPage() {
   const { toast } = useToast();
   const enviarMusica = useEnviarMusica();
   const baixarDoYoutube = useBaixarDoYoutube();
+  const uploadMp3 = useUploadYoutubeMp3();
   const { data: projetos = [], isLoading: isLoadingProjetos } = useProjects();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mp3InputRef = useRef<HTMLInputElement>(null);
 
   const [uploadMode, setUploadMode] = useState<'file' | 'youtube'>('file');
   const [isDragging, setIsDragging] = useState(false);
@@ -74,6 +76,11 @@ export default function EnviarMusicaPage() {
   const [youtubeMetadataThumb, setYoutubeMetadataThumb] = useState<string | null>(null);
   const [nomeManual, setNomeManual] = useState(false);
   const [artistaManual, setArtistaManual] = useState(false);
+
+  // Estados para fluxo de download do cliente
+  const [youtubeDownloadPhase, setYoutubeDownloadPhase] = useState<'form' | 'download-ready' | 'uploading'>('form');
+  const [youtubeJobData, setYoutubeJobData] = useState<StartYoutubeDownloadResponse | null>(null);
+  const [mp3File, setMp3File] = useState<File | null>(null);
 
   // Drag and drop handlers
   const handleDragOver = (e: React.DragEvent) => {
@@ -217,7 +224,7 @@ export default function EnviarMusicaPage() {
     }
 
     try {
-      await baixarDoYoutube.mutateAsync({
+      const result = await baixarDoYoutube.mutateAsync({
         youtubeUrl: youtubeUrl.trim(),
         nome: nome || undefined,
         artista: artista || undefined,
@@ -226,12 +233,22 @@ export default function EnviarMusicaPage() {
         projectId: projectId !== 'none' ? parseInt(projectId) : undefined,
       });
 
-      toast({
-        title: 'Download iniciado',
-        description: 'Estamos baixando a música do YouTube. Você será avisado quando estiver pronta.',
-      });
-
-      router.push('/biblioteca-musicas');
+      if (result.downloadLink) {
+        // Novo fluxo: mostrar link de download para o usuário
+        setYoutubeJobData(result);
+        setYoutubeDownloadPhase('download-ready');
+        toast({
+          title: 'Link de download pronto!',
+          description: 'Clique no botão para baixar o MP3 e depois faça o upload.',
+        });
+      } else {
+        // Fallback: comportamento antigo (se o servidor ainda processar no backend)
+        toast({
+          title: 'Download iniciado',
+          description: 'Estamos baixando a música do YouTube. Você será avisado quando estiver pronta.',
+        });
+        router.push('/biblioteca-musicas');
+      }
     } catch (error) {
       console.error('Erro ao iniciar download do YouTube:', error);
       toast({
@@ -240,6 +257,69 @@ export default function EnviarMusicaPage() {
         variant: 'destructive',
       });
     }
+  };
+
+  const handleDownloadClick = () => {
+    if (youtubeJobData?.downloadLink) {
+      // Abre o link em nova aba para download
+      window.open(youtubeJobData.downloadLink, '_blank');
+    }
+  };
+
+  const handleMp3FileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (selectedFile) {
+      if (!selectedFile.type.includes('audio') && !selectedFile.name.endsWith('.mp3')) {
+        toast({
+          title: 'Tipo de arquivo inválido',
+          description: 'Por favor, selecione um arquivo MP3',
+          variant: 'destructive',
+        });
+        return;
+      }
+      setMp3File(selectedFile);
+    }
+  };
+
+  const handleMp3Upload = async () => {
+    if (!mp3File || !youtubeJobData?.jobId) {
+      toast({
+        title: 'Arquivo não selecionado',
+        description: 'Por favor, selecione o arquivo MP3 baixado.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setYoutubeDownloadPhase('uploading');
+
+    try {
+      await uploadMp3.mutateAsync({
+        jobId: youtubeJobData.jobId,
+        file: mp3File,
+      });
+
+      toast({
+        title: 'Upload concluído!',
+        description: 'A música foi adicionada à sua biblioteca com sucesso.',
+      });
+
+      router.push('/biblioteca-musicas');
+    } catch (error) {
+      console.error('Erro no upload:', error);
+      setYoutubeDownloadPhase('download-ready');
+      toast({
+        title: 'Falha no upload',
+        description: error instanceof Error ? error.message : 'Não foi possível fazer o upload.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleResetYoutubeFlow = () => {
+    setYoutubeDownloadPhase('form');
+    setYoutubeJobData(null);
+    setMp3File(null);
   };
 
   useEffect(() => {
@@ -614,7 +694,7 @@ export default function EnviarMusicaPage() {
       )}
 
       {/* YouTube Mode */}
-      {uploadMode === 'youtube' && (
+      {uploadMode === 'youtube' && youtubeDownloadPhase === 'form' && (
         <form onSubmit={handleYoutubeSubmit} className="space-y-6">
           {/* YouTube URL Card */}
           <div className="rounded-xl border border-border bg-card p-6 space-y-4">
@@ -849,8 +929,8 @@ export default function EnviarMusicaPage() {
             >
               {baixarDoYoutube.isPending ? (
                 <>
-                  <Download className="mr-2 h-4 w-4 animate-spin" />
-                  Iniciando download...
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Obtendo link...
                 </>
               ) : (
                 <>
@@ -861,6 +941,130 @@ export default function EnviarMusicaPage() {
             </Button>
           </div>
         </form>
+      )}
+
+      {/* YouTube Download Ready Phase */}
+      {uploadMode === 'youtube' && (youtubeDownloadPhase === 'download-ready' || youtubeDownloadPhase === 'uploading') && (
+        <div className="space-y-6">
+          {/* Success Banner */}
+          <div className="rounded-xl border-2 border-green-500/30 bg-green-500/5 dark:bg-green-500/10 p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-green-500/10 dark:bg-green-500/20">
+                <CheckCircle2 className="h-6 w-6 text-green-500" />
+              </div>
+              <div className="flex-1 space-y-2">
+                <h3 className="font-semibold text-foreground">Link de download pronto!</h3>
+                <p className="text-sm text-muted-foreground">
+                  Siga os passos abaixo para completar o processo.
+                </p>
+                {youtubeJobData?.title && (
+                  <p className="text-sm font-medium text-foreground">{youtubeJobData.title}</p>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Step 1: Download */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                1
+              </div>
+              <div>
+                <h4 className="font-semibold text-foreground">Baixar o arquivo MP3</h4>
+                <p className="text-sm text-muted-foreground">Clique no botão para baixar o arquivo MP3</p>
+              </div>
+            </div>
+            <Button
+              type="button"
+              onClick={handleDownloadClick}
+              className="w-full h-12"
+              variant="outline"
+            >
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Baixar MP3 (abre em nova aba)
+            </Button>
+          </div>
+
+          {/* Step 2: Upload */}
+          <div className="rounded-xl border border-border bg-card p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                2
+              </div>
+              <div>
+                <h4 className="font-semibold text-foreground">Enviar o arquivo baixado</h4>
+                <p className="text-sm text-muted-foreground">Selecione o arquivo MP3 que você acabou de baixar</p>
+              </div>
+            </div>
+
+            <div
+              onClick={() => mp3InputRef.current?.click()}
+              className={cn(
+                'relative cursor-pointer rounded-xl border-2 border-dashed p-6 transition-all text-center',
+                mp3File
+                  ? 'border-green-500/50 bg-green-500/5 dark:bg-green-500/10'
+                  : 'border-border hover:border-primary/50 hover:bg-muted/30'
+              )}
+            >
+              <input
+                ref={mp3InputRef}
+                type="file"
+                accept="audio/mpeg,.mp3"
+                onChange={handleMp3FileChange}
+                className="hidden"
+                disabled={youtubeDownloadPhase === 'uploading'}
+              />
+
+              {mp3File ? (
+                <div className="flex flex-col items-center gap-2">
+                  <CheckCircle2 className="h-8 w-8 text-green-500" />
+                  <p className="font-medium text-foreground">{mp3File.name}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {(mp3File.size / (1024 * 1024)).toFixed(2)} MB
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <Upload className="h-8 w-8 text-muted-foreground" />
+                  <p className="font-medium text-foreground">Clique para selecionar o arquivo MP3</p>
+                  <p className="text-sm text-muted-foreground">ou arraste e solte aqui</p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-4 pt-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1 h-11"
+              onClick={handleResetYoutubeFlow}
+              disabled={youtubeDownloadPhase === 'uploading'}
+            >
+              Voltar
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 h-11"
+              onClick={handleMp3Upload}
+              disabled={!mp3File || youtubeDownloadPhase === 'uploading'}
+            >
+              {youtubeDownloadPhase === 'uploading' ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Enviando...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Enviar para biblioteca
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   );

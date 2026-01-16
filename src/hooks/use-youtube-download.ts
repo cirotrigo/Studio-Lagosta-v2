@@ -10,6 +10,31 @@ export interface StartYoutubeDownloadInput {
   projectId?: number
 }
 
+export interface StartYoutubeDownloadResponse {
+  success: boolean
+  jobId: number
+  downloadLink?: string
+  title?: string
+  thumbnail?: string
+  duration?: number
+  status?: string
+  message?: string
+  error?: string
+}
+
+export interface UploadMp3Input {
+  jobId: number
+  file: File
+}
+
+export interface UploadMp3Response {
+  success: boolean
+  musicId?: number
+  name?: string
+  blobUrl?: string
+  error?: string
+}
+
 export interface YoutubeJobSummary {
   id: number
   status: string
@@ -54,11 +79,38 @@ export interface YoutubeJobStatusResponse {
 export function useBaixarDoYoutube() {
   const queryClient = useQueryClient()
 
-  return useMutation({
+  return useMutation<StartYoutubeDownloadResponse, Error, StartYoutubeDownloadInput>({
     mutationFn: (data: StartYoutubeDownloadInput) =>
       api.post('/api/biblioteca-musicas/youtube', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['youtube-jobs'] })
+    },
+  })
+}
+
+export function useUploadYoutubeMp3() {
+  const queryClient = useQueryClient()
+
+  return useMutation<UploadMp3Response, Error, UploadMp3Input>({
+    mutationFn: async ({ jobId, file }: UploadMp3Input) => {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const response = await fetch(`/api/biblioteca-musicas/youtube/${jobId}/upload`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || 'Falha ao fazer upload do arquivo')
+      }
+
+      return response.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['youtube-jobs'] })
+      queryClient.invalidateQueries({ queryKey: ['music-library'] })
     },
   })
 }
