@@ -4,20 +4,24 @@ import type { YoutubeDownloadJob } from '@prisma/client'
 import { Buffer } from 'node:buffer'
 import { extractYoutubeId } from './utils'
 
-const RAPIDAPI_HOST = 'youtube-mp36.p.rapidapi.com'
-const RAPIDAPI_URL = `https://${RAPIDAPI_HOST}/dl`
+// API: youtube-to-mp315 (marcocollatina)
+const RAPIDAPI_HOST = 'youtube-to-mp315.p.rapidapi.com'
+const RAPIDAPI_URL = `https://${RAPIDAPI_HOST}`
 
-interface RapidApiResponse {
-  link?: string | null
+interface ConversionStartResponse {
+  id: string
+  status: 'CONVERTING' | 'AVAILABLE' | 'EXPIRED' | 'CONVERSION_ERROR'
+  downloadUrl?: string
   title?: string
-  msg?: string
-  status: 'ok' | 'processing' | 'fail'
+  format?: string
 }
 
-interface YoutubeOEmbedResponse {
+interface ConversionStatusResponse {
+  id: string
+  status: 'CONVERTING' | 'AVAILABLE' | 'EXPIRED' | 'CONVERSION_ERROR'
+  downloadUrl?: string
   title?: string
-  author_name?: string
-  thumbnail_url?: string
+  format?: string
 }
 
 function requireRapidApiKey(): string {
@@ -26,17 +30,6 @@ function requireRapidApiKey(): string {
     throw new Error('RAPIDAPI_KEY is not configured')
   }
   return key
-}
-
-async function fetchYoutubeMetadata(videoId: string): Promise<YoutubeOEmbedResponse | null> {
-  try {
-    const url = `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`
-    const response = await fetch(url)
-    if (!response.ok) return null
-    return response.json()
-  } catch {
-    return null
-  }
 }
 
 export async function checkYoutubeDownloadStatus(jobId: number) {
@@ -61,35 +54,67 @@ export async function checkYoutubeDownloadStatus(jobId: number) {
     return null
   }
 
-  // Se não tem videoApiJobId, é um job novo - iniciar
-  if (!job.videoApiJobId) {
-    await db.youtubeDownloadJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'downloading',
-        startedAt: new Date(),
-        progress: 5,
-        videoApiJobId: videoId, // Usamos o videoId como identificador
-      },
-    })
-
-    // Buscar metadata do YouTube
-    const metadata = await fetchYoutubeMetadata(videoId)
-    if (metadata) {
-      await db.youtubeDownloadJob.update({
-        where: { id: job.id },
-        data: {
-          title: metadata.title ?? job.requestedName ?? job.title,
-          thumbnail: metadata.thumbnail_url ?? job.thumbnail,
-        },
-      })
-    }
-  }
-
   try {
     const apiKey = requireRapidApiKey()
 
-    const response = await fetch(`${RAPIDAPI_URL}?id=${videoId}`, {
+    // Se não tem videoApiJobId, iniciar conversão
+    if (!job.videoApiJobId) {
+      console.log(`[YOUTUBE-API] Starting conversion for job ${job.id}, video: ${videoId}`)
+
+      await db.youtubeDownloadJob.update({
+        where: { id: job.id },
+        data: {
+          status: 'downloading',
+          startedAt: new Date(),
+          progress: 10,
+        },
+      })
+
+      const response = await fetch(`${RAPIDAPI_URL}/download`, {
+        method: 'POST',
+        headers: {
+          'x-rapidapi-key': apiKey,
+          'x-rapidapi-host': RAPIDAPI_HOST,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: `https://www.youtube.com/watch?v=${videoId}`,
+          format: 'mp3',
+          quality: 0, // best quality
+        }),
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error')
+        console.error(`[YOUTUBE-API] Start conversion failed: ${response.status} - ${errorText}`)
+        throw new Error(`Failed to start conversion: ${response.status}`)
+      }
+
+      const data = (await response.json()) as ConversionStartResponse
+      console.log(`[YOUTUBE-API] Conversion started: ${data.id}, status: ${data.status}`)
+
+      await db.youtubeDownloadJob.update({
+        where: { id: job.id },
+        data: {
+          videoApiJobId: data.id,
+          videoApiStatus: data.status,
+          progress: 20,
+          title: data.title ?? job.requestedName ?? job.title,
+        },
+      })
+
+      // Se já está disponível, baixar imediatamente
+      if (data.status === 'AVAILABLE' && data.downloadUrl) {
+        await downloadAndSaveYoutubeMp3(job.id, data.downloadUrl, data.title)
+      }
+
+      return db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
+    }
+
+    // Verificar status da conversão
+    console.log(`[YOUTUBE-API] Checking status for job ${job.id}, conversion: ${job.videoApiJobId}`)
+
+    const response = await fetch(`${RAPIDAPI_URL}/status/${job.videoApiJobId}`, {
       method: 'GET',
       headers: {
         'x-rapidapi-key': apiKey,
@@ -98,67 +123,55 @@ export async function checkYoutubeDownloadStatus(jobId: number) {
     })
 
     if (!response.ok) {
-      const errorText = await response.text().catch(() => 'Unknown error')
-      console.error(`[RAPIDAPI] HTTP ${response.status}: ${errorText}`)
-
-      // Se é 429 (rate limit), incrementar retry e não falhar imediatamente
-      if (response.status === 429) {
-        await db.youtubeDownloadJob.update({
-          where: { id: job.id },
-          data: {
-            retryCount: { increment: 1 },
-            videoApiStatus: 'rate_limited',
-          },
-        })
-        throw new Error('Rate limited - will retry')
-      }
-
-      throw new Error(`API request failed: ${response.status}`)
+      console.error(`[YOUTUBE-API] Status check failed: ${response.status}`)
+      throw new Error(`Failed to check status: ${response.status}`)
     }
 
-    const data = (await response.json()) as RapidApiResponse
-    console.log(`[RAPIDAPI] Job ${job.id} status: ${data.status}`, data.msg || '')
+    const data = (await response.json()) as ConversionStatusResponse
+    console.log(`[YOUTUBE-API] Status: ${data.status}`)
 
-    // Atualizar status baseado na resposta
-    if (data.status === 'processing') {
+    // Atualizar progresso baseado no status
+    if (data.status === 'CONVERTING') {
       await db.youtubeDownloadJob.update({
         where: { id: job.id },
         data: {
-          progress: Math.min(job.progress + 10, 80),
-          videoApiStatus: 'processing',
+          progress: Math.min(job.progress + 15, 80),
+          videoApiStatus: 'CONVERTING',
         },
       })
-      return db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
-    }
-
-    if (data.status === 'fail') {
+    } else if (data.status === 'AVAILABLE' && data.downloadUrl) {
+      await db.youtubeDownloadJob.update({
+        where: { id: job.id },
+        data: {
+          progress: 85,
+          videoApiStatus: 'AVAILABLE',
+          title: data.title ?? job.title,
+        },
+      })
+      await downloadAndSaveYoutubeMp3(job.id, data.downloadUrl, data.title)
+    } else if (data.status === 'EXPIRED') {
       await db.youtubeDownloadJob.update({
         where: { id: job.id },
         data: {
           status: 'failed',
-          error: data.msg || 'Conversion failed',
-          videoApiStatus: 'fail',
+          error: 'Download link expired - please try again',
+          videoApiStatus: 'EXPIRED',
         },
       })
-      return db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
-    }
-
-    if (data.status === 'ok' && data.link) {
+    } else if (data.status === 'CONVERSION_ERROR') {
       await db.youtubeDownloadJob.update({
         where: { id: job.id },
         data: {
-          progress: 90,
-          videoApiStatus: 'ready',
-          title: data.title || job.title,
+          status: 'failed',
+          error: 'Conversion failed - video may be unavailable or restricted',
+          videoApiStatus: 'CONVERSION_ERROR',
         },
       })
-
-      await downloadAndSaveYoutubeMp3(job.id, data.link, data.title)
     }
 
     return db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
   } catch (error) {
-    console.error('[RAPIDAPI] Failed to check progress:', error)
+    console.error('[YOUTUBE-API] Error:', error)
 
     const currentJob = await db.youtubeDownloadJob.findUnique({ where: { id: job.id } })
     if (currentJob && currentJob.retryCount >= 5) {
@@ -193,54 +206,30 @@ async function downloadAndSaveYoutubeMp3(jobId: number, downloadUrl: string, api
       where: { id: job.id },
       data: {
         status: 'uploading',
-        progress: 92,
+        progress: 90,
       },
     })
 
-    console.log(`[RAPIDAPI] Downloading MP3 for job ${job.id} from: ${downloadUrl}`)
+    console.log(`[YOUTUBE-API] Downloading MP3 for job ${job.id} from: ${downloadUrl}`)
 
-    // Tentar download com retry e headers adequados
-    let mp3Response: Response | null = null
-    let lastError: Error | null = null
+    const mp3Response = await fetch(downloadUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': '*/*',
+      },
+      redirect: 'follow',
+    })
 
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        mp3Response = await fetch(downloadUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'audio/mpeg, audio/*, */*',
-            'Accept-Language': 'en-US,en;q=0.9',
-          },
-          redirect: 'follow',
-        })
-
-        if (mp3Response.ok) {
-          console.log(`[RAPIDAPI] Download successful on attempt ${attempt}`)
-          break
-        }
-
-        lastError = new Error(`HTTP ${mp3Response.status}: ${mp3Response.statusText}`)
-        console.warn(`[RAPIDAPI] Attempt ${attempt} failed: ${lastError.message}`)
-
-        // Se for 404, tentar novamente após pequeno delay
-        if (mp3Response.status === 404 && attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
-        }
-      } catch (fetchError) {
-        lastError = fetchError instanceof Error ? fetchError : new Error('Fetch failed')
-        console.warn(`[RAPIDAPI] Attempt ${attempt} fetch error: ${lastError.message}`)
-        if (attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
-        }
-      }
-    }
-
-    if (!mp3Response || !mp3Response.ok) {
-      throw new Error(`Failed to download MP3 file after 3 attempts: ${lastError?.message || 'Unknown error'}`)
+    if (!mp3Response.ok) {
+      throw new Error(`Failed to download MP3: ${mp3Response.status} ${mp3Response.statusText}`)
     }
 
     const mp3Buffer = Buffer.from(await mp3Response.arrayBuffer())
-    console.log(`[RAPIDAPI] Downloaded ${mp3Buffer.length} bytes for job ${job.id}`)
+    console.log(`[YOUTUBE-API] Downloaded ${mp3Buffer.length} bytes for job ${job.id}`)
+
+    if (mp3Buffer.length < 10000) {
+      throw new Error('Downloaded file is too small - conversion may have failed')
+    }
 
     const fileName = `musicas/youtube/${Date.now()}-${job.youtubeId ?? job.id}.mp3`
     const blob = await put(fileName, mp3Buffer, {
@@ -273,7 +262,7 @@ async function downloadAndSaveYoutubeMp3(jobId: number, downloadUrl: string, api
         progress: 0,
       },
     }).catch((error) => {
-      console.error('[RAPIDAPI] Failed to create MusicStemJob:', error)
+      console.error('[YOUTUBE-API] Failed to create MusicStemJob:', error)
     })
 
     await db.youtubeDownloadJob.update({
@@ -289,9 +278,9 @@ async function downloadAndSaveYoutubeMp3(jobId: number, downloadUrl: string, api
       },
     })
 
-    console.log(`[RAPIDAPI] Job ${job.id} completed successfully - Music ID: ${music.id}`)
+    console.log(`[YOUTUBE-API] Job ${job.id} completed - Music ID: ${music.id}`)
   } catch (error) {
-    console.error('[RAPIDAPI] Failed to finalize YouTube download:', error)
+    console.error('[YOUTUBE-API] Download failed:', error)
     await db.youtubeDownloadJob.update({
       where: { id: job.id },
       data: {
@@ -303,8 +292,7 @@ async function downloadAndSaveYoutubeMp3(jobId: number, downloadUrl: string, api
   }
 }
 
-function estimateDuration(sizeInBytes: number, bitrateKbps = 128) {
-  // RapidAPI retorna 128kbps
+function estimateDuration(sizeInBytes: number, bitrateKbps = 192) {
   const bytesPerSecond = ((bitrateKbps * 1000) / 8)
   const seconds = Math.max(1, Math.round(sizeInBytes / bytesPerSecond))
   return seconds
