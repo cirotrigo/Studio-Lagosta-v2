@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useBibliotecaMusicas, useDeletarMusica, type FaixaMusica } from '@/hooks/use-music-library';
-import { useMusicStemStatus } from '@/hooks/use-music-stem';
+import { useMusicStemStatus, useReprocessStem } from '@/hooks/use-music-stem';
 import { useBaixarDoYoutube, useUploadYoutubeMp3, StartYoutubeDownloadResponse } from '@/hooks/use-youtube-download';
 import { useProjects } from '@/hooks/use-project';
 import { Button } from '@/components/ui/button';
@@ -52,6 +52,7 @@ const GENEROS = [
 // Componente auxiliar para exibir badges de stem
 function MusicStemBadge({ musicId }: { musicId: number }) {
   const { data: stemStatus } = useMusicStemStatus(musicId);
+  const reprocessStem = useReprocessStem();
 
   if (!stemStatus) return null;
 
@@ -84,8 +85,19 @@ function MusicStemBadge({ musicId }: { musicId: number }) {
 
   if (stemStatus.job?.status === 'failed') {
     return (
-      <Badge variant="destructive" className="text-xs">
-        Erro
+      <Badge
+        variant="destructive"
+        className="text-xs cursor-pointer hover:bg-destructive/80"
+        onClick={(e) => {
+          e.stopPropagation();
+          reprocessStem.mutate(musicId);
+        }}
+        title="Clique para reprocessar"
+      >
+        {reprocessStem.isPending ? (
+          <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+        ) : null}
+        {reprocessStem.isPending ? 'Reenviando...' : 'Erro - Clique para reprocessar'}
       </Badge>
     );
   }
