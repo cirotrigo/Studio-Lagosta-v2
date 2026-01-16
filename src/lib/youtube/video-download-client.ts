@@ -197,10 +197,46 @@ async function downloadAndSaveYoutubeMp3(jobId: number, downloadUrl: string, api
       },
     })
 
-    console.log(`[RAPIDAPI] Downloading MP3 for job ${job.id}...`)
-    const mp3Response = await fetch(downloadUrl)
-    if (!mp3Response.ok) {
-      throw new Error(`Failed to download MP3 file: ${mp3Response.status}`)
+    console.log(`[RAPIDAPI] Downloading MP3 for job ${job.id} from: ${downloadUrl}`)
+
+    // Tentar download com retry e headers adequados
+    let mp3Response: Response | null = null
+    let lastError: Error | null = null
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        mp3Response = await fetch(downloadUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'audio/mpeg, audio/*, */*',
+            'Accept-Language': 'en-US,en;q=0.9',
+          },
+          redirect: 'follow',
+        })
+
+        if (mp3Response.ok) {
+          console.log(`[RAPIDAPI] Download successful on attempt ${attempt}`)
+          break
+        }
+
+        lastError = new Error(`HTTP ${mp3Response.status}: ${mp3Response.statusText}`)
+        console.warn(`[RAPIDAPI] Attempt ${attempt} failed: ${lastError.message}`)
+
+        // Se for 404, tentar novamente após pequeno delay
+        if (mp3Response.status === 404 && attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+        }
+      } catch (fetchError) {
+        lastError = fetchError instanceof Error ? fetchError : new Error('Fetch failed')
+        console.warn(`[RAPIDAPI] Attempt ${attempt} fetch error: ${lastError.message}`)
+        if (attempt < 3) {
+          await new Promise(resolve => setTimeout(resolve, 2000 * attempt))
+        }
+      }
+    }
+
+    if (!mp3Response || !mp3Response.ok) {
+      throw new Error(`Failed to download MP3 file after 3 attempts: ${lastError?.message || 'Unknown error'}`)
     }
 
     const mp3Buffer = Buffer.from(await mp3Response.arrayBuffer())
