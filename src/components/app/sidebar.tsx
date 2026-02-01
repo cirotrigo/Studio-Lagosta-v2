@@ -15,6 +15,7 @@ import {
   Building2,
   Calendar,
   Music,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ type SidebarProps = {
 
 export const navigationItems = [
   { name: "Painel", href: "/studio", icon: Home },
+  { name: "Gerar Criativo", href: "/gerar-criativo", icon: Sparkles },
   { name: "Projetos", href: "/projects", icon: FolderOpen },
   { name: "Agenda", href: "/agenda", icon: Calendar },
   { name: "Biblioteca de Músicas", href: "/biblioteca-musicas", icon: Music },
