@@ -5,6 +5,8 @@ import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../
 interface CreatePostData {
   postType: PostType
   caption: string
+  mediaUrls?: string[]
+  blobPathnames?: string[]
   generationIds: string[]
   scheduleType: ScheduleType
   scheduledDatetime?: string
@@ -17,6 +19,7 @@ interface CreatePostData {
   altText?: string[]
   firstComment?: string
   publishType?: PublishType
+  reminderExtraInfo?: string
 }
 
 interface UpdatePostData {

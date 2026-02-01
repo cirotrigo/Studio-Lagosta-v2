@@ -3,8 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
-import { RenderEngine, type ImageLoader } from '@/lib/render-engine'
-import type { DesignData, Layer } from '@/types/template'
+import type { Layer } from '@/types/template'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -27,6 +26,7 @@ const layerSchema = z.object({
 const finalizeSchema = z.object({
   templateId: z.number(),
   templatePageId: z.string(),
+  dataUrl: z.string(), // Base64 encoded image from frontend Konva rendering
   images: z.record(imageSourceSchema),
   texts: z.record(z.string()),
   layers: z.array(layerSchema),
@@ -34,95 +34,64 @@ const finalizeSchema = z.object({
 })
 
 export async function POST(request: Request) {
-  const { userId, orgId } = await auth()
+  const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
     const body = await request.json()
-    const { templateId, templatePageId, images, texts, layers, hiddenLayerIds } = finalizeSchema.parse(body)
+    const { templateId, templatePageId, dataUrl, images, texts, layers, hiddenLayerIds } = finalizeSchema.parse(body)
 
     console.log('[Gerar Criativo Finalize] Processing for user:', userId)
+    console.log('[Gerar Criativo Finalize] Has dataUrl:', !!dataUrl)
+    console.log('[Gerar Criativo Finalize] Input layers count:', layers.length)
 
-    // 1. Fetch model page and template
+    // 1. Fetch model page and template with project
     const templatePage = await db.page.findFirst({
       where: { id: templatePageId, isTemplate: true },
-      include: { Template: true },
+      include: {
+        Template: {
+          include: {
+            Project: true,
+          },
+        },
+      },
     })
 
     if (!templatePage) {
       return NextResponse.json({ error: 'Template page not found' }, { status: 404 })
     }
 
-    // 2. Process layers: apply images, texts, remove hidden
+    // 2. Process layers for storage (apply overrides)
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.includes(l.id))
     const processedLayers = visibleLayers.map((layer: Record<string, unknown>) => {
       const newLayer = { ...layer }
+
+      // Ensure layer has required position and size
+      if (!newLayer.position || typeof newLayer.position !== 'object') {
+        newLayer.position = { x: 0, y: 0 }
+      }
+      if (!newLayer.size || typeof newLayer.size !== 'object') {
+        newLayer.size = { width: 100, height: 100 }
+      }
 
       // Apply text overrides
       if ((layer.type === 'text' || layer.type === 'rich-text') && texts[layer.id as string]) {
         newLayer.content = texts[layer.id as string]
       }
 
-      // Apply image overrides (for isDynamic layers)
-      if (layer.type === 'image' && layer.isDynamic && images[layer.id as string]) {
+      // Apply image overrides
+      if ((layer.type === 'image' || layer.type === 'logo' || layer.type === 'element') && images[layer.id as string]) {
         newLayer.fileUrl = images[layer.id as string].url
       }
 
       return newLayer
     }) as Layer[]
 
-    // 3. Render the final creative image
-    console.log('[Gerar Criativo Finalize] Rendering creative...')
+    // 3. Convert dataURL to buffer and upload to Vercel Blob
+    console.log('[Gerar Criativo Finalize] Uploading to Blob...')
 
-    const designData: DesignData = {
-      canvas: {
-        width: templatePage.width,
-        height: templatePage.height,
-        backgroundColor: templatePage.background || '#ffffff',
-      },
-      layers: processedLayers,
-    }
-
-    // Import canvas library for server-side rendering
-    const { createCanvas, loadImage } = await import('@napi-rs/canvas')
-
-    const canvas = createCanvas(templatePage.width, templatePage.height)
-    const ctx = canvas.getContext('2d')
-
-    // Image loader for server-side rendering
-    const imageLoader: ImageLoader = async (url: string) => {
-      try {
-        const img = await loadImage(url)
-        return img as unknown as CanvasImageSource
-      } catch (error) {
-        console.error('[Gerar Criativo Finalize] Failed to load image:', url, error)
-        // Return placeholder
-        const placeholderCanvas = createCanvas(100, 100)
-        const placeholderCtx = placeholderCanvas.getContext('2d')
-        placeholderCtx.fillStyle = '#f5f5f5'
-        placeholderCtx.fillRect(0, 0, 100, 100)
-        return placeholderCanvas as unknown as CanvasImageSource
-      }
-    }
-
-    await RenderEngine.renderDesign(
-      ctx as unknown as CanvasRenderingContext2D,
-      designData,
-      {},
-      {
-        scaleFactor: 1,
-        imageLoader,
-        imageCache: new Map(),
-      }
-    )
-
-    // Convert canvas to PNG buffer
-    const imageBuffer = canvas.toBuffer('image/png')
-    console.log('[Gerar Criativo Finalize] Rendered image size:', imageBuffer.length, 'bytes')
-
-    // 4. Upload to Vercel Blob
     const blobToken = process.env.BLOB_READ_WRITE_TOKEN
     if (!blobToken || blobToken.trim() === '') {
       console.error('[Gerar Criativo Finalize] BLOB_READ_WRITE_TOKEN not configured')
@@ -131,6 +100,15 @@ export async function POST(request: Request) {
         { status: 503 }
       )
     }
+
+    // Extract base64 data from dataURL
+    const base64Data = dataUrl.split(',')[1]
+    if (!base64Data) {
+      return NextResponse.json({ error: 'Invalid dataUrl format' }, { status: 400 })
+    }
+
+    const imageBuffer = Buffer.from(base64Data, 'base64')
+    console.log('[Gerar Criativo Finalize] Image buffer size:', imageBuffer.length, 'bytes')
 
     const timestamp = Date.now()
     const blob = await put(
@@ -145,10 +123,10 @@ export async function POST(request: Request) {
 
     console.log('[Gerar Criativo Finalize] Uploaded to Blob:', blob.url)
 
-    // 5. Count existing pages for order
+    // 4. Count existing pages for order
     const pageCount = await db.page.count({ where: { templateId } })
 
-    // 6. Create new Page (isTemplate: false) with thumbnail
+    // 5. Create new Page (isTemplate: false) with thumbnail
     const newPage = await db.page.create({
       data: {
         name: `Criativo ${new Date().toLocaleDateString('pt-BR')}`,
@@ -156,7 +134,7 @@ export async function POST(request: Request) {
         height: templatePage.height,
         layers: JSON.stringify(processedLayers),
         background: templatePage.background,
-        thumbnail: blob.url, // Save the rendered image as thumbnail
+        thumbnail: blob.url,
         order: pageCount,
         templateId,
         isTemplate: false,
@@ -165,8 +143,30 @@ export async function POST(request: Request) {
 
     console.log('[Gerar Criativo Finalize] Created page:', newPage.id)
 
-    // 7. Create AICreativeGeneration record
-    const creative = await db.aICreativeGeneration.create({
+    // 6. Create Generation record (this is what shows in project creatives)
+    const generation = await db.generation.create({
+      data: {
+        templateId,
+        projectId: templatePage.Template.projectId,
+        status: 'COMPLETED',
+        resultUrl: blob.url,
+        fileName: blob.pathname,
+        fieldValues: {
+          images,
+          texts,
+          sourcePageId: templatePageId,
+        },
+        templateName: templatePage.Template.name,
+        projectName: templatePage.Template.Project?.name,
+        createdBy: userId,
+        completedAt: new Date(),
+      },
+    })
+
+    console.log('[Gerar Criativo Finalize] Created Generation:', generation.id)
+
+    // 7. Create AICreativeGeneration record (for tracking template usage)
+    const aiCreative = await db.aICreativeGeneration.create({
       data: {
         projectId: templatePage.Template.projectId,
         templateId,
@@ -179,13 +179,13 @@ export async function POST(request: Request) {
       },
     })
 
-    console.log('[Gerar Criativo Finalize] Created AICreativeGeneration:', creative.id)
+    console.log('[Gerar Criativo Finalize] Created AICreativeGeneration:', aiCreative.id)
 
     return NextResponse.json({
       success: true,
-      id: creative.id,
+      id: generation.id,
       pageId: newPage.id,
-      resultUrl: blob.url, // Return the actual rendered image URL
+      resultUrl: blob.url,
     })
   } catch (error) {
     console.error('[Gerar Criativo Finalize] Error:', error)

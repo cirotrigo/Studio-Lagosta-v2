@@ -6,6 +6,7 @@ import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
 interface GerarCriativoFinalizeParams {
   templateId: number
   templatePageId: string
+  dataUrl: string // Base64 encoded image from frontend Konva rendering
   images: Record<string, ImageSource>
   texts: Record<string, string>
   layers: Layer[]

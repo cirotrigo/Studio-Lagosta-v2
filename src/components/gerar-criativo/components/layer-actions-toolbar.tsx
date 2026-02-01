@@ -12,18 +12,21 @@ interface LayerActionsToolbarProps {
   layer: Layer
   projectId: number
   onBackgroundRemoved: (newImageUrl: string) => void
+  overrideImageUrl?: string // URL from selected image (imageValues)
 }
 
 export function LayerActionsToolbar({
   layer,
   projectId,
   onBackgroundRemoved,
+  overrideImageUrl,
 }: LayerActionsToolbarProps) {
   const removeBackground = useBackgroundRemoval()
   const { credits, canPerformOperation } = useCredits()
 
   const isBackgroundRemoved = Boolean(layer.metadata?.isBackgroundRemoved)
-  const imageUrl = layer.fileUrl
+  // Use selected image URL if available, otherwise fall back to layer's original URL
+  const imageUrl = overrideImageUrl || layer.fileUrl
 
   const handleRemoveBackground = async () => {
     if (!imageUrl) {

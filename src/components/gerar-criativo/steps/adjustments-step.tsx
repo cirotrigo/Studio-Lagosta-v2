@@ -1,5 +1,6 @@
 'use client'
 
+import { useRef } from 'react'
 import { useGerarCriativo } from '../gerar-criativo-context'
 import { useStepper } from '../stepper'
 import { useGerarCriativoFinalize } from '@/hooks/use-gerar-criativo-finalize'
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ChevronLeft, Sparkles, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { CanvasPreview } from '../components/canvas-preview'
+import { CanvasPreview, type CanvasPreviewHandle } from '../components/canvas-preview'
 import { LayerActionsToolbar } from '../components/layer-actions-toolbar'
 import { LayerControls } from '../components/layer-controls'
 
@@ -21,6 +22,8 @@ export function AdjustmentsStep() {
     selectedTemplateId,
     selectedModelPageId,
     layers,
+    templateWidth,
+    templateHeight,
     selectedLayerId,
     selectLayer,
     reorderLayers,
@@ -32,17 +35,29 @@ export function AdjustmentsStep() {
     hiddenLayerIds,
     deleteLayer,
     toggleLayerVisibility,
+    updateLayerPosition,
   } = useGerarCriativo()
 
   const stepper = useStepper()
   const finalize = useGerarCriativoFinalize()
   const isMobile = useMediaQuery('(max-width: 1023px)')
+  const canvasRef = useRef<CanvasPreviewHandle>(null)
 
   const handleGenerateCreative = async () => {
     try {
+      // First, export the canvas to dataUrl using Konva (frontend rendering)
+      if (!canvasRef.current) {
+        throw new Error('Canvas not ready')
+      }
+
+      toast.info('Renderizando criativo...')
+      const dataUrl = await canvasRef.current.exportToDataUrl('png')
+
+      toast.info('Salvando criativo...')
       const result = await finalize.mutateAsync({
         templateId: selectedTemplateId!,
         templatePageId: selectedModelPageId!,
+        dataUrl,
         images: imageValues,
         texts: textValues,
         layers,
@@ -91,12 +106,16 @@ export function AdjustmentsStep() {
           <TabsContent value="preview" className="mt-4">
             <Card className="p-4">
               <CanvasPreview
+                ref={canvasRef}
                 layers={layers}
                 selectedLayerId={selectedLayerId}
                 onSelectLayer={selectLayer}
                 imageValues={imageValues}
                 textValues={textValues}
                 hiddenLayerIds={hiddenLayerIds}
+                onLayerDrag={updateLayerPosition}
+                templateWidth={templateWidth}
+                templateHeight={templateHeight}
               />
             </Card>
             {selectedLayer && selectedLayer.type === 'image' && (
@@ -104,6 +123,7 @@ export function AdjustmentsStep() {
                 <LayerActionsToolbar
                   layer={selectedLayer}
                   projectId={selectedProjectId!}
+                  overrideImageUrl={imageValues[selectedLayerId!]?.url}
                   onBackgroundRemoved={(newUrl) => {
                     addBgRemovedLayer(selectedLayerId!, newUrl)
                   }}
@@ -126,6 +146,7 @@ export function AdjustmentsStep() {
               <LayerActionsToolbar
                 layer={selectedLayer}
                 projectId={selectedProjectId!}
+                overrideImageUrl={imageValues[selectedLayerId!]?.url}
                 onBackgroundRemoved={(newUrl) => {
                   addBgRemovedLayer(selectedLayerId!, newUrl)
                 }}
@@ -206,12 +227,16 @@ export function AdjustmentsStep() {
         <div className="lg:col-span-8">
           <Card className="p-4">
             <CanvasPreview
+              ref={canvasRef}
               layers={layers}
               selectedLayerId={selectedLayerId}
               onSelectLayer={selectLayer}
               imageValues={imageValues}
               textValues={textValues}
               hiddenLayerIds={hiddenLayerIds}
+              onLayerDrag={updateLayerPosition}
+              templateWidth={templateWidth}
+              templateHeight={templateHeight}
             />
           </Card>
         </div>
@@ -221,6 +246,7 @@ export function AdjustmentsStep() {
             <LayerActionsToolbar
               layer={selectedLayer}
               projectId={selectedProjectId!}
+              overrideImageUrl={imageValues[selectedLayerId!]?.url}
               onBackgroundRemoved={(newUrl) => {
                 addBgRemovedLayer(selectedLayerId!, newUrl)
               }}

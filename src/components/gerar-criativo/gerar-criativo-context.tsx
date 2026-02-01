@@ -30,6 +30,8 @@ interface GerarCriativoState {
   // Step 3
   selectedModelPageId: string | null
   layers: Layer[]
+  templateWidth: number
+  templateHeight: number
   // Step 4
   imageValues: Record<string, ImageSource>
   // Step 5
@@ -42,11 +44,11 @@ interface GerarCriativoState {
 
 interface GerarCriativoContextValue extends GerarCriativoState {
   // Step 1 (unified selection)
-  selectModelPageWithContext: (projectId: number, templateId: number, pageId: string, layers: Layer[]) => void
+  selectModelPageWithContext: (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number) => void
   // Legacy (kept for compatibility)
   selectProject: (projectId: number) => void
   selectTemplate: (templateId: number) => void
-  selectModelPage: (pageId: string, layers: Layer[]) => void
+  selectModelPage: (pageId: string, layers: Layer[], width?: number, height?: number) => void
   // Step 4
   setImageValue: (layerId: string, imageSource: ImageSource | null) => void
   // Step 5
@@ -56,6 +58,7 @@ interface GerarCriativoContextValue extends GerarCriativoState {
   addBgRemovedLayer: (originalLayerId: string, newImageUrl: string) => void
   deleteLayer: (layerId: string) => void
   toggleLayerVisibility: (layerId: string) => void
+  updateLayerPosition: (layerId: string, position: { x: number; y: number }) => void
   // Step 6
   setGeneratedCreative: (creative: GeneratedCreative) => void
   // Reset
@@ -67,6 +70,8 @@ const initialState: GerarCriativoState = {
   selectedTemplateId: null,
   selectedModelPageId: null,
   layers: [],
+  templateWidth: 1080,
+  templateHeight: 1920,
   imageValues: {},
   textValues: {},
   selectedLayerId: null,
@@ -87,6 +92,8 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
       selectedTemplateId: null,
       selectedModelPageId: null,
       layers: [],
+      templateWidth: 1080,
+      templateHeight: 1920,
       imageValues: {},
       textValues: {},
       selectedLayerId: null,
@@ -102,6 +109,8 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
       // Reset downstream selections
       selectedModelPageId: null,
       layers: [],
+      templateWidth: 1080,
+      templateHeight: 1920,
       imageValues: {},
       textValues: {},
       selectedLayerId: null,
@@ -110,11 +119,13 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
-  const selectModelPage = useCallback((pageId: string, layers: Layer[]) => {
+  const selectModelPage = useCallback((pageId: string, layers: Layer[], width?: number, height?: number) => {
     setState((prev) => ({
       ...prev,
       selectedModelPageId: pageId,
       layers,
+      templateWidth: width ?? prev.templateWidth,
+      templateHeight: height ?? prev.templateHeight,
       // Reset downstream selections
       imageValues: {},
       textValues: {},
@@ -125,12 +136,14 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const selectModelPageWithContext = useCallback(
-    (projectId: number, templateId: number, pageId: string, layers: Layer[]) => {
+    (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number) => {
       setState({
         selectedProjectId: projectId,
         selectedTemplateId: templateId,
         selectedModelPageId: pageId,
         layers,
+        templateWidth: width,
+        templateHeight: height,
         imageValues: {},
         textValues: {},
         selectedLayerId: null,
@@ -238,6 +251,17 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const updateLayerPosition = useCallback((layerId: string, position: { x: number; y: number }) => {
+    setState((prev) => ({
+      ...prev,
+      layers: prev.layers.map((layer) =>
+        layer.id === layerId
+          ? { ...layer, position: { ...layer.position, ...position } }
+          : layer
+      ),
+    }))
+  }, [])
+
   const setGeneratedCreative = useCallback((creative: GeneratedCreative) => {
     setState((prev) => ({
       ...prev,
@@ -262,6 +286,7 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     addBgRemovedLayer,
     deleteLayer,
     toggleLayerVisibility,
+    updateLayerPosition,
     setGeneratedCreative,
     reset,
   }

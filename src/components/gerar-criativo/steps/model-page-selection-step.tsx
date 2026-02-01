@@ -36,7 +36,9 @@ export function ModelPageSelectionStep() {
       page.project.id,
       page.templateId,
       page.id,
-      page.layers
+      page.layers,
+      page.width,
+      page.height
     )
     stepper.next()
   }

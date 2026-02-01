@@ -73,6 +73,7 @@ export class RenderEngine {
 
     switch (finalLayer.type) {
       case 'text':
+      case 'rich-text':
         await this.renderText(ctx, finalLayer, width, height, options)
         break
       case 'image':
@@ -586,7 +587,17 @@ export class RenderEngine {
 
     for (const stop of stops) {
       const position = Math.max(0, Math.min(1, stop.position))
-      gradient.addColorStop(position, stop.color)
+      // Apply opacity to color if present
+      let color = stop.color
+      if (stop.opacity !== undefined && stop.opacity < 1) {
+        // Convert hex to rgba with opacity
+        const hex = stop.color.replace('#', '')
+        const r = parseInt(hex.substring(0, 2), 16)
+        const g = parseInt(hex.substring(2, 4), 16)
+        const b = parseInt(hex.substring(4, 6), 16)
+        color = `rgba(${r},${g},${b},${stop.opacity})`
+      }
+      gradient.addColorStop(position, color)
     }
 
     ctx.fillStyle = gradient

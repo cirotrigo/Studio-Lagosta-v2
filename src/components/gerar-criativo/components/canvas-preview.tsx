@@ -1,10 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
 import { Stage, Layer as KonvaLayer, Image, Text, Rect } from 'react-konva'
 import { useImage } from 'react-konva-utils'
+import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
+
+export interface CanvasPreviewHandle {
+  exportToDataUrl: (format?: 'png' | 'jpeg', quality?: number) => Promise<string>
+}
 
 interface CanvasPreviewProps {
   layers: Layer[]
@@ -15,6 +20,8 @@ interface CanvasPreviewProps {
   hiddenLayerIds: Set<string>
   templateWidth?: number
   templateHeight?: number
+  templateBackground?: string
+  onLayerDrag?: (layerId: string, position: { x: number; y: number }) => void
 }
 
 function ImageLayer({
@@ -22,11 +29,13 @@ function ImageLayer({
   isSelected,
   onSelect,
   imageUrl,
+  onDragEnd,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   imageUrl?: string
+  onDragEnd?: (position: { x: number; y: number }) => void
 }) {
   const src = imageUrl || layer.fileUrl || ''
   const [image] = useImage(src, 'anonymous')
@@ -44,6 +53,12 @@ function ImageLayer({
       onTap={onSelect}
       stroke={isSelected ? '#3b82f6' : undefined}
       strokeWidth={isSelected ? 4 : 0}
+      draggable={!!onDragEnd}
+      onDragEnd={(e) => {
+        if (onDragEnd) {
+          onDragEnd({ x: e.target.x(), y: e.target.y() })
+        }
+      }}
     />
   )
 }
@@ -67,11 +82,13 @@ function TextLayer({
   isSelected,
   onSelect,
   textOverride,
+  onDragEnd,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   textOverride?: string
+  onDragEnd?: (position: { x: number; y: number }) => void
 }) {
   const rawContent = textOverride ?? layer.content ?? ''
   const content = applyTextTransform(rawContent, layer.style?.textTransform)
@@ -99,6 +116,12 @@ function TextLayer({
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
       onTap={onSelect}
+      draggable={!!onDragEnd}
+      onDragEnd={(e) => {
+        if (onDragEnd) {
+          onDragEnd({ x: e.target.x(), y: e.target.y() })
+        }
+      }}
     />
   )
 }
@@ -107,10 +130,12 @@ function ShapeLayer({
   layer,
   isSelected,
   onSelect,
+  onDragEnd,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
+  onDragEnd?: (position: { x: number; y: number }) => void
 }) {
   return (
     <Rect
@@ -123,6 +148,12 @@ function ShapeLayer({
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
       onTap={onSelect}
+      draggable={!!onDragEnd}
+      onDragEnd={(e) => {
+        if (onDragEnd) {
+          onDragEnd({ x: e.target.x(), y: e.target.y() })
+        }
+      }}
     />
   )
 }
@@ -131,10 +162,12 @@ function GradientLayer({
   layer,
   isSelected,
   onSelect,
+  onDragEnd,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
+  onDragEnd?: (position: { x: number; y: number }) => void
 }) {
   const width = layer.size?.width || 100
   const height = layer.size?.height || 100
@@ -175,6 +208,12 @@ function GradientLayer({
     }
   })
 
+  const handleDragEnd = (e: { target: { x: () => number; y: () => number } }) => {
+    if (onDragEnd) {
+      onDragEnd({ x: e.target.x(), y: e.target.y() })
+    }
+  }
+
   // Fallback if no gradient stops defined
   if (colorStops.length === 0) {
     return (
@@ -188,6 +227,8 @@ function GradientLayer({
         opacity={layer.style?.opacity ?? 1}
         onClick={onSelect}
         onTap={onSelect}
+        draggable={!!onDragEnd}
+        onDragEnd={handleDragEnd}
       />
     )
   }
@@ -208,6 +249,8 @@ function GradientLayer({
         opacity={layer.style?.opacity ?? 1}
         onClick={onSelect}
         onTap={onSelect}
+        draggable={!!onDragEnd}
+        onDragEnd={handleDragEnd}
       />
     )
   }
@@ -226,6 +269,8 @@ function GradientLayer({
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
       onTap={onSelect}
+      draggable={!!onDragEnd}
+      onDragEnd={handleDragEnd}
     />
   )
 }
@@ -236,16 +281,18 @@ function LayerRenderer({
   onSelect,
   imageUrl,
   textOverride,
+  onDragEnd,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   imageUrl?: string
   textOverride?: string
+  onDragEnd?: (position: { x: number; y: number }) => void
 }) {
   if (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element') {
     return (
-      <ImageLayer layer={layer} isSelected={isSelected} onSelect={onSelect} imageUrl={imageUrl} />
+      <ImageLayer layer={layer} isSelected={isSelected} onSelect={onSelect} imageUrl={imageUrl} onDragEnd={onDragEnd} />
     )
   }
 
@@ -256,81 +303,134 @@ function LayerRenderer({
         isSelected={isSelected}
         onSelect={onSelect}
         textOverride={textOverride}
+        onDragEnd={onDragEnd}
       />
     )
   }
 
   if (layer.type === 'gradient' || layer.type === 'gradient2') {
-    return <GradientLayer layer={layer} isSelected={isSelected} onSelect={onSelect} />
+    return <GradientLayer layer={layer} isSelected={isSelected} onSelect={onSelect} onDragEnd={onDragEnd} />
   }
 
   if (layer.type === 'shape') {
-    return <ShapeLayer layer={layer} isSelected={isSelected} onSelect={onSelect} />
+    return <ShapeLayer layer={layer} isSelected={isSelected} onSelect={onSelect} onDragEnd={onDragEnd} />
   }
 
   return null
 }
 
-export function CanvasPreview({
-  layers,
-  selectedLayerId,
-  onSelectLayer,
-  imageValues,
-  textValues,
-  hiddenLayerIds,
-  templateWidth = 1080,
-  templateHeight = 1920,
-}: CanvasPreviewProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [scale, setScale] = useState(1)
+export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>(
+  function CanvasPreview(
+    {
+      layers,
+      selectedLayerId,
+      onSelectLayer,
+      imageValues,
+      textValues,
+      hiddenLayerIds,
+      templateWidth = 1080,
+      templateHeight = 1920,
+      templateBackground = '#ffffff',
+      onLayerDrag,
+    },
+    ref
+  ) {
+    const containerRef = useRef<HTMLDivElement>(null)
+    const stageRef = useRef<Konva.Stage>(null)
+    const [scale, setScale] = useState(1)
 
-  useEffect(() => {
-    const updateScale = () => {
-      if (containerRef.current) {
-        const containerWidth = containerRef.current.clientWidth
-        setScale(containerWidth / templateWidth)
+    useEffect(() => {
+      const updateScale = () => {
+        if (containerRef.current) {
+          const containerWidth = containerRef.current.clientWidth
+          setScale(containerWidth / templateWidth)
+        }
       }
-    }
 
-    updateScale()
-    window.addEventListener('resize', updateScale)
-    return () => window.removeEventListener('resize', updateScale)
-  }, [templateWidth])
+      updateScale()
+      window.addEventListener('resize', updateScale)
+      return () => window.removeEventListener('resize', updateScale)
+    }, [templateWidth])
 
-  const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
+    // Expose export function via ref
+    useImperativeHandle(ref, () => ({
+      exportToDataUrl: async (format: 'png' | 'jpeg' = 'png', quality = 0.9) => {
+        const stage = stageRef.current
+        if (!stage) {
+          throw new Error('Canvas not ready for export')
+        }
 
-  return (
-    <div ref={containerRef} className="w-full">
-      <Stage
-        width={templateWidth * scale}
-        height={templateHeight * scale}
-        scaleX={scale}
-        scaleY={scale}
-        onClick={(e) => {
-          if (e.target === e.target.getStage()) {
-            onSelectLayer(null)
-          }
-        }}
-        onTap={(e) => {
-          if (e.target === e.target.getStage()) {
-            onSelectLayer(null)
-          }
-        }}
-      >
-        <KonvaLayer>
-          <Rect x={0} y={0} width={templateWidth} height={templateHeight} fill="#f5f5f5" />
-          {visibleLayers.map((layer) => (
-            <LayerRenderer
-              key={layer.id}
-              layer={layer}
-              isSelected={layer.id === selectedLayerId}
-              onSelect={() => onSelectLayer(layer.id)}
-              imageUrl={imageValues[layer.id]?.url}
-              textOverride={textValues[layer.id]}
-            />
-          ))}
-        </KonvaLayer>
-      </Stage>
-    </div>
-  )
-}
+        // Save current state
+        const previousScale = { x: stage.scaleX(), y: stage.scaleY() }
+        const previousPosition = { x: stage.x(), y: stage.y() }
+
+        try {
+          // Reset to 1:1 scale for export
+          stage.scale({ x: 1, y: 1 })
+          stage.position({ x: 0, y: 0 })
+          stage.batchDraw()
+
+          // Wait for next frame
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+
+          // Export with original dimensions
+          const dataUrl = stage.toDataURL({
+            pixelRatio: 1,
+            mimeType: format === 'jpeg' ? 'image/jpeg' : 'image/png',
+            quality: format === 'jpeg' ? quality : undefined,
+            x: 0,
+            y: 0,
+            width: templateWidth,
+            height: templateHeight,
+          })
+
+          return dataUrl
+        } finally {
+          // Restore previous state
+          stage.scale(previousScale)
+          stage.position(previousPosition)
+          stage.batchDraw()
+        }
+      },
+    }))
+
+    const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
+
+    return (
+      <div ref={containerRef} className="w-full">
+        <Stage
+          ref={stageRef}
+          width={templateWidth * scale}
+          height={templateHeight * scale}
+          scaleX={scale}
+          scaleY={scale}
+          onClick={(e) => {
+            if (e.target === e.target.getStage()) {
+              onSelectLayer(null)
+            }
+          }}
+          onTap={(e) => {
+            if (e.target === e.target.getStage()) {
+              onSelectLayer(null)
+            }
+          }}
+        >
+          <KonvaLayer>
+            <Rect x={0} y={0} width={templateWidth} height={templateHeight} fill={templateBackground} />
+            {visibleLayers.map((layer) => (
+              <LayerRenderer
+                key={layer.id}
+                layer={layer}
+                isSelected={layer.id === selectedLayerId}
+                onSelect={() => onSelectLayer(layer.id)}
+                imageUrl={imageValues[layer.id]?.url}
+                textOverride={textValues[layer.id]}
+                onDragEnd={onLayerDrag ? (pos) => onLayerDrag(layer.id, pos) : undefined}
+              />
+            ))}
+          </KonvaLayer>
+        </Stage>
+      </div>
+    )
+  }
+)
