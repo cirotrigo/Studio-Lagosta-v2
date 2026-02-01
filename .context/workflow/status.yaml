@@ -1,0 +1,35 @@
+project:
+  name: "creative-studio-recraft"
+  scale: LARGE
+  started: "2026-01-31T16:47:12.549Z"
+  current_phase: P
+
+phases:
+  P:
+    status: in_progress
+    started_at: "2026-01-31T16:47:12.549Z"
+  R:
+    status: pending
+  E:
+    status: pending
+  V:
+    status: pending
+  C:
+    status: pending
+
+execution:
+  history:
+    - timestamp: "2026-01-31T16:47:12.549Z"
+      phase: P
+      action: started
+    - timestamp: "2026-01-31T16:47:25.481Z"
+      phase: P
+      action: plan_linked
+      plan: "creative-studio-recraft"
+  last_activity: "2026-01-31T16:47:25.481Z"
+  resume_context: "Plano vinculado - aguardando revisão"
+
+approval:
+  plan_created: true
+  plan_approved: false
+

@@ -1,32 +1,290 @@
 ---
-status: unfilled
-generated: 2026-01-15
+status: filled
+generated: 2026-01-31
 ---
 
 # Data Flow & Integrations
 
-Explain how data enters, moves through, and exits the system, including interactions with external services.
+This document explains how data enters, moves through, and exits Studio Lagosta, including interactions with external services.
 
-## Module Dependencies
-- **check-instagram-setup.ts/** → `src`
-- **scripts/** → `prisma`, `src`
-- **src/** → `prisma`
+## High-Level Data Flow
 
-## Service Layer
-- [`GoogleDriveService`](src/server/google-drive-service.ts#L70)
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   User      │────▶│   Client    │────▶│   Next.js   │
+│   Browser   │◀────│   (React)   │◀────│   API       │
+└─────────────┘     └─────────────┘     └─────────────┘
+                                              │
+                    ┌─────────────────────────┼─────────────────────────┐
+                    ▼                         ▼                         ▼
+              ┌──────────┐            ┌──────────────┐          ┌──────────────┐
+              │ PostgreSQL│            │ Vercel Blob  │          │ External     │
+              │ (Prisma)  │            │ (Storage)    │          │ APIs         │
+              └──────────┘            └──────────────┘          └──────────────┘
+```
 
-## High-level Flow
+## Client to Server Flow
 
-Summarize the primary pipeline from input to output. Reference diagrams or embed Mermaid definitions when available.
+### TanStack Query Pattern
+All client-side data fetching uses TanStack Query with custom hooks:
 
-## Internal Movement
+```
+Component → useQuery/useMutation → api-client.ts → API Route → Prisma → PostgreSQL
+```
 
-Describe how modules within `ADMIN_SETUP.md`, `agents`, `AGENTS.md`, `ANALISE_SISTEMA_POSTAGEM.md`, `BACKUP_COMPLETE.md`, `BACKUP_SECURITY.md`, `backups`, `BOOST_SPACE_CONFIG_GUIDE.md`, `check-entry-details.js`, `check-instagram-setup.ts`, `check-migration-status.sql`, `check-status.js`, `CLAUDE.md`, `CLOUDFLARE_SETUP.md`, `COMO_GERAR_TOKEN_INSTAGRAM.md`, `COMO-ALTERAR-LOGO.md`, `components.json`, `configure-reminder-webhook.js`, `CONTEXT_FOR_NEXT_SESSION.md`, `create-test-reminder.js`, `CURVED_TEXT_GUIDE.md`, `DASHBOARD_INTEGRATION_COMPLETE.md`, `DEPLOY_COMMANDS.sh`, `DEPLOY-CHECKLIST.md`, `DEPLOY-DATABASE-MIGRATION.md`, `DEPLOY-GUIDE.md`, `DEPLOY-QUICKSTART.md`, `docs`, `DOMAIN_SETUP.md`, `EFFECTS_SYSTEM.md`, `EFFECTS_TROUBLESHOOTING.md`, `ENV_VARIABLES.md`, `eslint.config.mjs`, `EXPORT_FIX_V2.md`, `EXPORT_FIX.md`, `FASE-6-COMPLETA.md`, `FFMPEG_VERCEL_SETUP.md`, `FINAL_SOLUTION.md`, `FINAL_TEXT_IMPLEMENTATION.md`, `FIX_AGENDAMENTO_ERROR_500.md`, `FIX_PROCESSING_STARTED_AT_FIELD.md`, `FIX_YOUTUBE_DOWNLOAD_404.md`, `GERAR_TOKEN_AGORA.md`, `GUIA_RAPIDO_DEPLOY.md`, `GUIA-COMPONENTES-CMS.md`, `GUIA-CONFIGURACOES-SITE.md`, `GUIA-DE-TESTES.md`, `HANDOFF_REPORT_MIGRATIONS.md`, `implementation_plan.md`, `INSTAGRAM_ANALYTICS_IMPLEMENTATION.md`, `LATE_API_IMPROVEMENTS.md`, `LATER_ANALYTICS_IMPLEMENTATION.md`, `LAYERS_PANEL_OPTIMIZATION.md`, `migrate-enum-final.sql`, `migrate-enum-step1.sql`, `migrate-enum-step2.sql`, `migrate-post-status.sql`, `MIGRATION_APPLY_INSTRUCTIONS.md`, `MIGRATION_CHECKLIST.md`, `MIGRATION_COMPLETION_REPORT.md`, `MIGRATION_DOCS_INDEX.md`, `MIGRATION_FIX_REPORT.md`, `MIGRATION_FIX_SUMMARY.md`, `MIGRATION_GUIDE.md`, `MIGRATION_NORMALIZATION.md`, `MIGRATION_PRODUCTION_GUIDE.md`, `MIGRATION_SUMMARY.md`, `MIGRATION-SUMMARY.md`, `MIGRATIONS_README.md`, `MOBILE_EDITOR_IMPLEMENTATION.md`, `MOBILE_IMPROVEMENTS_SUMMARY.md`, `MOBILE_OVERFLOW_FIX.md`, `MOBILE_UI_FIXES.md`, `MOBILE_UX_FIX_GUIDE.md`, `MOCK-DESENVOLVIMENTO.md`, `monitor-reminders.js`, `N8N_REMINDER_SETUP.md`, `next-env.d.ts`, `next.config.ts`, `package-lock.json`, `package.json`, `PERFORMANCE_OPTIMIZATIONS.md`, `PHASE_2_IMPLEMENTATION_STATUS.md`, `playwright.config.ts`, `postcss.config.mjs`, `POSTING_SCHEDULING_ANALYSIS.md`, `prevc-template.md`, `prisma`, `PRODUCTION_CHECKLIST.md`, `PRODUCTION-ENV.md`, `PROGRESSO-BIBLIOTECA-MUSICAS.md`, `prompt`, `PROMPT_FOR_NEXT_CONVERSATION.md`, `prompts`, `public`, `QUICK_HANDOFF.md`, `QUICK_START_LATER.md`, `QUICKSTART-BLOB.md`, `README_SIMPLIFICATION.md`, `README-DEPLOY.md`, `README.md`, `SAFARI_FIX_GUIDE.md`, `scripts`, `SETUP_AI_IMAGES.md`, `SETUP-BLOB.md`, `SIMPLIFICATION_SUMMARY.md`, `SMART_GUIDES.md`, `src`, `STORY_INSIGHTS_SETUP.md`, `tailwind.config.ts`, `TEMPORARY_FIX_OPTION.md`, `TEMPORARY_FIX_PROCESSING_STARTED_AT.md`, `test-credit-deduction.js`, `test-update-reminder.js`, `test-webhook-failure.sh`, `test-webhook-local.sh`, `test-webhook-simplified.sh`, `TESTING_LATER.md`, `tests`, `TEXT_BEHAVIOR_CHANGES.md`, `TEXT_REFACTOR.md`, `TOKEN_CONFIGURADO.md`, `TROUBLESHOOTING.md`, `tsconfig.json`, `tsconfig.tsbuildinfo`, `URGENT_DATABASE_CHECK.md`, `VERCEL_AI_IMAGE_DEBUG.md`, `VERCEL_VIDEO_SETUP.md`, `VERCEL-DEPLOY.md`, `vercel.json`, `VIDEO_PROCESSING_QUEUE.md`, `WEBHOOK_DEBUG_GUIDE.md`, `ZAPIER_BUFFER_CONFIG.md`, `ZAPIER_COPILOT_PROMPT.md`, `ZAPIER_FINAL_MAPPING_V2.md`, `ZAPIER_FINAL_MAPPING.md`, `ZAPIER_QUICK_SETUP.md`, `ZAPIER_SETUP_SIMPLIFIED.md` collaborate (queues, events, RPC calls, shared databases).
+1. **Component** calls a custom hook (e.g., `useTemplates()`)
+2. **Hook** uses TanStack Query with the centralized `api` client
+3. **api-client.ts** makes HTTP request to API route
+4. **API Route** validates auth, processes request
+5. **Prisma** executes database query
+6. **Response** flows back through the same path
+
+### Example Flow: Create Template
+
+```typescript
+// 1. Component calls mutation
+const { mutate } = useCreateTemplate();
+mutate({ name: 'My Template', designData: {...} });
+
+// 2. Hook sends to API
+// hooks/use-templates.ts
+mutationFn: (data) => api.post('/api/templates', data)
+
+// 3. API route processes
+// app/api/templates/route.ts
+export async function POST(request: Request) {
+  const { userId } = await auth();
+  const user = await getUserFromClerkId(userId);
+  const template = await prisma.template.create({...});
+  return Response.json(template);
+}
+
+// 4. Cache invalidation
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: ['templates'] });
+}
+```
+
+## Post Scheduling Flow
+
+```
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│ User Creates   │────▶│ PostScheduler  │────▶│ Later API      │
+│ Post           │     │ schedules      │     │ receives post  │
+└────────────────┘     └────────────────┘     └────────────────┘
+                                                     │
+                                                     ▼
+┌────────────────┐     ┌────────────────┐     ┌────────────────┐
+│ DB Updated     │◀────│ Buffer Webhook │◀────│ Post Published │
+│ (POSTED)       │     │ received       │     │ via Buffer     │
+└────────────────┘     └────────────────┘     └────────────────┘
+                             │
+                             ▼
+                    ┌────────────────┐
+                    │ Verification   │
+                    │ Scheduled      │
+                    └────────────────┘
+```
+
+### Steps:
+1. User creates post with caption, media, and scheduled time
+2. `PostScheduler` validates and prepares the post
+3. Media uploaded to Later via `LaterClient.uploadMedia()`
+4. Post created in Later via `LaterClient.createPost()`
+5. Later schedules with Buffer for publishing
+6. Buffer publishes to Instagram at scheduled time
+7. Buffer webhook notifies our app
+8. Post status updated to `POSTED`
+9. Verification cron job scheduled
+
+## Instagram Story Verification Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Story Created                              │
+│  1. Generate verification TAG (SL-{id6}-{hash4})             │
+│  2. Add TAG to caption                                        │
+│  3. Schedule via Later API                                    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Post Published                             │
+│  Buffer webhook → schedules verification (+5 min)            │
+│  verificationStatus: PENDING                                  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│               Cron Job (every 5 min)                         │
+│  /api/cron/verify-stories                                    │
+│  1. Fetch pending verifications                              │
+│  2. Group by Instagram account                               │
+│  3. Call Instagram Graph API                                 │
+│  4. Match by TAG (primary) or timestamp (fallback)           │
+└─────────────────────────────────────────────────────────────┘
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+    ┌─────────────────┐             ┌─────────────────┐
+    │ Match Found     │             │ No Match        │
+    │ VERIFIED        │             │ Retry (max 3)   │
+    │ verifiedStoryId │             │ or FAILED       │
+    └─────────────────┘             └─────────────────┘
+```
 
 ## External Integrations
 
-Document each integration with purpose, authentication, payload shapes, and retry strategy.
+### 1. Clerk (Authentication)
 
-## Observability & Failure Modes
+**Purpose**: User authentication and organization management
 
-Describe metrics, traces, or logs that monitor the flow. Note backoff, dead-letter, or compensating actions when downstream systems fail.
+**Flow**:
+```
+Browser → Clerk SDK → JWT Token → Middleware → API Routes
+```
+
+**Webhook Events**:
+- `user.created` - Create local user record
+- `user.updated` - Sync user data
+- `organizationMembership.*` - Sync org membership
+
+### 2. Later.com (Social Media Scheduling)
+
+**Purpose**: Schedule and publish posts to Instagram
+
+**API Calls**:
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /media_library/files` | Upload media |
+| `POST /posts` | Create scheduled post |
+| `GET /posts/:id` | Get post status |
+| `GET /posts/analytics` | Fetch engagement data |
+
+**Rate Limiting**: 120 requests/minute per account
+
+### 3. Instagram Graph API
+
+**Purpose**: Verify story publication, fetch analytics
+
+**API Calls**:
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /{user-id}/stories` | List active stories |
+| `GET /{media-id}/insights` | Get story insights |
+
+**Token**: Long-lived access token (refresh every 60 days)
+
+### 4. Vercel Blob (Storage)
+
+**Purpose**: Store user-uploaded images and videos
+
+**Flow**:
+```
+Client → presigned URL → Direct upload to Blob → URL stored in DB
+```
+
+### 5. OpenRouter (AI)
+
+**Purpose**: AI image generation with multiple providers
+
+**Flow**:
+```
+User request → Credit check → OpenRouter API → Image generated → Blob upload
+```
+
+## Webhook Processing
+
+### Buffer Post-Sent Webhook
+```
+POST /api/webhooks/buffer/post-sent
+{
+  "profile_id": "...",
+  "status": "sent",
+  "sent_at": "2024-01-15T10:00:00Z"
+}
+```
+
+Processing:
+1. Validate webhook signature
+2. Find post by `bufferPostId`
+3. Update post status to `POSTED`
+4. Schedule verification (+5 min for stories)
+
+### Clerk Webhook
+```
+POST /api/webhooks/clerk
+{
+  "type": "user.created",
+  "data": { "id": "user_...", "email_addresses": [...] }
+}
+```
+
+Processing:
+1. Validate Clerk signature
+2. Create/update local user record
+3. Initialize credit balance
+
+## Database Flow
+
+### Key Relationships
+```
+User (clerkId)
+  └── Organization (many-to-many)
+        └── Project
+              ├── Template
+              │     └── Generation (rendered outputs)
+              └── SocialPost
+                    └── verificationStatus
+```
+
+### Query Patterns
+
+**Fetch user's templates**:
+```typescript
+prisma.template.findMany({
+  where: { userId: user.id },
+  orderBy: { updatedAt: 'desc' },
+  include: { generations: true }
+});
+```
+
+**Fetch pending verifications**:
+```typescript
+prisma.socialPost.findMany({
+  where: {
+    verificationStatus: 'PENDING',
+    nextVerificationAt: { lte: new Date() },
+    verificationAttempts: { lt: 3 }
+  }
+});
+```
+
+## Error Handling & Retry
+
+### API Errors
+- `ApiError` class with status codes
+- Automatic retry with exponential backoff for transient errors
+
+### Verification Retry Strategy
+| Attempt | Delay | Total Time |
+|---------|-------|------------|
+| 1 | 5 min | 5 min |
+| 2 | 10 min | 15 min |
+| 3 | 15 min | 30 min |
+
+### Rate Limit Handling
+- Later API: Queue requests, respect 120/min limit
+- Instagram API: 15-minute backoff on rate limit errors
+
+## Observability
+
+### Logging
+- Structured JSON logs with request IDs
+- Error logs include sanitized context (no tokens)
+
+### Key Metrics
+- Post scheduling success rate
+- Verification success rate
+- API response times
+- Credit consumption by feature

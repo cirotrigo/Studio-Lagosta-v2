@@ -1,165 +1,76 @@
 # Documentation Index
 
-Welcome to the repository knowledge base. Start with the project overview, then dive into specific guides as needed.
+Welcome to the Studio Lagosta knowledge base. This documentation provides comprehensive guidance for understanding and contributing to the project.
+
+## Getting Started
+
+New to the project? Start here:
+1. [Project Overview](./project-overview.md) - What the project does and why
+2. [Architecture](./architecture.md) - System design and structure
+3. [Development Workflow](./development-workflow.md) - Daily development tasks
 
 ## Core Guides
-- [Project Overview](./project-overview.md)
-- [Architecture Notes](./architecture.md)
-- [Development Workflow](./development-workflow.md)
-- [Testing Strategy](./testing-strategy.md)
-- [Glossary & Domain Concepts](./glossary.md)
-- [Data Flow & Integrations](./data-flow.md)
-- [Security & Compliance Notes](./security.md)
-- [Tooling & Productivity Guide](./tooling.md)
 
-## Repository Snapshot
-- `ADMIN_SETUP.md/`
-- `agents/` — AI agent playbooks and prompts.
-- `AGENTS.md/`
-- `ANALISE_SISTEMA_POSTAGEM.md/`
-- `BACKUP_COMPLETE.md/`
-- `BACKUP_SECURITY.md/`
-- `backups/`
-- `BOOST_SPACE_CONFIG_GUIDE.md/`
-- `check-entry-details.js/`
-- `check-instagram-setup.ts/`
-- `check-migration-status.sql/`
-- `check-status.js/`
-- `CLAUDE.md/`
-- `CLOUDFLARE_SETUP.md/`
-- `COMO_GERAR_TOKEN_INSTAGRAM.md/`
-- `COMO-ALTERAR-LOGO.md/`
-- `components.json/`
-- `configure-reminder-webhook.js/`
-- `CONTEXT_FOR_NEXT_SESSION.md/`
-- `create-test-reminder.js/`
-- `CURVED_TEXT_GUIDE.md/`
-- `DASHBOARD_INTEGRATION_COMPLETE.md/`
-- `DEPLOY_COMMANDS.sh/`
-- `DEPLOY-CHECKLIST.md/`
-- `DEPLOY-DATABASE-MIGRATION.md/`
-- `DEPLOY-GUIDE.md/`
-- `DEPLOY-QUICKSTART.md/`
-- `docs/` — Living documentation produced by this tool.
-- `DOMAIN_SETUP.md/`
-- `EFFECTS_SYSTEM.md/`
-- `EFFECTS_TROUBLESHOOTING.md/`
-- `ENV_VARIABLES.md/`
-- `eslint.config.mjs/`
-- `EXPORT_FIX_V2.md/`
-- `EXPORT_FIX.md/`
-- `FASE-6-COMPLETA.md/`
-- `FFMPEG_VERCEL_SETUP.md/`
-- `FINAL_SOLUTION.md/`
-- `FINAL_TEXT_IMPLEMENTATION.md/`
-- `FIX_AGENDAMENTO_ERROR_500.md/`
-- `FIX_PROCESSING_STARTED_AT_FIELD.md/`
-- `FIX_YOUTUBE_DOWNLOAD_404.md/`
-- `GERAR_TOKEN_AGORA.md/`
-- `GUIA_RAPIDO_DEPLOY.md/`
-- `GUIA-COMPONENTES-CMS.md/`
-- `GUIA-CONFIGURACOES-SITE.md/`
-- `GUIA-DE-TESTES.md/`
-- `HANDOFF_REPORT_MIGRATIONS.md/`
-- `implementation_plan.md/`
-- `INSTAGRAM_ANALYTICS_IMPLEMENTATION.md/`
-- `LATE_API_IMPROVEMENTS.md/`
-- `LATER_ANALYTICS_IMPLEMENTATION.md/`
-- `LAYERS_PANEL_OPTIMIZATION.md/`
-- `migrate-enum-final.sql/`
-- `migrate-enum-step1.sql/`
-- `migrate-enum-step2.sql/`
-- `migrate-post-status.sql/`
-- `MIGRATION_APPLY_INSTRUCTIONS.md/`
-- `MIGRATION_CHECKLIST.md/`
-- `MIGRATION_COMPLETION_REPORT.md/`
-- `MIGRATION_DOCS_INDEX.md/`
-- `MIGRATION_FIX_REPORT.md/`
-- `MIGRATION_FIX_SUMMARY.md/`
-- `MIGRATION_GUIDE.md/`
-- `MIGRATION_NORMALIZATION.md/`
-- `MIGRATION_PRODUCTION_GUIDE.md/`
-- `MIGRATION_SUMMARY.md/`
-- `MIGRATION-SUMMARY.md/`
-- `MIGRATIONS_README.md/`
-- `MOBILE_EDITOR_IMPLEMENTATION.md/`
-- `MOBILE_IMPROVEMENTS_SUMMARY.md/`
-- `MOBILE_OVERFLOW_FIX.md/`
-- `MOBILE_UI_FIXES.md/`
-- `MOBILE_UX_FIX_GUIDE.md/`
-- `MOCK-DESENVOLVIMENTO.md/`
-- `monitor-reminders.js/`
-- `N8N_REMINDER_SETUP.md/`
-- `next-env.d.ts/`
-- `next.config.ts/`
-- `package-lock.json/`
-- `package.json/`
-- `PERFORMANCE_OPTIMIZATIONS.md/`
-- `PHASE_2_IMPLEMENTATION_STATUS.md/`
-- `playwright.config.ts/`
-- `postcss.config.mjs/`
-- `POSTING_SCHEDULING_ANALYSIS.md/`
-- `prevc-template.md/`
-- `prisma/`
-- `PRODUCTION_CHECKLIST.md/`
-- `PRODUCTION-ENV.md/`
-- `PROGRESSO-BIBLIOTECA-MUSICAS.md/`
-- `prompt/`
-- `PROMPT_FOR_NEXT_CONVERSATION.md/`
-- `prompts/`
-- `public/`
-- `QUICK_HANDOFF.md/`
-- `QUICK_START_LATER.md/`
-- `QUICKSTART-BLOB.md/`
-- `README_SIMPLIFICATION.md/`
-- `README-DEPLOY.md/`
-- `README.md/`
-- `SAFARI_FIX_GUIDE.md/`
-- `scripts/`
-- `SETUP_AI_IMAGES.md/`
-- `SETUP-BLOB.md/`
-- `SIMPLIFICATION_SUMMARY.md/`
-- `SMART_GUIDES.md/`
-- `src/` — TypeScript source files and CLI entrypoints.
-- `STORY_INSIGHTS_SETUP.md/`
-- `tailwind.config.ts/`
-- `TEMPORARY_FIX_OPTION.md/`
-- `TEMPORARY_FIX_PROCESSING_STARTED_AT.md/`
-- `test-credit-deduction.js/`
-- `test-update-reminder.js/`
-- `test-webhook-failure.sh/`
-- `test-webhook-local.sh/`
-- `test-webhook-simplified.sh/`
-- `TESTING_LATER.md/`
-- `tests/` — Automated tests and fixtures.
-- `TEXT_BEHAVIOR_CHANGES.md/`
-- `TEXT_REFACTOR.md/`
-- `TOKEN_CONFIGURADO.md/`
-- `TROUBLESHOOTING.md/`
-- `tsconfig.json/`
-- `tsconfig.tsbuildinfo/`
-- `URGENT_DATABASE_CHECK.md/`
-- `VERCEL_AI_IMAGE_DEBUG.md/`
-- `VERCEL_VIDEO_SETUP.md/`
-- `VERCEL-DEPLOY.md/`
-- `vercel.json/`
-- `VIDEO_PROCESSING_QUEUE.md/`
-- `WEBHOOK_DEBUG_GUIDE.md/`
-- `ZAPIER_BUFFER_CONFIG.md/`
-- `ZAPIER_COPILOT_PROMPT.md/`
-- `ZAPIER_FINAL_MAPPING_V2.md/`
-- `ZAPIER_FINAL_MAPPING.md/`
-- `ZAPIER_QUICK_SETUP.md/`
-- `ZAPIER_SETUP_SIMPLIFIED.md/`
+| Document | Description |
+|----------|-------------|
+| [Project Overview](./project-overview.md) | Problem statement, capabilities, and tech stack |
+| [Architecture](./architecture.md) | System design, layers, and integration points |
+| [Development Workflow](./development-workflow.md) | Commands, patterns, and best practices |
+| [Data Flow](./data-flow.md) | How data moves through the system |
+| [Testing Strategy](./testing-strategy.md) | Testing approaches and tools |
+| [Security](./security.md) | Authentication, authorization, and compliance |
+| [Tooling](./tooling.md) | Development tools and productivity |
+| [Glossary](./glossary.md) | Domain terms and definitions |
 
-## Document Map
-| Guide | File | Primary Inputs |
-| --- | --- | --- |
-| Project Overview | `project-overview.md` | Roadmap, README, stakeholder notes |
-| Architecture Notes | `architecture.md` | ADRs, service boundaries, dependency graphs |
-| Development Workflow | `development-workflow.md` | Branching rules, CI config, contributing guide |
-| Testing Strategy | `testing-strategy.md` | Test configs, CI gates, known flaky suites |
-| Glossary & Domain Concepts | `glossary.md` | Business terminology, user personas, domain rules |
-| Data Flow & Integrations | `data-flow.md` | System diagrams, integration specs, queue topics |
-| Security & Compliance Notes | `security.md` | Auth model, secrets management, compliance requirements |
-| Tooling & Productivity Guide | `tooling.md` | CLI scripts, IDE configs, automation workflows |
+## Quick Reference
+
+### Development Commands
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run typecheck    # TypeScript type checking
+npm run db:studio    # Open Prisma Studio
+```
+
+### Key Directories
+```
+src/
+├── app/           # Next.js App Router (pages & API)
+├── components/    # React components
+├── hooks/         # TanStack Query hooks
+├── lib/           # Business logic & utilities
+└── types/         # TypeScript interfaces
+```
+
+### External Documentation
+- [CLAUDE.md](../../CLAUDE.md) - Project conventions for AI assistants
+- [README.md](../../README.md) - Main project README
+- [Prisma Schema](../../prisma/schema.prisma) - Database model definitions
+
+## Technology Stack
+
+- **Framework**: Next.js 15 (App Router)
+- **Language**: TypeScript
+- **Database**: PostgreSQL + Prisma
+- **Auth**: Clerk
+- **UI**: Radix UI + Tailwind CSS
+- **Canvas**: Konva.js
+- **State**: TanStack Query
+
+## Related Resources
+
+### Agent Playbooks
+See [`.context/agents/`](../agents/) for AI agent configurations:
+- `feature-developer.md` - New feature implementation
+- `bug-fixer.md` - Bug fixing workflow
+- `code-reviewer.md` - Code review guidelines
+
+### Skills
+See [`.context/skills/`](../skills/) for expertise modules available to agents.
+
+## Contributing to Documentation
+
+1. Update docs when making significant changes
+2. Keep documentation concise and practical
+3. Include code examples where helpful
+4. Update this index when adding new documents

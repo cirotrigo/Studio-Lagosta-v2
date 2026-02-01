@@ -1,0 +1,14 @@
+{
+  "active": [
+    {
+      "slug": "creative-studio-recraft",
+      "path": "plans/creative-studio-recraft.md",
+      "title": "Creative Studio - Recraft.ai Integration",
+      "summary": "Implement a 2-step wizard for AI image generation with Recraft.ai API, including reference image selection, prompt-based generation, background removal, and template application with live canvas preview.",
+      "linkedAt": "2026-01-31T16:47:25.481Z",
+      "status": "active"
+    }
+  ],
+  "completed": [],
+  "primary": "creative-studio-recraft"
+}
