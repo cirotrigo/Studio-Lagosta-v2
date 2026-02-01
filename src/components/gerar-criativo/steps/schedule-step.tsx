@@ -21,7 +21,7 @@ export function ScheduleStep() {
 
   const handleCreateAnother = () => {
     reset()
-    stepper.goTo('projeto')
+    stepper.goTo('modelo')
   }
 
   if (!generatedCreative) {

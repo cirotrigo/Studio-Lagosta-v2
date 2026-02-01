@@ -2,9 +2,7 @@
 
 import { GerarCriativoProvider } from '@/components/gerar-criativo/gerar-criativo-context'
 import { StepperProvider, useStepper, steps } from '@/components/gerar-criativo/stepper'
-import { ProjectSelectionStep } from '@/components/gerar-criativo/steps/project-selection-step'
-import { TemplateSelectionStep } from '@/components/gerar-criativo/steps/template-selection-step'
-import { ModelPageStep } from '@/components/gerar-criativo/steps/model-page-step'
+import { ModelPageSelectionStep } from '@/components/gerar-criativo/steps/model-page-selection-step'
 import { ImageSelectionStep } from '@/components/gerar-criativo/steps/image-selection-step'
 import { AdjustmentsStep } from '@/components/gerar-criativo/steps/adjustments-step'
 import { ScheduleStep } from '@/components/gerar-criativo/steps/schedule-step'
@@ -105,9 +103,7 @@ function WizardContent() {
 
       <div className="mt-6">
         {stepper.switch({
-          projeto: () => <ProjectSelectionStep />,
-          template: () => <TemplateSelectionStep />,
-          pagina: () => <ModelPageStep />,
+          modelo: () => <ModelPageSelectionStep />,
           imagem: () => <ImageSelectionStep />,
           ajustes: () => <AdjustmentsStep />,
           agendar: () => <ScheduleStep />,

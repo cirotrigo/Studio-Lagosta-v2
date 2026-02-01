@@ -41,11 +41,11 @@ interface GerarCriativoState {
 }
 
 interface GerarCriativoContextValue extends GerarCriativoState {
-  // Step 1
+  // Step 1 (unified selection)
+  selectModelPageWithContext: (projectId: number, templateId: number, pageId: string, layers: Layer[]) => void
+  // Legacy (kept for compatibility)
   selectProject: (projectId: number) => void
-  // Step 2
   selectTemplate: (templateId: number) => void
-  // Step 3
   selectModelPage: (pageId: string, layers: Layer[]) => void
   // Step 4
   setImageValue: (layerId: string, imageSource: ImageSource | null) => void
@@ -123,6 +123,23 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
       generatedCreative: null,
     }))
   }, [])
+
+  const selectModelPageWithContext = useCallback(
+    (projectId: number, templateId: number, pageId: string, layers: Layer[]) => {
+      setState({
+        selectedProjectId: projectId,
+        selectedTemplateId: templateId,
+        selectedModelPageId: pageId,
+        layers,
+        imageValues: {},
+        textValues: {},
+        selectedLayerId: null,
+        hiddenLayerIds: new Set(),
+        generatedCreative: null,
+      })
+    },
+    []
+  )
 
   const setImageValue = useCallback((layerId: string, imageSource: ImageSource | null) => {
     setState((prev) => {
@@ -234,6 +251,7 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
 
   const value: GerarCriativoContextValue = {
     ...state,
+    selectModelPageWithContext,
     selectProject,
     selectTemplate,
     selectModelPage,

@@ -2,6 +2,12 @@ import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { put } from '@vercel/blob'
+import { RenderEngine, type ImageLoader } from '@/lib/render-engine'
+import type { DesignData, Layer } from '@/types/template'
+
+export const runtime = 'nodejs'
+export const maxDuration = 120
 
 const imageSourceSchema = z.object({
   type: z.string(),
@@ -55,7 +61,7 @@ export async function POST(request: Request) {
       const newLayer = { ...layer }
 
       // Apply text overrides
-      if (layer.type === 'text' && texts[layer.id as string]) {
+      if ((layer.type === 'text' || layer.type === 'rich-text') && texts[layer.id as string]) {
         newLayer.content = texts[layer.id as string]
       }
 
@@ -65,12 +71,84 @@ export async function POST(request: Request) {
       }
 
       return newLayer
-    })
+    }) as Layer[]
 
-    // 3. Count existing pages for order
+    // 3. Render the final creative image
+    console.log('[Gerar Criativo Finalize] Rendering creative...')
+
+    const designData: DesignData = {
+      canvas: {
+        width: templatePage.width,
+        height: templatePage.height,
+        backgroundColor: templatePage.background || '#ffffff',
+      },
+      layers: processedLayers,
+    }
+
+    // Import canvas library for server-side rendering
+    const { createCanvas, loadImage } = await import('@napi-rs/canvas')
+
+    const canvas = createCanvas(templatePage.width, templatePage.height)
+    const ctx = canvas.getContext('2d')
+
+    // Image loader for server-side rendering
+    const imageLoader: ImageLoader = async (url: string) => {
+      try {
+        const img = await loadImage(url)
+        return img as unknown as CanvasImageSource
+      } catch (error) {
+        console.error('[Gerar Criativo Finalize] Failed to load image:', url, error)
+        // Return placeholder
+        const placeholderCanvas = createCanvas(100, 100)
+        const placeholderCtx = placeholderCanvas.getContext('2d')
+        placeholderCtx.fillStyle = '#f5f5f5'
+        placeholderCtx.fillRect(0, 0, 100, 100)
+        return placeholderCanvas as unknown as CanvasImageSource
+      }
+    }
+
+    await RenderEngine.renderDesign(
+      ctx as unknown as CanvasRenderingContext2D,
+      designData,
+      {},
+      {
+        scaleFactor: 1,
+        imageLoader,
+        imageCache: new Map(),
+      }
+    )
+
+    // Convert canvas to PNG buffer
+    const imageBuffer = canvas.toBuffer('image/png')
+    console.log('[Gerar Criativo Finalize] Rendered image size:', imageBuffer.length, 'bytes')
+
+    // 4. Upload to Vercel Blob
+    const blobToken = process.env.BLOB_READ_WRITE_TOKEN
+    if (!blobToken || blobToken.trim() === '') {
+      console.error('[Gerar Criativo Finalize] BLOB_READ_WRITE_TOKEN not configured')
+      return NextResponse.json(
+        { error: 'Upload service not configured' },
+        { status: 503 }
+      )
+    }
+
+    const timestamp = Date.now()
+    const blob = await put(
+      `creatives/${userId}/${timestamp}-creative.png`,
+      imageBuffer,
+      {
+        access: 'public',
+        addRandomSuffix: true,
+        contentType: 'image/png',
+      }
+    )
+
+    console.log('[Gerar Criativo Finalize] Uploaded to Blob:', blob.url)
+
+    // 5. Count existing pages for order
     const pageCount = await db.page.count({ where: { templateId } })
 
-    // 4. Create new Page (isTemplate: false)
+    // 6. Create new Page (isTemplate: false) with thumbnail
     const newPage = await db.page.create({
       data: {
         name: `Criativo ${new Date().toLocaleDateString('pt-BR')}`,
@@ -78,6 +156,7 @@ export async function POST(request: Request) {
         height: templatePage.height,
         layers: JSON.stringify(processedLayers),
         background: templatePage.background,
+        thumbnail: blob.url, // Save the rendered image as thumbnail
         order: pageCount,
         templateId,
         isTemplate: false,
@@ -86,12 +165,7 @@ export async function POST(request: Request) {
 
     console.log('[Gerar Criativo Finalize] Created page:', newPage.id)
 
-    // 5. Get preview URL from first image layer or template
-    const previewUrl = processedLayers.find((l) => l.type === 'image')?.fileUrl as string
-      || templatePage.thumbnail
-      || ''
-
-    // 6. Create AICreativeGeneration record
+    // 7. Create AICreativeGeneration record
     const creative = await db.aICreativeGeneration.create({
       data: {
         projectId: templatePage.Template.projectId,
@@ -111,7 +185,7 @@ export async function POST(request: Request) {
       success: true,
       id: creative.id,
       pageId: newPage.id,
-      resultUrl: previewUrl,
+      resultUrl: blob.url, // Return the actual rendered image URL
     })
   } catch (error) {
     console.error('[Gerar Criativo Finalize] Error:', error)
