@@ -59,6 +59,7 @@ interface GerarCriativoContextValue extends GerarCriativoState {
   deleteLayer: (layerId: string) => void
   toggleLayerVisibility: (layerId: string) => void
   updateLayerPosition: (layerId: string, position: { x: number; y: number }) => void
+  updateLayerSize: (layerId: string, size: { width: number; height: number }) => void
   // Step 6
   setGeneratedCreative: (creative: GeneratedCreative) => void
   // Reset
@@ -262,6 +263,17 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     }))
   }, [])
 
+  const updateLayerSize = useCallback((layerId: string, size: { width: number; height: number }) => {
+    setState((prev) => ({
+      ...prev,
+      layers: prev.layers.map((layer) =>
+        layer.id === layerId
+          ? { ...layer, size: { ...layer.size, ...size } }
+          : layer
+      ),
+    }))
+  }, [])
+
   const setGeneratedCreative = useCallback((creative: GeneratedCreative) => {
     setState((prev) => ({
       ...prev,
@@ -287,6 +299,7 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     deleteLayer,
     toggleLayerVisibility,
     updateLayerPosition,
+    updateLayerSize,
     setGeneratedCreative,
     reset,
   }

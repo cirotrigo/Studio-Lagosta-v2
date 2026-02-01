@@ -36,7 +36,18 @@ export function AdjustmentsStep() {
     deleteLayer,
     toggleLayerVisibility,
     updateLayerPosition,
+    updateLayerSize,
   } = useGerarCriativo()
+
+  // Handler for resize that updates both size and position
+  const handleLayerResize = (
+    layerId: string,
+    size: { width: number; height: number },
+    position: { x: number; y: number }
+  ) => {
+    updateLayerSize(layerId, size)
+    updateLayerPosition(layerId, position)
+  }
 
   const stepper = useStepper()
   const finalize = useGerarCriativoFinalize()
@@ -114,6 +125,7 @@ export function AdjustmentsStep() {
                 textValues={textValues}
                 hiddenLayerIds={hiddenLayerIds}
                 onLayerDrag={updateLayerPosition}
+                onLayerResize={handleLayerResize}
                 templateWidth={templateWidth}
                 templateHeight={templateHeight}
               />
@@ -235,6 +247,7 @@ export function AdjustmentsStep() {
               textValues={textValues}
               hiddenLayerIds={hiddenLayerIds}
               onLayerDrag={updateLayerPosition}
+              onLayerResize={handleLayerResize}
               templateWidth={templateWidth}
               templateHeight={templateHeight}
             />

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
-import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line } from 'react-konva'
+import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Transformer } from 'react-konva'
 import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
@@ -25,6 +25,7 @@ interface CanvasPreviewProps {
   templateHeight?: number
   templateBackground?: string
   onLayerDrag?: (layerId: string, position: { x: number; y: number }) => void
+  onLayerResize?: (layerId: string, size: { width: number; height: number }, position: { x: number; y: number }) => void
 }
 
 interface SnapGuides {
@@ -40,6 +41,7 @@ function ImageLayer({
   onDragEnd,
   onDragMove,
   onDragStart,
+  shapeRef,
 }: {
   layer: Layer
   isSelected: boolean
@@ -48,6 +50,7 @@ function ImageLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
+  shapeRef?: React.RefObject<Konva.Image>
 }) {
   const src = imageUrl || layer.fileUrl || ''
   const [image] = useImage(src, 'anonymous')
@@ -56,6 +59,8 @@ function ImageLayer({
 
   return (
     <Image
+      ref={shapeRef}
+      name={layer.id}
       image={image}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
@@ -101,6 +106,7 @@ function TextLayer({
   onDragEnd,
   onDragMove,
   onDragStart,
+  shapeRef,
 }: {
   layer: Layer
   isSelected: boolean
@@ -109,6 +115,7 @@ function TextLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
+  shapeRef?: React.RefObject<Konva.Text>
 }) {
   const rawContent = textOverride ?? layer.content ?? ''
   const content = applyTextTransform(rawContent, layer.style?.textTransform)
@@ -123,6 +130,8 @@ function TextLayer({
 
   return (
     <Text
+      ref={shapeRef}
+      name={layer.id}
       text={content}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
@@ -157,6 +166,7 @@ function ShapeLayer({
   onDragEnd,
   onDragMove,
   onDragStart,
+  shapeRef,
 }: {
   layer: Layer
   isSelected: boolean
@@ -164,12 +174,15 @@ function ShapeLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
+  shapeRef?: React.RefObject<Konva.Rect>
 }) {
   const width = layer.size?.width || 100
   const height = layer.size?.height || 100
 
   return (
     <Rect
+      ref={shapeRef}
+      name={layer.id}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
       width={width}
@@ -198,6 +211,7 @@ function GradientLayer({
   onDragEnd,
   onDragMove,
   onDragStart,
+  shapeRef,
 }: {
   layer: Layer
   isSelected: boolean
@@ -205,6 +219,7 @@ function GradientLayer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
+  shapeRef?: React.RefObject<Konva.Rect>
 }) {
   const width = layer.size?.width || 100
   const height = layer.size?.height || 100
@@ -259,6 +274,8 @@ function GradientLayer({
   if (colorStops.length === 0) {
     return (
       <Rect
+        ref={shapeRef}
+        name={layer.id}
         x={layer.position?.x || 0}
         y={layer.position?.y || 0}
         width={width}
@@ -279,6 +296,8 @@ function GradientLayer({
   if (gradientType === 'radial') {
     return (
       <Rect
+        ref={shapeRef}
+        name={layer.id}
         x={layer.position?.x || 0}
         y={layer.position?.y || 0}
         width={width}
@@ -303,6 +322,8 @@ function GradientLayer({
   // Linear gradient
   return (
     <Rect
+      ref={shapeRef}
+      name={layer.id}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
       width={width}
@@ -331,6 +352,7 @@ function LayerRenderer({
   onDragEnd,
   onDragMove,
   onDragStart,
+  shapeRef,
 }: {
   layer: Layer
   isSelected: boolean
@@ -340,6 +362,7 @@ function LayerRenderer({
   onDragEnd?: (position: { x: number; y: number }) => void
   onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
   onDragStart?: () => void
+  shapeRef?: React.RefObject<Konva.Shape>
 }) {
   if (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element') {
     return (
@@ -351,6 +374,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
+        shapeRef={shapeRef as React.RefObject<Konva.Image>}
       />
     )
   }
@@ -365,6 +389,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
+        shapeRef={shapeRef as React.RefObject<Konva.Text>}
       />
     )
   }
@@ -378,6 +403,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
+        shapeRef={shapeRef as React.RefObject<Konva.Rect>}
       />
     )
   }
@@ -391,6 +417,7 @@ function LayerRenderer({
         onDragEnd={onDragEnd}
         onDragMove={onDragMove}
         onDragStart={onDragStart}
+        shapeRef={shapeRef as React.RefObject<Konva.Rect>}
       />
     )
   }
@@ -411,11 +438,13 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       templateHeight = 1920,
       templateBackground = '#ffffff',
       onLayerDrag,
+      onLayerResize,
     },
     ref
   ) {
     const containerRef = useRef<HTMLDivElement>(null)
     const stageRef = useRef<Konva.Stage>(null)
+    const transformerRef = useRef<Konva.Transformer>(null)
     const [scale, setScale] = useState(1)
     const [snapGuides, setSnapGuides] = useState<SnapGuides>({ vertical: false, horizontal: false })
 
@@ -435,6 +464,52 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       window.addEventListener('resize', updateScale)
       return () => window.removeEventListener('resize', updateScale)
     }, [templateWidth])
+
+    // Attach transformer to selected node
+    useEffect(() => {
+      const transformer = transformerRef.current
+      const stage = stageRef.current
+      if (!transformer || !stage) return
+
+      if (selectedLayerId && onLayerResize) {
+        // Find the selected node by name in the stage
+        const selectedNode = stage.findOne(`.${selectedLayerId}`)
+        if (selectedNode) {
+          transformer.nodes([selectedNode])
+          transformer.getLayer()?.batchDraw()
+        } else {
+          transformer.nodes([])
+        }
+      } else {
+        transformer.nodes([])
+      }
+    }, [selectedLayerId, onLayerResize, layers]) // Include layers to re-attach when they change
+
+    // Handle transform end (resize)
+    const handleTransformEnd = useCallback(
+      (e: Konva.KonvaEventObject<Event>) => {
+        const node = e.target
+        const layerId = node.name()
+        if (!layerId || !onLayerResize) return
+
+        // Get the new size after transform
+        const scaleX = node.scaleX()
+        const scaleY = node.scaleY()
+        const newWidth = Math.max(5, node.width() * scaleX)
+        const newHeight = Math.max(5, node.height() * scaleY)
+
+        // Reset scale to 1 (we apply scale to width/height instead)
+        node.scaleX(1)
+        node.scaleY(1)
+
+        onLayerResize(
+          layerId,
+          { width: newWidth, height: newHeight },
+          { x: node.x(), y: node.y() }
+        )
+      },
+      [onLayerResize]
+    )
 
     // Handle drag move with snapping
     const handleDragMove = useCallback(
@@ -564,6 +639,36 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
                 onDragEnd={onLayerDrag ? (pos) => handleDragEnd(layer.id, pos) : undefined}
               />
             ))}
+
+            {/* Transformer for resize - only show when onLayerResize is provided */}
+            {onLayerResize && (
+              <Transformer
+                ref={transformerRef}
+                boundBoxFunc={(oldBox, newBox) => {
+                  // Limit minimum size
+                  if (newBox.width < 20 || newBox.height < 20) {
+                    return oldBox
+                  }
+                  return newBox
+                }}
+                onTransformEnd={handleTransformEnd}
+                // Touch-friendly settings
+                anchorSize={20}
+                anchorCornerRadius={10}
+                anchorStroke="#3b82f6"
+                anchorFill="#ffffff"
+                anchorStrokeWidth={2}
+                borderStroke="#3b82f6"
+                borderStrokeWidth={2}
+                borderDash={[6, 3]}
+                // Enable rotation
+                rotateEnabled={false}
+                // Keep aspect ratio when pressing shift
+                keepRatio={false}
+                // Enable all anchors for touch
+                enabledAnchors={['top-left', 'top-right', 'bottom-left', 'bottom-right', 'middle-left', 'middle-right', 'top-center', 'bottom-center']}
+              />
+            )}
 
             {/* Snap guide lines */}
             {snapGuides.vertical && (
