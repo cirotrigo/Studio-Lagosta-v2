@@ -15,58 +15,119 @@ export async function GET() {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Build where clause for projects accessible by the user
-    const projectWhereClause = orgId
-      ? { organizationId: orgId }
-      : { userId: user.id, organizationId: null }
-
-    // Fetch all model pages from all projects the user has access to
-    const modelPages = await db.page.findMany({
-      where: {
-        isTemplate: true,
-        Template: {
-          Project: projectWhereClause,
-        },
-      },
-      orderBy: [
-        { order: 'asc' },
-      ],
-      select: {
-        id: true,
-        name: true,
-        templateName: true,
-        templateId: true,
-        width: true,
-        height: true,
-        layers: true,
-        background: true,
-        thumbnail: true,
-        order: true,
-        createdAt: true,
-        updatedAt: true,
-        Template: {
-          select: {
-            id: true,
-            name: true,
+    // Fetch model pages from owned projects and shared projects in parallel
+    const [ownedProjectPages, sharedProjectPages] = await Promise.all([
+      // Model pages from owned projects
+      db.page.findMany({
+        where: {
+          isTemplate: true,
+          Template: {
             Project: {
-              select: {
-                id: true,
-                name: true,
-                Logo: {
-                  take: 1,
-                  select: {
-                    fileUrl: true,
+              userId: user.id,
+            },
+          },
+        },
+        orderBy: [{ order: 'asc' }],
+        select: {
+          id: true,
+          name: true,
+          templateName: true,
+          templateId: true,
+          width: true,
+          height: true,
+          layers: true,
+          background: true,
+          thumbnail: true,
+          order: true,
+          createdAt: true,
+          updatedAt: true,
+          Template: {
+            select: {
+              id: true,
+              name: true,
+              Project: {
+                select: {
+                  id: true,
+                  name: true,
+                  Logo: {
+                    where: { isProjectLogo: true },
+                    take: 1,
+                    select: {
+                      fileUrl: true,
+                    },
                   },
                 },
               },
             },
           },
         },
-      },
+      }),
+
+      // Model pages from shared projects (only if orgId exists)
+      orgId
+        ? db.page.findMany({
+            where: {
+              isTemplate: true,
+              Template: {
+                Project: {
+                  organizationProjects: {
+                    some: {
+                      organization: {
+                        clerkOrgId: orgId,
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            orderBy: [{ order: 'asc' }],
+            select: {
+              id: true,
+              name: true,
+              templateName: true,
+              templateId: true,
+              width: true,
+              height: true,
+              layers: true,
+              background: true,
+              thumbnail: true,
+              order: true,
+              createdAt: true,
+              updatedAt: true,
+              Template: {
+                select: {
+                  id: true,
+                  name: true,
+                  Project: {
+                    select: {
+                      id: true,
+                      name: true,
+                      Logo: {
+                        where: { isProjectLogo: true },
+                        take: 1,
+                        select: {
+                          fileUrl: true,
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          })
+        : [],
+    ])
+
+    // Combine and deduplicate by page id
+    const seenIds = new Set<string>()
+    const allPages = [...ownedProjectPages, ...sharedProjectPages].filter((page) => {
+      if (seenIds.has(page.id)) return false
+      seenIds.add(page.id)
+      return true
     })
 
     // Transform the data with parsed layers and flattened structure
-    const transformedPages = modelPages.map((page) => ({
+    const transformedPages = allPages.map((page) => ({
       id: page.id,
       name: page.name,
       templateName: page.templateName,
