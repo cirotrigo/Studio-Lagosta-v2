@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useState, useRef } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import {
   Dialog,
@@ -13,7 +13,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { Loader2, Sparkles } from 'lucide-react'
+import { Input } from '@/components/ui/input'
+import { Loader2, Sparkles, X, Upload, ImagePlus } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface GenerateImageModalProps {
@@ -29,6 +30,8 @@ interface GenerateImageResult {
   prompt: string
 }
 
+const MAX_REFERENCE_IMAGES = 3
+
 export function GenerateImageModal({
   open,
   onOpenChange,
@@ -36,18 +39,24 @@ export function GenerateImageModal({
   onComplete,
 }: GenerateImageModalProps) {
   const [prompt, setPrompt] = useState('')
+  const [referenceImages, setReferenceImages] = useState<string[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
 
   const generateImage = useMutation({
-    mutationFn: async (prompt: string): Promise<GenerateImageResult> => {
+    mutationFn: async (data: { prompt: string; referenceImages?: string[] }): Promise<GenerateImageResult> => {
       return api.post<GenerateImageResult>('/api/ai/generate-image', {
-        prompt,
+        prompt: data.prompt,
         projectId,
-        model: 'nano-banana',
+        model: 'nano-banana-pro',
+        referenceImages: data.referenceImages && data.referenceImages.length > 0 ? data.referenceImages : undefined,
       })
     },
     onSuccess: (data) => {
       onComplete({ id: data.id, fileUrl: data.fileUrl })
       setPrompt('')
+      setReferenceImages([])
       toast.success('Imagem gerada com sucesso!')
     },
     onError: (error) => {
@@ -61,7 +70,65 @@ export function GenerateImageModal({
       toast.error('Digite uma descricao para a imagem')
       return
     }
-    generateImage.mutate(prompt)
+    generateImage.mutate({ prompt, referenceImages })
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    if (referenceImages.length + files.length > MAX_REFERENCE_IMAGES) {
+      toast.error(`Maximo de ${MAX_REFERENCE_IMAGES} imagens de referencia`)
+      return
+    }
+
+    setIsUploading(true)
+
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith('image/')) {
+          toast.error(`${file.name} nao e uma imagem valida`)
+          continue
+        }
+
+        if (file.size > 10 * 1024 * 1024) {
+          toast.error(`${file.name} e muito grande (max 10MB)`)
+          continue
+        }
+
+        const formData = new FormData()
+        formData.append('file', file)
+        formData.append('projectId', projectId.toString())
+        formData.append('type', 'reference')
+
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        })
+
+        if (!response.ok) {
+          throw new Error('Falha ao fazer upload')
+        }
+
+        const result = await response.json()
+        setReferenceImages((prev) => [...prev, result.url])
+      }
+
+      // Invalidate gallery query to show new images
+      queryClient.invalidateQueries({ queryKey: ['project-images', projectId] })
+    } catch (error) {
+      console.error('Upload error:', error)
+      toast.error('Erro ao fazer upload da imagem')
+    } finally {
+      setIsUploading(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
+  const removeReferenceImage = (index: number) => {
+    setReferenceImages((prev) => prev.filter((_, i) => i !== index))
   }
 
   return (
@@ -90,9 +157,64 @@ export function GenerateImageModal({
             />
           </div>
 
+          {/* Reference Images Section */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Imagens de referencia (opcional)</Label>
+              <span className="text-xs text-muted-foreground">
+                {referenceImages.length}/{MAX_REFERENCE_IMAGES}
+              </span>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {referenceImages.map((url, index) => (
+                <div key={index} className="relative w-16 h-16 rounded-md overflow-hidden group">
+                  <img
+                    src={url}
+                    alt={`Referencia ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  <button
+                    onClick={() => removeReferenceImage(index)}
+                    className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="w-3 h-3 text-white" />
+                  </button>
+                </div>
+              ))}
+
+              {referenceImages.length < MAX_REFERENCE_IMAGES && (
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="w-16 h-16 rounded-md border-2 border-dashed border-muted-foreground/30 hover:border-muted-foreground/50 flex items-center justify-center transition-colors"
+                >
+                  {isUploading ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                  ) : (
+                    <ImagePlus className="w-5 h-5 text-muted-foreground" />
+                  )}
+                </button>
+              )}
+            </div>
+
+            <p className="text-xs text-muted-foreground">
+              Adicione imagens para guiar o estilo da geracao
+            </p>
+
+            <Input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileUpload}
+              className="hidden"
+            />
+          </div>
+
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <span>Custo: 5 creditos</span>
-            <span>Modelo: Nano Banana</span>
+            <span>Custo: 15 creditos</span>
+            <span>Modelo: Gemini 3 Pro</span>
           </div>
         </div>
 
@@ -100,7 +222,7 @@ export function GenerateImageModal({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
-          <Button onClick={handleGenerate} disabled={generateImage.isPending || !prompt.trim()}>
+          <Button onClick={handleGenerate} disabled={generateImage.isPending || !prompt.trim() || isUploading}>
             {generateImage.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />

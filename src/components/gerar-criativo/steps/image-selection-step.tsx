@@ -51,16 +51,22 @@ export function ImageSelectionStep() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="icon" onClick={() => stepper.prev()}>
-          <ChevronLeft className="w-5 h-5" />
-        </Button>
-        <div>
-          <h2 className="text-lg font-semibold">Escolha as Imagens</h2>
-          <p className="text-sm text-muted-foreground">
-            Selecione ou gere imagens para cada campo dinamico
-          </p>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" onClick={() => stepper.prev()}>
+            <ChevronLeft className="w-5 h-5" />
+          </Button>
+          <div>
+            <h2 className="text-lg font-semibold">Escolha as Imagens</h2>
+            <p className="text-sm text-muted-foreground">
+              Selecione ou gere imagens para cada campo dinamico
+            </p>
+          </div>
         </div>
+        <Button onClick={() => stepper.next()} disabled={!allLayersHaveImages} size="sm">
+          Continuar
+          <ChevronRight className="w-4 h-4 ml-1" />
+        </Button>
       </div>
 
       <div className="space-y-6">

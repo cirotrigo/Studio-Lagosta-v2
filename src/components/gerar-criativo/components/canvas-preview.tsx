@@ -1,11 +1,14 @@
 'use client'
 
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react'
-import { Stage, Layer as KonvaLayer, Image, Text, Rect } from 'react-konva'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
+import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line } from 'react-konva'
 import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
+
+// Snap threshold in pixels (larger value = easier to snap, especially on mobile)
+const SNAP_THRESHOLD = 25
 
 export interface CanvasPreviewHandle {
   exportToDataUrl: (format?: 'png' | 'jpeg', quality?: number) => Promise<string>
@@ -24,29 +27,40 @@ interface CanvasPreviewProps {
   onLayerDrag?: (layerId: string, position: { x: number; y: number }) => void
 }
 
+interface SnapGuides {
+  vertical: boolean // Show vertical center line
+  horizontal: boolean // Show horizontal center line
+}
+
 function ImageLayer({
   layer,
   isSelected,
   onSelect,
   imageUrl,
   onDragEnd,
+  onDragMove,
+  onDragStart,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   imageUrl?: string
   onDragEnd?: (position: { x: number; y: number }) => void
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
+  onDragStart?: () => void
 }) {
   const src = imageUrl || layer.fileUrl || ''
   const [image] = useImage(src, 'anonymous')
+  const width = layer.size?.width || 100
+  const height = layer.size?.height || 100
 
   return (
     <Image
       image={image}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
-      width={layer.size?.width || 100}
-      height={layer.size?.height || 100}
+      width={width}
+      height={height}
       rotation={layer.rotation || 0}
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
@@ -54,6 +68,8 @@ function ImageLayer({
       stroke={isSelected ? '#3b82f6' : undefined}
       strokeWidth={isSelected ? 4 : 0}
       draggable={!!onDragEnd}
+      onDragStart={onDragStart}
+      onDragMove={(e) => onDragMove?.(e, width, height)}
       onDragEnd={(e) => {
         if (onDragEnd) {
           onDragEnd({ x: e.target.x(), y: e.target.y() })
@@ -83,15 +99,21 @@ function TextLayer({
   onSelect,
   textOverride,
   onDragEnd,
+  onDragMove,
+  onDragStart,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   textOverride?: string
   onDragEnd?: (position: { x: number; y: number }) => void
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
+  onDragStart?: () => void
 }) {
   const rawContent = textOverride ?? layer.content ?? ''
   const content = applyTextTransform(rawContent, layer.style?.textTransform)
+  const width = layer.size?.width || 100
+  const height = layer.size?.height || 50
 
   // Build font style string (e.g., "bold italic")
   const fontStyle = [
@@ -104,8 +126,8 @@ function TextLayer({
       text={content}
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
-      width={layer.size?.width}
-      height={layer.size?.height}
+      width={width}
+      height={height}
       fontSize={layer.style?.fontSize || 16}
       fontFamily={layer.style?.fontFamily || 'sans-serif'}
       fontStyle={fontStyle}
@@ -117,6 +139,8 @@ function TextLayer({
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
+      onDragStart={onDragStart}
+      onDragMove={(e) => onDragMove?.(e, width, height)}
       onDragEnd={(e) => {
         if (onDragEnd) {
           onDragEnd({ x: e.target.x(), y: e.target.y() })
@@ -131,24 +155,33 @@ function ShapeLayer({
   isSelected,
   onSelect,
   onDragEnd,
+  onDragMove,
+  onDragStart,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   onDragEnd?: (position: { x: number; y: number }) => void
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
+  onDragStart?: () => void
 }) {
+  const width = layer.size?.width || 100
+  const height = layer.size?.height || 100
+
   return (
     <Rect
       x={layer.position?.x || 0}
       y={layer.position?.y || 0}
-      width={layer.size?.width || 100}
-      height={layer.size?.height || 100}
+      width={width}
+      height={height}
       fill={layer.style?.fill || '#ccc'}
       cornerRadius={layer.style?.border?.radius || 0}
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
+      onDragStart={onDragStart}
+      onDragMove={(e) => onDragMove?.(e, width, height)}
       onDragEnd={(e) => {
         if (onDragEnd) {
           onDragEnd({ x: e.target.x(), y: e.target.y() })
@@ -163,11 +196,15 @@ function GradientLayer({
   isSelected,
   onSelect,
   onDragEnd,
+  onDragMove,
+  onDragStart,
 }: {
   layer: Layer
   isSelected: boolean
   onSelect: () => void
   onDragEnd?: (position: { x: number; y: number }) => void
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
+  onDragStart?: () => void
 }) {
   const width = layer.size?.width || 100
   const height = layer.size?.height || 100
@@ -214,6 +251,10 @@ function GradientLayer({
     }
   }
 
+  const handleDragMove = (e: Konva.KonvaEventObject<DragEvent>) => {
+    onDragMove?.(e, width, height)
+  }
+
   // Fallback if no gradient stops defined
   if (colorStops.length === 0) {
     return (
@@ -228,6 +269,8 @@ function GradientLayer({
         onClick={onSelect}
         onTap={onSelect}
         draggable={!!onDragEnd}
+        onDragStart={onDragStart}
+        onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
       />
     )
@@ -250,6 +293,8 @@ function GradientLayer({
         onClick={onSelect}
         onTap={onSelect}
         draggable={!!onDragEnd}
+        onDragStart={onDragStart}
+        onDragMove={handleDragMove}
         onDragEnd={handleDragEnd}
       />
     )
@@ -270,6 +315,8 @@ function GradientLayer({
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
+      onDragStart={onDragStart}
+      onDragMove={handleDragMove}
       onDragEnd={handleDragEnd}
     />
   )
@@ -282,6 +329,8 @@ function LayerRenderer({
   imageUrl,
   textOverride,
   onDragEnd,
+  onDragMove,
+  onDragStart,
 }: {
   layer: Layer
   isSelected: boolean
@@ -289,10 +338,20 @@ function LayerRenderer({
   imageUrl?: string
   textOverride?: string
   onDragEnd?: (position: { x: number; y: number }) => void
+  onDragMove?: (e: Konva.KonvaEventObject<DragEvent>, width: number, height: number) => void
+  onDragStart?: () => void
 }) {
   if (layer.type === 'image' || layer.type === 'logo' || layer.type === 'element') {
     return (
-      <ImageLayer layer={layer} isSelected={isSelected} onSelect={onSelect} imageUrl={imageUrl} onDragEnd={onDragEnd} />
+      <ImageLayer
+        layer={layer}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        imageUrl={imageUrl}
+        onDragEnd={onDragEnd}
+        onDragMove={onDragMove}
+        onDragStart={onDragStart}
+      />
     )
   }
 
@@ -304,16 +363,36 @@ function LayerRenderer({
         onSelect={onSelect}
         textOverride={textOverride}
         onDragEnd={onDragEnd}
+        onDragMove={onDragMove}
+        onDragStart={onDragStart}
       />
     )
   }
 
   if (layer.type === 'gradient' || layer.type === 'gradient2') {
-    return <GradientLayer layer={layer} isSelected={isSelected} onSelect={onSelect} onDragEnd={onDragEnd} />
+    return (
+      <GradientLayer
+        layer={layer}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onDragEnd={onDragEnd}
+        onDragMove={onDragMove}
+        onDragStart={onDragStart}
+      />
+    )
   }
 
   if (layer.type === 'shape') {
-    return <ShapeLayer layer={layer} isSelected={isSelected} onSelect={onSelect} onDragEnd={onDragEnd} />
+    return (
+      <ShapeLayer
+        layer={layer}
+        isSelected={isSelected}
+        onSelect={onSelect}
+        onDragEnd={onDragEnd}
+        onDragMove={onDragMove}
+        onDragStart={onDragStart}
+      />
+    )
   }
 
   return null
@@ -338,6 +417,11 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     const containerRef = useRef<HTMLDivElement>(null)
     const stageRef = useRef<Konva.Stage>(null)
     const [scale, setScale] = useState(1)
+    const [snapGuides, setSnapGuides] = useState<SnapGuides>({ vertical: false, horizontal: false })
+
+    // Center coordinates
+    const centerX = templateWidth / 2
+    const centerY = templateHeight / 2
 
     useEffect(() => {
       const updateScale = () => {
@@ -352,6 +436,53 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       return () => window.removeEventListener('resize', updateScale)
     }, [templateWidth])
 
+    // Handle drag move with snapping
+    const handleDragMove = useCallback(
+      (e: Konva.KonvaEventObject<DragEvent>, elementWidth: number, elementHeight: number) => {
+        const node = e.target
+        const x = node.x()
+        const y = node.y()
+
+        // Calculate element center
+        const elementCenterX = x + elementWidth / 2
+        const elementCenterY = y + elementHeight / 2
+
+        // Check for vertical center alignment (element center aligns with canvas center)
+        const snapToVerticalCenter = Math.abs(elementCenterX - centerX) < SNAP_THRESHOLD
+        // Check for horizontal center alignment
+        const snapToHorizontalCenter = Math.abs(elementCenterY - centerY) < SNAP_THRESHOLD
+
+        // Apply snapping
+        if (snapToVerticalCenter) {
+          node.x(centerX - elementWidth / 2)
+        }
+        if (snapToHorizontalCenter) {
+          node.y(centerY - elementHeight / 2)
+        }
+
+        // Update guide visibility
+        setSnapGuides({
+          vertical: snapToVerticalCenter,
+          horizontal: snapToHorizontalCenter,
+        })
+      },
+      [centerX, centerY]
+    )
+
+    // Handle drag start - reset guides
+    const handleDragStart = useCallback(() => {
+      setSnapGuides({ vertical: false, horizontal: false })
+    }, [])
+
+    // Handle drag end - hide guides and update position
+    const handleDragEnd = useCallback(
+      (layerId: string, position: { x: number; y: number }) => {
+        setSnapGuides({ vertical: false, horizontal: false })
+        onLayerDrag?.(layerId, position)
+      },
+      [onLayerDrag]
+    )
+
     // Expose export function via ref
     useImperativeHandle(ref, () => ({
       exportToDataUrl: async (format: 'png' | 'jpeg' = 'png', quality = 0.9) => {
@@ -363,6 +494,9 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
         // Save current state
         const previousScale = { x: stage.scaleX(), y: stage.scaleY() }
         const previousPosition = { x: stage.x(), y: stage.y() }
+
+        // Hide guides during export
+        setSnapGuides({ vertical: false, horizontal: false })
 
         try {
           // Reset to 1:1 scale for export
@@ -425,9 +559,31 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
                 onSelect={() => onSelectLayer(layer.id)}
                 imageUrl={imageValues[layer.id]?.url}
                 textOverride={textValues[layer.id]}
-                onDragEnd={onLayerDrag ? (pos) => onLayerDrag(layer.id, pos) : undefined}
+                onDragStart={handleDragStart}
+                onDragMove={onLayerDrag ? handleDragMove : undefined}
+                onDragEnd={onLayerDrag ? (pos) => handleDragEnd(layer.id, pos) : undefined}
               />
             ))}
+
+            {/* Snap guide lines */}
+            {snapGuides.vertical && (
+              <Line
+                points={[centerX, 0, centerX, templateHeight]}
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dash={[10, 5]}
+                listening={false}
+              />
+            )}
+            {snapGuides.horizontal && (
+              <Line
+                points={[0, centerY, templateWidth, centerY]}
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dash={[10, 5]}
+                listening={false}
+              />
+            )}
           </KonvaLayer>
         </Stage>
       </div>

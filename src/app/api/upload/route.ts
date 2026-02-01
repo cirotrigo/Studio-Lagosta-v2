@@ -18,6 +18,7 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get('file') as File
+    const uploadType = formData.get('type') as string | null // 'reference' or 'post'
 
     if (!file) {
       console.warn('[Upload] No file provided in request')
@@ -28,6 +29,7 @@ export async function POST(request: Request) {
       name: file.name,
       type: file.type,
       size: file.size,
+      uploadType,
     })
 
     // Validate file type (images and videos)
@@ -54,7 +56,9 @@ export async function POST(request: Request) {
     let buffer: Buffer = Buffer.from(arrayBuffer)
 
     // Auto-crop images to Instagram feed format (4:5 - 1080x1350)
-    if (isImage) {
+    // Skip cropping for reference images (used in AI generation)
+    const shouldCrop = isImage && uploadType !== 'reference'
+    if (shouldCrop) {
       try {
         const imageInfo = await getImageInfo(buffer)
         console.log(`📷 Original image: ${imageInfo.width}x${imageInfo.height} (ratio: ${imageInfo.ratio.toFixed(2)})`)
@@ -68,6 +72,8 @@ export async function POST(request: Request) {
         // Continue with original buffer if crop fails
         console.warn('⚠️ Using original image (crop failed)')
       }
+    } else if (uploadType === 'reference') {
+      console.log('📷 Skipping crop for reference image')
     }
 
     // Check if Vercel Blob token is configured
@@ -81,16 +87,18 @@ export async function POST(request: Request) {
     }
 
     // Upload to Vercel Blob
-    const fileName = file.name.replace(/\.[^/.]+$/, '.jpg') // Ensure .jpg extension after crop
+    const extension = uploadType === 'reference' ? file.name.split('.').pop() || 'jpg' : 'jpg'
+    const fileName = file.name.replace(/\.[^/.]+$/, `.${extension}`)
+    const folder = uploadType === 'reference' ? 'references' : 'posts'
     console.log('[Upload] Uploading to Vercel Blob...')
 
     const blob = await put(
-      `posts/${userId}/${Date.now()}-${fileName}`,
+      `${folder}/${userId}/${Date.now()}-${fileName}`,
       buffer,
       {
         access: 'public',
         addRandomSuffix: true,
-        contentType: isImage ? 'image/jpeg' : file.type,
+        contentType: isImage && uploadType !== 'reference' ? 'image/jpeg' : file.type,
       }
     )
 
