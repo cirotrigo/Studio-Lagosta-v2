@@ -101,23 +101,29 @@ export async function POST(request: Request) {
       )
     }
 
-    // Extract base64 data from dataURL
-    const base64Data = dataUrl.split(',')[1]
-    if (!base64Data) {
+    // Extract base64 data from dataURL and detect format
+    const dataUrlMatch = dataUrl.match(/^data:image\/(png|jpeg|jpg);base64,(.+)$/)
+    if (!dataUrlMatch) {
       return NextResponse.json({ error: 'Invalid dataUrl format' }, { status: 400 })
     }
 
+    const imageFormat = dataUrlMatch[1] === 'jpg' ? 'jpeg' : dataUrlMatch[1]
+    const base64Data = dataUrlMatch[2]
+    const fileExtension = imageFormat === 'jpeg' ? 'jpg' : 'png'
+    const contentType = `image/${imageFormat}`
+
     const imageBuffer = Buffer.from(base64Data, 'base64')
+    console.log('[Gerar Criativo Finalize] Image format:', imageFormat)
     console.log('[Gerar Criativo Finalize] Image buffer size:', imageBuffer.length, 'bytes')
 
     const timestamp = Date.now()
     const blob = await put(
-      `creatives/${userId}/${timestamp}-creative.png`,
+      `creatives/${userId}/${timestamp}-creative.${fileExtension}`,
       imageBuffer,
       {
         access: 'public',
         addRandomSuffix: true,
-        contentType: 'image/png',
+        contentType,
       }
     )
 

@@ -69,7 +69,8 @@ export function AdjustmentsStep() {
 
       toast.info('Renderizando criativo...')
       console.log('[AdjustmentsStep] Calling exportToDataUrl...')
-      const dataUrl = await canvasRef.current.exportToDataUrl('png')
+      // Use JPEG with 85% quality to reduce file size (PNG is too large for serverless limits)
+      const dataUrl = await canvasRef.current.exportToDataUrl('jpeg', 0.85)
       console.log('[AdjustmentsStep] Export complete, dataUrl length:', dataUrl?.length)
 
       if (!dataUrl || dataUrl.length < 100) {
