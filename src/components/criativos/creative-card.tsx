@@ -52,12 +52,16 @@ export function CreativeCard({
 
   const canOpen = status === 'COMPLETED' && resolvedAssetUrl
 
+  // Calculate aspect ratio from dimensions
+  const aspectRatio = width / height
+
   return (
     <div
       className={cn(
-        'group relative rounded-xl bg-card overflow-hidden border transition-all aspect-[4/5]',
+        'group relative rounded-xl bg-card overflow-hidden border transition-all',
         selected ? 'ring-2 ring-primary ring-offset-2 ring-offset-background border-primary' : 'border-border/50'
       )}
+      style={{ aspectRatio: aspectRatio.toFixed(4) }}
     >
       {/* Selection checkbox */}
       <button
@@ -84,96 +88,129 @@ export function CreativeCard({
       )}
 
       {/* Main clickable area - PhotoSwipe link */}
-      <a
-        href={canOpen ? resolvedAssetUrl! : '#'}
-        data-pswp-width={width}
-        data-pswp-height={height}
-        data-pswp-type={isVideoAsset ? 'video' : 'image'}
-        className={cn(
-          'block absolute inset-0 bg-muted overflow-hidden touch-manipulation',
-          canOpen ? 'cursor-zoom-in' : 'cursor-default pointer-events-none'
-        )}
-      >
-        {/* Loading skeleton */}
-        {!imageLoaded && effectiveDisplayUrl && (
-          <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
-        )}
+      {canOpen ? (
+        <a
+          href={resolvedAssetUrl!}
+          data-pswp-width={width}
+          data-pswp-height={height}
+          data-pswp-type={isVideoAsset ? 'video' : 'image'}
+          data-cropped="true"
+          className="block absolute inset-0 cursor-zoom-in touch-manipulation"
+        >
+          <MediaContent
+            effectiveDisplayUrl={effectiveDisplayUrl}
+            displayIsVideo={displayIsVideo}
+            imageLoaded={imageLoaded}
+            setImageLoaded={setImageLoaded}
+          />
+        </a>
+      ) : (
+        <div className="absolute inset-0">
+          <MediaContent
+            effectiveDisplayUrl={effectiveDisplayUrl}
+            displayIsVideo={displayIsVideo}
+            imageLoaded={imageLoaded}
+            setImageLoaded={setImageLoaded}
+          />
+          {/* Status overlay for non-completed items */}
+          {status !== 'COMPLETED' && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <span className={cn(
+                'px-2 py-1 rounded text-xs font-medium',
+                status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
+              )}>
+                {status === 'FAILED' ? 'Falhou' : 'Processando...'}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
-        {/* Media content */}
-        {effectiveDisplayUrl ? (
-          displayIsVideo ? (
-            <video
-              src={effectiveDisplayUrl}
-              muted
-              loop
-              playsInline
-              autoPlay
-              preload="metadata"
-              className="absolute inset-0 w-full h-full object-cover"
-              onLoadedData={() => setImageLoaded(true)}
-            />
-          ) : (
-            <Image
-              src={effectiveDisplayUrl}
-              alt="Criativo"
-              fill
-              sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-              className="object-cover"
-              onLoad={() => setImageLoaded(true)}
-              loading="lazy"
-            />
-          )
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
-            Sem preview
-          </div>
-        )}
-
-        {/* Status overlay for non-completed items */}
-        {status !== 'COMPLETED' && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <span className={cn(
-              'px-2 py-1 rounded text-xs font-medium',
-              status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
-            )}>
-              {status === 'FAILED' ? 'Falhou' : 'Processando...'}
-            </span>
-          </div>
-        )}
-      </a>
-
-      {/* Action buttons - always visible at bottom */}
+      {/* Action buttons - discrete at bottom */}
       {status === 'COMPLETED' && resolvedAssetUrl && (
-        <div className="absolute bottom-0 left-0 right-0 p-2 flex gap-1.5 z-20 bg-gradient-to-t from-black/80 to-transparent pt-8 pointer-events-none">
+        <div className="absolute bottom-0 left-0 right-0 p-2 flex justify-center gap-2 z-20 pointer-events-none">
           {onSchedule && (
             <Button
               size="sm"
-              variant="default"
-              className="flex-1 h-9 text-xs touch-manipulation pointer-events-auto"
+              variant="outline"
+              className="h-8 px-3 text-xs touch-manipulation pointer-events-auto bg-black/30 border-white/30 text-white hover:bg-black/50 hover:text-white backdrop-blur-sm"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
                 onSchedule()
               }}
             >
-              <Calendar className="h-4 w-4 mr-1" />
+              <Calendar className="h-3.5 w-3.5 mr-1" />
               Agendar
             </Button>
           )}
           <Button
             size="sm"
-            variant="secondary"
-            className="h-9 px-3 touch-manipulation pointer-events-auto"
+            variant="outline"
+            className="h-8 px-3 touch-manipulation pointer-events-auto bg-black/30 border-white/30 text-white hover:bg-black/50 hover:text-white backdrop-blur-sm"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
               onDownload()
             }}
           >
-            <Download className="h-4 w-4" />
+            <Download className="h-3.5 w-3.5 mr-1" />
+            Baixar
           </Button>
         </div>
       )}
     </div>
+  )
+}
+
+// Separate component for media content to avoid duplication
+function MediaContent({
+  effectiveDisplayUrl,
+  displayIsVideo,
+  imageLoaded,
+  setImageLoaded,
+}: {
+  effectiveDisplayUrl?: string
+  displayIsVideo: boolean
+  imageLoaded: boolean
+  setImageLoaded: (loaded: boolean) => void
+}) {
+  return (
+    <>
+      {/* Loading skeleton */}
+      {!imageLoaded && effectiveDisplayUrl && (
+        <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
+      )}
+
+      {/* Media content */}
+      {effectiveDisplayUrl ? (
+        displayIsVideo ? (
+          <video
+            src={effectiveDisplayUrl}
+            muted
+            loop
+            playsInline
+            autoPlay
+            preload="metadata"
+            className="absolute inset-0 w-full h-full object-contain bg-black"
+            onLoadedData={() => setImageLoaded(true)}
+          />
+        ) : (
+          <Image
+            src={effectiveDisplayUrl}
+            alt="Criativo"
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+            className="object-contain"
+            onLoad={() => setImageLoaded(true)}
+            loading="lazy"
+          />
+        )
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
+          Sem preview
+        </div>
+      )}
+    </>
   )
 }

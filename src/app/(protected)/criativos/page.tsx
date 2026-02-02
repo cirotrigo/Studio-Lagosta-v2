@@ -563,7 +563,7 @@ export default function GlobalCreativesPage() {
       ) : viewMode === 'grid' ? (
         <div
           id="creatives-gallery"
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
+          className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
         >
           {filtered.map((generation) => {
             const selected = selectedIds.has(generation.id)
@@ -576,20 +576,21 @@ export default function GlobalCreativesPage() {
             const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
 
             return (
-              <CreativeCard
-                key={generation.id}
-                id={generation.id}
-                displayUrl={meta.displayUrl}
-                assetUrl={meta.assetUrl}
-                status={generation.status}
-                isVideo={meta.isVideo}
-                selected={selected}
-                width={width}
-                height={height}
-                onToggleSelect={() => toggleSelection(generation.id)}
-                onDownload={() => handleDownload(generation)}
-                onSchedule={() => handleSchedule(generation)}
-              />
+              <div key={generation.id} className="mb-3 md:mb-4 break-inside-avoid">
+                <CreativeCard
+                  id={generation.id}
+                  displayUrl={meta.displayUrl}
+                  assetUrl={meta.assetUrl}
+                  status={generation.status}
+                  isVideo={meta.isVideo}
+                  selected={selected}
+                  width={width}
+                  height={height}
+                  onToggleSelect={() => toggleSelection(generation.id)}
+                  onDownload={() => handleDownload(generation)}
+                  onSchedule={() => handleSchedule(generation)}
+                />
+              </div>
             )
           })}
         </div>
