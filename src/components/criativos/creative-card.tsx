@@ -87,75 +87,69 @@ export function CreativeCard({
         </div>
       )}
 
+      {/* Media content layer - always rendered, pointer-events disabled so clicks pass through */}
+      <div className="absolute inset-0 pointer-events-none">
+        <MediaContent
+          effectiveDisplayUrl={effectiveDisplayUrl}
+          displayIsVideo={displayIsVideo}
+          imageLoaded={imageLoaded}
+          setImageLoaded={setImageLoaded}
+        />
+        {/* Status overlay for non-completed items */}
+        {status !== 'COMPLETED' && (
+          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+            <span className={cn(
+              'px-2 py-1 rounded text-xs font-medium',
+              status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
+            )}>
+              {status === 'FAILED' ? 'Falhou' : 'Processando...'}
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Main clickable area - PhotoSwipe link */}
-      {canOpen ? (
+      {canOpen && (
         <a
           href={resolvedAssetUrl!}
           data-pswp-width={width}
           data-pswp-height={height}
           data-pswp-type={isVideoAsset ? 'video' : 'image'}
           data-cropped="true"
-          className="block absolute inset-0 cursor-zoom-in touch-manipulation"
-        >
-          <MediaContent
-            effectiveDisplayUrl={effectiveDisplayUrl}
-            displayIsVideo={displayIsVideo}
-            imageLoaded={imageLoaded}
-            setImageLoaded={setImageLoaded}
-          />
-        </a>
-      ) : (
-        <div className="absolute inset-0">
-          <MediaContent
-            effectiveDisplayUrl={effectiveDisplayUrl}
-            displayIsVideo={displayIsVideo}
-            imageLoaded={imageLoaded}
-            setImageLoaded={setImageLoaded}
-          />
-          {/* Status overlay for non-completed items */}
-          {status !== 'COMPLETED' && (
-            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-              <span className={cn(
-                'px-2 py-1 rounded text-xs font-medium',
-                status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
-              )}>
-                {status === 'FAILED' ? 'Falhou' : 'Processando...'}
-              </span>
-            </div>
-          )}
-        </div>
+          target="_blank"
+          rel="noopener noreferrer"
+          className="absolute inset-0 z-10 cursor-zoom-in"
+        />
       )}
 
-      {/* Action buttons - discrete at bottom */}
+      {/* Action buttons - icons only */}
       {status === 'COMPLETED' && resolvedAssetUrl && (
-        <div className="absolute bottom-0 left-0 right-0 p-2 flex justify-center gap-2 z-20 pointer-events-none">
+        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2 z-20">
           {onSchedule && (
             <Button
-              size="sm"
+              size="icon"
               variant="outline"
-              className="h-8 px-3 text-xs touch-manipulation pointer-events-auto bg-black/30 border-white/30 text-white hover:bg-black/50 hover:text-white backdrop-blur-sm"
+              className="h-8 w-8 rounded-full touch-manipulation bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
                 onSchedule()
               }}
             >
-              <Calendar className="h-3.5 w-3.5 mr-1" />
-              Agendar
+              <Calendar className="h-4 w-4" />
             </Button>
           )}
           <Button
-            size="sm"
+            size="icon"
             variant="outline"
-            className="h-8 px-3 touch-manipulation pointer-events-auto bg-black/30 border-white/30 text-white hover:bg-black/50 hover:text-white backdrop-blur-sm"
+            className="h-8 w-8 rounded-full touch-manipulation bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
               onDownload()
             }}
           >
-            <Download className="h-3.5 w-3.5 mr-1" />
-            Baixar
+            <Download className="h-4 w-4" />
           </Button>
         </div>
       )}
