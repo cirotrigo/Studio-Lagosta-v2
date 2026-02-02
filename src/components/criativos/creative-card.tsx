@@ -51,8 +51,6 @@ export function CreativeCard({
     : false
 
   const canOpen = status === 'COMPLETED' && resolvedAssetUrl
-
-  // Calculate aspect ratio from dimensions
   const aspectRatio = width / height
 
   return (
@@ -63,15 +61,16 @@ export function CreativeCard({
       )}
       style={{ aspectRatio: aspectRatio.toFixed(4) }}
     >
-      {/* Selection checkbox */}
+      {/* Selection checkbox - z-30 to be above anchor */}
       <button
+        type="button"
         onClick={(e) => {
           e.preventDefault()
           e.stopPropagation()
           onToggleSelect()
         }}
         className={cn(
-          'absolute top-2 left-2 z-30 w-7 h-7 rounded-md border-2 flex items-center justify-center transition-all touch-manipulation',
+          'absolute top-2 left-2 z-30 w-7 h-7 rounded-md border-2 flex items-center justify-center transition-all',
           selected
             ? 'bg-primary border-primary text-primary-foreground'
             : 'bg-black/50 border-white/80 text-transparent backdrop-blur-sm'
@@ -82,69 +81,34 @@ export function CreativeCard({
 
       {/* Video indicator */}
       {isVideoAsset && (
-        <div className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-black/60 backdrop-blur-sm">
+        <div className="absolute top-2 right-2 z-20 p-1.5 rounded-full bg-black/60 backdrop-blur-sm pointer-events-none">
           <Play className="h-3 w-3 text-white fill-white" />
         </div>
       )}
 
-      {/* Main clickable area - PhotoSwipe link wrapping content */}
-      <a
-        href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
-        data-pswp-src={resolvedAssetUrl ?? effectiveDisplayUrl}
-        data-pswp-width={width}
-        data-pswp-height={height}
-        data-pswp-type={isVideoAsset ? 'video' : 'image'}
-        className={cn(
-          'block absolute inset-0',
-          canOpen ? 'cursor-zoom-in' : 'cursor-default'
-        )}
-        onClick={(e) => {
-          // If not ready to open, prevent the link
-          if (!canOpen) {
-            e.preventDefault()
-            return
-          }
-          // Let PhotoSwipe handle the click
-        }}
-      >
-        {/* Media content - pointer-events disabled so clicks pass through to anchor */}
-        <div className="absolute inset-0 pointer-events-none">
-          {/* Loading skeleton */}
-          {!imageLoaded && effectiveDisplayUrl && (
-            <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
-          )}
-
-          {/* Media content */}
-          {effectiveDisplayUrl ? (
-            displayIsVideo ? (
-              <video
-                src={effectiveDisplayUrl}
-                muted
-                loop
-                playsInline
-                autoPlay
-                preload="metadata"
-                className="absolute inset-0 w-full h-full object-contain bg-black"
-                onLoadedData={() => setImageLoaded(true)}
-              />
-            ) : (
-              <Image
-                src={effectiveDisplayUrl}
-                alt="Criativo"
-                fill
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-                className="object-contain"
-                onLoad={() => setImageLoaded(true)}
-                loading="lazy"
-              />
-            )
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
-              Sem preview
-            </div>
-          )}
-
-          {/* Status overlay for non-completed items */}
+      {/* PhotoSwipe anchor - follows exact structure from docs */}
+      {canOpen ? (
+        <a
+          href={resolvedAssetUrl!}
+          data-pswp-width={width}
+          data-pswp-height={height}
+          className="block w-full h-full"
+        >
+          <Thumbnail
+            url={effectiveDisplayUrl}
+            isVideo={displayIsVideo}
+            loaded={imageLoaded}
+            onLoad={() => setImageLoaded(true)}
+          />
+        </a>
+      ) : (
+        <div className="w-full h-full">
+          <Thumbnail
+            url={effectiveDisplayUrl}
+            isVideo={displayIsVideo}
+            loaded={imageLoaded}
+            onLoad={() => setImageLoaded(true)}
+          />
           {status !== 'COMPLETED' && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
               <span
@@ -158,16 +122,16 @@ export function CreativeCard({
             </div>
           )}
         </div>
-      </a>
+      )}
 
-      {/* Action buttons - icons only */}
+      {/* Action buttons - z-30 to be above anchor */}
       {status === 'COMPLETED' && resolvedAssetUrl && (
-        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2 z-20">
+        <div className="absolute bottom-2 left-0 right-0 flex justify-center gap-2 z-30">
           {onSchedule && (
             <Button
               size="icon"
               variant="outline"
-              className="h-8 w-8 rounded-full touch-manipulation bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
+              className="h-8 w-8 rounded-full bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
               onClick={(e) => {
                 e.preventDefault()
                 e.stopPropagation()
@@ -180,7 +144,7 @@ export function CreativeCard({
           <Button
             size="icon"
             variant="outline"
-            className="h-8 w-8 rounded-full touch-manipulation bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
+            className="h-8 w-8 rounded-full bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -192,5 +156,56 @@ export function CreativeCard({
         </div>
       )}
     </div>
+  )
+}
+
+// Simple thumbnail component
+function Thumbnail({
+  url,
+  isVideo,
+  loaded,
+  onLoad,
+}: {
+  url?: string
+  isVideo: boolean
+  loaded: boolean
+  onLoad: () => void
+}) {
+  if (!url) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
+        Sem preview
+      </div>
+    )
+  }
+
+  return (
+    <>
+      {!loaded && (
+        <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
+      )}
+      {isVideo ? (
+        <video
+          src={url}
+          muted
+          loop
+          playsInline
+          autoPlay
+          preload="metadata"
+          className="absolute inset-0 w-full h-full object-contain bg-black"
+          onLoadedData={onLoad}
+        />
+      ) : (
+        <Image
+          src={url}
+          alt="Criativo"
+          fill
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+          className="object-contain"
+          onLoad={onLoad}
+          loading="lazy"
+        />
+      )}
+    </>
   )
 }

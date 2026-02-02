@@ -4,285 +4,83 @@ import { useEffect, useRef } from 'react'
 import PhotoSwipeLightbox from 'photoswipe/lightbox'
 import 'photoswipe/style.css'
 
-// Global flag to track if PhotoSwipe is open (accessible to all components)
-let isPhotoSwipeOpenGlobal = false
-// Flag to track if PhotoSwipe just processed ESC key (prevents modal from closing)
-let photoSwipeJustClosedWithEsc = false
+// Track PhotoSwipe open state globally
+let photoSwipeOpenState = false
+let lastClosedAt = 0
 
 export function isPhotoSwipeOpen(): boolean {
-  return isPhotoSwipeOpenGlobal
+  return photoSwipeOpenState
 }
 
-export function wasPhotoSwipeJustClosed(): boolean {
-  return photoSwipeJustClosedWithEsc
-}
-
-interface PhotoSwipeItem {
-  src: string
-  width: number
-  height: number
-  alt?: string
+export function wasPhotoSwipeJustClosed(withinMs = 300): boolean {
+  return Date.now() - lastClosedAt < withinMs
 }
 
 interface UsePhotoSwipeOptions {
   gallerySelector: string
-  childSelector: string
-  items?: PhotoSwipeItem[]
+  childSelector?: string
   dependencies?: unknown[]
   enabled?: boolean
 }
 
-// Check if device is mobile
-function isMobileDevice() {
-  if (typeof window === 'undefined') return false
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-}
-
 export function usePhotoSwipe({
   gallerySelector,
-  childSelector,
-  items = [],
+  childSelector = 'a',
   dependencies = [],
   enabled = true,
 }: UsePhotoSwipeOptions) {
   const lightboxRef = useRef<PhotoSwipeLightbox | null>(null)
 
   useEffect(() => {
-    if (!enabled) {
-      if (lightboxRef.current) {
-        lightboxRef.current.destroy()
-        lightboxRef.current = null
-      }
-      return
-    }
-
-    // Destroy previous instance if exists
+    // Clean up previous instance
     if (lightboxRef.current) {
       lightboxRef.current.destroy()
       lightboxRef.current = null
     }
 
-    const checkAndInit = (): 'success' | 'retry' | 'empty' => {
-      if (typeof document === 'undefined' || typeof window === 'undefined') {
-        return 'retry'
-      }
+    if (!enabled) return
 
-      const galleryElement = document.querySelector(gallerySelector)
+    // Wait for DOM to be ready
+    const initPhotoSwipe = () => {
+      const gallery = document.querySelector(gallerySelector)
+      if (!gallery) return false
 
-      if (!galleryElement) {
-        return 'retry'
-      }
+      const items = gallery.querySelectorAll(childSelector)
+      if (items.length === 0) return false
 
-      if (!document.body.contains(galleryElement)) {
-        return 'retry'
-      }
-
-      const children = galleryElement.querySelectorAll(childSelector)
-      if (children.length === 0) {
-        return 'empty'
-      }
-
-      // Check for missing attributes
-      let missingAttributes = 0
-      children.forEach((child) => {
-        const width = child.getAttribute('data-pswp-width')
-        const height = child.getAttribute('data-pswp-height')
-        if (!width || !height) {
-          missingAttributes++
-        }
-      })
-
-      if (missingAttributes > 0) {
-        return 'retry'
-      }
-
-      const isMobile = isMobileDevice()
-
-      // PhotoSwipe options - simplified for reliability
-      const options: ConstructorParameters<typeof PhotoSwipeLightbox>[0] = {
+      // Simple PhotoSwipe setup per documentation
+      lightboxRef.current = new PhotoSwipeLightbox({
         gallery: gallerySelector,
         children: childSelector,
         pswpModule: () => import('photoswipe'),
-
-        // Focus handling for Radix Dialog compatibility
-        trapFocus: false,
-        returnFocus: false,
-
-        // Padding for viewport
-        paddingFn: () => ({
-          top: isMobile ? 0 : 30,
-          bottom: isMobile ? 0 : 30,
-          left: isMobile ? 0 : 20,
-          right: isMobile ? 0 : 20,
-        }),
-
-        // Visual settings
-        bgOpacity: 1,
-        showHideAnimationType: 'fade',
-
-        // Zoom levels - fit image to screen
-        initialZoomLevel: 'fit',
-        secondaryZoomLevel: 2,
-        maxZoomLevel: 4,
-
-        // Preload nearby slides
-        preload: [1, 2],
-
-        // Mobile gestures
-        allowPanToNext: true,
-        closeOnVerticalDrag: true,
-        pinchToClose: true,
-
-        // Click/tap actions
-        tapAction: isMobile ? 'toggle-controls' : 'close',
-        doubleTapAction: 'zoom',
-        clickToCloseNonZoomable: !isMobile,
-      }
-
-      lightboxRef.current = new PhotoSwipeLightbox(options)
-
-      // Filter to process data-pswp-* attributes
-      lightboxRef.current.addFilter('domItemData', (itemData, element) => {
-        const linkEl = element as HTMLAnchorElement
-
-        const widthAttr = linkEl.getAttribute('data-pswp-width')
-        const heightAttr = linkEl.getAttribute('data-pswp-height')
-        const typeAttr = linkEl.getAttribute('data-pswp-type')
-        const mediaTypeAttr = linkEl.getAttribute('data-pswp-media-type')
-        const href = linkEl.getAttribute('href') || linkEl.getAttribute('data-pswp-src') || ''
-        const inferredVideo = /(\.mp4|\.mov|\.webm)(\?|$)/i.test(href)
-
-        // Always set src explicitly to ensure PhotoSwipe loads the image
-        if (href) {
-          itemData.src = href
-        }
-
-        if (widthAttr && heightAttr) {
-          const w = parseInt(widthAttr, 10)
-          const h = parseInt(heightAttr, 10)
-
-          // Only set dimensions if they are valid numbers
-          if (w > 0 && h > 0) {
-            itemData.w = w
-            itemData.h = h
-          }
-
-          if (typeAttr === 'video' || (!typeAttr && inferredVideo)) {
-            itemData.type = 'video'
-          }
-
-          if (mediaTypeAttr) {
-            ;(itemData as Record<string, unknown>).mediaType = mediaTypeAttr
-          }
-        }
-
-        return itemData
       })
 
-      // Video content handler
-      lightboxRef.current.on('contentLoad', (e) => {
-        const { content } = e
-
-        if (content.data.type === 'video') {
-          e.preventDefault()
-
-          const videoElement = document.createElement('video')
-          videoElement.controls = true
-          videoElement.autoplay = true
-          videoElement.loop = false
-          videoElement.playsInline = true
-          videoElement.muted = true
-          videoElement.preload = 'auto'
-          videoElement.style.cssText = `
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            background: #000;
-          `
-
-          const source = document.createElement('source')
-          source.src = content.data.src as string
-
-          const mediaType = (content.data as { mediaType?: string }).mediaType
-          if (mediaType) {
-            source.type = /quicktime|x-m4v/i.test(mediaType) ? 'video/mp4' : mediaType
-          } else if (/\.mp4(\?|$)/i.test(source.src)) {
-            source.type = 'video/mp4'
-          }
-
-          videoElement.appendChild(source)
-
-          // Unmute on tap
-          videoElement.addEventListener('click', () => {
-            videoElement.muted = false
-            videoElement.play().catch(() => {})
-          })
-
-          videoElement.load()
-
-          const wrapper = document.createElement('div')
-          wrapper.style.cssText = `
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #000;
-          `
-          wrapper.appendChild(videoElement)
-
-          content.element = wrapper
-        }
+      // Track open/close state for other components
+      lightboxRef.current.on('openingAnimationStart', () => {
+        photoSwipeOpenState = true
       })
-
-      // Track open/close state
-      lightboxRef.current.on('beforeOpen', () => {
-        isPhotoSwipeOpenGlobal = true
-        photoSwipeJustClosedWithEsc = false
-      })
-
-      lightboxRef.current.on('close', () => {
-        if (isPhotoSwipeOpenGlobal) {
-          photoSwipeJustClosedWithEsc = true
-        }
-        isPhotoSwipeOpenGlobal = false
-
-        setTimeout(() => {
-          photoSwipeJustClosedWithEsc = false
-        }, 100)
+      lightboxRef.current.on('closingAnimationEnd', () => {
+        photoSwipeOpenState = false
+        lastClosedAt = Date.now()
       })
 
       lightboxRef.current.init()
-
-      return 'success'
+      return true
     }
 
-    // Retry initialization with delays
-    let attempts = 0
-    const maxAttempts = 10
-    const timer = setInterval(() => {
-      attempts++
-      const result = checkAndInit()
-
-      if (result === 'success' || result === 'empty' || attempts >= maxAttempts) {
-        clearInterval(timer)
-      }
-    }, 300)
+    // Try to init immediately, retry if needed
+    if (!initPhotoSwipe()) {
+      const timer = setTimeout(() => {
+        initPhotoSwipe()
+      }, 500)
+      return () => clearTimeout(timer)
+    }
 
     return () => {
-      clearInterval(timer)
       if (lightboxRef.current) {
         lightboxRef.current.destroy()
         lightboxRef.current = null
       }
     }
   }, [gallerySelector, childSelector, enabled, ...dependencies])
-
-  const openPhotoSwipe = (index: number) => {
-    if (lightboxRef.current && items.length > 0) {
-      lightboxRef.current.loadAndOpen(index)
-    }
-  }
-
-  return { openPhotoSwipe }
 }

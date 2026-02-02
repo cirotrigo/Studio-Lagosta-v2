@@ -221,13 +221,12 @@ export default function GlobalCreativesPage() {
     })
   }, [data?.generations, generationMetaMap])
 
-  // PhotoSwipe integration
-  const shouldEnablePhotoSwipe = !isLoading && !isError && filtered.length > 0
+  // PhotoSwipe integration - simple setup per docs
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
-    childSelector: 'a[data-pswp-src]',
-    dependencies: [filtered.length, isLoading],
-    enabled: shouldEnablePhotoSwipe,
+    childSelector: 'a',
+    dependencies: [filtered.length],
+    enabled: filtered.length > 0,
   })
 
   const toggleSelection = React.useCallback((id: string) => {
