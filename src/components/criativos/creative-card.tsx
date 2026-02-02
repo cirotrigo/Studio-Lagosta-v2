@@ -87,37 +87,78 @@ export function CreativeCard({
         </div>
       )}
 
-      {/* Media content layer - always rendered, pointer-events disabled so clicks pass through */}
-      <div className="absolute inset-0 pointer-events-none">
-        <MediaContent
-          effectiveDisplayUrl={effectiveDisplayUrl}
-          displayIsVideo={displayIsVideo}
-          imageLoaded={imageLoaded}
-          setImageLoaded={setImageLoaded}
-        />
-        {/* Status overlay for non-completed items */}
-        {status !== 'COMPLETED' && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <span className={cn(
-              'px-2 py-1 rounded text-xs font-medium',
-              status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
-            )}>
-              {status === 'FAILED' ? 'Falhou' : 'Processando...'}
-            </span>
-          </div>
+      {/* Main clickable area - PhotoSwipe link wrapping content */}
+      <a
+        href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
+        data-pswp-src={resolvedAssetUrl ?? effectiveDisplayUrl}
+        data-pswp-width={width}
+        data-pswp-height={height}
+        data-pswp-type={isVideoAsset ? 'video' : 'image'}
+        className={cn(
+          'block absolute inset-0',
+          canOpen ? 'cursor-zoom-in' : 'cursor-default'
         )}
-      </div>
+        onClick={(e) => {
+          // If not ready to open, prevent the link
+          if (!canOpen) {
+            e.preventDefault()
+            return
+          }
+          // Let PhotoSwipe handle the click
+        }}
+      >
+        {/* Media content - pointer-events disabled so clicks pass through to anchor */}
+        <div className="absolute inset-0 pointer-events-none">
+          {/* Loading skeleton */}
+          {!imageLoaded && effectiveDisplayUrl && (
+            <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
+          )}
 
-      {/* Main clickable area - PhotoSwipe link */}
-      {canOpen && (
-        <a
-          href={resolvedAssetUrl!}
-          data-pswp-width={width}
-          data-pswp-height={height}
-          data-pswp-type={isVideoAsset ? 'video' : 'image'}
-          className="absolute inset-0 z-10 cursor-zoom-in"
-        />
-      )}
+          {/* Media content */}
+          {effectiveDisplayUrl ? (
+            displayIsVideo ? (
+              <video
+                src={effectiveDisplayUrl}
+                muted
+                loop
+                playsInline
+                autoPlay
+                preload="metadata"
+                className="absolute inset-0 w-full h-full object-contain bg-black"
+                onLoadedData={() => setImageLoaded(true)}
+              />
+            ) : (
+              <Image
+                src={effectiveDisplayUrl}
+                alt="Criativo"
+                fill
+                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                className="object-contain"
+                onLoad={() => setImageLoaded(true)}
+                loading="lazy"
+              />
+            )
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
+              Sem preview
+            </div>
+          )}
+
+          {/* Status overlay for non-completed items */}
+          {status !== 'COMPLETED' && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <span
+                className={cn(
+                  'px-2 py-1 rounded text-xs font-medium',
+                  status === 'FAILED' ? 'bg-destructive text-destructive-foreground' : 'bg-muted text-muted-foreground'
+                )}
+              >
+                {status === 'FAILED' ? 'Falhou' : 'Processando...'}
+              </span>
+            </div>
+          )}
+        </div>
+      </a>
 
       {/* Action buttons - icons only */}
       {status === 'COMPLETED' && resolvedAssetUrl && (
@@ -151,57 +192,5 @@ export function CreativeCard({
         </div>
       )}
     </div>
-  )
-}
-
-// Separate component for media content to avoid duplication
-function MediaContent({
-  effectiveDisplayUrl,
-  displayIsVideo,
-  imageLoaded,
-  setImageLoaded,
-}: {
-  effectiveDisplayUrl?: string
-  displayIsVideo: boolean
-  imageLoaded: boolean
-  setImageLoaded: (loaded: boolean) => void
-}) {
-  return (
-    <>
-      {/* Loading skeleton */}
-      {!imageLoaded && effectiveDisplayUrl && (
-        <div className="absolute inset-0 bg-gradient-to-r from-muted via-muted/50 to-muted animate-pulse" />
-      )}
-
-      {/* Media content */}
-      {effectiveDisplayUrl ? (
-        displayIsVideo ? (
-          <video
-            src={effectiveDisplayUrl}
-            muted
-            loop
-            playsInline
-            autoPlay
-            preload="metadata"
-            className="absolute inset-0 w-full h-full object-contain bg-black"
-            onLoadedData={() => setImageLoaded(true)}
-          />
-        ) : (
-          <Image
-            src={effectiveDisplayUrl}
-            alt="Criativo"
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
-            className="object-contain"
-            onLoad={() => setImageLoaded(true)}
-            loading="lazy"
-          />
-        )
-      ) : (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted text-xs text-muted-foreground">
-          Sem preview
-        </div>
-      )}
-    </>
   )
 }
