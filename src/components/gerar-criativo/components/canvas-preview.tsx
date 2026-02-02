@@ -606,10 +606,23 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     // Expose export function via ref
     useImperativeHandle(ref, () => ({
       exportToDataUrl: async (format: 'png' | 'jpeg' = 'png', quality = 0.9) => {
+        console.log('[CanvasPreview] Starting export...')
         const stage = stageRef.current
         const transformer = transformerRef.current
         if (!stage) {
+          console.error('[CanvasPreview] Stage not ready')
           throw new Error('Canvas not ready for export')
+        }
+
+        // Wait for fonts to load if not loaded yet
+        if (!fontsLoaded && projectFonts.length > 0) {
+          console.log('[CanvasPreview] Waiting for fonts to load...')
+          // Wait up to 3 seconds for fonts
+          for (let i = 0; i < 30; i++) {
+            await new Promise((resolve) => setTimeout(resolve, 100))
+            if (fontsLoaded) break
+          }
+          console.log('[CanvasPreview] Fonts loaded:', fontsLoaded)
         }
 
         // Save current state
@@ -634,7 +647,10 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           // Wait for next frame to ensure fonts and images are rendered
           await new Promise((resolve) => requestAnimationFrame(resolve))
           // Extra wait for font rendering
-          await new Promise((resolve) => setTimeout(resolve, 100))
+          await new Promise((resolve) => setTimeout(resolve, 200))
+
+          console.log('[CanvasPreview] Exporting canvas...')
+          console.log('[CanvasPreview] Stage dimensions:', templateWidth, 'x', templateHeight)
 
           // Export with original dimensions
           const dataUrl = stage.toDataURL({
@@ -647,7 +663,11 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
             height: templateHeight,
           })
 
+          console.log('[CanvasPreview] Export complete, dataUrl length:', dataUrl.length)
           return dataUrl
+        } catch (exportError) {
+          console.error('[CanvasPreview] Export error:', exportError)
+          throw exportError
         } finally {
           // Restore previous state
           stage.scale(previousScale)
@@ -661,7 +681,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           stage.batchDraw()
         }
       },
-    }))
+    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight])
 
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
 

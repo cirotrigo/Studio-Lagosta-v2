@@ -57,15 +57,32 @@ export function AdjustmentsStep() {
 
   const handleGenerateCreative = async () => {
     try {
+      console.log('[AdjustmentsStep] Starting creative generation...')
+      console.log('[AdjustmentsStep] canvasRef.current:', !!canvasRef.current)
+
       // First, export the canvas to dataUrl using Konva (frontend rendering)
       if (!canvasRef.current) {
-        throw new Error('Canvas not ready')
+        console.error('[AdjustmentsStep] Canvas ref not available')
+        toast.error('Canvas não está pronto. Tente novamente.')
+        return
       }
 
       toast.info('Renderizando criativo...')
+      console.log('[AdjustmentsStep] Calling exportToDataUrl...')
       const dataUrl = await canvasRef.current.exportToDataUrl('png')
+      console.log('[AdjustmentsStep] Export complete, dataUrl length:', dataUrl?.length)
+
+      if (!dataUrl || dataUrl.length < 100) {
+        console.error('[AdjustmentsStep] DataUrl is empty or too short')
+        toast.error('Erro ao renderizar canvas. Tente novamente.')
+        return
+      }
 
       toast.info('Salvando criativo...')
+      console.log('[AdjustmentsStep] Calling finalize API...')
+      console.log('[AdjustmentsStep] templateId:', selectedTemplateId)
+      console.log('[AdjustmentsStep] templatePageId:', selectedModelPageId)
+
       const result = await finalize.mutateAsync({
         templateId: selectedTemplateId!,
         templatePageId: selectedModelPageId!,
@@ -76,15 +93,19 @@ export function AdjustmentsStep() {
         hiddenLayerIds: Array.from(hiddenLayerIds),
       })
 
+      console.log('[AdjustmentsStep] Finalize result:', result)
+
       setGeneratedCreative({
         id: result.id,
         resultUrl: result.resultUrl,
       })
 
+      toast.success('Criativo gerado com sucesso!')
       stepper.next()
     } catch (error) {
-      console.error('Error generating creative:', error)
-      toast.error('Erro ao gerar criativo. Tente novamente.')
+      console.error('[AdjustmentsStep] Error generating creative:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Erro desconhecido'
+      toast.error(`Erro ao gerar criativo: ${errorMessage}`)
     }
   }
 
