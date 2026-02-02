@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react'
+import { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback, useMemo } from 'react'
 import { Stage, Layer as KonvaLayer, Image, Text, Rect, Line, Transformer } from 'react-konva'
 import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
 import { getFontManager } from '@/lib/font-manager'
+import { calculateImageCrop } from '@/lib/image-crop-utils'
 
 interface ProjectFont {
   id: number
@@ -62,9 +63,30 @@ function ImageLayer({
   shapeRef?: React.RefObject<Konva.Image>
 }) {
   const src = imageUrl || layer.fileUrl || ''
-  const [image] = useImage(src, 'anonymous')
-  const width = layer.size?.width || 100
-  const height = layer.size?.height || 100
+  const [image] = useImage(src, src.startsWith('http') ? 'anonymous' : undefined)
+  const width = Math.max(20, layer.size?.width ?? 100)
+  const height = Math.max(20, layer.size?.height ?? 100)
+
+  // Calculate crop for objectFit: cover (match editor behavior)
+  const crop = useMemo(() => {
+    if (!image) return undefined
+
+    // Use objectFit: cover by default to match editor behavior
+    const objectFit = layer.style?.objectFit ?? 'cover'
+    if (objectFit === 'cover') {
+      return calculateImageCrop(
+        { width: image.width, height: image.height },
+        { width, height },
+        'center-middle'
+      )
+    }
+
+    return undefined
+  }, [image, width, height, layer.style?.objectFit])
+
+  const borderColor = layer.style?.border?.color ?? '#000000'
+  const borderWidth = layer.style?.border?.width ?? 0
+  const borderRadius = layer.style?.border?.radius ?? 0
 
   return (
     <Image
@@ -75,12 +97,14 @@ function ImageLayer({
       y={layer.position?.y || 0}
       width={width}
       height={height}
+      {...crop}
       rotation={layer.rotation || 0}
       opacity={layer.style?.opacity ?? 1}
+      cornerRadius={borderRadius}
+      stroke={isSelected ? '#3b82f6' : (borderWidth > 0 ? borderColor : undefined)}
+      strokeWidth={isSelected ? 4 : (borderWidth > 0 ? borderWidth : 0)}
       onClick={onSelect}
       onTap={onSelect}
-      stroke={isSelected ? '#3b82f6' : undefined}
-      strokeWidth={isSelected ? 4 : 0}
       draggable={!!onDragEnd}
       onDragStart={onDragStart}
       onDragMove={(e) => onDragMove?.(e, width, height)}
@@ -128,14 +152,13 @@ function TextLayer({
 }) {
   const rawContent = textOverride ?? layer.content ?? ''
   const content = applyTextTransform(rawContent, layer.style?.textTransform)
-  const width = layer.size?.width || 100
-  const height = layer.size?.height || 50
+  const width = layer.size?.width ?? 240
+  const height = layer.size?.height ?? 120
 
-  // Build font style string (e.g., "bold italic")
-  const fontStyle = [
-    layer.style?.fontWeight === 'bold' || (typeof layer.style?.fontWeight === 'number' && layer.style.fontWeight >= 700) ? 'bold' : '',
-    layer.style?.fontStyle === 'italic' ? 'italic' : '',
-  ].filter(Boolean).join(' ') || 'normal'
+  // Match editor's font style handling
+  const fontStyle = layer.style?.fontStyle ?? 'normal'
+  // Use fontVariant for weight like the editor does
+  const fontVariant = layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined
 
   return (
     <Text
@@ -146,14 +169,35 @@ function TextLayer({
       y={layer.position?.y || 0}
       width={width}
       height={height}
-      fontSize={layer.style?.fontSize || 16}
-      fontFamily={layer.style?.fontFamily || 'sans-serif'}
+      fontSize={layer.style?.fontSize ?? 16}
+      fontFamily={layer.style?.fontFamily ?? 'Inter'}
       fontStyle={fontStyle}
-      fill={layer.style?.color || '#000'}
-      align={layer.style?.textAlign || 'left'}
-      lineHeight={(layer.style?.lineHeight || 1.2)}
-      letterSpacing={layer.style?.letterSpacing || 0}
+      fontVariant={fontVariant}
+      fill={layer.style?.color ?? '#000000'}
+      align={layer.style?.textAlign ?? 'left'}
+      padding={6}
+      lineHeight={layer.style?.lineHeight ?? 1.2}
+      letterSpacing={layer.style?.letterSpacing ?? 0}
+      wrap="word"
+      ellipsis={false}
+      rotation={layer.rotation ?? 0}
       opacity={layer.style?.opacity ?? 1}
+      perfectDrawEnabled={true}
+      stroke={
+        layer.effects?.stroke?.enabled
+          ? layer.effects.stroke.strokeColor
+          : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined)
+      }
+      strokeWidth={
+        layer.effects?.stroke?.enabled
+          ? layer.effects.stroke.strokeWidth
+          : (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.width : undefined)
+      }
+      shadowColor={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowColor : undefined}
+      shadowBlur={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowBlur : 0}
+      shadowOffsetX={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetX : 0}
+      shadowOffsetY={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOffsetY : 0}
+      shadowOpacity={layer.effects?.shadow?.enabled ? layer.effects.shadow.shadowOpacity : 1}
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
@@ -185,8 +229,12 @@ function ShapeLayer({
   onDragStart?: () => void
   shapeRef?: React.RefObject<Konva.Rect>
 }) {
-  const width = layer.size?.width || 100
-  const height = layer.size?.height || 100
+  const width = Math.max(10, layer.size?.width ?? 100)
+  const height = Math.max(10, layer.size?.height ?? 100)
+  const fill = layer.style?.fill ?? '#2563eb'
+  const stroke = layer.style?.strokeColor ?? (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined)
+  const strokeWidth = layer.style?.strokeWidth ?? layer.style?.border?.width ?? 0
+  const cornerRadius = layer.style?.border?.radius ?? 0
 
   return (
     <Rect
@@ -196,8 +244,11 @@ function ShapeLayer({
       y={layer.position?.y || 0}
       width={width}
       height={height}
-      fill={layer.style?.fill || '#ccc'}
-      cornerRadius={layer.style?.border?.radius || 0}
+      rotation={layer.rotation ?? 0}
+      fill={fill}
+      cornerRadius={cornerRadius}
+      stroke={stroke}
+      strokeWidth={strokeWidth}
       opacity={layer.style?.opacity ?? 1}
       onClick={onSelect}
       onTap={onSelect}
@@ -211,6 +262,43 @@ function ShapeLayer({
       }}
     />
   )
+}
+
+/**
+ * Convert CSS gradient angle to Konva start/end points
+ * Uses the same calculation as the main editor (konva-layer-factory.tsx)
+ */
+function calculateGradientFromAngle(
+  angleInDegrees: number,
+  width: number,
+  height: number
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  // Convert CSS angle (180 = top) to math angle (0 = right)
+  const angle = ((180 - angleInDegrees) / 180) * Math.PI
+
+  // Calculate length to reach corners
+  const length = Math.abs(width * Math.sin(angle)) + Math.abs(height * Math.cos(angle))
+
+  // Calculate x,y points centered on shape
+  const halfx = (Math.sin(angle) * length) / 2.0
+  const halfy = (Math.cos(angle) * length) / 2.0
+  const cx = width / 2.0
+  const cy = height / 2.0
+
+  return {
+    start: { x: cx - halfx, y: cy - halfy },
+    end: { x: cx + halfx, y: cy + halfy },
+  }
+}
+
+/**
+ * Convert hex color to rgba string
+ */
+function hexToRgba(hex: string, opacity: number): string {
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`
 }
 
 function GradientLayer({
@@ -230,44 +318,32 @@ function GradientLayer({
   onDragStart?: () => void
   shapeRef?: React.RefObject<Konva.Rect>
 }) {
-  const width = layer.size?.width || 100
-  const height = layer.size?.height || 100
-  const gradientStops = layer.style?.gradientStops || []
-  const gradientAngle = layer.style?.gradientAngle || 0
-  const gradientType = layer.style?.gradientType || 'linear'
+  const gradientStops = layer.style?.gradientStops
+  const angle = layer.style?.gradientAngle ?? 0
+  const gradientType = layer.style?.gradientType ?? 'linear'
+  const width = Math.max(20, layer.size?.width ?? 0)
+  const height = Math.max(20, layer.size?.height ?? 0)
+  const borderRadius = layer.style?.border?.radius ?? 0
+  const borderColor = layer.style?.border?.color ?? '#000000'
+  const borderWidth = layer.style?.border?.width ?? 0
 
-  // Convert CSS gradient angle to Konva coordinates
-  // CSS: 0deg = bottom→top, 90deg = left→right, 180deg = top→bottom
-  // Math: 0rad = right, π/2 = up
-  // Conversion: math_angle = css_angle - 90
-  const angleRad = ((gradientAngle - 90) * Math.PI) / 180
-  const cos = Math.cos(angleRad)
-  const sin = Math.sin(angleRad)
+  // Build color stops using editor's format
+  const colorStops = useMemo(() => {
+    const stops = Array.isArray(gradientStops) && gradientStops.length > 0
+      ? gradientStops
+      : [
+          { id: '1', position: 0, color: '#000000', opacity: 1 },
+          { id: '2', position: 1, color: '#ffffff', opacity: 1 },
+        ]
 
-  // Calculate gradient points based on angle
-  const startX = width / 2 - (cos * width) / 2
-  const startY = height / 2 - (sin * height) / 2
-  const endX = width / 2 + (cos * width) / 2
-  const endY = height / 2 + (sin * height) / 2
-
-  // Build color stops array for Konva
-  const colorStops: (number | string)[] = []
-  const sortedStops = [...gradientStops].sort((a, b) => a.position - b.position)
-
-  sortedStops.forEach((stop) => {
-    colorStops.push(stop.position)
-    // Apply opacity to color if needed
-    if (stop.opacity !== undefined && stop.opacity < 1) {
-      // Convert hex to rgba
-      const hex = stop.color.replace('#', '')
-      const r = parseInt(hex.substring(0, 2), 16)
-      const g = parseInt(hex.substring(2, 4), 16)
-      const b = parseInt(hex.substring(4, 6), 16)
-      colorStops.push(`rgba(${r},${g},${b},${stop.opacity})`)
-    } else {
-      colorStops.push(stop.color)
-    }
-  })
+    // Sort by position and convert to Konva format with opacity support
+    return stops
+      .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+      .flatMap((stop) => [
+        stop.position ?? 0,
+        hexToRgba(stop.color ?? '#000000', stop.opacity ?? 1)
+      ])
+  }, [gradientStops])
 
   const handleDragEnd = (e: { target: { x: () => number; y: () => number } }) => {
     if (onDragEnd) {
@@ -279,29 +355,6 @@ function GradientLayer({
     onDragMove?.(e, width, height)
   }
 
-  // Fallback if no gradient stops defined
-  if (colorStops.length === 0) {
-    return (
-      <Rect
-        ref={shapeRef}
-        name={layer.id}
-        x={layer.position?.x || 0}
-        y={layer.position?.y || 0}
-        width={width}
-        height={height}
-        fill={layer.style?.fill || '#ccc'}
-        cornerRadius={layer.style?.border?.radius || 0}
-        opacity={layer.style?.opacity ?? 1}
-        onClick={onSelect}
-        onTap={onSelect}
-        draggable={!!onDragEnd}
-        onDragStart={onDragStart}
-        onDragMove={handleDragMove}
-        onDragEnd={handleDragEnd}
-      />
-    )
-  }
-
   if (gradientType === 'radial') {
     return (
       <Rect
@@ -311,13 +364,16 @@ function GradientLayer({
         y={layer.position?.y || 0}
         width={width}
         height={height}
-        fillRadialGradientStartPoint={{ x: width / 2, y: height / 2 }}
-        fillRadialGradientEndPoint={{ x: width / 2, y: height / 2 }}
+        rotation={layer.rotation ?? 0}
+        fillRadialGradientStartPoint={{ x: 0, y: 0 }}
         fillRadialGradientStartRadius={0}
+        fillRadialGradientEndPoint={{ x: 0, y: 0 }}
         fillRadialGradientEndRadius={Math.max(width, height) / 2}
         fillRadialGradientColorStops={colorStops}
-        cornerRadius={layer.style?.border?.radius || 0}
+        cornerRadius={borderRadius}
         opacity={layer.style?.opacity ?? 1}
+        stroke={borderWidth > 0 ? borderColor : undefined}
+        strokeWidth={borderWidth > 0 ? borderWidth : undefined}
         onClick={onSelect}
         onTap={onSelect}
         draggable={!!onDragEnd}
@@ -328,7 +384,9 @@ function GradientLayer({
     )
   }
 
-  // Linear gradient
+  // Linear gradient - use editor's calculation
+  const gradientPoints = calculateGradientFromAngle(angle, width, height)
+
   return (
     <Rect
       ref={shapeRef}
@@ -337,11 +395,14 @@ function GradientLayer({
       y={layer.position?.y || 0}
       width={width}
       height={height}
-      fillLinearGradientStartPoint={{ x: startX, y: startY }}
-      fillLinearGradientEndPoint={{ x: endX, y: endY }}
+      rotation={layer.rotation ?? 0}
+      fillLinearGradientStartPoint={gradientPoints.start}
+      fillLinearGradientEndPoint={gradientPoints.end}
       fillLinearGradientColorStops={colorStops}
-      cornerRadius={layer.style?.border?.radius || 0}
+      cornerRadius={borderRadius}
       opacity={layer.style?.opacity ?? 1}
+      stroke={borderWidth > 0 ? borderColor : undefined}
+      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
@@ -638,6 +699,21 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           transformer.visible(false)
         }
 
+        // Hide selection stroke on selected layer during export
+        let selectedShape: Konva.Shape | null = null
+        let prevStroke: string | CanvasGradient | undefined
+        let prevStrokeWidth: number | undefined
+        if (selectedLayerId) {
+          const node = stage.findOne(`.${selectedLayerId}`)
+          if (node && 'stroke' in node) {
+            selectedShape = node as Konva.Shape
+            prevStroke = selectedShape.stroke()
+            prevStrokeWidth = selectedShape.strokeWidth()
+            selectedShape.stroke('')
+            selectedShape.strokeWidth(0)
+          }
+        }
+
         try {
           // Reset to 1:1 scale for export
           stage.scale({ x: 1, y: 1 })
@@ -678,10 +754,16 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
             transformer.visible(true)
           }
 
+          // Restore selection stroke
+          if (selectedShape) {
+            selectedShape.stroke(prevStroke)
+            selectedShape.strokeWidth(prevStrokeWidth)
+          }
+
           stage.batchDraw()
         }
       },
-    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight])
+    }), [fontsLoaded, projectFonts.length, templateWidth, templateHeight, selectedLayerId])
 
     const visibleLayers = layers.filter((l) => !hiddenLayerIds.has(l.id) && l.visible !== false)
 
