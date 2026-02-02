@@ -57,42 +57,56 @@ import {
   createDisambiguationState,
 } from '@/lib/knowledge/disambiguation'
 
-// Fallback static models (used if API fails)
+// Fallback static models (used if API fails) - updated January 2025
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
   openrouter: [
+    { id: 'openai/gpt-4o', label: 'OpenAI · GPT-4o' },
     { id: 'openai/gpt-4o-mini', label: 'OpenAI · GPT-4o Mini' },
     { id: 'anthropic/claude-3.5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
+    { id: 'anthropic/claude-3.5-haiku', label: 'Anthropic · Claude 3.5 Haiku' },
     { id: 'google/gemini-2.0-flash-exp:free', label: 'Google · Gemini 2.0 Flash (Free)' },
-    { id: 'mistralai/mistral-small', label: 'Mistral · Mistral Small' },
+    { id: 'google/gemini-flash-1.5', label: 'Google · Gemini 1.5 Flash' },
+    { id: 'mistralai/mistral-large', label: 'Mistral · Large' },
+    { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Meta · Llama 3.3 70B' },
+    { id: 'deepseek/deepseek-chat', label: 'DeepSeek · Chat' },
+    { id: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen · 2.5 72B' },
   ],
   openai: [
-    { id: 'gpt-5.1', label: 'GPT-5.1 (Latest Flagship)' },
-    { id: 'gpt-5-mini', label: 'GPT-5 Mini (Balanced)' },
-    { id: 'gpt-5-nano', label: 'GPT-5 Nano (Fastest)' },
-    { id: 'o4-mini', label: 'o4-mini (Reasoning)' },
-    { id: 'o3-mini', label: 'o3-mini (Reasoning)' },
-    { id: 'gpt-4o', label: 'GPT-4o' },
-    { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { id: 'gpt-4o', label: 'GPT-4o (Flagship)' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)' },
+    { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { id: 'o1', label: 'o1 (Reasoning)' },
+    { id: 'o1-mini', label: 'o1-mini (Fast Reasoning)' },
+    { id: 'o1-preview', label: 'o1-preview' },
+    { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
   ],
   anthropic: [
-    { id: 'claude-sonnet-4-5', label: 'Claude Sonnet 4.5' },
-    { id: 'claude-sonnet-4', label: 'Claude Sonnet 4' },
-    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
+    { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Latest)' },
+    { id: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku (Fast)' },
+    { id: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+    { id: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
+    { id: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
   ],
   google: [
-    { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro' },
-    { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash' },
-    { id: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Experimental)' },
+    { id: 'gemini-2.0-flash-exp', label: 'Gemini 2.0 Flash (Latest)' },
+    { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+    { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash 8B (Fast)' },
   ],
   mistral: [
     { id: 'mistral-large-latest', label: 'Mistral Large (Latest)' },
     { id: 'mistral-small-latest', label: 'Mistral Small (Latest)' },
-    { id: 'mistral-medium-latest', label: 'Mistral Medium (Latest)' },
+    { id: 'codestral-latest', label: 'Codestral (Code)' },
+    { id: 'pixtral-large-latest', label: 'Pixtral Large (Vision)' },
   ],
 }
 
 const STATIC_IMAGE_MODELS_OPENROUTER: { id: string; label: string }[] = [
-  { id: 'google/gemini-2.5-flash-image-preview', label: 'Nano Banana' }
+  { id: 'black-forest-labs/flux-1.1-pro', label: 'FLUX 1.1 Pro (Recommended)' },
+  { id: 'black-forest-labs/flux-schnell', label: 'FLUX Schnell (Fast)' },
+  { id: 'stability/sd3-large', label: 'Stable Diffusion 3 Large' },
+  { id: 'stability/sd3-medium', label: 'Stable Diffusion 3 Medium' },
+  { id: 'stabilityai/stable-diffusion-xl-base-1.0', label: 'SDXL 1.0' },
 ]
 
 export default function AIChatPage() {
@@ -232,11 +246,11 @@ export default function AIChatPage() {
   // Set initial provider when providers are loaded
   React.useEffect(() => {
     if (availableProviders.length > 0 && !provider) {
-      // Prioritize OpenAI with GPT-5.1 as default (most capable model available)
+      // Prioritize OpenAI with GPT-4o as default (most capable model available)
       const openaiProvider = availableProviders.find(p => p.key === 'openai')
       if (openaiProvider) {
         setProvider('openai')
-        setModel('gpt-5.1') // GPT-5.1 as default
+        setModel('gpt-4o') // GPT-4o as default
       } else {
         // Fallback to first available provider
         const firstProvider = availableProviders[0]
@@ -436,10 +450,16 @@ export default function AIChatPage() {
           setModel(formattedModels[0].id)
           initialModelSetRef.current = true
         }
-      } else if (!isLoadingModels) {
-        // Fallback to static models if API fails
-        setDynamicOpenRouterModels(null)
+      } else {
+        // Use static fallback models (while loading or if API fails)
         const fallbackModels = mode === 'image' ? STATIC_IMAGE_MODELS_OPENROUTER : (currentProviderData?.models ?? STATIC_MODELS['openrouter'])
+
+        // Only clear dynamic models if API actually failed (not loading)
+        if (!isLoadingModels) {
+          setDynamicOpenRouterModels(null)
+        }
+
+        // Set model from fallback if empty or doesn't exist
         const modelExists = model && fallbackModels.some(m => m.id === model)
         if (!modelExists && fallbackModels.length > 0) {
           setModel(fallbackModels[0].id)

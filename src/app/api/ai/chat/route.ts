@@ -48,62 +48,70 @@ const ProviderSchema = z.enum(['openai', 'anthropic', 'google', 'mistral', 'open
 // Known-safe models for direct providers. OpenRouter models are dynamic; validate format below.
 const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
   openai: [
-    // GPT-5.2 series (Latest - December 2025)
-    'gpt-5.2',
-    'gpt-5.2-chat-latest',
-    'gpt-5.2-pro',
-    // GPT-5.1 series (November 2025)
-    'gpt-5.1',
-    'gpt-5.1-2025-11-13',
-    // GPT-5 series (August 2025)
-    'gpt-5',
-    'gpt-5-2025-08-07',
-    'gpt-5-mini',
-    'gpt-5-mini-2025-08-07',
-    'gpt-5-nano',
-    'gpt-5-nano-2025-08-07',
-    'gpt-5-pro',
-    'gpt-5-pro-2025-10-06',
-    // GPT-4.1 series (April 2025)
-    'gpt-4.1',
-    'gpt-4.1-2025-04-14',
-    'gpt-4.1-mini',
-    'gpt-4.1-mini-2025-04-14',
-    'gpt-4.1-nano',
-    'gpt-4.1-nano-2025-04-14',
-    // GPT-4o series (Current stable)
+    // GPT-4o series (Current flagship)
     'gpt-4o',
+    'gpt-4o-2024-11-20',
+    'gpt-4o-2024-08-06',
+    'gpt-4o-2024-05-13',
     'gpt-4o-mini',
+    'gpt-4o-mini-2024-07-18',
+    // GPT-4 Turbo
+    'gpt-4-turbo',
+    'gpt-4-turbo-2024-04-09',
+    'gpt-4-turbo-preview',
+    // Legacy GPT-4
+    'gpt-4',
+    'gpt-4-0613',
     // Reasoning models (o-series)
     'o1',
+    'o1-2024-12-17',
     'o1-mini',
-    'o3',
-    'o3-mini',
-    'o3-pro',
-    'o4-mini',
+    'o1-mini-2024-09-12',
+    'o1-preview',
+    'o1-preview-2024-09-12',
+    // GPT-3.5
+    'gpt-3.5-turbo',
+    'gpt-3.5-turbo-0125',
   ],
   anthropic: [
-    'claude-sonnet-4-5',
-    'claude-sonnet-4',
+    // Claude 3.5 series
     'claude-3-5-sonnet-20241022',
+    'claude-3-5-sonnet-latest',
+    'claude-3-5-haiku-20241022',
+    'claude-3-5-haiku-latest',
+    // Claude 3 series
+    'claude-3-opus-20240229',
+    'claude-3-opus-latest',
+    'claude-3-sonnet-20240229',
+    'claude-3-haiku-20240307',
   ],
   google: [
-    'gemini-2.5-pro',
-    'gemini-2.5-flash',
+    // Gemini 2.0
     'gemini-2.0-flash-exp',
+    'gemini-2.0-flash-thinking-exp-01-21',
+    // Gemini 1.5
+    'gemini-1.5-pro',
+    'gemini-1.5-pro-latest',
+    'gemini-1.5-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash-8b',
+    'gemini-1.5-flash-8b-latest',
+    // Legacy
+    'gemini-pro',
   ],
   mistral: [
     'mistral-large-latest',
+    'mistral-large-2411',
     'mistral-small-latest',
-    'mistral-medium-latest',
+    'mistral-small-2409',
+    'codestral-latest',
+    'codestral-2405',
+    'pixtral-large-latest',
+    'pixtral-12b-2409',
+    'open-mistral-nemo',
   ],
   openrouter: [
-    // Representative defaults; OpenRouter validated by pattern
-    'openai/gpt-4o-mini',
-    'anthropic/claude-3.5-sonnet',
-    'google/gemini-2.0-flash-001',
-    'google/gemini-2.0-flash-exp:free',
-    'mistralai/mistral-small',
+    // Representative defaults; OpenRouter validated by pattern (accepts vendor/model format)
   ],
 }
 
