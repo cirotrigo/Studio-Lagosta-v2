@@ -6,6 +6,14 @@ import { useImage } from 'react-konva-utils'
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
+import { getFontManager } from '@/lib/font-manager'
+
+interface ProjectFont {
+  id: number
+  name: string
+  fontFamily: string
+  fileUrl: string
+}
 
 // Snap threshold in pixels (larger value = easier to snap, especially on mobile)
 const SNAP_THRESHOLD = 25
@@ -26,6 +34,7 @@ interface CanvasPreviewProps {
   templateBackground?: string
   onLayerDrag?: (layerId: string, position: { x: number; y: number }) => void
   onLayerResize?: (layerId: string, size: { width: number; height: number }, position: { x: number; y: number }) => void
+  projectFonts?: ProjectFont[]
 }
 
 interface SnapGuides {
@@ -439,6 +448,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       templateBackground = '#ffffff',
       onLayerDrag,
       onLayerResize,
+      projectFonts = [],
     },
     ref
   ) {
@@ -447,6 +457,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     const transformerRef = useRef<Konva.Transformer>(null)
     const [scale, setScale] = useState(1)
     const [snapGuides, setSnapGuides] = useState<SnapGuides>({ vertical: false, horizontal: false })
+    const [fontsLoaded, setFontsLoaded] = useState(false)
 
     // Center coordinates
     const centerX = templateWidth / 2
@@ -464,6 +475,40 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
       window.addEventListener('resize', updateScale)
       return () => window.removeEventListener('resize', updateScale)
     }, [templateWidth])
+
+    // Load project fonts
+    useEffect(() => {
+      if (projectFonts.length === 0) {
+        setFontsLoaded(true)
+        return
+      }
+
+      const loadFonts = async () => {
+        setFontsLoaded(false)
+        const fontManager = getFontManager()
+
+        try {
+          for (const font of projectFonts) {
+            await fontManager.loadDatabaseFont({
+              id: font.id,
+              name: font.name,
+              fontFamily: font.fontFamily,
+              fileUrl: font.fileUrl,
+              projectId: 0, // Not needed for loading
+            })
+          }
+          console.log(`✅ Loaded ${projectFonts.length} project fonts for canvas`)
+        } catch (error) {
+          console.error('Error loading project fonts:', error)
+        } finally {
+          setFontsLoaded(true)
+          // Force redraw after fonts are loaded
+          stageRef.current?.batchDraw()
+        }
+      }
+
+      loadFonts()
+    }, [projectFonts])
 
     // Attach transformer to selected node
     useEffect(() => {
@@ -562,6 +607,7 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
     useImperativeHandle(ref, () => ({
       exportToDataUrl: async (format: 'png' | 'jpeg' = 'png', quality = 0.9) => {
         const stage = stageRef.current
+        const transformer = transformerRef.current
         if (!stage) {
           throw new Error('Canvas not ready for export')
         }
@@ -570,8 +616,14 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
         const previousScale = { x: stage.scaleX(), y: stage.scaleY() }
         const previousPosition = { x: stage.x(), y: stage.y() }
 
-        // Hide guides during export
+        // Hide guides and transformer during export
         setSnapGuides({ vertical: false, horizontal: false })
+
+        // Hide transformer during export
+        const transformerWasVisible = transformer?.visible() ?? false
+        if (transformer) {
+          transformer.visible(false)
+        }
 
         try {
           // Reset to 1:1 scale for export
@@ -579,8 +631,10 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           stage.position({ x: 0, y: 0 })
           stage.batchDraw()
 
-          // Wait for next frame
+          // Wait for next frame to ensure fonts and images are rendered
           await new Promise((resolve) => requestAnimationFrame(resolve))
+          // Extra wait for font rendering
+          await new Promise((resolve) => setTimeout(resolve, 100))
 
           // Export with original dimensions
           const dataUrl = stage.toDataURL({
@@ -598,6 +652,12 @@ export const CanvasPreview = forwardRef<CanvasPreviewHandle, CanvasPreviewProps>
           // Restore previous state
           stage.scale(previousScale)
           stage.position(previousPosition)
+
+          // Restore transformer visibility
+          if (transformer && transformerWasVisible) {
+            transformer.visible(true)
+          }
+
           stage.batchDraw()
         }
       },

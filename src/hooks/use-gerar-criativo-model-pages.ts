@@ -23,6 +23,12 @@ export interface ModelPageWithContext {
     id: number
     name: string
     logoUrl: string | null
+    fonts: Array<{
+      id: number
+      name: string
+      fontFamily: string
+      fileUrl: string
+    }>
   }
 }
 

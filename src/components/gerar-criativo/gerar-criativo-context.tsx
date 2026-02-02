@@ -22,6 +22,13 @@ interface GeneratedCreative {
   resultUrl: string
 }
 
+interface ProjectFont {
+  id: number
+  name: string
+  fontFamily: string
+  fileUrl: string
+}
+
 interface GerarCriativoState {
   // Step 1
   selectedProjectId: number | null
@@ -32,6 +39,7 @@ interface GerarCriativoState {
   layers: Layer[]
   templateWidth: number
   templateHeight: number
+  projectFonts: ProjectFont[]
   // Step 4
   imageValues: Record<string, ImageSource>
   // Step 5
@@ -44,7 +52,7 @@ interface GerarCriativoState {
 
 interface GerarCriativoContextValue extends GerarCriativoState {
   // Step 1 (unified selection)
-  selectModelPageWithContext: (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number) => void
+  selectModelPageWithContext: (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number, fonts?: ProjectFont[]) => void
   // Legacy (kept for compatibility)
   selectProject: (projectId: number) => void
   selectTemplate: (templateId: number) => void
@@ -73,6 +81,7 @@ const initialState: GerarCriativoState = {
   layers: [],
   templateWidth: 1080,
   templateHeight: 1920,
+  projectFonts: [],
   imageValues: {},
   textValues: {},
   selectedLayerId: null,
@@ -137,7 +146,7 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const selectModelPageWithContext = useCallback(
-    (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number) => {
+    (projectId: number, templateId: number, pageId: string, layers: Layer[], width: number, height: number, fonts?: ProjectFont[]) => {
       setState({
         selectedProjectId: projectId,
         selectedTemplateId: templateId,
@@ -145,6 +154,7 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
         layers,
         templateWidth: width,
         templateHeight: height,
+        projectFonts: fonts || [],
         imageValues: {},
         textValues: {},
         selectedLayerId: null,

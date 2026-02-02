@@ -24,6 +24,7 @@ export function AdjustmentsStep() {
     layers,
     templateWidth,
     templateHeight,
+    projectFonts,
     selectedLayerId,
     selectLayer,
     reorderLayers,
@@ -128,6 +129,7 @@ export function AdjustmentsStep() {
                 onLayerResize={handleLayerResize}
                 templateWidth={templateWidth}
                 templateHeight={templateHeight}
+                projectFonts={projectFonts}
               />
             </Card>
             {selectedLayer && selectedLayer.type === 'image' && (
@@ -250,6 +252,7 @@ export function AdjustmentsStep() {
               onLayerResize={handleLayerResize}
               templateWidth={templateWidth}
               templateHeight={templateHeight}
+              projectFonts={projectFonts}
             />
           </Card>
         </div>

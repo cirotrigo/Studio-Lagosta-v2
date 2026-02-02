@@ -56,6 +56,14 @@ export async function GET() {
                       fileUrl: true,
                     },
                   },
+                  CustomFont: {
+                    select: {
+                      id: true,
+                      name: true,
+                      fontFamily: true,
+                      fileUrl: true,
+                    },
+                  },
                 },
               },
             },
@@ -109,6 +117,14 @@ export async function GET() {
                           fileUrl: true,
                         },
                       },
+                      CustomFont: {
+                        select: {
+                          id: true,
+                          name: true,
+                          fontFamily: true,
+                          fileUrl: true,
+                        },
+                      },
                     },
                   },
                 },
@@ -148,6 +164,7 @@ export async function GET() {
         id: page.Template.Project.id,
         name: page.Template.Project.name,
         logoUrl: page.Template.Project.Logo[0]?.fileUrl || null,
+        fonts: page.Template.Project.CustomFont || [],
       },
     }))
 
