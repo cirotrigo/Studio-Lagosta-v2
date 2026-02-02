@@ -6,13 +6,8 @@ import { useRouter } from 'next/navigation'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Badge } from '@/components/ui/badge'
 import { Card } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
@@ -21,18 +16,7 @@ import { useAllGenerations, type GenerationRecord } from '@/hooks/use-generation
 import { ProjectCarouselFilter } from '@/components/criativos/project-carousel-filter'
 import { CreativeCard } from '@/components/criativos/creative-card'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
-import {
-  Eye,
-  Download,
-  RefreshCw,
-  Grid3X3,
-  List,
-  Search,
-  Trash2,
-  HardDrive,
-  Calendar,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Eye, Download, Trash2, Calendar } from 'lucide-react'
 
 interface TemplateInfo {
   id: number
@@ -52,15 +36,6 @@ interface GenerationMeta {
   posterUrl?: string | null
   mimeType?: string | null
 }
-
-const STATUS_OPTIONS = [
-  { value: 'all', label: 'Todos os status' },
-  { value: 'COMPLETED', label: 'Concluídos' },
-  { value: 'POSTING', label: 'Processando' },
-  { value: 'FAILED', label: 'Falharam' },
-]
-
-type ViewMode = 'grid' | 'list'
 
 type PreviewState =
   | {
@@ -191,11 +166,7 @@ export default function GlobalCreativesPage() {
   )
 
   const [selectedProjectId, setSelectedProjectId] = React.useState<number | null>(null)
-  const [searchTerm, setSearchTerm] = React.useState('')
-  const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
-  const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
-  const [onlyWithResult, setOnlyWithResult] = React.useState(true)
   const [preview, setPreview] = React.useState<PreviewState>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
@@ -243,22 +214,12 @@ export default function GlobalCreativesPage() {
 
   const filtered = React.useMemo(() => {
     const list = data?.generations ?? []
-    const query = searchTerm.trim().toLowerCase()
-
+    // Only show completed items with a result
     return list.filter((generation) => {
       const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
-      const matchesStatus = statusFilter === 'all' || generation.status === statusFilter
-      const matchesResult = !onlyWithResult || Boolean(meta.assetUrl ?? meta.displayUrl)
-      const matchesSearch =
-        !query ||
-        generation.templateName?.toLowerCase().includes(query) ||
-        generation.Template?.name?.toLowerCase().includes(query) ||
-        generation.projectName?.toLowerCase().includes(query) ||
-        generation.Project?.name?.toLowerCase().includes(query) ||
-        generation.id.toLowerCase().includes(query)
-      return matchesStatus && matchesResult && matchesSearch
+      return generation.status === 'COMPLETED' && Boolean(meta.assetUrl ?? meta.displayUrl)
     })
-  }, [data?.generations, statusFilter, searchTerm, onlyWithResult, generationMetaMap])
+  }, [data?.generations, generationMetaMap])
 
   // PhotoSwipe integration
   usePhotoSwipe({
@@ -468,66 +429,6 @@ export default function GlobalCreativesPage() {
         )}
       </div>
 
-      {/* Filters */}
-      <Card className="flex flex-wrap items-center gap-3 p-3 md:p-4 mb-4">
-        <div className="flex flex-1 flex-wrap items-center gap-2">
-          <div className="relative w-full sm:w-auto sm:max-w-[200px]">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Buscar..."
-              className="pl-8 h-9"
-              value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-            <SelectTrigger className="w-[140px] h-9">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {STATUS_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
-            <label htmlFor="only-result" className="cursor-pointer">Somente com arquivo</label>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" className="h-9 w-9" onClick={() => setViewMode('grid')}>
-            <Grid3X3 className="h-4 w-4" />
-          </Button>
-          <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" className="h-9 w-9" onClick={() => setViewMode('list')}>
-            <List className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 hidden sm:flex"
-            disabled={selectedIds.size === 0}
-            onClick={handleBulkDownload}
-          >
-            <Download className="mr-1 h-4 w-4" /> Baixar ({selectedIds.size})
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9 hidden sm:flex"
-            disabled={selectedIds.size === 0}
-            onClick={handleBulkDelete}
-          >
-            <Trash2 className="mr-1 h-4 w-4 text-red-500" /> Excluir ({selectedIds.size})
-          </Button>
-          <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </div>
-      </Card>
-
       {/* Content */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
@@ -560,7 +461,7 @@ export default function GlobalCreativesPage() {
             </Button>
           </div>
         </Card>
-      ) : viewMode === 'grid' ? (
+      ) : (
         <div
           id="creatives-gallery"
           className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
@@ -595,125 +496,6 @@ export default function GlobalCreativesPage() {
             )
           })}
         </div>
-      ) : (
-        <Card className="overflow-hidden flex-1">
-          <ScrollArea className="h-[600px]">
-            <table className="w-full table-fixed text-sm">
-              <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="w-32 px-4 py-2 text-left">Criativo</th>
-                  <th className="px-4 py-2 text-left">Template</th>
-                  <th className="w-28 px-4 py-2 text-left hidden md:table-cell">Projeto</th>
-                  <th className="w-32 px-4 py-2 text-left">Status</th>
-                  <th className="w-44 px-4 py-2 text-left hidden sm:table-cell">Gerado em</th>
-                  <th className="w-48 px-4 py-2 text-left">Ações</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((generation) => {
-                  const selected = selectedIds.has(generation.id)
-                  const templateLabel = generation.Template?.name || generation.templateName || 'Template'
-                  const projectName = generation.Project?.name || generation.projectName || '-'
-                  const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
-                  const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
-                  const canPreview = Boolean(previewUrl)
-                  const canDownload = Boolean(meta.downloadUrl)
-                  return (
-                    <tr key={generation.id} className={cn('border-b border-border/30', selected && 'bg-primary/5')}>
-                      <td className="px-4 py-3">
-                        <div className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={() => toggleSelection(generation.id)}
-                            className="h-4 w-4 rounded border-border/60"
-                          />
-                          <span className="font-mono text-xs text-muted-foreground truncate">{generation.id.slice(0, 8)}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col">
-                          <span className="font-medium truncate">{templateLabel}</span>
-                          {generation.Template?.dimensions && (
-                            <span className="text-xs text-muted-foreground">{generation.Template.dimensions}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 hidden md:table-cell">
-                        <span className="text-sm truncate">{projectName}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant={generation.status === 'COMPLETED' ? 'secondary' : generation.status === 'FAILED' ? 'destructive' : 'outline'}>
-                          {generation.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell">
-                        {new Intl.DateTimeFormat('pt-BR', {
-                          dateStyle: 'medium',
-                          timeStyle: 'short',
-                        }).format(new Date(generation.createdAt))}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          {generation.status === 'COMPLETED' && meta.assetUrl && (
-                            <Button
-                              size="sm"
-                              variant="default"
-                              onClick={() => handleSchedule(generation)}
-                            >
-                              <Calendar className="mr-1 h-4 w-4" />
-                              <span className="hidden sm:inline">Agendar</span>
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                              setPreview(
-                                canPreview
-                                  ? {
-                                      id: generation.id,
-                                      url: previewUrl!,
-                                      templateName: templateLabel,
-                                      isVideo: meta.isVideo && Boolean(meta.assetUrl),
-                                      posterUrl: meta.posterUrl ?? meta.thumbnailUrl ?? undefined,
-                                    }
-                                  : null
-                              )
-                            }
-                            disabled={!canPreview}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleDownload(generation)}
-                            disabled={!canDownload}
-                          >
-                            <Download className="h-4 w-4" />
-                          </Button>
-                          {generation.googleDriveBackupUrl && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')}
-                            >
-                              <HardDrive className="h-4 w-4" />
-                            </Button>
-                          )}
-                          <Button size="sm" variant="ghost" onClick={() => handleDelete(generation)}>
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </ScrollArea>
-        </Card>
       )}
 
       {/* Mobile Action Bar */}

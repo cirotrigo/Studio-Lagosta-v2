@@ -115,9 +115,6 @@ export function CreativeCard({
           data-pswp-width={width}
           data-pswp-height={height}
           data-pswp-type={isVideoAsset ? 'video' : 'image'}
-          data-cropped="true"
-          target="_blank"
-          rel="noopener noreferrer"
           className="absolute inset-0 z-10 cursor-zoom-in"
         />
       )}

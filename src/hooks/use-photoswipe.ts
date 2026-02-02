@@ -32,51 +32,10 @@ interface UsePhotoSwipeOptions {
   enabled?: boolean
 }
 
-// Fullscreen API helper with webkit prefix support
-function getFullscreenAPI() {
-  const api = {
-    request: null as ((el: Element) => Promise<void>) | null,
-    exit: null as (() => Promise<void>) | null,
-    element: null as (() => Element | null) | null,
-    supported: false,
-  }
-
-  if (typeof document === 'undefined') return api
-
-  // Check for standard and webkit-prefixed versions
-  const el = document.documentElement as Element & {
-    webkitRequestFullscreen?: () => Promise<void>
-  }
-  const doc = document as Document & {
-    webkitExitFullscreen?: () => Promise<void>
-    webkitFullscreenElement?: Element
-  }
-
-  if (el.requestFullscreen) {
-    api.request = (element: Element) => element.requestFullscreen()
-    api.exit = () => document.exitFullscreen()
-    api.element = () => document.fullscreenElement
-    api.supported = true
-  } else if (el.webkitRequestFullscreen) {
-    api.request = (element: Element) => (element as typeof el).webkitRequestFullscreen!()
-    api.exit = () => doc.webkitExitFullscreen!()
-    api.element = () => doc.webkitFullscreenElement || null
-    api.supported = true
-  }
-
-  return api
-}
-
 // Check if device is mobile
 function isMobileDevice() {
   if (typeof window === 'undefined') return false
   return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent)
-}
-
-// Check if Safari (doesn't support fullscreen API on iOS)
-function isSafari() {
-  if (typeof navigator === 'undefined') return false
-  return /^((?!chrome|android).)*safari/i.test(navigator.userAgent)
 }
 
 export function usePhotoSwipe({
@@ -87,7 +46,6 @@ export function usePhotoSwipe({
   enabled = true,
 }: UsePhotoSwipeOptions) {
   const lightboxRef = useRef<PhotoSwipeLightbox | null>(null)
-  const fullscreenContainerRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!enabled) {
@@ -102,12 +60,6 @@ export function usePhotoSwipe({
     if (lightboxRef.current) {
       lightboxRef.current.destroy()
       lightboxRef.current = null
-    }
-
-    // Clean up old fullscreen container
-    if (fullscreenContainerRef.current) {
-      fullscreenContainerRef.current.remove()
-      fullscreenContainerRef.current = null
     }
 
     const checkAndInit = (): 'success' | 'retry' | 'empty' => {
@@ -145,26 +97,8 @@ export function usePhotoSwipe({
       }
 
       const isMobile = isMobileDevice()
-      const isIOSSafari = isSafari() && /iPhone|iPad|iPod/.test(navigator.userAgent)
-      const fullscreenAPI = getFullscreenAPI()
-      const useNativeFullscreen = isMobile && fullscreenAPI.supported && !isIOSSafari
 
-      // Create fullscreen container for mobile (except iOS Safari)
-      if (useNativeFullscreen) {
-        const container = document.createElement('div')
-        container.id = 'pswp-fullscreen-container'
-        container.style.cssText = `
-          display: none;
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
-          background: #000;
-        `
-        document.body.appendChild(container)
-        fullscreenContainerRef.current = container
-      }
-
-      // PhotoSwipe options optimized for mobile
+      // PhotoSwipe options - simplified for reliability
       const options: ConstructorParameters<typeof PhotoSwipeLightbox>[0] = {
         gallery: gallerySelector,
         children: childSelector,
@@ -175,7 +109,7 @@ export function usePhotoSwipe({
         returnFocus: false,
 
         // Padding for viewport
-        paddingFn: (viewportSize) => ({
+        paddingFn: () => ({
           top: isMobile ? 0 : 30,
           bottom: isMobile ? 0 : 30,
           left: isMobile ? 0 : 20,
@@ -184,7 +118,7 @@ export function usePhotoSwipe({
 
         // Visual settings
         bgOpacity: 1,
-        showHideAnimationType: isMobile ? 'fade' : 'zoom',
+        showHideAnimationType: 'fade',
 
         // Zoom levels - fit image to screen
         initialZoomLevel: 'fit',
@@ -199,46 +133,13 @@ export function usePhotoSwipe({
         closeOnVerticalDrag: true,
         pinchToClose: true,
 
-        // Click/tap actions for mobile
-        // On mobile: tap toggles controls, double-tap zooms
+        // Click/tap actions
         tapAction: isMobile ? 'toggle-controls' : 'close',
         doubleTapAction: 'zoom',
-        clickToCloseNonZoomable: !isMobile, // Don't auto-close on mobile
-
-        // For native fullscreen
-        ...(useNativeFullscreen && {
-          appendToEl: fullscreenContainerRef.current!,
-          showAnimationDuration: 0,
-          hideAnimationDuration: 0,
-        }),
+        clickToCloseNonZoomable: !isMobile,
       }
 
       lightboxRef.current = new PhotoSwipeLightbox(options)
-
-      // Native fullscreen handling for mobile
-      if (useNativeFullscreen && fullscreenContainerRef.current) {
-        const container = fullscreenContainerRef.current
-
-        lightboxRef.current.on('beforeOpen', () => {
-          container.style.display = 'block'
-
-          // Request fullscreen
-          if (fullscreenAPI.request) {
-            fullscreenAPI.request(container).catch(() => {
-              // Fullscreen request failed, continue without it
-            })
-          }
-        })
-
-        lightboxRef.current.on('close', () => {
-          container.style.display = 'none'
-
-          // Exit fullscreen if active
-          if (fullscreenAPI.exit && fullscreenAPI.element?.()) {
-            fullscreenAPI.exit().catch(() => {})
-          }
-        })
-      }
 
       // Filter to process data-pswp-* attributes
       lightboxRef.current.addFilter('domItemData', (itemData, element) => {
@@ -373,10 +274,6 @@ export function usePhotoSwipe({
       if (lightboxRef.current) {
         lightboxRef.current.destroy()
         lightboxRef.current = null
-      }
-      if (fullscreenContainerRef.current) {
-        fullscreenContainerRef.current.remove()
-        fullscreenContainerRef.current = null
       }
     }
   }, [gallerySelector, childSelector, enabled, ...dependencies])
