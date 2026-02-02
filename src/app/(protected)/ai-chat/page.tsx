@@ -60,8 +60,9 @@ import {
 // Fallback static models (used if API fails) - updated January 2025
 const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
   openrouter: [
-    { id: 'openai/gpt-4o', label: 'OpenAI · GPT-4o' },
-    { id: 'openai/gpt-4o-mini', label: 'OpenAI · GPT-4o Mini' },
+    { id: 'openai/gpt-5.2', label: 'OpenAI · GPT-5.2' },
+    { id: 'openai/gpt-5.2-pro', label: 'OpenAI · GPT-5.2 Pro' },
+    { id: 'openai/gpt-5-mini', label: 'OpenAI · GPT-5 Mini' },
     { id: 'anthropic/claude-3.5-sonnet', label: 'Anthropic · Claude 3.5 Sonnet' },
     { id: 'anthropic/claude-3.5-haiku', label: 'Anthropic · Claude 3.5 Haiku' },
     { id: 'google/gemini-2.0-flash-exp:free', label: 'Google · Gemini 2.0 Flash (Free)' },
@@ -69,16 +70,21 @@ const STATIC_MODELS: Record<string, { id: string; label: string }[]> = {
     { id: 'mistralai/mistral-large', label: 'Mistral · Large' },
     { id: 'meta-llama/llama-3.3-70b-instruct', label: 'Meta · Llama 3.3 70B' },
     { id: 'deepseek/deepseek-chat', label: 'DeepSeek · Chat' },
-    { id: 'qwen/qwen-2.5-72b-instruct', label: 'Qwen · 2.5 72B' },
   ],
   openai: [
-    { id: 'gpt-4o', label: 'GPT-4o (Flagship)' },
-    { id: 'gpt-4o-mini', label: 'GPT-4o Mini (Fast)' },
-    { id: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
-    { id: 'o1', label: 'o1 (Reasoning)' },
-    { id: 'o1-mini', label: 'o1-mini (Fast Reasoning)' },
-    { id: 'o1-preview', label: 'o1-preview' },
-    { id: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+    // GPT-5.2 series (Latest - January 2026)
+    { id: 'gpt-5.2', label: 'GPT-5.2 (Latest Flagship)' },
+    { id: 'gpt-5.2-pro', label: 'GPT-5.2 Pro (Deep Reasoning)' },
+    { id: 'gpt-5.2-codex', label: 'GPT-5.2 Codex (Coding)' },
+    // GPT-5.1 series
+    { id: 'gpt-5.1', label: 'GPT-5.1' },
+    { id: 'gpt-5-1-codex', label: 'GPT-5.1 Codex' },
+    // GPT-5 series
+    { id: 'gpt-5', label: 'GPT-5' },
+    { id: 'gpt-5-mini', label: 'GPT-5 Mini (Fast)' },
+    // Legacy
+    { id: 'gpt-4o', label: 'GPT-4o' },
+    { id: 'gpt-4o-mini', label: 'GPT-4o Mini' },
   ],
   anthropic: [
     { id: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet (Latest)' },
@@ -246,11 +252,11 @@ export default function AIChatPage() {
   // Set initial provider when providers are loaded
   React.useEffect(() => {
     if (availableProviders.length > 0 && !provider) {
-      // Prioritize OpenAI with GPT-4o as default (most capable model available)
+      // Prioritize OpenAI with GPT-5.2 as default (most capable model available)
       const openaiProvider = availableProviders.find(p => p.key === 'openai')
       if (openaiProvider) {
         setProvider('openai')
-        setModel('gpt-4o') // GPT-4o as default
+        setModel('gpt-5.2') // GPT-5.2 as default
       } else {
         // Fallback to first available provider
         const firstProvider = availableProviders[0]

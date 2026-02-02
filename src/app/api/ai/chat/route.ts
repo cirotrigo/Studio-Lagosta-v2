@@ -48,30 +48,25 @@ const ProviderSchema = z.enum(['openai', 'anthropic', 'google', 'mistral', 'open
 // Known-safe models for direct providers. OpenRouter models are dynamic; validate format below.
 const ALLOWED_MODELS: Record<z.infer<typeof ProviderSchema>, string[]> = {
   openai: [
-    // GPT-4o series (Current flagship)
+    // GPT-5.2 series (Latest - January 2026)
+    'gpt-5.2',
+    'gpt-5.2-chat-latest',
+    'gpt-5.2-pro',
+    'gpt-5.2-codex',
+    // GPT-5.1 series
+    'gpt-5.1',
+    'gpt-5-1-codex',
+    'gpt-5-1-codex-mini',
+    // GPT-5 series
+    'gpt-5',
+    'gpt-5-2025-08-07',
+    'gpt-5-mini',
+    'gpt-5-mini-2025-08-07',
+    'gpt-5-nano',
+    'gpt-5-chat-latest',
+    // Legacy GPT-4o
     'gpt-4o',
-    'gpt-4o-2024-11-20',
-    'gpt-4o-2024-08-06',
-    'gpt-4o-2024-05-13',
     'gpt-4o-mini',
-    'gpt-4o-mini-2024-07-18',
-    // GPT-4 Turbo
-    'gpt-4-turbo',
-    'gpt-4-turbo-2024-04-09',
-    'gpt-4-turbo-preview',
-    // Legacy GPT-4
-    'gpt-4',
-    'gpt-4-0613',
-    // Reasoning models (o-series)
-    'o1',
-    'o1-2024-12-17',
-    'o1-mini',
-    'o1-mini-2024-09-12',
-    'o1-preview',
-    'o1-preview-2024-09-12',
-    // GPT-3.5
-    'gpt-3.5-turbo',
-    'gpt-3.5-turbo-0125',
   ],
   anthropic: [
     // Claude 3.5 series
