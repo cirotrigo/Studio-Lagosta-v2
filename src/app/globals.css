@@ -334,6 +334,27 @@
       max-width: 100% !important;
       height: auto !important;
     }
+
+    /* PhotoSwipe lightbox - precisa controlar suas próprias dimensões */
+    .pswp,
+    .pswp__bg,
+    .pswp__scroll-wrap,
+    .pswp__container,
+    .pswp__item,
+    .pswp__content,
+    .pswp__img,
+    .pswp__zoom-wrap {
+      max-width: none !important;
+      width: auto !important;
+      height: auto !important;
+      min-width: auto !important;
+      min-height: auto !important;
+      overflow: visible !important;
+    }
+
+    .pswp__img {
+      object-fit: contain !important;
+    }
   }
 
   /* Safari-specific fixes */
