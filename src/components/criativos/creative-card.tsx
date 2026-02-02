@@ -86,12 +86,14 @@ export function CreativeCard({
         </div>
       )}
 
-      {/* PhotoSwipe anchor - follows exact structure from docs */}
+      {/* PhotoSwipe anchor - matches working implementation pattern */}
       {canOpen ? (
         <a
           href={resolvedAssetUrl!}
-          data-pswp-width={width}
-          data-pswp-height={height}
+          data-pswp-src={resolvedAssetUrl!}
+          data-pswp-width={String(width)}
+          data-pswp-height={String(height)}
+          data-pswp-type={isVideoAsset ? 'video' : 'image'}
           className="block w-full h-full"
         >
           <Thumbnail

@@ -221,10 +221,10 @@ export default function GlobalCreativesPage() {
     })
   }, [data?.generations, generationMetaMap])
 
-  // PhotoSwipe integration - simple setup per docs
+  // PhotoSwipe integration - matches working implementation pattern
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
-    childSelector: 'a',
+    childSelector: 'a[data-pswp-src]',
     dependencies: [filtered.length],
     enabled: filtered.length > 0,
   })
