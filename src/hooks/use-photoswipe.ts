@@ -251,9 +251,20 @@ export function usePhotoSwipe({
         const href = linkEl.getAttribute('href') || linkEl.getAttribute('data-pswp-src') || ''
         const inferredVideo = /(\.mp4|\.mov|\.webm)(\?|$)/i.test(href)
 
+        // Always set src explicitly to ensure PhotoSwipe loads the image
+        if (href) {
+          itemData.src = href
+        }
+
         if (widthAttr && heightAttr) {
-          itemData.w = parseInt(widthAttr, 10)
-          itemData.h = parseInt(heightAttr, 10)
+          const w = parseInt(widthAttr, 10)
+          const h = parseInt(heightAttr, 10)
+
+          // Only set dimensions if they are valid numbers
+          if (w > 0 && h > 0) {
+            itemData.w = w
+            itemData.h = h
+          }
 
           if (typeAttr === 'video' || (!typeAttr && inferredVideo)) {
             itemData.type = 'video'

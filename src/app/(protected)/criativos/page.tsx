@@ -252,7 +252,7 @@ export default function GlobalCreativesPage() {
       const matchesSearch =
         !query ||
         generation.templateName?.toLowerCase().includes(query) ||
-        generation.template?.name?.toLowerCase().includes(query) ||
+        generation.Template?.name?.toLowerCase().includes(query) ||
         generation.projectName?.toLowerCase().includes(query) ||
         generation.Project?.name?.toLowerCase().includes(query) ||
         generation.id.toLowerCase().includes(query)
@@ -413,7 +413,7 @@ export default function GlobalCreativesPage() {
   const composerInitialData = React.useMemo(() => {
     if (!schedulingGeneration) return undefined
 
-    const dimensions = schedulingGeneration.template?.dimensions || '1080x1080'
+    const dimensions = schedulingGeneration.Template?.dimensions || '1080x1080'
     const [widthStr, heightStr] = dimensions.split('x')
     const width = parseInt(widthStr, 10) || 1080
     const height = parseInt(heightStr, 10) || 1080
@@ -567,7 +567,8 @@ export default function GlobalCreativesPage() {
         >
           {filtered.map((generation) => {
             const selected = selectedIds.has(generation.id)
-            const dimensions = generation.template?.dimensions || '1080x1080'
+            // API returns Template with capital T
+            const dimensions = generation.Template?.dimensions || '1080x1080'
 
             const [widthStr, heightStr] = dimensions.split('x')
             const width = parseInt(widthStr, 10) || 1080
@@ -611,7 +612,7 @@ export default function GlobalCreativesPage() {
               <tbody>
                 {filtered.map((generation) => {
                   const selected = selectedIds.has(generation.id)
-                  const templateLabel = generation.template?.name || generation.templateName || 'Template'
+                  const templateLabel = generation.Template?.name || generation.templateName || 'Template'
                   const projectName = generation.Project?.name || generation.projectName || '-'
                   const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
                   const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
@@ -633,8 +634,8 @@ export default function GlobalCreativesPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
                           <span className="font-medium truncate">{templateLabel}</span>
-                          {generation.template?.dimensions && (
-                            <span className="text-xs text-muted-foreground">{generation.template.dimensions}</span>
+                          {generation.Template?.dimensions && (
+                            <span className="text-xs text-muted-foreground">{generation.Template.dimensions}</span>
                           )}
                         </div>
                       </td>

@@ -16,7 +16,7 @@ export interface TemplateInfo {
 
 export interface GenerationRecord {
   id: string
-  status: 'POSTING' | 'COMPLETED' | 'FAILED'
+  status: 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
@@ -29,7 +29,8 @@ export interface GenerationRecord {
   createdBy: string
   createdAt: string
   completedAt?: string | null
-  template?: TemplateInfo
+  // API returns Template with capital T
+  Template?: TemplateInfo
   Project?: {
     id: number
     name: string
