@@ -323,8 +323,9 @@ export default function ProjectCreativesPage() {
   // PhotoSwipe integration - re-init quando os dados mudarem
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
-    childSelector: 'a',
+    childSelector: 'a[data-pswp-src]',
     dependencies: [filtered.length, isLoading],
+    enabled: filtered.length > 0,
   })
 
   const toggleSelection = React.useCallback((id: string) => {

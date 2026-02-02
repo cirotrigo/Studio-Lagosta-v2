@@ -362,7 +362,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   usePhotoSwipe({
     gallerySelector: '#creatives-gallery',
-    childSelector: 'a',
+    childSelector: 'a[data-pswp-src]',
     dependencies: [filtered.length, isLoading, viewMode, gridDensity],
     enabled: shouldEnablePhotoSwipe,
   })
