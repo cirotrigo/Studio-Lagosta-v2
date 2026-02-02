@@ -336,6 +336,18 @@
     }
   }
 
+  /* PhotoSwipe precisa de controle total sobre dimensões - fora do media query para maior especificidade */
+  .pswp img,
+  .pswp video,
+  .pswp__img,
+  .pswp__content,
+  .pswp__container {
+    max-width: unset !important;
+    height: unset !important;
+    min-width: unset !important;
+    min-height: unset !important;
+  }
+
   /* Safari-specific fixes */
   @supports (-webkit-touch-callout: none) {
     /* Forçar overflow hidden no Safari iOS */
