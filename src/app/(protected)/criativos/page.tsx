@@ -31,7 +31,6 @@ import {
   Trash2,
   HardDrive,
   Calendar,
-  Layers,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -449,19 +448,6 @@ export default function GlobalCreativesPage() {
 
   return (
     <div className="flex flex-col min-h-[calc(100dvh-4rem)]">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Layers className="h-6 w-6 md:h-7 md:w-7 text-primary" />
-            Criativos
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Visualize todos os criativos de seus projetos em um só lugar.
-          </p>
-        </div>
-      </div>
-
       {/* Project Carousel Filter - sticky on mobile */}
       <div className="sticky top-0 z-20 bg-background/95 backdrop-blur -mx-4 px-4 md:-mx-6 md:px-6 py-3 mb-4 border-b border-border/30">
         {isLoading ? (
@@ -581,8 +567,6 @@ export default function GlobalCreativesPage() {
         >
           {filtered.map((generation) => {
             const selected = selectedIds.has(generation.id)
-            const templateLabel = generation.template?.name || generation.templateName || 'Template'
-            const projectName = generation.Project?.name || generation.projectName
             const dimensions = generation.template?.dimensions || '1080x1080'
 
             const [widthStr, heightStr] = dimensions.split('x')
@@ -597,12 +581,6 @@ export default function GlobalCreativesPage() {
                 id={generation.id}
                 displayUrl={meta.displayUrl}
                 assetUrl={meta.assetUrl}
-                title={templateLabel}
-                projectName={projectName}
-                date={new Intl.DateTimeFormat('pt-BR', {
-                  dateStyle: 'short',
-                  timeStyle: 'short',
-                }).format(new Date(generation.createdAt))}
                 status={generation.status}
                 isVideo={meta.isVideo}
                 selected={selected}
@@ -610,7 +588,6 @@ export default function GlobalCreativesPage() {
                 height={height}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
-                onDelete={() => handleDelete(generation)}
                 onSchedule={() => handleSchedule(generation)}
               />
             )
