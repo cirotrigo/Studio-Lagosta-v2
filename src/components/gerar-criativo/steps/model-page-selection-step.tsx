@@ -47,7 +47,7 @@ export function ModelPageSelectionStep() {
 
   // Extract unique projects from model pages
   const projects = useMemo(() => {
-    if (!modelPages) return []
+    if (!modelPages || !Array.isArray(modelPages)) return []
     const projectMap = new Map<number, ProjectFilter>()
     modelPages.forEach((page) => {
       if (!projectMap.has(page.project.id)) {
@@ -63,7 +63,7 @@ export function ModelPageSelectionStep() {
 
   // Filter model pages by selected project
   const filteredModelPages = useMemo(() => {
-    if (!modelPages) return []
+    if (!modelPages || !Array.isArray(modelPages)) return []
     if (selectedProjectFilter === null) return modelPages
     return modelPages.filter((page) => page.project.id === selectedProjectFilter)
   }, [modelPages, selectedProjectFilter])

@@ -80,8 +80,8 @@ export function useCredits(): {
         return null;
       }
 
-      const creditsRemaining = orgData.credits.current ?? 0;
-      const creditsTotal = orgData.limits.creditsPerMonth ?? Math.max(creditsRemaining, 0);
+      const creditsRemaining = orgData.credits?.current ?? 0;
+      const creditsTotal = orgData.limits?.creditsPerMonth ?? Math.max(creditsRemaining, 0);
       const percentage = creditsTotal > 0 ? (creditsRemaining / creditsTotal) * 100 : 0;
 
       return {
