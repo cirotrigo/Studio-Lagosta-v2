@@ -1,7 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { generateText } from 'ai'
-import { google } from '@ai-sdk/google'
+import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
@@ -84,13 +84,13 @@ export async function POST(request: Request) {
     })
 
     try {
-      // Call Gemini to improve the prompt
+      // Call OpenAI to improve the prompt
       const { text } = await generateText({
-        model: google('gemini-2.0-flash-exp'),
+        model: openai('gpt-4o-mini'),
         system: SYSTEM_PROMPT,
         prompt: `Melhore este prompt para geração de imagem:\n\n"${prompt}"`,
         temperature: 0.7,
-        maxOutputTokens: 500,
+        maxTokens: 500,
       })
 
       const improvedPrompt = text.trim()
@@ -100,20 +100,32 @@ export async function POST(request: Request) {
         success: true,
         improvedPrompt,
       })
-    } catch (providerError) {
+    } catch (providerError: unknown) {
       // Refund credits on provider error
-      console.error('[Improve Prompt] Provider error:', providerError)
+      const errorDetails = {
+        message: (providerError as Error)?.message,
+        name: (providerError as Error)?.name,
+        cause: (providerError as { cause?: unknown })?.cause,
+        stack: (providerError as Error)?.stack?.split('\n').slice(0, 5).join('\n'),
+      }
+      console.error('[Improve Prompt] Provider error:', JSON.stringify(errorDetails, null, 2))
+
       await refundCreditsForFeature({
         clerkUserId: userId,
         feature: 'ai_text_chat',
         quantity: 1,
         reason: 'improve_prompt_provider_error',
-        details: { error: String(providerError) },
+        details: { error: errorDetails.message || String(providerError) },
         organizationId: orgId ?? undefined,
       })
 
+      // Return more details in development
+      const isDev = process.env.NODE_ENV === 'development'
       return NextResponse.json(
-        { error: 'Erro ao processar com IA. Tente novamente.' },
+        {
+          error: 'Erro ao processar com IA. Tente novamente.',
+          ...(isDev && { details: errorDetails.message })
+        },
         { status: 502 }
       )
     }
