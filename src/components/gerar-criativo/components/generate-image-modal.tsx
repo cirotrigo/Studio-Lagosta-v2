@@ -14,9 +14,10 @@ import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
-import { Loader2, Sparkles, X, Upload, ImagePlus, FolderOpen } from 'lucide-react'
+import { Loader2, Sparkles, X, Upload, ImagePlus, FolderOpen, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { GoogleDrivePickerModal } from './google-drive-picker-modal'
+import { useImprovePrompt } from '@/hooks/use-improve-prompt'
 
 interface GenerateImageModalProps {
   open: boolean
@@ -46,6 +47,23 @@ export function GenerateImageModal({
   const [showDrivePicker, setShowDrivePicker] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const queryClient = useQueryClient()
+  const improvePrompt = useImprovePrompt()
+
+  const handleImprovePrompt = () => {
+    if (!prompt.trim()) {
+      toast.error('Digite uma descrição primeiro')
+      return
+    }
+    improvePrompt.mutate(
+      { prompt, projectId },
+      {
+        onSuccess: (data) => {
+          setPrompt(data.improvedPrompt)
+          toast.success('Descrição melhorada!')
+        },
+      }
+    )
+  }
 
   const generateImage = useMutation({
     mutationFn: async (data: { prompt: string; referenceImages?: string[] }): Promise<GenerateImageResult> => {
@@ -196,7 +214,29 @@ export function GenerateImageModal({
 
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="prompt">Descricao da imagem</Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="prompt">Descrição da imagem</Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleImprovePrompt}
+                  disabled={improvePrompt.isPending || !prompt.trim()}
+                  className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                >
+                  {improvePrompt.isPending ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Melhorando...
+                    </>
+                  ) : (
+                    <>
+                      <Wand2 className="w-3 h-3" />
+                      Melhorar descrição
+                    </>
+                  )}
+                </Button>
+              </div>
               <Textarea
                 id="prompt"
                 placeholder="Ex: Uma foto profissional de um hamburguer artesanal com queijo derretendo, em fundo escuro com iluminacao dramatica"
