@@ -18,8 +18,8 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { useAllGenerations, type GenerationRecord } from '@/hooks/use-generations'
-import { GalleryItem } from '@/components/projects/gallery-item'
 import { ProjectCarouselFilter } from '@/components/criativos/project-carousel-filter'
+import { CreativeCard } from '@/components/criativos/creative-card'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import {
   Eye,
@@ -577,86 +577,41 @@ export default function GlobalCreativesPage() {
       ) : viewMode === 'grid' ? (
         <div
           id="creatives-gallery"
-          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 auto-rows-[180px] sm:auto-rows-[200px] gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
-          style={{ gridAutoFlow: 'dense' }}
+          className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
         >
-          {filtered.map((generation, index) => {
+          {filtered.map((generation) => {
             const selected = selectedIds.has(generation.id)
             const templateLabel = generation.template?.name || generation.templateName || 'Template'
+            const projectName = generation.Project?.name || generation.projectName
             const dimensions = generation.template?.dimensions || '1080x1080'
 
             const [widthStr, heightStr] = dimensions.split('x')
             const width = parseInt(widthStr, 10) || 1080
             const height = parseInt(heightStr, 10) || 1080
 
-            let templateType: 'STORY' | 'FEED' | 'SQUARE' = 'SQUARE'
-            const aspectRatio = width / height
-
-            if (aspectRatio < 0.7) {
-              templateType = 'STORY'
-            } else if (aspectRatio < 0.95) {
-              templateType = 'FEED'
-            } else {
-              templateType = 'SQUARE'
-            }
-
             const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
 
-            if (!meta.displayUrl && !meta.assetUrl) {
-              return (
-                <Card key={generation.id} className="aspect-square p-4 flex items-center justify-center">
-                  <div className="text-xs text-muted-foreground">Sem preview</div>
-                </Card>
-              )
-            }
-
-            const previewPayload =
-              meta.assetUrl ?? meta.displayUrl
-                ? {
-                    id: generation.id,
-                    url: (meta.assetUrl ?? meta.displayUrl) as string,
-                    templateName: templateLabel,
-                    isVideo: meta.isVideo && Boolean(meta.assetUrl),
-                    posterUrl: meta.posterUrl ?? meta.thumbnailUrl ?? undefined,
-                  }
-                : null
-
             return (
-              <GalleryItem
+              <CreativeCard
                 key={generation.id}
                 id={generation.id}
                 displayUrl={meta.displayUrl}
                 assetUrl={meta.assetUrl}
                 title={templateLabel}
+                projectName={projectName}
                 date={new Intl.DateTimeFormat('pt-BR', {
                   dateStyle: 'short',
                   timeStyle: 'short',
                 }).format(new Date(generation.createdAt))}
-                templateType={templateType}
-                selected={selected}
-                hasDriveBackup={Boolean(generation.googleDriveBackupUrl)}
                 status={generation.status}
-                progress={meta.progress}
-                errorMessage={meta.errorMessage}
                 isVideo={meta.isVideo}
-                authorClerkId={generation.createdBy}
+                selected={selected}
+                width={width}
+                height={height}
                 onToggleSelect={() => toggleSelection(generation.id)}
                 onDownload={() => handleDownload(generation)}
                 onDelete={() => handleDelete(generation)}
-                onDriveOpen={
-                  generation.googleDriveBackupUrl
-                    ? () => window.open(generation.googleDriveBackupUrl ?? '', '_blank', 'noopener,noreferrer')
-                    : undefined
-                }
-                onPreview={() => {
-                  if (previewPayload) {
-                    setPreview(previewPayload)
-                  }
-                }}
                 onSchedule={() => handleSchedule(generation)}
-                index={index}
-                pswpWidth={width}
-                pswpHeight={height}
               />
             )
           })}
