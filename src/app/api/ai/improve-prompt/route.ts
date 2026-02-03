@@ -9,10 +9,21 @@ import { InsufficientCreditsError } from '@/lib/credits/errors'
 export const runtime = 'nodejs'
 export const maxDuration = 30
 
-const SYSTEM_PROMPT = `Você é um especialista em criar prompts para geração de imagens com IA para stories do Instagram.
+// Aspect ratio descriptions for the system prompt
+const ASPECT_RATIO_DESCRIPTIONS: Record<string, string> = {
+  '1:1': 'formato quadrado (1:1) ideal para posts de feed',
+  '16:9': 'formato horizontal/landscape (16:9) ideal para banners e capas',
+  '9:16': 'formato vertical/portrait (9:16) ideal para stories e reels',
+  '4:5': 'formato levemente vertical (4:5) ideal para posts de feed do Instagram',
+}
+
+function buildSystemPrompt(aspectRatio: string): string {
+  const formatDescription = ASPECT_RATIO_DESCRIPTIONS[aspectRatio] || ASPECT_RATIO_DESCRIPTIONS['9:16']
+
+  return `Você é um especialista em criar prompts para geração de imagens com IA.
 
 REGRAS OBRIGATÓRIAS:
-1. SEMPRE especifique formato vertical/portrait (9:16) ideal para stories
+1. SEMPRE especifique ${formatDescription}
 2. SEMPRE mencione que os produtos devem ser REALISTAS e fotográficos
 3. SEMPRE indique que o ambiente deve ser CONSISTENTE com as imagens de referência
 4. NÃO INVENTE conceitos que o usuário não mencionou
@@ -29,7 +40,7 @@ TRADUÇÃO DE SENSAÇÕES:
 - "vibrante" → cores saturadas, alto contraste, energia visual
 
 ESTRUTURA DO PROMPT MELHORADO:
-1. Formato: vertical/portrait para stories (9:16)
+1. Formato: ${formatDescription}
 2. Sujeito principal (produto realista e fotográfico)
 3. Estilo visual (fotografia profissional de produto)
 4. Iluminação e ambiente (consistente com referências)
@@ -43,10 +54,12 @@ IMPORTANTE:
 - Produtos devem parecer reais como em fotos profissionais
 - Ambiente deve manter consistência com imagens de referência
 - Retorne APENAS o prompt melhorado, sem explicações adicionais`
+}
 
 const improvePromptSchema = z.object({
   prompt: z.string().min(1, 'Prompt é obrigatório').max(2000, 'Prompt muito longo'),
   projectId: z.number().int().positive(),
+  aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:5']).optional().default('9:16'),
 })
 
 export async function POST(request: Request) {
@@ -57,7 +70,7 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { prompt, projectId } = improvePromptSchema.parse(body)
+    const { prompt, projectId, aspectRatio } = improvePromptSchema.parse(body)
 
     console.log('[Improve Prompt] Starting for user:', userId, 'prompt length:', prompt.length)
 
@@ -91,10 +104,11 @@ export async function POST(request: Request) {
     })
 
     try {
-      // Call OpenAI to improve the prompt
+      // Call OpenAI to improve the prompt with aspect ratio context
+      const systemPrompt = buildSystemPrompt(aspectRatio)
       const { text } = await generateText({
         model: openai('gpt-4o-mini'),
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         prompt: `Melhore este prompt para geração de imagem:\n\n"${prompt}"`,
         temperature: 0.7,
         maxTokens: 500,

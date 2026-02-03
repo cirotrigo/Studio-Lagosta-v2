@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
 import { usePrompts } from '@/hooks/use-prompts'
+import { useImprovePrompt } from '@/hooks/use-improve-prompt'
 import type { Prompt } from '@/types/prompt'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { AIModelSelector, ResolutionSelector } from '@/components/ai/ai-model-selector'
@@ -339,6 +340,30 @@ function GenerateImageForm({
 
   // Buscar prompts globais do usuário
   const { data: prompts = [] } = usePrompts()
+
+  // Hook para melhorar descrição
+  const improvePrompt = useImprovePrompt()
+
+  // Handler para melhorar descrição com IA
+  const handleImprovePrompt = () => {
+    if (!prompt.trim()) {
+      toast({ variant: 'destructive', description: 'Digite uma descrição primeiro' })
+      return
+    }
+    if (!projectId) {
+      toast({ variant: 'destructive', description: 'Projeto não identificado' })
+      return
+    }
+    improvePrompt.mutate(
+      { prompt, projectId, aspectRatio: aspectRatio as '1:1' | '16:9' | '9:16' | '4:5' },
+      {
+        onSuccess: (data) => {
+          setPrompt(data.improvedPrompt)
+          toast({ description: 'Descrição melhorada!' })
+        },
+      }
+    )
+  }
 
   // Debug: verificar estado do lastGeneratedPrompt
   React.useEffect(() => {
@@ -929,6 +954,20 @@ function GenerateImageForm({
                 </SelectContent>
               </Select>
             )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleImprovePrompt}
+              disabled={improvePrompt.isPending || !prompt.trim() || generateMutation.isPending}
+              className="h-7 gap-1 text-xs"
+              title="Melhorar descrição com IA"
+            >
+              {improvePrompt.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Wand2 className="h-3.5 w-3.5" />
+              )}
+            </Button>
             <Button
               variant="ghost"
               size="sm"
