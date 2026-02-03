@@ -25,6 +25,7 @@ interface DriveGalleryProps {
   onToggleSelect: (id: string) => void
   templates: TemplateListItem[]
   onOpenInTemplate: (item: GoogleDriveItem, templateId: number) => void
+  onEditWithAI?: (item: GoogleDriveItem) => void
 }
 
 export function DriveGallery({
@@ -42,6 +43,7 @@ export function DriveGallery({
   onToggleSelect,
   templates,
   onOpenInTemplate,
+  onEditWithAI,
 }: DriveGalleryProps) {
   const isEmpty = !items.length && !isLoading
   const galleryId = React.useId()
@@ -95,6 +97,7 @@ export function DriveGallery({
                 onDelete={onDeleteItem}
                 templates={templates}
                 onOpenInTemplate={onOpenInTemplate}
+                onEditWithAI={onEditWithAI}
               />
             </div>
           ))}

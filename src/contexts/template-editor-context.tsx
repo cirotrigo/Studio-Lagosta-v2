@@ -88,8 +88,18 @@ export interface TemplateEditorContextValue {
   alignSelectedToCanvasCenterH: () => void
   alignSelectedToCanvasCenterV: () => void
   // AI Image Edit Integration
-  pendingAIImageEdit: { url: string; name: string } | null
-  setPendingAIImageEdit: (image: { url: string; name: string } | null) => void
+  pendingAIImageEdit: {
+    url: string
+    name: string
+    driveFileId?: string      // ID do arquivo original no Drive
+    driveFolderId?: string    // Pasta onde salvar resultado
+  } | null
+  setPendingAIImageEdit: (image: {
+    url: string
+    name: string
+    driveFileId?: string
+    driveFolderId?: string
+  } | null) => void
 }
 
 export interface ExportRecord {
@@ -157,7 +167,12 @@ const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
 const [, setUpdateCounter] = React.useState(0)
-const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{ url: string; name: string } | null>(null)
+const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
+  url: string
+  name: string
+  driveFileId?: string
+  driveFolderId?: string
+} | null>(null)
 
   // Keep ref in sync with state
   React.useEffect(() => {

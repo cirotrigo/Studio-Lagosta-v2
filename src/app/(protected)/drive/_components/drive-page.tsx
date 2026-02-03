@@ -288,6 +288,34 @@ export function DrivePage({
     window.open(url, '_blank', 'noopener,noreferrer')
   }, [])
 
+  const handleEditWithAI = React.useCallback((file: GoogleDriveItem) => {
+    if (file.kind === 'folder') return
+    const targetId = file.shortcutDetails?.targetId ?? file.id
+    if (!targetId || typeof window === 'undefined') return
+
+    // If there are templates available, use the first one
+    // Otherwise, we can't edit with AI without a template context
+    if (!templateOptions.length) {
+      toast.error('Nenhum template disponível. Crie um template primeiro para editar imagens com IA.')
+      return
+    }
+
+    const templateId = templateOptions[0].id
+    const params = new URLSearchParams({
+      driveFileId: targetId,
+      aiEdit: 'true',
+    })
+    if (file.name) {
+      params.set('driveFileName', file.name)
+    }
+    // Pass the current folder ID so the result can be uploaded back
+    if (effectiveFolderId) {
+      params.set('driveFolderId', effectiveFolderId)
+    }
+    const url = `/templates/${templateId}/editor?${params.toString()}`
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }, [templateOptions, effectiveFolderId])
+
   const handleMoveFiles = (fileIds: string[]) => {
     setMoveFiles(fileIds)
     setMoveDialogOpen(true)
@@ -425,6 +453,7 @@ export function DrivePage({
           onToggleSelect={toggleFile}
           templates={templateOptions}
           onOpenInTemplate={handleOpenInTemplate}
+          onEditWithAI={handleEditWithAI}
         />
       </DriveDropZone>
       )}

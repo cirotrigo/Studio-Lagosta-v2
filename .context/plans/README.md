@@ -5,6 +5,7 @@ This directory contains plans for coordinating work across documentation and pla
 ## Plan Queue
 1. [Creative Studio Recraft](./creative-studio-recraft.md)
 2. [Criativos Global Page](./criativos-global-page.md)
+3. [Drive Ai Edit Button](./drive-ai-edit-button.md)
 
 ## How To Create Or Update Plans
 - Run "ai-context plan <name>" to scaffold a new plan template.

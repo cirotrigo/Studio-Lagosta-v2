@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, Trash2, Video, FileText } from 'lucide-react'
+import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, Trash2, Video, FileText, Wand2 } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -34,6 +34,7 @@ interface DriveItemProps {
   onDelete?: (item: GoogleDriveItem) => void
   templates: TemplateListItem[]
   onOpenInTemplate: (item: GoogleDriveItem, templateId: number) => void
+  onEditWithAI?: (item: GoogleDriveItem) => void
 }
 
 const MIME_FOLDER = 'application/vnd.google-apps.folder'
@@ -56,6 +57,7 @@ export function DriveItem({
   onDelete,
   templates,
   onOpenInTemplate,
+  onEditWithAI,
 }: DriveItemProps) {
   const isFolder = item.kind === 'folder' || item.mimeType === MIME_FOLDER
   const resolvedFileId = item.shortcutDetails?.targetId ?? item.id
@@ -303,6 +305,11 @@ export function DriveItem({
               <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md" onClick={() => onDownload(item)} title="Baixar">
                 <DownloadIcon className="h-4 w-4" />
               </Button>
+              {isImage && onEditWithAI && (
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md" onClick={() => onEditWithAI(item)} title="Editar com IA">
+                  <Wand2 className="h-4 w-4" />
+                </Button>
+              )}
             </>
           )}
 
@@ -343,6 +350,11 @@ export function DriveItem({
               {!isFolder && (
                 <DropdownMenuItem onSelect={() => onDownload(item)}>
                   <DownloadIcon className="mr-2 h-4 w-4" /> Download
+                </DropdownMenuItem>
+              )}
+              {!isFolder && isImage && onEditWithAI && (
+                <DropdownMenuItem onSelect={() => onEditWithAI(item)}>
+                  <Wand2 className="mr-2 h-4 w-4" /> Editar com IA
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem onSelect={() => onMove(item)}>

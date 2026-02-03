@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast'
 import { useCredits } from '@/hooks/use-credits'
 import { useProject } from '@/hooks/use-project'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
+import { useUploadImageToDrive } from '@/hooks/use-drive'
 import { cn } from '@/lib/utils'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
@@ -86,6 +87,10 @@ export function AIImagesPanel() {
   const [search, setSearch] = React.useState('')
   const [imageToEdit, setImageToEdit] = React.useState<AIImageRecord | null>(null)
   const [promptToApply, setPromptToApply] = React.useState<Prompt | null>(null)
+  const [driveUploadTarget, setDriveUploadTarget] = React.useState<{
+    fileId?: string
+    folderId?: string
+  } | null>(null)
 
   // Debug: verificar projectId
   React.useEffect(() => {
@@ -189,6 +194,14 @@ export function AIImagesPanel() {
       setImageToEdit(tempRecord)
       setMode('generate') // Ativa a aba "Gerar"
 
+      // Armazenar metadados do Drive para upload posterior
+      if (pendingAIImageEdit.driveFileId || pendingAIImageEdit.driveFolderId) {
+        setDriveUploadTarget({
+          fileId: pendingAIImageEdit.driveFileId,
+          folderId: pendingAIImageEdit.driveFolderId,
+        })
+      }
+
       // Limpar estado pendente
       setPendingAIImageEdit(null)
 
@@ -219,9 +232,14 @@ export function AIImagesPanel() {
           <GenerateImageForm
             projectId={projectId}
             imageToEdit={imageToEdit}
-            onClearImageToEdit={() => setImageToEdit(null)}
+            onClearImageToEdit={() => {
+              setImageToEdit(null)
+              setDriveUploadTarget(null)
+            }}
             promptToApply={promptToApply}
             onPromptApplied={() => setPromptToApply(null)}
+            driveUploadTarget={driveUploadTarget}
+            onDriveUploadComplete={() => setDriveUploadTarget(null)}
           />
         </TabsContent>
 
@@ -292,12 +310,16 @@ function GenerateImageForm({
   onClearImageToEdit,
   promptToApply,
   onPromptApplied,
+  driveUploadTarget,
+  onDriveUploadComplete,
 }: {
   projectId: number | null | undefined
   imageToEdit: AIImageRecord | null
   onClearImageToEdit: () => void
   promptToApply: Prompt | null
   onPromptApplied: () => void
+  driveUploadTarget?: { fileId?: string; folderId?: string } | null
+  onDriveUploadComplete?: () => void
 }) {
   console.log('[GenerateImageForm] Component rendered with imageToEdit:', imageToEdit)
 
@@ -306,6 +328,7 @@ function GenerateImageForm({
   const queryClient = useQueryClient()
   const { addLayer, design } = useTemplateEditor()
   const { data: project } = useProject(projectId)
+  const uploadToDrive = useUploadImageToDrive()
   const driveFolderId =
     project?.googleDriveImagesFolderId ?? project?.googleDriveFolderId ?? null
   const driveFolderName =
@@ -592,6 +615,32 @@ function GenerateImageForm({
       layer.position = placement.position
 
       addLayer(layer)
+
+      // Fazer upload para o Drive se tiver pasta de destino
+      if (driveUploadTarget?.folderId && data.fileUrl) {
+        uploadToDrive.mutate(
+          {
+            imageUrl: data.fileUrl,
+            folderId: driveUploadTarget.folderId,
+            fileName: data.name,
+          },
+          {
+            onSuccess: (uploadResult) => {
+              toast({
+                description: 'Imagem também salva no Google Drive!'
+              })
+              onDriveUploadComplete?.()
+            },
+            onError: (uploadError) => {
+              console.error('[GenerateImageForm] Failed to upload to Drive:', uploadError)
+              toast({
+                variant: 'destructive',
+                description: 'Imagem gerada, mas falha ao salvar no Drive.'
+              })
+            }
+          }
+        )
+      }
     },
     onError: (error: Error) => {
       toast({

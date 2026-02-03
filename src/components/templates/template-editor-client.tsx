@@ -11,10 +11,12 @@ interface TemplateEditorClientProps {
   prefillDriveImage?: {
     fileId: string
     fileName?: string
+    folderId?: string
   }
+  aiEditMode?: boolean
 }
 
-export function TemplateEditorClient({ templateId, prefillDriveImage }: TemplateEditorClientProps) {
+export function TemplateEditorClient({ templateId, prefillDriveImage, aiEditMode }: TemplateEditorClientProps) {
   const { data, isLoading, isError, refetch } = useTemplate(Number.isFinite(templateId) ? templateId : null)
 
   if (isLoading) {
@@ -42,5 +44,5 @@ export function TemplateEditorClient({ templateId, prefillDriveImage }: Template
     )
   }
 
-  return <TemplateEditorShell template={data} prefillDriveImage={prefillDriveImage} />
+  return <TemplateEditorShell template={data} prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} />
 }

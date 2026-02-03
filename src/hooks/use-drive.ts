@@ -181,6 +181,45 @@ export function useSelectedFiles() {
   }
 }
 
+interface UploadImageToDriveInput {
+  imageUrl: string
+  folderId: string
+  fileName?: string
+}
+
+interface UploadImageToDriveResult {
+  success: boolean
+  fileId: string
+  publicUrl: string
+  webViewLink: string | null
+  webContentLink: string | null
+  fileName: string
+}
+
+export function useUploadImageToDrive() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: UploadImageToDriveInput): Promise<UploadImageToDriveResult> => {
+      const response = await fetch('/api/drive/upload-image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        throw new Error(data.error || 'Erro ao enviar imagem para o Drive')
+      }
+
+      return response.json()
+    },
+    onSuccess: () => {
+      // Invalidate all drive queries to refresh the file list
+      queryClient.invalidateQueries({ queryKey: ['drive', 'files'] })
+    },
+  })
+}
+
 interface DownloadZipInput {
   folderId: string
   projectId: number

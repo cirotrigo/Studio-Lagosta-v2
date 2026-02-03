@@ -60,10 +60,12 @@ interface TemplateEditorShellProps {
   prefillDriveImage?: {
     fileId: string
     fileName?: string
+    folderId?: string
   }
+  aiEditMode?: boolean
 }
 
-export function TemplateEditorShell({ template, prefillDriveImage }: TemplateEditorShellProps) {
+export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode }: TemplateEditorShellProps) {
   const [fontsLoaded, setFontsLoaded] = React.useState(false)
   const fontManager = React.useMemo(() => getFontManager(), [])
 
@@ -147,7 +149,7 @@ export function TemplateEditorShell({ template, prefillDriveImage }: TemplateEdi
     <MultiPageProvider templateId={template.id}>
       <TemplateEditorProvider template={resource}>
         <PageSyncWrapper>
-          <TemplateEditorContent prefillDriveImage={prefillDriveImage} />
+          <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} />
         </PageSyncWrapper>
       </TemplateEditorProvider>
     </MultiPageProvider>
@@ -159,8 +161,10 @@ type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | '
 
 function TemplateEditorContent({
   prefillDriveImage,
+  aiEditMode,
 }: {
-  prefillDriveImage?: { fileId: string; fileName?: string }
+  prefillDriveImage?: { fileId: string; fileName?: string; folderId?: string }
+  aiEditMode?: boolean
 }) {
   const { toast } = useToast()
   const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplateWithThumbnail()
@@ -183,6 +187,7 @@ function TemplateEditorContent({
     zoomIn,
     zoomOut,
     setZoom,
+    setPendingAIImageEdit,
   } = useTemplateEditor()
 
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
@@ -395,7 +400,23 @@ function TemplateEditorContent({
           throw new Error('Resposta inválida ao importar a imagem do Drive.')
         }
         if (!cancelled) {
-          insertPrefillImage(payload.url, payload.name ?? prefillDriveImage.fileName)
+          if (aiEditMode) {
+            // Modo de edição com IA: definir pendingAIImageEdit e abrir painel de IA
+            setPendingAIImageEdit({
+              url: payload.url,
+              name: payload.name ?? prefillDriveImage.fileName ?? 'Imagem do Drive',
+              driveFileId: prefillDriveImage.fileId,
+              driveFolderId: prefillDriveImage.folderId,
+            })
+            setActivePanel('ai-images')
+            toast({
+              title: 'Imagem carregada para edição com IA',
+              description: 'Use o painel de IA para editar a imagem.',
+            })
+          } else {
+            // Modo normal: inserir imagem no canvas
+            insertPrefillImage(payload.url, payload.name ?? prefillDriveImage.fileName)
+          }
         }
       } catch (error) {
         console.error('[TemplateEditor] Failed to prefill image from Drive', error)
@@ -414,7 +435,7 @@ function TemplateEditorContent({
     return () => {
       cancelled = true
     }
-  }, [prefillDriveImage, insertPrefillImage, toast])
+  }, [prefillDriveImage, insertPrefillImage, toast, aiEditMode, setPendingAIImageEdit, setActivePanel])
 
   // Handler para adicionar página (usado no mobile)
   const handleAddPage = React.useCallback(async () => {
