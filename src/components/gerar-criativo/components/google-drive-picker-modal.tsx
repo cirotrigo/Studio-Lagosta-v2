@@ -219,7 +219,7 @@ export function GoogleDrivePickerModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col">
+      <DialogContent className="sm:max-w-[600px] max-h-[80vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderOpen className="w-5 h-5" />
@@ -265,7 +265,7 @@ export function GoogleDrivePickerModal({
           </div>
         )}
 
-        <ScrollArea className="flex-1 min-h-0">
+        <ScrollArea className="flex-1 min-h-0 max-h-[50vh] overflow-auto">
           <div className="py-4">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-12">
