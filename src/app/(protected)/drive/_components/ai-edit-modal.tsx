@@ -13,7 +13,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { useCredits } from '@/hooks/use-credits'
 import { useUploadImageToDrive } from '@/hooks/use-drive'
 import { AIModelSelector, ResolutionSelector } from '@/components/ai/ai-model-selector'
@@ -253,16 +252,16 @@ export function AIEditModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader className="flex-shrink-0">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col gap-0 p-0">
+        <DialogHeader className="flex-shrink-0 p-6 pb-4">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5" />
             Editar com IA
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
-          <div className="space-y-6 py-4">
+        <div className="flex-1 overflow-y-auto px-6">
+          <div className="space-y-6 pb-4">
             {/* Source Image */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-muted-foreground">
@@ -383,10 +382,10 @@ export function AIEditModal({
               </span>
             </div>
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-2 pt-4 border-t">
+        <div className="flex justify-end gap-2 p-6 pt-4 border-t flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancelar
           </Button>
