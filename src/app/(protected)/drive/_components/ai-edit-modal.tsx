@@ -188,6 +188,11 @@ export function AIEditModal({
 
     // Start generation in background
     try {
+      // Convert relative URL to absolute URL for API
+      const absoluteBaseImageUrl = fullImageUrl
+        ? `${window.location.origin}${fullImageUrl}`
+        : null
+
       const payload = {
         projectId,
         prompt,
@@ -196,7 +201,7 @@ export function AIEditModal({
         model: selectedModel,
         resolution,
         mode: 'edit' as const,
-        baseImage: fullImageUrl,
+        baseImage: absoluteBaseImageUrl,
       }
 
       const response = await fetch('/api/ai/generate-image', {
