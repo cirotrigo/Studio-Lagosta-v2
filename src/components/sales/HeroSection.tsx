@@ -89,6 +89,11 @@ export function HeroSection() {
                         </Link>
                     </Button>
                     <Button size="lg" variant="outline" className="h-14 px-8 text-lg rounded-full border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-500" asChild>
+                        <Link href="#pricing">
+                            Ver pacotes
+                        </Link>
+                    </Button>
+                    <Button size="lg" variant="outline" className="h-14 px-8 text-lg rounded-full border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-500" asChild>
                         <Link href="#cases">
                             Ver resultados reais
                         </Link>
