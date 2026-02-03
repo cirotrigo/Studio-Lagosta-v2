@@ -295,6 +295,15 @@ export function DrivePage({
     window.open(url, '_blank', 'noopener,noreferrer')
   }, [])
 
+  // Get selected images for AI edit (excluding the base image)
+  const getSelectedImagesForAIEdit = React.useCallback((baseImageId: string) => {
+    return items.filter((item) =>
+      selectedFileIds.includes(item.id) &&
+      item.id !== baseImageId &&
+      item.mimeType?.startsWith('image/')
+    )
+  }, [items, selectedFileIds])
+
   const handleEditWithAI = React.useCallback((file: GoogleDriveItem) => {
     if (file.kind === 'folder') return
     if (!file.mimeType?.startsWith('image/')) {
@@ -519,6 +528,7 @@ export function DrivePage({
         onGenerationStart={handleGenerationStart}
         onGenerationComplete={handleGenerationComplete}
         onGenerationError={handleGenerationError}
+        initialReferenceImages={aiEditImage ? getSelectedImagesForAIEdit(aiEditImage.id) : []}
       />
     </div>
   )

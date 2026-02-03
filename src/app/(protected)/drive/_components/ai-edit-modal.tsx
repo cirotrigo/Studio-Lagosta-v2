@@ -38,6 +38,13 @@ export interface PendingGeneration {
   createdAt: Date
 }
 
+interface DriveReferenceImage {
+  id: string
+  name: string
+  thumbnailUrl: string
+  fullUrl: string
+}
+
 interface AIEditModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -47,6 +54,7 @@ interface AIEditModalProps {
   onGenerationStart: (generation: PendingGeneration) => void
   onGenerationComplete: (id: string, result: { fileUrl: string; name: string }) => void
   onGenerationError: (id: string, error: string) => void
+  initialReferenceImages?: GoogleDriveItem[]
 }
 
 export function AIEditModal({
@@ -58,6 +66,7 @@ export function AIEditModal({
   onGenerationStart,
   onGenerationComplete,
   onGenerationError,
+  initialReferenceImages = [],
 }: AIEditModalProps) {
   const { credits, refresh: refreshCredits } = useCredits()
   const queryClient = useQueryClient()
@@ -67,7 +76,8 @@ export function AIEditModal({
   const [prompt, setPrompt] = React.useState('')
   const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('nano-banana-pro')
   const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K'>('2K')
-  const [referenceImages, setReferenceImages] = React.useState<string[]>([])
+  const [referenceImages, setReferenceImages] = React.useState<string[]>([]) // Uploaded images (URLs)
+  const [driveReferenceImages, setDriveReferenceImages] = React.useState<DriveReferenceImage[]>([]) // Drive images
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   // Reset state when modal opens with new image
@@ -75,8 +85,19 @@ export function AIEditModal({
     if (open && image) {
       setPrompt('')
       setReferenceImages([])
+      // Initialize Drive reference images from selected items
+      const driveRefs = initialReferenceImages.map((item) => {
+        const resolvedId = item.shortcutDetails?.targetId ?? item.id
+        return {
+          id: item.id,
+          name: item.name,
+          thumbnailUrl: `/api/drive/thumbnail/${resolvedId}`,
+          fullUrl: `${window.location.origin}/api/google-drive/image/${resolvedId}`,
+        }
+      })
+      setDriveReferenceImages(driveRefs)
     }
-  }, [open, image])
+  }, [open, image, initialReferenceImages])
 
   const resolvedFileId = image?.shortcutDetails?.targetId ?? image?.id
   const thumbnailUrl = resolvedFileId ? `/api/drive/thumbnail/${resolvedFileId}` : null
@@ -146,6 +167,10 @@ export function AIEditModal({
     setReferenceImages((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const handleRemoveDriveReference = (id: string) => {
+    setDriveReferenceImages((prev) => prev.filter((img) => img.id !== id))
+  }
+
   const handleGenerate = async () => {
     if (!prompt.trim()) {
       toast.error('Digite um prompt para gerar a imagem')
@@ -192,11 +217,17 @@ export function AIEditModal({
         ? `${window.location.origin}${fullImageUrl}`
         : null
 
+      // Combine uploaded reference images with Drive reference images
+      const allReferenceImages = [
+        ...referenceImages, // Already public URLs
+        ...driveReferenceImages.map((img) => img.fullUrl), // Drive URLs (will be processed by API)
+      ]
+
       const payload = {
         projectId,
         prompt,
         aspectRatio: '9:16',
-        referenceImages,
+        referenceImages: allReferenceImages,
         model: selectedModel,
         resolution,
         mode: 'edit' as const,
@@ -285,13 +316,44 @@ export function AIEditModal({
 
             {/* Reference Images */}
             <div className="space-y-2">
-              <label className="text-sm font-medium text-muted-foreground">
-                Imagens de Referência (opcional)
-              </label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-muted-foreground">
+                  Imagens de Referência {driveReferenceImages.length > 0 && `(${driveReferenceImages.length + referenceImages.length})`}
+                </label>
+                {driveReferenceImages.length > 0 && (
+                  <span className="text-xs text-muted-foreground">
+                    Selecionadas do Drive
+                  </span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
+                {/* Drive Reference Images */}
+                {driveReferenceImages.map((img) => (
+                  <div
+                    key={img.id}
+                    className="relative h-16 w-16 rounded-md overflow-hidden border-2 border-primary/50 group"
+                    title={img.name}
+                  >
+                    <Image
+                      src={img.thumbnailUrl}
+                      alt={img.name}
+                      fill
+                      className="object-cover"
+                      unoptimized
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveDriveReference(img.id)}
+                      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    >
+                      <X className="h-4 w-4 text-white" />
+                    </button>
+                  </div>
+                ))}
+                {/* Uploaded Reference Images */}
                 {referenceImages.map((url, index) => (
                   <div
-                    key={index}
+                    key={`upload-${index}`}
                     className="relative h-16 w-16 rounded-md overflow-hidden border group"
                   >
                     <Image
@@ -310,10 +372,12 @@ export function AIEditModal({
                     </button>
                   </div>
                 ))}
+                {/* Add Button */}
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
                   className="h-16 w-16 rounded-md border-2 border-dashed border-muted-foreground/30 flex items-center justify-center hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                  title="Adicionar imagem de referência"
                 >
                   <Plus className="h-5 w-5 text-muted-foreground" />
                 </button>
