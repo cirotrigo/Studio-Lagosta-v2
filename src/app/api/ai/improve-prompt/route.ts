@@ -86,12 +86,27 @@ Input (Portuguese): "Brinde com chopp e foco no petisco"
 Output (English): "Hyper-realistic close-up shot of a social toast in a dimly lit rustic gastropub. Foreground sharp focus on artisan snack with visible crispy golden texture. In the slight background, a hand holding a glass of draft beer with cold condensation droplets, slightly blurred. Cinematic warm lighting from the side, soft amber bokeh background, shadows cast consistently across table surface. Shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, award-winning food photography, appetizing, highly detailed textures, unified lighting environment, 8k resolution."
 
 # CRITICAL RULES
-- Output ONLY the improved prompt in English - no explanations, no translations, no markdown
 - NEVER add concepts the user didn't mention
 - ALWAYS include format specification (${spec.ratio})
 - ALWAYS include camera/lens specs for realism
 - ALWAYS unify lighting description for all elements in scene
-- Keep it concise but technically complete (aim for 50-100 words)`
+- Keep it concise but technically complete (aim for 50-100 words)
+
+# OUTPUT FORMAT (MANDATORY)
+You MUST return EXACTLY this JSON format with no additional text:
+{
+  "pt": "Prompt melhorado em português brasileiro, descritivo e fácil de entender para o usuário",
+  "en": "Technical improved prompt in English with all camera specs and photography terminology"
+}
+
+The "pt" version should be a natural, readable description in Portuguese that the user can understand.
+The "en" version should be the full technical prompt with camera specs, lighting details, and industry terminology.
+
+Example output:
+{
+  "pt": "Foto hiper-realista de um brinde em um gastropub rústico com iluminação baixa. Foco nítido no petisco artesanal com textura crocante dourada visível. Ao fundo levemente desfocado, uma mão segurando um copo de chopp com gotículas de condensação. Iluminação cinematográfica lateral quente, bokeh âmbar suave.",
+  "en": "Hyper-realistic close-up shot of a social toast in a dimly lit rustic gastropub. Foreground sharp focus on artisan snack with visible crispy golden texture. In the slight background, a hand holding a glass of draft beer with cold condensation droplets, slightly blurred. Cinematic warm lighting from the side, soft amber bokeh background, shadows cast consistently across table surface. Shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, award-winning food photography, appetizing, highly detailed textures, unified lighting environment, 8k resolution."
+}`
 }
 
 const improvePromptSchema = z.object({
@@ -149,15 +164,44 @@ export async function POST(request: Request) {
         system: systemPrompt,
         prompt: `Melhore este prompt para geração de imagem:\n\n"${prompt}"`,
         temperature: 0.7,
-        maxTokens: 500,
+        maxOutputTokens: 800,
       })
 
-      const improvedPrompt = text.trim()
-      console.log('[Improve Prompt] Success, improved length:', improvedPrompt.length)
+      const rawText = text.trim()
+      console.log('[Improve Prompt] Raw response:', rawText.substring(0, 200))
+
+      // Parse JSON response with both versions
+      let improvedPromptPt: string
+      let improvedPromptEn: string
+
+      try {
+        // Try to extract JSON from the response (may have markdown code blocks)
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+        if (!jsonMatch) {
+          throw new Error('No JSON found in response')
+        }
+
+        const parsed = JSON.parse(jsonMatch[0])
+        improvedPromptPt = parsed.pt || parsed.PT || ''
+        improvedPromptEn = parsed.en || parsed.EN || ''
+
+        if (!improvedPromptPt || !improvedPromptEn) {
+          throw new Error('Missing pt or en in response')
+        }
+      } catch (parseError) {
+        // Fallback: if JSON parsing fails, use the raw text for both (backwards compatibility)
+        console.warn('[Improve Prompt] JSON parse failed, using raw text:', parseError)
+        improvedPromptPt = rawText
+        improvedPromptEn = rawText
+      }
+
+      console.log('[Improve Prompt] Success - PT:', improvedPromptPt.length, 'chars, EN:', improvedPromptEn.length, 'chars')
 
       return NextResponse.json({
         success: true,
-        improvedPrompt,
+        improvedPrompt: improvedPromptPt, // Backwards compatibility
+        improvedPromptPt,
+        improvedPromptEn,
       })
     } catch (providerError: unknown) {
       // Refund credits on provider error

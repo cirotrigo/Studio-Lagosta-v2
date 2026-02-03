@@ -40,7 +40,8 @@ export function GenerateImageModal({
   projectId,
   onComplete,
 }: GenerateImageModalProps) {
-  const [prompt, setPrompt] = useState('')
+  const [prompt, setPrompt] = useState('') // Portuguese version for display
+  const [promptEn, setPromptEn] = useState<string | null>(null) // English version for generation
   const [referenceImages, setReferenceImages] = useState<string[]>([])
   const [isUploading, setIsUploading] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
@@ -55,10 +56,13 @@ export function GenerateImageModal({
       return
     }
     improvePrompt.mutate(
-      { prompt, projectId },
+      { prompt, projectId, aspectRatio: '9:16' }, // Stories format
       {
         onSuccess: (data) => {
-          setPrompt(data.improvedPrompt)
+          // Display Portuguese version in textarea
+          setPrompt(data.improvedPromptPt || data.improvedPrompt)
+          // Store English version for image generation
+          setPromptEn(data.improvedPromptEn || data.improvedPrompt)
           toast.success('Descrição melhorada!')
         },
       }
@@ -71,12 +75,14 @@ export function GenerateImageModal({
         prompt: data.prompt,
         projectId,
         model: 'nano-banana-pro',
+        aspectRatio: '9:16', // Stories format (vertical)
         referenceImages: data.referenceImages && data.referenceImages.length > 0 ? data.referenceImages : undefined,
       })
     },
     onSuccess: (data) => {
       onComplete({ id: data.id, fileUrl: data.fileUrl })
       setPrompt('')
+      setPromptEn(null)
       setReferenceImages([])
       toast.success('Imagem gerada com sucesso!')
     },
@@ -91,7 +97,9 @@ export function GenerateImageModal({
       toast.error('Digite uma descricao para a imagem')
       return
     }
-    generateImage.mutate({ prompt, referenceImages })
+    // Use English prompt for generation if available (from "Melhorar descrição")
+    const promptForGeneration = promptEn || prompt
+    generateImage.mutate({ prompt: promptForGeneration, referenceImages })
   }
 
   const uploadFiles = async (files: FileList | File[]) => {
@@ -241,7 +249,11 @@ export function GenerateImageModal({
                 id="prompt"
                 placeholder="Ex: Uma foto profissional de um hamburguer artesanal com queijo derretendo, em fundo escuro com iluminacao dramatica"
                 value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
+                onChange={(e) => {
+                  setPrompt(e.target.value)
+                  // Clear English version when user manually edits (they're no longer in sync)
+                  setPromptEn(null)
+                }}
                 rows={4}
                 className="resize-none"
               />

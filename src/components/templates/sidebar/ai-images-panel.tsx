@@ -311,7 +311,8 @@ function GenerateImageForm({
   const driveFolderName =
     project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
-  const [prompt, setPrompt] = React.useState('')
+  const [prompt, setPrompt] = React.useState('') // Portuguese version for display
+  const [promptEn, setPromptEn] = React.useState<string | null>(null) // English version for generation
   const [aspectRatio, setAspectRatio] = React.useState('9:16')
   const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('flux-1.1-pro')
   const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K' | undefined>('2K')
@@ -358,7 +359,10 @@ function GenerateImageForm({
       { prompt, projectId, aspectRatio: aspectRatio as '1:1' | '16:9' | '9:16' | '4:5' },
       {
         onSuccess: (data) => {
-          setPrompt(data.improvedPrompt)
+          // Display Portuguese version in textarea
+          setPrompt(data.improvedPromptPt || data.improvedPrompt)
+          // Store English version for image generation
+          setPromptEn(data.improvedPromptEn || data.improvedPrompt)
           toast({ description: 'Descrição melhorada!' })
         },
       }
@@ -561,6 +565,7 @@ function GenerateImageForm({
       }
 
       setPrompt('')
+      setPromptEn(null) // Limpar versão em inglês
       setReferenceImages([]) // Limpar imagens de referência
       setLocalFiles([]) // Limpar arquivos locais
       setReferenceUrls([]) // Limpar URLs de referência
@@ -784,10 +789,16 @@ function GenerateImageForm({
       // 5. Combinar todas as URLs de referência (incluindo URLs diretas de prompts salvos)
       const allImageUrls = [...driveImageUrls, ...localFileUrls, ...referenceUrls]
 
+      // Use English prompt for generation if available (from "Melhorar descrição")
+      // Otherwise use the regular prompt (which may be in Portuguese)
+      const promptForGeneration = promptEn || prompt.trim()
+
       console.log('[AIImagesPanel] Generating/editing image with:', {
         projectId,
         mode,
-        prompt: prompt.trim(),
+        promptDisplay: prompt.trim().substring(0, 50),
+        promptForGeneration: promptForGeneration.substring(0, 50),
+        usingEnglishPrompt: !!promptEn,
         aspectRatio,
         model: selectedModel,
         resolution,
@@ -797,7 +808,7 @@ function GenerateImageForm({
       })
 
       generateMutation.mutate({
-        prompt: prompt.trim(),
+        prompt: promptForGeneration,
         aspectRatio,
         referenceImages: allImageUrls,
         model: selectedModel,
@@ -983,7 +994,11 @@ function GenerateImageForm({
         <Textarea
           placeholder="Descreva a imagem que deseja gerar..."
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+            setPrompt(e.target.value)
+            // Clear English version when user manually edits (they're no longer in sync)
+            setPromptEn(null)
+          }}
           rows={3}
           disabled={generateMutation.isPending}
         />

@@ -12,7 +12,9 @@ export interface ImprovePromptParams {
 
 export interface ImprovePromptResponse {
   success: boolean;
-  improvedPrompt: string;
+  improvedPrompt: string; // Backwards compatibility (same as improvedPromptPt)
+  improvedPromptPt: string; // Portuguese version for display
+  improvedPromptEn: string; // English version for image generation
 }
 
 export function useImprovePrompt() {
