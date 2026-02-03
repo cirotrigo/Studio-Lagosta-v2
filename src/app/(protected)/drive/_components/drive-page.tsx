@@ -26,6 +26,8 @@ import { FolderCreateDialog } from './folder-create-dialog'
 import { FileUploadDialog } from './file-upload-dialog'
 import { DownloadZipDialog } from './download-zip-dialog'
 import { MoveFilesDialog } from './move-files-dialog'
+import { AIEditModal, type PendingGeneration } from './ai-edit-modal'
+import { PendingGenerationCard } from './pending-generation-card'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import type { DriveFolderType, DriveBreadcrumbEntry } from '@/types/drive'
 import { Card } from '@/components/ui/card'
@@ -108,6 +110,11 @@ export function DrivePage({
   const [downloadDialogOpen, setDownloadDialogOpen] = React.useState(false)
   const [moveDialogOpen, setMoveDialogOpen] = React.useState(false)
   const [moveFiles, setMoveFiles] = React.useState<string[]>([])
+
+  // AI Edit Modal state
+  const [aiEditModalOpen, setAiEditModalOpen] = React.useState(false)
+  const [aiEditImage, setAiEditImage] = React.useState<GoogleDriveItem | null>(null)
+  const [pendingGenerations, setPendingGenerations] = React.useState<PendingGeneration[]>([])
 
   const items = React.useMemo(() => {
     if (!driveQuery.data?.pages) return []
@@ -290,31 +297,46 @@ export function DrivePage({
 
   const handleEditWithAI = React.useCallback((file: GoogleDriveItem) => {
     if (file.kind === 'folder') return
-    const targetId = file.shortcutDetails?.targetId ?? file.id
-    if (!targetId || typeof window === 'undefined') return
-
-    // If there are templates available, use the first one
-    // Otherwise, we can't edit with AI without a template context
-    if (!templateOptions.length) {
-      toast.error('Nenhum template disponível. Crie um template primeiro para editar imagens com IA.')
+    if (!file.mimeType?.startsWith('image/')) {
+      toast.error('Apenas imagens podem ser editadas com IA')
       return
     }
+    setAiEditImage(file)
+    setAiEditModalOpen(true)
+  }, [])
 
-    const templateId = templateOptions[0].id
-    const params = new URLSearchParams({
-      driveFileId: targetId,
-      aiEdit: 'true',
-    })
-    if (file.name) {
-      params.set('driveFileName', file.name)
-    }
-    // Pass the current folder ID so the result can be uploaded back
-    if (effectiveFolderId) {
-      params.set('driveFolderId', effectiveFolderId)
-    }
-    const url = `/templates/${templateId}/editor?${params.toString()}`
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }, [templateOptions, effectiveFolderId])
+  const handleGenerationStart = React.useCallback((generation: PendingGeneration) => {
+    setPendingGenerations((prev) => [generation, ...prev])
+  }, [])
+
+  const handleGenerationComplete = React.useCallback((id: string, result: { fileUrl: string; name: string }) => {
+    setPendingGenerations((prev) =>
+      prev.map((g) =>
+        g.id === id
+          ? { ...g, status: 'completed' as const, resultImage: result }
+          : g
+      )
+    )
+    // Remove completed generation after a delay
+    setTimeout(() => {
+      setPendingGenerations((prev) => prev.filter((g) => g.id !== id))
+      refetchDrive()
+    }, 3000)
+  }, [refetchDrive])
+
+  const handleGenerationError = React.useCallback((id: string, error: string) => {
+    setPendingGenerations((prev) =>
+      prev.map((g) =>
+        g.id === id
+          ? { ...g, status: 'error' as const, error }
+          : g
+      )
+    )
+  }, [])
+
+  const handleRemovePendingGeneration = React.useCallback((id: string) => {
+    setPendingGenerations((prev) => prev.filter((g) => g.id !== id))
+  }, [])
 
   const handleMoveFiles = (fileIds: string[]) => {
     setMoveFiles(fileIds)
@@ -454,6 +476,8 @@ export function DrivePage({
           templates={templateOptions}
           onOpenInTemplate={handleOpenInTemplate}
           onEditWithAI={handleEditWithAI}
+          pendingGenerations={pendingGenerations}
+          onRemovePendingGeneration={handleRemovePendingGeneration}
         />
       </DriveDropZone>
       )}
@@ -485,6 +509,16 @@ export function DrivePage({
           clearSelection()
           refetchDrive()
         }}
+      />
+      <AIEditModal
+        open={aiEditModalOpen}
+        onOpenChange={setAiEditModalOpen}
+        image={aiEditImage}
+        projectId={projectIdForQuery}
+        folderId={effectiveFolderId}
+        onGenerationStart={handleGenerationStart}
+        onGenerationComplete={handleGenerationComplete}
+        onGenerationError={handleGenerationError}
       />
     </div>
   )

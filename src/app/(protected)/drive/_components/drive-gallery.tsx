@@ -2,13 +2,16 @@
 
 import * as React from 'react'
 import { HardDrive, Loader2 } from 'lucide-react'
+import { AnimatePresence } from 'framer-motion'
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { DriveItem } from './drive-item'
+import { PendingGenerationCard } from './pending-generation-card'
 import type { TemplateListItem } from '@/hooks/use-templates'
+import type { PendingGeneration } from './ai-edit-modal'
 
 interface DriveGalleryProps {
   items: GoogleDriveItem[]
@@ -26,6 +29,8 @@ interface DriveGalleryProps {
   templates: TemplateListItem[]
   onOpenInTemplate: (item: GoogleDriveItem, templateId: number) => void
   onEditWithAI?: (item: GoogleDriveItem) => void
+  pendingGenerations?: PendingGeneration[]
+  onRemovePendingGeneration?: (id: string) => void
 }
 
 export function DriveGallery({
@@ -44,6 +49,8 @@ export function DriveGallery({
   templates,
   onOpenInTemplate,
   onEditWithAI,
+  pendingGenerations = [],
+  onRemovePendingGeneration,
 }: DriveGalleryProps) {
   const isEmpty = !items.length && !isLoading
   const galleryId = React.useId()
@@ -72,7 +79,9 @@ export function DriveGallery({
     onMoveToFolder(fileIds, targetItem.id)
   }
 
-  if (isEmpty) {
+  const hasPendingGenerations = pendingGenerations.length > 0
+
+  if (isEmpty && !hasPendingGenerations) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/60 py-20 text-center text-sm text-muted-foreground">
         <HardDrive className="mb-4 h-10 w-10 text-muted-foreground/60" />
@@ -85,6 +94,19 @@ export function DriveGallery({
     <div className="flex flex-col gap-6">
       <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
         <div id={galleryId} className="w-full columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-4 space-y-4">
+          {/* Pending AI Generations */}
+          <AnimatePresence mode="popLayout">
+            {pendingGenerations.map((generation) => (
+              <div key={generation.id} className="break-inside-avoid mb-4">
+                <PendingGenerationCard
+                  generation={generation}
+                  onRemove={onRemovePendingGeneration}
+                />
+              </div>
+            ))}
+          </AnimatePresence>
+
+          {/* Drive Items */}
           {items.map((item) => (
             <div key={item.id} className="break-inside-avoid mb-4">
               <DriveItem
