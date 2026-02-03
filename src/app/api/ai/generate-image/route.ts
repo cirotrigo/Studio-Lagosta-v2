@@ -238,6 +238,65 @@ export async function POST(request: Request) {
       })
     }
 
+    // 4.5. Upload de imagem base para Vercel Blob (se necessário para modo edit)
+    let publicBaseImageUrl: string | undefined = body.baseImage
+    if (body.baseImage && (body.mode === 'edit' || body.mode === 'inpaint')) {
+      console.log('[AI Generate] Processing base image for edit mode:', body.baseImage)
+
+      try {
+        // Se já é uma URL pública do Vercel Blob, usar diretamente
+        if (body.baseImage.includes('vercel-storage.com') || body.baseImage.includes('blob.vercel-storage.com')) {
+          console.log('[AI Generate] Base image is already a Vercel Blob URL')
+          publicBaseImageUrl = body.baseImage
+        }
+        // Se é uma URL do Google Drive (internal API), fazer fetch e upload
+        else if (body.baseImage.includes('/api/google-drive/') || body.baseImage.includes('/api/drive/')) {
+          console.log('[AI Generate] Fetching base image from internal API...')
+
+          // Obter cookie de autenticação do request original
+          const cookie = request.headers.get('cookie')
+
+          const response = await fetch(body.baseImage, {
+            headers: cookie ? { cookie } : {}
+          })
+
+          if (!response.ok) {
+            console.error('[AI Generate] Failed to fetch base image:', response.status, response.statusText)
+            throw new Error('Falha ao carregar imagem base do Google Drive. Verifique se o arquivo existe e você tem permissão.')
+          }
+
+          const imageBuffer = await response.arrayBuffer()
+          const contentType = response.headers.get('content-type') || 'image/jpeg'
+
+          // Validar tamanho
+          const sizeInMb = (imageBuffer.byteLength / (1024 * 1024)).toFixed(2)
+          console.log(`[AI Generate] Base image size: ${sizeInMb}MB`)
+
+          if (imageBuffer.byteLength > 10 * 1024 * 1024) {
+            throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 10MB.`)
+          }
+
+          // Upload para Vercel Blob
+          const fileName = `ai-base-${Date.now()}.jpg`
+          const blob = await put(fileName, imageBuffer, {
+            access: 'public',
+            contentType,
+          })
+
+          console.log('[AI Generate] Base image uploaded to Vercel Blob:', blob.url)
+          publicBaseImageUrl = blob.url
+        }
+        // Para outras URLs externas, usar diretamente
+        else {
+          console.log('[AI Generate] Using external base image URL directly:', body.baseImage)
+          publicBaseImageUrl = body.baseImage
+        }
+      } catch (error) {
+        console.error('[AI Generate] Error processing base image:', error)
+        throw new Error(`Erro ao processar imagem base: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
+      }
+    }
+
     // 5. Criar prediction no Replicate
     console.log('[AI Generate] Creating prediction with:', {
       model: body.model,
@@ -256,7 +315,7 @@ export async function POST(request: Request) {
       referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
       // Parâmetros de edição
       mode: body.mode,
-      baseImage: body.baseImage,
+      baseImage: publicBaseImageUrl,
       maskImage: body.maskImage,
       // Parâmetros opcionais do FLUX
       seed: body.seed,

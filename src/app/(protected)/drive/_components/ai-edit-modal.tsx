@@ -66,7 +66,7 @@ export function AIEditModal({
   const improvePrompt = useImprovePrompt()
 
   const [prompt, setPrompt] = React.useState('')
-  const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('seedream-4')
+  const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('nano-banana-pro')
   const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K'>('2K')
   const [referenceImages, setReferenceImages] = React.useState<string[]>([])
   const fileInputRef = React.useRef<HTMLInputElement>(null)
@@ -254,14 +254,14 @@ export function AIEditModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
-        <DialogHeader>
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <Wand2 className="h-5 w-5" />
             Editar com IA
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 pr-4">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
           <div className="space-y-6 py-4">
             {/* Source Image */}
             <div className="space-y-2">
@@ -361,26 +361,16 @@ export function AIEditModal({
 
             {/* Model & Resolution */}
             <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">
-                  Modelo
-                </label>
-                <AIModelSelector
-                  value={selectedModel}
-                  onValueChange={setSelectedModel}
-                  filterByEditing
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-muted-foreground">
-                  Resolução
-                </label>
-                <ResolutionSelector
-                  value={resolution}
-                  onValueChange={setResolution}
-                  model={selectedModel}
-                />
-              </div>
+              <AIModelSelector
+                value={selectedModel}
+                onValueChange={setSelectedModel}
+                filterByEditing
+              />
+              <ResolutionSelector
+                value={resolution}
+                onValueChange={setResolution}
+                model={selectedModel}
+              />
             </div>
 
             {/* Credits Info */}
