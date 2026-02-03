@@ -23,7 +23,8 @@ export type RecurringConfigValue = {
 }
 import { toast } from 'sonner'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../prisma/generated/client'
-import { Calendar, Repeat, Zap } from 'lucide-react'
+import { Calendar, Repeat, Zap, Wand2, Loader2 } from 'lucide-react'
+import { useImproveCaption } from '@/hooks/use-improve-caption'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
@@ -73,6 +74,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
   const [selectedMedia, setSelectedMedia] = useState<MediaItem[]>([])
   const [hasInitializedMedia, setHasInitializedMedia] = useState(false)
   const isSubmittingRef = useRef(false) // Prevent double-submit
+  const improveCaption = useImproveCaption()
 
   const form = useForm<PostFormData>({
     resolver: zodResolver(postSchema),
@@ -231,6 +233,31 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     formRef.current.setValue('mediaUrls', media.map(m => m.url))
     formRef.current.setValue('generationIds', media.filter(m => m.type === 'generation').map(m => m.id))
   }, [])
+
+  // Handler para melhorar legenda com IA
+  const handleImproveCaption = useCallback(() => {
+    const currentCaption = formRef.current.getValues('caption')
+    const currentPostType = formRef.current.getValues('postType')
+
+    if (!currentCaption?.trim()) {
+      toast.error('Digite uma legenda primeiro')
+      return
+    }
+
+    improveCaption.mutate(
+      {
+        caption: currentCaption,
+        projectId,
+        postType: currentPostType as 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'
+      },
+      {
+        onSuccess: (data) => {
+          formRef.current.setValue('caption', data.improvedCaption)
+          toast.success('Legenda melhorada!')
+        },
+      }
+    )
+  }, [projectId, improveCaption])
 
   const onSubmit = async (data: PostFormData) => {
     // Prevent double-submit
@@ -529,10 +556,32 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
           {/* Legenda */}
           <div>
-            <Label htmlFor="caption" className="text-base font-semibold">
-              {postType === 'STORY' ? 'Texto do Story (Opcional)' : 'Legenda'}
-              {postType !== 'STORY' && <span className="text-red-500 ml-1">*</span>}
-            </Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="caption" className="text-base font-semibold">
+                {postType === 'STORY' ? 'Texto do Story (Opcional)' : 'Legenda'}
+                {postType !== 'STORY' && <span className="text-red-500 ml-1">*</span>}
+              </Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={handleImproveCaption}
+                disabled={improveCaption.isPending || !caption?.trim()}
+                className="h-7 text-xs gap-1 text-muted-foreground hover:text-foreground"
+              >
+                {improveCaption.isPending ? (
+                  <>
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    Melhorando...
+                  </>
+                ) : (
+                  <>
+                    <Wand2 className="w-3 h-3" />
+                    Melhorar legenda
+                  </>
+                )}
+              </Button>
+            </div>
             <Textarea
               id="caption"
               {...form.register('caption')}
