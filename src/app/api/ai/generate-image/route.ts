@@ -327,16 +327,36 @@ export async function POST(request: Request) {
     }
 
     // 6. Executar geração com retry automático (máximo 3 tentativas)
+    // Na 3ª tentativa, troca para modelo alternativo se o original for nano-banana-pro
     const MAX_RETRIES = 3
     const RETRY_DELAY_MS = 30000 // 30 segundos
     let result: { status: string; output?: string | string[]; error?: string; id: string; logs?: string }
     let lastError: Error | null = null
+    let currentParams = { ...predictionParams }
+    let currentModelConfig = modelConfig
+    let usedFallbackModel = false
+
+    // Modelos que suportam fallback para Seedream 4
+    const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-pro', 'nano-banana']
+    const FALLBACK_MODEL: AIImageModel = 'seedream-4'
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES}`)
+        // Na 3ª tentativa, trocar para modelo alternativo se elegível
+        if (attempt === 3 && FALLBACK_ELIGIBLE_MODELS.includes(currentParams.model as AIImageModel)) {
+          console.log(`[AI Generate] Switching to fallback model: ${FALLBACK_MODEL}`)
+          currentParams = {
+            ...currentParams,
+            model: FALLBACK_MODEL,
+            // Seedream 4 suporta até 10 imagens de referência, então mantemos todas
+          }
+          currentModelConfig = AI_IMAGE_MODELS[FALLBACK_MODEL]
+          usedFallbackModel = true
+        }
 
-        const prediction = await createReplicatePrediction(predictionParams)
+        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES} with model: ${currentParams.model}`)
+
+        const prediction = await createReplicatePrediction(currentParams)
         console.log('[AI Generate] Prediction created:', prediction.id)
 
         // Aguardar conclusão (polling com timeout de até 280 segundos para 4K)
@@ -344,7 +364,7 @@ export async function POST(request: Request) {
 
         // Se sucesso, sair do loop
         if (result.status === 'succeeded') {
-          console.log(`[AI Generate] Success on attempt ${attempt}`)
+          console.log(`[AI Generate] Success on attempt ${attempt}${usedFallbackModel ? ` (using fallback model ${FALLBACK_MODEL})` : ''}`)
           break
         }
 
@@ -354,6 +374,7 @@ export async function POST(request: Request) {
           const isRetryable = isRetryableError(errorMessage)
 
           console.log(`[AI Generate] Prediction failed on attempt ${attempt}:`, {
+            model: currentParams.model,
             error: errorMessage,
             isRetryable,
             attemptsRemaining: MAX_RETRIES - attempt
@@ -374,6 +395,7 @@ export async function POST(request: Request) {
         const isRetryable = isRetryableError(errorMessage)
 
         console.error(`[AI Generate] Error on attempt ${attempt}:`, {
+          model: currentParams.model,
           error: errorMessage,
           isRetryable,
           attemptsRemaining: MAX_RETRIES - attempt
@@ -408,15 +430,17 @@ export async function POST(request: Request) {
 
       // Erros conhecidos do Replicate
       if (errorMessage.toLowerCase().includes('failed to generate image after multiple retries')) {
-        const modelName = modelConfig.displayName
+        const modelName = currentModelConfig.displayName
+        const originalModelName = modelConfig.displayName
+        const triedFallback = usedFallbackModel ? ` e ${AI_IMAGE_MODELS[FALLBACK_MODEL].displayName}` : ''
         errorMessage = `🔄 Falha após ${MAX_RETRIES} tentativas automáticas\n\n` +
-          `O modelo ${modelName} está com problemas temporários no Replicate.\n\n` +
+          `Tentamos com ${originalModelName}${triedFallback}, mas ambos estão com problemas no Replicate.\n\n` +
           `💡 Soluções:\n` +
-          `• Tente outro modelo (FLUX Schnell ou Seedream 4)\n` +
+          `• Tente outro modelo (FLUX Schnell ou FLUX 1.1 Pro)\n` +
           `• Aguarde alguns minutos e tente novamente\n` +
           `• Reduza o número de imagens de referência`
       } else if (errorMessage.includes('E6716')) {
-        const modelName = modelConfig.displayName
+        const modelName = currentModelConfig.displayName
         const refCount = publicReferenceUrls.length
         errorMessage = `⏱️ Timeout ao iniciar geração com ${modelName}\n\n` +
           `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
@@ -452,11 +476,12 @@ export async function POST(request: Request) {
     // 8. Calcular dimensões baseado no aspect ratio
     const dimensions = calculateDimensions(body.aspectRatio)
 
-    // 9. Salvar no banco de dados
+    // 9. Salvar no banco de dados (usando o modelo que realmente foi usado, pode ser fallback)
+    const actualModel = currentParams.model as string
     const aiImage = await db.aIGeneratedImage.create({
       data: {
         projectId: body.projectId,
-        name: `${modelConfig.displayName} - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
+        name: `${currentModelConfig.displayName} - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
         prompt: body.prompt,
         mode: 'GENERATE',
         fileUrl: blobUrl,
@@ -464,21 +489,28 @@ export async function POST(request: Request) {
         width: dimensions.width,
         height: dimensions.height,
         aspectRatio: body.aspectRatio,
-        provider: modelConfig.provider.toLowerCase(),
-        model: body.model,
+        provider: currentModelConfig.provider.toLowerCase(),
+        model: actualModel,
         predictionId: result.id,
         createdBy: userId,
       },
     })
 
-    // 10. Deduzir créditos após sucesso (quantidade calculada baseada no modelo)
+    // 10. Deduzir créditos após sucesso (quantidade calculada baseada no modelo usado)
+    // Se usou fallback, calcular créditos do modelo que realmente foi usado
+    const actualCreditsRequired = usedFallbackModel
+      ? calculateCreditsForModel(actualModel as AIImageModel, body.resolution)
+      : creditsRequired
+
     await deductCreditsForFeature({
       clerkUserId: userId,
       feature: 'ai_image_generation',
-      quantity: creditsRequired,
+      quantity: actualCreditsRequired,
       details: {
         mode: body.mode,
-        model: body.model,
+        model: actualModel,
+        originalModel: usedFallbackModel ? body.model : undefined,
+        usedFallbackModel,
         resolution: body.resolution,
         prompt: body.prompt,
         aiImageId: aiImage.id,
