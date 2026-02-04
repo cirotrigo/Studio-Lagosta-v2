@@ -17,7 +17,7 @@ import {
   useMoveFiles,
 } from '@/hooks/use-drive'
 import { useTemplates } from '@/hooks/use-templates'
-import { DriveHeader } from './drive-header'
+import { DriveHeader, type DriveFilterType } from './drive-header'
 import { DriveFolderToggle } from './drive-folder-toggle'
 import { DriveToolbar } from './drive-toolbar'
 import { DriveGallery } from './drive-gallery'
@@ -87,6 +87,7 @@ export function DrivePage({
   const setCurrentFolderId = useDriveStore((state) => state.setCurrentFolderId)
 
   const [searchTerm, setSearchTerm] = React.useState(() => (shouldSyncUrl ? searchParams.get('search') ?? '' : ''))
+  const [filter, setFilter] = React.useState<DriveFilterType>('all')
   const debouncedSearch = useDebouncedValue(searchTerm, 400)
 
   const { data: projects = [], isLoading: projectsLoading } = useDriveProjects()
@@ -116,10 +117,35 @@ export function DrivePage({
   const [aiEditImage, setAiEditImage] = React.useState<GoogleDriveItem | null>(null)
   const [pendingGenerations, setPendingGenerations] = React.useState<PendingGeneration[]>([])
 
-  const items = React.useMemo(() => {
+  const allItems = React.useMemo(() => {
     if (!driveQuery.data?.pages) return []
     return driveQuery.data.pages.flatMap((page) => page.items)
   }, [driveQuery.data])
+
+  // Filter items based on selected filter
+  const items = React.useMemo(() => {
+    if (filter === 'all') return allItems
+
+    return allItems.filter((item) => {
+      const isFolder = item.kind === 'folder' || item.mimeType === 'application/vnd.google-apps.folder'
+      const isImage = item.mimeType?.startsWith('image/')
+      const isVideo = item.mimeType?.startsWith('video/')
+      const isAIGenerated = item.name.startsWith('IA-')
+
+      switch (filter) {
+        case 'ai-generated':
+          return isAIGenerated && !isFolder
+        case 'images':
+          return isImage && !isFolder
+        case 'videos':
+          return isVideo && !isFolder
+        case 'folders':
+          return isFolder
+        default:
+          return true
+      }
+    })
+  }, [allItems, filter])
 
   const driveProject = driveQuery.data?.pages?.[0]?.project
   const folderName = driveQuery.data?.pages?.[0]?.folderName
@@ -435,6 +461,8 @@ export function DrivePage({
         }}
         isLoadingProjects={projectsLoading}
         showProjectSelector={showProjectSelector}
+        filter={filter}
+        onFilterChange={setFilter}
       />
       <div className="flex flex-wrap items-center gap-3">
         <DriveFolderToggle project={driveProject} value={folderType} onChange={handleFolderChange} />
