@@ -143,7 +143,7 @@ export function DrivePage({
       const isFolder = item.kind === 'folder' || item.mimeType === 'application/vnd.google-apps.folder'
       const isImage = item.mimeType?.startsWith('image/')
       const isVideo = item.mimeType?.startsWith('video/')
-      const isAIGenerated = item.name.includes('IA-') || item.name.includes('_IA-')
+      const isAIGenerated = item.name.toLowerCase().includes('ia-')
 
       switch (filter) {
         case 'ai-generated':
