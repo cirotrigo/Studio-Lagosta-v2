@@ -130,7 +130,7 @@ export function DrivePage({
       const isFolder = item.kind === 'folder' || item.mimeType === 'application/vnd.google-apps.folder'
       const isImage = item.mimeType?.startsWith('image/')
       const isVideo = item.mimeType?.startsWith('video/')
-      const isAIGenerated = item.name.startsWith('IA-')
+      const isAIGenerated = item.name.includes('IA-') || item.name.includes('_IA-')
 
       switch (filter) {
         case 'ai-generated':
@@ -503,19 +503,20 @@ export function DrivePage({
             isFetchingNextPage={driveQuery.isFetchingNextPage}
             hasNextPage={Boolean(driveQuery.hasNextPage)}
             onLoadMore={() => driveQuery.fetchNextPage()}
-          onOpenItem={handleOpenItem}
-          onDownloadItem={handleDownloadItem}
-          onMoveItem={(item) => handleMoveFiles([item.id])}
-          onMoveToFolder={handleMoveToFolder}
-          onDeleteItem={isAdmin ? (item) => handleDelete([item.id]) : undefined}
-          selectedFileIds={selectedFileIds}
-          onToggleSelect={toggleFile}
-          templates={templateOptions}
-          onOpenInTemplate={handleOpenInTemplate}
-          onEditWithAI={handleEditWithAI}
-          pendingGenerations={pendingGenerations}
-          onRemovePendingGeneration={handleRemovePendingGeneration}
-        />
+            onOpenItem={handleOpenItem}
+            onDownloadItem={handleDownloadItem}
+            onMoveItem={(item) => handleMoveFiles([item.id])}
+            onMoveToFolder={handleMoveToFolder}
+            onDeleteItem={isAdmin ? (item) => handleDelete([item.id]) : undefined}
+            selectedFileIds={selectedFileIds}
+            onToggleSelect={toggleFile}
+            templates={templateOptions}
+            onOpenInTemplate={handleOpenInTemplate}
+            onEditWithAI={handleEditWithAI}
+            pendingGenerations={pendingGenerations}
+            onRemovePendingGeneration={handleRemovePendingGeneration}
+            hasActiveFilter={filter !== 'all'}
+          />
       </DriveDropZone>
       )}
 

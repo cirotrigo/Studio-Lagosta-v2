@@ -64,7 +64,7 @@ export function DriveItem({
   const thumbnailUrl = isFolder ? undefined : `/api/drive/thumbnail/${resolvedFileId}`
   const isImage = item.mimeType?.startsWith('image/')
   const isVideo = item.mimeType?.startsWith('video/')
-  const isAIGenerated = item.name.startsWith('IA-')
+  const isAIGenerated = item.name.includes('IA-') || item.name.includes('_IA-')
   const fullResourceSrc = !isFolder && resolvedFileId ? `/api/google-drive/image/${resolvedFileId}` : null
 
   const [cardAspectRatio, setCardAspectRatio] = React.useState(1)

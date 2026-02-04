@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { HardDrive, Loader2 } from 'lucide-react'
+import { HardDrive, Loader2, SearchX } from 'lucide-react'
 import { AnimatePresence } from 'framer-motion'
 import { DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -31,6 +31,7 @@ interface DriveGalleryProps {
   onEditWithAI?: (item: GoogleDriveItem) => void
   pendingGenerations?: PendingGeneration[]
   onRemovePendingGeneration?: (id: string) => void
+  hasActiveFilter?: boolean
 }
 
 export function DriveGallery({
@@ -51,6 +52,7 @@ export function DriveGallery({
   onEditWithAI,
   pendingGenerations = [],
   onRemovePendingGeneration,
+  hasActiveFilter = false,
 }: DriveGalleryProps) {
   const isEmpty = !items.length && !isLoading
   const galleryId = React.useId()
@@ -84,8 +86,18 @@ export function DriveGallery({
   if (isEmpty && !hasPendingGenerations) {
     return (
       <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/60 py-20 text-center text-sm text-muted-foreground">
-        <HardDrive className="mb-4 h-10 w-10 text-muted-foreground/60" />
-        <p>Nenhum arquivo encontrado nesta pasta.</p>
+        {hasActiveFilter ? (
+          <>
+            <SearchX className="mb-4 h-10 w-10 text-muted-foreground/60" />
+            <p>Nenhum arquivo corresponde ao filtro selecionado.</p>
+            <p className="text-xs mt-1 text-muted-foreground/80">Tente remover o filtro para ver todos os arquivos.</p>
+          </>
+        ) : (
+          <>
+            <HardDrive className="mb-4 h-10 w-10 text-muted-foreground/60" />
+            <p>Nenhum arquivo encontrado nesta pasta.</p>
+          </>
+        )}
       </div>
     )
   }
