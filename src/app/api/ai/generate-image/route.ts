@@ -326,10 +326,14 @@ export async function POST(request: Request) {
       steps: body.steps,
     }
 
-    // 6. Executar geração com retry automático (máximo 3 tentativas)
-    // Na 3ª tentativa, troca para modelo alternativo se o original for nano-banana-pro
-    const MAX_RETRIES = 3
-    const RETRY_DELAY_MS = 30000 // 30 segundos
+    // 6. Executar geração com retry automático (máximo 2 tentativas devido ao limite de 300s do Vercel)
+    // Na 2ª tentativa, troca para modelo alternativo se o original for nano-banana-pro
+    const MAX_RETRIES = 2 // Reduzido para caber no limite de 300s do Vercel
+    const RETRY_DELAY_MS = 10000 // 10 segundos (reduzido de 30s)
+    const VERCEL_TIME_BUDGET_MS = 280000 // 280s de orçamento (deixa 20s de buffer para upload/save)
+    const MIN_TIME_FOR_RETRY_MS = 60000 // Mínimo de 60s para tentar retry
+    const startTime = Date.now()
+
     let result: { status: string; output?: string | string[]; error?: string; id: string; logs?: string }
     let lastError: Error | null = null
     let currentParams = { ...predictionParams }
@@ -340,10 +344,23 @@ export async function POST(request: Request) {
     const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-pro', 'nano-banana']
     const FALLBACK_MODEL: AIImageModel = 'seedream-4'
 
+    // Função para calcular tempo restante
+    const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
+    const getElapsedTime = () => Math.round((Date.now() - startTime) / 1000)
+
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      const remainingTime = getRemainingTime()
+      const pollingTimeout = Math.min(Math.floor(remainingTime / 1000) - 10, 120) // Max 120s por tentativa, deixa 10s buffer
+
+      // Verificar se há tempo suficiente para tentar
+      if (remainingTime < MIN_TIME_FOR_RETRY_MS && attempt > 1) {
+        console.log(`[AI Generate] Not enough time for retry (${Math.round(remainingTime / 1000)}s remaining). Stopping.`)
+        break
+      }
+
       try {
-        // Na 3ª tentativa, trocar para modelo alternativo se elegível
-        if (attempt === 3 && FALLBACK_ELIGIBLE_MODELS.includes(currentParams.model as AIImageModel)) {
+        // Na 2ª tentativa, trocar para modelo alternativo se elegível
+        if (attempt === 2 && FALLBACK_ELIGIBLE_MODELS.includes(currentParams.model as AIImageModel)) {
           console.log(`[AI Generate] Switching to fallback model: ${FALLBACK_MODEL}`)
           currentParams = {
             ...currentParams,
@@ -354,17 +371,17 @@ export async function POST(request: Request) {
           usedFallbackModel = true
         }
 
-        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES} with model: ${currentParams.model}`)
+        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES} with model: ${currentParams.model} (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
 
         const prediction = await createReplicatePrediction(currentParams)
         console.log('[AI Generate] Prediction created:', prediction.id)
 
-        // Aguardar conclusão (polling com timeout de até 280 segundos para 4K)
-        result = await waitForPrediction(prediction.id, 280)
+        // Aguardar conclusão com timeout dinâmico baseado no tempo restante
+        result = await waitForPrediction(prediction.id, pollingTimeout)
 
         // Se sucesso, sair do loop
         if (result.status === 'succeeded') {
-          console.log(`[AI Generate] Success on attempt ${attempt}${usedFallbackModel ? ` (using fallback model ${FALLBACK_MODEL})` : ''}`)
+          console.log(`[AI Generate] Success on attempt ${attempt}${usedFallbackModel ? ` (using fallback model ${FALLBACK_MODEL})` : ''} after ${getElapsedTime()}s`)
           break
         }
 
@@ -377,16 +394,17 @@ export async function POST(request: Request) {
             model: currentParams.model,
             error: errorMessage,
             isRetryable,
-            attemptsRemaining: MAX_RETRIES - attempt
+            attemptsRemaining: MAX_RETRIES - attempt,
+            elapsedTime: `${getElapsedTime()}s`
           })
 
-          if (isRetryable && attempt < MAX_RETRIES) {
+          if (isRetryable && attempt < MAX_RETRIES && getRemainingTime() > MIN_TIME_FOR_RETRY_MS) {
             console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
             await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
             continue
           }
 
-          // Não é retryable ou última tentativa - sair do loop
+          // Não é retryable ou última tentativa ou sem tempo - sair do loop
           break
         }
       } catch (error) {
@@ -398,16 +416,17 @@ export async function POST(request: Request) {
           model: currentParams.model,
           error: errorMessage,
           isRetryable,
-          attemptsRemaining: MAX_RETRIES - attempt
+          attemptsRemaining: MAX_RETRIES - attempt,
+          elapsedTime: `${getElapsedTime()}s`
         })
 
-        if (isRetryable && attempt < MAX_RETRIES) {
+        if (isRetryable && attempt < MAX_RETRIES && getRemainingTime() > MIN_TIME_FOR_RETRY_MS) {
           console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
           await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
           continue
         }
 
-        // Não é retryable ou última tentativa - propagar erro
+        // Não é retryable ou última tentativa ou sem tempo - propagar erro
         throw lastError
       }
     }
