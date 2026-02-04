@@ -84,11 +84,11 @@ export async function POST(req: Request) {
       )
     }
 
-    // Generate filename
+    // Generate filename with timestamp at the end
     const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..+/, '')
     const extension = mimeType.split('/')[1] || 'png'
     const baseName = fileName?.replace(/\.[^.]+$/, '') || 'ai-generated'
-    const finalFileName = `${timestamp}_${baseName}.${extension}`
+    const finalFileName = `${baseName}_${timestamp}.${extension}`
 
     // Upload to Google Drive
     const uploadResult = await googleDriveService.uploadFileToFolder({
