@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, Trash2, Video, FileText, Wand2 } from 'lucide-react'
+import { FileImage, Folder, MoreHorizontal, Eye, Download as DownloadIcon, MoveRight, Trash2, Video, FileText, Wand2, Sparkles } from 'lucide-react'
 import { useDraggable, useDroppable } from '@dnd-kit/core'
 import { CSS } from '@dnd-kit/utilities'
 import type { GoogleDriveItem } from '@/types/google-drive'
@@ -64,6 +64,7 @@ export function DriveItem({
   const thumbnailUrl = isFolder ? undefined : `/api/drive/thumbnail/${resolvedFileId}`
   const isImage = item.mimeType?.startsWith('image/')
   const isVideo = item.mimeType?.startsWith('video/')
+  const isAIGenerated = item.name.startsWith('IA-')
   const fullResourceSrc = !isFolder && resolvedFileId ? `/api/google-drive/image/${resolvedFileId}` : null
 
   const [cardAspectRatio, setCardAspectRatio] = React.useState(1)
@@ -266,6 +267,14 @@ export function DriveItem({
         {!isFolder && isVideo && (
           <div className="absolute top-2 right-2 z-20 rounded-full bg-black/60 px-2 py-1 text-[10px] font-semibold uppercase text-white backdrop-blur-sm pointer-events-none">
             Vídeo
+          </div>
+        )}
+
+        {/* AI Generated Badge */}
+        {!isFolder && isAIGenerated && !isVideo && (
+          <div className="absolute top-2 right-2 z-20 flex items-center gap-1 rounded-full bg-gradient-to-r from-purple-600/80 to-blue-600/80 px-2 py-1 text-[10px] font-semibold uppercase text-white backdrop-blur-sm pointer-events-none">
+            <Sparkles className="h-3 w-3" />
+            IA
           </div>
         )}
 

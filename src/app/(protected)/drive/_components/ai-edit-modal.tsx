@@ -79,10 +79,15 @@ export function AIEditModal({
   const [referenceImages, setReferenceImages] = React.useState<string[]>([]) // Uploaded images (URLs)
   const [driveReferenceImages, setDriveReferenceImages] = React.useState<DriveReferenceImage[]>([]) // Drive images
   const fileInputRef = React.useRef<HTMLInputElement>(null)
+  const prevOpenRef = React.useRef(false)
 
-  // Reset state when modal opens with new image
+  // Reset state only when modal transitions from closed to open
   React.useEffect(() => {
-    if (open && image) {
+    const wasOpen = prevOpenRef.current
+    prevOpenRef.current = open
+
+    // Only reset when opening (was closed, now open)
+    if (open && !wasOpen && image) {
       setPrompt('')
       setReferenceImages([])
       // Initialize Drive reference images from selected items
@@ -250,10 +255,12 @@ export function AIEditModal({
       // Upload to Drive if folder is available
       if (folderId && result.fileUrl) {
         try {
+          // Add "IA-" prefix to filename for easy identification
+          const aiPrefixedName = result.name.startsWith('IA-') ? result.name : `IA-${result.name}`
           await uploadToDrive.mutateAsync({
             imageUrl: result.fileUrl,
             folderId,
-            fileName: result.name,
+            fileName: aiPrefixedName,
           })
         } catch (uploadError) {
           console.error('[AIEditModal] Drive upload failed:', uploadError)
