@@ -10,6 +10,7 @@ import {
   calculateCreditsForModel
 } from '@/lib/ai/image-models-config'
 import { fetchProjectWithAccess } from '@/lib/projects/access'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
@@ -166,29 +167,22 @@ export async function POST(request: Request) {
               return url
             }
 
-            // Se é uma URL do Google Drive, fazer fetch com autenticação
-            let imageBuffer: ArrayBuffer
+            // Se é uma URL do Google Drive, usar o serviço diretamente
+            let imageBuffer: Buffer | ArrayBuffer
             let contentType = 'image/jpeg'
 
-            if (url.includes('/api/google-drive/')) {
-              // Construir URL absoluta se necessária
-              const absoluteUrl = url.startsWith('http') ? url : `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}${url}`
+            const googleDriveFileId = extractGoogleDriveFileId(url)
+            if (googleDriveFileId) {
+              console.log('[AI Generate] Using Google Drive service for reference image:', googleDriveFileId)
 
-              // Obter cookie de autenticação do request original
-              const cookie = request.headers.get('cookie')
-
-              console.log('[AI Generate] Fetching Google Drive image:', absoluteUrl)
-              const response = await fetch(absoluteUrl, {
-                headers: cookie ? { cookie } : {}
-              })
-
-              if (!response.ok) {
-                console.error(`[AI Generate] Failed to fetch reference image ${index + 1}:`, response.status, response.statusText)
+              try {
+                const { buffer, contentType: driveContentType } = await fetchGoogleDriveImage(googleDriveFileId)
+                imageBuffer = buffer
+                contentType = driveContentType
+              } catch (error) {
+                console.error(`[AI Generate] Failed to fetch reference image ${index + 1} from Google Drive:`, error)
                 throw new Error(`Falha ao carregar imagem de referência ${index + 1} do Google Drive. Verifique se o arquivo existe e você tem permissão.`)
               }
-
-              imageBuffer = await response.arrayBuffer()
-              contentType = response.headers.get('content-type') || 'image/jpeg'
             } else {
               // Para outras URLs, fazer fetch normal
               const response = await fetch(url)
@@ -249,47 +243,47 @@ export async function POST(request: Request) {
           console.log('[AI Generate] Base image is already a Vercel Blob URL')
           publicBaseImageUrl = body.baseImage
         }
-        // Se é uma URL do Google Drive (internal API), fazer fetch e upload
-        else if (body.baseImage.includes('/api/google-drive/') || body.baseImage.includes('/api/drive/')) {
-          console.log('[AI Generate] Fetching base image from internal API...')
-
-          // Obter cookie de autenticação do request original
-          const cookie = request.headers.get('cookie')
-
-          const response = await fetch(body.baseImage, {
-            headers: cookie ? { cookie } : {}
-          })
-
-          if (!response.ok) {
-            console.error('[AI Generate] Failed to fetch base image:', response.status, response.statusText)
-            throw new Error('Falha ao carregar imagem base do Google Drive. Verifique se o arquivo existe e você tem permissão.')
-          }
-
-          const imageBuffer = await response.arrayBuffer()
-          const contentType = response.headers.get('content-type') || 'image/jpeg'
-
-          // Validar tamanho
-          const sizeInMb = (imageBuffer.byteLength / (1024 * 1024)).toFixed(2)
-          console.log(`[AI Generate] Base image size: ${sizeInMb}MB`)
-
-          if (imageBuffer.byteLength > 10 * 1024 * 1024) {
-            throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 10MB.`)
-          }
-
-          // Upload para Vercel Blob
-          const fileName = `ai-base-${Date.now()}.jpg`
-          const blob = await put(fileName, imageBuffer, {
-            access: 'public',
-            contentType,
-          })
-
-          console.log('[AI Generate] Base image uploaded to Vercel Blob:', blob.url)
-          publicBaseImageUrl = blob.url
-        }
-        // Para outras URLs externas, usar diretamente
+        // Se é uma URL do Google Drive (internal API), usar o serviço diretamente
         else {
-          console.log('[AI Generate] Using external base image URL directly:', body.baseImage)
-          publicBaseImageUrl = body.baseImage
+          const googleDriveFileId = extractGoogleDriveFileId(body.baseImage)
+
+          if (googleDriveFileId) {
+            console.log('[AI Generate] Using Google Drive service for base image:', googleDriveFileId)
+
+            try {
+              const { buffer: imageBuffer, contentType } = await fetchGoogleDriveImage(googleDriveFileId)
+
+              // Validar tamanho
+              const sizeInMb = (imageBuffer.length / (1024 * 1024)).toFixed(2)
+              console.log(`[AI Generate] Base image size: ${sizeInMb}MB, content-type: ${contentType}`)
+
+              if (imageBuffer.length > 10 * 1024 * 1024) {
+                throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 10MB.`)
+              }
+
+              if (imageBuffer.length === 0) {
+                throw new Error('Imagem base está vazia. Selecione outra imagem.')
+              }
+
+              // Upload para Vercel Blob
+              const fileName = `ai-base-${Date.now()}.jpg`
+              const blob = await put(fileName, imageBuffer, {
+                access: 'public',
+                contentType,
+              })
+
+              console.log('[AI Generate] Base image uploaded to Vercel Blob:', blob.url)
+              publicBaseImageUrl = blob.url
+            } catch (fetchError) {
+              console.error('[AI Generate] Error fetching base image from Google Drive:', fetchError)
+              throw new Error(`Falha ao carregar imagem base do Google Drive: ${fetchError instanceof Error ? fetchError.message : 'Erro desconhecido'}`)
+            }
+          }
+          // Para outras URLs externas, usar diretamente
+          else {
+            console.log('[AI Generate] Using external base image URL directly:', body.baseImage)
+            publicBaseImageUrl = body.baseImage
+          }
         }
       } catch (error) {
         console.error('[AI Generate] Error processing base image:', error)
@@ -462,6 +456,16 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: errorMessage },
         { status: 500 }
+      )
+    }
+
+    // Erro de processamento de imagem base
+    if (error.message?.includes('Erro ao processar imagem base') || error.message?.includes('imagem base')) {
+      const errorMessage = error instanceof Error ? error.message : 'Erro ao processar imagem base'
+      console.error('[AI Generate] Base image processing error:', errorMessage)
+      return NextResponse.json(
+        { error: errorMessage },
+        { status: 400 }
       )
     }
 
@@ -770,4 +774,51 @@ function calculateDimensions(aspectRatio: string): { width: number; height: numb
     '4:5': { width: 1024, height: 1280 },
   }
   return ratios[aspectRatio] || ratios['1:1']
+}
+
+/**
+ * Extract file ID from Google Drive internal API URL
+ * Supports:
+ * - /api/google-drive/image/{fileId}
+ * - /api/drive/thumbnail/{fileId}
+ */
+function extractGoogleDriveFileId(url: string): string | null {
+  // Match /api/google-drive/image/{fileId} or /api/drive/thumbnail/{fileId}
+  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
+  return match?.[1] ?? null
+}
+
+/**
+ * Convert a readable stream to a Buffer
+ */
+async function streamToBuffer(stream: NodeJS.ReadableStream): Promise<Buffer> {
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+  }
+  return Buffer.concat(chunks)
+}
+
+/**
+ * Fetch image from Google Drive using the service directly (server-side)
+ * This avoids internal HTTP requests which don't work reliably in serverless
+ */
+async function fetchGoogleDriveImage(fileId: string): Promise<{ buffer: Buffer; contentType: string }> {
+  console.log('[AI Generate] Fetching image directly from Google Drive:', fileId)
+
+  if (!googleDriveService.isEnabled()) {
+    throw new Error('Google Drive não está configurado')
+  }
+
+  const { stream, mimeType } = await googleDriveService.getFileStream(fileId)
+  const buffer = await streamToBuffer(stream)
+
+  console.log('[AI Generate] Google Drive image fetched:', {
+    fileId,
+    mimeType,
+    sizeBytes: buffer.length,
+    sizeMB: (buffer.length / (1024 * 1024)).toFixed(2)
+  })
+
+  return { buffer, contentType: mimeType }
 }

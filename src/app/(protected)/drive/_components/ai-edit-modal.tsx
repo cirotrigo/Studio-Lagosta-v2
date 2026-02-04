@@ -255,8 +255,8 @@ export function AIEditModal({
       // Upload to Drive if folder is available
       if (folderId && result.fileUrl) {
         try {
-          // Add "IA-" prefix to filename for easy identification
-          const aiPrefixedName = result.name.startsWith('IA-') ? result.name : `IA-${result.name}`
+          // Add "_IA-" prefix to filename so AI images appear first when sorted alphabetically
+          const aiPrefixedName = result.name.startsWith('_IA-') ? result.name : `_IA-${result.name}`
           await uploadToDrive.mutateAsync({
             imageUrl: result.fileUrl,
             folderId,

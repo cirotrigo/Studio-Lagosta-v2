@@ -119,7 +119,20 @@ export function DrivePage({
 
   const allItems = React.useMemo(() => {
     if (!driveQuery.data?.pages) return []
-    return driveQuery.data.pages.flatMap((page) => page.items)
+    const items = driveQuery.data.pages.flatMap((page) => page.items)
+
+    // Sort items: folders first, then files, both sorted alphabetically by name
+    return items.sort((a, b) => {
+      const aIsFolder = a.kind === 'folder' || a.mimeType === 'application/vnd.google-apps.folder'
+      const bIsFolder = b.kind === 'folder' || b.mimeType === 'application/vnd.google-apps.folder'
+
+      // Folders come first
+      if (aIsFolder && !bIsFolder) return -1
+      if (!aIsFolder && bIsFolder) return 1
+
+      // Within same type, sort alphabetically by name (case-insensitive)
+      return a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })
+    })
   }, [driveQuery.data])
 
   // Filter items based on selected filter
