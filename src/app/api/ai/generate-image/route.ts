@@ -291,7 +291,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Criar prediction no Replicate
+    // 5. Criar prediction no Replicate com retry automático
     console.log('[AI Generate] Creating prediction with:', {
       model: body.model,
       prompt: body.prompt,
@@ -301,7 +301,7 @@ export async function POST(request: Request) {
       referenceImages: publicReferenceUrls
     })
 
-    const prediction = await createReplicatePrediction({
+    const predictionParams = {
       model: body.model,
       prompt: body.prompt,
       aspectRatio: body.aspectRatio,
@@ -324,12 +324,76 @@ export async function POST(request: Request) {
       // Parâmetros opcionais do Stable Diffusion
       cfgScale: body.cfgScale,
       steps: body.steps,
-    })
+    }
 
-    console.log('[AI Generate] Prediction created:', prediction.id)
+    // 6. Executar geração com retry automático (máximo 3 tentativas)
+    const MAX_RETRIES = 3
+    const RETRY_DELAY_MS = 30000 // 30 segundos
+    let result: { status: string; output?: string | string[]; error?: string; id: string; logs?: string }
+    let lastError: Error | null = null
 
-    // 6. Aguardar conclusão (polling com timeout de até 280 segundos para 4K)
-    const result = await waitForPrediction(prediction.id, 280)
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES}`)
+
+        const prediction = await createReplicatePrediction(predictionParams)
+        console.log('[AI Generate] Prediction created:', prediction.id)
+
+        // Aguardar conclusão (polling com timeout de até 280 segundos para 4K)
+        result = await waitForPrediction(prediction.id, 280)
+
+        // Se sucesso, sair do loop
+        if (result.status === 'succeeded') {
+          console.log(`[AI Generate] Success on attempt ${attempt}`)
+          break
+        }
+
+        // Verificar se o erro é retryable
+        if (result.status === 'failed') {
+          const errorMessage = result.error || ''
+          const isRetryable = isRetryableError(errorMessage)
+
+          console.log(`[AI Generate] Prediction failed on attempt ${attempt}:`, {
+            error: errorMessage,
+            isRetryable,
+            attemptsRemaining: MAX_RETRIES - attempt
+          })
+
+          if (isRetryable && attempt < MAX_RETRIES) {
+            console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
+            await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+            continue
+          }
+
+          // Não é retryable ou última tentativa - sair do loop
+          break
+        }
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error))
+        const errorMessage = lastError.message || ''
+        const isRetryable = isRetryableError(errorMessage)
+
+        console.error(`[AI Generate] Error on attempt ${attempt}:`, {
+          error: errorMessage,
+          isRetryable,
+          attemptsRemaining: MAX_RETRIES - attempt
+        })
+
+        if (isRetryable && attempt < MAX_RETRIES) {
+          console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+          continue
+        }
+
+        // Não é retryable ou última tentativa - propagar erro
+        throw lastError
+      }
+    }
+
+    // Verificar se temos um resultado válido
+    if (!result!) {
+      throw lastError || new Error('Falha ao gerar imagem após múltiplas tentativas')
+    }
 
     if (result.status === 'failed') {
       console.error('[AI Generate] Prediction failed:', {
@@ -343,7 +407,15 @@ export async function POST(request: Request) {
       let errorMessage = result.error || 'Falha ao gerar imagem'
 
       // Erros conhecidos do Replicate
-      if (errorMessage.includes('E6716')) {
+      if (errorMessage.toLowerCase().includes('failed to generate image after multiple retries')) {
+        const modelName = modelConfig.displayName
+        errorMessage = `🔄 Falha após ${MAX_RETRIES} tentativas automáticas\n\n` +
+          `O modelo ${modelName} está com problemas temporários no Replicate.\n\n` +
+          `💡 Soluções:\n` +
+          `• Tente outro modelo (FLUX Schnell ou Seedream 4)\n` +
+          `• Aguarde alguns minutos e tente novamente\n` +
+          `• Reduza o número de imagens de referência`
+      } else if (errorMessage.includes('E6716')) {
         const modelName = modelConfig.displayName
         const refCount = publicReferenceUrls.length
         errorMessage = `⏱️ Timeout ao iniciar geração com ${modelName}\n\n` +
@@ -394,7 +466,7 @@ export async function POST(request: Request) {
         aspectRatio: body.aspectRatio,
         provider: modelConfig.provider.toLowerCase(),
         model: body.model,
-        predictionId: prediction.id,
+        predictionId: result.id,
         createdBy: userId,
       },
     })
@@ -774,6 +846,68 @@ function calculateDimensions(aspectRatio: string): { width: number; height: numb
     '4:5': { width: 1024, height: 1280 },
   }
   return ratios[aspectRatio] || ratios['1:1']
+}
+
+/**
+ * Determine if an error should trigger an automatic retry
+ * Returns true for transient/infrastructure errors that may succeed on retry
+ */
+function isRetryableError(errorMessage: string): boolean {
+  const lowerError = errorMessage.toLowerCase()
+
+  // Erros retryáveis - geralmente problemas temporários ou de infraestrutura
+  const retryablePatterns = [
+    'failed to generate image after multiple retries', // Erro específico do Replicate
+    'timed out',
+    'timeout',
+    'queue',
+    'queued',
+    'e6716', // Código de erro específico do Replicate para timeout
+    'rate limit',
+    'too many requests',
+    '429',
+    '503',
+    '502',
+    '500',
+    'service unavailable',
+    'internal server error',
+    'temporarily unavailable',
+    'connection',
+    'network',
+    'cold boot', // Quando o modelo precisa ser carregado
+    'starting',
+    'warming up',
+  ]
+
+  // Verificar se algum padrão retryável está presente
+  const isRetryable = retryablePatterns.some(pattern => lowerError.includes(pattern))
+
+  // Erros NÃO retryáveis - problemas com o input ou filtros de segurança
+  const nonRetryablePatterns = [
+    'nsfw',
+    'safety',
+    'content policy',
+    'invalid input',
+    'invalid image',
+    'authentication',
+    'unauthorized',
+    'forbidden',
+    'not found',
+    'model not found',
+    'invalid model',
+    'quota exceeded', // Limite permanente, não adianta retry
+    'billing',
+    'payment',
+  ]
+
+  const isNonRetryable = nonRetryablePatterns.some(pattern => lowerError.includes(pattern))
+
+  // Se é explicitamente não retryável, não fazer retry
+  if (isNonRetryable) {
+    return false
+  }
+
+  return isRetryable
 }
 
 /**
