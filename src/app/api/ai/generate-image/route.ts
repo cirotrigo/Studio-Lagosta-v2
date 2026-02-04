@@ -911,6 +911,8 @@ function isRetryableError(errorMessage: string): boolean {
     'failed to generate image after multiple retries', // Erro específico do Replicate
     'timed out',
     'timeout',
+    'tempo limite', // Versão em português
+    'tempo excedido', // Versão em português
     'queue',
     'queued',
     'e6716', // Código de erro específico do Replicate para timeout
