@@ -255,8 +255,12 @@ export function AIEditModal({
       // Upload to Drive if folder is available
       if (folderId && result.fileUrl) {
         try {
-          // Add "_IA-" prefix to filename so AI images appear first when sorted alphabetically
-          const aiPrefixedName = result.name.startsWith('_IA-') ? result.name : `_IA-${result.name}`
+          // Format: _IA-{YYYY-MM-DD}_{original image name}
+          const today = new Date()
+          const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+          // Get original image name without extension
+          const originalName = image?.name?.replace(/\.[^.]+$/, '') || 'imagem'
+          const aiPrefixedName = `_IA-${dateStr}_${originalName}`
           await uploadToDrive.mutateAsync({
             imageUrl: result.fileUrl,
             folderId,
