@@ -120,12 +120,24 @@ export function AIEditModal({
       toast.error('Projeto não identificado')
       return
     }
+
+    // Collect available reference image URLs for analysis
+    const allRefUrls = [
+      ...referenceImages,
+      ...driveReferenceImages.map((img) => img.fullUrl),
+    ].filter(Boolean)
+
     improvePrompt.mutate(
-      { prompt, projectId, aspectRatio: '9:16' },
+      {
+        prompt,
+        projectId,
+        aspectRatio: '9:16',
+        referenceImages: allRefUrls.length > 0 ? allRefUrls : undefined,
+      },
       {
         onSuccess: (data) => {
           setPrompt(data.improvedPromptPt || data.improvedPrompt)
-          toast.success('Descrição melhorada!')
+          toast.success(allRefUrls.length > 0 ? 'Descrição melhorada com análise das imagens!' : 'Descrição melhorada!')
         },
       }
     )

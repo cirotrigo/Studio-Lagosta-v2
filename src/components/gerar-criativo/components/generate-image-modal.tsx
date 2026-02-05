@@ -56,14 +56,19 @@ export function GenerateImageModal({
       return
     }
     improvePrompt.mutate(
-      { prompt, projectId, aspectRatio: '9:16' }, // Stories format
+      {
+        prompt,
+        projectId,
+        aspectRatio: '9:16', // Stories format
+        referenceImages: referenceImages.length > 0 ? referenceImages : undefined,
+      },
       {
         onSuccess: (data) => {
           // Display Portuguese version in textarea
           setPrompt(data.improvedPromptPt || data.improvedPrompt)
           // Store English version for image generation
           setPromptEn(data.improvedPromptEn || data.improvedPrompt)
-          toast.success('Descrição melhorada!')
+          toast.success(referenceImages.length > 0 ? 'Descrição melhorada com análise das imagens!' : 'Descrição melhorada!')
         },
       }
     )

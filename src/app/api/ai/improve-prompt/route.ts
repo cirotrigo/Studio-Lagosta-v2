@@ -1,13 +1,14 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextResponse } from 'next/server'
 import { generateText } from 'ai'
-import { openai } from '@ai-sdk/openai'
+import { google } from '@ai-sdk/google'
 import { z } from 'zod'
 import { validateCreditsForFeature, deductCreditsForFeature, refundCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
-export const maxDuration = 30
+export const maxDuration = 60
 
 // Aspect ratio descriptions for the system prompt (in English for better AI generation)
 const ASPECT_RATIO_SPECS: Record<string, { ratio: string; description: string; framing: string }> = {
@@ -33,25 +34,37 @@ const ASPECT_RATIO_SPECS: Record<string, { ratio: string; description: string; f
   },
 }
 
-function buildSystemPrompt(aspectRatio: string): string {
+function buildSystemPrompt(aspectRatio: string, hasImages: boolean): string {
   const spec = ASPECT_RATIO_SPECS[aspectRatio] || ASPECT_RATIO_SPECS['9:16']
+
+  const imageAnalysisSection = hasImages ? `
+# REFERENCE IMAGE ANALYSIS (CRITICAL)
+The user has provided reference images. You MUST:
+1. **Identify every product/object** in the reference images (brand, type, color, shape, packaging, labels)
+2. **Describe specific visual details** you see: textures, colors, materials, labels, branding elements
+3. **Incorporate these exact objects** into your improved prompt with precise descriptions
+4. **Match the style/mood** of the reference images if they suggest a particular aesthetic
+5. **Describe products as they appear** - don't guess or change product details, describe what you see
+6. If reference images show food/drinks, note specific presentation details (garnishes, glassware, plating style)
+7. Your improved prompt should ensure the AI generates an image featuring these EXACT products/items with accurate visual representation
+` : ''
 
   return `# Role
 You are a professional Director of Photography specialized in Food Styling and AI Prompt Engineering for generative image models.
 
 # Objective
-Transform simple user requests (in Portuguese) into highly technical, descriptive prompts in ENGLISH that will generate photorealistic product/food images. When reference images are provided, ensure all objects appear to have been photographed in the same session with consistent lighting and camera settings.
+Transform simple user requests (in Portuguese) into highly technical, descriptive prompts in ENGLISH that will generate photorealistic product/food images.${hasImages ? ' You have reference images to analyze - use them to create an accurate, detailed prompt that preserves the exact products and visual elements shown.' : ' When reference images are provided, ensure all objects appear to have been photographed in the same session with consistent lighting and camera settings.'}
 
 # Input Context
 - User description: Will be provided in Portuguese
 - Format: ${spec.ratio} (${spec.description})
 - Framing guidance: ${spec.framing}
-- Reference images: User may have provided 1-3 reference images of products
-
+- Reference images: ${hasImages ? 'PROVIDED - analyze them carefully and incorporate specific product details' : 'None provided'}
+${imageAnalysisSection}
 # Output Requirements
 Generate a prompt in ENGLISH containing:
 
-1. **Subject and Scene:** Describe the scene integrating all mentioned elements naturally. Keep the essence of what the user requested - do NOT invent concepts they didn't mention.
+1. **Subject and Scene:** Describe the scene integrating all mentioned elements naturally.${hasImages ? ' Include specific details from the reference images (product names, brands, colors, packaging details).' : ''} Keep the essence of what the user requested - do NOT invent concepts they didn't mention.
 
 2. **Art Direction (CRITICAL for unified look):**
    - Define lighting that "glues" objects to the scene (e.g., "warm golden hour side lighting", "soft diffused window light", "moody bar indoor lighting")
@@ -86,11 +99,11 @@ Input (Portuguese): "Brinde com chopp e foco no petisco"
 Output (English): "Hyper-realistic close-up shot of a social toast in a dimly lit rustic gastropub. Foreground sharp focus on artisan snack with visible crispy golden texture. In the slight background, a hand holding a glass of draft beer with cold condensation droplets, slightly blurred. Cinematic warm lighting from the side, soft amber bokeh background, shadows cast consistently across table surface. Shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, award-winning food photography, appetizing, highly detailed textures, unified lighting environment, 8k resolution."
 
 # CRITICAL RULES
-- NEVER add concepts the user didn't mention
+- NEVER add concepts the user didn't mention${hasImages ? ' (but DO include specific product details visible in reference images)' : ''}
 - ALWAYS include format specification (${spec.ratio})
 - ALWAYS include camera/lens specs for realism
 - ALWAYS unify lighting description for all elements in scene
-- Keep it concise but technically complete (aim for 50-100 words)
+- Keep it concise but technically complete (aim for 50-100 words)${hasImages ? '\n- ALWAYS reference specific visual details from the provided images' : ''}
 
 # OUTPUT FORMAT (MANDATORY)
 You MUST return EXACTLY this JSON format with no additional text:
@@ -113,7 +126,62 @@ const improvePromptSchema = z.object({
   prompt: z.string().min(1, 'Prompt é obrigatório').max(2000, 'Prompt muito longo'),
   projectId: z.number().int().positive(),
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:5']).optional().default('9:16'),
+  referenceImages: z.array(z.string()).max(5, 'Máximo de 5 imagens de referência').optional(),
 })
+
+/**
+ * Extract file ID from Google Drive internal API URL
+ */
+function extractGoogleDriveFileId(url: string): string | null {
+  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
+  return match?.[1] ?? null
+}
+
+/**
+ * Fetch image from a URL and return as buffer with mime type
+ */
+async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  try {
+    // Check if it's a Google Drive internal URL
+    const driveFileId = extractGoogleDriveFileId(url)
+    if (driveFileId) {
+      if (!googleDriveService.isEnabled()) {
+        console.warn('[Improve Prompt] Google Drive not configured, skipping image:', url)
+        return null
+      }
+
+      const { stream, mimeType } = await googleDriveService.getFileStream(driveFileId)
+      const chunks: Buffer[] = []
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+      const buffer = Buffer.concat(chunks)
+      return { buffer, mimeType }
+    }
+
+    // Regular URL fetch
+    const response = await fetch(url, { signal: AbortSignal.timeout(15000) })
+    if (!response.ok) {
+      console.warn('[Improve Prompt] Failed to fetch image:', url, response.status)
+      return null
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const mimeType = response.headers.get('content-type') || 'image/jpeg'
+
+    // Skip images larger than 5MB for prompt improvement (they'll be sent inline)
+    if (buffer.length > 5 * 1024 * 1024) {
+      console.warn('[Improve Prompt] Image too large, skipping:', (buffer.length / (1024 * 1024)).toFixed(1), 'MB')
+      return null
+    }
+
+    return { buffer, mimeType }
+  } catch (error) {
+    console.warn('[Improve Prompt] Error fetching image:', url, error instanceof Error ? error.message : error)
+    return null
+  }
+}
 
 export async function POST(request: Request) {
   const { userId, orgId } = await auth()
@@ -123,9 +191,10 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json()
-    const { prompt, projectId, aspectRatio } = improvePromptSchema.parse(body)
+    const { prompt, projectId, aspectRatio, referenceImages } = improvePromptSchema.parse(body)
 
-    console.log('[Improve Prompt] Starting for user:', userId, 'prompt length:', prompt.length)
+    const hasReferenceImages = referenceImages && referenceImages.length > 0
+    console.log('[Improve Prompt] Starting for user:', userId, 'prompt length:', prompt.length, 'images:', referenceImages?.length || 0)
 
     // Validate credits (1 credit for text generation)
     try {
@@ -149,20 +218,58 @@ export async function POST(request: Request) {
       quantity: 1,
       details: {
         action: 'improve_prompt',
-        originalPrompt: prompt.substring(0, 100), // Log first 100 chars
+        originalPrompt: prompt.substring(0, 100),
         projectId,
+        referenceImageCount: referenceImages?.length || 0,
       },
       organizationId: orgId ?? undefined,
       projectId,
     })
 
     try {
-      // Call OpenAI to improve the prompt with aspect ratio context
-      const systemPrompt = buildSystemPrompt(aspectRatio)
+      // Fetch reference images as buffers for multimodal analysis
+      let imageBuffers: Array<{ buffer: Buffer; mimeType: string }> = []
+      if (hasReferenceImages) {
+        console.log('[Improve Prompt] Fetching reference images for analysis...')
+        const results = await Promise.all(referenceImages.map(fetchImageAsBuffer))
+        imageBuffers = results.filter((r): r is { buffer: Buffer; mimeType: string } => r !== null)
+        console.log('[Improve Prompt] Successfully fetched', imageBuffers.length, 'of', referenceImages.length, 'images')
+      }
+
+      const hasImages = imageBuffers.length > 0
+      const systemPrompt = buildSystemPrompt(aspectRatio, hasImages)
+
+      // Build multimodal content for Gemini
+      const userContent: Array<{ type: 'text'; text: string } | { type: 'image'; image: Buffer; mimeType: string }> = []
+
+      // Add reference images first so the model sees them before the prompt
+      for (const img of imageBuffers) {
+        userContent.push({
+          type: 'image' as const,
+          image: img.buffer,
+          mimeType: img.mimeType,
+        })
+      }
+
+      // Add the text prompt
+      const imageContext = hasImages
+        ? `\n\nAs imagens de referência acima mostram os produtos/objetos que devem aparecer na imagem gerada. Analise-as cuidadosamente e incorpore os detalhes visuais específicos no prompt melhorado.`
+        : ''
+      userContent.push({
+        type: 'text' as const,
+        text: `Melhore este prompt para geração de imagem:\n\n"${prompt}"${imageContext}`,
+      })
+
+      // Use Gemini Flash for multimodal prompt improvement
       const { text } = await generateText({
-        model: openai('gpt-4o-mini'),
+        model: google('gemini-2.5-flash'),
         system: systemPrompt,
-        prompt: `Melhore este prompt para geração de imagem:\n\n"${prompt}"`,
+        messages: [
+          {
+            role: 'user',
+            content: userContent,
+          },
+        ],
         temperature: 0.7,
         maxOutputTokens: 800,
       })
@@ -195,7 +302,7 @@ export async function POST(request: Request) {
         improvedPromptEn = rawText
       }
 
-      console.log('[Improve Prompt] Success - PT:', improvedPromptPt.length, 'chars, EN:', improvedPromptEn.length, 'chars')
+      console.log('[Improve Prompt] Success - PT:', improvedPromptPt.length, 'chars, EN:', improvedPromptEn.length, 'chars, images analyzed:', imageBuffers.length)
 
       return NextResponse.json({
         success: true,

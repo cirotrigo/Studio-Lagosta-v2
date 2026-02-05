@@ -368,7 +368,7 @@ function GenerateImageForm({
   // Hook para melhorar descrição
   const improvePrompt = useImprovePrompt()
 
-  // Handler para melhorar descrição com IA
+  // Handler para melhorar descrição com IA (envia imagens de referência para análise)
   const handleImprovePrompt = () => {
     if (!prompt.trim()) {
       toast({ variant: 'destructive', description: 'Digite uma descrição primeiro' })
@@ -378,15 +378,26 @@ function GenerateImageForm({
       toast({ variant: 'destructive', description: 'Projeto não identificado' })
       return
     }
+
+    // Collect available reference image URLs for analysis
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : ''
+    const driveImageUrls = referenceImages.map(img => `${baseUrl}/api/google-drive/image/${img.id}`)
+    const allRefUrls = [...driveImageUrls, ...referenceUrls].filter(Boolean)
+
     improvePrompt.mutate(
-      { prompt, projectId, aspectRatio: aspectRatio as '1:1' | '16:9' | '9:16' | '4:5' },
+      {
+        prompt,
+        projectId,
+        aspectRatio: aspectRatio as '1:1' | '16:9' | '9:16' | '4:5',
+        referenceImages: allRefUrls.length > 0 ? allRefUrls : undefined,
+      },
       {
         onSuccess: (data) => {
           // Display Portuguese version in textarea
           setPrompt(data.improvedPromptPt || data.improvedPrompt)
           // Store English version for image generation
           setPromptEn(data.improvedPromptEn || data.improvedPrompt)
-          toast({ description: 'Descrição melhorada!' })
+          toast({ description: allRefUrls.length > 0 ? 'Descrição melhorada com análise das imagens!' : 'Descrição melhorada!' })
         },
       }
     )
