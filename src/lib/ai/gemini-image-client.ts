@@ -213,12 +213,16 @@ export function isGeminiRetryableError(errorMessage: string): boolean {
     '503',
     '500',
     'resource_exhausted',
+    'quota',
     'unavailable',
     'deadline',
     'timeout',
     'internal',
     'temporarily',
     'overloaded',
+    // Portuguese translated messages (from generateImageWithGemini catch block)
+    'limite de uso',
+    'temporariamente indisponível',
   ]
 
   const nonRetryablePatterns = [
@@ -230,7 +234,6 @@ export function isGeminiRetryableError(errorMessage: string): boolean {
     'authentication',
     'permission',
     'invalid',
-    'quota exceeded',
     'billing',
   ]
 
