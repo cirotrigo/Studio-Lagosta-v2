@@ -271,19 +271,26 @@ export async function POST(request: Request) {
           },
         ],
         temperature: 0.7,
-        maxOutputTokens: 800,
+        maxOutputTokens: 2000, // Increased to avoid truncation of bilingual output
       })
 
       const rawText = text.trim()
-      console.log('[Improve Prompt] Raw response:', rawText.substring(0, 200))
+      console.log('[Improve Prompt] Raw response length:', rawText.length, 'chars')
+      console.log('[Improve Prompt] Raw response preview:', rawText.substring(0, 300))
 
       // Parse JSON response with both versions
       let improvedPromptPt: string
       let improvedPromptEn: string
 
       try {
-        // Try to extract JSON from the response (may have markdown code blocks)
-        const jsonMatch = rawText.match(/\{[\s\S]*\}/)
+        // Remove markdown code blocks if present (```json ... ``` or ``` ... ```)
+        let cleanedText = rawText
+          .replace(/^```(?:json)?\s*\n?/i, '')
+          .replace(/\n?```\s*$/i, '')
+          .trim()
+
+        // Try to extract JSON from the response
+        const jsonMatch = cleanedText.match(/\{[\s\S]*\}/)
         if (!jsonMatch) {
           throw new Error('No JSON found in response')
         }
@@ -296,10 +303,39 @@ export async function POST(request: Request) {
           throw new Error('Missing pt or en in response')
         }
       } catch (parseError) {
-        // Fallback: if JSON parsing fails, use the raw text for both (backwards compatibility)
-        console.warn('[Improve Prompt] JSON parse failed, using raw text:', parseError)
-        improvedPromptPt = rawText
-        improvedPromptEn = rawText
+        // Fallback: try to extract content more gracefully
+        console.warn('[Improve Prompt] JSON parse failed:', parseError)
+
+        // Try to extract "pt" value directly with regex
+        const ptMatch = rawText.match(/"pt"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+        const enMatch = rawText.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+
+
+        if (ptMatch && enMatch) {
+          // Unescape JSON string escapes
+          improvedPromptPt = ptMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+          improvedPromptEn = enMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+          console.log('[Improve Prompt] Recovered from partial JSON via regex')
+        } else {
+          // Last resort: use raw text cleaned of JSON artifacts
+          const cleanText = rawText
+            .replace(/^[\s\S]*?"pt"\s*:\s*"/i, '')
+            .replace(/",?\s*"en"\s*:[\s\S]*$/i, '')
+            .replace(/\\n/g, '\n')
+            .replace(/\\"/g, '"')
+            .trim()
+
+          if (cleanText && cleanText.length > 20) {
+            improvedPromptPt = cleanText
+            improvedPromptEn = cleanText
+            console.log('[Improve Prompt] Using cleaned text as fallback')
+          } else {
+            // Absolute fallback: return original prompt with enhancement note
+            improvedPromptPt = `${prompt} - foto profissional com iluminação cinematográfica, alta resolução, detalhes nítidos`
+            improvedPromptEn = `${prompt} - professional photography with cinematic lighting, high resolution, sharp details, 8k, photorealistic`
+            console.log('[Improve Prompt] Using minimal enhancement fallback')
+          }
+        }
       }
 
       console.log('[Improve Prompt] Success - PT:', improvedPromptPt.length, 'chars, EN:', improvedPromptEn.length, 'chars, images analyzed:', imageBuffers.length)
