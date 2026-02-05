@@ -11,6 +11,7 @@ import {
 } from '@/lib/ai/image-models-config'
 import { fetchProjectWithAccess } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
+import { generateImageWithGemini, isGeminiRetryableError } from '@/lib/ai/gemini-image-client'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes for AI image generation (needed for 4K images)
@@ -87,15 +88,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Não autorizado. Por favor, faça login novamente.' }, { status: 401 })
   }
 
-  // Verificar se a chave da API do Replicate está configurada
-  if (!process.env.REPLICATE_API_TOKEN) {
-    console.error('[AI Generate] REPLICATE_API_TOKEN not configured')
-    return NextResponse.json(
-      { error: 'Serviço de geração de imagens temporariamente indisponível. Entre em contato com o suporte.' },
-      { status: 503 }
-    )
-  }
-  console.log('[AI Generate] REPLICATE_API_TOKEN is configured:', process.env.REPLICATE_API_TOKEN?.substring(0, 10) + '...')
+  // Verificar chaves de API (verificação completa feita após parse do body para saber qual provider será usado)
 
   try {
     // 1. Validar input
@@ -291,9 +284,12 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Criar prediction no Replicate com retry automático
+    // 5. Determinar provider (Gemini direto ou Replicate)
+    const isGeminiModel = modelConfig.apiProvider === 'gemini-direct'
+
     console.log('[AI Generate] Creating prediction with:', {
       model: body.model,
+      provider: isGeminiModel ? 'gemini-direct' : 'replicate',
       prompt: body.prompt,
       aspectRatio: body.aspectRatio,
       resolution: body.resolution,
@@ -301,96 +297,306 @@ export async function POST(request: Request) {
       referenceImages: publicReferenceUrls
     })
 
-    const predictionParams = {
-      model: body.model,
-      prompt: body.prompt,
-      aspectRatio: body.aspectRatio,
-      resolution: body.resolution,
-      referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
-      // Parâmetros de edição
-      mode: body.mode,
-      baseImage: publicBaseImageUrl,
-      maskImage: body.maskImage,
-      // Parâmetros opcionais do FLUX
-      seed: body.seed,
-      promptUpsampling: body.promptUpsampling,
-      safetyTolerance: body.safetyTolerance,
-      outputQuality: body.outputQuality,
-      // Parâmetros opcionais do Ideogram
-      styleType: body.styleType,
-      magicPrompt: body.magicPrompt,
-      // Parâmetros opcionais do Seedream
-      enhancePrompt: body.enhancePrompt,
-      // Parâmetros opcionais do Stable Diffusion
-      cfgScale: body.cfgScale,
-      steps: body.steps,
-    }
-
-    // 6. Executar geração com retry automático (máximo 2 tentativas devido ao limite de 300s do Vercel)
-    // Na 2ª tentativa, troca para modelo alternativo se o original for nano-banana-pro
-    const MAX_RETRIES = 2 // Reduzido para caber no limite de 300s do Vercel
-    const RETRY_DELAY_MS = 10000 // 10 segundos (reduzido de 30s)
-    const VERCEL_TIME_BUDGET_MS = 280000 // 280s de orçamento (deixa 20s de buffer para upload/save)
-    const MIN_TIME_FOR_RETRY_MS = 60000 // Mínimo de 60s para tentar retry
-    const startTime = Date.now()
-
-    let result: { status: string; output?: string | string[]; error?: string; id: string; logs?: string }
-    let lastError: Error | null = null
-    let currentParams = { ...predictionParams }
-    let currentModelConfig = modelConfig
+    // Variáveis compartilhadas entre os dois fluxos
+    let blobUrl: string
+    let actualModel = body.model as string
     let usedFallbackModel = false
+    let predictionId: string | undefined
+    let currentModelConfig = modelConfig
 
-    // Modelos que suportam fallback para Seedream 4
-    const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-pro', 'nano-banana']
-    const FALLBACK_MODEL: AIImageModel = 'seedream-4'
+    if (isGeminiModel) {
+      // ============================================================================
+      // FLUXO GEMINI DIRETO
+      // ============================================================================
+      console.log('[AI Generate] Using Gemini Direct API for model:', body.model)
 
-    // Função para calcular tempo restante
-    const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
-    const getElapsedTime = () => Math.round((Date.now() - startTime) / 1000)
-
-    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-      const remainingTime = getRemainingTime()
-      const pollingTimeout = Math.min(Math.floor(remainingTime / 1000) - 10, 120) // Max 120s por tentativa, deixa 10s buffer
-
-      // Verificar se há tempo suficiente para tentar
-      if (remainingTime < MIN_TIME_FOR_RETRY_MS && attempt > 1) {
-        console.log(`[AI Generate] Not enough time for retry (${Math.round(remainingTime / 1000)}s remaining). Stopping.`)
-        break
+      // Verificar chave da API Gemini
+      if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+        console.error('[AI Generate] GOOGLE_GENERATIVE_AI_API_KEY not configured')
+        return NextResponse.json(
+          { error: 'Serviço de geração de imagens via Gemini temporariamente indisponível. Entre em contato com o suporte.' },
+          { status: 503 }
+        )
       }
 
-      try {
-        // Na 2ª tentativa, trocar para modelo alternativo se elegível
-        if (attempt === 2 && FALLBACK_ELIGIBLE_MODELS.includes(currentParams.model as AIImageModel)) {
-          console.log(`[AI Generate] Switching to fallback model: ${FALLBACK_MODEL}`)
-          currentParams = {
-            ...currentParams,
-            model: FALLBACK_MODEL,
-            // Seedream 4 suporta até 10 imagens de referência, então mantemos todas
+      // Preparar imagens de referência como buffers para Gemini
+      let referenceBuffers: Buffer[] | undefined
+      let referenceBufferTypes: string[] | undefined
+
+      if (publicReferenceUrls.length > 0) {
+        console.log('[AI Generate] Fetching reference images as buffers for Gemini...')
+        const fetchedRefs = await Promise.all(
+          publicReferenceUrls.map(async (url) => {
+            const response = await fetch(url)
+            if (!response.ok) {
+              throw new Error(`Falha ao carregar imagem de referência para Gemini`)
+            }
+            const arrayBuffer = await response.arrayBuffer()
+            const contentType = response.headers.get('content-type') || 'image/jpeg'
+            return { buffer: Buffer.from(arrayBuffer), contentType }
+          })
+        )
+        referenceBuffers = fetchedRefs.map(r => r.buffer)
+        referenceBufferTypes = fetchedRefs.map(r => r.contentType)
+      }
+
+      // Preparar imagem base como buffer para edição
+      let baseImageBuffer: Buffer | undefined
+      let baseImageBufferType: string | undefined
+
+      if (publicBaseImageUrl && (body.mode === 'edit' || body.mode === 'inpaint')) {
+        console.log('[AI Generate] Fetching base image as buffer for Gemini...')
+        const response = await fetch(publicBaseImageUrl)
+        if (!response.ok) {
+          throw new Error('Falha ao carregar imagem base para Gemini')
+        }
+        const arrayBuffer = await response.arrayBuffer()
+        baseImageBuffer = Buffer.from(arrayBuffer)
+        baseImageBufferType = response.headers.get('content-type') || 'image/jpeg'
+      }
+
+      // Executar geração com retry (1 retry com Gemini, depois fallback para Seedream 4 via Replicate)
+      const MAX_GEMINI_RETRIES = 2
+      const RETRY_DELAY_MS = 5000
+      const startTime = Date.now()
+      const VERCEL_TIME_BUDGET_MS = 280000
+      const MIN_TIME_FOR_RETRY_MS = 60000
+      const getElapsedTime = () => Math.round((Date.now() - startTime) / 1000)
+      const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
+
+      let geminiSuccess = false
+
+      for (let attempt = 1; attempt <= MAX_GEMINI_RETRIES; attempt++) {
+        // Na 2ª tentativa, fallback para Seedream 4 via Replicate
+        if (attempt === 2) {
+          const remainingTime = getRemainingTime()
+          if (remainingTime < MIN_TIME_FOR_RETRY_MS) {
+            console.log(`[AI Generate] Not enough time for fallback (${Math.round(remainingTime / 1000)}s remaining). Stopping.`)
+            break
           }
+
+          console.log(`[AI Generate] Gemini failed, falling back to Seedream 4 via Replicate`)
+          const FALLBACK_MODEL: AIImageModel = 'seedream-4'
+          actualModel = FALLBACK_MODEL
           currentModelConfig = AI_IMAGE_MODELS[FALLBACK_MODEL]
           usedFallbackModel = true
-        }
 
-        console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES} with model: ${currentParams.model} (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
+          // Verificar chave Replicate para fallback
+          if (!process.env.REPLICATE_API_TOKEN) {
+            console.error('[AI Generate] REPLICATE_API_TOKEN not configured for fallback')
+            break
+          }
 
-        const prediction = await createReplicatePrediction(currentParams)
-        console.log('[AI Generate] Prediction created:', prediction.id)
+          try {
+            const fallbackParams = {
+              model: FALLBACK_MODEL,
+              prompt: body.prompt,
+              aspectRatio: body.aspectRatio,
+              resolution: body.resolution,
+              referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
+              mode: body.mode,
+              baseImage: publicBaseImageUrl,
+              maskImage: body.maskImage,
+              enhancePrompt: body.enhancePrompt,
+            }
 
-        // Aguardar conclusão com timeout dinâmico baseado no tempo restante
-        result = await waitForPrediction(prediction.id, pollingTimeout)
+            const pollingTimeout = Math.min(Math.floor(getRemainingTime() / 1000) - 10, 120)
+            console.log(`[AI Generate] Fallback attempt with Seedream 4 (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
 
-        // Se sucesso, sair do loop
-        if (result.status === 'succeeded') {
-          console.log(`[AI Generate] Success on attempt ${attempt}${usedFallbackModel ? ` (using fallback model ${FALLBACK_MODEL})` : ''} after ${getElapsedTime()}s`)
+            const prediction = await createReplicatePrediction(fallbackParams)
+            const result = await waitForPrediction(prediction.id, pollingTimeout)
+
+            if (result.status === 'succeeded') {
+              const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
+              if (!imageUrl) throw new Error('Nenhuma imagem retornada pelo fallback')
+
+              const fileName = `ai-generated-${Date.now()}.png`
+              blobUrl = await uploadToVercelBlob(imageUrl, fileName)
+              predictionId = result.id
+              geminiSuccess = true
+              console.log(`[AI Generate] Fallback to Seedream 4 succeeded after ${getElapsedTime()}s`)
+            } else {
+              throw new Error(result.error || 'Fallback para Seedream 4 também falhou')
+            }
+          } catch (fallbackError) {
+            console.error('[AI Generate] Fallback to Seedream 4 failed:', fallbackError)
+            throw fallbackError
+          }
           break
         }
 
-        // Verificar se o erro é retryable
-        if (result.status === 'failed') {
-          const errorMessage = result.error || ''
+        try {
+          console.log(`[AI Generate] Gemini attempt ${attempt}/${MAX_GEMINI_RETRIES} (${getElapsedTime()}s elapsed)`)
+
+          const geminiResult = await generateImageWithGemini({
+            model: body.model as 'nano-banana-pro' | 'nano-banana',
+            prompt: body.prompt,
+            aspectRatio: body.aspectRatio,
+            resolution: body.resolution,
+            referenceImages: referenceBuffers,
+            referenceImageTypes: referenceBufferTypes,
+            mode: body.mode === 'inpaint' ? 'edit' : body.mode as 'generate' | 'edit',
+            baseImage: baseImageBuffer,
+            baseImageType: baseImageBufferType,
+          })
+
+          // Upload buffer direto para Vercel Blob (mais rápido que Replicate que requer fetch de URL)
+          const fileName = `ai-generated-${Date.now()}.png`
+          const blob = await put(fileName, geminiResult.imageBuffer, {
+            access: 'public',
+            contentType: geminiResult.mimeType,
+          })
+
+          blobUrl = blob.url
+          geminiSuccess = true
+          console.log(`[AI Generate] Gemini Direct succeeded on attempt ${attempt} after ${getElapsedTime()}s`)
+          break
+        } catch (error) {
+          const errorMessage = error instanceof Error ? error.message : String(error)
+          const isRetryable = isGeminiRetryableError(errorMessage)
+
+          console.error(`[AI Generate] Gemini error on attempt ${attempt}:`, {
+            error: errorMessage,
+            isRetryable,
+            elapsedTime: `${getElapsedTime()}s`,
+          })
+
+          if (!isRetryable) {
+            throw error
+          }
+
+          // Se retryable, vai para a próxima iteração (fallback)
+          console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before fallback...`)
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+        }
+      }
+
+      if (!geminiSuccess) {
+        throw new Error(
+          `🔄 Falha ao gerar imagem com ${modelConfig.displayName}\n\n` +
+          `O modelo está temporariamente indisponível.\n\n` +
+          `💡 Soluções:\n` +
+          `• Tente outro modelo (FLUX 1.1 Pro ou Seedream 4)\n` +
+          `• Aguarde alguns minutos e tente novamente`
+        )
+      }
+
+    } else {
+      // ============================================================================
+      // FLUXO REPLICATE (modelos não-Gemini)
+      // ============================================================================
+
+      // Verificar chave Replicate
+      if (!process.env.REPLICATE_API_TOKEN) {
+        console.error('[AI Generate] REPLICATE_API_TOKEN not configured')
+        return NextResponse.json(
+          { error: 'Serviço de geração de imagens temporariamente indisponível. Entre em contato com o suporte.' },
+          { status: 503 }
+        )
+      }
+
+      const predictionParams = {
+        model: body.model,
+        prompt: body.prompt,
+        aspectRatio: body.aspectRatio,
+        resolution: body.resolution,
+        referenceImages: publicReferenceUrls.length > 0 ? publicReferenceUrls : undefined,
+        // Parâmetros de edição
+        mode: body.mode,
+        baseImage: publicBaseImageUrl,
+        maskImage: body.maskImage,
+        // Parâmetros opcionais do FLUX
+        seed: body.seed,
+        promptUpsampling: body.promptUpsampling,
+        safetyTolerance: body.safetyTolerance,
+        outputQuality: body.outputQuality,
+        // Parâmetros opcionais do Ideogram
+        styleType: body.styleType,
+        magicPrompt: body.magicPrompt,
+        // Parâmetros opcionais do Seedream
+        enhancePrompt: body.enhancePrompt,
+        // Parâmetros opcionais do Stable Diffusion
+        cfgScale: body.cfgScale,
+        steps: body.steps,
+      }
+
+      // Executar geração com retry automático (máximo 2 tentativas devido ao limite de 300s do Vercel)
+      const MAX_RETRIES = 2
+      const RETRY_DELAY_MS = 10000
+      const VERCEL_TIME_BUDGET_MS = 280000
+      const MIN_TIME_FOR_RETRY_MS = 60000
+      const startTime = Date.now()
+
+      let result: { status: string; output?: string | string[]; error?: string; id: string; logs?: string }
+      let lastError: Error | null = null
+      let currentParams = { ...predictionParams }
+
+      // Modelos que suportam fallback para Seedream 4
+      const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-pro', 'nano-banana']
+      const FALLBACK_MODEL: AIImageModel = 'seedream-4'
+
+      const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
+      const getElapsedTime = () => Math.round((Date.now() - startTime) / 1000)
+
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        const remainingTime = getRemainingTime()
+        const pollingTimeout = Math.min(Math.floor(remainingTime / 1000) - 10, 120)
+
+        if (remainingTime < MIN_TIME_FOR_RETRY_MS && attempt > 1) {
+          console.log(`[AI Generate] Not enough time for retry (${Math.round(remainingTime / 1000)}s remaining). Stopping.`)
+          break
+        }
+
+        try {
+          if (attempt === 2 && FALLBACK_ELIGIBLE_MODELS.includes(currentParams.model as AIImageModel)) {
+            console.log(`[AI Generate] Switching to fallback model: ${FALLBACK_MODEL}`)
+            currentParams = {
+              ...currentParams,
+              model: FALLBACK_MODEL,
+            }
+            currentModelConfig = AI_IMAGE_MODELS[FALLBACK_MODEL]
+            usedFallbackModel = true
+          }
+
+          console.log(`[AI Generate] Attempt ${attempt}/${MAX_RETRIES} with model: ${currentParams.model} (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
+          actualModel = currentParams.model as string
+
+          const prediction = await createReplicatePrediction(currentParams)
+          console.log('[AI Generate] Prediction created:', prediction.id)
+
+          result = await waitForPrediction(prediction.id, pollingTimeout)
+
+          if (result.status === 'succeeded') {
+            console.log(`[AI Generate] Success on attempt ${attempt}${usedFallbackModel ? ` (using fallback model ${FALLBACK_MODEL})` : ''} after ${getElapsedTime()}s`)
+            break
+          }
+
+          if (result.status === 'failed') {
+            const errorMessage = result.error || ''
+            const isRetryable = isRetryableError(errorMessage)
+
+            console.log(`[AI Generate] Prediction failed on attempt ${attempt}:`, {
+              model: currentParams.model,
+              error: errorMessage,
+              isRetryable,
+              attemptsRemaining: MAX_RETRIES - attempt,
+              elapsedTime: `${getElapsedTime()}s`
+            })
+
+            if (isRetryable && attempt < MAX_RETRIES && getRemainingTime() > MIN_TIME_FOR_RETRY_MS) {
+              console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
+              await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+              continue
+            }
+
+            break
+          }
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error))
+          const errorMessage = lastError.message || ''
           const isRetryable = isRetryableError(errorMessage)
 
-          console.log(`[AI Generate] Prediction failed on attempt ${attempt}:`, {
+          console.error(`[AI Generate] Error on attempt ${attempt}:`, {
             model: currentParams.model,
             error: errorMessage,
             isRetryable,
@@ -404,99 +610,74 @@ export async function POST(request: Request) {
             continue
           }
 
-          // Não é retryable ou última tentativa ou sem tempo - sair do loop
-          break
+          throw lastError
         }
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error))
-        const errorMessage = lastError.message || ''
-        const isRetryable = isRetryableError(errorMessage)
+      }
 
-        console.error(`[AI Generate] Error on attempt ${attempt}:`, {
-          model: currentParams.model,
-          error: errorMessage,
-          isRetryable,
-          attemptsRemaining: MAX_RETRIES - attempt,
-          elapsedTime: `${getElapsedTime()}s`
+      // Verificar se temos um resultado válido
+      if (!result!) {
+        throw lastError || new Error('Falha ao gerar imagem após múltiplas tentativas')
+      }
+
+      if (result.status === 'failed') {
+        console.error('[AI Generate] Prediction failed:', {
+          id: result.id,
+          error: result.error,
+          logs: result.logs,
+          status: result.status
         })
 
-        if (isRetryable && attempt < MAX_RETRIES && getRemainingTime() > MIN_TIME_FOR_RETRY_MS) {
-          console.log(`[AI Generate] Waiting ${RETRY_DELAY_MS / 1000}s before retry...`)
-          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
-          continue
+        let errorMessage = result.error || 'Falha ao gerar imagem'
+
+        if (errorMessage.toLowerCase().includes('failed to generate image after multiple retries')) {
+          const modelName = currentModelConfig.displayName
+          const originalModelName = modelConfig.displayName
+          const triedFallback = usedFallbackModel ? ` e ${AI_IMAGE_MODELS[FALLBACK_MODEL].displayName}` : ''
+          errorMessage = `🔄 Falha após ${MAX_RETRIES} tentativas automáticas\n\n` +
+            `Tentamos com ${originalModelName}${triedFallback}, mas ambos estão com problemas no Replicate.\n\n` +
+            `💡 Soluções:\n` +
+            `• Tente outro modelo (FLUX Schnell ou FLUX 1.1 Pro)\n` +
+            `• Aguarde alguns minutos e tente novamente\n` +
+            `• Reduza o número de imagens de referência`
+        } else if (errorMessage.includes('E6716')) {
+          const modelName = currentModelConfig.displayName
+          const refCount = publicReferenceUrls.length
+          errorMessage = `⏱️ Timeout ao iniciar geração com ${modelName}\n\n` +
+            `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
+            `💡 Soluções:\n` +
+            `• Reduza para no máximo 3 imagens de referência\n` +
+            `• Use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (10 imagens)\n` +
+            `• Aguarde alguns minutos e tente novamente`
+        } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
+          errorMessage = '🚫 Conteúdo bloqueado pelo filtro de segurança.\n\nPor favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
+        } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
+          errorMessage = '⏱️ Tempo limite excedido ao processar a imagem.\n\n💡 Soluções:\n• Reduza a resolução (use 2K ao invés de 4K)\n• Diminua o número de imagens de referência\n• Tente novamente em alguns minutos'
+        } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
+          errorMessage = '⚠️ Limite de uso atingido no serviço de IA.\n\nO Replicate está com alta demanda. Aguarde alguns minutos e tente novamente.'
+        } else if (errorMessage.includes('invalid') && errorMessage.includes('image')) {
+          errorMessage = '❌ Formato de imagem inválido.\n\nVerifique se as imagens de referência estão em formato válido (JPG, PNG, WebP).'
+        } else {
+          errorMessage = `❌ Falha ao gerar imagem: ${errorMessage}\n\nSe o problema persistir, tente:\n• Usar outro modelo\n• Simplificar o prompt\n• Reduzir número de imagens de referência`
         }
 
-        // Não é retryable ou última tentativa ou sem tempo - propagar erro
-        throw lastError
-      }
-    }
-
-    // Verificar se temos um resultado válido
-    if (!result!) {
-      throw lastError || new Error('Falha ao gerar imagem após múltiplas tentativas')
-    }
-
-    if (result.status === 'failed') {
-      console.error('[AI Generate] Prediction failed:', {
-        id: result.id,
-        error: result.error,
-        logs: result.logs,
-        status: result.status
-      })
-
-      // Erro específico do Replicate
-      let errorMessage = result.error || 'Falha ao gerar imagem'
-
-      // Erros conhecidos do Replicate
-      if (errorMessage.toLowerCase().includes('failed to generate image after multiple retries')) {
-        const modelName = currentModelConfig.displayName
-        const originalModelName = modelConfig.displayName
-        const triedFallback = usedFallbackModel ? ` e ${AI_IMAGE_MODELS[FALLBACK_MODEL].displayName}` : ''
-        errorMessage = `🔄 Falha após ${MAX_RETRIES} tentativas automáticas\n\n` +
-          `Tentamos com ${originalModelName}${triedFallback}, mas ambos estão com problemas no Replicate.\n\n` +
-          `💡 Soluções:\n` +
-          `• Tente outro modelo (FLUX Schnell ou FLUX 1.1 Pro)\n` +
-          `• Aguarde alguns minutos e tente novamente\n` +
-          `• Reduza o número de imagens de referência`
-      } else if (errorMessage.includes('E6716')) {
-        const modelName = currentModelConfig.displayName
-        const refCount = publicReferenceUrls.length
-        errorMessage = `⏱️ Timeout ao iniciar geração com ${modelName}\n\n` +
-          `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
-          `💡 Soluções:\n` +
-          `• Reduza para no máximo 3 imagens de referência\n` +
-          `• Use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (10 imagens)\n` +
-          `• Aguarde alguns minutos e tente novamente`
-      } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
-        errorMessage = '🚫 Conteúdo bloqueado pelo filtro de segurança.\n\nPor favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
-      } else if (errorMessage.includes('timeout') || errorMessage.includes('timed out')) {
-        errorMessage = '⏱️ Tempo limite excedido ao processar a imagem.\n\n💡 Soluções:\n• Reduza a resolução (use 2K ao invés de 4K)\n• Diminua o número de imagens de referência\n• Tente novamente em alguns minutos'
-      } else if (errorMessage.includes('quota') || errorMessage.includes('rate limit')) {
-        errorMessage = '⚠️ Limite de uso atingido no serviço de IA.\n\nO Replicate está com alta demanda. Aguarde alguns minutos e tente novamente.'
-      } else if (errorMessage.includes('invalid') && errorMessage.includes('image')) {
-        errorMessage = '❌ Formato de imagem inválido.\n\nVerifique se as imagens de referência estão em formato válido (JPG, PNG, WebP).'
-      } else {
-        // Melhorar mensagem genérica
-        errorMessage = `❌ Falha ao gerar imagem: ${errorMessage}\n\nSe o problema persistir, tente:\n• Usar outro modelo\n• Simplificar o prompt\n• Reduzir número de imagens de referência`
+        throw new Error(errorMessage)
       }
 
-      throw new Error(errorMessage)
+      // Upload para Vercel Blob
+      const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
+      if (!imageUrl) {
+        throw new Error('Nenhuma imagem foi retornada pelo modelo de IA. Tente novamente.')
+      }
+
+      const fileName = `ai-generated-${Date.now()}.png`
+      blobUrl = await uploadToVercelBlob(imageUrl, fileName)
+      predictionId = result.id
     }
 
-    // 7. Upload para Vercel Blob
-    const imageUrl = Array.isArray(result.output) ? result.output[0] : result.output
-    if (!imageUrl) {
-      throw new Error('Nenhuma imagem foi retornada pelo modelo de IA. Tente novamente.')
-    }
-
-    const fileName = `ai-generated-${Date.now()}.png`
-    const blobUrl = await uploadToVercelBlob(imageUrl, fileName)
-
-    // 8. Calcular dimensões baseado no aspect ratio
+    // 6. Calcular dimensões baseado no aspect ratio
     const dimensions = calculateDimensions(body.aspectRatio)
 
-    // 9. Salvar no banco de dados (usando o modelo que realmente foi usado, pode ser fallback)
-    const actualModel = currentParams.model as string
+    // 7. Salvar no banco de dados (usando o modelo que realmente foi usado, pode ser fallback)
     const aiImage = await db.aIGeneratedImage.create({
       data: {
         projectId: body.projectId,
@@ -504,19 +685,18 @@ export async function POST(request: Request) {
         prompt: body.prompt,
         mode: 'GENERATE',
         fileUrl: blobUrl,
-        thumbnailUrl: blobUrl, // Por enquanto usa a mesma URL
+        thumbnailUrl: blobUrl,
         width: dimensions.width,
         height: dimensions.height,
         aspectRatio: body.aspectRatio,
-        provider: currentModelConfig.provider.toLowerCase(),
+        provider: isGeminiModel && !usedFallbackModel ? 'gemini-direct' : currentModelConfig.provider.toLowerCase(),
         model: actualModel,
-        predictionId: result.id,
+        predictionId: predictionId,
         createdBy: userId,
       },
     })
 
-    // 10. Deduzir créditos após sucesso (quantidade calculada baseada no modelo usado)
-    // Se usou fallback, calcular créditos do modelo que realmente foi usado
+    // 8. Deduzir créditos após sucesso (quantidade calculada baseada no modelo usado)
     const actualCreditsRequired = usedFallbackModel
       ? calculateCreditsForModel(actualModel as AIImageModel, body.resolution)
       : creditsRequired
@@ -530,6 +710,7 @@ export async function POST(request: Request) {
         model: actualModel,
         originalModel: usedFallbackModel ? body.model : undefined,
         usedFallbackModel,
+        apiProvider: isGeminiModel ? 'gemini-direct' : 'replicate',
         resolution: body.resolution,
         prompt: body.prompt,
         aiImageId: aiImage.id,

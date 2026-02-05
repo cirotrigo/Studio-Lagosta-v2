@@ -81,6 +81,15 @@ export function DriveItem({
   // Mobile touch support: first tap shows actions, second tap opens lightbox
   const [isTouchActive, setIsTouchActive] = React.useState(false)
   const cardRef = React.useRef<HTMLDivElement>(null)
+  const isTouchDeviceRef = React.useRef(false)
+
+  // Detect touch device on mount (avoids SSR mismatch)
+  React.useEffect(() => {
+    isTouchDeviceRef.current = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  }, [])
+
+  // On touch devices, only enable PhotoSwipe when action bar is visible (second tap)
+  const shouldEnablePswp = !isTouchDeviceRef.current || isTouchActive
 
   // Close action bar when tapping outside
   React.useEffect(() => {
@@ -102,10 +111,7 @@ export function DriveItem({
 
   // Handle first tap to show actions on touch devices
   const handleCardTap = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
-    // Only for touch devices - check if it's a touch event or if hover is not supported
-    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
-
-    if (!isTouchDevice) return // Desktop: let hover handle it
+    if (!isTouchDeviceRef.current) return // Desktop: let hover handle it
 
     // Don't interfere with button clicks inside action bar
     const target = e.target as HTMLElement
@@ -235,19 +241,16 @@ export function DriveItem({
         {enableLightbox ? (
           <a
             href={fullResourceSrc ?? undefined}
-            data-pswp-src={fullResourceSrc ?? undefined}
-            data-pswp-width={String(pswpWidth)}
-            data-pswp-height={String(pswpHeight)}
-            data-pswp-type={isVideo ? 'video' : 'image'}
-            data-pswp-media-type={item.mimeType}
+            {...(shouldEnablePswp ? {
+              'data-pswp-src': fullResourceSrc ?? undefined,
+              'data-pswp-width': String(pswpWidth),
+              'data-pswp-height': String(pswpHeight),
+              'data-pswp-type': isVideo ? 'video' : 'image',
+              'data-pswp-media-type': item.mimeType,
+            } : {})}
             className="block h-full w-full"
             onClick={(event) => {
               if (!previewLoaded) {
-                event.preventDefault()
-              }
-              // On touch devices, prevent lightbox on first tap (show actions first)
-              const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
-              if (isTouchDevice && !isTouchActive) {
                 event.preventDefault()
               }
             }}

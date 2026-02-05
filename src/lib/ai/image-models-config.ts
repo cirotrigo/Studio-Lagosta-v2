@@ -16,6 +16,8 @@ export type AIImageModel =
 
 export type AIImageMode = 'generate' | 'edit' | 'inpaint'
 
+export type AIImageApiProvider = 'replicate' | 'gemini-direct'
+
 export interface AIImageModelConfig {
   id: AIImageModel
   name: string
@@ -23,6 +25,7 @@ export interface AIImageModelConfig {
   displayName: string
   description: string
   version: string
+  apiProvider: AIImageApiProvider
 
   // Capacidades
   capabilities: {
@@ -68,6 +71,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'FLUX 1.1 Pro',
     description: 'Modelo estado da arte com melhor custo-benefício, excelente qualidade e velocidade',
     version: '609793a667ed94b210242837d3c3c9fc9a64ae93685f15d75002ba0ed9a97f2b',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '1440x1440',
@@ -103,6 +107,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'FLUX Schnell',
     description: 'Modelo ultra-rápido e econômico, ideal para testes e iterações rápidas',
     version: 'c846a69991daf4c0e5d016514849d14ee5b2e6846ce6b9d6f21369e564cfe51e',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '1024x1024',
@@ -136,6 +141,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Seedream 4',
     description: 'Especialista em imagens ultra-realistas com texturas e iluminação superiores, suporte 4K e edição de imagens',
     version: 'cf7d431991436f19d1c8dad83fe463c729c816d7a21056c5105e75c84a0aa7e9',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '4096x4096',
@@ -178,6 +184,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Ideogram v3 Turbo',
     description: 'Especialista em renderização perfeita de texto em imagens, com 50+ estilos artísticos e Magic Fill',
     version: 'd9b3748f95c0fe3e71f010f8cc5d80e8f5252acd0e74b1c294ee889eea52a47b',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '1536x1536',
@@ -216,6 +223,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Recraft V3',
     description: 'Estado da arte em design e ilustração, com textos longos e diversos estilos artísticos',
     version: '9507e61ddace8b3a238371b17a61be203747c5081ea6070fecd3c40d27318922',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '2048x2048',
@@ -251,6 +259,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Stable Diffusion 3',
     description: 'Modelo clássico e confiável com 2B parâmetros, excelente tipografia e versatilidade',
     version: '527d2a6296facb8e47ba1eaf17f142c240c19a30894f437feee9b91cc29d8e4f',
+    apiProvider: 'replicate',
 
     capabilities: {
       maxResolution: '1536x1536',
@@ -284,6 +293,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Gemini 3 Pro Image',
     description: 'Modelo avançado da Google com suporte 4K, edição profissional e controles avançados',
     version: '81a5073adeced23b51ae9f85cd86c88954e7f25d7894eea0c7ebbc0c24d6831a',
+    apiProvider: 'gemini-direct',
 
     capabilities: {
       maxResolution: '4K',
@@ -328,6 +338,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     displayName: 'Gemini 2.5 Flash Image',
     description: 'Modelo clássico e estável para geração básica de imagens',
     version: 'd05a591283da31be3eea28d5634ef9e26989b351718b6489bd308426ebd0a3e8',
+    apiProvider: 'gemini-direct',
 
     capabilities: {
       maxResolution: '1024x1024',
