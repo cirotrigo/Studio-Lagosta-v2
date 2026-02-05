@@ -909,10 +909,12 @@ function isRetryableError(errorMessage: string): boolean {
   // Erros retryáveis - geralmente problemas temporários ou de infraestrutura
   const retryablePatterns = [
     'failed to generate image after multiple retries', // Erro específico do Replicate
+    'deployment deadline exceeded', // Timeout do Replicate durante execução
     'timed out',
     'timeout',
     'tempo limite', // Versão em português
     'tempo excedido', // Versão em português
+    'deadline exceeded', // gRPC/infra timeout genérico
     'queue',
     'queued',
     'e6716', // Código de erro específico do Replicate para timeout
