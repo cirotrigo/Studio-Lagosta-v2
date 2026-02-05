@@ -78,6 +78,47 @@ export function DriveItem({
   const enableLightbox = Boolean(fullResourceSrc && (isImage || isVideo))
   const [previewLoaded, setPreviewLoaded] = React.useState(!thumbnailUrl)
 
+  // Mobile touch support: first tap shows actions, second tap opens lightbox
+  const [isTouchActive, setIsTouchActive] = React.useState(false)
+  const cardRef = React.useRef<HTMLDivElement>(null)
+
+  // Close action bar when tapping outside
+  React.useEffect(() => {
+    if (!isTouchActive) return
+
+    function handleClickOutside(e: MouseEvent | TouchEvent) {
+      if (cardRef.current && !cardRef.current.contains(e.target as Node)) {
+        setIsTouchActive(false)
+      }
+    }
+
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('touchstart', handleClickOutside)
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isTouchActive])
+
+  // Handle first tap to show actions on touch devices
+  const handleCardTap = React.useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    // Only for touch devices - check if it's a touch event or if hover is not supported
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+
+    if (!isTouchDevice) return // Desktop: let hover handle it
+
+    // Don't interfere with button clicks inside action bar
+    const target = e.target as HTMLElement
+    if (target.closest('button') || target.closest('[role="menuitem"]') || target.closest('[data-action-bar]')) return
+
+    if (!isTouchActive) {
+      e.preventDefault()
+      e.stopPropagation()
+      setIsTouchActive(true)
+    }
+    // If already active, let the normal click/tap behavior happen (open lightbox, etc.)
+  }, [isTouchActive])
+
   // Spotlight effect
   const mouseX = useMotionValue(0)
   const mouseY = useMotionValue(0)
@@ -138,6 +179,7 @@ export function DriveItem({
   // Merge refs
   const setRefs = React.useCallback(
     (node: HTMLDivElement | null) => {
+      (cardRef as React.MutableRefObject<HTMLDivElement | null>).current = node
       setDragNodeRef(node)
       if (isFolder) {
         setDropNodeRef(node)
@@ -159,16 +201,22 @@ export function DriveItem({
         'group relative flex flex-col rounded-xl overflow-hidden bg-card border border-white/5 transition-all',
         selected && 'ring-2 ring-primary ring-offset-2 ring-offset-background',
         isOver && isFolder && 'ring-2 ring-primary bg-primary/10',
+        isTouchActive && 'touch-active',
         'w-full'
       )}
+      data-touch-active={isTouchActive || undefined}
       onDoubleClick={handleDoubleClick}
       onMouseMove={handleMouseMove}
+      onClick={handleCardTap}
       {...attributes}
       {...listeners}
     >
       {/* Spotlight Effect */}
       <motion.div
-        className="pointer-events-none absolute -inset-px rounded-xl opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+        className={cn(
+          "pointer-events-none absolute -inset-px rounded-xl opacity-0 transition duration-300 group-hover:opacity-100 z-10",
+          isTouchActive && "opacity-100"
+        )}
         style={{
           background: useMotionTemplate`
             radial-gradient(
@@ -195,6 +243,11 @@ export function DriveItem({
             className="block h-full w-full"
             onClick={(event) => {
               if (!previewLoaded) {
+                event.preventDefault()
+              }
+              // On touch devices, prevent lightbox on first tap (show actions first)
+              const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+              if (isTouchDevice && !isTouchActive) {
                 event.preventDefault()
               }
             }}
@@ -278,19 +331,31 @@ export function DriveItem({
           </div>
         )}
 
-        {/* Checkbox - Reveal on hover */}
-        <div className="absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" onClick={(e) => e.stopPropagation()}>
+        {/* Checkbox - Reveal on hover or touch */}
+        <div
+          className={cn(
+            "absolute top-2 left-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-200",
+            isTouchActive && "opacity-100"
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
           <Checkbox
             checked={selected}
             onCheckedChange={() => onToggleSelect()}
-            className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground border-white/50 bg-black/40 backdrop-blur-sm"
+            className="data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground border-white/50 bg-black/40 backdrop-blur-sm h-5 w-5 sm:h-4 sm:w-4"
           />
         </div>
 
-        {/* Overlay Info - Reveal on hover */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+        {/* Overlay Info - Reveal on hover or touch */}
+        <div className={cn(
+          "absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10",
+          isTouchActive && "opacity-100"
+        )} />
 
-        <div className="absolute bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20">
+        <div className={cn(
+          "absolute bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20",
+          isTouchActive && "translate-y-0 opacity-100"
+        )}>
           <h3 className="text-white font-medium text-sm leading-snug line-clamp-2 drop-shadow-sm mb-1 break-anywhere">
             {item.name}
           </h3>
@@ -300,23 +365,30 @@ export function DriveItem({
           </div>
         </div>
 
-        {/* Action Bar - Reveal on hover */}
-        <div className="absolute bottom-0 left-0 right-0 p-2 flex gap-1 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/60 backdrop-blur-md border-t border-white/10" onClick={(e) => e.stopPropagation()}>
+        {/* Action Bar - Reveal on hover or touch */}
+        <div
+          data-action-bar
+          className={cn(
+            "absolute bottom-0 left-0 right-0 p-2 sm:p-2 flex gap-1.5 sm:gap-1 items-center translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/60 backdrop-blur-md border-t border-white/10",
+            isTouchActive && "translate-y-0 opacity-100"
+          )}
+          onClick={(e) => e.stopPropagation()}
+        >
           {isFolder ? (
-            <Button variant="ghost" size="sm" className="flex-1 h-8 text-white hover:bg-white/20 hover:text-white" onClick={() => onOpen(item)}>
+            <Button variant="ghost" size="sm" className="flex-1 h-10 sm:h-8 text-white hover:bg-white/20 hover:text-white active:bg-white/30" onClick={() => onOpen(item)}>
               <Eye className="h-4 w-4 mr-1" /> Abrir
             </Button>
           ) : (
             <>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md" onClick={() => onOpen(item)} title="Visualizar">
-                <Eye className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 text-white hover:bg-white/20 hover:text-white active:bg-white/30 rounded-md" onClick={() => onOpen(item)} title="Visualizar">
+                <Eye className="h-5 w-5 sm:h-4 sm:w-4" />
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md" onClick={() => onDownload(item)} title="Baixar">
-                <DownloadIcon className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 text-white hover:bg-white/20 hover:text-white active:bg-white/30 rounded-md" onClick={() => onDownload(item)} title="Baixar">
+                <DownloadIcon className="h-5 w-5 sm:h-4 sm:w-4" />
               </Button>
               {isImage && onEditWithAI && (
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md" onClick={() => onEditWithAI(item)} title="Editar com IA">
-                  <Wand2 className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 text-white hover:bg-white/20 hover:text-white active:bg-white/30 rounded-md" onClick={() => onEditWithAI(item)} title="Editar com IA">
+                  <Wand2 className="h-5 w-5 sm:h-4 sm:w-4" />
                 </Button>
               )}
             </>
@@ -324,8 +396,8 @@ export function DriveItem({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8 text-white hover:bg-white/20 hover:text-white rounded-md ml-auto">
-                <MoreHorizontal className="h-4 w-4" />
+              <Button variant="ghost" size="icon" className="h-10 w-10 sm:h-8 sm:w-8 text-white hover:bg-white/20 hover:text-white active:bg-white/30 rounded-md ml-auto">
+                <MoreHorizontal className="h-5 w-5 sm:h-4 sm:w-4" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
