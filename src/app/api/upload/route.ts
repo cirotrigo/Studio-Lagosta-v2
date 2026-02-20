@@ -6,6 +6,33 @@ import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
 export const runtime = 'nodejs'
 export const maxDuration = 60 // Maximum execution time in seconds
 
+// Magic bytes validation for image security
+const IMAGE_SIGNATURES: Record<string, number[]> = {
+  'image/jpeg': [0xff, 0xd8, 0xff],
+  'image/png': [0x89, 0x50, 0x4e, 0x47],
+  'image/webp': [0x52, 0x49, 0x46, 0x46], // "RIFF"
+  'image/gif': [0x47, 0x49, 0x46],
+}
+
+function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
+  const signature = IMAGE_SIGNATURES[mimeType]
+  if (!signature) {
+    // Unknown type, allow it (backward compatibility)
+    return true
+  }
+
+  // Check if buffer starts with expected signature
+  const matches = signature.every((byte, i) => buffer[i] === byte)
+
+  // For WebP, also check "WEBP" at offset 8
+  if (mimeType === 'image/webp' && matches) {
+    const webpMarker = buffer.slice(8, 12).toString('ascii')
+    return webpMarker === 'WEBP'
+  }
+
+  return matches
+}
+
 export async function POST(request: Request) {
   const { userId } = await auth()
   if (!userId) {
@@ -54,6 +81,24 @@ export async function POST(request: Request) {
     // Convert file to buffer
     const arrayBuffer = await file.arrayBuffer()
     let buffer: Buffer = Buffer.from(arrayBuffer)
+
+    // Validate magic bytes (file signatures) for security
+    if (isImage) {
+      const magicBytes = buffer.slice(0, 12)
+      const isValidImage = validateImageMagicBytes(magicBytes, file.type)
+
+      if (!isValidImage) {
+        console.warn('[Upload] Invalid image file (magic bytes mismatch):', {
+          fileName: file.name,
+          declaredType: file.type,
+          firstBytes: Array.from(magicBytes.slice(0, 4)).map(b => b.toString(16)).join(' ')
+        })
+        return NextResponse.json(
+          { error: 'File is not a valid image' },
+          { status: 400 }
+        )
+      }
+    }
 
     // Auto-crop images to Instagram feed format (4:5 - 1080x1350)
     // Skip cropping for reference images (used in AI generation)

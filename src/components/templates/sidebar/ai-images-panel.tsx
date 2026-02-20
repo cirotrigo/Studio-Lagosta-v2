@@ -43,6 +43,15 @@ import type { AIImageModel, AIImageMode } from '@/lib/ai/image-models-config'
 import { calculateCreditsForModel, AI_IMAGE_MODELS } from '@/lib/ai/image-models-config'
 import { SavePromptDialog } from '@/components/prompts/save-prompt-dialog'
 import { ReferenceImagesGrid } from '@/components/prompts/reference-images-grid'
+import { validateImageFile, validateImageUrl } from '@/lib/images/validate-image-file'
+import { Progress } from '@/components/ui/progress'
+
+interface UploadResult {
+  success: boolean
+  url?: string
+  fileName: string
+  error?: string
+}
 
 interface AIImageRecord {
   id: string
@@ -344,6 +353,11 @@ function GenerateImageForm({
   const [referenceUrls, setReferenceUrls] = React.useState<string[]>([])
   const [isDriveModalOpen, setIsDriveModalOpen] = React.useState(false)
   const [isDragging, setIsDragging] = React.useState(false)
+  const [uploadProgress, setUploadProgress] = React.useState<{
+    current: number
+    total: number
+    fileName: string
+  }>({ current: 0, total: 0, fileName: '' })
   const [selectedPromptId, setSelectedPromptId] = React.useState<string>('')
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -790,7 +804,8 @@ function GenerateImageForm({
 
           const uploadResponse = await fetch('/api/upload', {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: AbortSignal.timeout(30000) // 30s timeout
           })
 
           if (!uploadResponse.ok) {
@@ -810,7 +825,8 @@ function GenerateImageForm({
 
         const uploadResponse = await fetch('/api/upload', {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: AbortSignal.timeout(30000) // 30s timeout
         })
 
         if (!uploadResponse.ok) {
@@ -822,24 +838,119 @@ function GenerateImageForm({
       }
 
       // 3. Upload de arquivos de referência locais (se houver e modo = generate)
+      // Implementação com upload paralelo, retry e tratamento individual de erros
       const localFileUrls: string[] = []
       if (mode === 'generate' && localFiles.length > 0) {
-        for (const file of localFiles) {
-          const formData = new FormData()
-          formData.append('file', file)
+        // Helper para upload com retry
+        const uploadWithRetry = async (
+          file: File,
+          maxRetries = 2
+        ): Promise<UploadResult> => {
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              setUploadProgress(prev => ({
+                ...prev,
+                fileName: file.name
+              }))
 
-          const uploadResponse = await fetch('/api/upload', {
-            method: 'POST',
-            body: formData
-          })
+              const formData = new FormData()
+              formData.append('file', file)
+              formData.append('type', 'reference')
 
-          if (!uploadResponse.ok) {
-            throw new Error('Falha ao fazer upload da imagem local')
+              const response = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData,
+                signal: AbortSignal.timeout(30000) // 30s timeout
+              })
+
+              if (!response.ok) {
+                if (attempt === maxRetries) {
+                  const error = await response.text()
+                  return { success: false, fileName: file.name, error }
+                }
+                // Retry após delay
+                await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+                continue
+              }
+
+              const { url } = await response.json()
+
+              // Validar URL retornada
+              if (!url || !url.startsWith('https://')) {
+                return {
+                  success: false,
+                  fileName: file.name,
+                  error: 'URL inválida retornada'
+                }
+              }
+
+              return { success: true, url, fileName: file.name }
+
+            } catch (error) {
+              if (attempt === maxRetries) {
+                return {
+                  success: false,
+                  fileName: file.name,
+                  error: error instanceof Error ? error.message : 'Erro desconhecido'
+                }
+              }
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
+            }
           }
 
-          const { url } = await uploadResponse.json()
-          localFileUrls.push(url)
+          return { success: false, fileName: file.name, error: 'Máximo de tentativas excedido' }
         }
+
+        // Upload paralelo de todos os arquivos
+        setUploadProgress({ current: 0, total: localFiles.length, fileName: '' })
+
+        const uploadResults = await Promise.allSettled(
+          localFiles.map((file, index) =>
+            uploadWithRetry(file).then(result => {
+              setUploadProgress(prev => ({
+                ...prev,
+                current: prev.current + 1
+              }))
+              return result
+            })
+          )
+        )
+
+        // Processar resultados
+        const successful = uploadResults
+          .filter((r): r is PromiseFulfilledResult<UploadResult> =>
+            r.status === 'fulfilled' && r.value.success
+          )
+          .map(r => r.value.url!)
+
+        const failed = uploadResults
+          .filter((r): r is PromiseFulfilledResult<UploadResult> =>
+            r.status === 'fulfilled' && !r.value.success
+          )
+          .map(r => r.value)
+
+        // Resetar progresso
+        setUploadProgress({ current: 0, total: 0, fileName: '' })
+
+        // Mostrar feedback de erros
+        if (failed.length > 0) {
+          const failedNames = failed.map(f => f.fileName).join(', ')
+          toast({
+            variant: 'destructive',
+            title: `${failed.length} arquivo(s) falharam`,
+            description: failedNames.length > 100
+              ? `${failedNames.substring(0, 100)}...`
+              : failedNames
+          })
+
+          console.error('[AIImagesPanel] Failed uploads:', failed)
+        }
+
+        if (successful.length === 0 && localFiles.length > 0) {
+          throw new Error('Todos os uploads falharam')
+        }
+
+        localFileUrls.push(...successful)
       }
 
       // 4. Converter GoogleDriveItem para URLs completas (só em modo generate)
@@ -893,11 +1004,40 @@ function GenerateImageForm({
     setLocalFiles(prev => prev.filter((_, i) => i !== index))
   }
 
-  const handleFileSelect = (files: FileList | null) => {
+  const handleFileSelect = async (files: FileList | null) => {
     if (!files) return
 
-    const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'))
-    const totalImages = referenceImages.length + localFiles.length + referenceUrls.length + imageFiles.length
+    const filesArray = Array.from(files)
+
+    // Validar todos os arquivos em paralelo
+    const validationResults = await Promise.all(
+      filesArray.map(async file => ({
+        file,
+        validation: await validateImageFile(file)
+      }))
+    )
+
+    // Separar válidos e inválidos
+    const valid = validationResults.filter(r => r.validation.valid)
+    const invalid = validationResults.filter(r => !r.validation.valid)
+
+    // Mostrar erros específicos para cada arquivo inválido
+    if (invalid.length > 0) {
+      invalid.forEach(({ file, validation }) => {
+        toast({
+          variant: 'destructive',
+          title: `${file.name}`,
+          description: validation.error
+        })
+      })
+    }
+
+    if (valid.length === 0) {
+      return
+    }
+
+    // Verificar limite de imagens
+    const totalImages = referenceImages.length + localFiles.length + referenceUrls.length + valid.length
 
     if (totalImages > maxReferenceImages) {
       toast({
@@ -907,7 +1047,15 @@ function GenerateImageForm({
       return
     }
 
-    setLocalFiles(prev => [...prev, ...imageFiles].slice(0, maxReferenceImages - referenceImages.length))
+    // Adicionar apenas arquivos válidos
+    const validFiles = valid.map(r => r.file)
+    setLocalFiles(prev => [...prev, ...validFiles].slice(0, maxReferenceImages - referenceImages.length))
+
+    if (valid.length > 0) {
+      toast({
+        description: `${valid.length} ${valid.length === 1 ? 'imagem adicionada' : 'imagens adicionadas'} com sucesso`
+      })
+    }
   }
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -1431,6 +1579,23 @@ function GenerateImageForm({
             <BookmarkPlus className="h-4 w-4" />
             Salvar Último Prompt Gerado
           </Button>
+        )}
+
+        {/* Indicador de progresso de upload */}
+        {uploadProgress.total > 0 && (
+          <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Fazendo upload: {uploadProgress.fileName}
+              </span>
+              <span className="font-medium">
+                {uploadProgress.current}/{uploadProgress.total}
+              </span>
+            </div>
+            <Progress
+              value={(uploadProgress.current / uploadProgress.total) * 100}
+            />
+          </div>
         )}
 
         <div className="flex items-center justify-between">
