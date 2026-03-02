@@ -113,7 +113,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   validateCookies: async () => {
     try {
       // Try to fetch projects - if it works, cookies are valid
-      await api.get('/api/tools/projects')
+      await api.get('/api/projects')
       return true
     } catch {
       return false

@@ -18,6 +18,13 @@ export interface LogoutResult {
   error?: string
 }
 
+export interface ApiResponse {
+  ok: boolean
+  status: number
+  statusText: string
+  data: unknown
+}
+
 export interface ElectronAPI {
   // Authentication
   login: () => Promise<LoginResult>
@@ -32,6 +39,9 @@ export interface ElectronAPI {
   getVersion: () => Promise<string>
   openExternal: (url: string) => Promise<void>
   getPlatform: () => Promise<NodeJS.Platform>
+
+  // API Requests (bypasses CORS)
+  apiRequest: (url: string, options?: RequestInit) => Promise<ApiResponse>
 }
 
 const electronAPI: ElectronAPI = {
@@ -49,6 +59,9 @@ const electronAPI: ElectronAPI = {
   getVersion: () => ipcRenderer.invoke('app:get-version'),
   openExternal: (url: string) => ipcRenderer.invoke('app:open-external', url),
   getPlatform: () => ipcRenderer.invoke('app:get-platform'),
+
+  // API Requests (bypasses CORS)
+  apiRequest: (url: string, options?: RequestInit) => ipcRenderer.invoke('api:request', url, options),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

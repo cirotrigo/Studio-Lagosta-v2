@@ -11,9 +11,11 @@ export default function ProjectSelector() {
   const inputRef = useRef<HTMLInputElement>(null)
 
   // Filter projects by search query
-  const filteredProjects = projects.filter((project) =>
-    project.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  const filteredProjects = Array.isArray(projects) 
+    ? projects.filter((project) =>
+        project.name.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : []
 
   // Close dropdown when clicking outside
   useEffect(() => {
