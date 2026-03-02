@@ -35,11 +35,27 @@ export default function SchedulerPage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border p-4">
-        <div>
-          <h1 className="text-xl font-semibold text-text">Agendador</h1>
-          <p className="text-sm text-text-muted">
-            Gerencie os posts de {currentProject.name}
-          </p>
+        <div className="flex items-center gap-3">
+          {/* Project Logo */}
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
+            {currentProject.logoUrl ? (
+              <img
+                src={currentProject.logoUrl}
+                alt={currentProject.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center bg-primary/10 text-primary font-semibold text-lg">
+                {currentProject.name.charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div>
+            <h1 className="text-xl font-semibold text-text">Agendador</h1>
+            <p className="text-sm text-text-muted">
+              Gerencie os posts de {currentProject.name}
+            </p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

@@ -20,10 +20,10 @@ export default function AuthPage() {
         <div className="w-full max-w-md">
           {/* Logo */}
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
-              <span className="text-2xl font-bold text-primary">SL</span>
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center">
+              <img src="/icon.png" alt="Lagosta" className="h-16 w-16 rounded-2xl object-cover" />
             </div>
-            <h1 className="text-2xl font-bold text-text">Lagosta Tools</h1>
+            <img src="/logo.png" alt="Lagosta Tools" className="mx-auto mb-2 h-7 object-contain" />
             <p className="mt-2 text-text-muted">
               Faça login com sua conta Studio Lagosta
             </p>

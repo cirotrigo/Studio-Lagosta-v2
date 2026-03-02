@@ -9,6 +9,7 @@ import {
   PostStatus,
   POST_STATUS_LABELS,
   POST_STATUS_COLORS,
+  POST_TYPE_DIMENSIONS,
 } from '@/lib/constants'
 import { useProjectStore } from '@/stores/project.store'
 import { useDeletePost } from '@/hooks/use-posts'
@@ -62,10 +63,19 @@ export default function PostCard({ post }: PostCardProps) {
     CAROUSEL: LayoutGrid,
   }[post.postType] || ImageIcon
 
+  // Calculate aspect ratio based on post type
+  const getAspectRatio = (postType: string) => {
+    const dims = POST_TYPE_DIMENSIONS[postType as PostType]
+    if (!dims) return 'aspect-[4/5]'
+    // Return Tailwind aspect ratio class
+    if (dims.width === 1080 && dims.height === 1920) return 'aspect-[9/16]'
+    return 'aspect-[4/5]'
+  }
+
   return (
     <div className="group relative overflow-hidden rounded-lg border border-border bg-card">
       {/* Image */}
-      <div className="relative aspect-[4/5] overflow-hidden bg-input">
+      <div className={cn('relative overflow-hidden bg-input', getAspectRatio(post.postType))}>
         {post.mediaUrls[0] ? (
           <img
             src={post.mediaUrls[0]}
@@ -120,13 +130,8 @@ export default function PostCard({ post }: PostCardProps) {
           </span>
         </div>
 
-        {/* Caption */}
-        <p className="text-sm text-text-muted line-clamp-2">
-          {post.caption || 'Sem legenda'}
-        </p>
-
         {/* Date */}
-        <p className="mt-2 text-xs text-text-subtle">
+        <p className="text-xs text-text-subtle mt-1">
           {post.scheduledDatetime
             ? `Agendado: ${formatDateTime(post.scheduledDatetime)}`
             : `Criado: ${formatDateTime(post.createdAt)}`}

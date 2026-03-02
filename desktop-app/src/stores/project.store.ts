@@ -45,12 +45,17 @@ export const useProjectStore = create<ProjectState>((set) => ({
   setProjects: (projects) => {
     set({ projects })
 
-    // Try to restore last selected project
+    // Try to restore last selected project with full data
     const savedProjectId = localStorage.getItem(STORAGE_KEY)
     if (savedProjectId) {
       const savedProject = projects.find((p) => p.id === Number(savedProjectId))
       if (savedProject) {
+        // Always update currentProject with fresh data from API
         set({ currentProject: savedProject })
+      } else {
+        // Project no longer exists or user doesn't have access
+        set({ currentProject: null })
+        localStorage.removeItem(STORAGE_KEY)
       }
     }
   },

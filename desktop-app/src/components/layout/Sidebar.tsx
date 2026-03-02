@@ -36,10 +36,8 @@ export default function Sidebar() {
       {/* Logo */}
       <div className="flex h-14 items-center px-4">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <span className="text-sm font-bold text-primary">SL</span>
-          </div>
-          <span className="font-semibold text-text">Lagosta Tools</span>
+          <img src="/icon.png" alt="Lagosta" className="h-8 w-8 rounded-lg object-cover" />
+          <img src="/logo.png" alt="Lagosta Tools" className="h-5 object-contain" />
         </div>
       </div>
 

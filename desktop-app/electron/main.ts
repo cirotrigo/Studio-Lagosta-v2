@@ -122,6 +122,7 @@ function createWindow() {
     titleBarStyle: 'hiddenInset',
     trafficLightPosition: { x: 16, y: 16 },
     show: false,
+    title: 'Lagosta Tools',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
@@ -615,86 +616,95 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
 
 // IPC Handlers - File Upload (to bypass CORS)
 ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => {
-  const cookies = await getFreshCookies()
-  
-  console.log('[Upload] Uploading file to:', url)
-  console.log('[Upload] File:', fileData.name, 'Size:', fileData.buffer.byteLength)
-  
-  // Build multipart/form-data body manually to ensure proper formatting
-  const boundary = `----ElectronFormBoundary${Date.now().toString(36)}`
-  const chunks: Buffer[] = []
-  
-  // Add file field
-  chunks.push(Buffer.from(`--${boundary}\r\n`))
-  chunks.push(Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileData.name}"\r\n`))
-  chunks.push(Buffer.from(`Content-Type: ${fileData.type}\r\n\r\n`))
-  chunks.push(Buffer.from(fileData.buffer))
-  chunks.push(Buffer.from('\r\n'))
-  
-  // Add additional fields
-  Object.entries(fields).forEach(([key, value]) => {
-    chunks.push(Buffer.from(`--${boundary}\r\n`))
-    chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"\r\n\r\n`))
-    chunks.push(Buffer.from(value))
-    chunks.push(Buffer.from('\r\n'))
-  })
-  
-  // End boundary
-  chunks.push(Buffer.from(`--${boundary}--\r\n`))
-  
-  const body = Buffer.concat(chunks)
-  
-  const headers: Record<string, string> = {
-    'Content-Type': `multipart/form-data; boundary=${boundary}`,
-  }
-  
-  if (cookies) {
-    headers['Cookie'] = cookies
-    
-    // Extract __session JWT for Bearer token
-    const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
-    if (sessionMatch) {
-      headers['Authorization'] = `Bearer ${sessionMatch[1]}`
-    }
-  }
-  
-  console.log('[Upload] Headers:', Object.keys(headers))
-  
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body,
-    redirect: 'follow',
-  })
-  
-  console.log('[Upload] Response status:', response.status)
-  
-  const text = await response.text()
-  
-  // Detect HTML responses
-  const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
-  if (isHtml) {
-    console.log('[Upload] Received HTML instead of JSON - session expired')
-    return {
-      ok: false,
-      status: 401,
-      statusText: 'Unauthorized',
-      data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
-    }
-  }
-  
-  let data
   try {
-    data = JSON.parse(text)
-  } catch {
-    data = text
-  }
-  
-  return {
-    ok: response.ok,
-    status: response.status,
-    statusText: response.statusText,
-    data,
+    const cookies = await getFreshCookies()
+    
+    console.log('[Upload] Uploading file to:', url)
+    console.log('[Upload] File:', fileData.name, 'Size:', fileData.buffer.byteLength, 'Type:', fileData.type)
+    
+    // Build multipart/form-data body manually to ensure proper formatting
+    const boundary = `----ElectronFormBoundary${Date.now().toString(36)}`
+    const chunks: Buffer[] = []
+    
+    // Clone the ArrayBuffer to avoid "detached ArrayBuffer" error
+    const bufferClone = Buffer.from(new Uint8Array(fileData.buffer))
+    
+    // Add file field
+    chunks.push(Buffer.from(`--${boundary}\r\n`))
+    chunks.push(Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileData.name}"\r\n`))
+    chunks.push(Buffer.from(`Content-Type: ${fileData.type}\r\n\r\n`))
+    chunks.push(bufferClone)
+    chunks.push(Buffer.from('\r\n'))
+    
+    // Add additional fields
+    Object.entries(fields).forEach(([key, value]) => {
+      chunks.push(Buffer.from(`--${boundary}\r\n`))
+      chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"\r\n\r\n`))
+      chunks.push(Buffer.from(value))
+      chunks.push(Buffer.from('\r\n'))
+    })
+    
+    // End boundary
+    chunks.push(Buffer.from(`--${boundary}--\r\n`))
+    
+    const body = Buffer.concat(chunks)
+    
+    const headers: Record<string, string> = {
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    }
+    
+    if (cookies) {
+      headers['Cookie'] = cookies
+      
+      // Extract __session JWT for Bearer token
+      const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
+      if (sessionMatch) {
+        headers['Authorization'] = `Bearer ${sessionMatch[1]}`
+      }
+    }
+    
+    console.log('[Upload] Headers:', Object.keys(headers))
+    console.log('[Upload] Body size:', body.length, 'bytes')
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      redirect: 'follow',
+    })
+    
+    console.log('[Upload] Response status:', response.status)
+    
+    const text = await response.text()
+    
+    // Detect HTML responses
+    const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
+    if (isHtml) {
+      console.log('[Upload] Received HTML instead of JSON - session expired')
+      return {
+        ok: false,
+        status: 401,
+        statusText: 'Unauthorized',
+        data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
+      }
+    }
+    
+    let data
+    try {
+      data = JSON.parse(text)
+    } catch {
+      data = text
+    }
+    
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      data,
+    }
+  } catch (error) {
+    console.error('[Upload] Error during upload:', error)
+    throw error
   }
 })
 
