@@ -123,12 +123,17 @@ export default function NewPostPage() {
       }
 
       // Create post
+      // Convert datetime-local to ISO string for API
+      const scheduledDatetimeISO = scheduleType === 'SCHEDULED' && scheduledDatetime
+        ? new Date(scheduledDatetime).toISOString()
+        : undefined
+      
       await createPost.mutateAsync({
         postType,
         caption: caption.trim(),
         mediaUrls,
         scheduleType,
-        scheduledDatetime: scheduleType === 'SCHEDULED' ? scheduledDatetime : undefined,
+        scheduledDatetime: scheduledDatetimeISO,
       })
 
       toast.success('Post agendado com sucesso!')

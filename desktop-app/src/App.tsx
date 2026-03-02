@@ -4,6 +4,7 @@ import { useAuthStore } from './stores/auth.store'
 import AuthPage from './pages/AuthPage'
 import SchedulerPage from './pages/SchedulerPage'
 import NewPostPage from './pages/NewPostPage'
+import EditPostPage from './pages/EditPostPage'
 import SettingsPage from './pages/SettingsPage'
 import AppShell from './components/layout/AppShell'
 
@@ -50,6 +51,7 @@ function App() {
           <Route path="/" element={<Navigate to="/scheduler" replace />} />
           <Route path="/scheduler" element={<SchedulerPage />} />
           <Route path="/new-post" element={<NewPostPage />} />
+          <Route path="/edit-post/:postId" element={<EditPostPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/scheduler" replace />} />
         </Routes>

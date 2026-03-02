@@ -4,6 +4,111 @@ import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
 
 let mainWindow: BrowserWindow | null = null
+let refreshWindow: BrowserWindow | null = null
+let isRefreshing = false
+
+// Refresh Clerk session using a hidden browser window (Clerk JS handles token rotation)
+async function refreshClerkSession(): Promise<boolean> {
+  if (isRefreshing) {
+    console.log('[Refresh] Already refreshing, waiting...')
+    // Wait up to 15s for ongoing refresh to complete
+    return new Promise(resolve => {
+      let waited = 0
+      const interval = setInterval(async () => {
+        waited += 500
+        if (!isRefreshing) {
+          clearInterval(interval)
+          // Check if we now have a valid session
+          const cookies = await session.defaultSession.cookies.get({ url: 'https://studio-lagosta-v2.vercel.app' })
+          const s = cookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
+          if (s?.value) {
+            try {
+              const p = JSON.parse(Buffer.from(s.value.split('.')[1], 'base64').toString())
+              if (p.exp > Math.floor(Date.now() / 1000)) { resolve(true); return }
+            } catch { /* ignore */ }
+          }
+          resolve(false)
+        } else if (waited >= 15000) {
+          clearInterval(interval)
+          resolve(false)
+        }
+      }, 500)
+    })
+  }
+  
+  isRefreshing = true
+  console.log('[Refresh] Starting Clerk session refresh via hidden window...')
+  
+  return new Promise<boolean>((resolve) => {
+    const win = new BrowserWindow({
+      width: 800,
+      height: 600,
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    })
+    
+    refreshWindow = win
+    
+    const timeout = setTimeout(() => {
+      console.log('[Refresh] Timeout (15s) - closing refresh window')
+      if (!win.isDestroyed()) win.close()
+      isRefreshing = false
+      resolve(false)
+    }, 15000)
+    
+    // Watch for new __session cookie
+    const cookieHandler = async (_e: Electron.Event, cookie: Electron.Cookie, _cause: string, removed: boolean) => {
+      if (removed) return
+      if (!cookie.domain?.includes('studio-lagosta-v2.vercel.app')) return
+      if (cookie.name !== '__session' && !cookie.name.startsWith('__session_')) return
+      if (!cookie.value || cookie.value.length < 10) return
+      
+      console.log('[Refresh] __session cookie changed, validating...')
+      
+      // Validate it's a fresh (non-expired) token
+      try {
+        const parts = cookie.value.split('.')
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+        const now = Math.floor(Date.now() / 1000)
+        if (payload.exp > now) {
+          console.log('[Refresh] Got fresh __session, valid for', payload.exp - now, 'seconds')
+          clearTimeout(timeout)
+          session.defaultSession.cookies.removeListener('changed', cookieHandler)
+          if (!win.isDestroyed()) win.close()
+          isRefreshing = false
+          resolve(true)
+        } else {
+          console.log('[Refresh] New __session is also expired, ignoring')
+        }
+      } catch { /* ignore */ }
+    }
+    
+    session.defaultSession.cookies.on('changed', cookieHandler)
+    
+    // Log navigation to see what Clerk does
+    win.webContents.on('did-navigate', (_e, url) => {
+      console.log('[Refresh] Window navigated to:', url.substring(0, 100))
+    })
+    
+    win.webContents.on('did-redirect-navigation', (_e, url) => {
+      console.log('[Refresh] Window redirected to:', url.substring(0, 100))
+    })
+    
+    win.on('closed', () => {
+      refreshWindow = null
+      session.defaultSession.cookies.removeListener('changed', cookieHandler)
+      clearTimeout(timeout)
+      isRefreshing = false
+    })
+    
+    // Load the app - Clerk JS will auto-refresh the session token via /__clerk/client
+    console.log('[Refresh] Loading /studio to trigger Clerk token refresh...')
+    win.loadURL('https://studio-lagosta-v2.vercel.app/studio')
+  })
+}
 
 const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged
 
@@ -378,52 +483,122 @@ ipcMain.handle('auth:is-encryption-available', () => {
   return safeStorage.isEncryptionAvailable()
 })
 
-// IPC Handlers - API Requests (to bypass CORS)
-ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) => {
-  const cookies = getCookies()
-  
-  console.log('[API] Request:', options.method || 'GET', url)
-  console.log('[API] Cookies available:', cookies ? 'YES' : 'NO')
-  
-  const headers: HeadersInit = {
-    'Content-Type': 'application/json',
-    ...(options.headers || {}),
-  }
-  
-  if (cookies) {
-    (headers as Record<string, string>)['Cookie'] = cookies
+// Get fresh cookies from Electron session (auto-refreshed by Clerk) or fallback to stored
+async function getFreshCookies(): Promise<string | null> {
+  try {
+    const sessionCookies = await session.defaultSession.cookies.get({
+      url: 'https://studio-lagosta-v2.vercel.app'
+    })
     
-    // Extract __session JWT (with or without suffix) to use as Bearer token
-    // This is the actual user session JWT that Clerk validates
-    const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
-    
-    if (sessionMatch) {
-      const sessionToken = sessionMatch[1]
-      console.log('[API] Adding __session JWT as Authorization Bearer')
-      ;(headers as Record<string, string>)['Authorization'] = `Bearer ${sessionToken}`
-    } else {
-      console.log('[API] No __session found in cookies')
+    if (sessionCookies.length === 0) {
+      console.log('[Cookies] No session cookies found, using stored cookies')
+      return getCookies()
     }
+    
+    // Check if __session is still valid (not expired)
+    const sessionCookie = sessionCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
+    const clientUat = sessionCookies.find(c => (c.name === '__client_uat' || c.name.startsWith('__client_uat_')) && c.value !== '0')
+    const dbJwt = sessionCookies.find(c => c.name === '__clerk_db_jwt' || c.name.startsWith('__clerk_db_jwt_'))
+    
+    // Check if __session JWT is expired
+    let sessionExpired = true
+    if (sessionCookie?.value) {
+      try {
+        const parts = sessionCookie.value.split('.')
+        if (parts.length === 3) {
+          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
+          const now = Math.floor(Date.now() / 1000)
+          sessionExpired = payload.exp <= now
+          if (!sessionExpired) {
+            console.log('[Cookies] __session is valid, expires in', payload.exp - now, 'seconds')
+          } else {
+            console.log('[Cookies] __session expired', now - payload.exp, 'seconds ago - need refresh')
+          }
+        }
+      } catch {
+        sessionExpired = true
+      }
+    }
+    
+    // If session expired but we have __clerk_db_jwt, try to refresh
+    if (sessionExpired && (dbJwt || clientUat)) {
+      console.log('[Cookies] Session expired - triggering Clerk refresh via hidden window...')
+      const refreshed = await refreshClerkSession()
+      
+      if (refreshed) {
+        // Re-read fresh cookies after refresh
+        const freshCookies = await session.defaultSession.cookies.get({
+          url: 'https://studio-lagosta-v2.vercel.app'
+        })
+        const freshString = freshCookies.map(c => `${c.name}=${c.value}`).join('; ')
+        saveCookies(freshString)
+        return freshString
+      }
+      
+      console.log('[Cookies] Refresh failed - using expired cookies as fallback')
+    }
+    
+    const cookieString = sessionCookies
+      .map(c => `${c.name}=${c.value}`)
+      .join('; ')
+    
+    // Also update stored cookies to keep them in sync
+    saveCookies(cookieString)
+    
+    return cookieString
+  } catch (e) {
+    console.error('[Cookies] Error getting session cookies:', e)
+    return getCookies()
   }
-  
-  console.log('[API] Headers:', JSON.stringify(headers, null, 2).substring(0, 500))
-  
-  const response = await fetch(url, {
-    ...options,
-    headers,
-    redirect: 'follow', // Follow redirects automatically
-  })
-  
+}
+
+// Helper: build headers with cookies and Bearer token
+function buildAuthHeaders(cookies: string | null, extra: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
+  if (!cookies) return headers
+  headers['Cookie'] = cookies
+  const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
+  if (sessionMatch) {
+    headers['Authorization'] = `Bearer ${sessionMatch[1]}`
+  }
+  return headers
+}
+
+// Helper: execute fetch and parse response
+async function executeRequest(url: string, options: RequestInit, cookies: string | null) {
+  const headers = buildAuthHeaders(cookies, options.headers as Record<string, string>)
+  console.log('[API] Request:', options.method || 'GET', url)
+  console.log('[API] Cookie + Bearer:', cookies ? 'YES' : 'NO')
+
+  const response = await fetch(url, { ...options, headers, redirect: 'follow' })
   console.log('[API] Response status:', response.status, response.statusText)
   console.log('[API] Response URL:', response.url)
-  
+
   const text = await response.text()
   console.log('[API] Response body (first 200):', text.substring(0, 200))
-  
-  // Detect HTML responses (sign-in redirects) - treat as 401
+
   const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
-  if (isHtml) {
-    console.log('[API] Received HTML instead of JSON - session expired or unauthorized')
+  return { isHtml, text, status: response.status, statusText: response.statusText, ok: response.ok }
+}
+
+// IPC Handlers - API Requests (to bypass CORS)
+ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) => {
+  // First attempt with current cookies
+  let cookies = await getFreshCookies()
+  let result = await executeRequest(url, options, cookies)
+
+  // If HTML (session expired), try refresh once and retry
+  if (result.isHtml) {
+    console.log('[API] Got HTML - attempting session refresh then retry...')
+    const refreshed = await refreshClerkSession()
+    if (refreshed) {
+      cookies = await getFreshCookies()
+      result = await executeRequest(url, options, cookies)
+    }
+  }
+
+  if (result.isHtml) {
+    console.log('[API] Still HTML after refresh - session truly expired')
     return {
       ok: false,
       status: 401,
@@ -431,42 +606,47 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
       data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
     }
   }
-  
+
   let data
-  try {
-    data = JSON.parse(text)
-  } catch {
-    data = text
-  }
-  
-  return {
-    ok: response.ok,
-    status: response.status,
-    statusText: response.statusText,
-    data,
-  }
+  try { data = JSON.parse(result.text) } catch { data = result.text }
+
+  return { ok: result.ok, status: result.status, statusText: result.statusText, data }
 })
 
 // IPC Handlers - File Upload (to bypass CORS)
 ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => {
-  const cookies = getCookies()
+  const cookies = await getFreshCookies()
   
   console.log('[Upload] Uploading file to:', url)
   console.log('[Upload] File:', fileData.name, 'Size:', fileData.buffer.byteLength)
   
-  // Create FormData
-  const formData = new FormData()
+  // Build multipart/form-data body manually to ensure proper formatting
+  const boundary = `----ElectronFormBoundary${Date.now().toString(36)}`
+  const chunks: Buffer[] = []
   
-  // Add file
-  const blob = new Blob([fileData.buffer], { type: fileData.type })
-  formData.append('file', blob, fileData.name)
+  // Add file field
+  chunks.push(Buffer.from(`--${boundary}\r\n`))
+  chunks.push(Buffer.from(`Content-Disposition: form-data; name="file"; filename="${fileData.name}"\r\n`))
+  chunks.push(Buffer.from(`Content-Type: ${fileData.type}\r\n\r\n`))
+  chunks.push(Buffer.from(fileData.buffer))
+  chunks.push(Buffer.from('\r\n'))
   
   // Add additional fields
   Object.entries(fields).forEach(([key, value]) => {
-    formData.append(key, value)
+    chunks.push(Buffer.from(`--${boundary}\r\n`))
+    chunks.push(Buffer.from(`Content-Disposition: form-data; name="${key}"\r\n\r\n`))
+    chunks.push(Buffer.from(value))
+    chunks.push(Buffer.from('\r\n'))
   })
   
-  const headers: Record<string, string> = {}
+  // End boundary
+  chunks.push(Buffer.from(`--${boundary}--\r\n`))
+  
+  const body = Buffer.concat(chunks)
+  
+  const headers: Record<string, string> = {
+    'Content-Type': `multipart/form-data; boundary=${boundary}`,
+  }
   
   if (cookies) {
     headers['Cookie'] = cookies
@@ -483,7 +663,7 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
   const response = await fetch(url, {
     method: 'POST',
     headers,
-    body: formData,
+    body,
     redirect: 'follow',
   })
   
