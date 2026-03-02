@@ -447,6 +447,77 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
   }
 })
 
+// IPC Handlers - File Upload (to bypass CORS)
+ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => {
+  const cookies = getCookies()
+  
+  console.log('[Upload] Uploading file to:', url)
+  console.log('[Upload] File:', fileData.name, 'Size:', fileData.buffer.byteLength)
+  
+  // Create FormData
+  const formData = new FormData()
+  
+  // Add file
+  const blob = new Blob([fileData.buffer], { type: fileData.type })
+  formData.append('file', blob, fileData.name)
+  
+  // Add additional fields
+  Object.entries(fields).forEach(([key, value]) => {
+    formData.append(key, value)
+  })
+  
+  const headers: Record<string, string> = {}
+  
+  if (cookies) {
+    headers['Cookie'] = cookies
+    
+    // Extract __session JWT for Bearer token
+    const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
+    if (sessionMatch) {
+      headers['Authorization'] = `Bearer ${sessionMatch[1]}`
+    }
+  }
+  
+  console.log('[Upload] Headers:', Object.keys(headers))
+  
+  const response = await fetch(url, {
+    method: 'POST',
+    headers,
+    body: formData,
+    redirect: 'follow',
+  })
+  
+  console.log('[Upload] Response status:', response.status)
+  
+  const text = await response.text()
+  
+  // Detect HTML responses
+  const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
+  if (isHtml) {
+    console.log('[Upload] Received HTML instead of JSON - session expired')
+    return {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
+    }
+  }
+  
+  let data
+  try {
+    data = JSON.parse(text)
+  } catch {
+    data = text
+  }
+  
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    data,
+  }
+})
+
 // IPC Handlers - Image Processing
 ipcMain.handle('image:process', async (_event, buffer: ArrayBuffer, postType: string) => {
   return processImage(Buffer.from(buffer), postType)

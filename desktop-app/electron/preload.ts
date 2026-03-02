@@ -42,6 +42,9 @@ export interface ElectronAPI {
 
   // API Requests (bypasses CORS)
   apiRequest: (url: string, options?: RequestInit) => Promise<ApiResponse>
+  
+  // File Upload (bypasses CORS)
+  uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => Promise<ApiResponse>
 }
 
 const electronAPI: ElectronAPI = {
@@ -62,6 +65,10 @@ const electronAPI: ElectronAPI = {
 
   // API Requests (bypasses CORS)
   apiRequest: (url: string, options?: RequestInit) => ipcRenderer.invoke('api:request', url, options),
+  
+  // File Upload (bypasses CORS)
+  uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => 
+    ipcRenderer.invoke('file:upload', url, fileData, fields),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

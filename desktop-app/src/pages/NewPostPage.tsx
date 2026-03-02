@@ -98,29 +98,27 @@ export default function NewPostPage() {
     setShowConfirmModal(false)
 
     try {
-      // Upload images first
+      // Upload images first using Electron IPC to bypass CORS
       const mediaUrls: string[] = []
       for (const image of processedImages) {
-        const formData = new FormData()
-        formData.append('file', image.blob, image.fileName)
-        formData.append('type', 'post')
-
-        const response = await fetch(
+        // Convert blob to ArrayBuffer
+        const arrayBuffer = await image.blob.arrayBuffer()
+        
+        const response = await window.electronAPI.uploadFile(
           `https://studio-lagosta-v2.vercel.app/api/upload`,
           {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
-            },
-            body: formData,
-          }
+            name: image.fileName,
+            type: image.blob.type || 'image/jpeg',
+            buffer: arrayBuffer,
+          },
+          { type: 'post' }
         )
 
         if (!response.ok) {
-          throw new Error('Erro ao fazer upload da imagem')
+          throw new Error(response.data?.error || 'Erro ao fazer upload da imagem')
         }
 
-        const data = await response.json()
+        const data = response.data as { url: string }
         mediaUrls.push(data.url)
       }
 
