@@ -420,6 +420,18 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
   const text = await response.text()
   console.log('[API] Response body (first 200):', text.substring(0, 200))
   
+  // Detect HTML responses (sign-in redirects) - treat as 401
+  const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
+  if (isHtml) {
+    console.log('[API] Received HTML instead of JSON - session expired or unauthorized')
+    return {
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
+    }
+  }
+  
   let data
   try {
     data = JSON.parse(text)
