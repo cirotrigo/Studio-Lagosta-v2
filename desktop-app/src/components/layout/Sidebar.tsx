@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, Settings, Image, MessageSquare, Palette } from 'lucide-react'
+import { Calendar, Settings, Image, MessageSquare, Palette, Wand2 } from 'lucide-react'
 import ProjectSelector from './ProjectSelector'
 import { cn } from '@/lib/utils'
 
@@ -8,6 +8,12 @@ const navItems = [
     to: '/scheduler',
     icon: Calendar,
     label: 'Agendador',
+    disabled: false,
+  },
+  {
+    to: '/project',
+    icon: Wand2,
+    label: 'Projeto',
     disabled: false,
   },
   {

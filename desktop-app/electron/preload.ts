@@ -39,6 +39,14 @@ export interface ElectronAPI {
     cropRegion?: { left: number; top: number; width: number; height: number }
   ) => Promise<ProcessedImageResult>
 
+  // Logo Overlay
+  overlayLogo: (
+    imageBuffer: ArrayBuffer,
+    logoUrl: string,
+    position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left',
+    sizePct: number
+  ) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
+
   // App Info
   getVersion: () => Promise<string>
   openExternal: (url: string) => Promise<void>
@@ -64,6 +72,10 @@ const electronAPI: ElectronAPI = {
   // Image Processing
   processImage: (buffer: ArrayBuffer, postType: string, cropRegion?: { left: number; top: number; width: number; height: number }) =>
     ipcRenderer.invoke('image:process', buffer, postType, cropRegion),
+
+  // Logo Overlay
+  overlayLogo: (imageBuffer: ArrayBuffer, logoUrl: string, position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left', sizePct: number) =>
+    ipcRenderer.invoke('image:overlay-logo', imageBuffer, logoUrl, position, sizePct),
 
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),

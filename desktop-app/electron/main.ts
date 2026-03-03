@@ -749,6 +749,86 @@ ipcMain.handle('image:process', async (_event, buffer: ArrayBuffer, postType: st
   return processImage(Buffer.from(buffer), postType, cropRegion)
 })
 
+// IPC Handler - Logo Overlay
+ipcMain.handle('image:overlay-logo', async (
+  _event,
+  imageBuffer: ArrayBuffer,
+  logoUrl: string,
+  position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left',
+  sizePct: number
+) => {
+  try {
+    const sharp = (await import('sharp')).default
+    
+    // Download logo
+    const logoResponse = await net.fetch(logoUrl)
+    if (!logoResponse.ok) {
+      throw new Error('Failed to download logo')
+    }
+    const logoArrayBuffer = await logoResponse.arrayBuffer()
+    const logoBuffer = Buffer.from(logoArrayBuffer)
+    
+    // Get base image dimensions
+    const baseImage = sharp(Buffer.from(imageBuffer))
+    const metadata = await baseImage.metadata()
+    const imgWidth = metadata.width || 1080
+    const imgHeight = metadata.height || 1350
+    
+    // Resize logo based on percentage of image width
+    const logoWidth = Math.round(imgWidth * sizePct / 100)
+    const resizedLogo = await sharp(logoBuffer)
+      .resize({ width: logoWidth })
+      .toBuffer()
+    
+    // Get resized logo dimensions
+    const logoMeta = await sharp(resizedLogo).metadata()
+    const logoHeight = logoMeta.height || logoWidth
+    
+    // Calculate position with margin
+    const margin = 24
+    let left: number
+    let top: number
+    
+    switch (position) {
+      case 'top-left':
+        left = margin
+        top = margin
+        break
+      case 'top-right':
+        left = imgWidth - logoWidth - margin
+        top = margin
+        break
+      case 'bottom-left':
+        left = margin
+        top = imgHeight - logoHeight - margin
+        break
+      case 'bottom-right':
+      default:
+        left = imgWidth - logoWidth - margin
+        top = imgHeight - logoHeight - margin
+        break
+    }
+    
+    // Composite logo over image
+    const result = await baseImage
+      .composite([{
+        input: resizedLogo,
+        left: Math.max(0, left),
+        top: Math.max(0, top),
+      }])
+      .jpeg({ quality: 90 })
+      .toBuffer()
+    
+    return {
+      ok: true,
+      buffer: result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer,
+    }
+  } catch (error) {
+    console.error('[Logo Overlay] Error:', error)
+    return { ok: false, error: String(error) }
+  }
+})
+
 // IPC Handlers - App Info
 ipcMain.handle('app:get-version', () => {
   return app.getVersion()

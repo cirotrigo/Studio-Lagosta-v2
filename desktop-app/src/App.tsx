@@ -6,6 +6,7 @@ import SchedulerPage from './pages/SchedulerPage'
 import NewPostPage from './pages/NewPostPage'
 import EditPostPage from './pages/EditPostPage'
 import SettingsPage from './pages/SettingsPage'
+import ProjectPage from './pages/ProjectPage'
 import AppShell from './components/layout/AppShell'
 
 function App() {
@@ -50,6 +51,7 @@ function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/scheduler" replace />} />
           <Route path="/scheduler" element={<SchedulerPage />} />
+          <Route path="/project" element={<ProjectPage />} />
           <Route path="/new-post" element={<NewPostPage />} />
           <Route path="/edit-post/:postId" element={<EditPostPage />} />
           <Route path="/settings" element={<SettingsPage />} />
