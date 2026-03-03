@@ -8,18 +8,20 @@ import { useImageProcessor } from '@/hooks/use-image-processor'
 import { cn } from '@/lib/utils'
 import { PostType, POST_TYPE_LABELS, ScheduleType, MAX_CAPTION_LENGTH } from '@/lib/constants'
 import PostTypeSelector from '@/components/post/PostTypeSelector'
-import ImageDropzone from '@/components/post/ImageDropzone'
+import UploadTabs from '@/components/post/upload-tabs/UploadTabs'
 import ImagePreview from '@/components/post/ImagePreview'
 import CaptionEditor from '@/components/post/CaptionEditor'
 import SchedulePicker from '@/components/post/SchedulePicker'
 import ConfirmModal from '@/components/post/ConfirmModal'
 import ProjectBadge from '@/components/layout/ProjectBadge'
+import CarouselReorder from '@/components/post/CarouselReorder'
+import CropEditor from '@/components/post/CropEditor'
 
 export default function NewPostPage() {
   const navigate = useNavigate()
   const { currentProject } = useProjectStore()
   const createPost = useCreatePost(currentProject?.id)
-  const { processedImages, isProcessing, processFiles, removeImage, clearImages } =
+  const { processedImages, isProcessing, processFiles, removeImage, clearImages, reorderImages, reprocessImage } =
     useImageProcessor()
 
   // Form state
@@ -29,6 +31,7 @@ export default function NewPostPage() {
   const [scheduledDatetime, setScheduledDatetime] = useState<string>('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [cropEditingIndex, setCropEditingIndex] = useState<number | null>(null)
 
   // No project selected
   if (!currentProject) {
@@ -60,11 +63,33 @@ export default function NewPostPage() {
   }
 
   const handleFilesSelected = async (files: File[]) => {
+    console.log('[NewPostPage] Files selected:', files.length, files.map(f => ({ name: f.name, size: f.size, type: f.type })))
     await processFiles(files, postType)
+    console.log('[NewPostPage] After processFiles, processedImages:', processedImages.length)
   }
 
   const handleRemoveImage = (index: number) => {
     removeImage(index)
+  }
+
+  const handleReorderImages = (newImages: typeof processedImages) => {
+    reorderImages(newImages)
+  }
+
+  const handleEditCrop = (index: number) => {
+    setCropEditingIndex(index)
+  }
+
+  const handleCropConfirm = async (cropRegion: { left: number; top: number; width: number; height: number }) => {
+    if (cropEditingIndex === null) return
+    
+    try {
+      await reprocessImage(cropEditingIndex, postType, cropRegion)
+      setCropEditingIndex(null)
+      toast.success('Crop aplicado com sucesso')
+    } catch (error) {
+      toast.error('Erro ao aplicar crop')
+    }
   }
 
   const canSubmit = () => {
@@ -182,14 +207,26 @@ export default function NewPostPage() {
               <label className="block text-sm font-medium text-text">
                 {postType === 'CAROUSEL' ? 'Imagens (até 10)' : 'Imagem'}
               </label>
-              <ImageDropzone
+              <UploadTabs
                 postType={postType}
-                onFilesSelected={handleFilesSelected}
-                isProcessing={isProcessing}
                 processedImages={processedImages}
+                isProcessing={isProcessing}
+                onFilesSelected={handleFilesSelected}
                 onRemoveImage={handleRemoveImage}
+                onEditCrop={handleEditCrop}
+                projectId={currentProject.id}
               />
             </div>
+
+            {/* Carousel Reorder - only for carousel with multiple images */}
+            {postType === 'CAROUSEL' && processedImages.length > 1 && (
+              <CarouselReorder
+                images={processedImages}
+                onReorder={handleReorderImages}
+                onRemove={handleRemoveImage}
+                onEditCrop={handleEditCrop}
+              />
+            )}
 
             {/* Caption */}
             <div className="space-y-2">
@@ -272,6 +309,17 @@ export default function NewPostPage() {
         caption={caption}
         scheduleType={scheduleType}
         scheduledDatetime={scheduledDatetime}
+      />
+
+      {/* Crop Editor Modal */}
+      <CropEditor
+        isOpen={cropEditingIndex !== null}
+        imageUrl={cropEditingIndex !== null ? (processedImages[cropEditingIndex]?.originalPreviewUrl || processedImages[cropEditingIndex]?.previewUrl) : ''}
+        originalWidth={cropEditingIndex !== null ? processedImages[cropEditingIndex]?.originalWidth : 0}
+        originalHeight={cropEditingIndex !== null ? processedImages[cropEditingIndex]?.originalHeight : 0}
+        postType={postType}
+        onConfirm={handleCropConfirm}
+        onCancel={() => setCropEditingIndex(null)}
       />
     </div>
   )

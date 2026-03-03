@@ -27,6 +27,11 @@ export async function GET() {
         instagramUsername: true,
         postingProvider: true,
         zapierWebhookUrl: true,
+        Logo: {
+          where: { isProjectLogo: true },
+          take: 1,
+          select: { fileUrl: true },
+        },
       },
       orderBy: {
         updatedAt: 'desc',

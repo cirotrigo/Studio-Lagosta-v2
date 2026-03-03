@@ -619,15 +619,16 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
   try {
     const cookies = await getFreshCookies()
     
+    // IMMEDIATELY clone the ArrayBuffer to prevent "detached ArrayBuffer" error
+    // The buffer can be detached after async operations, so we copy it right away
+    const bufferClone = Buffer.from(new Uint8Array(fileData.buffer))
+    
     console.log('[Upload] Uploading file to:', url)
-    console.log('[Upload] File:', fileData.name, 'Size:', fileData.buffer.byteLength, 'Type:', fileData.type)
+    console.log('[Upload] File:', fileData.name, 'Size:', bufferClone.length, 'Type:', fileData.type)
     
     // Build multipart/form-data body manually to ensure proper formatting
     const boundary = `----ElectronFormBoundary${Date.now().toString(36)}`
     const chunks: Buffer[] = []
-    
-    // Clone the ArrayBuffer to avoid "detached ArrayBuffer" error
-    const bufferClone = Buffer.from(new Uint8Array(fileData.buffer))
     
     // Add file field
     chunks.push(Buffer.from(`--${boundary}\r\n`))
@@ -709,8 +710,8 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
 })
 
 // IPC Handlers - Image Processing
-ipcMain.handle('image:process', async (_event, buffer: ArrayBuffer, postType: string) => {
-  return processImage(Buffer.from(buffer), postType)
+ipcMain.handle('image:process', async (_event, buffer: ArrayBuffer, postType: string, cropRegion?: { left: number; top: number; width: number; height: number }) => {
+  return processImage(Buffer.from(buffer), postType, cropRegion)
 })
 
 // IPC Handlers - App Info

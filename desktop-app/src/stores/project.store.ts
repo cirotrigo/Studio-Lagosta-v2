@@ -9,6 +9,7 @@ export interface Project {
   instagramUsername: string | null
   postingProvider: string | null
   zapierWebhookUrl: string | null
+  Logo?: Array<{ fileUrl: string }>
 }
 
 interface ProjectState {

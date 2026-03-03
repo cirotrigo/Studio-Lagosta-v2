@@ -33,7 +33,11 @@ export interface ElectronAPI {
   isEncryptionAvailable: () => Promise<boolean>
 
   // Image Processing
-  processImage: (buffer: ArrayBuffer, postType: string) => Promise<ProcessedImageResult>
+  processImage: (
+    buffer: ArrayBuffer,
+    postType: string,
+    cropRegion?: { left: number; top: number; width: number; height: number }
+  ) => Promise<ProcessedImageResult>
 
   // App Info
   getVersion: () => Promise<string>
@@ -55,8 +59,8 @@ const electronAPI: ElectronAPI = {
   isEncryptionAvailable: () => ipcRenderer.invoke('auth:is-encryption-available'),
 
   // Image Processing
-  processImage: (buffer: ArrayBuffer, postType: string) =>
-    ipcRenderer.invoke('image:process', buffer, postType),
+  processImage: (buffer: ArrayBuffer, postType: string, cropRegion?: { left: number; top: number; width: number; height: number }) =>
+    ipcRenderer.invoke('image:process', buffer, postType, cropRegion),
 
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),

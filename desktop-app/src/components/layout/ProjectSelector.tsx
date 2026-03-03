@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { ChevronDown, Check, Search, Loader2 } from 'lucide-react'
 import { useProjectStore, Project } from '@/stores/project.store'
-import { cn, getInitials } from '@/lib/utils'
+import { cn, getInitials, getProjectLogo } from '@/lib/utils'
 
 export default function ProjectSelector() {
   const { currentProject, projects, isLoading, setCurrentProject } = useProjectStore()
@@ -69,9 +69,9 @@ export default function ProjectSelector() {
           </>
         ) : currentProject ? (
           <>
-            {currentProject.logoUrl ? (
+            {getProjectLogo(currentProject) ? (
               <img
-                src={currentProject.logoUrl}
+                src={getProjectLogo(currentProject)!}
                 alt={currentProject.name}
                 className="h-8 w-8 rounded-lg object-cover"
               />
@@ -154,9 +154,9 @@ export default function ProjectSelector() {
                       currentProject?.id === project.id && 'bg-primary/10'
                     )}
                   >
-                    {project.logoUrl ? (
+                    {getProjectLogo(project) ? (
                       <img
-                        src={project.logoUrl}
+                        src={getProjectLogo(project)!}
                         alt={project.name}
                         className="h-8 w-8 rounded-lg object-cover"
                       />

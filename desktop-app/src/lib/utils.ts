@@ -79,3 +79,11 @@ export function getInitials(name: string): string {
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
+
+/**
+ * Resolve the best logo URL for a project
+ * Prefers Logo[0].fileUrl (isProjectLogo=true) over logoUrl (legacy)
+ */
+export function getProjectLogo(project: { logoUrl?: string | null; Logo?: Array<{ fileUrl: string }> }): string | null {
+  return project.Logo?.[0]?.fileUrl ?? project.logoUrl ?? null
+}
