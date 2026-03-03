@@ -49,6 +49,9 @@ export interface ElectronAPI {
   
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => Promise<ApiResponse>
+  
+  // Blob Download (bypasses CORS for binary data)
+  downloadBlob: (url: string) => Promise<{ ok: boolean; status: number; buffer?: ArrayBuffer; contentType?: string; error?: string }>
 }
 
 const electronAPI: ElectronAPI = {
@@ -73,6 +76,9 @@ const electronAPI: ElectronAPI = {
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => 
     ipcRenderer.invoke('file:upload', url, fileData, fields),
+
+  // Blob Download (bypasses CORS for binary data)
+  downloadBlob: (url: string) => ipcRenderer.invoke('blob:download', url),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

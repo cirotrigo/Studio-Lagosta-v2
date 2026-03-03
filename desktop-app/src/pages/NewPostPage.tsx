@@ -63,9 +63,7 @@ export default function NewPostPage() {
   }
 
   const handleFilesSelected = async (files: File[]) => {
-    console.log('[NewPostPage] Files selected:', files.length, files.map(f => ({ name: f.name, size: f.size, type: f.type })))
     await processFiles(files, postType)
-    console.log('[NewPostPage] After processFiles, processedImages:', processedImages.length)
   }
 
   const handleRemoveImage = (index: number) => {

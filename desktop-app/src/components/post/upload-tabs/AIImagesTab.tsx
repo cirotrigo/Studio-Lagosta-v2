@@ -76,10 +76,10 @@ export default function AIImagesTab({
 
     setDownloadingId(image.id)
     try {
-      // Vercel Blob URLs are public — use native fetch
-      const response = await fetch(image.fileUrl)
-      if (!response.ok) throw new Error('Falha ao baixar imagem')
-      const buffer = await response.arrayBuffer()
+      // Use downloadBlob for binary data (avoids CORS issues in Electron)
+      const response = await window.electronAPI.downloadBlob(image.fileUrl)
+      if (!response.ok || !response.buffer) throw new Error('Falha ao baixar imagem: ' + (response.error || 'Unknown error'))
+      const buffer = response.buffer
       const ext = image.fileUrl.split('.').pop()?.toLowerCase() || 'png'
       const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
       const mime = mimeMap[ext] || 'image/png'

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, safeStorage, session } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, safeStorage, session, net } from 'electron'
 import path from 'path'
 import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
@@ -612,6 +612,41 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
   try { data = JSON.parse(result.text) } catch { data = result.text }
 
   return { ok: result.ok, status: result.status, statusText: result.statusText, data }
+})
+
+// IPC Handler - Download Blob (for binary data like images)
+ipcMain.handle('blob:download', async (_event, url: string) => {
+  try {
+    const cookies = await getFreshCookies()
+    
+    console.log('[Blob Download] Downloading:', url)
+    
+    const response = await net.fetch(url, {
+      method: 'GET',
+      headers: {
+        'Cookie': cookies || '',
+      },
+    })
+    
+    if (!response.ok) {
+      console.error('[Blob Download] Failed:', response.status, response.statusText)
+      return { ok: false, status: response.status, error: response.statusText }
+    }
+    
+    // Get the response as ArrayBuffer
+    const arrayBuffer = await response.arrayBuffer()
+    console.log('[Blob Download] Success, size:', arrayBuffer.byteLength)
+    
+    return { 
+      ok: true, 
+      status: response.status,
+      buffer: arrayBuffer,
+      contentType: response.headers.get('content-type') || 'application/octet-stream'
+    }
+  } catch (error) {
+    console.error('[Blob Download] Error:', error)
+    return { ok: false, status: 0, error: String(error) }
+  }
 })
 
 // IPC Handlers - File Upload (to bypass CORS)

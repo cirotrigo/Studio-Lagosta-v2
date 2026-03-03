@@ -84,9 +84,10 @@ export default function CreativesTab({
 
     setDownloadingId(creative.id)
     try {
-      const response = await fetch(creative.resultUrl)
-      if (!response.ok) throw new Error('Falha ao baixar criativo')
-      const buffer = await response.arrayBuffer()
+      // Use downloadBlob for binary data (avoids CORS issues in Electron)
+      const response = await window.electronAPI.downloadBlob(creative.resultUrl)
+      if (!response.ok || !response.buffer) throw new Error('Falha ao baixar criativo: ' + (response.error || 'Unknown error'))
+      const buffer = response.buffer
       const url = creative.resultUrl
       const ext = url.split('.').pop()?.split('?')[0]?.toLowerCase() || 'png'
       const mimeMap: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }

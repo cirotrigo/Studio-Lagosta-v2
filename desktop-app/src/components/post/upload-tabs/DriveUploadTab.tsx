@@ -1,8 +1,51 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Loader2, FolderOpen, Image as ImageIcon, ChevronRight, Search, AlertCircle, RefreshCw } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { PostType, MAX_CAROUSEL_IMAGES } from '@/lib/constants'
 import { cn } from '@/lib/utils'
+
+// Component to load and display Drive image thumbnail
+function DriveThumbnail({ fileId, fileName }: { fileId: string; fileName: string }) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const loadedRef = useRef(false)
+
+  useEffect(() => {
+    if (loadedRef.current || loading) return
+    
+    const loadThumbnail = async () => {
+      setLoading(true)
+      try {
+        // Use Google's thumbnail API with size parameter
+        const thumbUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w200-h200`
+        // Use electronAPI to bypass CORS
+        const response = await window.electronAPI.downloadBlob(thumbUrl)
+        if (response.ok && response.buffer) {
+          const blob = new Blob([response.buffer], { type: response.contentType || 'image/jpeg' })
+          const url = URL.createObjectURL(blob)
+          setPreviewUrl(url)
+          loadedRef.current = true
+        }
+      } catch {
+        // Silently fail - icon will show
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadThumbnail()
+  }, [fileId])
+
+  if (previewUrl) {
+    return <img src={previewUrl} alt={fileName} className="h-full w-full object-cover" />
+  }
+
+  return (
+    <div className="flex h-full w-full items-center justify-center bg-input">
+      <ImageIcon size={32} className="text-text-muted opacity-50" />
+    </div>
+  )
+}
 
 interface DriveItem {
   id: string
@@ -42,9 +85,6 @@ export default function DriveUploadTab({
   isProcessing,
   onFilesSelected,
 }: DriveUploadTabProps) {
-  // Force re-render log
-  console.log('[DriveUpload] Component rendered, projectId:', projectId, 'postType:', postType, 'isProcessing:', isProcessing)
-  
   const [items, setItems] = useState<DriveItem[]>([])
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -116,13 +156,7 @@ export default function DriveUploadTab({
   }
 
   const handleSelectImage = useCallback(async (item: DriveItem) => {
-    // DEBUG: Alert to verify function is called
-    alert('[DriveUpload] Clicked: ' + item.name)
-    console.log('[DriveUpload] Clicked on image:', item.id, item.name, 'isProcessing:', isProcessing, 'downloadingId:', downloadingId)
-    if (isProcessing || downloadingId) {
-      console.log('[DriveUpload] Blocked - isProcessing or downloadingId set')
-      return
-    }
+    if (isProcessing || downloadingId) return
 
     if (isCarousel) {
       if (selectedIds.has(item.id)) {
@@ -135,7 +169,6 @@ export default function DriveUploadTab({
       setDownloadingId(item.id)
       let fileDataUrl = ''
       try {
-        console.log('[DriveUpload] Downloading file:', item.id, item.name)
         const response = await window.electronAPI.apiRequest(
           `https://studio-lagosta-v2.vercel.app/api/google-drive-download`,
           {
@@ -144,35 +177,20 @@ export default function DriveUploadTab({
             headers: { 'Content-Type': 'application/json' },
           }
         )
-        console.log('[DriveUpload] API response:', response.ok, response.status)
-        if (!response.ok) {
-          alert('[DriveUpload] API failed: ' + response.status)
-          throw new Error('Falha ao baixar arquivo')
-        }
+        if (!response.ok) throw new Error('Falha ao baixar arquivo')
         const data = response.data as { files: { id: string; name: string; url: string; pathname: string }[] }
         const fileData = data.files[0]
-        console.log('[DriveUpload] File data:', fileData)
-        if (!fileData) {
-          alert('[DriveUpload] No fileData in response')
-          throw new Error('Arquivo não encontrado na resposta')
-        }
+        if (!fileData) throw new Error('Arquivo não encontrado na resposta')
         fileDataUrl = fileData.url
-        // Use electronAPI to fetch the blob URL (avoids CORS issues in Electron)
-        const blobResponse = await window.electronAPI.apiRequest(fileData.url, { method: 'GET' })
-        console.log('[DriveUpload] Blob response:', blobResponse.ok, blobResponse.status)
-        if (!blobResponse.ok) {
-          alert('[DriveUpload] Blob fetch failed: ' + blobResponse.status)
-          throw new Error('Falha ao baixar conteúdo')
+        // Use downloadBlob for binary data (avoids text conversion issues)
+        const blobResponse = await window.electronAPI.downloadBlob(fileData.url)
+        if (!blobResponse.ok || !blobResponse.buffer) {
+          throw new Error('Falha ao baixar conteúdo: ' + (blobResponse.error || 'Unknown error'))
         }
-        const buffer = blobResponse.data as ArrayBuffer
-        console.log('[DriveUpload] Buffer size:', buffer.byteLength)
+        const buffer = blobResponse.buffer
         const file = new File([buffer], fileData.name, { type: item.mimeType })
-        console.log('[DriveUpload] Calling onFilesSelected with:', file.name, file.size)
-        alert('[DriveUpload] Success! Calling onFilesSelected')
         onFilesSelected([file])
-      } catch (err) {
-        console.error('[DriveUpload] Error downloading:', err)
-        alert('[DriveUpload] Error: ' + (err instanceof Error ? err.message : String(err)) + '\nURL: ' + (fileDataUrl || 'N/A'))
+      } catch {
         setSelectedIds(prev => { const s = new Set(prev); s.delete(item.id); return s })
       } finally {
         setDownloadingId(null)
@@ -180,7 +198,6 @@ export default function DriveUploadTab({
     } else {
       setDownloadingId(item.id)
       try {
-        console.log('[DriveUpload] Downloading file (single):', item.id, item.name)
         const response = await window.electronAPI.apiRequest(
           `https://studio-lagosta-v2.vercel.app/api/google-drive-download`,
           {
@@ -189,22 +206,15 @@ export default function DriveUploadTab({
             headers: { 'Content-Type': 'application/json' },
           }
         )
-        console.log('[DriveUpload] API response (single):', response.ok, response.status)
         if (!response.ok) throw new Error('Falha ao baixar arquivo')
         const data = response.data as { files: { id: string; name: string; url: string; pathname: string }[] }
         const fileData = data.files[0]
-        console.log('[DriveUpload] File data (single):', fileData)
         if (!fileData) throw new Error('Arquivo não encontrado na resposta')
-        const blobResponse = await fetch(fileData.url)
-        console.log('[DriveUpload] Blob response (single):', blobResponse.ok, blobResponse.status)
-        if (!blobResponse.ok) throw new Error('Falha ao baixar conteúdo')
-        const buffer = await blobResponse.arrayBuffer()
-        console.log('[DriveUpload] Buffer size (single):', buffer.byteLength)
+        const blobResponse = await window.electronAPI.downloadBlob(fileData.url)
+        if (!blobResponse.ok || !blobResponse.buffer) throw new Error('Falha ao baixar conteúdo')
+        const buffer = blobResponse.buffer
         const file = new File([buffer], fileData.name, { type: item.mimeType })
-        console.log('[DriveUpload] Calling onFilesSelected (single) with:', file.name, file.size)
         onFilesSelected([file])
-      } catch (err) {
-        console.error('[DriveUpload] Error downloading (single):', err)
       } finally {
         setDownloadingId(null)
       }
@@ -315,10 +325,7 @@ export default function DriveUploadTab({
                   (!canSelectMore && !isSelected && isCarousel) && 'opacity-40 cursor-not-allowed'
                 )}
               >
-                {/* Drive thumbnails require auth - show generic image icon */}
-                <div className="flex h-full w-full items-center justify-center bg-input">
-                  <ImageIcon size={32} className="text-text-muted opacity-50" />
-                </div>
+                <DriveThumbnail fileId={item.id} fileName={item.name} />
                 {isDownloading && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/60">
                     <Loader2 size={20} className="animate-spin text-white" />
