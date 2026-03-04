@@ -20,7 +20,7 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
 const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash-image' // Nano Banana 2 - stable
-const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash-exp' // legacy fallback
+const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash' // fallback
 
 const GEMINI_ASPECT_RATIOS: Record<string, string> = {
   FEED_PORTRAIT: '4:5',
@@ -378,8 +378,10 @@ async function callGeminiImageGeneration(
     console.log(`[generate-art]   candidate[${i}]: ${parts.length} parts, finishReason=${finishReason}`)
     for (let j = 0; j < parts.length; j++) {
       const p = parts[j]
-      if (p.inline_data) {
-        console.log(`[generate-art]     part[${j}]: inline_data mime=${p.inline_data.mime_type}, dataLen=${p.inline_data.data?.length || 0}`)
+      // API returns camelCase (inlineData) via REST
+      const imgData = p.inlineData || p.inline_data
+      if (imgData) {
+        console.log(`[generate-art]     part[${j}]: image mime=${imgData.mimeType || imgData.mime_type}, dataLen=${imgData.data?.length || 0}`)
       } else if (p.text) {
         console.log(`[generate-art]     part[${j}]: text="${p.text.substring(0, 100)}"`)
       } else {
@@ -389,13 +391,15 @@ async function callGeminiImageGeneration(
   }
 
   // Extract generated image from response
+  // Gemini REST API returns camelCase (inlineData/mimeType), handle both formats
   for (const candidate of candidates) {
     for (const part of candidate.content?.parts || []) {
-      if (part.inline_data?.data) {
+      const imgData = part.inlineData || part.inline_data
+      if (imgData?.data) {
         console.log(`[generate-art] Gemini (${model}) image generated successfully`)
         return {
-          buffer: Buffer.from(part.inline_data.data, 'base64'),
-          mimeType: part.inline_data.mime_type || 'image/png',
+          buffer: Buffer.from(imgData.data, 'base64'),
+          mimeType: imgData.mimeType || imgData.mime_type || 'image/png',
         }
       }
     }
