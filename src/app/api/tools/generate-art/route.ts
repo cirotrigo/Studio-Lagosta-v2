@@ -104,6 +104,8 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
       brandStyleDescription: true,
       cuisineType: true,
       brandReferenceUrls: true,
+      titleFontFamily: true,
+      bodyFontFamily: true,
       Logo: {
         where: { isProjectLogo: true },
         select: { fileUrl: true },
@@ -120,9 +122,6 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
     orderBy: { createdAt: 'asc' },
   })
 
-  // Access optional font fields safely (may not exist in schema yet)
-  const projectAny = project as any
-
   return {
     name: project.name,
     colors: colors.map((c) => c.hexCode),
@@ -130,8 +129,8 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
     cuisineType: project.cuisineType ?? null,
     instagramUsername: project.instagramUsername,
     referenceImageUrls: project.brandReferenceUrls ?? [],
-    titleFontFamily: projectAny.titleFontFamily ?? null,
-    bodyFontFamily: projectAny.bodyFontFamily ?? null,
+    titleFontFamily: project.titleFontFamily ?? null,
+    bodyFontFamily: project.bodyFontFamily ?? null,
     logoUrl: project.Logo?.[0]?.fileUrl ?? null,
   }
 }

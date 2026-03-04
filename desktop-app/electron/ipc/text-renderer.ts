@@ -106,9 +106,26 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
     const anchor = alignToAnchor(el.align)
     const filterAttr = input.textLayout.shadow ? ' filter="url(#shadow)"' : ''
 
-    svgParts.push(
-      `<text x="${xPx}" y="${yPx}" font-family="'${escapeXml(fontFamily)}'" font-size="${el.sizePx}" font-weight="${el.weight}" fill="${escapeXml(el.color)}" text-anchor="${anchor}" dominant-baseline="auto"${filterAttr}>${escapeXml(el.text)}</text>`
-    )
+    // Handle newlines by splitting into <tspan> elements
+    const lines = el.text.split('\n')
+    if (lines.length <= 1) {
+      svgParts.push(
+        `<text x="${xPx}" y="${yPx}" font-family="'${escapeXml(fontFamily)}'" font-size="${el.sizePx}" font-weight="${el.weight}" fill="${escapeXml(el.color)}" text-anchor="${anchor}" dominant-baseline="auto"${filterAttr}>${escapeXml(el.text)}</text>`
+      )
+    } else {
+      const lineHeight = Math.round(el.sizePx * 1.3)
+      svgParts.push(
+        `<text x="${xPx}" y="${yPx}" font-family="'${escapeXml(fontFamily)}'" font-size="${el.sizePx}" font-weight="${el.weight}" fill="${escapeXml(el.color)}" text-anchor="${anchor}" dominant-baseline="auto"${filterAttr}>`
+      )
+      for (let i = 0; i < lines.length; i++) {
+        if (i === 0) {
+          svgParts.push(`<tspan x="${xPx}" dy="0">${escapeXml(lines[i])}</tspan>`)
+        } else {
+          svgParts.push(`<tspan x="${xPx}" dy="${lineHeight}">${escapeXml(lines[i])}</tspan>`)
+        }
+      }
+      svgParts.push('</text>')
+    }
   }
 
   svgParts.push('</svg>')
