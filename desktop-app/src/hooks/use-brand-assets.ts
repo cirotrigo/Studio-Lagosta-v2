@@ -1,6 +1,12 @@
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api-client'
 import { useAuthStore } from '@/stores/auth.store'
+
+export interface FontInfo {
+  name: string
+  fontFamily: string
+  fileUrl: string
+}
 
 export interface BrandAssets {
   projectId: number
@@ -13,7 +19,15 @@ export interface BrandAssets {
     height: number | null
   } | null
   colors: string[]
-  fonts: string[]
+  fonts: FontInfo[]
+  // Art generation preferences
+  titleFontFamily: string | null
+  bodyFontFamily: string | null
+}
+
+export interface UpdateFontPreferences {
+  titleFontFamily?: string | null
+  bodyFontFamily?: string | null
 }
 
 export function useBrandAssets(projectId: number | undefined) {
@@ -37,6 +51,27 @@ export function useBrandAssets(projectId: number | undefined) {
     retry: (failureCount, error) => {
       if (error instanceof ApiError && error.status === 401) return false
       return failureCount < 2
+    },
+  })
+}
+
+export function useUpdateFontPreferences(projectId: number | undefined) {
+  const queryClient = useQueryClient()
+  const { logout } = useAuthStore()
+
+  return useMutation({
+    mutationFn: async (data: UpdateFontPreferences) => {
+      try {
+        return await api.patch(`/api/projects/${projectId}/brand-assets`, data)
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          await logout()
+        }
+        throw error
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['brand-assets', projectId] })
     },
   })
 }

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import { z } from 'zod'
 
 export const runtime = 'nodejs'
 
@@ -16,7 +17,10 @@ interface BrandAssetsResponse {
     height: number | null
   } | null
   colors: string[]
-  fonts: string[]
+  fonts: Array<{ name: string; fontFamily: string; fileUrl: string }>
+  // Art generation preferences
+  titleFontFamily: string | null
+  bodyFontFamily: string | null
 }
 
 export async function GET(
@@ -47,20 +51,22 @@ export async function GET(
     orderBy: { createdAt: 'asc' },
   })
 
-  // Fetch custom fonts
+  // Fetch custom fonts with fileUrl for rendering
   const fonts = await db.customFont.findMany({
     where: { projectId: projectIdNum },
-    select: { name: true },
+    select: { name: true, fontFamily: true, fileUrl: true },
     orderBy: { createdAt: 'asc' },
   })
 
   // Get project logo (isProjectLogo = true)
   const projectLogo = project.Logo?.[0] ?? null
 
-  // Access brandStyleDescription and cuisineType safely (may not exist yet)
+  // Access fields safely
   const projectData = project as typeof project & {
     brandStyleDescription?: string | null
     cuisineType?: string | null
+    titleFontFamily?: string | null
+    bodyFontFamily?: string | null
   }
 
   const response: BrandAssetsResponse = {
@@ -76,8 +82,69 @@ export async function GET(
         }
       : null,
     colors: colors.map((c) => c.hexCode),
-    fonts: fonts.map((f) => f.name),
+    fonts: fonts.map((f) => ({ name: f.name, fontFamily: f.fontFamily, fileUrl: f.fileUrl })),
+    titleFontFamily: projectData.titleFontFamily ?? null,
+    bodyFontFamily: projectData.bodyFontFamily ?? null,
   }
 
   return NextResponse.json(response)
+}
+
+// Schema for updating art generation preferences
+const updatePreferencesSchema = z.object({
+  titleFontFamily: z.string().nullable().optional(),
+  bodyFontFamily: z.string().nullable().optional(),
+})
+
+export async function PATCH(
+  req: Request,
+  { params }: { params: Promise<{ projectId: string }> },
+) {
+  const { projectId } = await params
+  const projectIdNum = Number(projectId)
+  const { userId, orgId } = await auth()
+
+  if (!userId) {
+    return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+  }
+
+  if (!projectIdNum || isNaN(projectIdNum)) {
+    return NextResponse.json({ error: 'ID do projeto inválido' }, { status: 400 })
+  }
+
+  const project = await fetchProjectWithShares(projectIdNum)
+  if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
+    return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+  }
+
+  let body: z.infer<typeof updatePreferencesSchema>
+  try {
+    const rawBody = await req.json()
+    body = updatePreferencesSchema.parse(rawBody)
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Dados inválidos', details: error.errors }, { status: 400 })
+    }
+    return NextResponse.json({ error: 'Erro ao processar requisição' }, { status: 400 })
+  }
+
+  // Update only the fields that were provided
+  const updateData: Record<string, string | null> = {}
+  if (body.titleFontFamily !== undefined) {
+    updateData.titleFontFamily = body.titleFontFamily
+  }
+  if (body.bodyFontFamily !== undefined) {
+    updateData.bodyFontFamily = body.bodyFontFamily
+  }
+
+  if (Object.keys(updateData).length === 0) {
+    return NextResponse.json({ error: 'Nenhum campo para atualizar' }, { status: 400 })
+  }
+
+  await db.project.update({
+    where: { id: projectIdNum },
+    data: updateData,
+  })
+
+  return NextResponse.json({ success: true })
 }

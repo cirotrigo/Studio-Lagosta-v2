@@ -1,5 +1,7 @@
-import { Loader2 } from 'lucide-react'
-import { useBrandAssets } from '@/hooks/use-brand-assets'
+import { useState, useEffect } from 'react'
+import { Loader2, Check, ChevronDown } from 'lucide-react'
+import { useBrandAssets, useUpdateFontPreferences } from '@/hooks/use-brand-assets'
+import { toast } from 'sonner'
 
 interface BrandAssetsSectionProps {
   projectId: number
@@ -7,6 +9,39 @@ interface BrandAssetsSectionProps {
 
 export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProps) {
   const { data: assets, isLoading, error } = useBrandAssets(projectId)
+  const updatePreferences = useUpdateFontPreferences(projectId)
+  
+  const [titleFont, setTitleFont] = useState<string | null>(null)
+  const [bodyFont, setBodyFont] = useState<string | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
+
+  // Sync local state with server data
+  useEffect(() => {
+    if (assets) {
+      setTitleFont(assets.titleFontFamily)
+      setBodyFont(assets.bodyFontFamily)
+    }
+  }, [assets])
+
+  // Track changes
+  useEffect(() => {
+    if (assets) {
+      const changed = titleFont !== assets.titleFontFamily || bodyFont !== assets.bodyFontFamily
+      setHasChanges(changed)
+    }
+  }, [titleFont, bodyFont, assets])
+
+  const handleSave = async () => {
+    try {
+      await updatePreferences.mutateAsync({
+        titleFontFamily: titleFont,
+        bodyFontFamily: bodyFont,
+      })
+      toast.success('Preferências de fontes salvas!')
+    } catch (e) {
+      toast.error('Erro ao salvar preferências')
+    }
+  }
 
   if (isLoading) {
     return (
@@ -30,8 +65,13 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
     )
   }
 
+  const fontOptions = [
+    { value: null, label: 'Padrão (Inter)' },
+    ...assets.fonts.map((f) => ({ value: f.fontFamily, label: f.name })),
+  ]
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-text">Assets da Marca</h2>
         <span className="text-xs text-text-subtle">
@@ -83,7 +123,7 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
 
         {/* Fonts */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-text-muted">Fontes</label>
+          <label className="text-sm font-medium text-text-muted">Fontes Disponíveis</label>
           {assets.fonts && assets.fonts.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {assets.fonts.map((font, idx) => (
@@ -91,7 +131,7 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
                   key={idx}
                   className="rounded-md bg-input px-2.5 py-1 font-mono text-sm text-text"
                 >
-                  {font}
+                  {font.name}
                 </span>
               ))}
             </div>
@@ -100,6 +140,72 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
           )}
         </div>
       </div>
+
+      {/* Font Preferences for Art Generation */}
+      {assets.fonts && assets.fonts.length > 0 && (
+        <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-text">Preferências para Geração de Arte</h3>
+              <p className="text-xs text-text-subtle">Defina quais fontes serão usadas nas artes geradas</p>
+            </div>
+            {hasChanges && (
+              <button
+                onClick={handleSave}
+                disabled={updatePreferences.isPending}
+                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {updatePreferences.isPending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : (
+                  <Check size={14} />
+                )}
+                Salvar
+              </button>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            {/* Title Font */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-text-muted">Fonte do Título</label>
+              <div className="relative">
+                <select
+                  value={titleFont ?? ''}
+                  onChange={(e) => setTitleFont(e.target.value || null)}
+                  className="w-full appearance-none rounded-md border border-border bg-input px-3 py-2 pr-8 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {fontOptions.map((opt) => (
+                    <option key={opt.label} value={opt.value ?? ''}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+              </div>
+            </div>
+
+            {/* Body Font */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-medium text-text-muted">Fonte do Corpo/Descrição</label>
+              <div className="relative">
+                <select
+                  value={bodyFont ?? ''}
+                  onChange={(e) => setBodyFont(e.target.value || null)}
+                  className="w-full appearance-none rounded-md border border-border bg-input px-3 py-2 pr-8 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {fontOptions.map((opt) => (
+                    <option key={opt.label} value={opt.value ?? ''}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={16} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-muted" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
