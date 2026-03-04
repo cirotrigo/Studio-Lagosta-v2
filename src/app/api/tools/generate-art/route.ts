@@ -19,9 +19,9 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
 }
 
 const IDEOGRAM_ASPECT_RATIOS: Record<string, string> = {
-  FEED_PORTRAIT: 'ASPECT_4_5',
-  STORY: 'ASPECT_9_16',
-  SQUARE: 'ASPECT_1_1',
+  FEED_PORTRAIT: '4x5',
+  STORY: '9x16',
+  SQUARE: '1x1',
 }
 
 const IDEOGRAM_API_URL = 'https://api.ideogram.ai/v1/ideogram-v3'
