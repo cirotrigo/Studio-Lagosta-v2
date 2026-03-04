@@ -215,7 +215,15 @@ ${compositionGuidelines}${referenceImageInstruction}
 ABSOLUTE RULES:
 - NEVER mention the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
 - NEVER describe labels, signs, menus, titles, watermarks, or typography of any kind
-- Focus EXCLUSIVELY on visual elements: colors, shapes, lighting, composition, textures, photography`
+- Focus EXCLUSIVELY on visual elements: colors, shapes, lighting, composition, textures, photography
+
+SELF-CHECK BEFORE RESPONDING:
+1. Did you describe SPECIFIC colors from the brand palette or references (not "warm tones")?
+2. Did you describe a SPECIFIC composition layout (not "professional arrangement")?
+3. Did you describe SPECIFIC lighting (direction, temperature, intensity)?
+4. Did you avoid ALL mentions of text, words, letters, or typography?
+5. ${hasReferenceImages ? 'Did you describe what you ACTUALLY SEE in the reference images?' : 'Did you use the brand style description for guidance?'}
+Only respond after confirming all checks.`
 
   if (hasPhoto) {
     return `${basePrompt}
@@ -571,6 +579,14 @@ async function callNanoBanana2(
 - MATCH the overall mood, elegance level, and visual complexity
 - DO NOT create a generic image — the result must look like it belongs to the same brand as the references
 
+AVOID THESE GENERIC MISTAKES:
+- Generic stock photo look with flat lighting
+- Overly bright or saturated colors NOT present in references
+- Center-everything composition if references show asymmetry
+- Busy/cluttered backgrounds if references are clean and minimal
+- Different lighting temperature than what you see in the references
+- Adding decorative elements not present in the reference style
+
 Generate a NEW image following this description:` })
     console.log(`[generate-art] Added ${referenceImages!.length} style reference images to Gemini request`)
   }
@@ -667,6 +683,11 @@ export async function POST(request: Request) {
   if (brandAssets.referenceImageUrls.length > 0) {
     console.log(`[generate-art] Reference URLs: ${brandAssets.referenceImageUrls.map(u => u.substring(0, 60) + '...').join(', ')}`)
   }
+  if (brandAssets.visualElements) {
+    console.log('[generate-art] visualElements:', JSON.stringify(brandAssets.visualElements))
+  } else {
+    console.log('[generate-art] WARNING: No visualElements found — using styleDescription fallback')
+  }
 
   if (body.styleDescription) {
     brandAssets.styleDescription = body.styleDescription
@@ -717,7 +738,7 @@ export async function POST(request: Request) {
       }
     } else {
       // --- Mode B: Generate image(s) with Gemini ---
-      console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o-mini...')
+      console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o...')
 
       // Pre-fetch reference images ONCE before prompt generation and image generation
       const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 4))
@@ -744,20 +765,20 @@ export async function POST(request: Request) {
           userContent.push({ type: 'image', image: `data:${ref.mimeType};base64,${ref.base64}` })
         }
         userContent.push({ type: 'text', text: `These are the brand's actual reference images. Look at their colors, lighting, composition, backgrounds, and overall mood VERY carefully. Your prompt must recreate this exact visual style.\n\nTexto para a arte: "${body.text}"` })
-        console.log(`[generate-art] Passing ${Math.min(refImages.length, 2)} reference images to GPT-4o-mini for style analysis`)
+        console.log(`[generate-art] Passing ${Math.min(refImages.length, 2)} reference images to GPT-4o for style analysis`)
       } else {
         userContent.push({ type: 'text', text: `Texto para a arte: "${body.text}"` })
       }
 
       const { text: prompt } = await generateText({
-        model: openai('gpt-4o-mini'),
+        model: openai('gpt-4o'),
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent as any }],
         temperature: 0.4,
       })
       technicalPrompt = prompt
 
-      console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 300) + '...')
+      console.log('[generate-art] Technical prompt (full):', technicalPrompt)
       console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini (${refImages.length} style refs)...`)
 
       for (let i = 0; i < body.variations; i++) {
