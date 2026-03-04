@@ -146,34 +146,30 @@ function buildIdeogramPromptSystemPrompt(
   const formatInfo = FORMAT_DIMENSIONS[format]
   const colorList = brandAssets.colors.length > 0
     ? brandAssets.colors.join(', ')
-    : 'não definidas (usar tons neutros e elegantes)'
+    : 'neutral and elegant tones'
 
   return `You are a professional graphic designer specialized in creating visual art for restaurants and food establishments.
 
-BRAND DATA:
-- Establishment name: ${brandAssets.name}
+BRAND VISUAL IDENTITY:
 - Brand colors (hex): ${colorList}
 - Visual style: ${brandAssets.styleDescription || 'modern, elegant and professional'}
-- Cuisine type: ${brandAssets.cuisineType || 'not specified'}
+- Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
 - Art format: ${formatInfo.label}
 
 YOUR TASK:
-Convert the user's text into a technical prompt optimized for Ideogram V3 image generation.
+Create a technical prompt for an AI image generator. The prompt must describe ONLY visual elements - shapes, colors, composition, lighting, atmosphere.
 
-CRITICAL RULES:
-1. The image MUST NOT contain ANY text, letters, numbers, or watermarks
-2. Leave clean empty space where text can be overlaid later
-3. Describe the visual composition in detail (layout, element positioning, atmosphere)
-4. Specify brand colors explicitly in the description
-5. Establish mood and lighting
-6. Mention the format ${formatInfo.label}
-7. Use technical design language
-${usePhoto ? '8. The art should feature food photography as the main visual element' : ''}
+ABSOLUTELY CRITICAL - READ CAREFULLY:
+1. DO NOT include ANY text, words, letters, numbers, brand names, or typography in your prompt
+2. DO NOT mention "${brandAssets.name}" or any variation of the business name
+3. DO NOT describe labels, signs, menus, or anything that would contain writing
+4. Focus ONLY on: colors, shapes, photography style, lighting, composition, visual mood
+5. Describe areas that should remain clean/empty for later text overlay
+6. Use brand colors: ${colorList}
 
 RESPONSE FORMAT:
-Respond ONLY with the technical prompt in English, no additional explanations.
-The prompt should be detailed but concise (maximum 300 words).
-Always end with: "No text, no letters, no numbers, no watermarks in the image."`
+Respond ONLY with the visual prompt in English (max 250 words).
+End your prompt with: "Pure visual composition, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
 }
 
 function buildDualPromptSystemPrompt(
@@ -184,42 +180,46 @@ function buildDualPromptSystemPrompt(
   const formatInfo = FORMAT_DIMENSIONS[format]
   const colorList = brandAssets.colors.length > 0
     ? brandAssets.colors.join(', ')
-    : 'não definidas (usar tons neutros e elegantes)'
+    : 'neutral and elegant tones'
 
-  return `You are a professional graphic designer and food photographer. You need to generate TWO separate prompts.
+  return `You are a professional graphic designer and food photographer. Generate TWO separate prompts for image generation.
 
-BRAND DATA:
-- Establishment name: ${brandAssets.name}
+BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
 - Brand colors (hex): ${colorList}
 - Visual style: ${brandAssets.styleDescription || 'modern, elegant and professional'}
-- Cuisine type: ${brandAssets.cuisineType || 'not specified'}
+- Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
 - Art format: ${formatInfo.label}
-${compositionPrompt ? `- Composition direction from user: ${compositionPrompt}` : ''}
+${compositionPrompt ? `- Composition direction: ${compositionPrompt}` : ''}
+
+ABSOLUTELY CRITICAL - DO NOT VIOLATE:
+- NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompts
+- NEVER describe labels, signs, menus, or typography
+- Focus ONLY on visual elements: colors, shapes, lighting, composition
 
 Generate TWO prompts with these exact delimiters:
 
 [IDEOGRAM_PROMPT]
-A technical prompt for Ideogram V3 describing the final art visual. Focus on:
-- Overall graphic design style, color scheme using brand colors
-- Layout and visual composition for ${formatInfo.label}
+A visual prompt for graphic design. Describe ONLY:
+- Color scheme using: ${colorList}
+- Visual composition and layout for ${formatInfo.label}
 - Atmosphere and mood
-- NO text, NO letters, NO numbers, NO watermarks
-- Leave clean space for text overlay
-Maximum 300 words.
+- Areas to leave empty/clean for text overlay
+NO brand names, NO text descriptions. Max 250 words.
+End with: "Pure visual composition, absolutely no text, letters, words, or typography."
 [/IDEOGRAM_PROMPT]
 
 [SCENE_PROMPT]
-A prompt for generating a photorealistic food photography scene. Focus on:
-- Describe the physical scene setup (table, background, lighting)
-- Food presentation and plating style
+A prompt for photorealistic food photography. Describe ONLY:
+- Physical scene: table, props, background
+- Food presentation and styling
 - Camera angle and depth of field
-- Ambient lighting (natural, warm, studio)
-${compositionPrompt ? `- Follow user direction: ${compositionPrompt}` : '- Professional restaurant ambiance'}
-- ABSOLUTELY NO text, letters, numbers, or UI elements
-Maximum 200 words.
+- Lighting: natural, warm, or studio
+${compositionPrompt ? `- Direction: ${compositionPrompt}` : '- Professional restaurant setting'}
+NO text, NO labels, NO signs. Max 200 words.
+End with: "Pure photography, no text or typography visible."
 [/SCENE_PROMPT]
 
-Respond ONLY with the two delimited prompts, no additional text.`
+Respond ONLY with the two delimited prompts.`
 }
 
 // --- Text Separation & Positioning ---
@@ -671,6 +671,7 @@ export async function POST(request: Request) {
     // Use photo path whenever a photo is provided, composition just adds extra prompt
     const hasPhoto = body.usePhoto && !!body.photoUrl
     const usePhotoPath = hasPhoto && !!process.env.GOOGLE_GENERATIVE_AI_API_KEY
+    console.log(`[generate-art] hasPhoto=${hasPhoto}, usePhoto=${body.usePhoto}, photoUrl=${body.photoUrl ? 'yes' : 'no'}, geminiKey=${!!process.env.GOOGLE_GENERATIVE_AI_API_KEY}, usePhotoPath=${usePhotoPath}`)
     let ideogramImages: IdeogramImage[] = []
     let provider = 'ideogram-3'
     let technicalPrompt = ''
@@ -722,15 +723,17 @@ export async function POST(request: Request) {
           ...imageOptions,
         })
         provider = 'ideogram-3+gemini'
-      } catch (compositionError) {
+        console.log('[generate-art] Path B completed successfully with Gemini + Ideogram Remix')
+      } catch (compositionError: any) {
         // Fallback to Path A if Gemini/Remix fails
-        console.warn('[generate-art] Photo path failed, falling back to Path A:', compositionError)
+        const errMsg = compositionError?.message || String(compositionError)
+        console.error('[generate-art] Path B FAILED, falling back to Path A. Error:', errMsg)
         ideogramImages = await callIdeogramGenerate(ideogramPrompt, imageOptions)
-        provider = 'ideogram-3'
+        provider = 'ideogram-3 (fallback)'
       }
     } else {
       // --- Path A: Simple generation with Ideogram (no photo) ---
-      console.log('[generate-art] Step 2: Path A — Simple generation (Ideogram)')
+      console.log('[generate-art] Step 2: Path A — Simple generation (Ideogram) - usePhotoPath was false')
 
       const systemPrompt = buildIdeogramPromptSystemPrompt(
         brandAssets,
