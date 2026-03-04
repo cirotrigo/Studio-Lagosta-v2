@@ -164,87 +164,93 @@ function buildGeminiPromptSystemPrompt(
   let compositionGuidelines = ''
   if (ve && (ve.layouts?.length || ve.typography?.length || ve.patterns?.length)) {
     const parts: string[] = []
-    if (ve.layouts?.length) parts.push(`- Layout patterns: ${ve.layouts.join(', ')}`)
-    if (ve.patterns?.length) parts.push(`- Visual elements & patterns: ${ve.patterns.join(', ')}`)
-    if (ve.typography?.length) parts.push(`- Typography style: ${ve.typography.join(', ')}`)
-    compositionGuidelines = `\nBRAND COMPOSITION GUIDELINES (from brand reference analysis):\n${parts.join('\n')}\n→ Apply these composition principles to match the brand's established visual language.\n`
+    if (ve.layouts?.length) parts.push(`- Layout: ${ve.layouts.join(', ')}`)
+    if (ve.patterns?.length) parts.push(`- Visual elements: ${ve.patterns.join(', ')}`)
+    if (ve.typography?.length) parts.push(`- Typography approach: ${ve.typography.join(', ')}`)
+    compositionGuidelines = `\nBRAND COMPOSITION GUIDELINES (extracted from reference images):\n${parts.join('\n')}\nYou MUST apply these exact composition principles.\n`
+  } else if (brandAssets.styleDescription) {
+    // Fallback: use the style description itself as composition guidance
+    compositionGuidelines = `\nBRAND STYLE ANALYSIS:\n${brandAssets.styleDescription}\nFollow this style description precisely.\n`
   }
 
   // Derive text area strategy from layout analysis
-  let textAreaInstruction = 'Leave clean areas in the composition for text overlay (typically bottom third)'
+  let textAreaInstruction = 'Reserve the bottom 35% as a clean zone with darker tones or gradient for text overlay — this area must have NO busy details'
   if (ve?.layouts?.length) {
     const layoutStr = ve.layouts.join(' ').toLowerCase()
     if (layoutStr.includes('bottom') || layoutStr.includes('inferior') || layoutStr.includes('lower')) {
-      textAreaInstruction = 'Reserve the bottom 30% as a clean, darker area for text overlay — use a subtle gradient or solid color zone'
-    } else if (layoutStr.includes('center') || layoutStr.includes('central')) {
-      textAreaInstruction = 'Leave the center area clean for text overlay with sufficient contrast'
+      textAreaInstruction = 'Reserve the bottom 35% as a clean, darker zone (gradient or solid band) for text overlay — absolutely no visual clutter in this area'
+    } else if (layoutStr.includes('center') || layoutStr.includes('central') || layoutStr.includes('centralizado')) {
+      textAreaInstruction = 'Keep the center-bottom area clean with a subtle dark overlay zone for text placement — the main visual subject should be in the upper portion'
     } else if (layoutStr.includes('top') || layoutStr.includes('superior') || layoutStr.includes('upper')) {
-      textAreaInstruction = 'Reserve the top 30% as a clean area for text overlay'
+      textAreaInstruction = 'Reserve the top 30% as a clean area for text overlay with sufficient contrast'
+    }
+    // Check for "espaço negativo" / negative space
+    if (layoutStr.includes('espaço negativo') || layoutStr.includes('negative space') || layoutStr.includes('espaço')) {
+      textAreaInstruction += '. Use generous negative space in the composition — do not fill every area with detail'
     }
   }
 
   const referenceImageInstruction = hasReferenceImages
-    ? `\nIMPORTANT — REFERENCE IMAGES PROVIDED:
-You are being shown brand reference images. Study them CAREFULLY and replicate:
-- The EXACT color grading, saturation, and color temperature
-- The composition layout, spacing, and visual hierarchy
-- The lighting style (warm/cool, directional, ambient)
-- The mood, atmosphere, and overall "feel"
-- Background textures, gradients, or photographic style
-- Level of minimalism vs. richness
-Your prompt MUST describe these specific visual characteristics you observe in the reference images.\n`
+    ? `\nCRITICAL — REFERENCE IMAGES ARE PROVIDED:
+You are being shown ACTUAL brand reference images. These are the MOST IMPORTANT input.
+Your prompt MUST recreate their visual DNA by describing:
+- The EXACT color grading you see (warm/cool temperature, saturation level, contrast)
+- The specific composition approach (centered, rule of thirds, asymmetric, etc.)
+- The lighting characteristics (direction, softness, warmth, highlights/shadows)
+- Background treatment you observe (solid color, gradient, texture, photo blur)
+- The mood and atmosphere (elegant, warm, minimal, rich, etc.)
+- Level of detail/complexity (clean minimal vs. richly layered)
+DO NOT INVENT a generic style — describe what you ACTUALLY SEE in the reference images.\n`
     : ''
 
-  const basePrompt = `You are a professional graphic designer creating social media art for ${brandAssets.name}${brandAssets.cuisineType ? `, a ${brandAssets.cuisineType} brand` : ''}. Match their established visual identity precisely.
+  const basePrompt = `You are an expert art director creating a social media visual for ${brandAssets.name}${brandAssets.cuisineType ? `, a ${brandAssets.cuisineType} brand` : ''}. Your job is to write an image generation prompt that PRECISELY matches this brand's visual identity.
 
-BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
+BRAND IDENTITY:
 - Brand colors (hex): ${colorList}
 - Visual style: ${brandAssets.styleDescription || 'modern, elegant and professional'}
-- Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
-- Art format: ${formatInfo.label} (${formatInfo.width}x${formatInfo.height})
-${compositionPrompt ? `- Composition direction: ${compositionPrompt}` : ''}
+${brandAssets.cuisineType ? `- Brand category: ${brandAssets.cuisineType}` : ''}
+- Output format: ${formatInfo.label} (${formatInfo.width}x${formatInfo.height})
+${compositionPrompt ? `- User composition direction: ${compositionPrompt}` : ''}
 ${compositionGuidelines}${referenceImageInstruction}
-ABSOLUTELY CRITICAL - DO NOT VIOLATE:
-- NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
-- NEVER describe labels, signs, menus, titles, watermarks, or typography
-- Focus ONLY on visual elements: colors, shapes, lighting, composition, photography style`
+ABSOLUTE RULES:
+- NEVER mention the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
+- NEVER describe labels, signs, menus, titles, watermarks, or typography of any kind
+- Focus EXCLUSIVELY on visual elements: colors, shapes, lighting, composition, textures, photography`
 
   if (hasPhoto) {
     return `${basePrompt}
 
 YOUR TASK:
-Create a prompt for an AI image generator (Gemini) that will use a provided product photo as the main subject.
+Write a prompt for Gemini image generator that places a provided product photo as the hero subject in a professional scene.
 
-DESCRIBE:
-- Professional food photography scene and styling
-- Table setting, props, and background elements
-- Camera angle and depth of field (shallow DOF recommended)
-- Lighting: natural light, warm tones, or professional studio
-- Atmosphere and mood matching ${brandAssets.cuisineType || 'restaurant'} environment
-- ${textAreaInstruction}
-${hasReferenceImages ? '- Match the exact visual style, color grading, and mood from the reference images' : ''}
+YOUR PROMPT MUST DESCRIBE:
+1. Scene setup: background, surface, props matching ${brandAssets.cuisineType || 'restaurant'} atmosphere
+2. Lighting: direction, color temperature, intensity (match the reference images if provided)
+3. Color grading: use brand colors ${colorList} as accent/environment tones
+4. Camera: angle, depth of field, focus point
+5. Atmosphere: mood and feeling that matches the brand identity
+6. ${textAreaInstruction}
+${hasReferenceImages ? '7. MOST IMPORTANT: The overall look and feel MUST match the reference images shown above' : ''}
 
-RESPONSE FORMAT:
-Respond ONLY with the visual prompt in English (max 250 words).
-End your prompt with: "Pure photography, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
+RESPOND with ONLY the prompt text in English (150-250 words).
+End with: "Photographic composition only, absolutely no text, letters, words, numbers, or typography anywhere."`
   }
 
   return `${basePrompt}
 
 YOUR TASK:
-Create a prompt for an AI image generator (Gemini) to generate a stunning visual for a social media post.
+Write a prompt for Gemini image generator to create a visually striking social media art piece.
 
-DESCRIBE:
-- Visual composition using brand colors: ${colorList}
-- Professional graphic design elements (gradients, shapes, patterns) matching the brand style
-- Food photography elements if relevant (ingredients, dishes, atmosphere)
-- Lighting and visual mood matching the brand style
-- ${textAreaInstruction}
-${hasReferenceImages ? '- Match the exact visual style, color grading, and mood from the reference images' : ''}
+YOUR PROMPT MUST DESCRIBE:
+1. Visual composition: layout, structure, focal point using brand colors ${colorList}
+2. Graphic elements: shapes, gradients, patterns, textures matching the brand style
+3. Lighting/mood: warm/cool tones, contrast, atmosphere
+4. ${brandAssets.cuisineType ? `Food/drink elements if relevant to "${brandAssets.cuisineType}"` : 'Relevant visual elements for the brand'}
+5. ${textAreaInstruction}
+${hasReferenceImages ? '6. MOST IMPORTANT: The overall aesthetic, color grading, and mood MUST match the reference images shown above' : ''}
 
-RESPONSE FORMAT:
-Respond ONLY with the visual prompt in English (max 250 words).
-End your prompt with: "Pure visual composition, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
+RESPOND with ONLY the prompt text in English (150-250 words).
+End with: "Pure visual composition only, absolutely no text, letters, words, numbers, or typography anywhere."`
 }
 
 // --- Text Separation & Positioning ---
@@ -474,7 +480,7 @@ async function callGeminiImageGeneration(
       }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
-        temperature: 0.4,
+        temperature: 0.3,
       },
     }),
   })
@@ -544,28 +550,28 @@ async function callNanoBanana2(
 
   // Embed system instruction directly in the prompt (system_instruction may not work with image generation models)
   const roleInstruction = photoUrl
-    ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image.'
-    : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media.'
+    ? 'You are an expert food photographer and art director. Generate a photorealistic, professionally-styled scene using the provided product photo as the hero subject. Match the brand aesthetic EXACTLY.'
+    : 'You are an expert graphic designer and art director. Generate a professionally-designed, visually stunning composition for social media. Match the brand aesthetic EXACTLY.'
   
   // Build content parts with reference images first for style context
   const contentParts: any[] = [{ text: roleInstruction }]
 
   // Add reference images BEFORE the prompt so Gemini sees the style first
   if (hasRefs) {
-    contentParts.push({ text: 'BRAND STYLE REFERENCE IMAGES — study these carefully:' })
+    contentParts.push({ text: `BRAND STYLE REFERENCES — ${referenceImages!.length} images. You MUST match their visual style:` })
     for (let i = 0; i < referenceImages!.length; i++) {
       const ref = referenceImages![i]
       contentParts.push({ inline_data: { mime_type: ref.mimeType, data: ref.base64 } })
     }
-    contentParts.push({ text: `I have shown you ${referenceImages!.length} brand reference images. You MUST generate a NEW image that closely matches their:
-1. Color palette and color grading (warm/cool tones, saturation level)
-2. Composition style and visual hierarchy
-3. Lighting direction, intensity, and mood
-4. Background treatment (gradients, textures, solid colors)
-5. Level of visual complexity and spacing
-6. Overall atmosphere and brand "feel"
+    contentParts.push({ text: `STYLE MATCHING REQUIREMENTS (from the ${referenceImages!.length} reference images above):
+- MATCH the exact color palette and color grading (temperature, saturation, contrast)
+- MATCH the composition style, spacing, and visual hierarchy
+- MATCH the lighting direction, warmth, and shadow treatment
+- MATCH the background treatment (gradients, textures, blur, solid colors)
+- MATCH the overall mood, elegance level, and visual complexity
+- DO NOT create a generic image — the result must look like it belongs to the same brand as the references
 
-Now create the image following this description:` })
+Generate a NEW image following this description:` })
     console.log(`[generate-art] Added ${referenceImages!.length} style reference images to Gemini request`)
   }
 
@@ -737,7 +743,7 @@ export async function POST(request: Request) {
         for (const ref of refImages.slice(0, 2)) {
           userContent.push({ type: 'image', image: `data:${ref.mimeType};base64,${ref.base64}` })
         }
-        userContent.push({ type: 'text', text: `These are brand reference images for ${brandAssets.name}. Analyze their visual style carefully.\n\nTexto para a arte: "${body.text}"` })
+        userContent.push({ type: 'text', text: `These are the brand's actual reference images. Look at their colors, lighting, composition, backgrounds, and overall mood VERY carefully. Your prompt must recreate this exact visual style.\n\nTexto para a arte: "${body.text}"` })
         console.log(`[generate-art] Passing ${Math.min(refImages.length, 2)} reference images to GPT-4o-mini for style analysis`)
       } else {
         userContent.push({ type: 'text', text: `Texto para a arte: "${body.text}"` })
@@ -747,7 +753,7 @@ export async function POST(request: Request) {
         model: openai('gpt-4o-mini'),
         system: systemPrompt,
         messages: [{ role: 'user', content: userContent as any }],
-        temperature: 0.7,
+        temperature: 0.4,
       })
       technicalPrompt = prompt
 
