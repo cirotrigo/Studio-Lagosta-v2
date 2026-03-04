@@ -111,22 +111,46 @@ export async function POST(request: Request) {
 
   try {
     console.log('[analyze-style] Analyzing', body.imageUrls.length, 'images with GPT-4o Vision...')
+    console.log('[analyze-style] Image URLs:', body.imageUrls.map(u => u.substring(0, 80) + '...'))
+
+    // Validate that image URLs are accessible before sending to OpenAI
+    const validUrls: string[] = []
+    for (const url of body.imageUrls) {
+      try {
+        const headResp = await fetch(url, { method: 'HEAD' })
+        if (headResp.ok) {
+          validUrls.push(url)
+        } else {
+          console.warn(`[analyze-style] URL not accessible (${headResp.status}):`, url.substring(0, 80))
+        }
+      } catch (fetchErr) {
+        console.warn(`[analyze-style] URL fetch failed:`, url.substring(0, 80), fetchErr instanceof Error ? fetchErr.message : '')
+      }
+    }
+
+    if (validUrls.length === 0) {
+      return NextResponse.json(
+        { error: 'Nenhuma das URLs de imagem está acessível. Tente fazer upload novamente.' },
+        { status: 400 }
+      )
+    }
+    console.log(`[analyze-style] ${validUrls.length}/${body.imageUrls.length} URLs validated as accessible`)
 
     const openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     })
 
-    // Build content array with images
+    // Build content array with validated images
     const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
       {
         type: 'text',
-        text: `Analise as seguintes ${body.imageUrls.length} imagens de referência para o projeto "${project.name}" e extraia o estilo visual:`,
+        text: `Analise as seguintes ${validUrls.length} imagens de referência para o projeto "${project.name}" e extraia o estilo visual:`,
       },
-      ...body.imageUrls.map((url): OpenAI.Chat.Completions.ChatCompletionContentPartImage => ({
+      ...validUrls.map((url): OpenAI.Chat.Completions.ChatCompletionContentPartImage => ({
         type: 'image_url',
         image_url: {
           url,
-          detail: 'high',
+          detail: 'low',
         },
       })),
     ]
@@ -193,9 +217,15 @@ export async function POST(request: Request) {
 
     // Handle specific OpenAI errors
     if (error instanceof OpenAI.APIError) {
+      console.error('[analyze-style] OpenAI API error details:', {
+        status: error.status,
+        message: error.message,
+        code: error.code,
+        type: error.type,
+      })
       if (error.status === 400) {
         return NextResponse.json(
-          { error: 'Não foi possível analisar as imagens fornecidas. Verifique se as URLs são válidas e acessíveis.' },
+          { error: `Não foi possível analisar as imagens: ${error.message}` },
           { status: 400 }
         )
       }
