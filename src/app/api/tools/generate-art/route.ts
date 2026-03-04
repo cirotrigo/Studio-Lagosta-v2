@@ -18,7 +18,9 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
   SQUARE: { width: 1024, height: 1024, label: 'quadrado (1024x1024)' },
 }
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
+const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
+const GEMINI_PRIMARY_MODEL = 'gemini-3.1-flash-image-preview' // Nano Banana 2
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-image'
 
 // --- Zod Schema ---
 
@@ -327,6 +329,57 @@ Return the positioning as structured JSON.`,
 
 // --- Nano Banana 2 (Gemini) ---
 
+async function callGeminiImageGeneration(
+  model: string,
+  apiKey: string,
+  contentParts: any[],
+  systemInstruction: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${apiKey}`
+  console.log(`[generate-art] Trying model: ${model}`)
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      system_instruction: {
+        parts: [{ text: systemInstruction }],
+      },
+      contents: [{
+        parts: contentParts,
+      }],
+      generationConfig: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        temperature: 0.4,
+      },
+    }),
+  })
+
+  if (!response.ok) {
+    const errorBody = await response.text()
+    console.error(`[generate-art] Gemini (${model}) error:`, response.status, errorBody.substring(0, 300))
+    throw new Error(`Gemini ${model} error: ${response.status}`)
+  }
+
+  const result = await response.json()
+
+  // Extract generated image from response
+  const candidates = result.candidates || []
+  for (const candidate of candidates) {
+    for (const part of candidate.content?.parts || []) {
+      if (part.inline_data?.data) {
+        console.log(`[generate-art] Gemini (${model}) image generated successfully`)
+        return {
+          buffer: Buffer.from(part.inline_data.data, 'base64'),
+          mimeType: part.inline_data.mime_type || 'image/png',
+        }
+      }
+    }
+  }
+
+  throw new Error(`Gemini (${model}) did not return an image`)
+}
+
 async function callNanoBanana2(
   prompt: string,
   photoUrl?: string,
@@ -371,48 +424,14 @@ async function callNanoBanana2(
     ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
     : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
 
-  // Call Gemini API
+  // Try primary model (Nano Banana 2), fallback to stable model
   console.log(`[generate-art] Calling Nano Banana 2 (Gemini) ${photoUrl ? 'with photo' : 'without photo'}...`)
-  const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: systemInstruction }],
-      },
-      contents: [{
-        parts: contentParts,
-      }],
-      generationConfig: {
-        responseModalities: ['TEXT', 'IMAGE'],
-        temperature: 0.4,
-      },
-    }),
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    console.error('[generate-art] Gemini error:', response.status, errorBody)
-    throw new Error(`Gemini API error: ${response.status}`)
+  try {
+    return await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, systemInstruction)
+  } catch (primaryError: any) {
+    console.warn(`[generate-art] Primary model (${GEMINI_PRIMARY_MODEL}) failed: ${primaryError.message}. Falling back to ${GEMINI_FALLBACK_MODEL}...`)
+    return await callGeminiImageGeneration(GEMINI_FALLBACK_MODEL, apiKey, contentParts, systemInstruction)
   }
-
-  const result = await response.json()
-
-  // Extract generated image from response
-  const candidates = result.candidates || []
-  for (const candidate of candidates) {
-    for (const part of candidate.content?.parts || []) {
-      if (part.inline_data?.data) {
-        console.log('[generate-art] Gemini image generated successfully')
-        return {
-          buffer: Buffer.from(part.inline_data.data, 'base64'),
-          mimeType: part.inline_data.mime_type || 'image/png',
-        }
-      }
-    }
-  }
-
-  throw new Error('Gemini did not return an image')
 }
 
 // --- Main Handler ---
