@@ -103,15 +103,26 @@ export async function PUT(
   }
 
   // Update project with brand style data
-  // Note: These fields need to exist in the database schema
+  // Note: Only update fields that are explicitly provided
   try {
+    const updateData: Record<string, unknown> = {}
+    if (body.styleDescription !== undefined) {
+      updateData.brandStyleDescription = body.styleDescription ?? null
+    }
+    if (body.visualElements !== undefined) {
+      updateData.brandVisualElements = body.visualElements ?? null
+    }
+    if (body.referenceImageUrls !== undefined) {
+      updateData.brandReferenceUrls = body.referenceImageUrls
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json({ success: true, updatedAt: new Date().toISOString() })
+    }
+
     await db.project.update({
       where: { id: projectIdNum },
-      data: {
-        brandStyleDescription: body.styleDescription ?? null,
-        brandVisualElements: body.visualElements ?? null,
-        brandReferenceUrls: body.referenceImageUrls ?? [],
-      } as Record<string, unknown>,
+      data: updateData,
     })
 
     return NextResponse.json({

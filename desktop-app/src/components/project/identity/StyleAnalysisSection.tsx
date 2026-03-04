@@ -16,6 +16,7 @@ export default function StyleAnalysisSection({ projectId }: StyleAnalysisSection
 
   const [referenceImages, setReferenceImages] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [uploadedUrls, setUploadedUrls] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState({ current: 0, total: 0 })
@@ -131,6 +132,7 @@ export default function StyleAnalysisSection({ projectId }: StyleAnalysisSection
       })
 
       setAnalysisResult(result)
+      setUploadedUrls(uploadedUrls)
       toast.success('Analise concluida!')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Erro ao analisar estilo')
@@ -149,12 +151,13 @@ export default function StyleAnalysisSection({ projectId }: StyleAnalysisSection
           typography: analysisResult.detectedElements.typography,
           patterns: analysisResult.detectedElements.patterns,
         } : undefined,
+        referenceImageUrls: uploadedUrls.length > 0 ? uploadedUrls : undefined,
       })
       toast.success('Estilo salvo com sucesso!')
     } catch (error) {
       toast.error('Erro ao salvar estilo')
     }
-  }, [editedSummary, analysisResult, updateStyle])
+  }, [editedSummary, analysisResult, uploadedUrls, updateStyle])
 
   const canAnalyze = referenceImages.length >= 5 && referenceImages.length <= 20
 
