@@ -62,6 +62,10 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const processResultImages = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
     const processedUrls: string[] = []
 
+    // Debug: log fonts received from API
+    console.log('[generate-art] Fonts from API:', JSON.stringify(result.fonts))
+    console.log('[generate-art] FontUrls from API:', JSON.stringify(result.fontUrls))
+
     for (const img of result.images) {
       // 1. Download da imagem do Ideogram
       const downloaded = await window.electronAPI.downloadBlob(img.imageUrl)
@@ -73,6 +77,7 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       // 2. Se tem textLayout, renderizar texto + logo localmente
       if (img.textLayout && result.fonts && window.electronAPI.renderText) {
         try {
+          console.log('[generate-art] Calling renderText with fonts:', result.fonts, 'fontUrls:', result.fontUrls)
           const rendered = await window.electronAPI.renderText({
             imageBuffer: downloaded.buffer,
             textLayout: img.textLayout,

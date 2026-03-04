@@ -861,11 +861,20 @@ ipcMain.handle('image:render-text', async (_event, args: {
   logoSizePct?: number
 }) => {
   try {
+    // Debug: log fonts received
+    console.log('[Render Text] fonts:', JSON.stringify(args.fonts))
+    console.log('[Render Text] fontUrls:', JSON.stringify(args.fontUrls))
+
     // 1. Ensure fonts are cached locally
     const titlePath = await ensureFont(args.fonts.title, args.fontUrls?.title)
     const bodyPath = await ensureFont(args.fonts.body, args.fontUrls?.body)
+    console.log('[Render Text] titlePath:', titlePath)
+    console.log('[Render Text] bodyPath:', bodyPath)
+    
     const titleBase64 = await getFontBase64(titlePath)
     const bodyBase64 = await getFontBase64(bodyPath)
+    console.log('[Render Text] titleBase64 length:', titleBase64?.length || 0)
+    console.log('[Render Text] bodyBase64 length:', bodyBase64?.length || 0)
 
     // 2. Download logo if provided
     let logoBuffer: Buffer | undefined
