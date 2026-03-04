@@ -10,8 +10,9 @@ export interface GenerationParams {
   includeLogo: boolean
   usePhoto: boolean
   photoUrl?: string
-  changePose?: boolean
-  poseDescription?: string
+  compositionEnabled?: boolean
+  compositionPrompt?: string
+  compositionReferenceUrls?: string[]
 }
 
 export interface GenerationJob {

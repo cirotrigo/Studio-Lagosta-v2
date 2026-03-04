@@ -12,14 +12,43 @@ export interface GenerateArtParams {
   photoUrl?: string
   variations?: 1 | 2 | 4
   styleDescription?: string
+  compositionEnabled?: boolean
+  compositionPrompt?: string
+  compositionReferenceUrls?: string[]
+}
+
+export interface TextLayoutElement {
+  type: string
+  text: string
+  font: 'title' | 'body'
+  sizePx: number
+  weight: number
+  color: string
+  x: number
+  y: number
+  align: 'left' | 'center' | 'right'
+  maxWidth: number
+}
+
+export interface TextLayout {
+  elements: TextLayoutElement[]
+  shadow: boolean
+  overlay: {
+    enabled: boolean
+    position: 'top' | 'bottom' | 'full'
+    opacity: number
+  }
 }
 
 export interface GenerateArtResult {
-  images: Array<{ imageUrl: string; prompt: string }>
+  images: Array<{ imageUrl: string; prompt: string; textLayout?: TextLayout }>
   prompt: string
   provider: string
   format: string
   variations: number
+  fonts?: { title: string; body: string }
+  fontUrls?: { title?: string; body?: string }
+  logo?: { url: string; position: string; sizePct: number }
 }
 
 export interface AIImage {

@@ -187,6 +187,8 @@ model Project {
   brandVisualElements         Json?
   brandReferenceUrls          String[]              @default([])
   cuisineType                 String?
+  titleFontFamily             String?
+  bodyFontFamily              String?
   AIGeneratedImage            AIGeneratedImage[]
   BrandColor                  BrandColor[]
   chatConversations           ChatConversation[]

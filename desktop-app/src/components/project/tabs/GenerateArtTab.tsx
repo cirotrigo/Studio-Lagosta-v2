@@ -1,10 +1,10 @@
 import { useState, useCallback } from 'react'
-import { Sparkles } from 'lucide-react'
+import { Sparkles, Layers } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useProjectStore } from '@/stores/project.store'
 import { useGenerationStore, usePendingJobs, useCompletedJobs, ArtFormat } from '@/stores/generation.store'
-import { useGenerateArt } from '@/hooks/use-art-generation'
+import { useGenerateArt, GenerateArtResult } from '@/hooks/use-art-generation'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/project/shared/Switch'
 import FormatSelector from '@/components/project/generate/FormatSelector'
@@ -14,7 +14,9 @@ import GenerationQueue from '@/components/project/generate/GenerationQueue'
 import ResultImageCard from '@/components/project/generate/ResultImageCard'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
-import PoseEditor from '@/components/project/generate/PoseEditor'
+import CompositionEditor from '@/components/project/generate/CompositionEditor'
+
+const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
 
 interface GenerateArtTabProps {
   projectId: number
@@ -35,15 +37,84 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const [text, setText] = useState('')
   const [includeLogo, setIncludeLogo] = useState(true)
   const [usePhoto, setUsePhoto] = useState(true)
-  const [changePose, setChangePose] = useState(false)
-  const [poseDescription, setPoseDescription] = useState('')
-  const [poseReferenceImages, setPoseReferenceImages] = useState<File[]>([])
+  const [compositionEnabled, setCompositionEnabled] = useState(false)
+  const [compositionPrompt, setCompositionPrompt] = useState('')
+  const [compositionReferenceImages, setCompositionReferenceImages] = useState<File[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
+
+  const uploadReferenceImages = useCallback(async (files: File[]): Promise<string[]> => {
+    const urls: string[] = []
+    for (const file of files) {
+      const arrayBuffer = await file.arrayBuffer()
+      const response = await window.electronAPI.uploadFile(
+        UPLOAD_URL,
+        { name: file.name, type: file.type, buffer: arrayBuffer },
+        { type: 'reference' }
+      )
+      if (!response.ok || !response.data?.url) {
+        throw new Error(`Erro ao enviar imagem de referência: ${file.name}`)
+      }
+      urls.push(response.data.url)
+    }
+    return urls
+  }, [])
+
+  const processResultImages = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
+    const processedUrls: string[] = []
+
+    for (const img of result.images) {
+      // 1. Download da imagem do Ideogram
+      const downloaded = await window.electronAPI.downloadBlob(img.imageUrl)
+      if (!downloaded.ok || !downloaded.buffer) {
+        processedUrls.push(img.imageUrl) // Fallback: URL original
+        continue
+      }
+
+      // 2. Se tem textLayout, renderizar texto + logo localmente
+      if (img.textLayout && result.fonts && window.electronAPI.renderText) {
+        try {
+          const rendered = await window.electronAPI.renderText({
+            imageBuffer: downloaded.buffer,
+            textLayout: img.textLayout,
+            fonts: result.fonts,
+            fontUrls: result.fontUrls,
+            logoUrl: includeLogo ? result.logo?.url : undefined,
+            logoPosition: result.logo?.position,
+            logoSizePct: result.logo?.sizePct,
+          })
+          if (rendered.ok && rendered.buffer) {
+            const blob = new Blob([rendered.buffer], { type: 'image/jpeg' })
+            processedUrls.push(URL.createObjectURL(blob))
+            continue
+          }
+        } catch (e) {
+          console.error('[render-text] Failed, using original:', e)
+        }
+      }
+
+      // 3. Fallback: criar blob da imagem sem texto
+      const blob = new Blob([downloaded.buffer], { type: downloaded.contentType || 'image/jpeg' })
+      processedUrls.push(URL.createObjectURL(blob))
+    }
+
+    return processedUrls
+  }, [includeLogo])
 
   const handleGenerate = useCallback(async () => {
     if (!text.trim()) {
       toast.error('Digite o texto que aparecera na arte')
       return
+    }
+
+    // Upload composition reference images if needed
+    let compositionReferenceUrls: string[] | undefined
+    if (compositionEnabled && compositionReferenceImages.length > 0) {
+      try {
+        compositionReferenceUrls = await uploadReferenceImages(compositionReferenceImages)
+      } catch (error: any) {
+        toast.error(error.message || 'Erro ao enviar imagens de referência')
+        return
+      }
     }
 
     const params = {
@@ -53,8 +124,9 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       includeLogo,
       usePhoto,
       photoUrl: usePhoto ? selectedPhoto?.url : undefined,
-      changePose,
-      poseDescription: changePose ? poseDescription : undefined,
+      compositionEnabled,
+      compositionPrompt: compositionEnabled ? compositionPrompt : undefined,
+      compositionReferenceUrls,
     }
 
     const jobId = addJob(params)
@@ -69,17 +141,27 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       usePhoto: params.usePhoto,
       photoUrl: params.photoUrl,
       variations: params.variations,
-    }).then((result) => {
-      const imageUrls = result.images.map((img) => img.imageUrl)
-      updateJob(jobId, { status: 'done', images: imageUrls })
-      toast.success(`${imageUrls.length} arte(s) gerada(s) com sucesso!`)
+      compositionEnabled: params.compositionEnabled,
+      compositionPrompt: params.compositionPrompt,
+      compositionReferenceUrls: params.compositionReferenceUrls,
+    }).then(async (result) => {
+      try {
+        const processedUrls = await processResultImages(result)
+        updateJob(jobId, { status: 'done', images: processedUrls })
+        toast.success(`${processedUrls.length} arte(s) gerada(s) com sucesso!`)
+      } catch (e) {
+        // Fallback: use raw URLs if processing fails
+        const imageUrls = result.images.map((img) => img.imageUrl)
+        updateJob(jobId, { status: 'done', images: imageUrls })
+        toast.success(`${imageUrls.length} arte(s) gerada(s) com sucesso!`)
+      }
     }).catch((error) => {
       updateJob(jobId, { status: 'error', error: error.message || 'Erro ao gerar arte' })
       toast.error(error.message || 'Erro ao gerar arte')
     })
 
     toast.info('Gerando arte... Voce pode continuar usando o app')
-  }, [format, text, variations, includeLogo, usePhoto, selectedPhoto, changePose, poseDescription, projectId, addJob, updateJob, generateArt])
+  }, [format, text, variations, includeLogo, usePhoto, selectedPhoto, compositionEnabled, compositionPrompt, compositionReferenceImages, projectId, addJob, updateJob, generateArt, uploadReferenceImages, processResultImages])
 
   const handleSchedule = useCallback((imageUrl: string) => {
     navigate('/new-post', { state: { imageUrl } })
@@ -87,6 +169,19 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
 
   const handleDownload = useCallback(async (imageUrl: string) => {
     try {
+      if (imageUrl.startsWith('blob:')) {
+        // Imagem já processada localmente
+        const a = document.createElement('a')
+        a.href = imageUrl
+        a.download = `arte-${Date.now()}.jpg`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        toast.success('Imagem baixada!')
+        return
+      }
+
+      // Fallback: download remoto
       const response = await window.electronAPI.downloadBlob(imageUrl)
       if (!response.ok || !response.buffer) {
         throw new Error('Erro ao baixar imagem')
@@ -151,18 +246,21 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
               <Switch checked={usePhoto} onChange={setUsePhoto} />
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-sm text-text">Mudar pose com IA</span>
-              <Switch checked={changePose} onChange={setChangePose} disabled={!usePhoto} />
+              <span className="flex items-center gap-1.5 text-sm text-text">
+                <Layers size={16} />
+                Composição com IA
+              </span>
+              <Switch checked={compositionEnabled} onChange={setCompositionEnabled} />
             </div>
           </div>
 
-          {/* Pose Editor (conditional) */}
-          {changePose && usePhoto && (
-            <PoseEditor
-              description={poseDescription}
-              onDescriptionChange={setPoseDescription}
-              referenceImages={poseReferenceImages}
-              onReferenceImagesChange={setPoseReferenceImages}
+          {/* Composition Editor (conditional) */}
+          {compositionEnabled && (
+            <CompositionEditor
+              compositionPrompt={compositionPrompt}
+              onCompositionPromptChange={setCompositionPrompt}
+              referenceImages={compositionReferenceImages}
+              onReferenceImagesChange={setCompositionReferenceImages}
             />
           )}
 

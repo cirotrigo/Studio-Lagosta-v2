@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, shell, safeStorage, session, net } from 'e
 import path from 'path'
 import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
+import { ensureFont, getFontBase64 } from './ipc/font-cache'
+import { renderText } from './ipc/text-renderer'
 
 let mainWindow: BrowserWindow | null = null
 let refreshWindow: BrowserWindow | null = null
@@ -825,6 +827,57 @@ ipcMain.handle('image:overlay-logo', async (
     }
   } catch (error) {
     console.error('[Logo Overlay] Error:', error)
+    return { ok: false, error: String(error) }
+  }
+})
+
+// IPC Handler - Text Rendering (text + overlay + logo via Sharp SVG)
+ipcMain.handle('image:render-text', async (_event, args: {
+  imageBuffer: ArrayBuffer
+  textLayout: any
+  fonts: { title: string; body: string }
+  fontUrls?: { title?: string; body?: string }
+  logoUrl?: string
+  logoPosition?: string
+  logoSizePct?: number
+}) => {
+  try {
+    // 1. Ensure fonts are cached locally
+    const titlePath = await ensureFont(args.fonts.title, args.fontUrls?.title)
+    const bodyPath = await ensureFont(args.fonts.body, args.fontUrls?.body)
+    const titleBase64 = await getFontBase64(titlePath)
+    const bodyBase64 = await getFontBase64(bodyPath)
+
+    // 2. Download logo if provided
+    let logoBuffer: Buffer | undefined
+    if (args.logoUrl) {
+      const logoResponse = await net.fetch(args.logoUrl)
+      if (logoResponse.ok) {
+        logoBuffer = Buffer.from(await logoResponse.arrayBuffer())
+      }
+    }
+
+    // 3. Render text + overlay + logo
+    const result = await renderText({
+      imageBuffer: Buffer.from(args.imageBuffer),
+      textLayout: args.textLayout,
+      fonts: {
+        title: { family: args.fonts.title, base64: titleBase64 },
+        body: { family: args.fonts.body, base64: bodyBase64 },
+      },
+      logo: logoBuffer ? {
+        buffer: logoBuffer,
+        position: (args.logoPosition as any) || 'bottom-right',
+        sizePct: args.logoSizePct || 12,
+      } : undefined,
+    })
+
+    return {
+      ok: true,
+      buffer: result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer,
+    }
+  } catch (error) {
+    console.error('[Render Text] Error:', error)
     return { ok: false, error: String(error) }
   }
 })

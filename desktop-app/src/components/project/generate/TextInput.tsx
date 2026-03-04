@@ -10,12 +10,12 @@ export default function TextInput({ value, onChange }: TextInputProps) {
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Digite o texto que aparecera na arte"
+        placeholder="Ex: Rodízio de massas todo sábado R$49,90. Das 12h às 22h. Reserve já!"
         rows={3}
         className="w-full resize-none rounded-lg border border-border bg-input px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all duration-200"
       />
       <p className="text-xs text-text-subtle">
-        Sem prompts — apenas o texto final que aparecera na arte
+        Digite todo o texto da arte. A IA organiza título, descrição e chamada automaticamente.
       </p>
     </div>
   )

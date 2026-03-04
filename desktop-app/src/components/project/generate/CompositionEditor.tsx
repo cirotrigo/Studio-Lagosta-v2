@@ -3,19 +3,19 @@ import { Upload, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 
-interface PoseEditorProps {
-  description: string
-  onDescriptionChange: (description: string) => void
+interface CompositionEditorProps {
+  compositionPrompt: string
+  onCompositionPromptChange: (prompt: string) => void
   referenceImages: File[]
   onReferenceImagesChange: (images: File[]) => void
 }
 
-export default function PoseEditor({
-  description,
-  onDescriptionChange,
+export default function CompositionEditor({
+  compositionPrompt,
+  onCompositionPromptChange,
   referenceImages,
   onReferenceImagesChange,
-}: PoseEditorProps) {
+}: CompositionEditorProps) {
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [isDragging, setIsDragging] = useState(false)
 
@@ -70,13 +70,13 @@ export default function PoseEditor({
 
   return (
     <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4 animate-in fade-in slide-in-from-top-2 duration-200">
-      <h4 className="text-sm font-medium text-text">Mudar Pose</h4>
+      <h4 className="text-sm font-medium text-text">Composição com IA</h4>
 
       {/* Description */}
       <textarea
-        value={description}
-        onChange={(e) => onDescriptionChange(e.target.value)}
-        placeholder="Descreva a pose desejada..."
+        value={compositionPrompt}
+        onChange={(e) => onCompositionPromptChange(e.target.value)}
+        placeholder="Ex: Coloque o prato sobre a mesa com pessoas sentadas no ambiente"
         rows={2}
         className="w-full resize-none rounded-lg border border-border bg-input px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
       />
@@ -84,7 +84,7 @@ export default function PoseEditor({
       {/* Reference Images */}
       <div className="space-y-2">
         <label className="text-xs text-text-muted">
-          Imagens de referencia (opcional, max 3)
+          Imagens de referência da cena (opcional, max 3)
         </label>
 
         <div className="flex gap-2">

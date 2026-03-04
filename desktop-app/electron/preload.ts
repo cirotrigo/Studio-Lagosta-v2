@@ -25,6 +25,16 @@ export interface ApiResponse {
   data: unknown
 }
 
+export interface RenderTextArgs {
+  imageBuffer: ArrayBuffer
+  textLayout: any
+  fonts: { title: string; body: string }
+  fontUrls?: { title?: string; body?: string }
+  logoUrl?: string
+  logoPosition?: string
+  logoSizePct?: number
+}
+
 export interface ElectronAPI {
   // Authentication
   login: () => Promise<LoginResult>
@@ -46,6 +56,9 @@ export interface ElectronAPI {
     position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left',
     sizePct: number
   ) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
+
+  // Text Rendering (text + overlay + logo via Sharp SVG)
+  renderText: (args: RenderTextArgs) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
 
   // App Info
   getVersion: () => Promise<string>
@@ -76,6 +89,9 @@ const electronAPI: ElectronAPI = {
   // Logo Overlay
   overlayLogo: (imageBuffer: ArrayBuffer, logoUrl: string, position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left', sizePct: number) =>
     ipcRenderer.invoke('image:overlay-logo', imageBuffer, logoUrl, position, sizePct),
+
+  // Text Rendering (text + overlay + logo via Sharp SVG)
+  renderText: (args: RenderTextArgs) => ipcRenderer.invoke('image:render-text', args),
 
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),
