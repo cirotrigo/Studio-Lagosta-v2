@@ -619,6 +619,25 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
 // IPC Handler - Download Blob (for binary data like images)
 ipcMain.handle('blob:download', async (_event, url: string) => {
   try {
+    // Handle base64 data URLs directly (e.g. from Gemini API)
+    if (url.startsWith('data:')) {
+      console.log('[Blob Download] Processing data URL...')
+      const matches = url.match(/^data:([^;]+);base64,(.+)$/)
+      if (!matches) {
+        return { ok: false, status: 0, error: 'Invalid data URL format' }
+      }
+      const contentType = matches[1]
+      const base64Data = matches[2]
+      const buffer = Buffer.from(base64Data, 'base64')
+      console.log('[Blob Download] Data URL decoded, size:', buffer.byteLength)
+      return {
+        ok: true,
+        status: 200,
+        buffer: buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength),
+        contentType,
+      }
+    }
+
     const cookies = await getFreshCookies()
     
     console.log('[Blob Download] Downloading:', url)

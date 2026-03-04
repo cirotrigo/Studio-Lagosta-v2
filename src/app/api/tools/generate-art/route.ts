@@ -18,7 +18,7 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
   SQUARE: { width: 1024, height: 1024, label: 'quadrado (1024x1024)' },
 }
 
-const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
+const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent'
 
 // --- Zod Schema ---
 
