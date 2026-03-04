@@ -19,8 +19,14 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
 }
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
-const GEMINI_PRIMARY_MODEL = 'gemini-3.1-flash-image-preview' // Nano Banana 2
-const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-image'
+const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash-image' // Nano Banana 2 - stable
+const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash-exp' // legacy fallback
+
+const GEMINI_ASPECT_RATIOS: Record<string, string> = {
+  FEED_PORTRAIT: '4:5',
+  STORY: '9:16',
+  SQUARE: '1:1',
+}
 
 // --- Zod Schema ---
 
@@ -333,23 +339,23 @@ async function callGeminiImageGeneration(
   model: string,
   apiKey: string,
   contentParts: any[],
-  systemInstruction: string,
+  aspectRatio: string,
 ): Promise<{ buffer: Buffer; mimeType: string }> {
-  const url = `${GEMINI_BASE_URL}/${model}:generateContent?key=${apiKey}`
-  console.log(`[generate-art] Trying model: ${model}`)
+  const url = `${GEMINI_BASE_URL}/${model}:generateContent`
+  console.log(`[generate-art] Trying model: ${model}, aspectRatio: ${aspectRatio}`)
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
-      system_instruction: {
-        parts: [{ text: systemInstruction }],
-      },
       contents: [{
         parts: contentParts,
       }],
       generationConfig: {
-        responseModalities: ['IMAGE', 'TEXT'],
+        responseModalities: ['TEXT', 'IMAGE'],
         temperature: 0.4,
       },
     }),
@@ -357,14 +363,32 @@ async function callGeminiImageGeneration(
 
   if (!response.ok) {
     const errorBody = await response.text()
-    console.error(`[generate-art] Gemini (${model}) error:`, response.status, errorBody.substring(0, 300))
+    console.error(`[generate-art] Gemini (${model}) error:`, response.status, errorBody.substring(0, 500))
     throw new Error(`Gemini ${model} error: ${response.status}`)
   }
 
   const result = await response.json()
 
-  // Extract generated image from response
+  // Debug: log response structure
   const candidates = result.candidates || []
+  console.log(`[generate-art] Gemini (${model}) response: ${candidates.length} candidates`)
+  for (let i = 0; i < candidates.length; i++) {
+    const parts = candidates[i].content?.parts || []
+    const finishReason = candidates[i].finishReason
+    console.log(`[generate-art]   candidate[${i}]: ${parts.length} parts, finishReason=${finishReason}`)
+    for (let j = 0; j < parts.length; j++) {
+      const p = parts[j]
+      if (p.inline_data) {
+        console.log(`[generate-art]     part[${j}]: inline_data mime=${p.inline_data.mime_type}, dataLen=${p.inline_data.data?.length || 0}`)
+      } else if (p.text) {
+        console.log(`[generate-art]     part[${j}]: text="${p.text.substring(0, 100)}"`)
+      } else {
+        console.log(`[generate-art]     part[${j}]: keys=${Object.keys(p).join(',')}`)
+      }
+    }
+  }
+
+  // Extract generated image from response
   for (const candidate of candidates) {
     for (const part of candidate.content?.parts || []) {
       if (part.inline_data?.data) {
@@ -377,6 +401,8 @@ async function callGeminiImageGeneration(
     }
   }
 
+  // If we got here, log the full response for debugging
+  console.error(`[generate-art] Gemini (${model}) full response:`, JSON.stringify(result).substring(0, 1000))
   throw new Error(`Gemini (${model}) did not return an image`)
 }
 
@@ -389,11 +415,17 @@ async function callNanoBanana2(
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured')
 
   const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
+  const aspectRatio = GEMINI_ASPECT_RATIOS[format] || '4:5'
+
+  // Embed system instruction directly in the prompt (system_instruction may not work with image generation models)
+  const roleInstruction = photoUrl
+    ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image.'
+    : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media.'
   
+  const fullPrompt = `${roleInstruction}\n\nIMPORTANT: Generate ONLY an image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.\n\n${prompt}\n\nGenerate an image with ${aspectRatio} aspect ratio for ${formatInfo.label}.`
+
   // Build content parts
-  const contentParts: any[] = [
-    { text: `${prompt}\n\nGenerate an image with aspect ratio appropriate for ${formatInfo.label}.` },
-  ]
+  const contentParts: any[] = [{ text: fullPrompt }]
 
   // If photo provided, include it as reference
   if (photoUrl) {
@@ -419,18 +451,13 @@ async function callNanoBanana2(
     contentParts.push({ inline_data: { mime_type: mimeType, data: photoBase64 } })
   }
 
-  // System instruction varies based on whether we have a photo
-  const systemInstruction = photoUrl
-    ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
-    : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
-
-  // Try primary model (Nano Banana 2), fallback to stable model
-  console.log(`[generate-art] Calling Nano Banana 2 (Gemini) ${photoUrl ? 'with photo' : 'without photo'}...`)
+  // Try primary model, fallback to secondary
+  console.log(`[generate-art] Calling Gemini ${photoUrl ? 'with photo' : 'without photo'}...`)
   try {
-    return await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, systemInstruction)
+    return await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, aspectRatio)
   } catch (primaryError: any) {
     console.warn(`[generate-art] Primary model (${GEMINI_PRIMARY_MODEL}) failed: ${primaryError.message}. Falling back to ${GEMINI_FALLBACK_MODEL}...`)
-    return await callGeminiImageGeneration(GEMINI_FALLBACK_MODEL, apiKey, contentParts, systemInstruction)
+    return await callGeminiImageGeneration(GEMINI_FALLBACK_MODEL, apiKey, contentParts, aspectRatio)
   }
 }
 
