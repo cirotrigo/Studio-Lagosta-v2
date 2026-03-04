@@ -32,6 +32,13 @@ export default function StyleAnalysisSection({ projectId }: StyleAnalysisSection
     }
   }, [analysisResult, styleData])
 
+  // Initialize uploadedUrls from existing DB data so they're preserved on save
+  useEffect(() => {
+    if (styleData?.referenceImageUrls && styleData.referenceImageUrls.length > 0 && uploadedUrls.length === 0) {
+      setUploadedUrls(styleData.referenceImageUrls)
+    }
+  }, [styleData])
+
   // Generate preview URLs for selected files
   useEffect(() => {
     const urls = referenceImages.map((file) => URL.createObjectURL(file))

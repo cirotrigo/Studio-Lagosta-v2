@@ -631,6 +631,11 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Erro ao buscar assets da marca' }, { status: 500 })
   }
 
+  console.log(`[generate-art] Brand assets loaded: name="${brandAssets.name}", colors=${brandAssets.colors.length}, referenceUrls=${brandAssets.referenceImageUrls.length}, hasVisualElements=${!!brandAssets.visualElements}, styleDesc=${brandAssets.styleDescription ? 'yes' : 'no'}`)
+  if (brandAssets.referenceImageUrls.length > 0) {
+    console.log(`[generate-art] Reference URLs: ${brandAssets.referenceImageUrls.map(u => u.substring(0, 60) + '...').join(', ')}`)
+  }
+
   if (body.styleDescription) {
     brandAssets.styleDescription = body.styleDescription
   }
