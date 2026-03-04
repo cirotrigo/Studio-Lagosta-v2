@@ -890,8 +890,8 @@ ipcMain.handle('image:render-text', async (_event, args: {
       imageBuffer: Buffer.from(args.imageBuffer),
       textLayout: args.textLayout,
       fonts: {
-        title: { family: args.fonts.title, base64: titleBase64 },
-        body: { family: args.fonts.body, base64: bodyBase64 },
+        title: { family: args.fonts.title, base64: titleBase64, path: titlePath },
+        body: { family: args.fonts.body, base64: bodyBase64, path: bodyPath },
       },
       logo: logoBuffer ? {
         buffer: logoBuffer,
