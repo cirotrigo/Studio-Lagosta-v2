@@ -24,7 +24,7 @@ const IDEOGRAM_ASPECT_RATIOS: Record<string, string> = {
   SQUARE: 'ASPECT_1_1',
 }
 
-const IDEOGRAM_API_URL = 'https://api.ideogram.ai'
+const IDEOGRAM_API_URL = 'https://api.ideogram.ai/v1/ideogram-v3'
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
 
 // --- Zod Schema ---
@@ -370,32 +370,42 @@ async function callIdeogramGenerate(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
 
-  // Use legacy endpoint with JSON body + model V_3 (most reliable on Node.js)
-  const imageRequest: Record<string, any> = {
-    prompt,
-    negative_prompt: 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles',
-    aspect_ratio: options.aspectRatio,
-    model: 'V_3',
-    magic_prompt_option: 'OFF',
-    num_images: options.numImages,
-    style_type: 'GENERAL',
+  // V3 endpoint requires multipart/form-data - build manually with Buffer for Node.js compatibility
+  const boundary = `----IdeogramBoundary${Date.now()}`
+  const parts: Buffer[] = []
+
+  // Helper to add text field
+  const addTextField = (name: string, value: string) => {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
   }
 
-  // Color palette
+  addTextField('prompt', prompt)
+  addTextField('negative_prompt', 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles')
+  addTextField('aspect_ratio', options.aspectRatio)
+  addTextField('magic_prompt', 'OFF')
+  addTextField('num_images', String(options.numImages))
+  addTextField('style_type', 'GENERAL')
+
+  // Color palette as JSON string
   if (options.colors.length > 0) {
-    imageRequest.color_palette = {
+    addTextField('color_palette', JSON.stringify({
       members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
-    }
+    }))
   }
 
-  console.log('[generate-art] Calling Ideogram /generate (V_3 model)...')
+  // Close boundary
+  parts.push(Buffer.from(`--${boundary}--\r\n`))
+
+  const bodyBuffer = Buffer.concat(parts)
+
+  console.log('[generate-art] Calling Ideogram V3 /generate (manual multipart)...')
   const response = await fetch(`${IDEOGRAM_API_URL}/generate`, {
     method: 'POST',
     headers: {
       'Api-Key': apiKey,
-      'Content-Type': 'application/json',
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
     },
-    body: JSON.stringify({ image_request: imageRequest }),
+    body: bodyBuffer,
   })
 
   if (!response.ok) {
@@ -505,48 +515,44 @@ async function callIdeogramRemix(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
 
-  // Use legacy endpoint with manual multipart (more reliable on Node.js than FormData+Blob)
-  const imageRequest: Record<string, any> = {
-    prompt: options.prompt,
-    negative_prompt: 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles',
-    aspect_ratio: options.aspectRatio,
-    model: 'V_3',
-    magic_prompt_option: 'OFF',
-    num_images: options.numImages,
-    style_type: 'GENERAL',
-    image_weight: 50,
-  }
-
-  if (options.colors.length > 0) {
-    imageRequest.color_palette = {
-      members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
-    }
-  }
-
-  // Build multipart form data manually with Buffer (reliable on Node.js)
+  // V3 endpoint requires multipart/form-data with flat fields - build manually with Buffer
   const boundary = `----IdeogramBoundary${Date.now()}`
   const parts: Buffer[] = []
 
-  // image_file part
+  // Helper to add text field
+  const addTextField = (name: string, value: string) => {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
+  }
+
+  // Image file (the Gemini scene) - V3 uses "image" field name
   parts.push(Buffer.from(
-    `--${boundary}\r\nContent-Disposition: form-data; name="image_file"; filename="scene.png"\r\nContent-Type: image/png\r\n\r\n`
+    `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="scene.png"\r\nContent-Type: image/png\r\n\r\n`
   ))
   parts.push(imageBuffer)
   parts.push(Buffer.from('\r\n'))
 
-  // image_request part (JSON)
-  parts.push(Buffer.from(
-    `--${boundary}\r\nContent-Disposition: form-data; name="image_request"\r\nContent-Type: application/json\r\n\r\n`
-  ))
-  parts.push(Buffer.from(JSON.stringify(imageRequest)))
-  parts.push(Buffer.from('\r\n'))
+  // Text fields (flat, not wrapped in image_request)
+  addTextField('prompt', options.prompt)
+  addTextField('negative_prompt', 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles')
+  addTextField('aspect_ratio', options.aspectRatio)
+  addTextField('magic_prompt', 'OFF')
+  addTextField('num_images', String(options.numImages))
+  addTextField('style_type', 'GENERAL')
+  addTextField('image_weight', '50')
+
+  // Color palette as JSON string
+  if (options.colors.length > 0) {
+    addTextField('color_palette', JSON.stringify({
+      members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
+    }))
+  }
 
   // Close boundary
   parts.push(Buffer.from(`--${boundary}--\r\n`))
 
   const bodyBuffer = Buffer.concat(parts)
 
-  console.log('[generate-art] Calling Ideogram /remix (V_3 model, manual multipart)...')
+  console.log('[generate-art] Calling Ideogram V3 /remix (manual multipart)...')
   const response = await fetch(`${IDEOGRAM_API_URL}/remix`, {
     method: 'POST',
     headers: {
