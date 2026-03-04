@@ -550,53 +550,78 @@ export async function POST(request: Request) {
       console.error('[generate-art] Text separation failed, will skip text rendering:', e)
     }
 
-    // --- Step 2: Generate visual prompt with GPT-4o-mini ---
+    // --- Determine generation mode ---
     const hasPhoto = body.usePhoto && !!body.photoUrl
-    console.log(`[generate-art] Step 2: Generating visual prompt (hasPhoto=${hasPhoto})`)
+    const useAIComposition = body.compositionEnabled && hasPhoto
+    const usePhotoDirectly = hasPhoto && !body.compositionEnabled
+    console.log(`[generate-art] Mode: hasPhoto=${hasPhoto}, compositionEnabled=${body.compositionEnabled}, useAIComposition=${useAIComposition}, usePhotoDirectly=${usePhotoDirectly}`)
 
-    const systemPrompt = buildGeminiPromptSystemPrompt(
-      brandAssets,
-      body.format,
-      hasPhoto,
-      body.compositionEnabled ? body.compositionPrompt : undefined,
-    )
-
-    const { text: technicalPrompt } = await generateText({
-      model: openai('gpt-4o-mini'),
-      system: systemPrompt,
-      prompt: `Texto para a arte: "${body.text}"`,
-      temperature: 0.7,
-    })
-
-    console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 200) + '...')
-
-    // --- Step 3: Generate image(s) with Gemini (Nano Banana 2) ---
-    console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini...`)
+    const formatInfo = FORMAT_DIMENSIONS[body.format]
     const generatedImages: GeneratedImage[] = []
+    let technicalPrompt = ''
 
-    for (let i = 0; i < body.variations; i++) {
-      console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
-      const { buffer, mimeType } = await callNanoBanana2(
-        technicalPrompt,
-        hasPhoto ? body.photoUrl : undefined,
-        body.format,
-      )
-
-      // Resize to exact format dimensions with Sharp
-      const formatInfo = FORMAT_DIMENSIONS[body.format]
-      const resizedBuffer = await sharp(buffer)
+    if (usePhotoDirectly) {
+      // --- Mode A: Use photo directly (no AI generation) ---
+      console.log('[generate-art] Step 2: Using photo directly (no AI composition)...')
+      
+      // Download and resize the photo
+      const photoResponse = await fetch(body.photoUrl!)
+      if (!photoResponse.ok) throw new Error('Failed to fetch photo')
+      const photoBuffer = Buffer.from(await photoResponse.arrayBuffer())
+      
+      const resizedBuffer = await sharp(photoBuffer)
         .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
         .jpeg({ quality: 90 })
         .toBuffer()
 
-      // Convert to base64 data URL for frontend consumption
       const base64 = resizedBuffer.toString('base64')
       const imageUrl = `data:image/jpeg;base64,${base64}`
+      technicalPrompt = 'Photo used directly (no AI composition)'
 
-      generatedImages.push({
-        url: imageUrl,
-        prompt: technicalPrompt,
+      // For variations with direct photo, use the same image but different text positions
+      for (let i = 0; i < body.variations; i++) {
+        generatedImages.push({ url: imageUrl, prompt: technicalPrompt })
+      }
+    } else {
+      // --- Mode B: Generate image(s) with Gemini ---
+      console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o-mini...')
+
+      const systemPrompt = buildGeminiPromptSystemPrompt(
+        brandAssets,
+        body.format,
+        useAIComposition,
+        body.compositionEnabled ? body.compositionPrompt : undefined,
+      )
+
+      const { text: prompt } = await generateText({
+        model: openai('gpt-4o-mini'),
+        system: systemPrompt,
+        prompt: `Texto para a arte: "${body.text}"`,
+        temperature: 0.7,
       })
+      technicalPrompt = prompt
+
+      console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 200) + '...')
+      console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini...`)
+
+      for (let i = 0; i < body.variations; i++) {
+        console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
+        const { buffer } = await callNanoBanana2(
+          technicalPrompt,
+          useAIComposition ? body.photoUrl : undefined,
+          body.format,
+        )
+
+        const resizedBuffer = await sharp(buffer)
+          .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
+          .jpeg({ quality: 90 })
+          .toBuffer()
+
+        const base64 = resizedBuffer.toString('base64')
+        const imageUrl = `data:image/jpeg;base64,${base64}`
+
+        generatedImages.push({ url: imageUrl, prompt: technicalPrompt })
+      }
     }
 
     if (generatedImages.length === 0) {
@@ -607,12 +632,16 @@ export async function POST(request: Request) {
     console.log('[generate-art] Step 4: Positioning text with Vision...')
     const results: Array<{ imageUrl: string; prompt: string; textLayout?: TextLayout }> = []
 
-    for (const img of generatedImages) {
+    // For direct photo mode with variations, we use the same image but request different layouts
+    const uniqueImages = usePhotoDirectly ? [generatedImages[0]] : generatedImages
+    
+    for (let i = 0; i < generatedImages.length; i++) {
+      const img = usePhotoDirectly ? uniqueImages[0] : generatedImages[i]
       let textLayout: TextLayout | undefined
       if (textElements.length > 0) {
         try {
           textLayout = await positionTextWithVision(img.url, textElements, body.format)
-          console.log('[generate-art] Text positioned for image')
+          console.log(`[generate-art] Text positioned for variation ${i + 1}`)
         } catch (e) {
           console.error('[generate-art] Vision positioning failed for image, skipping text:', e)
         }
@@ -625,17 +654,23 @@ export async function POST(request: Request) {
     }
 
     // --- Step 5: Build response ---
+    // Debug font configuration
+    console.log(`[generate-art] Font config: titleFontFamily="${brandAssets.titleFontFamily}", bodyFontFamily="${brandAssets.bodyFontFamily}"`)
+    
     let fontUrls: { title?: string; body?: string } | undefined
     if (brandAssets.titleFontFamily || brandAssets.bodyFontFamily) {
       const customFonts = await db.customFont.findMany({
         where: { projectId: body.projectId },
         select: { fontFamily: true, fileUrl: true },
       })
+      console.log(`[generate-art] CustomFonts in DB: ${JSON.stringify(customFonts.map(f => f.fontFamily))}`)
+      
       const fontMap = Object.fromEntries(customFonts.map((f) => [f.fontFamily, f.fileUrl]))
       fontUrls = {
         title: brandAssets.titleFontFamily ? fontMap[brandAssets.titleFontFamily] : undefined,
         body: brandAssets.bodyFontFamily ? fontMap[brandAssets.bodyFontFamily] : undefined,
       }
+      console.log(`[generate-art] Resolved fontUrls: title=${!!fontUrls.title}, body=${!!fontUrls.body}`)
     }
 
     console.log(`[generate-art] Done! Generated ${results.length} images with Gemini`)
