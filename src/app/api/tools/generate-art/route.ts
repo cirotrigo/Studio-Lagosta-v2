@@ -19,8 +19,8 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
 }
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
-const GEMINI_PRIMARY_MODEL = 'gemini-2.5-flash-image' // Nano Banana 2 - stable
-const GEMINI_FALLBACK_MODEL = 'gemini-2.0-flash' // fallback
+const GEMINI_PRIMARY_MODEL = 'gemini-3.1-flash-image-preview' // Nano Banana 2
+const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-image' // stable fallback
 
 const GEMINI_ASPECT_RATIOS: Record<string, string> = {
   FEED_PORTRAIT: '4:5',
