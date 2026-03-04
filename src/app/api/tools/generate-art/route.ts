@@ -46,6 +46,12 @@ const generateArtSchema = z.object({
 
 // --- Types ---
 
+interface VisualElements {
+  layouts?: string[]
+  typography?: string[]
+  patterns?: string[]
+}
+
 interface BrandAssets {
   name: string
   colors: string[]
@@ -53,6 +59,7 @@ interface BrandAssets {
   cuisineType: string | null
   instagramUsername: string | null
   referenceImageUrls: string[]
+  visualElements: VisualElements | null
   titleFontFamily: string | null
   bodyFontFamily: string | null
   logoUrl: string | null
@@ -102,6 +109,7 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
       name: true,
       instagramUsername: true,
       brandStyleDescription: true,
+      brandVisualElements: true,
       cuisineType: true,
       brandReferenceUrls: true,
       titleFontFamily: true,
@@ -129,6 +137,7 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
     cuisineType: project.cuisineType ?? null,
     instagramUsername: project.instagramUsername,
     referenceImageUrls: project.brandReferenceUrls ?? [],
+    visualElements: (project.brandVisualElements as VisualElements) ?? null,
     titleFontFamily: project.titleFontFamily ?? null,
     bodyFontFamily: project.bodyFontFamily ?? null,
     logoUrl: project.Logo?.[0]?.fileUrl ?? null,
@@ -148,7 +157,32 @@ function buildGeminiPromptSystemPrompt(
     ? brandAssets.colors.join(', ')
     : 'neutral and elegant tones'
 
-  const basePrompt = `You are a professional graphic designer and food photographer specialized in creating stunning visuals for restaurants.
+  const ve = brandAssets.visualElements
+
+  // Build composition guidelines from visual elements analysis
+  let compositionGuidelines = ''
+  if (ve && (ve.layouts?.length || ve.typography?.length || ve.patterns?.length)) {
+    const parts: string[] = []
+    if (ve.layouts?.length) parts.push(`- Layout patterns: ${ve.layouts.join(', ')}`)
+    if (ve.patterns?.length) parts.push(`- Visual elements & patterns: ${ve.patterns.join(', ')}`)
+    if (ve.typography?.length) parts.push(`- Typography style: ${ve.typography.join(', ')}`)
+    compositionGuidelines = `\nBRAND COMPOSITION GUIDELINES (from brand reference analysis):\n${parts.join('\n')}\n→ Apply these composition principles to match the brand's established visual language.\n`
+  }
+
+  // Derive text area strategy from layout analysis
+  let textAreaInstruction = 'Leave clean areas in the composition for text overlay (typically bottom third)'
+  if (ve?.layouts?.length) {
+    const layoutStr = ve.layouts.join(' ').toLowerCase()
+    if (layoutStr.includes('bottom') || layoutStr.includes('inferior') || layoutStr.includes('lower')) {
+      textAreaInstruction = 'Reserve the bottom 30% as a clean, darker area for text overlay — use a subtle gradient or solid color zone'
+    } else if (layoutStr.includes('center') || layoutStr.includes('central')) {
+      textAreaInstruction = 'Leave the center area clean for text overlay with sufficient contrast'
+    } else if (layoutStr.includes('top') || layoutStr.includes('superior') || layoutStr.includes('upper')) {
+      textAreaInstruction = 'Reserve the top 30% as a clean area for text overlay'
+    }
+  }
+
+  const basePrompt = `You are a professional graphic designer creating social media art for ${brandAssets.name}${brandAssets.cuisineType ? `, a ${brandAssets.cuisineType} brand` : ''}. Match their established visual identity precisely.
 
 BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
 - Brand colors (hex): ${colorList}
@@ -156,7 +190,7 @@ BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
 - Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
 - Art format: ${formatInfo.label} (${formatInfo.width}x${formatInfo.height})
 ${compositionPrompt ? `- Composition direction: ${compositionPrompt}` : ''}
-
+${compositionGuidelines}
 ABSOLUTELY CRITICAL - DO NOT VIOLATE:
 - NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
 - NEVER describe labels, signs, menus, titles, watermarks, or typography
@@ -174,7 +208,7 @@ DESCRIBE:
 - Camera angle and depth of field (shallow DOF recommended)
 - Lighting: natural light, warm tones, or professional studio
 - Atmosphere and mood matching ${brandAssets.cuisineType || 'restaurant'} environment
-- Leave clean areas in the composition for text overlay (typically top or bottom third)
+- ${textAreaInstruction}
 
 RESPONSE FORMAT:
 Respond ONLY with the visual prompt in English (max 200 words).
@@ -184,14 +218,14 @@ End your prompt with: "Pure photography, absolutely no text, letters, words, num
   return `${basePrompt}
 
 YOUR TASK:
-Create a prompt for an AI image generator (Gemini) to generate a stunning visual for a restaurant social media post.
+Create a prompt for an AI image generator (Gemini) to generate a stunning visual for a social media post.
 
 DESCRIBE:
-- Abstract/artistic visual composition using brand colors: ${colorList}
-- Professional graphic design elements (gradients, shapes, patterns)
+- Visual composition using brand colors: ${colorList}
+- Professional graphic design elements (gradients, shapes, patterns) matching the brand style
 - Food photography elements if relevant (ingredients, dishes, atmosphere)
 - Lighting and visual mood matching the brand style
-- Clean areas in the composition for text overlay (typically center or bottom)
+- ${textAreaInstruction}
 
 RESPONSE FORMAT:
 Respond ONLY with the visual prompt in English (max 200 words).
@@ -269,6 +303,7 @@ async function positionTextWithVision(
   imageUrl: string,
   textElements: TextElement[],
   format: string,
+  brandLayouts?: string[],
 ): Promise<TextLayout> {
   const formatInfo = FORMAT_DIMENSIONS[format]
   const elementsDesc = textElements.map((el) =>
@@ -281,6 +316,12 @@ async function positionTextWithVision(
     lg: Math.round(formatInfo.width * 0.04),   // ~43px
     md: Math.round(formatInfo.width * 0.03),   // ~32px
     sm: Math.round(formatInfo.width * 0.022),  // ~24px
+  }
+
+  // Build brand layout preferences section if available
+  let brandLayoutSection = ''
+  if (brandLayouts && brandLayouts.length > 0) {
+    brandLayoutSection = `\nBRAND LAYOUT PREFERENCES (from style analysis of brand references):\n${brandLayouts.map(l => `- ${l}`).join('\n')}\n→ Prioritize positioning that matches these brand layout patterns.\n`
   }
 
   const { text: rawText } = await generateText({
@@ -307,7 +348,7 @@ SIZE REFERENCE (in pixels):
 - lg: ${sizeMap.lg}px
 - md: ${sizeMap.md}px
 - sm: ${sizeMap.sm}px
-
+${brandLayoutSection}
 POSITIONING RULES:
 1. NEVER place text over the main visual subject (food, product, person)
 2. If the main subject is in the top/center, place text in the bottom third
@@ -351,6 +392,47 @@ The root object MUST have "elements", "shadow", and "overlay" as direct top-leve
 
   const validated = textLayoutSchema.parse(layoutData)
   return validated as TextLayout
+}
+
+// --- Reference Image Preparation ---
+
+interface PreparedRefImage {
+  base64: string
+  mimeType: string
+}
+
+async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[]> {
+  if (!urls.length) return []
+
+  const results = await Promise.allSettled(
+    urls.slice(0, 2).map(async (url) => {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`Failed to fetch ref image: ${response.status}`)
+
+      let buffer = Buffer.from(await response.arrayBuffer())
+      const contentType = response.headers.get('content-type') || 'image/jpeg'
+
+      // Resize to max 800px to reduce payload for Gemini
+      if (buffer.length > 2 * 1024 * 1024) {
+        buffer = Buffer.from(await sharp(buffer)
+          .resize({ width: 800, fit: 'inside' })
+          .jpeg({ quality: 80 })
+          .toBuffer())
+      }
+
+      return {
+        base64: buffer.toString('base64'),
+        mimeType: contentType.startsWith('image/') ? contentType : 'image/jpeg',
+      }
+    })
+  )
+
+  const prepared = results
+    .filter((r): r is PromiseFulfilledResult<PreparedRefImage> => r.status === 'fulfilled')
+    .map((r) => r.value)
+
+  console.log(`[generate-art] Prepared ${prepared.length}/${urls.length} reference images`)
+  return prepared
 }
 
 // --- Nano Banana 2 (Gemini) ---
@@ -434,6 +516,7 @@ async function callNanoBanana2(
   prompt: string,
   photoUrl?: string,
   format: string = 'FEED_PORTRAIT',
+  referenceImages?: PreparedRefImage[],
 ): Promise<{ buffer: Buffer; mimeType: string }> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured')
@@ -441,15 +524,28 @@ async function callNanoBanana2(
   const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
   const aspectRatio = GEMINI_ASPECT_RATIOS[format] || '4:5'
 
+  const hasRefs = referenceImages && referenceImages.length > 0
+
   // Embed system instruction directly in the prompt (system_instruction may not work with image generation models)
   const roleInstruction = photoUrl
     ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image.'
     : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media.'
   
-  const fullPrompt = `${roleInstruction}\n\nIMPORTANT: Generate ONLY an image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.\n\n${prompt}\n\nGenerate an image with ${aspectRatio} aspect ratio for ${formatInfo.label}.`
+  // Build content parts with reference images first for style context
+  const contentParts: any[] = [{ text: roleInstruction }]
 
-  // Build content parts
-  const contentParts: any[] = [{ text: fullPrompt }]
+  // Add reference images BEFORE the prompt so Gemini sees the style first
+  if (hasRefs) {
+    for (const ref of referenceImages!) {
+      contentParts.push({ inline_data: { mime_type: ref.mimeType, data: ref.base64 } })
+    }
+    contentParts.push({ text: 'The images above are brand style references. Study their composition, color palette, spacing, lighting, and visual mood carefully. Now generate a NEW, ORIGINAL image that matches this exact aesthetic style for the following description:' })
+    console.log(`[generate-art] Added ${referenceImages!.length} style reference images to Gemini request`)
+  }
+
+  // Add the main prompt
+  const mainPrompt = `IMPORTANT: Generate ONLY an image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.\n\n${prompt}\n\nGenerate an image with ${aspectRatio} aspect ratio for ${formatInfo.label}.`
+  contentParts.push({ text: mainPrompt })
 
   // If photo provided, include it as reference
   if (photoUrl) {
@@ -476,7 +572,7 @@ async function callNanoBanana2(
   }
 
   // Try primary model, fallback to secondary
-  console.log(`[generate-art] Calling Gemini ${photoUrl ? 'with photo' : 'without photo'}...`)
+  console.log(`[generate-art] Calling Gemini with ${contentParts.length} content parts (refs=${hasRefs ? referenceImages!.length : 0}, photo=${photoUrl ? 'yes' : 'no'})...`)
   try {
     return await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, aspectRatio)
   } catch (primaryError: any) {
@@ -586,12 +682,20 @@ export async function POST(request: Request) {
       // --- Mode B: Generate image(s) with Gemini ---
       console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o-mini...')
 
+      // Log visual elements if available
+      if (brandAssets.visualElements) {
+        console.log('[generate-art] Loaded visualElements:', JSON.stringify(brandAssets.visualElements))
+      }
+
       const systemPrompt = buildGeminiPromptSystemPrompt(
         brandAssets,
         body.format,
         useAIComposition,
         body.compositionEnabled ? body.compositionPrompt : undefined,
       )
+
+      // Pre-fetch reference images ONCE before the variations loop
+      const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 2))
 
       const { text: prompt } = await generateText({
         model: openai('gpt-4o-mini'),
@@ -602,7 +706,7 @@ export async function POST(request: Request) {
       technicalPrompt = prompt
 
       console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 200) + '...')
-      console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini...`)
+      console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini (${refImages.length} style refs)...`)
 
       for (let i = 0; i < body.variations; i++) {
         console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
@@ -610,6 +714,7 @@ export async function POST(request: Request) {
           technicalPrompt,
           useAIComposition ? body.photoUrl : undefined,
           body.format,
+          refImages.length > 0 ? refImages : undefined,
         )
 
         const resizedBuffer = await sharp(buffer)
@@ -640,7 +745,7 @@ export async function POST(request: Request) {
       let textLayout: TextLayout | undefined
       if (textElements.length > 0) {
         try {
-          textLayout = await positionTextWithVision(img.url, textElements, body.format)
+          textLayout = await positionTextWithVision(img.url, textElements, body.format, brandAssets.visualElements?.layouts)
           console.log(`[generate-art] Text positioned for variation ${i + 1}`)
         } catch (e) {
           console.error('[generate-art] Vision positioning failed for image, skipping text:', e)
