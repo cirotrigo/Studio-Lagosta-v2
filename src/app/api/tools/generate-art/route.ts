@@ -24,7 +24,7 @@ const IDEOGRAM_ASPECT_RATIOS: Record<string, string> = {
   SQUARE: 'ASPECT_1_1',
 }
 
-const IDEOGRAM_API_URL = 'https://api.ideogram.ai/v1/ideogram'
+const IDEOGRAM_API_URL = 'https://api.ideogram.ai'
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
 
 // --- Zod Schema ---
@@ -370,35 +370,32 @@ async function callIdeogramGenerate(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
 
-  const body: Record<string, any> = {
+  // Use legacy endpoint with JSON body + model V_3 (most reliable on Node.js)
+  const imageRequest: Record<string, any> = {
     prompt,
+    negative_prompt: 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles',
     aspect_ratio: options.aspectRatio,
     model: 'V_3',
-    magic_prompt_option: 'ON',
+    magic_prompt_option: 'OFF',
     num_images: options.numImages,
     style_type: 'GENERAL',
   }
 
-  // Add color palette if colors available (max 5)
+  // Color palette
   if (options.colors.length > 0) {
-    body.color_palette = {
+    imageRequest.color_palette = {
       members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
     }
   }
 
-  // Add style reference images if available
-  if (options.styleReferenceUrls && options.styleReferenceUrls.length > 0) {
-    body.style_reference_images = options.styleReferenceUrls.map((url) => ({ url }))
-  }
-
-  console.log('[generate-art] Calling Ideogram /generate...')
+  console.log('[generate-art] Calling Ideogram /generate (V_3 model)...')
   const response = await fetch(`${IDEOGRAM_API_URL}/generate`, {
     method: 'POST',
     headers: {
       'Api-Key': apiKey,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ image_request: imageRequest }),
   })
 
   if (!response.ok) {
@@ -410,7 +407,7 @@ async function callIdeogramGenerate(
     if (response.status === 400 && errorBody.includes('content_policy')) {
       throw new IdeogramError('content_policy', 'O conteúdo solicitado viola as políticas de uso. Tente reformular o texto.')
     }
-    throw new Error(`Ideogram API error: ${response.status}`)
+    throw new Error(`Ideogram API error: ${response.status} - ${errorBody.substring(0, 200)}`)
   }
 
   const result = await response.json()
@@ -508,11 +505,13 @@ async function callIdeogramRemix(
   const apiKey = process.env.IDEOGRAM_API_KEY
   if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
 
+  // Use legacy endpoint with manual multipart (more reliable on Node.js than FormData+Blob)
   const imageRequest: Record<string, any> = {
     prompt: options.prompt,
+    negative_prompt: 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles',
     aspect_ratio: options.aspectRatio,
     model: 'V_3',
-    magic_prompt_option: 'ON',
+    magic_prompt_option: 'OFF',
     num_images: options.numImages,
     style_type: 'GENERAL',
     image_weight: 50,
@@ -524,8 +523,8 @@ async function callIdeogramRemix(
     }
   }
 
-  // Build multipart form data
-  const boundary = `----FormBoundary${Date.now()}`
+  // Build multipart form data manually with Buffer (reliable on Node.js)
+  const boundary = `----IdeogramBoundary${Date.now()}`
   const parts: Buffer[] = []
 
   // image_file part
@@ -535,7 +534,7 @@ async function callIdeogramRemix(
   parts.push(imageBuffer)
   parts.push(Buffer.from('\r\n'))
 
-  // image_request part
+  // image_request part (JSON)
   parts.push(Buffer.from(
     `--${boundary}\r\nContent-Disposition: form-data; name="image_request"\r\nContent-Type: application/json\r\n\r\n`
   ))
@@ -547,7 +546,7 @@ async function callIdeogramRemix(
 
   const bodyBuffer = Buffer.concat(parts)
 
-  console.log('[generate-art] Calling Ideogram /remix...')
+  console.log('[generate-art] Calling Ideogram /remix (V_3 model, manual multipart)...')
   const response = await fetch(`${IDEOGRAM_API_URL}/remix`, {
     method: 'POST',
     headers: {
@@ -566,7 +565,7 @@ async function callIdeogramRemix(
     if (response.status === 400 && errorBody.includes('content_policy')) {
       throw new IdeogramError('content_policy', 'O conteúdo solicitado viola as políticas de uso. Tente reformular o texto.')
     }
-    throw new Error(`Ideogram remix API error: ${response.status}`)
+    throw new Error(`Ideogram remix API error: ${response.status} - ${errorBody.substring(0, 200)}`)
   }
 
   const result = await response.json()
@@ -663,7 +662,9 @@ export async function POST(request: Request) {
     }
 
     // --- Step 2: Generate image (without text) ---
-    const isComposition = body.compositionEnabled && body.usePhoto && !!body.photoUrl
+    // Use photo path whenever a photo is provided, composition just adds extra prompt
+    const hasPhoto = body.usePhoto && !!body.photoUrl
+    const usePhotoPath = hasPhoto && !!process.env.GOOGLE_GENERATIVE_AI_API_KEY
     let ideogramImages: IdeogramImage[] = []
     let provider = 'ideogram-3'
     let technicalPrompt = ''
@@ -681,15 +682,15 @@ export async function POST(request: Request) {
       styleReferenceUrls: styleReferenceUrls.length > 0 ? styleReferenceUrls : undefined,
     }
 
-    if (isComposition && process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-      // --- Path B: Composition with Gemini + Ideogram Remix ---
-      console.log('[generate-art] Step 2: Path B — Composition (Gemini + Ideogram Remix)')
+    if (usePhotoPath) {
+      // --- Path B: Photo-based with Gemini + Ideogram Remix ---
+      console.log('[generate-art] Step 2: Path B — Photo-based (Gemini + Ideogram Remix)')
 
-      // Generate dual prompts
+      // Generate dual prompts (with optional composition direction)
       const dualSystemPrompt = buildDualPromptSystemPrompt(
         brandAssets,
         body.format,
-        body.compositionPrompt,
+        body.compositionEnabled ? body.compositionPrompt : undefined,
       )
 
       const { text: dualRawText } = await generateText({
@@ -706,29 +707,29 @@ export async function POST(request: Request) {
       console.log('[generate-art] Scene prompt:', scenePrompt.substring(0, 100) + '...')
 
       try {
-        // Generate scene with Gemini
+        // Generate scene with Gemini using the user's photo
         const sceneBuffer = await callNanoBanana2(scenePrompt, body.photoUrl!)
 
-        // Remix with Ideogram
+        // Remix with Ideogram to apply brand style
         ideogramImages = await callIdeogramRemix(sceneBuffer, {
           prompt: ideogramPrompt,
           ...imageOptions,
         })
         provider = 'ideogram-3+gemini'
       } catch (compositionError) {
-        // Fallback to Path A
-        console.warn('[generate-art] Composition failed, falling back to Path A:', compositionError)
+        // Fallback to Path A if Gemini/Remix fails
+        console.warn('[generate-art] Photo path failed, falling back to Path A:', compositionError)
         ideogramImages = await callIdeogramGenerate(ideogramPrompt, imageOptions)
         provider = 'ideogram-3'
       }
     } else {
-      // --- Path A: Simple generation with Ideogram ---
+      // --- Path A: Simple generation with Ideogram (no photo) ---
       console.log('[generate-art] Step 2: Path A — Simple generation (Ideogram)')
 
       const systemPrompt = buildIdeogramPromptSystemPrompt(
         brandAssets,
         body.format,
-        body.usePhoto,
+        false,
       )
 
       const { text: prompt } = await generateText({
@@ -802,7 +803,10 @@ export async function POST(request: Request) {
       } : undefined,
     })
   } catch (error) {
-    console.error('[generate-art] Error:', error)
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    const errorStack = error instanceof Error ? error.stack : undefined
+    console.error('[generate-art] Error:', errorMessage)
+    if (errorStack) console.error('[generate-art] Stack:', errorStack)
 
     if (error instanceof IdeogramError) {
       if (error.code === 'content_policy') {
@@ -814,7 +818,7 @@ export async function POST(request: Request) {
     }
 
     return NextResponse.json(
-      { error: 'Erro ao gerar arte. Tente novamente.' },
+      { error: 'Erro ao gerar arte. Tente novamente.', debug: errorMessage },
       { status: 500 }
     )
   }
