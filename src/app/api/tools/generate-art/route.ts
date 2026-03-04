@@ -284,9 +284,8 @@ async function positionTextWithVision(
     sm: Math.round(formatInfo.width * 0.022),  // ~24px
   }
 
-  const { object } = await generateObject({
+  const { text: rawText } = await generateText({
     model: openai('gpt-4o'),
-    schema: textLayoutSchema,
     messages: [
       {
         role: 'user',
@@ -322,7 +321,16 @@ POSITIONING RULES:
 9. Use "overlay.enabled: true" with position "bottom" and opacity 0.4-0.6 if the text area has a bright or busy background
 10. Prefer bottom positioning for overlay when the subject is at top/center
 
-Return the positioning as structured JSON.`,
+RESPOND WITH ONLY A JSON OBJECT (no markdown, no wrapping) with this EXACT structure:
+{
+  "elements": [
+    { "type": "title", "text": "...", "font": "title", "sizePx": 59, "weight": 700, "color": "#FFF", "x": 50, "y": 70, "align": "center", "maxWidth": 85 }
+  ],
+  "shadow": true,
+  "overlay": { "enabled": true, "position": "bottom", "opacity": 0.5 }
+}
+
+The root object MUST have "elements", "shadow", and "overlay" as direct top-level keys. Do NOT wrap in any other object.`,
           },
         ],
       },
@@ -330,7 +338,20 @@ Return the positioning as structured JSON.`,
     temperature: 0.2,
   })
 
-  return object as TextLayout
+  // Parse JSON from response, handling potential wrapping or markdown code blocks
+  let jsonStr = rawText.trim()
+  // Remove markdown code fences if present
+  if (jsonStr.startsWith('```')) {
+    jsonStr = jsonStr.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim()
+  }
+
+  const parsed = JSON.parse(jsonStr)
+
+  // Handle models that wrap response in { type: "response", properties: { ... } }
+  const layoutData = parsed.properties || parsed
+
+  const validated = textLayoutSchema.parse(layoutData)
+  return validated as TextLayout
 }
 
 // --- Nano Banana 2 (Gemini) ---
