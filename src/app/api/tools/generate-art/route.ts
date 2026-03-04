@@ -150,6 +150,7 @@ function buildGeminiPromptSystemPrompt(
   brandAssets: BrandAssets,
   format: string,
   hasPhoto: boolean,
+  hasReferenceImages: boolean,
   compositionPrompt?: string,
 ): string {
   const formatInfo = FORMAT_DIMENSIONS[format]
@@ -182,6 +183,18 @@ function buildGeminiPromptSystemPrompt(
     }
   }
 
+  const referenceImageInstruction = hasReferenceImages
+    ? `\nIMPORTANT — REFERENCE IMAGES PROVIDED:
+You are being shown brand reference images. Study them CAREFULLY and replicate:
+- The EXACT color grading, saturation, and color temperature
+- The composition layout, spacing, and visual hierarchy
+- The lighting style (warm/cool, directional, ambient)
+- The mood, atmosphere, and overall "feel"
+- Background textures, gradients, or photographic style
+- Level of minimalism vs. richness
+Your prompt MUST describe these specific visual characteristics you observe in the reference images.\n`
+    : ''
+
   const basePrompt = `You are a professional graphic designer creating social media art for ${brandAssets.name}${brandAssets.cuisineType ? `, a ${brandAssets.cuisineType} brand` : ''}. Match their established visual identity precisely.
 
 BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
@@ -190,7 +203,7 @@ BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
 - Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
 - Art format: ${formatInfo.label} (${formatInfo.width}x${formatInfo.height})
 ${compositionPrompt ? `- Composition direction: ${compositionPrompt}` : ''}
-${compositionGuidelines}
+${compositionGuidelines}${referenceImageInstruction}
 ABSOLUTELY CRITICAL - DO NOT VIOLATE:
 - NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
 - NEVER describe labels, signs, menus, titles, watermarks, or typography
@@ -209,9 +222,10 @@ DESCRIBE:
 - Lighting: natural light, warm tones, or professional studio
 - Atmosphere and mood matching ${brandAssets.cuisineType || 'restaurant'} environment
 - ${textAreaInstruction}
+${hasReferenceImages ? '- Match the exact visual style, color grading, and mood from the reference images' : ''}
 
 RESPONSE FORMAT:
-Respond ONLY with the visual prompt in English (max 200 words).
+Respond ONLY with the visual prompt in English (max 250 words).
 End your prompt with: "Pure photography, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
   }
 
@@ -226,9 +240,10 @@ DESCRIBE:
 - Food photography elements if relevant (ingredients, dishes, atmosphere)
 - Lighting and visual mood matching the brand style
 - ${textAreaInstruction}
+${hasReferenceImages ? '- Match the exact visual style, color grading, and mood from the reference images' : ''}
 
 RESPONSE FORMAT:
-Respond ONLY with the visual prompt in English (max 200 words).
+Respond ONLY with the visual prompt in English (max 250 words).
 End your prompt with: "Pure visual composition, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
 }
 
@@ -404,25 +419,25 @@ interface PreparedRefImage {
 async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[]> {
   if (!urls.length) return []
 
+  const toFetch = urls.slice(0, 4)
+  console.log(`[generate-art] Fetching ${toFetch.length} reference images...`)
+
   const results = await Promise.allSettled(
-    urls.slice(0, 2).map(async (url) => {
+    toFetch.map(async (url) => {
       const response = await fetch(url)
       if (!response.ok) throw new Error(`Failed to fetch ref image: ${response.status}`)
 
       let buffer = Buffer.from(await response.arrayBuffer())
-      const contentType = response.headers.get('content-type') || 'image/jpeg'
 
-      // Resize to max 800px to reduce payload for Gemini
-      if (buffer.length > 2 * 1024 * 1024) {
-        buffer = Buffer.from(await sharp(buffer)
-          .resize({ width: 800, fit: 'inside' })
-          .jpeg({ quality: 80 })
-          .toBuffer())
-      }
+      // Always resize to max 512px to keep payload reasonable for multiple images
+      buffer = Buffer.from(await sharp(buffer)
+        .resize({ width: 512, height: 512, fit: 'inside' })
+        .jpeg({ quality: 75 })
+        .toBuffer())
 
       return {
         base64: buffer.toString('base64'),
-        mimeType: contentType.startsWith('image/') ? contentType : 'image/jpeg',
+        mimeType: 'image/jpeg',
       }
     })
   )
@@ -431,7 +446,8 @@ async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[
     .filter((r): r is PromiseFulfilledResult<PreparedRefImage> => r.status === 'fulfilled')
     .map((r) => r.value)
 
-  console.log(`[generate-art] Prepared ${prepared.length}/${urls.length} reference images`)
+  const totalSizeKB = prepared.reduce((acc, r) => acc + Math.round(r.base64.length / 1024), 0)
+  console.log(`[generate-art] Prepared ${prepared.length}/${toFetch.length} reference images (total ~${totalSizeKB}KB base64)`)
   return prepared
 }
 
@@ -536,10 +552,20 @@ async function callNanoBanana2(
 
   // Add reference images BEFORE the prompt so Gemini sees the style first
   if (hasRefs) {
-    for (const ref of referenceImages!) {
+    contentParts.push({ text: 'BRAND STYLE REFERENCE IMAGES — study these carefully:' })
+    for (let i = 0; i < referenceImages!.length; i++) {
+      const ref = referenceImages![i]
       contentParts.push({ inline_data: { mime_type: ref.mimeType, data: ref.base64 } })
     }
-    contentParts.push({ text: 'The images above are brand style references. Study their composition, color palette, spacing, lighting, and visual mood carefully. Now generate a NEW, ORIGINAL image that matches this exact aesthetic style for the following description:' })
+    contentParts.push({ text: `I have shown you ${referenceImages!.length} brand reference images. You MUST generate a NEW image that closely matches their:
+1. Color palette and color grading (warm/cool tones, saturation level)
+2. Composition style and visual hierarchy
+3. Lighting direction, intensity, and mood
+4. Background treatment (gradients, textures, solid colors)
+5. Level of visual complexity and spacing
+6. Overall atmosphere and brand "feel"
+
+Now create the image following this description:` })
     console.log(`[generate-art] Added ${referenceImages!.length} style reference images to Gemini request`)
   }
 
@@ -687,6 +713,9 @@ export async function POST(request: Request) {
       // --- Mode B: Generate image(s) with Gemini ---
       console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o-mini...')
 
+      // Pre-fetch reference images ONCE before prompt generation and image generation
+      const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 4))
+
       // Log visual elements if available
       if (brandAssets.visualElements) {
         console.log('[generate-art] Loaded visualElements:', JSON.stringify(brandAssets.visualElements))
@@ -696,21 +725,33 @@ export async function POST(request: Request) {
         brandAssets,
         body.format,
         useAIComposition,
+        refImages.length > 0,
         body.compositionEnabled ? body.compositionPrompt : undefined,
       )
 
-      // Pre-fetch reference images ONCE before the variations loop
-      const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 2))
+      // Build messages for GPT-4o-mini — pass reference images so it can SEE the brand style
+      const userContent: Array<{ type: string; text?: string; image?: string }> = []
+      
+      // Add up to 2 reference images for GPT-4o-mini to analyze (keep payload reasonable)
+      if (refImages.length > 0) {
+        for (const ref of refImages.slice(0, 2)) {
+          userContent.push({ type: 'image', image: `data:${ref.mimeType};base64,${ref.base64}` })
+        }
+        userContent.push({ type: 'text', text: `These are brand reference images for ${brandAssets.name}. Analyze their visual style carefully.\n\nTexto para a arte: "${body.text}"` })
+        console.log(`[generate-art] Passing ${Math.min(refImages.length, 2)} reference images to GPT-4o-mini for style analysis`)
+      } else {
+        userContent.push({ type: 'text', text: `Texto para a arte: "${body.text}"` })
+      }
 
       const { text: prompt } = await generateText({
         model: openai('gpt-4o-mini'),
         system: systemPrompt,
-        prompt: `Texto para a arte: "${body.text}"`,
+        messages: [{ role: 'user', content: userContent as any }],
         temperature: 0.7,
       })
       technicalPrompt = prompt
 
-      console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 200) + '...')
+      console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 300) + '...')
       console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini (${refImages.length} style refs)...`)
 
       for (let i = 0; i < body.variations; i++) {
