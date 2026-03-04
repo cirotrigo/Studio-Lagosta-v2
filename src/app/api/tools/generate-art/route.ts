@@ -50,6 +50,13 @@ interface VisualElements {
   layouts?: string[]
   typography?: string[]
   patterns?: string[]
+  textColorPreferences?: {
+    titleColor: string
+    subtitleColor: string
+    infoColor: string
+    ctaColor: string
+  }
+  overlayStyle?: 'gradient' | 'solid'
 }
 
 interface BrandAssets {
@@ -63,6 +70,13 @@ interface BrandAssets {
   titleFontFamily: string | null
   bodyFontFamily: string | null
   logoUrl: string | null
+  textColorPreferences: {
+    titleColor: string
+    subtitleColor: string
+    infoColor: string
+    ctaColor: string
+  } | null
+  overlayStyle: 'gradient' | 'solid'
 }
 
 interface TextElement {
@@ -90,6 +104,7 @@ interface TextLayout {
   shadow: boolean
   overlay: {
     enabled: boolean
+    type: 'solid' | 'gradient'
     position: 'top' | 'bottom' | 'full'
     opacity: number
   }
@@ -130,6 +145,8 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
     orderBy: { createdAt: 'asc' },
   })
 
+  const ve = project.brandVisualElements as VisualElements | null
+
   return {
     name: project.name,
     colors: colors.map((c) => c.hexCode),
@@ -137,10 +154,12 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
     cuisineType: project.cuisineType ?? null,
     instagramUsername: project.instagramUsername,
     referenceImageUrls: project.brandReferenceUrls ?? [],
-    visualElements: (project.brandVisualElements as VisualElements) ?? null,
+    visualElements: ve ?? null,
     titleFontFamily: project.titleFontFamily ?? null,
     bodyFontFamily: project.bodyFontFamily ?? null,
     logoUrl: project.Logo?.[0]?.fileUrl ?? null,
+    textColorPreferences: ve?.textColorPreferences ?? null,
+    overlayStyle: ve?.overlayStyle ?? 'gradient',
   }
 }
 
@@ -160,13 +179,12 @@ function buildGeminiPromptSystemPrompt(
 
   const ve = brandAssets.visualElements
 
-  // Build composition guidelines from visual elements analysis
+  // Build composition guidelines from visual elements analysis (exclude typography — fonts are configured manually)
   let compositionGuidelines = ''
-  if (ve && (ve.layouts?.length || ve.typography?.length || ve.patterns?.length)) {
+  if (ve && (ve.layouts?.length || ve.patterns?.length)) {
     const parts: string[] = []
     if (ve.layouts?.length) parts.push(`- Layout: ${ve.layouts.join(', ')}`)
     if (ve.patterns?.length) parts.push(`- Visual elements: ${ve.patterns.join(', ')}`)
-    if (ve.typography?.length) parts.push(`- Typography approach: ${ve.typography.join(', ')}`)
     compositionGuidelines = `\nBRAND COMPOSITION GUIDELINES (extracted from reference images):\n${parts.join('\n')}\nYou MUST apply these exact composition principles.\n`
   } else if (brandAssets.styleDescription) {
     // Fallback: use the style description itself as composition guidance
@@ -278,9 +296,59 @@ async function separateTextElements(
   userText: string,
   brandAssets: BrandAssets,
 ): Promise<TextElement[]> {
-  const colorOptions = brandAssets.colors.length > 0
-    ? brandAssets.colors.join(', ')
-    : '#FFFFFF, #F59E0B'
+  const colorList = brandAssets.colors.length > 0
+    ? brandAssets.colors
+    : ['#FFFFFF', '#F59E0B']
+
+  const tcp = brandAssets.textColorPreferences
+
+  // If user has configured text color preferences, use them directly
+  // Otherwise, fallback to heuristic detection
+  let primaryColor: string
+  let accentColor: string
+  let subtitleColor: string
+  let infoColor: string
+
+  if (tcp) {
+    primaryColor = tcp.titleColor
+    subtitleColor = tcp.subtitleColor
+    infoColor = tcp.infoColor
+    accentColor = tcp.ctaColor
+    console.log(`[separateTextElements] Using fixed color preferences: title=${primaryColor}, subtitle=${subtitleColor}, info=${infoColor}, cta=${accentColor}`)
+  } else {
+    // Identify primary color (gold, yellow, or first warm color) for titles
+    primaryColor = colorList.find(c =>
+      c.toLowerCase().includes('d4af37') || // gold
+      c.toLowerCase().includes('ffd700') || // gold
+      c.toLowerCase().includes('fce77b') || // yellow
+      c.toLowerCase().includes('f59e0b')    // amber
+    ) || colorList[0]
+
+    // Identify accent color (red, burgundy, or second color) for CTA
+    accentColor = colorList.find(c =>
+      c.toLowerCase().includes('722f37') || // merlot
+      c.toLowerCase().includes('c41e3a') || // red
+      c.toLowerCase().includes('dc143c')    // crimson
+    ) || colorList[Math.min(1, colorList.length - 1)]
+
+    subtitleColor = primaryColor
+    infoColor = '#FFFFFF'
+    console.log(`[separateTextElements] Using auto-detected colors: title=${primaryColor}, cta=${accentColor}`)
+  }
+
+  const colorInstruction = tcp
+    ? `CORES FIXAS (USE EXATAMENTE — NÃO ALTERE):
+- type "title": SEMPRE usar ${primaryColor}
+- type "subtitle": SEMPRE usar ${subtitleColor}
+- type "info": SEMPRE usar ${infoColor}
+- type "cta": SEMPRE usar ${accentColor}
+
+IMPORTANTE: Estas cores foram configuradas pelo usuário. NÃO escolha cores diferentes.`
+    : `REGRAS DE CORES (SIGA EXATAMENTE):
+- type "title": SEMPRE usar a COR PRIMÁRIA ${primaryColor} (dourada/amarela/quente)
+- type "subtitle": SEMPRE usar a COR PRIMÁRIA ${primaryColor} OU branco (#FFFFFF) se precisar contraste
+- type "info": SEMPRE usar branco (#FFFFFF) para fácil leitura
+- type "cta": SEMPRE usar a COR DE ACENTO ${accentColor} (vermelha/bordô) para destacar`
 
   const { object } = await generateObject({
     model: openai('gpt-4o-mini'),
@@ -289,18 +357,18 @@ async function separateTextElements(
 
 TEXTO DO USUÁRIO: "${userText}"
 
-CORES DISPONÍVEIS DA MARCA: ${colorOptions}
-Também pode usar #FFFFFF (branco) para contraste.
+PALETA DE CORES DA MARCA: ${colorList.join(', ')}
 
-REGRAS:
+${colorInstruction}
+
+ESTRUTURA DO TEXTO:
 - Máximo 4 elementos
 - Cada elemento com no máximo ~30 caracteres (quebre em linhas se necessário)
 - type "title": o texto principal em destaque (font: "title", size: "xl" ou "lg", weight: 700-800)
 - type "subtitle": complemento do título (font: "title", size: "lg" ou "md", weight: 600)
-- type "info": informações como horário, preço (font: "body", size: "md" ou "sm", weight: 400)
-- type "cta": chamada para ação como "Reserve já!" (font: "body", size: "md", weight: 700)
-- Use cores da marca para títulos e CTA, branco para info
-- Mantenha hierarquia visual clara`,
+- type "info": informações como horário, preço, endereço (font: "body", size: "md" ou "sm", weight: 400)
+- type "cta": chamada para ação como "Reserve já!" ou "Qual é a sua escolha?" (font: "body", size: "md" ou "lg", weight: 700)
+- Mantenha hierarquia visual clara: título > subtítulo > info > CTA`,
     temperature: 0.3,
   })
 
@@ -323,6 +391,7 @@ const textLayoutSchema = z.object({
   shadow: z.boolean(),
   overlay: z.object({
     enabled: z.boolean(),
+    type: z.enum(['solid', 'gradient']).default('gradient'),
     position: z.enum(['top', 'bottom', 'full']),
     opacity: z.number(),
   }),
@@ -387,16 +456,26 @@ POSITIONING RULES:
 6. maxWidth is percentage of image width (usually 70-90%)
 7. Title should be most prominent, CTA should stand out
 8. Use "shadow: true" if the background behind text area has mixed brightness
-9. Use "overlay.enabled: true" with position "bottom" and opacity 0.4-0.6 if the text area has a bright or busy background
-10. Prefer bottom positioning for overlay when the subject is at top/center
+9. Overlay options:
+   - "type": "gradient" = smooth black-to-transparent fade (PREFERRED for elegant brands)
+   - "type": "solid" = semi-transparent solid color (use sparingly)
+   - Use overlay.enabled: true with type "gradient" and opacity 0.3-0.5 when text area needs contrast
+   - Prefer type "gradient" over "solid" for sophisticated, premium brands
+10. Prefer NO overlay (enabled: false) if the image has a naturally dark or clean text area
+
+COLOR PRESERVATION:
+- CRITICAL: You MUST preserve the EXACT color values provided for each text element
+- DO NOT change colors to white or any other color
+- The colors were carefully selected to match the brand identity
+- Example: if a title has color "#D4AF37" (gold), use exactly "#D4AF37" in your response
 
 RESPOND WITH ONLY A JSON OBJECT (no markdown, no wrapping) with this EXACT structure:
 {
   "elements": [
-    { "type": "title", "text": "...", "font": "title", "sizePx": 59, "weight": 700, "color": "#FFF", "x": 50, "y": 70, "align": "center", "maxWidth": 85 }
+    { "type": "title", "text": "...", "font": "title", "sizePx": 59, "weight": 700, "color": "<USE EXACT COLOR FROM INPUT>", "x": 50, "y": 70, "align": "center", "maxWidth": 85 }
   ],
   "shadow": true,
-  "overlay": { "enabled": true, "position": "bottom", "opacity": 0.5 }
+  "overlay": { "enabled": true, "type": "gradient", "position": "bottom", "opacity": 0.4 }
 }
 
 The root object MUST have "elements", "shadow", and "overlay" as direct top-level keys. Do NOT wrap in any other object.`,
@@ -418,6 +497,27 @@ The root object MUST have "elements", "shadow", and "overlay" as direct top-leve
 
   // Handle models that wrap response in { type: "response", properties: { ... } }
   const layoutData = parsed.properties || parsed
+
+  // CRITICAL: Restore original colors if GPT-4o changed them
+  // Build a map of original colors by text content
+  const originalColors = new Map<string, string>()
+  for (const el of textElements) {
+    originalColors.set(el.text.toLowerCase().trim(), el.color)
+  }
+
+  // Restore colors in the parsed response
+  if (layoutData.elements && Array.isArray(layoutData.elements)) {
+    for (const element of layoutData.elements) {
+      const textKey = element.text?.toLowerCase().trim()
+      if (textKey && originalColors.has(textKey)) {
+        const originalColor = originalColors.get(textKey)!
+        if (element.color !== originalColor) {
+          console.log(`[positionTextWithVision] Restoring color for "${element.text}": ${element.color} → ${originalColor}`)
+          element.color = originalColor
+        }
+      }
+    }
+  }
 
   const validated = textLayoutSchema.parse(layoutData)
   return validated as TextLayout
@@ -679,7 +779,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Erro ao buscar assets da marca' }, { status: 500 })
   }
 
-  console.log(`[generate-art] Brand assets loaded: name="${brandAssets.name}", colors=${brandAssets.colors.length}, referenceUrls=${brandAssets.referenceImageUrls.length}, hasVisualElements=${!!brandAssets.visualElements}, styleDesc=${brandAssets.styleDescription ? 'yes' : 'no'}`)
+  console.log(`[generate-art] Brand assets loaded: name="${brandAssets.name}", colors=${brandAssets.colors.length}, referenceUrls=${brandAssets.referenceImageUrls.length}, hasVisualElements=${!!brandAssets.visualElements}, styleDesc=${brandAssets.styleDescription ? 'yes' : 'no'}, textColorPrefs=${brandAssets.textColorPreferences ? 'yes' : 'no'}, overlayStyle=${brandAssets.overlayStyle}`)
   if (brandAssets.referenceImageUrls.length > 0) {
     console.log(`[generate-art] Reference URLs: ${brandAssets.referenceImageUrls.map(u => u.substring(0, 60) + '...').join(', ')}`)
   }
@@ -696,10 +796,14 @@ export async function POST(request: Request) {
   try {
     // --- Step 1: Separate text into visual elements ---
     console.log('[generate-art] Step 1: Separating text elements...')
+    console.log('[generate-art] Brand colors:', brandAssets.colors)
     let textElements: TextElement[] = []
     try {
       textElements = await separateTextElements(body.text, brandAssets)
-      console.log(`[generate-art] Separated into ${textElements.length} elements`)
+      console.log(`[generate-art] Separated into ${textElements.length} elements:`)
+      textElements.forEach((el, i) => {
+        console.log(`  [${i}] ${el.type}: "${el.text.substring(0, 30)}..." - color: ${el.color}, font: ${el.font}, size: ${el.size}, weight: ${el.weight}`)
+      })
     } catch (e) {
       console.error('[generate-art] Text separation failed, will skip text rendering:', e)
     }

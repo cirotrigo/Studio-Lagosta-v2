@@ -110,7 +110,23 @@ export async function PUT(
       updateData.brandStyleDescription = body.styleDescription ?? null
     }
     if (body.visualElements !== undefined) {
-      updateData.brandVisualElements = body.visualElements ?? null
+      // Merge with existing brandVisualElements to preserve textColorPreferences and overlayStyle
+      const currentProject = await db.project.findUnique({
+        where: { id: projectIdNum },
+        select: { brandVisualElements: true },
+      })
+      const currentVe = (currentProject?.brandVisualElements as Record<string, unknown>) ?? {}
+      const newVe: Record<string, unknown> = body.visualElements ?? {}
+
+      // Preserve user-configured preferences that are managed by brand-assets endpoint
+      if (currentVe.textColorPreferences) {
+        newVe.textColorPreferences = currentVe.textColorPreferences
+      }
+      if (currentVe.overlayStyle) {
+        newVe.overlayStyle = currentVe.overlayStyle
+      }
+
+      updateData.brandVisualElements = Object.keys(newVe).length > 0 ? newVe : null
     }
     if (body.referenceImageUrls !== undefined) {
       updateData.brandReferenceUrls = body.referenceImageUrls

@@ -6,6 +6,13 @@ import { z } from 'zod'
 
 export const runtime = 'nodejs'
 
+interface TextColorPreferences {
+  titleColor: string
+  subtitleColor: string
+  infoColor: string
+  ctaColor: string
+}
+
 interface BrandAssetsResponse {
   projectId: number
   name: string
@@ -21,6 +28,8 @@ interface BrandAssetsResponse {
   // Art generation preferences
   titleFontFamily: string | null
   bodyFontFamily: string | null
+  textColorPreferences: TextColorPreferences | null
+  overlayStyle: 'gradient' | 'solid' | null
 }
 
 export async function GET(
@@ -64,10 +73,16 @@ export async function GET(
   // Access fields safely
   const projectData = project as typeof project & {
     brandStyleDescription?: string | null
+    brandVisualElements?: Record<string, unknown> | null
     cuisineType?: string | null
     titleFontFamily?: string | null
     bodyFontFamily?: string | null
   }
+
+  // Extract textColorPreferences and overlayStyle from brandVisualElements JSON
+  const ve = projectData.brandVisualElements as Record<string, unknown> | null
+  const textColorPreferences = ve?.textColorPreferences as TextColorPreferences | undefined
+  const overlayStyle = ve?.overlayStyle as 'gradient' | 'solid' | undefined
 
   const response: BrandAssetsResponse = {
     projectId: project.id,
@@ -85,15 +100,26 @@ export async function GET(
     fonts: fonts.map((f) => ({ name: f.name, fontFamily: f.fontFamily, fileUrl: f.fileUrl })),
     titleFontFamily: projectData.titleFontFamily ?? null,
     bodyFontFamily: projectData.bodyFontFamily ?? null,
+    textColorPreferences: textColorPreferences ?? null,
+    overlayStyle: overlayStyle ?? null,
   }
 
   return NextResponse.json(response)
 }
 
 // Schema for updating art generation preferences
+const textColorPreferencesSchema = z.object({
+  titleColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  subtitleColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  infoColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+  ctaColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/),
+})
+
 const updatePreferencesSchema = z.object({
   titleFontFamily: z.string().nullable().optional(),
   bodyFontFamily: z.string().nullable().optional(),
+  textColorPreferences: textColorPreferencesSchema.nullable().optional(),
+  overlayStyle: z.enum(['gradient', 'solid']).nullable().optional(),
 })
 
 export async function PATCH(
@@ -129,12 +155,31 @@ export async function PATCH(
   }
 
   // Update only the fields that were provided
-  const updateData: Record<string, string | null> = {}
+  const updateData: Record<string, unknown> = {}
   if (body.titleFontFamily !== undefined) {
     updateData.titleFontFamily = body.titleFontFamily
   }
   if (body.bodyFontFamily !== undefined) {
     updateData.bodyFontFamily = body.bodyFontFamily
+  }
+
+  // Handle textColorPreferences and overlayStyle — merge into brandVisualElements JSON
+  if (body.textColorPreferences !== undefined || body.overlayStyle !== undefined) {
+    // Read current brandVisualElements to merge (preserve layouts, typography, patterns)
+    const currentProject = await db.project.findUnique({
+      where: { id: projectIdNum },
+      select: { brandVisualElements: true },
+    })
+    const currentVe = (currentProject?.brandVisualElements as Record<string, unknown>) ?? {}
+
+    if (body.textColorPreferences !== undefined) {
+      currentVe.textColorPreferences = body.textColorPreferences
+    }
+    if (body.overlayStyle !== undefined) {
+      currentVe.overlayStyle = body.overlayStyle
+    }
+
+    updateData.brandVisualElements = currentVe
   }
 
   if (Object.keys(updateData).length === 0) {

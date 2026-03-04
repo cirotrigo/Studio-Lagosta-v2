@@ -19,6 +19,7 @@ interface TextLayout {
   shadow: boolean
   overlay: {
     enabled: boolean
+    type?: 'solid' | 'gradient'
     position: 'top' | 'bottom' | 'full'
     opacity: number
   }
@@ -107,10 +108,11 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
   const canvas = createCanvas(width, height)
   const ctx = canvas.getContext('2d')
 
-  // Draw overlay rectangle if enabled
+  // Draw overlay if enabled
   if (input.textLayout.overlay.enabled) {
     const opacity = Math.min(0.7, Math.max(0, input.textLayout.overlay.opacity))
     const pos = input.textLayout.overlay.position
+    const type = input.textLayout.overlay.type ?? 'gradient'
 
     let rectY = 0
     let rectHeight = height
@@ -123,9 +125,29 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
       rectY = 0
     }
 
-    ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`
+    if (type === 'gradient') {
+      // Gradient: opaque at edge -> transparent toward center
+      if (pos === 'bottom') {
+        const gradient = ctx.createLinearGradient(0, rectY, 0, rectY + rectHeight)
+        gradient.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        gradient.addColorStop(1, `rgba(0, 0, 0, ${opacity})`)
+        ctx.fillStyle = gradient
+      } else if (pos === 'top') {
+        const gradient = ctx.createLinearGradient(0, rectY, 0, rectY + rectHeight)
+        gradient.addColorStop(0, `rgba(0, 0, 0, ${opacity})`)
+        gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
+        ctx.fillStyle = gradient
+      } else {
+        // Full: uniform opacity
+        ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`
+      }
+    } else {
+      // Solid overlay (original behavior)
+      ctx.fillStyle = `rgba(0, 0, 0, ${opacity})`
+    }
+
     ctx.fillRect(0, rectY, width, rectHeight)
-    console.log('[text-renderer] Added overlay:', pos, 'opacity:', opacity)
+    console.log('[text-renderer] Added overlay:', type, pos, 'opacity:', opacity)
   }
 
   // Draw text elements

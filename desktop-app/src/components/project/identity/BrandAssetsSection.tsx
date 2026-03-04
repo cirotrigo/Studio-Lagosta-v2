@@ -1,18 +1,73 @@
 import { useState, useEffect } from 'react'
 import { Loader2, Check, ChevronDown } from 'lucide-react'
-import { useBrandAssets, useUpdateFontPreferences } from '@/hooks/use-brand-assets'
+import { useBrandAssets, useUpdateArtPreferences, type TextColorPreferences } from '@/hooks/use-brand-assets'
 import { toast } from 'sonner'
 
 interface BrandAssetsSectionProps {
   projectId: number
 }
 
+const COLOR_ROLE_LABELS: Record<keyof TextColorPreferences, string> = {
+  titleColor: 'Cor do Título',
+  subtitleColor: 'Cor do Subtítulo',
+  infoColor: 'Cor de Informações',
+  ctaColor: 'Cor do CTA',
+}
+
+function ColorSelector({
+  label,
+  value,
+  brandColors,
+  onChange,
+}: {
+  label: string
+  value: string
+  brandColors: string[]
+  onChange: (color: string) => void
+}) {
+  // Always include white as an option
+  const options = [...new Set([...brandColors, '#FFFFFF'])]
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-xs font-medium text-text-muted">{label}</label>
+      <div className="flex items-center gap-2">
+        {options.map((color) => (
+          <button
+            key={color}
+            onClick={() => onChange(color)}
+            className={`h-7 w-7 rounded-full border-2 transition-all hover:scale-110 ${
+              value.toLowerCase() === color.toLowerCase()
+                ? 'border-primary ring-2 ring-primary/30'
+                : 'border-border'
+            }`}
+            style={{ backgroundColor: color }}
+            title={color}
+          />
+        ))}
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => {
+            const v = e.target.value
+            if (/^#[0-9A-Fa-f]{0,6}$/.test(v)) onChange(v)
+          }}
+          className="w-20 rounded-md border border-border bg-input px-2 py-1 font-mono text-xs text-text focus:border-primary focus:outline-none"
+          placeholder="#FFFFFF"
+        />
+      </div>
+    </div>
+  )
+}
+
 export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProps) {
   const { data: assets, isLoading, error } = useBrandAssets(projectId)
-  const updatePreferences = useUpdateFontPreferences(projectId)
+  const updatePreferences = useUpdateArtPreferences(projectId)
   
   const [titleFont, setTitleFont] = useState<string | null>(null)
   const [bodyFont, setBodyFont] = useState<string | null>(null)
+  const [textColors, setTextColors] = useState<TextColorPreferences | null>(null)
+  const [overlayStyle, setOverlayStyle] = useState<'gradient' | 'solid'>('gradient')
   const [hasChanges, setHasChanges] = useState(false)
 
   // Sync local state with server data
@@ -20,27 +75,45 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
     if (assets) {
       setTitleFont(assets.titleFontFamily)
       setBodyFont(assets.bodyFontFamily)
+      setTextColors(assets.textColorPreferences)
+      setOverlayStyle(assets.overlayStyle ?? 'gradient')
     }
   }, [assets])
 
   // Track changes
   useEffect(() => {
     if (assets) {
-      const changed = titleFont !== assets.titleFontFamily || bodyFont !== assets.bodyFontFamily
-      setHasChanges(changed)
+      const fontChanged = titleFont !== assets.titleFontFamily || bodyFont !== assets.bodyFontFamily
+      const colorChanged = JSON.stringify(textColors) !== JSON.stringify(assets.textColorPreferences)
+      const overlayChanged = overlayStyle !== (assets.overlayStyle ?? 'gradient')
+      setHasChanges(fontChanged || colorChanged || overlayChanged)
     }
-  }, [titleFont, bodyFont, assets])
+  }, [titleFont, bodyFont, textColors, overlayStyle, assets])
 
   const handleSave = async () => {
     try {
       await updatePreferences.mutateAsync({
         titleFontFamily: titleFont,
         bodyFontFamily: bodyFont,
+        textColorPreferences: textColors,
+        overlayStyle,
       })
-      toast.success('Preferências de fontes salvas!')
+      toast.success('Preferências salvas!')
     } catch (e) {
       toast.error('Erro ao salvar preferências')
     }
+  }
+
+  const handleColorChange = (key: keyof TextColorPreferences, color: string) => {
+    if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+      // Allow partial typing
+      setTextColors((prev) => prev ? { ...prev, [key]: color } : { titleColor: '#FFFFFF', subtitleColor: '#FFFFFF', infoColor: '#FFFFFF', ctaColor: '#FFFFFF', [key]: color })
+      return
+    }
+    setTextColors((prev) => {
+      const base = prev ?? { titleColor: '#FFFFFF', subtitleColor: '#FFFFFF', infoColor: '#FFFFFF', ctaColor: '#FFFFFF' }
+      return { ...base, [key]: color }
+    })
   }
 
   if (isLoading) {
@@ -141,30 +214,31 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
         </div>
       </div>
 
-      {/* Font Preferences for Art Generation */}
-      {assets.fonts && assets.fonts.length > 0 && (
-        <div className="space-y-4 rounded-lg border border-border bg-card p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-text">Preferências para Geração de Arte</h3>
-              <p className="text-xs text-text-subtle">Defina quais fontes serão usadas nas artes geradas</p>
-            </div>
-            {hasChanges && (
-              <button
-                onClick={handleSave}
-                disabled={updatePreferences.isPending}
-                className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
-              >
-                {updatePreferences.isPending ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Check size={14} />
-                )}
-                Salvar
-              </button>
-            )}
+      {/* Art Generation Preferences */}
+      <div className="space-y-4 rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-text">Preferências para Geração de Arte</h3>
+            <p className="text-xs text-text-subtle">Defina fontes, cores e estilo de overlay para as artes</p>
           </div>
+          {hasChanges && (
+            <button
+              onClick={handleSave}
+              disabled={updatePreferences.isPending}
+              className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-primary/90 disabled:opacity-50"
+            >
+              {updatePreferences.isPending ? (
+                <Loader2 size={14} className="animate-spin" />
+              ) : (
+                <Check size={14} />
+              )}
+              Salvar
+            </button>
+          )}
+        </div>
 
+        {/* Font Preferences */}
+        {assets.fonts && assets.fonts.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2">
             {/* Title Font */}
             <div className="space-y-1.5">
@@ -204,8 +278,65 @@ export default function BrandAssetsSection({ projectId }: BrandAssetsSectionProp
               </div>
             </div>
           </div>
+        )}
+
+        {/* Text Color Preferences */}
+        {assets.colors && assets.colors.length > 0 && (
+          <div className="space-y-3 border-t border-border pt-4">
+            <div>
+              <h4 className="text-xs font-semibold text-text">Cores de Texto</h4>
+              <p className="text-[11px] text-text-subtle">Defina as cores fixas para cada tipo de texto nas artes</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(['titleColor', 'subtitleColor', 'infoColor', 'ctaColor'] as const).map((key) => (
+                <ColorSelector
+                  key={key}
+                  label={COLOR_ROLE_LABELS[key]}
+                  value={textColors?.[key] ?? '#FFFFFF'}
+                  brandColors={assets.colors}
+                  onChange={(color) => handleColorChange(key, color)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Overlay Style */}
+        <div className="space-y-2 border-t border-border pt-4">
+          <div>
+            <h4 className="text-xs font-semibold text-text">Estilo de Overlay</h4>
+            <p className="text-[11px] text-text-subtle">Como o fundo escuro atrás do texto é aplicado</p>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => setOverlayStyle('gradient')}
+              className={`flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                overlayStyle === 'gradient'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-input text-text-muted hover:text-text'
+              }`}
+            >
+              Gradiente
+              <span className="mt-0.5 block text-[10px] font-normal opacity-70">
+                Preto para transparente
+              </span>
+            </button>
+            <button
+              onClick={() => setOverlayStyle('solid')}
+              className={`flex-1 rounded-md border px-3 py-2 text-xs font-medium transition-colors ${
+                overlayStyle === 'solid'
+                  ? 'border-primary bg-primary/10 text-primary'
+                  : 'border-border bg-input text-text-muted hover:text-text'
+              }`}
+            >
+              Sólido
+              <span className="mt-0.5 block text-[10px] font-normal opacity-70">
+                Cor uniforme semi-transparente
+              </span>
+            </button>
+          </div>
         </div>
-      )}
+      </div>
     </div>
   )
 }

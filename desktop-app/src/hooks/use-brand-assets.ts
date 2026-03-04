@@ -8,6 +8,13 @@ export interface FontInfo {
   fileUrl: string
 }
 
+export interface TextColorPreferences {
+  titleColor: string
+  subtitleColor: string
+  infoColor: string
+  ctaColor: string
+}
+
 export interface BrandAssets {
   projectId: number
   name: string
@@ -23,11 +30,15 @@ export interface BrandAssets {
   // Art generation preferences
   titleFontFamily: string | null
   bodyFontFamily: string | null
+  textColorPreferences: TextColorPreferences | null
+  overlayStyle: 'gradient' | 'solid' | null
 }
 
-export interface UpdateFontPreferences {
+export interface UpdateArtPreferences {
   titleFontFamily?: string | null
   bodyFontFamily?: string | null
+  textColorPreferences?: TextColorPreferences | null
+  overlayStyle?: 'gradient' | 'solid' | null
 }
 
 export function useBrandAssets(projectId: number | undefined) {
@@ -55,12 +66,12 @@ export function useBrandAssets(projectId: number | undefined) {
   })
 }
 
-export function useUpdateFontPreferences(projectId: number | undefined) {
+export function useUpdateArtPreferences(projectId: number | undefined) {
   const queryClient = useQueryClient()
   const { logout } = useAuthStore()
 
   return useMutation({
-    mutationFn: async (data: UpdateFontPreferences) => {
+    mutationFn: async (data: UpdateArtPreferences) => {
       try {
         return await api.patch(`/api/projects/${projectId}/brand-assets`, data)
       } catch (error) {
@@ -75,3 +86,6 @@ export function useUpdateFontPreferences(projectId: number | undefined) {
     },
   })
 }
+
+/** @deprecated Use useUpdateArtPreferences instead */
+export const useUpdateFontPreferences = useUpdateArtPreferences
