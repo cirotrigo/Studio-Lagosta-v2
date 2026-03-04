@@ -8,7 +8,7 @@ import { openai } from '@ai-sdk/openai'
 import sharp from 'sharp'
 
 export const runtime = 'nodejs'
-export const maxDuration = 240 // 4 minutes for Gemini + Ideogram + Vision sequencial
+export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
 
 // --- Constants ---
 
@@ -18,13 +18,6 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
   SQUARE: { width: 1024, height: 1024, label: 'quadrado (1024x1024)' },
 }
 
-const IDEOGRAM_ASPECT_RATIOS: Record<string, string> = {
-  FEED_PORTRAIT: '4x5',
-  STORY: '9x16',
-  SQUARE: '1x1',
-}
-
-const IDEOGRAM_API_URL = 'https://api.ideogram.ai/v1/ideogram-v3'
 const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent'
 
 // --- Zod Schema ---
@@ -87,9 +80,8 @@ interface TextLayout {
   }
 }
 
-interface IdeogramImage {
+interface GeneratedImage {
   url: string
-  seed: number
   prompt: string
 }
 
@@ -138,88 +130,65 @@ async function fetchBrandAssets(projectId: number): Promise<BrandAssets | null> 
 
 // --- System Prompts ---
 
-function buildIdeogramPromptSystemPrompt(
+function buildGeminiPromptSystemPrompt(
   brandAssets: BrandAssets,
   format: string,
-  usePhoto: boolean,
+  hasPhoto: boolean,
+  compositionPrompt?: string,
 ): string {
   const formatInfo = FORMAT_DIMENSIONS[format]
   const colorList = brandAssets.colors.length > 0
     ? brandAssets.colors.join(', ')
     : 'neutral and elegant tones'
 
-  return `You are a professional graphic designer specialized in creating visual art for restaurants and food establishments.
-
-BRAND VISUAL IDENTITY:
-- Brand colors (hex): ${colorList}
-- Visual style: ${brandAssets.styleDescription || 'modern, elegant and professional'}
-- Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
-- Art format: ${formatInfo.label}
-
-YOUR TASK:
-Create a technical prompt for an AI image generator. The prompt must describe ONLY visual elements - shapes, colors, composition, lighting, atmosphere.
-
-ABSOLUTELY CRITICAL - READ CAREFULLY:
-1. DO NOT include ANY text, words, letters, numbers, brand names, or typography in your prompt
-2. DO NOT mention "${brandAssets.name}" or any variation of the business name
-3. DO NOT describe labels, signs, menus, or anything that would contain writing
-4. Focus ONLY on: colors, shapes, photography style, lighting, composition, visual mood
-5. Describe areas that should remain clean/empty for later text overlay
-6. Use brand colors: ${colorList}
-
-RESPONSE FORMAT:
-Respond ONLY with the visual prompt in English (max 250 words).
-End your prompt with: "Pure visual composition, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
-}
-
-function buildDualPromptSystemPrompt(
-  brandAssets: BrandAssets,
-  format: string,
-  compositionPrompt: string | undefined,
-): string {
-  const formatInfo = FORMAT_DIMENSIONS[format]
-  const colorList = brandAssets.colors.length > 0
-    ? brandAssets.colors.join(', ')
-    : 'neutral and elegant tones'
-
-  return `You are a professional graphic designer and food photographer. Generate TWO separate prompts for image generation.
+  const basePrompt = `You are a professional graphic designer and food photographer specialized in creating stunning visuals for restaurants.
 
 BRAND VISUAL IDENTITY (use for colors/style only, NOT as text):
 - Brand colors (hex): ${colorList}
 - Visual style: ${brandAssets.styleDescription || 'modern, elegant and professional'}
 - Cuisine type: ${brandAssets.cuisineType || 'gourmet/fine dining'}
-- Art format: ${formatInfo.label}
+- Art format: ${formatInfo.label} (${formatInfo.width}x${formatInfo.height})
 ${compositionPrompt ? `- Composition direction: ${compositionPrompt}` : ''}
 
 ABSOLUTELY CRITICAL - DO NOT VIOLATE:
-- NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompts
-- NEVER describe labels, signs, menus, or typography
-- Focus ONLY on visual elements: colors, shapes, lighting, composition
+- NEVER include the brand name "${brandAssets.name}" or ANY text/words/letters in your prompt
+- NEVER describe labels, signs, menus, titles, watermarks, or typography
+- Focus ONLY on visual elements: colors, shapes, lighting, composition, photography style`
 
-Generate TWO prompts with these exact delimiters:
+  if (hasPhoto) {
+    return `${basePrompt}
 
-[IDEOGRAM_PROMPT]
-A visual prompt for graphic design. Describe ONLY:
-- Color scheme using: ${colorList}
-- Visual composition and layout for ${formatInfo.label}
-- Atmosphere and mood
-- Areas to leave empty/clean for text overlay
-NO brand names, NO text descriptions. Max 250 words.
-End with: "Pure visual composition, absolutely no text, letters, words, or typography."
-[/IDEOGRAM_PROMPT]
+YOUR TASK:
+Create a prompt for an AI image generator (Gemini) that will use a provided product photo as the main subject.
 
-[SCENE_PROMPT]
-A prompt for photorealistic food photography. Describe ONLY:
-- Physical scene: table, props, background
-- Food presentation and styling
-- Camera angle and depth of field
-- Lighting: natural, warm, or studio
-${compositionPrompt ? `- Direction: ${compositionPrompt}` : '- Professional restaurant setting'}
-NO text, NO labels, NO signs. Max 200 words.
-End with: "Pure photography, no text or typography visible."
-[/SCENE_PROMPT]
+DESCRIBE:
+- Professional food photography scene and styling
+- Table setting, props, and background elements
+- Camera angle and depth of field (shallow DOF recommended)
+- Lighting: natural light, warm tones, or professional studio
+- Atmosphere and mood matching ${brandAssets.cuisineType || 'restaurant'} environment
+- Leave clean areas in the composition for text overlay (typically top or bottom third)
 
-Respond ONLY with the two delimited prompts.`
+RESPONSE FORMAT:
+Respond ONLY with the visual prompt in English (max 200 words).
+End your prompt with: "Pure photography, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
+  }
+
+  return `${basePrompt}
+
+YOUR TASK:
+Create a prompt for an AI image generator (Gemini) to generate a stunning visual for a restaurant social media post.
+
+DESCRIBE:
+- Abstract/artistic visual composition using brand colors: ${colorList}
+- Professional graphic design elements (gradients, shapes, patterns)
+- Food photography elements if relevant (ingredients, dishes, atmosphere)
+- Lighting and visual mood matching the brand style
+- Clean areas in the composition for text overlay (typically center or bottom)
+
+RESPONSE FORMAT:
+Respond ONLY with the visual prompt in English (max 200 words).
+End your prompt with: "Pure visual composition, absolutely no text, letters, words, numbers, or typography anywhere in the image."`
 }
 
 // --- Text Separation & Positioning ---
@@ -356,120 +325,63 @@ Return the positioning as structured JSON.`,
   return object as TextLayout
 }
 
-// --- Ideogram API ---
-
-async function callIdeogramGenerate(
-  prompt: string,
-  options: {
-    aspectRatio: string
-    numImages: number
-    colors: string[]
-    styleReferenceUrls?: string[]
-  },
-): Promise<IdeogramImage[]> {
-  const apiKey = process.env.IDEOGRAM_API_KEY
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
-
-  // V3 endpoint requires multipart/form-data - build manually with Buffer for Node.js compatibility
-  const boundary = `----IdeogramBoundary${Date.now()}`
-  const parts: Buffer[] = []
-
-  // Helper to add text field
-  const addTextField = (name: string, value: string) => {
-    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
-  }
-
-  addTextField('prompt', prompt)
-  addTextField('negative_prompt', 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles')
-  addTextField('aspect_ratio', options.aspectRatio)
-  addTextField('magic_prompt', 'OFF')
-  addTextField('num_images', String(options.numImages))
-  addTextField('style_type', 'GENERAL')
-
-  // Color palette as JSON string
-  if (options.colors.length > 0) {
-    addTextField('color_palette', JSON.stringify({
-      members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
-    }))
-  }
-
-  // Close boundary
-  parts.push(Buffer.from(`--${boundary}--\r\n`))
-
-  const bodyBuffer = Buffer.concat(parts)
-
-  console.log('[generate-art] Calling Ideogram V3 /generate (manual multipart)...')
-  const response = await fetch(`${IDEOGRAM_API_URL}/generate`, {
-    method: 'POST',
-    headers: {
-      'Api-Key': apiKey,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-    },
-    body: bodyBuffer,
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    console.error('[generate-art] Ideogram error:', response.status, errorBody)
-    if (response.status === 429) {
-      throw new IdeogramError('rate_limit', 'Limite de requisições atingido. Tente novamente em alguns minutos.')
-    }
-    if (response.status === 400 && errorBody.includes('content_policy')) {
-      throw new IdeogramError('content_policy', 'O conteúdo solicitado viola as políticas de uso. Tente reformular o texto.')
-    }
-    throw new Error(`Ideogram API error: ${response.status} - ${errorBody.substring(0, 200)}`)
-  }
-
-  const result = await response.json()
-  console.log(`[generate-art] Ideogram returned ${result.data?.length || 0} images`)
-  return (result.data || []) as IdeogramImage[]
-}
-
 // --- Nano Banana 2 (Gemini) ---
 
 async function callNanoBanana2(
-  scenePrompt: string,
-  photoUrl: string,
-): Promise<Buffer> {
+  prompt: string,
+  photoUrl?: string,
+  format: string = 'FEED_PORTRAIT',
+): Promise<{ buffer: Buffer; mimeType: string }> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured')
 
-  // 1. Fetch the photo and convert to base64
-  console.log('[generate-art] Fetching photo for Gemini...')
-  const photoResponse = await fetch(photoUrl)
-  if (!photoResponse.ok) throw new Error('Failed to fetch photo')
+  const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
+  
+  // Build content parts
+  const contentParts: any[] = [
+    { text: `${prompt}\n\nGenerate an image with aspect ratio appropriate for ${formatInfo.label}.` },
+  ]
 
-  let photoBuffer: Buffer = Buffer.from(await photoResponse.arrayBuffer())
-  const contentType = photoResponse.headers.get('content-type') || 'image/jpeg'
+  // If photo provided, include it as reference
+  if (photoUrl) {
+    console.log('[generate-art] Fetching photo for Gemini...')
+    const photoResponse = await fetch(photoUrl)
+    if (!photoResponse.ok) throw new Error('Failed to fetch photo')
 
-  // Resize if > 3MB to stay within Gemini limits
-  if (photoBuffer.length > 3 * 1024 * 1024) {
-    console.log('[generate-art] Resizing photo for Gemini (too large)...')
-    photoBuffer = Buffer.from(await sharp(photoBuffer)
-      .resize({ width: 1024, fit: 'inside' })
-      .jpeg({ quality: 85 })
-      .toBuffer())
+    let photoBuffer: Buffer = Buffer.from(await photoResponse.arrayBuffer())
+    const contentType = photoResponse.headers.get('content-type') || 'image/jpeg'
+
+    // Resize if > 3MB to stay within Gemini limits
+    if (photoBuffer.length > 3 * 1024 * 1024) {
+      console.log('[generate-art] Resizing photo for Gemini (too large)...')
+      photoBuffer = Buffer.from(await sharp(photoBuffer)
+        .resize({ width: 1024, fit: 'inside' })
+        .jpeg({ quality: 85 })
+        .toBuffer())
+    }
+
+    const photoBase64 = photoBuffer.toString('base64')
+    const mimeType = contentType.startsWith('image/') ? contentType : 'image/jpeg'
+    
+    contentParts.push({ inline_data: { mime_type: mimeType, data: photoBase64 } })
   }
 
-  const photoBase64 = photoBuffer.toString('base64')
-  const mimeType = contentType.startsWith('image/') ? contentType : 'image/jpeg'
+  // System instruction varies based on whether we have a photo
+  const systemInstruction = photoUrl
+    ? 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
+    : 'You are a professional graphic designer. Generate a stunning visual composition based on the description. The output must be a high-quality image suitable for social media. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.'
 
-  // 2. Call Gemini API
-  console.log('[generate-art] Calling Nano Banana 2 (Gemini)...')
+  // Call Gemini API
+  console.log(`[generate-art] Calling Nano Banana 2 (Gemini) ${photoUrl ? 'with photo' : 'without photo'}...`)
   const response = await fetch(`${GEMINI_API_URL}?key=${apiKey}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       system_instruction: {
-        parts: [{
-          text: 'You are a professional food photographer. Generate a photorealistic scene based on the description using the provided product photo as the main subject. The output must be a high-quality photographic image. ABSOLUTELY NO TEXT, NO LETTERS, NO NUMBERS, NO WATERMARKS, NO UI ELEMENTS in the generated image.',
-        }],
+        parts: [{ text: systemInstruction }],
       },
       contents: [{
-        parts: [
-          { text: scenePrompt },
-          { inline_data: { mime_type: mimeType, data: photoBase64 } },
-        ],
+        parts: contentParts,
       }],
       generationConfig: {
         responseModalities: ['TEXT', 'IMAGE'],
@@ -486,120 +398,21 @@ async function callNanoBanana2(
 
   const result = await response.json()
 
-  // 3. Extract generated image from response
+  // Extract generated image from response
   const candidates = result.candidates || []
   for (const candidate of candidates) {
     for (const part of candidate.content?.parts || []) {
       if (part.inline_data?.data) {
-        console.log('[generate-art] Gemini scene generated successfully')
-        return Buffer.from(part.inline_data.data, 'base64')
+        console.log('[generate-art] Gemini image generated successfully')
+        return {
+          buffer: Buffer.from(part.inline_data.data, 'base64'),
+          mimeType: part.inline_data.mime_type || 'image/png',
+        }
       }
     }
   }
 
   throw new Error('Gemini did not return an image')
-}
-
-// --- Ideogram Remix ---
-
-async function callIdeogramRemix(
-  imageBuffer: Buffer,
-  options: {
-    prompt: string
-    aspectRatio: string
-    numImages: number
-    colors: string[]
-    styleReferenceUrls?: string[]
-  },
-): Promise<IdeogramImage[]> {
-  const apiKey = process.env.IDEOGRAM_API_KEY
-  if (!apiKey) throw new Error('IDEOGRAM_API_KEY not configured')
-
-  // V3 endpoint requires multipart/form-data with flat fields - build manually with Buffer
-  const boundary = `----IdeogramBoundary${Date.now()}`
-  const parts: Buffer[] = []
-
-  // Helper to add text field
-  const addTextField = (name: string, value: string) => {
-    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`))
-  }
-
-  // Image file (the Gemini scene) - V3 uses "image" field name
-  parts.push(Buffer.from(
-    `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="scene.png"\r\nContent-Type: image/png\r\n\r\n`
-  ))
-  parts.push(imageBuffer)
-  parts.push(Buffer.from('\r\n'))
-
-  // Text fields (flat, not wrapped in image_request)
-  addTextField('prompt', options.prompt)
-  addTextField('negative_prompt', 'text, letters, numbers, words, watermark, signature, typography, writing, captions, labels, logos, titles, subtitles')
-  addTextField('aspect_ratio', options.aspectRatio)
-  addTextField('magic_prompt', 'OFF')
-  addTextField('num_images', String(options.numImages))
-  addTextField('style_type', 'GENERAL')
-  addTextField('image_weight', '50')
-
-  // Color palette as JSON string
-  if (options.colors.length > 0) {
-    addTextField('color_palette', JSON.stringify({
-      members: options.colors.slice(0, 5).map((c) => ({ color_hex: c })),
-    }))
-  }
-
-  // Close boundary
-  parts.push(Buffer.from(`--${boundary}--\r\n`))
-
-  const bodyBuffer = Buffer.concat(parts)
-
-  console.log('[generate-art] Calling Ideogram V3 /remix (manual multipart)...')
-  const response = await fetch(`${IDEOGRAM_API_URL}/remix`, {
-    method: 'POST',
-    headers: {
-      'Api-Key': apiKey,
-      'Content-Type': `multipart/form-data; boundary=${boundary}`,
-    },
-    body: bodyBuffer,
-  })
-
-  if (!response.ok) {
-    const errorBody = await response.text()
-    console.error('[generate-art] Ideogram remix error:', response.status, errorBody)
-    if (response.status === 429) {
-      throw new IdeogramError('rate_limit', 'Limite de requisições atingido. Tente novamente em alguns minutos.')
-    }
-    if (response.status === 400 && errorBody.includes('content_policy')) {
-      throw new IdeogramError('content_policy', 'O conteúdo solicitado viola as políticas de uso. Tente reformular o texto.')
-    }
-    throw new Error(`Ideogram remix API error: ${response.status} - ${errorBody.substring(0, 200)}`)
-  }
-
-  const result = await response.json()
-  console.log(`[generate-art] Ideogram remix returned ${result.data?.length || 0} images`)
-  return (result.data || []) as IdeogramImage[]
-}
-
-// --- Error types ---
-
-class IdeogramError extends Error {
-  code: string
-  constructor(code: string, message: string) {
-    super(message)
-    this.code = code
-    this.name = 'IdeogramError'
-  }
-}
-
-// --- Prompt parsing ---
-
-function parseDualPrompts(text: string): { ideogramPrompt: string; scenePrompt: string } {
-  const ideogramMatch = text.match(/\[IDEOGRAM_PROMPT\]([\s\S]*?)\[\/IDEOGRAM_PROMPT\]/)
-  const sceneMatch = text.match(/\[SCENE_PROMPT\]([\s\S]*?)\[\/SCENE_PROMPT\]/)
-
-  return {
-    ideogramPrompt: ideogramMatch?.[1]?.trim() || text,
-    scenePrompt: sceneMatch?.[1]?.trim() || 'Professional food photography scene, natural lighting, clean background',
-  }
 }
 
 // --- Main Handler ---
@@ -614,13 +427,13 @@ export async function POST(request: Request) {
   // Validate required API keys
   if (!process.env.OPENAI_API_KEY) {
     return NextResponse.json(
-      { error: 'Configuração de IA incompleta. Contate o administrador.' },
+      { error: 'Configuração de IA incompleta (OpenAI). Contate o administrador.' },
       { status: 503 }
     )
   }
-  if (!process.env.IDEOGRAM_API_KEY) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return NextResponse.json(
-      { error: 'Configuração do Ideogram incompleta. Contate o administrador.' },
+      { error: 'Configuração de IA incompleta (Gemini). Contate o administrador.' },
       { status: 503 }
     )
   }
@@ -667,102 +480,64 @@ export async function POST(request: Request) {
       console.error('[generate-art] Text separation failed, will skip text rendering:', e)
     }
 
-    // --- Step 2: Generate image (without text) ---
-    // Use photo path whenever a photo is provided, composition just adds extra prompt
+    // --- Step 2: Generate visual prompt with GPT-4o-mini ---
     const hasPhoto = body.usePhoto && !!body.photoUrl
-    const usePhotoPath = hasPhoto && !!process.env.GOOGLE_GENERATIVE_AI_API_KEY
-    console.log(`[generate-art] hasPhoto=${hasPhoto}, usePhoto=${body.usePhoto}, photoUrl=${body.photoUrl ? 'yes' : 'no'}, geminiKey=${!!process.env.GOOGLE_GENERATIVE_AI_API_KEY}, usePhotoPath=${usePhotoPath}`)
-    let ideogramImages: IdeogramImage[] = []
-    let provider = 'ideogram-3'
-    let technicalPrompt = ''
+    console.log(`[generate-art] Step 2: Generating visual prompt (hasPhoto=${hasPhoto})`)
 
-    // Collect all style reference URLs
-    const styleReferenceUrls = [
-      ...brandAssets.referenceImageUrls,
-      ...(body.compositionReferenceUrls || []),
-    ].slice(0, 5)
+    const systemPrompt = buildGeminiPromptSystemPrompt(
+      brandAssets,
+      body.format,
+      hasPhoto,
+      body.compositionEnabled ? body.compositionPrompt : undefined,
+    )
 
-    const imageOptions = {
-      aspectRatio: IDEOGRAM_ASPECT_RATIOS[body.format],
-      numImages: body.variations,
-      colors: brandAssets.colors,
-      styleReferenceUrls: styleReferenceUrls.length > 0 ? styleReferenceUrls : undefined,
-    }
+    const { text: technicalPrompt } = await generateText({
+      model: openai('gpt-4o-mini'),
+      system: systemPrompt,
+      prompt: `Texto para a arte: "${body.text}"`,
+      temperature: 0.7,
+    })
 
-    if (usePhotoPath) {
-      // --- Path B: Photo-based with Gemini + Ideogram Remix ---
-      console.log('[generate-art] Step 2: Path B — Photo-based (Gemini + Ideogram Remix)')
+    console.log('[generate-art] Technical prompt:', technicalPrompt.substring(0, 200) + '...')
 
-      // Generate dual prompts (with optional composition direction)
-      const dualSystemPrompt = buildDualPromptSystemPrompt(
-        brandAssets,
+    // --- Step 3: Generate image(s) with Gemini (Nano Banana 2) ---
+    console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini...`)
+    const generatedImages: GeneratedImage[] = []
+
+    for (let i = 0; i < body.variations; i++) {
+      console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
+      const { buffer, mimeType } = await callNanoBanana2(
+        technicalPrompt,
+        hasPhoto ? body.photoUrl : undefined,
         body.format,
-        body.compositionEnabled ? body.compositionPrompt : undefined,
       )
 
-      const { text: dualRawText } = await generateText({
-        model: openai('gpt-4o-mini'),
-        system: dualSystemPrompt,
-        prompt: `Texto para a arte: "${body.text}"`,
-        temperature: 0.7,
+      // Resize to exact format dimensions with Sharp
+      const formatInfo = FORMAT_DIMENSIONS[body.format]
+      const resizedBuffer = await sharp(buffer)
+        .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
+        .jpeg({ quality: 90 })
+        .toBuffer()
+
+      // Convert to base64 data URL for frontend consumption
+      const base64 = resizedBuffer.toString('base64')
+      const imageUrl = `data:image/jpeg;base64,${base64}`
+
+      generatedImages.push({
+        url: imageUrl,
+        prompt: technicalPrompt,
       })
-
-      const { ideogramPrompt, scenePrompt } = parseDualPrompts(dualRawText)
-      technicalPrompt = ideogramPrompt
-
-      console.log('[generate-art] Ideogram prompt:', ideogramPrompt.substring(0, 100) + '...')
-      console.log('[generate-art] Scene prompt:', scenePrompt.substring(0, 100) + '...')
-
-      try {
-        // Generate scene with Gemini using the user's photo
-        const sceneBuffer = await callNanoBanana2(scenePrompt, body.photoUrl!)
-
-        // Remix with Ideogram to apply brand style
-        ideogramImages = await callIdeogramRemix(sceneBuffer, {
-          prompt: ideogramPrompt,
-          ...imageOptions,
-        })
-        provider = 'ideogram-3+gemini'
-        console.log('[generate-art] Path B completed successfully with Gemini + Ideogram Remix')
-      } catch (compositionError: any) {
-        // Fallback to Path A if Gemini/Remix fails
-        const errMsg = compositionError?.message || String(compositionError)
-        console.error('[generate-art] Path B FAILED, falling back to Path A. Error:', errMsg)
-        ideogramImages = await callIdeogramGenerate(ideogramPrompt, imageOptions)
-        provider = 'ideogram-3 (fallback)'
-      }
-    } else {
-      // --- Path A: Simple generation with Ideogram (no photo) ---
-      console.log('[generate-art] Step 2: Path A — Simple generation (Ideogram) - usePhotoPath was false')
-
-      const systemPrompt = buildIdeogramPromptSystemPrompt(
-        brandAssets,
-        body.format,
-        false,
-      )
-
-      const { text: prompt } = await generateText({
-        model: openai('gpt-4o-mini'),
-        system: systemPrompt,
-        prompt: `Texto para a arte: "${body.text}"`,
-        temperature: 0.7,
-      })
-
-      technicalPrompt = prompt
-      console.log('[generate-art] Technical prompt:', prompt.substring(0, 200) + '...')
-
-      ideogramImages = await callIdeogramGenerate(prompt, imageOptions)
     }
 
-    if (ideogramImages.length === 0) {
+    if (generatedImages.length === 0) {
       throw new Error('Nenhuma imagem foi gerada')
     }
 
-    // --- Step 3: Position text with Vision ---
-    console.log('[generate-art] Step 3: Positioning text with Vision...')
+    // --- Step 4: Position text with Vision ---
+    console.log('[generate-art] Step 4: Positioning text with Vision...')
     const results: Array<{ imageUrl: string; prompt: string; textLayout?: TextLayout }> = []
 
-    for (const img of ideogramImages) {
+    for (const img of generatedImages) {
       let textLayout: TextLayout | undefined
       if (textElements.length > 0) {
         try {
@@ -774,13 +549,12 @@ export async function POST(request: Request) {
       }
       results.push({
         imageUrl: img.url,
-        prompt: img.prompt || technicalPrompt,
+        prompt: img.prompt,
         textLayout,
       })
     }
 
-    // --- Step 4: Build response ---
-    // Fetch font URLs for custom fonts (if they exist in DB)
+    // --- Step 5: Build response ---
     let fontUrls: { title?: string; body?: string } | undefined
     if (brandAssets.titleFontFamily || brandAssets.bodyFontFamily) {
       const customFonts = await db.customFont.findMany({
@@ -794,10 +568,12 @@ export async function POST(request: Request) {
       }
     }
 
+    console.log(`[generate-art] Done! Generated ${results.length} images with Gemini`)
+
     return NextResponse.json({
       images: results,
       prompt: technicalPrompt,
-      provider,
+      provider: 'nano-banana-2',
       format: body.format,
       variations: results.length,
       fonts: {
@@ -816,15 +592,6 @@ export async function POST(request: Request) {
     const errorStack = error instanceof Error ? error.stack : undefined
     console.error('[generate-art] Error:', errorMessage)
     if (errorStack) console.error('[generate-art] Stack:', errorStack)
-
-    if (error instanceof IdeogramError) {
-      if (error.code === 'content_policy') {
-        return NextResponse.json({ error: error.message }, { status: 400 })
-      }
-      if (error.code === 'rate_limit') {
-        return NextResponse.json({ error: error.message }, { status: 429 })
-      }
-    }
 
     return NextResponse.json(
       { error: 'Erro ao gerar arte. Tente novamente.', debug: errorMessage },
