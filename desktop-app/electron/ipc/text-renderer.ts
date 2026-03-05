@@ -110,7 +110,7 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
 
   // Draw overlay if enabled
   if (input.textLayout.overlay.enabled) {
-    const opacity = Math.min(0.7, Math.max(0, input.textLayout.overlay.opacity))
+    const opacity = Math.min(0.85, Math.max(0, input.textLayout.overlay.opacity))
     const pos = input.textLayout.overlay.position
     const type = input.textLayout.overlay.type ?? 'gradient'
 
@@ -118,23 +118,30 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
     let rectHeight = height
 
     if (pos === 'bottom') {
-      rectHeight = Math.round(height * 0.35)
+      // Cover bottom 50% for better text coverage
+      rectHeight = Math.round(height * 0.50)
       rectY = height - rectHeight
     } else if (pos === 'top') {
-      rectHeight = Math.round(height * 0.35)
+      rectHeight = Math.round(height * 0.50)
       rectY = 0
     }
 
     if (type === 'gradient') {
-      // Gradient: opaque at edge -> transparent toward center
+      // Multi-stop gradient: smooth transition with stronger coverage in text area
       if (pos === 'bottom') {
         const gradient = ctx.createLinearGradient(0, rectY, 0, rectY + rectHeight)
         gradient.addColorStop(0, 'rgba(0, 0, 0, 0)')
+        gradient.addColorStop(0.3, `rgba(0, 0, 0, ${opacity * 0.2})`)
+        gradient.addColorStop(0.6, `rgba(0, 0, 0, ${opacity * 0.6})`)
+        gradient.addColorStop(0.85, `rgba(0, 0, 0, ${opacity * 0.85})`)
         gradient.addColorStop(1, `rgba(0, 0, 0, ${opacity})`)
         ctx.fillStyle = gradient
       } else if (pos === 'top') {
         const gradient = ctx.createLinearGradient(0, rectY, 0, rectY + rectHeight)
         gradient.addColorStop(0, `rgba(0, 0, 0, ${opacity})`)
+        gradient.addColorStop(0.15, `rgba(0, 0, 0, ${opacity * 0.85})`)
+        gradient.addColorStop(0.4, `rgba(0, 0, 0, ${opacity * 0.6})`)
+        gradient.addColorStop(0.7, `rgba(0, 0, 0, ${opacity * 0.2})`)
         gradient.addColorStop(1, 'rgba(0, 0, 0, 0)')
         ctx.fillStyle = gradient
       } else {
@@ -147,17 +154,18 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
     }
 
     ctx.fillRect(0, rectY, width, rectHeight)
-    console.log('[text-renderer] Added overlay:', type, pos, 'opacity:', opacity)
+    console.log('[text-renderer] Added overlay:', type, pos, 'opacity:', opacity, 'height:', rectHeight)
   }
 
   // Draw text elements
   for (const el of input.textLayout.elements) {
     const xPx = Math.round((el.x / 100) * width)
     const yPx = Math.round((el.y / 100) * height)
+    const maxWidthPx = Math.round((el.maxWidth / 100) * width)
     const fontFamily = el.font === 'title' ? input.fonts.title.family : input.fonts.body.family
     const weightStr = weightToString(el.weight)
 
-    console.log(`[text-renderer] Drawing: "${el.text.substring(0, 30)}..." font="${fontFamily}" size=${el.sizePx} pos=(${xPx},${yPx})`)
+    console.log(`[text-renderer] Drawing: "${el.text.substring(0, 40)}..." font="${fontFamily}" size=${el.sizePx} color=${el.color} pos=(${xPx},${yPx}) maxW=${maxWidthPx}`)
 
     // Set font
     ctx.font = `${weightStr} ${el.sizePx}px "${fontFamily}"`
@@ -178,13 +186,37 @@ export async function renderText(input: RenderTextInput): Promise<Buffer> {
       ctx.shadowOffsetY = 0
     }
 
-    // Handle multi-line text
-    const lines = el.text.split('\n')
+    // Handle multi-line text with word wrapping
     const lineHeight = Math.round(el.sizePx * 1.3)
+    const rawLines = el.text.split('\n')
+    const wrappedLines: string[] = []
 
-    for (let i = 0; i < lines.length; i++) {
+    for (const rawLine of rawLines) {
+      // Word-wrap each line that exceeds maxWidth
+      if (maxWidthPx > 0 && ctx.measureText(rawLine).width > maxWidthPx) {
+        const words = rawLine.split(' ')
+        let currentLine = ''
+        for (const word of words) {
+          const testLine = currentLine ? `${currentLine} ${word}` : word
+          if (ctx.measureText(testLine).width > maxWidthPx && currentLine) {
+            wrappedLines.push(currentLine)
+            currentLine = word
+          } else {
+            currentLine = testLine
+          }
+        }
+        if (currentLine) wrappedLines.push(currentLine)
+      } else {
+        wrappedLines.push(rawLine)
+      }
+    }
+
+    for (let i = 0; i < wrappedLines.length; i++) {
       const lineY = yPx + (i * lineHeight)
-      ctx.fillText(lines[i], xPx, lineY)
+      // Don't draw lines that would be off-screen
+      if (lineY >= 0 && lineY < height) {
+        ctx.fillText(wrappedLines[i], xPx, lineY)
+      }
     }
   }
 

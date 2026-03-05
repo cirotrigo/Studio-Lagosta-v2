@@ -361,9 +361,14 @@ PALETA DE CORES DA MARCA: ${colorList.join(', ')}
 
 ${colorInstruction}
 
+REGRA CRÍTICA — PRESERVAÇÃO DO TEXTO:
+- Use EXATAMENTE as palavras do usuário. NÃO reescreva, NÃO adicione palavras, NÃO modifique frases.
+- Apenas SEPARE o texto em elementos, mantendo as palavras originais intactas.
+- Se o texto tiver partes separadas por "-" ou "–", use cada parte como um elemento diferente.
+
 ESTRUTURA DO TEXTO:
 - Máximo 4 elementos
-- Cada elemento com no máximo ~30 caracteres (quebre em linhas se necessário)
+- Cada elemento com no máximo ~30 caracteres (quebre em linhas com \\n se necessário)
 - type "title": o texto principal em destaque (font: "title", size: "xl" ou "lg", weight: 700-800)
 - type "subtitle": complemento do título (font: "title", size: "lg" ou "md", weight: 600)
 - type "info": informações como horário, preço, endereço (font: "body", size: "md" ou "sm", weight: 400)
