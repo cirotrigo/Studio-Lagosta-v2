@@ -1,0 +1,136 @@
+{
+  "template": {
+    "canvas": {
+      "format": "instagram_story",
+      "ratio": "9:16",
+      "safe_margin": 80,
+      "safe_area": { "top": 120, "bottom": 180 }
+    },
+    "zones": {
+      "text_zone": { "x": 6, "width": 58 },
+      "image_focus_zone": { "x": 50, "width": 50 },
+      "gradient_zone": { "x": 0, "width": 60 }
+    },
+    "layout": {
+      "text_alignment": "left",
+      "visual_balance": "left_heavy"
+    },
+    "overlay": {
+      "type": "gradient",
+      "direction": "left_to_right",
+      "start_color": "#000000",
+      "end_opacity": 0,
+      "opacity": 0.6
+    },
+    "typography": {
+      "title_font": "Playfair Display",
+      "body_font": "Inter",
+      "font_fallbacks": ["Georgia", "serif"],
+      "scale": { "xs": 18, "sm": 24, "md": 32, "lg": 48, "xl": 72 }
+    },
+    "text_density": {
+      "ideal_words": 20,
+      "max_words": 35
+    },
+    "colors": {
+      "eyebrow": "#D4AF37",
+      "title": "#D4AF37",
+      "description": "#FFFFFF",
+      "cta": "#FFFFFF",
+      "footer": "#FFFFFF"
+    },
+    "default_content": {
+      "cta": "Descubra mais",
+      "footer": ""
+    },
+    "slot_priority": ["title", "description", "cta", "eyebrow", "footer"],
+    "slot_drop_order": ["footer", "eyebrow", "description"],
+    "content_slots": {
+      "eyebrow": {
+        "type": "label",
+        "anchor": "top_fixed",
+        "anchor_offset": 14,
+        "margin_bottom": 12,
+        "max_words": 4,
+        "max_characters_per_line": 20,
+        "line_break_strategy": "natural",
+        "allow_auto_scale": true,
+        "font_size": "sm",
+        "weight": 700,
+        "uppercase": true
+      },
+      "title": {
+        "type": "headline",
+        "anchor": "after:eyebrow",
+        "margin_top": 12,
+        "margin_bottom": 18,
+        "max_lines": 2,
+        "max_words": 10,
+        "max_characters_per_line": 24,
+        "line_break_strategy": "balanced",
+        "allow_auto_scale": true,
+        "font_size": "xl",
+        "weight": 700,
+        "uppercase": false
+      },
+      "description": {
+        "type": "paragraph",
+        "anchor": "after:title",
+        "margin_top": 18,
+        "margin_bottom": 24,
+        "max_lines": 3,
+        "max_words": 25,
+        "max_characters_per_line": 35,
+        "line_break_strategy": "natural",
+        "allow_auto_scale": true,
+        "font_size": "md",
+        "weight": 400,
+        "uppercase": false
+      },
+      "cta": {
+        "type": "call_to_action",
+        "anchor": "before:footer",
+        "margin_bottom": 12,
+        "max_words": 6,
+        "max_characters_per_line": 24,
+        "line_break_strategy": "natural",
+        "allow_auto_scale": true,
+        "font_size": "lg",
+        "weight": 700,
+        "uppercase": false
+      },
+      "footer": {
+        "type": "location_or_info",
+        "anchor": "bottom_fixed",
+        "anchor_offset": 12,
+        "margin_top": 12,
+        "max_words": 10,
+        "max_characters_per_line": 40,
+        "line_break_strategy": "natural",
+        "allow_auto_scale": false,
+        "font_size": "sm",
+        "weight": 400,
+        "uppercase": false
+      }
+    }
+  },
+  "slots": {
+    "eyebrow": "EXCLUSIVO",
+    "title": "Vinhos Premium do Chile",
+    "description": "Direto das melhores vinicolas para a sua mesa",
+    "cta": "Descubra mais",
+    "footer": "Rua das Flores, 123"
+  },
+  "format": "STORY",
+  "fontSources": {
+    "title": { "family": "Playfair Display", "url": null },
+    "body": { "family": "Inter", "url": null }
+  },
+  "measuredHeights": {
+    "eyebrow": 29,
+    "title": 173,
+    "description": 115,
+    "cta": 58,
+    "footer": 29
+  }
+}

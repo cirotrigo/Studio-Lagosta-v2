@@ -57,8 +57,12 @@ export interface ElectronAPI {
     sizePct: number
   ) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
 
-  // Text Rendering (text + overlay + logo via Sharp SVG)
+  // Text Rendering (text + overlay + logo via Sharp SVG) — legacy flow
   renderText: (args: RenderTextArgs) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
+
+  // Template Layout 2-Pass — new flow
+  measureTextLayout: (draft: any) => Promise<any>
+  renderFinalLayout: (finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
 
   // App Info
   getVersion: () => Promise<string>
@@ -90,8 +94,13 @@ const electronAPI: ElectronAPI = {
   overlayLogo: (imageBuffer: ArrayBuffer, logoUrl: string, position: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left', sizePct: number) =>
     ipcRenderer.invoke('image:overlay-logo', imageBuffer, logoUrl, position, sizePct),
 
-  // Text Rendering (text + overlay + logo via Sharp SVG)
+  // Text Rendering (text + overlay + logo via Sharp SVG) — legacy flow
   renderText: (args: RenderTextArgs) => ipcRenderer.invoke('image:render-text', args),
+
+  // Template Layout 2-Pass — new flow
+  measureTextLayout: (draft: any) => ipcRenderer.invoke('image:measure-text-layout', draft),
+  renderFinalLayout: (finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) =>
+    ipcRenderer.invoke('image:render-final-layout', finalLayout, imageBuffer, logo),
 
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),

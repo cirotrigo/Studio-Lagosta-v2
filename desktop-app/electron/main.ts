@@ -3,7 +3,7 @@ import path from 'path'
 import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
 import { ensureFont, getFontBase64 } from './ipc/font-cache'
-import { renderText } from './ipc/text-renderer'
+import { renderText, measureTextLayout, renderFinalLayout, registerFontFromPath } from './ipc/text-renderer'
 
 let mainWindow: BrowserWindow | null = null
 let refreshWindow: BrowserWindow | null = null
@@ -906,6 +906,44 @@ ipcMain.handle('image:render-text', async (_event, args: {
     }
   } catch (error) {
     console.error('[Render Text] Error:', error)
+    return { ok: false, error: String(error) }
+  }
+})
+
+// IPC Handler - Template Layout: Measure Text (Pass 2)
+ipcMain.handle('image:measure-text-layout', async (_event, draftLayout: any) => {
+  try {
+    // Font registration BEFORE measuring (C8)
+    const fontSources = draftLayout.fontSources
+    if (fontSources) {
+      for (const source of [fontSources.title, fontSources.body]) {
+        if (source?.family) {
+          const fontPath = await ensureFont(source.family, source.url ?? undefined)
+          registerFontFromPath(fontPath, source.family)
+        }
+      }
+    }
+
+    const { createCanvas } = await import('@napi-rs/canvas')
+    const canvas = createCanvas(draftLayout.canvas.width, draftLayout.canvas.height)
+    const ctx = canvas.getContext('2d')
+    return measureTextLayout(draftLayout, ctx)
+  } catch (error) {
+    console.error('[Measure Text Layout] Error:', error)
+    throw error
+  }
+})
+
+// IPC Handler - Template Layout: Render Final (Pass 4)
+ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, imageBuffer: ArrayBuffer) => {
+  try {
+    const result = await renderFinalLayout(finalLayout, Buffer.from(imageBuffer))
+    return {
+      ok: true,
+      buffer: result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer,
+    }
+  } catch (error) {
+    console.error('[Render Final Layout] Error:', error)
     return { ok: false, error: String(error) }
   }
 })

@@ -1,5 +1,6 @@
 import BrandAssetsSection from '@/components/project/identity/BrandAssetsSection'
 import StyleAnalysisSection from '@/components/project/identity/StyleAnalysisSection'
+import ArtTemplatesSection from '@/components/project/identity/ArtTemplatesSection'
 
 interface IdentityTabProps {
   projectId: number
@@ -12,6 +13,8 @@ export default function IdentityTab({ projectId }: IdentityTabProps) {
         <BrandAssetsSection projectId={projectId} />
         <div className="h-px bg-border" />
         <StyleAnalysisSection projectId={projectId} />
+        <div className="h-px bg-border" />
+        <ArtTemplatesSection projectId={projectId} />
       </div>
     </div>
   )

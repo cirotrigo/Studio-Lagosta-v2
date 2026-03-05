@@ -1,13 +1,17 @@
-import { useState, useCallback } from 'react'
-import { Sparkles, Layers } from 'lucide-react'
+import { useState, useCallback, useEffect } from 'react'
+import { Sparkles, Layers, ShieldCheck } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useProjectStore } from '@/stores/project.store'
-import { useGenerationStore, usePendingJobs, useCompletedJobs, ArtFormat } from '@/stores/generation.store'
+import { useGenerationStore, usePendingJobs, useCompletedJobs, ArtFormat, TextProcessingMode } from '@/stores/generation.store'
 import { useGenerateArt, GenerateArtResult } from '@/hooks/use-art-generation'
+import { useArtTemplates } from '@/hooks/use-art-templates'
+import { buildDraftLayout, resolveLayoutWithMeasurements } from '@/lib/layout-engine'
 import { cn } from '@/lib/utils'
 import { Switch } from '@/components/project/shared/Switch'
 import FormatSelector from '@/components/project/generate/FormatSelector'
+import TemplateSelector from '@/components/project/generate/TemplateSelector'
+import TextProcessingSelector from '@/components/project/generate/TextProcessingSelector'
 import TextInput from '@/components/project/generate/TextInput'
 import VariationSelector from '@/components/project/generate/VariationSelector'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
@@ -17,6 +21,9 @@ import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import CompositionEditor from '@/components/project/generate/CompositionEditor'
 
 const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
+
+// Detect if template pipeline is available (Electron with new IPC channels)
+const hasTemplatePipeline = typeof window !== 'undefined' && !!window.electronAPI?.measureTextLayout
 
 interface GenerateArtTabProps {
   projectId: number
@@ -31,6 +38,9 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const completedJobs = useCompletedJobs()
   const generateArt = useGenerateArt()
 
+  // Art templates query
+  const { data: artTemplates, isLoading: templatesLoading } = useArtTemplates(projectId)
+
   // Form state
   const [format, setFormat] = useState<ArtFormat>('FEED_PORTRAIT')
   const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; source: string } | null>(null)
@@ -41,6 +51,19 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const [compositionPrompt, setCompositionPrompt] = useState('')
   const [compositionReferenceImages, setCompositionReferenceImages] = useState<File[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
+
+  // Template state
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([])
+  const [textProcessingMode, setTextProcessingMode] = useState<TextProcessingMode>('faithful')
+  const [textProcessingCustomPrompt, setTextProcessingCustomPrompt] = useState('')
+  const [strictTemplateMode, setStrictTemplateMode] = useState(false)
+
+  // Reset template selection when format changes
+  useEffect(() => {
+    setSelectedTemplateIds([])
+  }, [format])
+
+  const isTemplateMode = hasTemplatePipeline && selectedTemplateIds.length > 0
 
   const uploadReferenceImages = useCallback(async (files: File[]): Promise<string[]> => {
     const urls: string[] = []
@@ -59,25 +82,80 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
     return urls
   }, [])
 
-  const processResultImages = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
+  // 4-pass template pipeline orchestration (frontend)
+  const processResultWithTemplate = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
     const processedUrls: string[] = []
 
-    // Debug: log fonts received from API
+    if (!result.imageUrl || !result.templates || !result.slots) {
+      throw new Error('Dados de template incompletos na resposta')
+    }
+
+    // Download base image
+    const downloaded = await window.electronAPI.downloadBlob(result.imageUrl)
+    if (!downloaded.ok || !downloaded.buffer) {
+      throw new Error('Erro ao baixar imagem base')
+    }
+    const imageBuffer = downloaded.buffer
+
+    for (const tpl of result.templates) {
+      try {
+        // Pass 1: Engine generates draft layout (pure JS — no IPC)
+        const draft = buildDraftLayout(
+          result.slots,
+          tpl.templateData,
+          result.format as string,
+          tpl.fontSources,
+          result.strictTemplateMode ?? false,
+        )
+
+        // Pass 2: Renderer measures real text (IPC → main process with canvas)
+        const measurements = await window.electronAPI.measureTextLayout(draft)
+
+        // Pass 3: Engine resolves final positions (pure JS — no IPC)
+        const finalLayout = resolveLayoutWithMeasurements(draft, measurements, {
+          strictMode: result.strictTemplateMode ?? false,
+        })
+
+        // Pass 4: Renderer renders final image (IPC → main process with canvas)
+        const rendered = await window.electronAPI.renderFinalLayout(
+          finalLayout,
+          imageBuffer,
+          result.logo,
+        )
+
+        if (rendered.ok && rendered.buffer) {
+          const blob = new Blob([rendered.buffer], { type: 'image/jpeg' })
+          processedUrls.push(URL.createObjectURL(blob))
+        }
+      } catch (e: any) {
+        console.error(`[template-render] Failed for template ${tpl.templateId}:`, e)
+        // In strict mode, propagate error
+        if (result.strictTemplateMode) {
+          throw e
+        }
+        // Non-strict: skip this template silently
+      }
+    }
+
+    return processedUrls
+  }, [])
+
+  // Legacy: process result images without template (existing flow)
+  const processResultImagesLegacy = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
+    const processedUrls: string[] = []
+
     console.log('[generate-art] Fonts from API:', JSON.stringify(result.fonts))
     console.log('[generate-art] FontUrls from API:', JSON.stringify(result.fontUrls))
 
     for (const img of result.images) {
-      // 1. Download da imagem do Ideogram
       const downloaded = await window.electronAPI.downloadBlob(img.imageUrl)
       if (!downloaded.ok || !downloaded.buffer) {
-        processedUrls.push(img.imageUrl) // Fallback: URL original
+        processedUrls.push(img.imageUrl)
         continue
       }
 
-      // 2. Se tem textLayout, renderizar texto + logo localmente
       if (img.textLayout && result.fonts && window.electronAPI.renderText) {
         try {
-          console.log('[generate-art] Calling renderText with fonts:', result.fonts, 'fontUrls:', result.fontUrls)
           const rendered = await window.electronAPI.renderText({
             imageBuffer: downloaded.buffer,
             textLayout: img.textLayout,
@@ -97,7 +175,6 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
         }
       }
 
-      // 3. Fallback: criar blob da imagem sem texto
       const blob = new Blob([downloaded.buffer], { type: downloaded.contentType || 'image/jpeg' })
       processedUrls.push(URL.createObjectURL(blob))
     }
@@ -105,9 +182,23 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
     return processedUrls
   }, [includeLogo])
 
+  const processResultImages = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
+    if (result.templatePath && hasTemplatePipeline) {
+      return processResultWithTemplate(result)
+    } else if (result.templatePath && !hasTemplatePipeline) {
+      throw new Error('Templates requerem o app desktop')
+    }
+    return processResultImagesLegacy(result)
+  }, [processResultWithTemplate, processResultImagesLegacy])
+
   const handleGenerate = useCallback(async () => {
-    if (!text.trim()) {
+    // Validation: text required except for generate_copy mode
+    if (!text.trim() && textProcessingMode !== 'generate_copy') {
       toast.error('Digite o texto que aparecera na arte')
+      return
+    }
+    if (textProcessingMode === 'generate_copy' && !textProcessingCustomPrompt.trim()) {
+      toast.error('Preencha o prompt para geracao de copy')
       return
     }
 
@@ -132,12 +223,17 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       compositionEnabled,
       compositionPrompt: compositionEnabled ? compositionPrompt : undefined,
       compositionReferenceUrls,
+      ...(isTemplateMode && {
+        templateIds: selectedTemplateIds,
+        textProcessingMode,
+        textProcessingCustomPrompt: textProcessingMode === 'generate_copy' ? textProcessingCustomPrompt : undefined,
+        strictTemplateMode,
+      }),
     }
 
     const jobId = addJob(params)
     updateJob(jobId, { status: 'generating' })
 
-    // Generate art asynchronously - don't await
     generateArt.mutateAsync({
       projectId,
       text: params.text,
@@ -149,16 +245,34 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       compositionEnabled: params.compositionEnabled,
       compositionPrompt: params.compositionPrompt,
       compositionReferenceUrls: params.compositionReferenceUrls,
+      templateIds: params.templateIds,
+      textProcessingMode: params.textProcessingMode,
+      textProcessingCustomPrompt: params.textProcessingCustomPrompt,
+      strictTemplateMode: params.strictTemplateMode,
     }).then(async (result) => {
       try {
         const processedUrls = await processResultImages(result)
+        if (processedUrls.length === 0) {
+          throw new Error('Nenhuma arte foi gerada')
+        }
         updateJob(jobId, { status: 'done', images: processedUrls })
         toast.success(`${processedUrls.length} arte(s) gerada(s) com sucesso!`)
-      } catch (e) {
-        // Fallback: use raw URLs if processing fails
-        const imageUrls = result.images.map((img) => img.imageUrl)
-        updateJob(jobId, { status: 'done', images: imageUrls })
-        toast.success(`${imageUrls.length} arte(s) gerada(s) com sucesso!`)
+      } catch (e: any) {
+        if (result.templatePath) {
+          // Template errors are more specific
+          updateJob(jobId, { status: 'error', error: e.message || 'Erro no pipeline de template' })
+          toast.error(e.message || 'Erro no pipeline de template')
+        } else {
+          // Fallback: use raw URLs if processing fails
+          const imageUrls = result.images?.map((img) => img.imageUrl) ?? []
+          if (imageUrls.length > 0) {
+            updateJob(jobId, { status: 'done', images: imageUrls })
+            toast.success(`${imageUrls.length} arte(s) gerada(s) com sucesso!`)
+          } else {
+            updateJob(jobId, { status: 'error', error: e.message || 'Erro ao processar artes' })
+            toast.error(e.message || 'Erro ao processar artes')
+          }
+        }
       }
     }).catch((error) => {
       updateJob(jobId, { status: 'error', error: error.message || 'Erro ao gerar arte' })
@@ -166,7 +280,7 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
     })
 
     toast.info('Gerando arte... Voce pode continuar usando o app')
-  }, [format, text, variations, includeLogo, usePhoto, selectedPhoto, compositionEnabled, compositionPrompt, compositionReferenceImages, projectId, addJob, updateJob, generateArt, uploadReferenceImages, processResultImages])
+  }, [format, text, variations, includeLogo, usePhoto, selectedPhoto, compositionEnabled, compositionPrompt, compositionReferenceImages, projectId, addJob, updateJob, generateArt, uploadReferenceImages, processResultImages, isTemplateMode, selectedTemplateIds, textProcessingMode, textProcessingCustomPrompt, strictTemplateMode])
 
   const handleSchedule = useCallback((imageUrl: string) => {
     navigate('/new-post', { state: { imageUrl } })
@@ -175,7 +289,6 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const handleDownload = useCallback(async (imageUrl: string) => {
     try {
       if (imageUrl.startsWith('blob:')) {
-        // Imagem já processada localmente
         const a = document.createElement('a')
         a.href = imageUrl
         a.download = `arte-${Date.now()}.jpg`
@@ -186,7 +299,6 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
         return
       }
 
-      // Fallback: download remoto
       const response = await window.electronAPI.downloadBlob(imageUrl)
       if (!response.ok || !response.buffer) {
         throw new Error('Erro ao baixar imagem')
@@ -207,6 +319,10 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
     }
   }, [])
 
+  const canGenerate = textProcessingMode === 'generate_copy'
+    ? textProcessingCustomPrompt.trim().length > 0
+    : text.trim().length > 0
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
       {/* Left Column - Form */}
@@ -225,6 +341,20 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
             <FormatSelector value={format} onChange={setFormat} />
           </div>
 
+          {/* Template Selector (only in Electron with template pipeline) */}
+          {hasTemplatePipeline && (
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-text">Template</label>
+              <TemplateSelector
+                templates={artTemplates}
+                format={format}
+                selectedIds={selectedTemplateIds}
+                onChange={setSelectedTemplateIds}
+                isLoading={templatesLoading}
+              />
+            </div>
+          )}
+
           {/* Photo Selector (conditional) */}
           {usePhoto && (
             <div className="space-y-2">
@@ -239,6 +369,16 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
 
           {/* Text Input */}
           <TextInput value={text} onChange={setText} />
+
+          {/* Text Processing Selector (only when template selected) */}
+          {isTemplateMode && (
+            <TextProcessingSelector
+              mode={textProcessingMode}
+              onModeChange={setTextProcessingMode}
+              customPrompt={textProcessingCustomPrompt}
+              onCustomPromptChange={setTextProcessingCustomPrompt}
+            />
+          )}
 
           {/* Toggles */}
           <div className="space-y-4">
@@ -257,6 +397,16 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
               </span>
               <Switch checked={compositionEnabled} onChange={setCompositionEnabled} />
             </div>
+            {/* Strict mode toggle (only when template selected) */}
+            {isTemplateMode && (
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-1.5 text-sm text-text">
+                  <ShieldCheck size={16} />
+                  Modo estrito
+                </span>
+                <Switch checked={strictTemplateMode} onChange={setStrictTemplateMode} />
+              </div>
+            )}
           </div>
 
           {/* Composition Editor (conditional) */}
@@ -278,7 +428,7 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
           {/* Generate Button */}
           <button
             onClick={handleGenerate}
-            disabled={!text.trim()}
+            disabled={!canGenerate}
             className={cn(
               'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-medium',
               'bg-primary text-primary-foreground',
@@ -326,7 +476,6 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
                         onDownload={() => handleDownload(imageUrl)}
                         onSchedule={() => handleSchedule(imageUrl)}
                         onDiscard={() => {
-                          // Remove only this image from the job
                           const newImages = job.images.filter((_, i) => i !== idx)
                           if (newImages.length === 0) {
                             useGenerationStore.getState().removeJob(job.id)

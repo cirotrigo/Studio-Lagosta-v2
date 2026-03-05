@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
+export type TextProcessingMode = 'faithful' | 'grammar_correct' | 'headline_detection' | 'generate_copy'
 
 export interface GenerationParams {
   format: ArtFormat
@@ -13,6 +14,11 @@ export interface GenerationParams {
   compositionEnabled?: boolean
   compositionPrompt?: string
   compositionReferenceUrls?: string[]
+  templateId?: string
+  templateIds?: string[]
+  textProcessingMode?: TextProcessingMode
+  textProcessingCustomPrompt?: string
+  strictTemplateMode?: boolean
 }
 
 export interface GenerationJob {

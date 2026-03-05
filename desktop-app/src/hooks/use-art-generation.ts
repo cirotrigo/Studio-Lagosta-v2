@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api-client'
 import { useAuthStore } from '@/stores/auth.store'
-import { ArtFormat } from '@/stores/generation.store'
+import { ArtFormat, TextProcessingMode } from '@/stores/generation.store'
 
 export interface GenerateArtParams {
   projectId: number
@@ -15,6 +15,11 @@ export interface GenerateArtParams {
   compositionEnabled?: boolean
   compositionPrompt?: string
   compositionReferenceUrls?: string[]
+  templateId?: string
+  templateIds?: string[]
+  textProcessingMode?: TextProcessingMode
+  textProcessingCustomPrompt?: string
+  strictTemplateMode?: boolean
 }
 
 export interface TextLayoutElement {
@@ -49,6 +54,22 @@ export interface GenerateArtResult {
   fonts?: { title: string; body: string }
   fontUrls?: { title?: string; body?: string }
   logo?: { url: string; position: string; sizePct: number }
+  // Template path fields
+  templatePath?: boolean
+  imageUrl?: string
+  templates?: Array<{
+    templateId: string
+    templateData: any
+    fontSources: { title: { family: string; url: string | null }; body: { family: string; url: string | null } }
+  }>
+  slots?: Record<string, string>
+  densityResult?: {
+    totalWords: number
+    textCompressed: boolean
+    droppedSlots: string[]
+  }
+  strictTemplateMode?: boolean
+  serverTelemetry?: Record<string, unknown>
 }
 
 export interface AIImage {

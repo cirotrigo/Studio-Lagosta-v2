@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { generateObject, generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import sharp from 'sharp'
+import { processTextForTemplate, type TextProcessingMode } from '@/lib/text-processing'
+import { densityCheckAndMaybeCompress, TextOverflowError } from '@/lib/density-control'
 
 export const runtime = 'nodejs'
 export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
@@ -32,7 +34,7 @@ const GEMINI_ASPECT_RATIOS: Record<string, string> = {
 
 const generateArtSchema = z.object({
   projectId: z.number().int().positive(),
-  text: z.string().min(1).max(500, 'Texto muito longo (máximo 500 caracteres)'),
+  text: z.string().max(500, 'Texto muito longo (máximo 500 caracteres)'),
   format: z.enum(['FEED_PORTRAIT', 'STORY', 'SQUARE']),
   includeLogo: z.boolean().default(false),
   usePhoto: z.boolean().default(false),
@@ -42,7 +44,30 @@ const generateArtSchema = z.object({
   compositionEnabled: z.boolean().default(false),
   compositionPrompt: z.string().max(500).optional(),
   compositionReferenceUrls: z.array(z.string().url()).max(3).optional(),
-})
+  // Template fields
+  templateId: z.string().optional(),
+  templateIds: z.array(z.string()).max(3).optional(),
+  textProcessingMode: z.enum(['faithful', 'grammar_correct', 'headline_detection', 'generate_copy']).default('faithful'),
+  textProcessingCustomPrompt: z.string().max(500).optional(),
+  strictTemplateMode: z.boolean().default(false),
+}).refine(
+  (data) => {
+    if (data.textProcessingMode === 'generate_copy' && !data.textProcessingCustomPrompt) {
+      return false
+    }
+    return true
+  },
+  { message: 'customPrompt obrigatorio para modo generate_copy', path: ['textProcessingCustomPrompt'] }
+).refine(
+  (data) => {
+    // text can be empty only for generate_copy mode
+    if (data.textProcessingMode !== 'generate_copy' && (!data.text || data.text.trim().length === 0)) {
+      return false
+    }
+    return true
+  },
+  { message: 'Texto obrigatorio (exceto no modo generate_copy)', path: ['text'] }
+)
 
 // --- Types ---
 
@@ -736,6 +761,303 @@ Generate a NEW image following this description:` })
 
 // --- Main Handler ---
 
+// --- Template Path Helpers ---
+
+interface ArtTemplate {
+  id: string
+  name: string
+  format: string
+  schemaVersion: number
+  engineVersion: number
+  templateVersion: number
+  fingerprint: string
+  analysisConfidence: number
+  sourceImageUrl: string
+  createdAt: string
+  templateData: any
+}
+
+const SUPPORTED_ENGINE_VERSION = 1
+
+async function classifyTextIntoSlots(
+  text: string,
+  template: ArtTemplate,
+): Promise<Record<string, string>> {
+  const slotNames = Object.keys(template.templateData.content_slots || {})
+
+  // Dynamic schema built from template slot names
+  const schemaShape: Record<string, z.ZodTypeAny> = {}
+  for (const name of slotNames) {
+    const slot = template.templateData.content_slots[name]
+    schemaShape[name] = z.string().optional().describe(`Tipo: ${slot?.type ?? 'text'}`)
+  }
+  const schema = z.object(schemaShape)
+
+  const slotDescriptions = slotNames.map(name => {
+    const slot = template.templateData.content_slots[name]
+    return `- ${name}: tipo "${slot?.type ?? 'text'}", max ${slot?.max_words ?? 20} palavras`
+  }).join('\n')
+
+  const { object } = await generateObject({
+    model: openai('gpt-4o-mini'),
+    schema,
+    prompt: `Classifique o texto nos slots do template.
+Slots disponiveis:
+${slotDescriptions}
+
+Regras:
+- NAO reescreva o texto, apenas separe nas categorias
+- Identifique headline principal → title
+- Informacoes de contato/endereco → footer
+- Chamada para acao → cta
+- Texto descritivo → description
+
+Texto: "${text}"`,
+    temperature: 0.2,
+  })
+
+  const slots: Record<string, string> = {}
+  for (const [key, value] of Object.entries(object)) {
+    if (typeof value === 'string' && value.trim()) {
+      slots[key] = value.trim()
+    }
+  }
+  return slots
+}
+
+async function resolveFontSources(
+  template: ArtTemplate,
+  projectId: number,
+  project: any,
+): Promise<{ title: { family: string; url: string | null }; body: { family: string; url: string | null } }> {
+  const typo = template.templateData.typography || {}
+
+  // Font precedence: template > project > fallback
+  const titleFont = typo.title_font || project.titleFontFamily || 'Inter'
+  const bodyFont = typo.body_font || project.bodyFontFamily || 'Inter'
+
+  // Look up custom font URLs
+  const customFonts = await db.customFont.findMany({
+    where: { projectId },
+    select: { fontFamily: true, fileUrl: true },
+  })
+  const fontMap = Object.fromEntries(customFonts.map(f => [f.fontFamily, f.fileUrl]))
+
+  return {
+    title: { family: titleFont, url: fontMap[titleFont] ?? null },
+    body: { family: bodyFont, url: fontMap[bodyFont] ?? null },
+  }
+}
+
+async function handleTemplatePath(
+  body: any,
+  templateIds: string[],
+  brandAssets: BrandAssets,
+): Promise<Response> {
+  const startTime = Date.now()
+  let llmCallCount = 0
+  let llmTotalLatencyMs = 0
+
+  // Load project for font resolution
+  const project = await db.project.findUnique({
+    where: { id: body.projectId },
+    select: {
+      id: true,
+      titleFontFamily: true,
+      bodyFontFamily: true,
+      brandVisualElements: true,
+      Logo: {
+        where: { isProjectLogo: true },
+        select: { fileUrl: true },
+        take: 1,
+      },
+    },
+  })
+
+  if (!project) {
+    return NextResponse.json({ error: 'Projeto nao encontrado' }, { status: 404 })
+  }
+
+  // Load templates
+  const ve = (project.brandVisualElements ?? {}) as Record<string, unknown>
+  const allTemplates = (ve.artTemplates ?? []) as ArtTemplate[]
+  const templates = templateIds.map(id => allTemplates.find(t => t.id === id)).filter(Boolean) as ArtTemplate[]
+
+  if (templates.length === 0) {
+    return NextResponse.json({ error: 'Nenhum template encontrado' }, { status: 404 })
+  }
+
+  // Version check (C12)
+  for (const tpl of templates) {
+    if ((tpl.engineVersion ?? 1) > SUPPORTED_ENGINE_VERSION) {
+      return NextResponse.json(
+        { error: `Template '${tpl.name}' requer versao mais nova do engine` },
+        { status: 400 }
+      )
+    }
+  }
+
+  const primaryTemplate = templates[0]
+
+  // 1. Text Processing
+  const textConfig = {
+    mode: body.textProcessingMode as TextProcessingMode,
+    customPrompt: body.textProcessingCustomPrompt,
+  }
+  const slotNames = Object.keys(primaryTemplate.templateData.content_slots || {})
+
+  const llm1Start = Date.now()
+  const processedText = await processTextForTemplate(
+    body.text || '',
+    textConfig,
+    slotNames,
+  )
+  if (textConfig.mode !== 'faithful') {
+    llmCallCount++
+    llmTotalLatencyMs += Date.now() - llm1Start
+  }
+
+  // 2. Slot Classification
+  let slots: Record<string, string>
+  if (processedText.classified) {
+    slots = processedText.slots
+  } else {
+    const llm2Start = Date.now()
+    slots = await classifyTextIntoSlots((processedText as { classified: false; text: string }).text, primaryTemplate)
+    llmCallCount++
+    llmTotalLatencyMs += Date.now() - llm2Start
+  }
+
+  // 3. Density Control
+  const llm3Start = Date.now()
+  let densityResult
+  try {
+    densityResult = await densityCheckAndMaybeCompress(
+      slots,
+      {
+        text_density: primaryTemplate.templateData.text_density || { ideal_words: 20, max_words: 35 },
+        slot_drop_order: primaryTemplate.templateData.slot_drop_order,
+        slot_priority: primaryTemplate.templateData.slot_priority,
+        content_slots: primaryTemplate.templateData.content_slots || {},
+        default_content: primaryTemplate.templateData.default_content,
+      },
+      body.strictTemplateMode,
+    )
+  } catch (error) {
+    if (error instanceof TextOverflowError) {
+      return NextResponse.json({ error: error.message }, { status: 400 })
+    }
+    throw error
+  }
+  if (densityResult.textCompressed) {
+    llmCallCount++
+    llmTotalLatencyMs += Date.now() - llm3Start
+  }
+
+  // 4. Generate base image (reuse existing logic)
+  const formatInfo = FORMAT_DIMENSIONS[body.format]
+  let imageUrl: string
+
+  const hasPhoto = body.usePhoto && !!body.photoUrl
+  const useAIComposition = body.compositionEnabled && hasPhoto
+  const usePhotoDirectly = hasPhoto && !body.compositionEnabled
+
+  if (usePhotoDirectly) {
+    const photoResponse = await fetch(body.photoUrl!)
+    if (!photoResponse.ok) throw new Error('Failed to fetch photo')
+    const photoBuffer = Buffer.from(await photoResponse.arrayBuffer())
+    const resizedBuffer = await sharp(photoBuffer)
+      .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
+      .jpeg({ quality: 90 })
+      .toBuffer()
+    imageUrl = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`
+  } else {
+    const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 4))
+    const systemPrompt = buildGeminiPromptSystemPrompt(
+      brandAssets, body.format, useAIComposition,
+      refImages.length > 0, body.compositionEnabled ? body.compositionPrompt : undefined,
+    )
+
+    const userContent: Array<{ type: string; text?: string; image?: string }> = []
+    if (refImages.length > 0) {
+      for (const ref of refImages.slice(0, 2)) {
+        userContent.push({ type: 'image', image: `data:${ref.mimeType};base64,${ref.base64}` })
+      }
+      userContent.push({ type: 'text', text: `Reference images. Match their visual style.\n\nTexto: "${body.text}"` })
+    } else {
+      userContent.push({ type: 'text', text: `Texto para a arte: "${body.text}"` })
+    }
+
+    const { text: prompt } = await generateText({
+      model: openai('gpt-4o'),
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent as any }],
+      temperature: 0.4,
+    })
+
+    const { buffer } = await callNanoBanana2(
+      prompt,
+      useAIComposition ? body.photoUrl : undefined,
+      body.format,
+      refImages.length > 0 ? refImages : undefined,
+    )
+
+    const resizedBuffer = await sharp(buffer)
+      .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
+      .jpeg({ quality: 90 })
+      .toBuffer()
+
+    imageUrl = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`
+  }
+
+  // 5. Resolve font sources for each template
+  const templatesWithFonts = await Promise.all(
+    templates.map(async (tpl) => {
+      const fontSources = await resolveFontSources(tpl, body.projectId, project)
+      return {
+        templateId: tpl.id,
+        templateData: tpl.templateData,
+        fontSources,
+      }
+    })
+  )
+
+  // 6. Build logo config
+  const logoUrl = project.Logo?.[0]?.fileUrl ?? null
+
+  console.log(`[generate-art] Template path: ${templates.length} templates, ${llmCallCount} LLM calls, ${Date.now() - startTime}ms total`)
+
+  // 7. Return payload for frontend to orchestrate 4-pass
+  return NextResponse.json({
+    imageUrl,
+    templatePath: true,
+    templates: templatesWithFonts,
+    slots: densityResult.slots,
+    densityResult: {
+      totalWords: densityResult.totalWords,
+      textCompressed: densityResult.textCompressed,
+      droppedSlots: densityResult.droppedSlots,
+    },
+    strictTemplateMode: body.strictTemplateMode,
+    format: body.format,
+    logo: logoUrl ? {
+      url: logoUrl,
+      position: 'bottom-right',
+      sizePct: 12,
+    } : undefined,
+    serverTelemetry: {
+      llmCallCount,
+      llmTotalLatencyMs,
+      textProcessingMode: body.textProcessingMode,
+      totalWords: densityResult.totalWords,
+      textCompressed: densityResult.textCompressed,
+      droppedSlots: densityResult.droppedSlots,
+      slotsUsed: Object.keys(densityResult.slots),
+      serverTimeMs: Date.now() - startTime,
+    },
+  })
+}
+
 export async function POST(request: Request) {
   const { userId, orgId } = await auth()
 
@@ -799,6 +1121,14 @@ export async function POST(request: Request) {
   }
 
   try {
+    // --- Template Path ---
+    const templateIds = body.templateIds || (body.templateId ? [body.templateId] : [])
+
+    if (templateIds.length > 0) {
+      return await handleTemplatePath(body, templateIds, brandAssets)
+    }
+
+    // --- Legacy Path (no template) ---
     // --- Step 1: Separate text into visual elements ---
     console.log('[generate-art] Step 1: Separating text elements...')
     console.log('[generate-art] Brand colors:', brandAssets.colors)
