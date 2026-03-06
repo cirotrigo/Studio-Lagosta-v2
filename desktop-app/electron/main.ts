@@ -936,14 +936,18 @@ ipcMain.handle('image:measure-text-layout', async (_event, draftLayout: any) => 
     if (fontSources) {
       for (const source of [fontSources.title, fontSources.body]) {
         if (source?.family) {
-          console.log(`[Template Pass 2] Registering font: ${source.family}`)
+          console.log(`[Template Pass 2] Registering font: ${source.family} (url: ${source.url ? 'custom' : 'google'})`)
           const fontPath = await ensureFont(source.family, source.url ?? undefined)
           registerFontFromPath(fontPath, source.family)
+          console.log(`[Template Pass 2] Font ready: "${source.family}" → ${fontPath}`)
         }
       }
     }
 
-    const { createCanvas } = await import('@napi-rs/canvas')
+    // Verify fonts are registered
+    const { createCanvas, GlobalFonts } = await import('@napi-rs/canvas')
+    const availableFamilies = GlobalFonts.families.map((f: any) => f.family)
+    console.log('[Template Pass 2] Available font families:', availableFamilies.join(', '))
     const canvas = createCanvas(draftLayout.canvas.width, draftLayout.canvas.height)
     const ctx = canvas.getContext('2d')
     const result = measureTextLayout(draftLayout, ctx)
@@ -959,6 +963,30 @@ ipcMain.handle('image:measure-text-layout', async (_event, draftLayout: any) => 
 ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) => {
   console.log('[Template Pass 4] Received render request. Elements:', finalLayout?.elements?.length ?? 0, 'Image size:', imageBuffer?.byteLength ?? 0, 'Logo:', logo ? 'yes' : 'no')
   try {
+    // Re-register fonts in case they were lost between Pass 2 and Pass 4
+    const uniqueFonts = new Set<string>()
+    for (const el of (finalLayout?.elements ?? [])) {
+      if (el.font) uniqueFonts.add(el.font)
+    }
+    for (const fontName of uniqueFonts) {
+      try {
+        const fontPath = await ensureFont(fontName)
+        registerFontFromPath(fontPath, fontName)
+        console.log(`[Template Pass 4] Font ready: "${fontName}" → ${fontPath}`)
+      } catch (err) {
+        console.error(`[Template Pass 4] Font registration failed for "${fontName}":`, err)
+      }
+    }
+
+    // Verify fonts are actually available
+    const { GlobalFonts } = await import('@napi-rs/canvas')
+    const availableFamilies = GlobalFonts.families.map((f: any) => f.family)
+    console.log('[Template Pass 4] Available font families:', availableFamilies.join(', '))
+    for (const fontName of uniqueFonts) {
+      const found = availableFamilies.includes(fontName)
+      console.log(`[Template Pass 4] Font "${fontName}" registered: ${found}`)
+    }
+
     const result = await renderFinalLayout(finalLayout, Buffer.from(imageBuffer))
     console.log('[Template Pass 4] Done. Buffer size:', result?.byteLength ?? 0)
     return {

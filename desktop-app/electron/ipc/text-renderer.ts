@@ -387,10 +387,25 @@ interface FinalLayout {
 
 // --- Font Normalization (C20) ---
 
+// CSS generic family names that must NOT be quoted
+const CSS_GENERIC_FAMILIES = new Set([
+  'serif', 'sans-serif', 'monospace', 'cursive', 'fantasy',
+  'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded',
+])
+
+function quoteFamilyIfNeeded(name: string): string {
+  const trimmed = name.trim()
+  if (CSS_GENERIC_FAMILIES.has(trimmed.toLowerCase())) return trimmed
+  // Already quoted
+  if (/^['"].*['"]$/.test(trimmed)) return trimmed
+  // Quote any family name (even single-word) for safety with @napi-rs/canvas
+  return `"${trimmed}"`
+}
+
 function normalizeFontFamily(primaryFont: string, fallbacks: string[]): string {
-  const cleaned = primaryFont.trim()
-  const unquoted = cleaned.replace(/^['"]|['"]$/g, '')
-  return [unquoted, ...fallbacks].join(', ')
+  const cleaned = primaryFont.trim().replace(/^['"]|['"]$/g, '')
+  const parts = [cleaned, ...fallbacks].map(quoteFamilyIfNeeded)
+  return parts.join(', ')
 }
 
 // --- Line Breaking (C1) ---
