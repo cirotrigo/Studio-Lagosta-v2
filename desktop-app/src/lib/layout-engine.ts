@@ -232,6 +232,20 @@ export class GroupOverlapError extends Error {
 // --- Anchor Validation ---
 
 export function validateAnchorGraph(slots: Record<string, SlotConfig>): void {
+  const slotNames = new Set(Object.keys(slots))
+
+  // Auto-heal broken references instead of throwing
+  for (const [name, config] of Object.entries(slots)) {
+    const anchor = config.anchor
+    if (anchor.startsWith('after:') || anchor.startsWith('before:')) {
+      const ref = anchor.split(':')[1]
+      if (!slotNames.has(ref)) {
+        console.warn(`[layout-engine] Auto-fixing: slot '${name}' referenced non-existent '${ref}', resetting anchor`)
+        config.anchor = anchor.startsWith('after:') ? 'top_fixed' : 'bottom_fixed'
+      }
+    }
+  }
+
   const deps = new Map<string, string>()
   const groups = new Map<string, 'top' | 'bottom'>()
 
@@ -248,26 +262,28 @@ export function validateAnchorGraph(slots: Record<string, SlotConfig>): void {
     const anchor = config.anchor
     if (anchor.startsWith('after:') || anchor.startsWith('before:')) {
       const ref = anchor.split(':')[1]
-      if (!slots[ref]) {
-        throw new Error(`Slot '${name}' referencia slot inexistente '${ref}'`)
-      }
       deps.set(name, ref)
 
       const myGroup = groups.get(name)
       const refGroup = groups.get(ref)
       if (myGroup && refGroup && myGroup !== refGroup) {
-        throw new Error(`Slot '${name}' (${myGroup}_group) referencia slot '${ref}' (${refGroup}_group)`)
+        console.warn(`[layout-engine] Auto-fixing: slot '${name}' cross-group ref to '${ref}', resetting anchor`)
+        config.anchor = myGroup === 'top' ? 'top_fixed' : 'bottom_fixed'
+        deps.delete(name)
       }
     }
   }
 
+  // DFS cycle detection — break cycles instead of throwing
   const visited = new Set<string>()
   const inStack = new Set<string>()
 
   function dfs(node: string, path: string[]): void {
     if (inStack.has(node)) {
-      const cycle = [...path.slice(path.indexOf(node)), node]
-      throw new Error(`Dependencia circular: ${cycle.join(' → ')}`)
+      console.warn(`[layout-engine] Auto-fixing: circular dependency at '${node}', resetting anchor`)
+      slots[node].anchor = groups.get(node) === 'bottom' ? 'bottom_fixed' : 'top_fixed'
+      deps.delete(node)
+      return
     }
     if (visited.has(node)) return
     inStack.add(node)

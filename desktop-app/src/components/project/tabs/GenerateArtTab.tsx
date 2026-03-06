@@ -86,7 +86,17 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   const processResultWithTemplate = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
     const processedUrls: string[] = []
 
+    console.log('[template-pipeline] Starting. templatePath:', result.templatePath,
+      'templates:', result.templates?.length,
+      'slots:', result.slots ? Object.keys(result.slots) : 'none',
+      'format:', result.format)
+
     if (!result.imageUrl || !result.templates || !result.slots) {
+      console.error('[template-pipeline] Missing data:', {
+        hasImageUrl: !!result.imageUrl,
+        hasTemplates: !!result.templates,
+        hasSlots: !!result.slots,
+      })
       throw new Error('Dados de template incompletos na resposta')
     }
 
@@ -96,9 +106,14 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
       throw new Error('Erro ao baixar imagem base')
     }
     const imageBuffer = downloaded.buffer
+    console.log('[template-pipeline] Image downloaded, size:', imageBuffer.byteLength)
 
     for (const tpl of result.templates) {
       try {
+        console.log(`[template-pipeline] Processing template ${tpl.templateId}`)
+        console.log('[template-pipeline] Slots data:', JSON.stringify(result.slots).substring(0, 200))
+        console.log('[template-pipeline] Template content_slots:', Object.keys(tpl.templateData.content_slots ?? {}))
+
         // Pass 1: Engine generates draft layout (pure JS — no IPC)
         const draft = buildDraftLayout(
           result.slots,
@@ -107,24 +122,44 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
           tpl.fontSources,
           result.strictTemplateMode ?? false,
         )
+        console.log('[template-pipeline] Pass 1 done. Elements:', draft.elements.length,
+          'Overlay:', draft.overlay.enabled)
+
+        if (draft.elements.length === 0) {
+          console.warn('[template-pipeline] No elements in draft! Slots may not match content_slots.')
+          // Fallback: show base image as-is
+          const blob = new Blob([imageBuffer], { type: 'image/jpeg' })
+          processedUrls.push(URL.createObjectURL(blob))
+          continue
+        }
 
         // Pass 2: Renderer measures real text (IPC → main process with canvas)
+        console.log('[template-pipeline] Starting Pass 2 (measure)...')
         const measurements = await window.electronAPI.measureTextLayout(draft)
+        console.log('[template-pipeline] Pass 2 done. Measured slots:', measurements?.slots?.length)
 
         // Pass 3: Engine resolves final positions (pure JS — no IPC)
         const finalLayout = resolveLayoutWithMeasurements(draft, measurements, {
           strictMode: result.strictTemplateMode ?? false,
         })
+        console.log('[template-pipeline] Pass 3 done. Final elements:', finalLayout.elements.length)
 
         // Pass 4: Renderer renders final image (IPC → main process with canvas)
+        console.log('[template-pipeline] Starting Pass 4 (render)...')
         const rendered = await window.electronAPI.renderFinalLayout(
           finalLayout,
           imageBuffer,
           result.logo,
         )
+        console.log('[template-pipeline] Pass 4 done. ok:', rendered.ok, 'hasBuffer:', !!rendered.buffer)
 
         if (rendered.ok && rendered.buffer) {
           const blob = new Blob([rendered.buffer], { type: 'image/jpeg' })
+          processedUrls.push(URL.createObjectURL(blob))
+        } else {
+          console.error('[template-pipeline] Render failed:', rendered.error)
+          // Fallback: use base image
+          const blob = new Blob([imageBuffer], { type: 'image/jpeg' })
           processedUrls.push(URL.createObjectURL(blob))
         }
       } catch (e: any) {
@@ -133,8 +168,17 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
         if (result.strictTemplateMode) {
           throw e
         }
-        // Non-strict: skip this template silently
+        // Non-strict: fallback to base image instead of silently skipping
+        const blob = new Blob([imageBuffer], { type: 'image/jpeg' })
+        processedUrls.push(URL.createObjectURL(blob))
       }
+    }
+
+    // If all templates failed and we have no URLs, at least return the base image
+    if (processedUrls.length === 0) {
+      console.warn('[template-pipeline] All templates failed, returning base image')
+      const blob = new Blob([imageBuffer], { type: 'image/jpeg' })
+      processedUrls.push(URL.createObjectURL(blob))
     }
 
     return processedUrls
