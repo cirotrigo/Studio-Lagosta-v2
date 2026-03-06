@@ -26,7 +26,7 @@ export default function TemplateSelector({
   isLoading,
 }: TemplateSelectorProps) {
   const filteredTemplates = useMemo(() => {
-    if (!templates) return []
+    if (!templates || !Array.isArray(templates)) return []
     return templates.filter((t) => t.format === FORMAT_MAP[format])
   }, [templates, format])
 

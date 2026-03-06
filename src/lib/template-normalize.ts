@@ -318,7 +318,22 @@ export function normalizeTemplate(raw: Record<string, unknown>): TemplateData {
     : undefined
 
   // Content slots
-  const rawSlots = (data.content_slots ?? {}) as Record<string, Record<string, unknown>>
+  // Handle Vision returning content_slots as an array instead of named object
+  let rawSlots: Record<string, Record<string, unknown>> = {}
+  const rawContentSlots = data.content_slots
+  if (Array.isArray(rawContentSlots)) {
+    // Convert array to named object using each slot's type (or name) as key
+    for (const item of rawContentSlots) {
+      if (item && typeof item === 'object') {
+        const slotObj = item as Record<string, unknown>
+        const key = String(slotObj.name ?? slotObj.type ?? `slot_${Object.keys(rawSlots).length}`)
+        rawSlots[key] = slotObj
+      }
+    }
+  } else if (rawContentSlots && typeof rawContentSlots === 'object') {
+    rawSlots = rawContentSlots as Record<string, Record<string, unknown>>
+  }
+
   const content_slots: Record<string, SlotConfig> = {}
   for (const [name, slotRaw] of Object.entries(rawSlots)) {
     if (slotRaw && typeof slotRaw === 'object') {

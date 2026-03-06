@@ -51,7 +51,7 @@ export async function GET(
   const ve = (project as any).brandVisualElements as Record<string, unknown> | null
   const artTemplates = (ve?.artTemplates ?? []) as ArtTemplate[]
 
-  return NextResponse.json({ artTemplates })
+  return NextResponse.json(artTemplates)
 }
 
 // --- POST: Create template ---

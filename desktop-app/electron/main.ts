@@ -727,12 +727,29 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
       method: 'POST',
       headers,
       body,
-      redirect: 'follow',
+      redirect: 'manual',
     })
     
-    console.log('[Upload] Response status:', response.status)
+    // Handle redirects manually to avoid detached ArrayBuffer issue
+    // (Node.js fetch detaches the ArrayBuffer body after first send)
+    let finalResponse = response
+    if (response.status >= 300 && response.status < 400) {
+      const redirectUrl = response.headers.get('location')
+      if (redirectUrl) {
+        console.log('[Upload] Following redirect to:', redirectUrl)
+        const resolvedUrl = new URL(redirectUrl, url).href
+        finalResponse = await fetch(resolvedUrl, {
+          method: 'POST',
+          headers,
+          body: Buffer.from(body),
+          redirect: 'follow',
+        })
+      }
+    }
     
-    const text = await response.text()
+    console.log('[Upload] Response status:', finalResponse.status)
+    
+    const text = await finalResponse.text()
     
     // Detect HTML responses
     const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
@@ -754,9 +771,9 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
     }
     
     return {
-      ok: response.ok,
-      status: response.status,
-      statusText: response.statusText,
+      ok: finalResponse.ok,
+      status: finalResponse.status,
+      statusText: finalResponse.statusText,
       data,
     }
   } catch (error) {

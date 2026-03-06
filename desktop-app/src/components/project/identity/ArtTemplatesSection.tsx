@@ -20,7 +20,7 @@ const FORMAT_TABS: { value: ArtFormat; label: string }[] = [
 ]
 
 export default function ArtTemplatesSection({ projectId }: ArtTemplatesSectionProps) {
-  const { data: templates, isLoading } = useArtTemplates(projectId)
+  const { data: templates, isLoading, isError } = useArtTemplates(projectId)
   const createTemplate = useCreateArtTemplate(projectId)
   const deleteTemplate = useDeleteArtTemplate(projectId)
   const analyzeTemplate = useAnalyzeArtTemplate()
@@ -28,7 +28,10 @@ export default function ArtTemplatesSection({ projectId }: ArtTemplatesSectionPr
   const [activeFormat, setActiveFormat] = useState<ArtFormat>('STORY')
   const [showCreateModal, setShowCreateModal] = useState(false)
 
-  const filteredTemplates = (templates ?? []).filter((t) => t.format === activeFormat)
+  // Defensive: ensure templates is always an array
+  const safeTemplates = Array.isArray(templates) ? templates : []
+
+  const filteredTemplates = safeTemplates.filter((t) => t.format === activeFormat)
   const formatCount = filteredTemplates.length
 
   return (
@@ -43,7 +46,7 @@ export default function ArtTemplatesSection({ projectId }: ArtTemplatesSectionPr
       {/* Format Tabs */}
       <div className="flex gap-1 rounded-lg bg-input p-1">
         {FORMAT_TABS.map((tab) => {
-          const count = (templates ?? []).filter((t) => t.format === tab.value).length
+          const count = safeTemplates.filter((t) => t.format === tab.value).length
           return (
             <button
               key={tab.value}
