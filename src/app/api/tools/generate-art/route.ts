@@ -8,6 +8,7 @@ import { openai } from '@ai-sdk/openai'
 import sharp from 'sharp'
 import { processTextForTemplate, type TextProcessingMode } from '@/lib/text-processing'
 import { densityCheckAndMaybeCompress, TextOverflowError } from '@/lib/density-control'
+import { normalizeTemplate } from '@/lib/template-normalize'
 
 export const runtime = 'nodejs'
 export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
@@ -957,6 +958,16 @@ async function handleTemplatePath(
   }
 
   const primaryTemplate = templates[0]
+
+  // Re-normalize template data to fix any stored inconsistencies
+  // (e.g., slot_priority with keys that don't match content_slots)
+  for (const tpl of templates) {
+    try {
+      tpl.templateData = normalizeTemplate(tpl.templateData)
+    } catch (e) {
+      console.warn(`[generate-art] Re-normalize warning for template '${tpl.name}':`, e)
+    }
+  }
 
   // Debug: log template structure for diagnosis
   const contentSlotKeys = Object.keys(primaryTemplate.templateData.content_slots || {})

@@ -228,7 +228,7 @@ ipcMain.handle('auth:login', async () => {
             const hasRealSession = payload.handshake?.some((c: string) => 
               (c.startsWith('__session=') || c.startsWith('__session_')) && 
               !c.includes('Expires=Thu, 01 Jan 1970') &&
-              c.match(/^__session[^=]*=([^;]+)/)?.[1]?.length > 5
+              (c.match(/^__session[^=]*=([^;]+)/)?.[1]?.length ?? 0) > 5
             )
             
             if (!hasRealSession) {

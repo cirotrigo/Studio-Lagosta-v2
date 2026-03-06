@@ -20,7 +20,7 @@ const FORMAT_TABS: { value: ArtFormat; label: string }[] = [
 ]
 
 export default function ArtTemplatesSection({ projectId }: ArtTemplatesSectionProps) {
-  const { data: templates, isLoading, isError } = useArtTemplates(projectId)
+  const { data: templates, isLoading, isError: _isError } = useArtTemplates(projectId)
   const createTemplate = useCreateArtTemplate(projectId)
   const deleteTemplate = useDeleteArtTemplate(projectId)
   const analyzeTemplate = useAnalyzeArtTemplate()

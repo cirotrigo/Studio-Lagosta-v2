@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Loader2, Sparkles, Image as ImageIcon, Search, AlertCircle } from 'lucide-react'
+import { Loader2, Sparkles, Search, AlertCircle } from 'lucide-react'
 import { api } from '@/lib/api-client'
 import { PostType, MAX_CAROUSEL_IMAGES } from '@/lib/constants'
 import { cn } from '@/lib/utils'

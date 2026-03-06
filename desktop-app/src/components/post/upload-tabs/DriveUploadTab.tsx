@@ -167,7 +167,6 @@ export default function DriveUploadTab({
       setSelectedIds(prev => new Set(prev).add(item.id))
 
       setDownloadingId(item.id)
-      let fileDataUrl = ''
       try {
         const response = await window.electronAPI.apiRequest(
           `https://studio-lagosta-v2.vercel.app/api/google-drive-download`,
@@ -181,7 +180,6 @@ export default function DriveUploadTab({
         const data = response.data as { files: { id: string; name: string; url: string; pathname: string }[] }
         const fileData = data.files[0]
         if (!fileData) throw new Error('Arquivo não encontrado na resposta')
-        fileDataUrl = fileData.url
         // Use downloadBlob for binary data (avoids text conversion issues)
         const blobResponse = await window.electronAPI.downloadBlob(fileData.url)
         if (!blobResponse.ok || !blobResponse.buffer) {

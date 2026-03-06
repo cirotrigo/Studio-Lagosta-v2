@@ -19,7 +19,7 @@ export default function CropEditor({ imageUrl, originalWidth, originalHeight, po
   const imageRef = useRef<HTMLImageElement>(null)
   const [imageSize, setImageSize] = useState({ width: 0, height: 0 })
   const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 })
-  const [imagePosition, setImagePosition] = useState({ x: 0, y: 0 })
+  const [_imagePosition, setImagePosition] = useState({ x: 0, y: 0 })
   const [cropOffset, setCropOffset] = useState({ x: 0, y: 0 })
   const [isDragging, setIsDragging] = useState(false)
   const [isResizing, setIsResizing] = useState(false)
