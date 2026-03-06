@@ -958,6 +958,11 @@ async function handleTemplatePath(
 
   const primaryTemplate = templates[0]
 
+  // Debug: log template structure for diagnosis
+  const contentSlotKeys = Object.keys(primaryTemplate.templateData.content_slots || {})
+  console.log(`[generate-art] Template '${primaryTemplate.name}' content_slots keys: [${contentSlotKeys.join(', ')}]`)
+  console.log(`[generate-art] Template slot_priority: [${(primaryTemplate.templateData.slot_priority ?? []).join(', ')}]`)
+
   // 1. Text Processing
   const textConfig = {
     mode: body.textProcessingMode as TextProcessingMode,
@@ -987,6 +992,9 @@ async function handleTemplatePath(
     llmTotalLatencyMs += Date.now() - llm2Start
   }
 
+  console.log(`[generate-art] Classified slots: ${JSON.stringify(slots)}`)
+  console.log(`[generate-art] Slot keys match content_slots? ${contentSlotKeys.every(k => k in slots) ? 'YES' : 'NO — missing: ' + contentSlotKeys.filter(k => !(k in slots)).join(', ')}`)
+
   // 3. Density Control
   const llm3Start = Date.now()
   let densityResult
@@ -1012,6 +1020,8 @@ async function handleTemplatePath(
     llmCallCount++
     llmTotalLatencyMs += Date.now() - llm3Start
   }
+
+  console.log(`[generate-art] Density result: ${JSON.stringify({ totalWords: densityResult.totalWords, compressed: densityResult.textCompressed, dropped: densityResult.droppedSlots, finalSlotKeys: Object.keys(densityResult.slots) })}`)
 
   // 4. Generate base image (reuse existing logic)
   const formatInfo = FORMAT_DIMENSIONS[body.format]

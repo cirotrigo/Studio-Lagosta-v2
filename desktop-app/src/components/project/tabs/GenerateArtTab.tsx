@@ -23,7 +23,11 @@ import CompositionEditor from '@/components/project/generate/CompositionEditor'
 const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
 
 // Detect if template pipeline is available (Electron with new IPC channels)
-const hasTemplatePipeline = typeof window !== 'undefined' && !!window.electronAPI?.measureTextLayout
+// Use a function instead of module-level constant to avoid race conditions
+// where the module loads before preload script sets up electronAPI
+function checkTemplatePipeline(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI?.measureTextLayout
+}
 
 interface GenerateArtTabProps {
   projectId: number
@@ -63,6 +67,7 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
     setSelectedTemplateIds([])
   }, [format])
 
+  const hasTemplatePipeline = checkTemplatePipeline()
   const isTemplateMode = hasTemplatePipeline && selectedTemplateIds.length > 0
 
   const uploadReferenceImages = useCallback(async (files: File[]): Promise<string[]> => {
@@ -126,7 +131,11 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
           'Overlay:', draft.overlay.enabled)
 
         if (draft.elements.length === 0) {
-          console.warn('[template-pipeline] No elements in draft! Slots may not match content_slots.')
+          console.warn('[template-pipeline] No elements in draft!',
+            'Content slot keys:', Object.keys(tpl.templateData.content_slots ?? {}),
+            'Input slot keys:', Object.keys(result.slots ?? {}),
+            'slot_priority:', tpl.templateData.slot_priority)
+          toast.warning('Template sem elementos de texto — verifique se o template tem slots compativeis')
           // Fallback: show base image as-is
           const blob = new Blob([imageBuffer], { type: 'image/jpeg' })
           processedUrls.push(URL.createObjectURL(blob))
@@ -227,9 +236,11 @@ export default function GenerateArtTab({ projectId }: GenerateArtTabProps) {
   }, [includeLogo])
 
   const processResultImages = useCallback(async (result: GenerateArtResult): Promise<string[]> => {
-    if (result.templatePath && hasTemplatePipeline) {
+    const pipelineAvailable = checkTemplatePipeline()
+    console.log('[processResultImages] templatePath:', result.templatePath, 'pipelineAvailable:', pipelineAvailable)
+    if (result.templatePath && pipelineAvailable) {
       return processResultWithTemplate(result)
-    } else if (result.templatePath && !hasTemplatePipeline) {
+    } else if (result.templatePath && !pipelineAvailable) {
       throw new Error('Templates requerem o app desktop')
     }
     return processResultImagesLegacy(result)

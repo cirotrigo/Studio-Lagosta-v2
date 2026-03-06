@@ -323,6 +323,13 @@ export function buildDraftLayout(
   const colors = templateData.colors ?? {}
   const alignment = (templateData.layout?.text_alignment ?? 'left') as 'left' | 'center' | 'right'
 
+  // Debug: log what we're working with
+  const contentSlotKeys = Object.keys(contentSlots)
+  const slotInputKeys = Object.keys(slots)
+  console.log(`[layout-engine] content_slots keys: [${contentSlotKeys.join(', ')}]`)
+  console.log(`[layout-engine] input slots keys: [${slotInputKeys.join(', ')}]`)
+  console.log(`[layout-engine] template slot_priority: [${(templateData.slot_priority ?? []).join(', ')}]`)
+
   // Validate anchors
   if (Object.keys(contentSlots).length > 0) {
     validateAnchorGraph(contentSlots)
@@ -355,14 +362,32 @@ export function buildDraftLayout(
 
   // Build elements
   const elements: DraftLayoutElement[] = []
-  const slotPriority = templateData.slot_priority ?? Object.keys(contentSlots)
+  // Use slot_priority but validate against actual content_slots keys
+  // If slot_priority has entries that don't exist in contentSlots, skip them
+  const rawPriority = templateData.slot_priority ?? Object.keys(contentSlots)
+  const contentSlotKeySet = new Set(contentSlotKeys)
+  const validPriority = rawPriority.filter(s => contentSlotKeySet.has(s))
+  // Append any content_slots keys missing from priority
+  const prioritySet = new Set(validPriority)
+  for (const key of contentSlotKeys) {
+    if (!prioritySet.has(key)) {
+      validPriority.push(key)
+    }
+  }
+  const slotPriority = validPriority
 
   for (const slotName of slotPriority) {
     const slotConfig = contentSlots[slotName]
-    if (!slotConfig) continue
+    if (!slotConfig) {
+      console.warn(`[layout-engine] slotPriority '${slotName}' not found in contentSlots, skipping`)
+      continue
+    }
 
     const text = slots[slotName]
-    if (!text || !text.trim()) continue
+    if (!text || !text.trim()) {
+      console.warn(`[layout-engine] No input text for slot '${slotName}', skipping`)
+      continue
+    }
 
     const sizePx = scale[slotConfig.font_size ?? 'md'] ?? scale.md
     const maxLines = slotConfig.max_lines ?? 3

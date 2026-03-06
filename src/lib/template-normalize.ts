@@ -381,15 +381,36 @@ export function normalizeTemplate(raw: Record<string, unknown>): TemplateData {
   }
 
   // Slot priority (default: keys of content_slots)
+  // IMPORTANT: filter to only include keys that actually exist in content_slots
+  // Vision may return slot_priority with names that don't match content_slots keys
   const slotKeys = Object.keys(content_slots)
-  const slot_priority = Array.isArray(data.slot_priority)
-    ? (data.slot_priority as string[]).filter(s => typeof s === 'string')
-    : slotKeys
+  const slotKeySet = new Set(slotKeys)
+  let slot_priority: string[]
+  if (Array.isArray(data.slot_priority)) {
+    const raw = (data.slot_priority as string[]).filter(s => typeof s === 'string')
+    const valid = raw.filter(s => slotKeySet.has(s))
+    if (valid.length !== raw.length) {
+      const invalid = raw.filter(s => !slotKeySet.has(s))
+      console.warn(`[template-normalize] slot_priority contained invalid keys: ${invalid.join(', ')}. Valid keys: ${slotKeys.join(', ')}`)
+    }
+    // Use valid entries, then append any content_slots keys not in priority
+    const missingKeys = slotKeys.filter(k => !new Set(valid).has(k))
+    slot_priority = [...valid, ...missingKeys]
+  } else {
+    slot_priority = slotKeys
+  }
 
   // Slot drop order (default: reverse of priority)
-  const slot_drop_order = Array.isArray(data.slot_drop_order)
-    ? (data.slot_drop_order as string[]).filter(s => typeof s === 'string')
-    : [...slot_priority].reverse()
+  // Also filter against content_slots keys
+  let slot_drop_order: string[]
+  if (Array.isArray(data.slot_drop_order)) {
+    const raw = (data.slot_drop_order as string[]).filter(s => typeof s === 'string')
+    const valid = raw.filter(s => slotKeySet.has(s))
+    const missingKeys = slotKeys.filter(k => !new Set(valid).has(k))
+    slot_drop_order = [...valid, ...missingKeys]
+  } else {
+    slot_drop_order = [...slot_priority].reverse()
+  }
 
   // Logo
   const rawLogo = (data.logo ?? undefined) as Record<string, unknown> | undefined

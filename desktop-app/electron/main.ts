@@ -929,12 +929,14 @@ ipcMain.handle('image:render-text', async (_event, args: {
 
 // IPC Handler - Template Layout: Measure Text (Pass 2)
 ipcMain.handle('image:measure-text-layout', async (_event, draftLayout: any) => {
+  console.log('[Template Pass 2] Received measure request. Elements:', draftLayout?.elements?.length ?? 0)
   try {
     // Font registration BEFORE measuring (C8)
     const fontSources = draftLayout.fontSources
     if (fontSources) {
       for (const source of [fontSources.title, fontSources.body]) {
         if (source?.family) {
+          console.log(`[Template Pass 2] Registering font: ${source.family}`)
           const fontPath = await ensureFont(source.family, source.url ?? undefined)
           registerFontFromPath(fontPath, source.family)
         }
@@ -944,23 +946,27 @@ ipcMain.handle('image:measure-text-layout', async (_event, draftLayout: any) => 
     const { createCanvas } = await import('@napi-rs/canvas')
     const canvas = createCanvas(draftLayout.canvas.width, draftLayout.canvas.height)
     const ctx = canvas.getContext('2d')
-    return measureTextLayout(draftLayout, ctx)
+    const result = measureTextLayout(draftLayout, ctx)
+    console.log('[Template Pass 2] Done. Slots measured:', result?.slots?.length ?? 0)
+    return result
   } catch (error) {
-    console.error('[Measure Text Layout] Error:', error)
+    console.error('[Template Pass 2] Error:', error)
     throw error
   }
 })
 
 // IPC Handler - Template Layout: Render Final (Pass 4)
-ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, imageBuffer: ArrayBuffer) => {
+ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) => {
+  console.log('[Template Pass 4] Received render request. Elements:', finalLayout?.elements?.length ?? 0, 'Image size:', imageBuffer?.byteLength ?? 0, 'Logo:', logo ? 'yes' : 'no')
   try {
     const result = await renderFinalLayout(finalLayout, Buffer.from(imageBuffer))
+    console.log('[Template Pass 4] Done. Buffer size:', result?.byteLength ?? 0)
     return {
       ok: true,
       buffer: result.buffer.slice(result.byteOffset, result.byteOffset + result.byteLength) as ArrayBuffer,
     }
   } catch (error) {
-    console.error('[Render Final Layout] Error:', error)
+    console.error('[Template Pass 4] Error:', error)
     return { ok: false, error: String(error) }
   }
 })
