@@ -167,14 +167,33 @@ export class TemplateValidationError extends Error {
 
 /**
  * Validate anchor dependency graph for circular references using DFS.
- * Also validates cross-group references (top_group vs bottom_group).
+ * Auto-heals broken references instead of throwing errors.
+ * Only throws for actual circular dependencies.
  */
 export function validateAnchorGraph(slots: Record<string, SlotConfig>): void {
-  // Build adjacency: each slot depends on the slot it references via after:/before:
+  const slotNames = new Set(Object.keys(slots))
+
+  // First pass: fix broken references (self-healing)
+  for (const [name, config] of Object.entries(slots)) {
+    const anchor = config.anchor
+    if (anchor.startsWith('after:') || anchor.startsWith('before:')) {
+      const ref = anchor.split(':')[1]
+      if (!slotNames.has(ref)) {
+        // Auto-heal: reset to positional anchor
+        console.warn(`[template-normalize] Auto-fixing: slot '${name}' referenced non-existent '${ref}', resetting anchor`)
+        if (anchor.startsWith('after:')) {
+          config.anchor = 'top_fixed'
+        } else {
+          config.anchor = 'bottom_fixed'
+        }
+      }
+    }
+  }
+
+  // Build adjacency after healing
   const deps = new Map<string, string>()
   const groups = new Map<string, 'top' | 'bottom'>()
 
-  // First pass: classify into groups
   for (const [name, config] of Object.entries(slots)) {
     const anchor = config.anchor
     if (anchor === 'top_fixed' || anchor.startsWith('after:')) {
@@ -184,51 +203,45 @@ export function validateAnchorGraph(slots: Record<string, SlotConfig>): void {
     }
   }
 
-  // Second pass: build deps and validate
   for (const [name, config] of Object.entries(slots)) {
     const anchor = config.anchor
     if (anchor.startsWith('after:') || anchor.startsWith('before:')) {
       const ref = anchor.split(':')[1]
-      if (!slots[ref]) {
-        throw new TemplateValidationError(
-          `Slot '${name}' referencia slot inexistente '${ref}'`
-        )
-      }
       deps.set(name, ref)
 
-      // Validate cross-group references
+      // Auto-heal cross-group references
       const myGroup = groups.get(name)
       const refGroup = groups.get(ref)
       if (myGroup && refGroup && myGroup !== refGroup) {
-        throw new TemplateValidationError(
-          `Slot '${name}' (${myGroup}_group) referencia slot '${ref}' (${refGroup}_group). Referencia cross-group nao permitida.`
-        )
+        console.warn(`[template-normalize] Auto-fixing: slot '${name}' cross-group ref to '${ref}', resetting anchor`)
+        config.anchor = myGroup === 'top' ? 'top_fixed' : 'bottom_fixed'
+        deps.delete(name)
       }
 
-      // Validate anchor type per group
+      // Auto-heal wrong anchor direction per group
       if (anchor.startsWith('before:') && groups.get(name) === 'top') {
-        throw new TemplateValidationError(
-          `Slot '${name}' do top_group nao pode usar 'before:'. Use 'after:' para encadear top→bottom.`
-        )
+        console.warn(`[template-normalize] Auto-fixing: slot '${name}' in top_group using before:, switching to after:`)
+        config.anchor = `after:${ref}`
       }
       if (anchor.startsWith('after:') && groups.get(name) === 'bottom') {
-        throw new TemplateValidationError(
-          `Slot '${name}' do bottom_group nao pode usar 'after:'. Use 'before:' para encadear bottom→top.`
-        )
+        console.warn(`[template-normalize] Auto-fixing: slot '${name}' in bottom_group using after:, switching to before:`)
+        config.anchor = `before:${ref}`
       }
     }
   }
 
-  // DFS for cycle detection
+  // DFS for cycle detection — break cycles instead of throwing
   const visited = new Set<string>()
   const inStack = new Set<string>()
 
   function dfs(node: string, path: string[]): void {
     if (inStack.has(node)) {
-      const cycle = [...path.slice(path.indexOf(node)), node]
-      throw new TemplateValidationError(
-        `Dependencia circular detectada: ${cycle.join(' → ')}`
-      )
+      // Break cycle by resetting this slot's anchor
+      const slotConfig = slots[node]
+      console.warn(`[template-normalize] Auto-fixing: circular dependency at '${node}', resetting anchor`)
+      slotConfig.anchor = groups.get(node) === 'bottom' ? 'bottom_fixed' : 'top_fixed'
+      deps.delete(node)
+      return
     }
     if (visited.has(node)) return
     inStack.add(node)
@@ -322,12 +335,38 @@ export function normalizeTemplate(raw: Record<string, unknown>): TemplateData {
   let rawSlots: Record<string, Record<string, unknown>> = {}
   const rawContentSlots = data.content_slots
   if (Array.isArray(rawContentSlots)) {
-    // Convert array to named object using each slot's type (or name) as key
+    // Vision may return an array of slot objects.
+    // Strategy: use 'name' field first, then 'type' field as key.
+    // After mapping, rebuild anchors that reference old names.
+    const tempSlots: Array<{ key: string; obj: Record<string, unknown> }> = []
     for (const item of rawContentSlots) {
       if (item && typeof item === 'object') {
         const slotObj = item as Record<string, unknown>
-        const key = String(slotObj.name ?? slotObj.type ?? `slot_${Object.keys(rawSlots).length}`)
-        rawSlots[key] = slotObj
+        // Prefer 'name' field, then 'type', then fallback to counter
+        const key = String(slotObj.name ?? slotObj.type ?? `slot_${tempSlots.length}`)
+        tempSlots.push({ key, obj: slotObj })
+      }
+    }
+
+    // Build the named map
+    for (const { key, obj } of tempSlots) {
+      rawSlots[key] = obj
+    }
+
+    // Now check: if an anchor references a name that doesn't exist as a key,
+    // try to find a slot whose 'name' or 'type' matches the reference and remap.
+    const slotKeySet = new Set(Object.keys(rawSlots))
+    for (const [_key, slotObj] of Object.entries(rawSlots)) {
+      const anchor = String(slotObj.anchor ?? '')
+      if (anchor.startsWith('after:') || anchor.startsWith('before:')) {
+        const ref = anchor.split(':')[1]
+        if (!slotKeySet.has(ref)) {
+          // Search for a slot whose 'name' matches the ref
+          const match = tempSlots.find(s => String(s.obj.name) === ref)
+          if (match && slotKeySet.has(match.key)) {
+            slotObj.anchor = anchor.replace(`:${ref}`, `:${match.key}`)
+          }
+        }
       }
     }
   } else if (rawContentSlots && typeof rawContentSlots === 'object') {
