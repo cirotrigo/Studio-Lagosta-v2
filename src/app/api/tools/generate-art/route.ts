@@ -833,8 +833,13 @@ async function resolveFontSources(
   const typo = template.templateData.typography || {}
 
   // Font precedence: template > project > fallback
-  const titleFont = typo.title_font || project.titleFontFamily || 'Inter'
-  const bodyFont = typo.body_font || project.bodyFontFamily || 'Inter'
+  const rawTitleFont = typo.title_font || project.titleFontFamily || 'Inter'
+  const rawBodyFont = typo.body_font || project.bodyFontFamily || 'Inter'
+
+  // Sanitize font names: Vision often returns descriptions like "bold, serif"
+  // instead of real Google Font names. Map known patterns to real fonts.
+  const titleFont = sanitizeFontName(rawTitleFont)
+  const bodyFont = sanitizeFontName(rawBodyFont)
 
   // Look up custom font URLs
   const customFonts = await db.customFont.findMany({
@@ -847,6 +852,60 @@ async function resolveFontSources(
     title: { family: titleFont, url: fontMap[titleFont] ?? null },
     body: { family: bodyFont, url: fontMap[bodyFont] ?? null },
   }
+}
+
+// Maps generic font descriptions from Vision to real Google Font families
+const FONT_DESCRIPTION_MAP: Record<string, string> = {
+  'serif': 'Playfair Display',
+  'sans-serif': 'Inter',
+  'sans serif': 'Inter',
+  'sans': 'Inter',
+  'monospace': 'JetBrains Mono',
+  'mono': 'JetBrains Mono',
+  'display': 'Oswald',
+  'handwriting': 'Dancing Script',
+  'cursive': 'Dancing Script',
+  'script': 'Dancing Script',
+  'slab': 'Roboto Slab',
+  'slab serif': 'Roboto Slab',
+  'slab-serif': 'Roboto Slab',
+  'condensed': 'Roboto Condensed',
+}
+
+function sanitizeFontName(raw: string): string {
+  if (!raw || typeof raw !== 'string') return 'Inter'
+  const trimmed = raw.trim()
+
+  // If it looks like a real font name (starts with uppercase, no commas with only generic terms)
+  // check it's not just a CSS generic + weight descriptor
+  const lower = trimmed.toLowerCase()
+    .replace(/[,;]/g, ' ')  // normalize separators
+    .replace(/\s+/g, ' ')   // collapse spaces
+    .trim()
+
+  // Strip weight descriptors that Vision often prepends
+  const stripped = lower
+    .replace(/^(thin|extra-?light|light|regular|medium|semi-?bold|bold|extra-?bold|black|heavy)\s*/i, '')
+    .replace(/\s*(thin|extra-?light|light|regular|medium|semi-?bold|bold|extra-?bold|black|heavy)$/i, '')
+    .trim()
+
+  // Check if the remaining is a known generic description
+  if (FONT_DESCRIPTION_MAP[stripped]) {
+    return FONT_DESCRIPTION_MAP[stripped]
+  }
+
+  // Check original lowered value against map
+  if (FONT_DESCRIPTION_MAP[lower]) {
+    return FONT_DESCRIPTION_MAP[lower]
+  }
+
+  // If it's a very short generic-looking value, fallback
+  if (stripped.length <= 5 && !stripped.includes(' ')) {
+    return 'Inter'
+  }
+
+  // Otherwise assume it's a real font name — return original casing
+  return trimmed
 }
 
 async function handleTemplatePath(

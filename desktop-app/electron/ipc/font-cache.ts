@@ -25,7 +25,10 @@ function getCachePath(fontFamily: string): string {
  */
 export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<string> {
   ensureCacheDir()
-  const cachePath = getCachePath(fontFamily)
+
+  // Sanitize: Vision sometimes returns descriptions like "bold, serif"
+  const cleanFamily = sanitizeFontFamily(fontFamily)
+  const cachePath = getCachePath(cleanFamily)
 
   // Already cached
   if (fs.existsSync(cachePath)) {
@@ -34,7 +37,7 @@ export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<
 
   if (fontUrl) {
     // Direct download from Vercel Blob or other URL
-    console.log(`[font-cache] Downloading custom font: ${fontFamily} from URL`)
+    console.log(`[font-cache] Downloading custom font: ${cleanFamily} from URL`)
     const response = await net.fetch(fontUrl)
     if (!response.ok) throw new Error(`Failed to download font from ${fontUrl}: ${response.status}`)
     const buffer = Buffer.from(await response.arrayBuffer())
@@ -43,8 +46,8 @@ export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<
   }
 
   // Try Google Fonts API
-  console.log(`[font-cache] Downloading Google Font: ${fontFamily}`)
-  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(fontFamily)}&display=swap`
+  console.log(`[font-cache] Downloading Google Font: ${cleanFamily}`)
+  const cssUrl = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(cleanFamily)}&display=swap`
   const cssResponse = await net.fetch(cssUrl, {
     headers: {
       // Chrome user-agent to get .ttf format
@@ -53,7 +56,9 @@ export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<
   })
 
   if (!cssResponse.ok) {
-    throw new Error(`Failed to fetch Google Fonts CSS for "${fontFamily}": ${cssResponse.status}`)
+    // Fallback: if Google Fonts doesn't recognize this name, use Inter
+    console.warn(`[font-cache] Google Fonts rejected "${cleanFamily}" (${cssResponse.status}), falling back to Inter`)
+    return ensureFont('Inter')
   }
 
   const cssText = await cssResponse.text()
@@ -64,7 +69,8 @@ export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<
     || cssText.match(/src:\s*url\(([^)]+)\)/)
 
   if (!urlMatch?.[1]) {
-    throw new Error(`No font URL found in Google Fonts CSS for "${fontFamily}"`)
+    console.warn(`[font-cache] No font URL in CSS for "${cleanFamily}", falling back to Inter`)
+    return ensureFont('Inter')
   }
 
   const fontDownloadUrl = urlMatch[1]
@@ -77,6 +83,46 @@ export async function ensureFont(fontFamily: string, fontUrl?: string): Promise<
   console.log(`[font-cache] Font cached: ${cachePath} (${fontBuffer.length} bytes)`)
 
   return cachePath
+}
+
+// Maps generic Vision font descriptions to real Google Font families
+const GENERIC_FONT_MAP: Record<string, string> = {
+  'serif': 'Playfair Display',
+  'sans-serif': 'Inter',
+  'sans serif': 'Inter',
+  'sans': 'Inter',
+  'monospace': 'JetBrains Mono',
+  'mono': 'JetBrains Mono',
+  'display': 'Oswald',
+  'handwriting': 'Dancing Script',
+  'cursive': 'Dancing Script',
+  'script': 'Dancing Script',
+  'slab': 'Roboto Slab',
+  'slab serif': 'Roboto Slab',
+  'condensed': 'Roboto Condensed',
+}
+
+const WEIGHT_WORDS = /\b(thin|extra-?light|light|regular|medium|semi-?bold|bold|extra-?bold|black|heavy|italic)\b/gi
+
+function sanitizeFontFamily(raw: string): string {
+  if (!raw || typeof raw !== 'string') return 'Inter'
+  const trimmed = raw.trim()
+
+  // Normalize: remove commas, collapse spaces
+  const lower = trimmed.toLowerCase().replace(/[,;]/g, ' ').replace(/\s+/g, ' ').trim()
+
+  // Strip weight/style descriptors
+  const stripped = lower.replace(WEIGHT_WORDS, '').replace(/\s+/g, ' ').trim()
+
+  // Check generic map
+  if (GENERIC_FONT_MAP[stripped]) return GENERIC_FONT_MAP[stripped]
+  if (GENERIC_FONT_MAP[lower]) return GENERIC_FONT_MAP[lower]
+
+  // Very short generic-looking → fallback
+  if (stripped.length <= 3) return 'Inter'
+
+  // Return original casing (it might be a real font name like "Montserrat")
+  return trimmed
 }
 
 /**
