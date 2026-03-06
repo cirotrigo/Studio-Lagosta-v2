@@ -474,7 +474,8 @@ export function buildDraftLayout(
 
   // Build overlay config
   const overlay = templateData.overlay
-  const overlayConfig = {
+  const hasTextElements = elements.length > 0
+  let overlayConfig = {
     enabled: !!overlay && overlay.type !== 'none',
     type: (overlay?.type ?? 'gradient') as 'solid' | 'gradient',
     direction: overlay?.direction,
@@ -483,6 +484,25 @@ export function buildDraftLayout(
     startColor: overlay?.start_color,
     endOpacity: overlay?.end_opacity,
     endColor: overlay?.end_color,
+  }
+
+  // Ensure overlay is enabled when text elements exist (prevents invisible white text on photos)
+  if (hasTextElements && !overlayConfig.enabled) {
+    console.log('[layout-engine] Auto-enabling overlay: template has text but no overlay configured')
+    // Determine overlay position based on where text elements are
+    const hasBottom = elements.some(el => el._group === 'bottom')
+    const hasTop = elements.some(el => el._group === 'top')
+    const position = (hasTop && hasBottom) ? 'full' : hasBottom ? 'bottom' : 'top'
+    overlayConfig = {
+      enabled: true,
+      type: 'gradient',
+      direction: position === 'bottom' ? 'bottom_to_top' : position === 'top' ? 'top_to_bottom' : undefined,
+      position: position as 'top' | 'bottom' | 'full',
+      opacity: 0.5,
+      startColor: '#000000',
+      endOpacity: 0,
+      endColor: undefined,
+    }
   }
 
   // Logo config

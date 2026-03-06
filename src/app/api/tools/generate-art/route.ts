@@ -784,45 +784,80 @@ async function classifyTextIntoSlots(
   text: string,
   template: ArtTemplate,
 ): Promise<Record<string, string>> {
-  const slotNames = Object.keys(template.templateData.content_slots || {})
+  const contentSlots = template.templateData.content_slots || {}
+  const slotNames = Object.keys(contentSlots)
 
-  // Dynamic schema built from template slot names
-  const schemaShape: Record<string, z.ZodTypeAny> = {}
+  // Build type-based aliases for better GPT understanding
+  // Maps type-alias → original slot name (e.g., "headline" → "slot_1")
+  const aliasToSlot: Record<string, string> = {}
+  const slotToType: Record<string, string> = {}
+  const usedAliases = new Set<string>()
+
   for (const name of slotNames) {
-    const slot = template.templateData.content_slots[name]
-    schemaShape[name] = z.string().optional().describe(`Tipo: ${slot?.type ?? 'text'}`)
+    const slot = contentSlots[name]
+    let alias = slot?.type ?? name
+    // Deduplicate: if type already used, append slot name
+    if (usedAliases.has(alias)) {
+      alias = `${alias}_${name}`
+    }
+    usedAliases.add(alias)
+    aliasToSlot[alias] = name
+    slotToType[name] = alias
+  }
+
+  // Build schema with type-based keys so GPT understands semantics
+  const schemaShape: Record<string, z.ZodTypeAny> = {}
+  for (const [alias, slotName] of Object.entries(aliasToSlot)) {
+    const slot = contentSlots[slotName]
+    schemaShape[alias] = z.string().optional().describe(
+      `${alias} — max ${slot?.max_words ?? 20} palavras`
+    )
   }
   const schema = z.object(schemaShape)
 
-  const slotDescriptions = slotNames.map(name => {
-    const slot = template.templateData.content_slots[name]
-    return `- ${name}: tipo "${slot?.type ?? 'text'}", max ${slot?.max_words ?? 20} palavras`
+  const aliases = Object.keys(aliasToSlot)
+  const slotDescriptions = aliases.map(alias => {
+    const slotName = aliasToSlot[alias]
+    const slot = contentSlots[slotName]
+    return `- ${alias}: max ${slot?.max_words ?? 20} palavras`
   }).join('\n')
+
+  console.log(`[generate-art] Classification aliases: ${JSON.stringify(aliasToSlot)}`)
 
   const { object } = await generateObject({
     model: openai('gpt-4o-mini'),
     schema,
-    prompt: `Classifique o texto nos slots do template.
-Slots disponiveis:
+    prompt: `Voce e um especialista em copy para Instagram. Distribua o texto nos slots abaixo.
+
+Slots disponiveis (por tipo):
 ${slotDescriptions}
 
 Regras:
-- NAO reescreva o texto, apenas separe nas categorias
-- Identifique headline principal → title
-- Informacoes de contato/endereco → footer
-- Chamada para acao → cta
-- Texto descritivo → description
+- DISTRIBUA o texto entre os slots apropriados — NAO coloque tudo em um so
+- headline/label: frase curta de impacto (max 5-8 palavras)
+- paragraph/description: texto descritivo com detalhes
+- call_to_action: chamada para acao curta (ex: "Venha conferir!", "Peça já!")
+- location_or_info/footer: endereço, horário, preço ou informação prática
+- Se o texto for curto (1 frase), coloque no slot headline ou label
+- Se tiver preço ou valor, separe em location_or_info ou footer
+- NAO invente texto novo — apenas redistribua o texto original
 
 Texto: "${text}"`,
-    temperature: 0.2,
+    temperature: 0.3,
   })
 
+  // Map GPT aliases back to original slot names
   const slots: Record<string, string> = {}
-  for (const [key, value] of Object.entries(object)) {
+  for (const [alias, value] of Object.entries(object)) {
     if (typeof value === 'string' && value.trim()) {
-      slots[key] = value.trim()
+      const originalSlotName = aliasToSlot[alias]
+      if (originalSlotName) {
+        slots[originalSlotName] = value.trim()
+      }
     }
   }
+
+  console.log(`[generate-art] Classified result: ${JSON.stringify(slots)}`)
   return slots
 }
 

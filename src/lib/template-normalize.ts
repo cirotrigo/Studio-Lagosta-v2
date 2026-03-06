@@ -336,14 +336,24 @@ export function normalizeTemplate(raw: Record<string, unknown>): TemplateData {
   const rawContentSlots = data.content_slots
   if (Array.isArray(rawContentSlots)) {
     // Vision may return an array of slot objects.
-    // Strategy: use 'name' field first, then 'type' field as key.
-    // After mapping, rebuild anchors that reference old names.
+    // Strategy: use 'type' field first (semantic), then 'name' field, then counter.
+    // Deduplicate: if same type appears twice, append counter.
     const tempSlots: Array<{ key: string; obj: Record<string, unknown> }> = []
+    const usedKeys = new Set<string>()
     for (const item of rawContentSlots) {
       if (item && typeof item === 'object') {
         const slotObj = item as Record<string, unknown>
-        // Prefer 'name' field, then 'type', then fallback to counter
-        const key = String(slotObj.name ?? slotObj.type ?? `slot_${tempSlots.length}`)
+        // Prefer 'type' for semantic meaning (headline, label, etc.)
+        // then 'name', then fallback to counter
+        let baseKey = String(slotObj.type ?? slotObj.name ?? `slot_${tempSlots.length}`)
+        // Deduplicate
+        let key = baseKey
+        if (usedKeys.has(key)) {
+          let idx = 2
+          while (usedKeys.has(`${baseKey}_${idx}`)) idx++
+          key = `${baseKey}_${idx}`
+        }
+        usedKeys.add(key)
         tempSlots.push({ key, obj: slotObj })
       }
     }
