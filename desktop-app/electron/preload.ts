@@ -65,6 +65,14 @@ export interface RenderTextArgs {
   logoSizePct?: number
 }
 
+export interface RenderHtmlSnapshotArgs {
+  html: string
+  width: number
+  height: number
+  mimeType?: 'image/jpeg' | 'image/png'
+  quality?: number
+}
+
 export interface ElectronAPI {
   // Authentication
   login: () => Promise<LoginResult>
@@ -93,6 +101,7 @@ export interface ElectronAPI {
   // Template Layout 2-Pass — new flow
   measureTextLayout: (draft: any) => Promise<any>
   renderFinalLayout: (finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) => Promise<{ ok: boolean; buffer?: ArrayBuffer; error?: string }>
+  renderHtmlSnapshot: (args: RenderHtmlSnapshotArgs) => Promise<{ ok: boolean; buffer?: ArrayBuffer; mimeType?: 'image/jpeg' | 'image/png'; error?: string }>
 
   // App Info
   getVersion: () => Promise<string>
@@ -134,6 +143,7 @@ const electronAPI: ElectronAPI = {
   measureTextLayout: (draft: any) => ipcRenderer.invoke('image:measure-text-layout', draft),
   renderFinalLayout: (finalLayout: any, imageBuffer: ArrayBuffer, logo?: any) =>
     ipcRenderer.invoke('image:render-final-layout', finalLayout, imageBuffer, logo),
+  renderHtmlSnapshot: (args: RenderHtmlSnapshotArgs) => ipcRenderer.invoke('image:render-html-snapshot', args),
 
   // App Info
   getVersion: () => ipcRenderer.invoke('app:get-version'),

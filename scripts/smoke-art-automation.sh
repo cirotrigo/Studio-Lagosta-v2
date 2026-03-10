@@ -71,7 +71,7 @@ echo ""
 echo "== Authenticated dry-run checks =="
 
 auth_ai_payload="$(cat <<EOF
-{"projectId":${PROJECT_ID},"prompt":"Rodizio de massas todo sabado R$49,90","format":"STORY","variations":2,"dryRun":true,"templateIds":["S1","S2"],"includeLogo":true,"usePhoto":false,"compositionEnabled":false}
+{"projectId":${PROJECT_ID},"prompt":"Rodizio de massas todo sabado R\\$49,90","format":"STORY","variations":2,"dryRun":true,"templateIds":["S1","S2"],"includeLogo":true,"usePhoto":false,"compositionEnabled":false}
 EOF
 )"
 
@@ -91,7 +91,7 @@ console.log("✓ generate-ai-text dryRun:", `${body.templatesResolved.length} te
 ' "${BODY}"
 
 auth_art_payload="$(cat <<EOF
-{"projectId":${PROJECT_ID},"text":"Rodizio de massas todo sabado R$49,90","format":"STORY","variations":2,"dryRun":true,"includeLogo":true,"usePhoto":false,"templateIds":["S1","S2"],"textProcessingMode":"faithful","strictTemplateMode":false}
+{"projectId":${PROJECT_ID},"text":"Rodizio de massas todo sabado R\\$49,90","format":"STORY","variations":2,"dryRun":true,"includeLogo":true,"usePhoto":false,"templateIds":["S1","S2"],"textProcessingMode":"faithful","strictTemplateMode":false}
 EOF
 )"
 

@@ -14,6 +14,8 @@ import { buildDraftLayout, resolveLayoutWithMeasurements } from '@/lib/layout-en
 import { cn } from '@/lib/utils'
 import { ReeditDraft } from '@/types/art-automation'
 import {
+  extractDesignSystemCssFromHtml,
+  extractDesignSystemCssFromZip,
   extractDesignSystemMetadataFromZip,
   extractInstagramPreviewTokensFromDesignSystemHtml,
   extractImportedDsTemplatesFromDesignSystemHtml,
@@ -21,6 +23,7 @@ import {
   type InstagramPreviewTokens,
 } from '@/lib/instagram-ds/token-parser'
 import { getTemplatePresetById } from '@/lib/instagram-ds/template-presets'
+import { buildInstagramHtmlSnapshot } from '@/lib/instagram-ds/html-snapshot'
 import { ApiError } from '@/lib/api-client'
 import { Switch } from '@/components/project/shared/Switch'
 import FormatSelector from '@/components/project/generate/FormatSelector'
@@ -31,6 +34,7 @@ import VariationSelector from '@/components/project/generate/VariationSelector'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
 import ResultImageCard from '@/components/project/generate/ResultImageCard'
 import InstagramHtmlPreview from '@/components/project/generate/InstagramHtmlPreview'
+import InstagramHtmlIframePreview from '@/components/project/generate/InstagramHtmlIframePreview'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import CompositionEditor from '@/components/project/generate/CompositionEditor'
@@ -39,6 +43,12 @@ const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
 const PREVIEW_FONT_STYLE_ID = 'lc-instagram-preview-fonts'
 const PREVIEW_FONT_LINK_ID = 'lc-instagram-preview-fonts-link'
 const DEFAULT_TEMPLATE_SOURCE_URL = 'https://studio-lagosta-v2.vercel.app'
+
+function getFormatDimensions(format: ArtFormat): { width: number; height: number } {
+  if (format === 'STORY') return { width: 1080, height: 1920 }
+  if (format === 'SQUARE') return { width: 1080, height: 1080 }
+  return { width: 1080, height: 1350 }
+}
 
 // Detect if template pipeline is available (Electron with new IPC channels)
 // Use a function instead of module-level constant to avoid race conditions
@@ -194,6 +204,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [activeEditor, setActiveEditor] = useState<{ jobId: string; variationId: string } | null>(null)
   const previewDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [designSystemTokenOverrides, setDesignSystemTokenOverrides] = useState<Partial<InstagramPreviewTokens>>({})
+  const [designSystemPreviewCss, setDesignSystemPreviewCss] = useState<string>('')
   const [importedDsTemplates, setImportedDsTemplates] = useState<ImportedDsTemplateSummary[]>([])
   const [previewTokenSourceLabel, setPreviewTokenSourceLabel] = useState('Identidade do projeto')
 
@@ -230,6 +241,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     const imported = designSystemData?.designSystemImport
     if (!imported || (imported.sourceType !== 'html' && imported.sourceType !== 'zip')) {
       setDesignSystemTokenOverrides({})
+      setDesignSystemPreviewCss('')
       setImportedDsTemplates([])
       setPreviewTokenSourceLabel('Identidade do projeto')
       return () => {
@@ -251,18 +263,22 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
         let extracted: Partial<InstagramPreviewTokens> = {}
         let detectedTemplates: ImportedDsTemplateSummary[] = []
+        let extractedCss = ''
         if (imported.sourceType === 'html') {
           const html = new TextDecoder('utf-8').decode(new Uint8Array(downloaded.buffer))
           extracted = extractInstagramPreviewTokensFromDesignSystemHtml(html)
           detectedTemplates = extractImportedDsTemplatesFromDesignSystemHtml(html)
+          extractedCss = extractDesignSystemCssFromHtml(html)
         } else {
           const metadata = await extractDesignSystemMetadataFromZip(downloaded.buffer)
           extracted = metadata.tokens
           detectedTemplates = metadata.templates
+          extractedCss = await extractDesignSystemCssFromZip(downloaded.buffer)
         }
 
         if (!cancelled) {
           setDesignSystemTokenOverrides(extracted)
+          setDesignSystemPreviewCss(extractedCss)
           setImportedDsTemplates(detectedTemplates)
           if (Object.keys(extracted).length > 0) {
             setPreviewTokenSourceLabel(imported.sourceType === 'zip' ? 'Design System importado (ZIP)' : 'Design System importado (HTML)')
@@ -274,6 +290,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         console.warn('[design-system] Failed to load preview tokens from imported design system:', error)
         if (!cancelled) {
           setDesignSystemTokenOverrides({})
+          setDesignSystemPreviewCss('')
           setImportedDsTemplates([])
           setPreviewTokenSourceLabel('Identidade do projeto (falha ao ler DS)')
         }
@@ -683,15 +700,61 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     return resolvedIds
   }, [artTemplates, findTemplateInList, projectId, queryClient, selectedPhoto?.url])
 
-  const persistApprovedArts = useCallback(async (imageUrls: string[], params: {
+  const persistApprovedArts = useCallback(async (items: ReviewVariation[], params: {
     projectId: number
     text: string
     format: ArtFormat
   }): Promise<string[]> => {
     const persistedUrls: string[] = []
 
-    for (let idx = 0; idx < imageUrls.length; idx++) {
-      const imageUrl = imageUrls[idx]
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx]
+      if (!item) continue
+
+      let imageUrl = item.imageUrl
+      const usedHtmlSnapshot = item.renderContext?.kind === 'template'
+      if (item.renderContext?.kind === 'template') {
+        const snapshot = buildInstagramHtmlSnapshot({
+          format: params.format,
+          fields: item.fields,
+          sourceImageUrl: item.renderContext.sourceImageUrl,
+          logoUrl: item.renderContext.logo?.url,
+          includeLogo: item.renderContext.includeLogo,
+          templateName: item.renderContext.templateId,
+          tokens: previewTokens,
+          customCss: designSystemPreviewCss,
+          showTemplateBadge: false,
+        })
+        const dimensions = getFormatDimensions(params.format)
+        const rendered = await window.electronAPI.renderHtmlSnapshot({
+          html: snapshot.html,
+          width: dimensions.width,
+          height: dimensions.height,
+          mimeType: 'image/jpeg',
+          quality: 92,
+        })
+
+        if (!rendered.ok || !rendered.buffer) {
+          throw new Error('Falha ao renderizar snapshot HTML da variacao aprovada')
+        }
+
+        const uploadResponse = await window.electronAPI.uploadFile(
+          UPLOAD_URL,
+          {
+            name: `approved-art-${Date.now()}-${idx + 1}.jpg`,
+            type: rendered.mimeType || 'image/jpeg',
+            buffer: rendered.buffer,
+          },
+          { type: 'approved_art' }
+        )
+
+        const uploadedUrl = (uploadResponse.data as { url?: string } | undefined)?.url
+        if (!uploadResponse.ok || !uploadedUrl) {
+          throw new Error('Falha no upload da arte aprovada para o site')
+        }
+        imageUrl = uploadedUrl
+      }
+
       let finalWebUrl = imageUrl
 
       const isRemoteHttp = imageUrl.startsWith('http://') || imageUrl.startsWith('https://')
@@ -730,7 +793,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           format: params.format,
           name: `Arte aprovada ${idx + 1}`,
           provider: 'lagosta-html-renderer',
-          model: 'html-css-renderer-v1',
+          model: usedHtmlSnapshot ? 'html-css-renderer-v2-capturepage' : 'html-css-renderer-v1',
         }
       )
 
@@ -738,7 +801,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     }
 
     return persistedUrls
-  }, [])
+  }, [designSystemPreviewCss, previewTokens])
 
   const processQueuedJob = useCallback(async (jobId: string, params: GenerationParams) => {
     updateJob(jobId, { status: 'generating', error: undefined })
@@ -1074,7 +1137,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     updateJob(jobId, { status: 'saving', error: undefined })
     try {
       const persistedUrls = await persistApprovedArts(
-        approvedItems.map((item) => item.imageUrl),
+        approvedItems,
         {
           projectId: job.params.projectId,
           text: job.params.text,
@@ -1237,6 +1300,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                 templates={artTemplates}
                 importedTemplates={importedDsTemplates}
                 previewTokens={previewTokens}
+                previewCss={designSystemPreviewCss}
                 referenceImageUrl={selectedPhoto?.url}
                 logoUrl={brandAssets?.logo?.url || undefined}
                 format={format}
@@ -1393,7 +1457,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                         <p className="text-xs text-error">{job.error}</p>
                       )}
 
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 gap-4 2xl:grid-cols-2">
                         {job.reviewItems.map((item) => (
                           <div
                             key={item.id}
@@ -1408,7 +1472,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                           >
                             <div className={cn('relative', getAspectClass(job.params.format))}>
                               {item.renderContext?.kind === 'template' ? (
-                                <InstagramHtmlPreview
+                                <InstagramHtmlIframePreview
                                   format={job.params.format}
                                   fields={item.fields}
                                   sourceImageUrl={item.renderContext.sourceImageUrl}
@@ -1416,6 +1480,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                                   includeLogo={item.renderContext.includeLogo}
                                   templateName={item.renderContext.templateId}
                                   tokens={previewTokens}
+                                  customCss={designSystemPreviewCss}
                                   className="h-full w-full"
                                 />
                               ) : (
@@ -1425,8 +1490,10 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                                   className="h-full w-full object-contain bg-zinc-950"
                                 />
                               )}
+                            </div>
 
-                              <div className="pointer-events-none absolute inset-x-2 top-2 flex items-center justify-between">
+                            <div className="space-y-2 border-t border-border/70 bg-card/95 p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-1.5">
                                 <div className="flex items-center gap-1.5">
                                   <div className="inline-flex w-fit rounded bg-black/70 px-2 py-0.5 text-[10px] text-white">
                                     {item.status === 'approved' ? 'Aprovada' : item.status === 'rejected' ? 'Rejeitada' : 'Em revisao'}
@@ -1443,9 +1510,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                                   </div>
                                 )}
                               </div>
-                            </div>
 
-                            <div className="space-y-2 border-t border-border/70 bg-card/95 p-3">
                               <button
                                 onClick={() => setActiveEditor({ jobId: job.id, variationId: item.id })}
                                 className="w-full rounded-lg border border-border bg-input/60 px-3 py-1.5 text-xs font-medium text-text transition-colors hover:bg-input"
@@ -1499,6 +1564,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                                   includeLogo={activeVariation.renderContext.includeLogo}
                                   templateName={activeVariation.renderContext.templateId}
                                   tokens={previewTokens}
+                                  customCss={designSystemPreviewCss}
                                   editable
                                   onFieldChange={(fieldKey, value) =>
                                     updateVariationField(job.id, activeVariation.id, fieldKey, value)

@@ -16,6 +16,7 @@ interface InstagramHtmlPreviewProps {
   editable?: boolean
   className?: string
   tokens?: Partial<InstagramPreviewTokens>
+  customCss?: string
   onFieldChange?: (fieldKey: string, value: string) => void
 }
 
@@ -83,17 +84,29 @@ export default function InstagramHtmlPreview({
   editable = false,
   className,
   tokens,
+  customCss,
   onFieldChange,
 }: InstagramHtmlPreviewProps) {
+  const mergedCss = useMemo(() => {
+    const overrides = (customCss || '').trim()
+    if (!overrides) return INSTAGRAM_DS_CSS
+    const sanitized = overrides.replace(/<\/style/gi, '<\\/style')
+    return `${INSTAGRAM_DS_CSS}\n\n/* Imported DS overrides */\n${sanitized}`
+  }, [customCss])
+
   useEffect(() => {
     if (typeof document === 'undefined') return
-    if (document.getElementById(INSTAGRAM_DS_STYLE_ID)) return
 
-    const style = document.createElement('style')
-    style.id = INSTAGRAM_DS_STYLE_ID
-    style.textContent = INSTAGRAM_DS_CSS
-    document.head.appendChild(style)
-  }, [])
+    let style = document.getElementById(INSTAGRAM_DS_STYLE_ID) as HTMLStyleElement | null
+    if (!style) {
+      style = document.createElement('style')
+      style.id = INSTAGRAM_DS_STYLE_ID
+      document.head.appendChild(style)
+    }
+    if (style.textContent !== mergedCss) {
+      style.textContent = mergedCss
+    }
+  }, [mergedCss])
 
   const mapped = useMemo(() => mapFieldsToDsContent(fields), [fields])
   const templateId = useMemo(

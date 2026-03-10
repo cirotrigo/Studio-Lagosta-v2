@@ -43,6 +43,14 @@ interface GenerateAiTextResponse {
 const WEB_APP_BASE_URL = process.env.WEB_APP_BASE_URL || 'https://studio-lagosta-v2.vercel.app'
 const MAX_REFERENCE_IMAGES = 5
 
+interface RenderHtmlSnapshotArgs {
+  html: string
+  width: number
+  height: number
+  mimeType?: 'image/jpeg' | 'image/png'
+  quality?: number
+}
+
 function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
   try {
     const parts = jwt.split('.')
@@ -246,6 +254,79 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promise<{ buffer: Buffer; mimeType: 'image/jpeg' | 'image/png' }> {
+  const width = Math.max(128, Math.min(4096, Math.floor(args.width)))
+  const height = Math.max(128, Math.min(4096, Math.floor(args.height)))
+  const mimeType: 'image/jpeg' | 'image/png' = args.mimeType === 'image/png' ? 'image/png' : 'image/jpeg'
+  const jpegQuality = Math.max(30, Math.min(100, Math.floor(args.quality ?? 92)))
+
+  const worker = new BrowserWindow({
+    width,
+    height,
+    show: false,
+    frame: false,
+    transparent: false,
+    backgroundColor: '#000000',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      offscreen: false,
+      spellcheck: false,
+      images: true,
+      javascript: true,
+    },
+  })
+
+  try {
+    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(args.html)}`
+    await worker.loadURL(dataUrl)
+
+    // Wait for web fonts/images with a conservative timeout to avoid hanging the queue.
+    await worker.webContents.executeJavaScript(`
+      (async () => {
+        const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const waitFonts = async () => {
+          if (!document.fonts || !document.fonts.ready) return;
+          try {
+            await Promise.race([document.fonts.ready, wait(1800)]);
+          } catch {}
+        };
+        const waitImages = async () => {
+          const imgs = Array.from(document.images || []);
+          if (imgs.length === 0) return;
+          await Promise.race([
+            Promise.all(
+              imgs.map((img) => {
+                if (img.complete) return Promise.resolve();
+                return new Promise((resolve) => {
+                  img.addEventListener('load', () => resolve(), { once: true });
+                  img.addEventListener('error', () => resolve(), { once: true });
+                });
+              })
+            ),
+            wait(2500),
+          ]);
+        };
+        await waitFonts();
+        await waitImages();
+        await wait(80);
+      })();
+    `, true)
+
+    const snapshot = await worker.webContents.capturePage({ x: 0, y: 0, width, height })
+    const buffer = mimeType === 'image/png'
+      ? snapshot.toPNG()
+      : snapshot.toJPEG(jpegQuality)
+
+    return { buffer, mimeType }
+  } finally {
+    if (!worker.isDestroyed()) {
+      worker.destroy()
+    }
+  }
+}
 
 // IPC Handlers - Authentication
 ipcMain.handle('auth:login', async () => {
@@ -1365,6 +1446,31 @@ ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, ima
     }
   } catch (error) {
     console.error('[Template Pass 4] Error:', error)
+    return { ok: false, error: String(error) }
+  }
+})
+
+// IPC Handler - HTML/CSS snapshot render (headless BrowserWindow + capturePage)
+ipcMain.handle('image:render-html-snapshot', async (_event, args: RenderHtmlSnapshotArgs) => {
+  try {
+    if (!args || typeof args.html !== 'string' || !args.html.trim()) {
+      return { ok: false, error: 'HTML snapshot invalido' }
+    }
+    if (!Number.isFinite(args.width) || !Number.isFinite(args.height)) {
+      return { ok: false, error: 'Dimensoes invalidas para snapshot' }
+    }
+
+    const rendered = await renderHtmlSnapshotOffscreen(args)
+    return {
+      ok: true,
+      mimeType: rendered.mimeType,
+      buffer: rendered.buffer.buffer.slice(
+        rendered.buffer.byteOffset,
+        rendered.buffer.byteOffset + rendered.buffer.byteLength
+      ) as ArrayBuffer,
+    }
+  } catch (error) {
+    console.error('[HTML Snapshot] Error:', error)
     return { ok: false, error: String(error) }
   }
 })

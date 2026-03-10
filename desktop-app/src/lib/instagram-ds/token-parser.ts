@@ -98,6 +98,23 @@ function htmlEntryPriority(path: string): number {
   return 4
 }
 
+export function extractDesignSystemCssFromHtml(
+  html: string,
+): string {
+  const styleChunks: string[] = []
+  const styleRegex = /<style[^>]*>([\s\S]*?)<\/style>/gi
+  let match: RegExpExecArray | null
+
+  while ((match = styleRegex.exec(html)) !== null) {
+    const css = match[1]?.trim()
+    if (css) {
+      styleChunks.push(css)
+    }
+  }
+
+  return styleChunks.join('\n\n')
+}
+
 export function extractInstagramPreviewTokensFromDesignSystemHtml(
   html: string,
 ): Partial<InstagramPreviewTokens> {
@@ -152,6 +169,55 @@ export function extractImportedDsTemplatesFromDesignSystemHtml(
   }
 
   return Array.from(map.values()).sort(sortTemplates)
+}
+
+export async function extractDesignSystemCssFromZip(
+  zipBuffer: ArrayBuffer,
+): Promise<string> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(zipBuffer)
+
+  const cssEntries: string[] = []
+  const htmlEntries: string[] = []
+
+  zip.forEach((relativePath, file) => {
+    if (file.dir) return
+    if (/\.css$/i.test(relativePath)) {
+      cssEntries.push(relativePath)
+      return
+    }
+    if (/\.html?$/i.test(relativePath)) {
+      htmlEntries.push(relativePath)
+    }
+  })
+
+  cssEntries.sort((a, b) => a.localeCompare(b))
+  htmlEntries.sort((a, b) => {
+    const scoreDiff = htmlEntryPriority(a) - htmlEntryPriority(b)
+    if (scoreDiff !== 0) return scoreDiff
+    return a.length - b.length
+  })
+
+  const styleChunks: string[] = []
+
+  for (const cssPath of cssEntries) {
+    const file = zip.file(cssPath)
+    if (!file) continue
+    const css = (await file.async('text')).trim()
+    if (!css) continue
+    styleChunks.push(`/* ${cssPath} */\n${css}`)
+  }
+
+  for (const htmlPath of htmlEntries) {
+    const file = zip.file(htmlPath)
+    if (!file) continue
+    const html = await file.async('text')
+    const inlineCss = extractDesignSystemCssFromHtml(html).trim()
+    if (!inlineCss) continue
+    styleChunks.push(`/* ${htmlPath} (inline) */\n${inlineCss}`)
+  }
+
+  return styleChunks.join('\n\n')
 }
 
 export async function extractInstagramPreviewTokensFromDesignSystemZip(

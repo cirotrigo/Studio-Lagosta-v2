@@ -10,6 +10,7 @@ interface TemplateSelectorProps {
   templates: ArtTemplate[] | undefined
   importedTemplates?: ImportedDsTemplateSummary[]
   previewTokens?: Partial<InstagramPreviewTokens>
+  previewCss?: string
   referenceImageUrl?: string
   logoUrl?: string
   format: ArtFormat
@@ -28,6 +29,7 @@ export default function TemplateSelector({
   templates,
   importedTemplates,
   previewTokens,
+  previewCss,
   referenceImageUrl,
   logoUrl,
   format,
@@ -144,6 +146,7 @@ export default function TemplateSelector({
                     includeLogo={Boolean(logoUrl)}
                     templateName={template.id}
                     tokens={previewTokens}
+                    customCss={previewCss}
                     className="h-full w-full"
                   />
                 </div>
