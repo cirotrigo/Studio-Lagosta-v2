@@ -78,7 +78,12 @@ export interface AIImage {
   fileUrl: string
   prompt: string
   createdAt: string
-  format?: string
+  format?: ArtFormat
+  width?: number
+  height?: number
+  aspectRatio?: string
+  provider?: string
+  model?: string
 }
 
 export interface DrivePhoto {

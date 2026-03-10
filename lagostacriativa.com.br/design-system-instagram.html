@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html class="dark" lang="pt-br" style="scroll-behavior: smooth;">
+
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, viewport-fit=cover"
+        name="viewport" />
+    <link data-precedence="next" href="assets/62c8bfb20b66bdf6_721508a9c3ab.css" rel="stylesheet" />
+    <link data-precedence="next" href="assets/1e77a28bbe394369_0019be0db197.css" rel="stylesheet" />
+    <title>Design System & Instagram Guide - Lagosta Criativa</title>
+    <style>
+        .ds-nav {
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            background: rgba(9, 9, 11, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1rem 2rem;
+            display: flex;
+            gap: 1.5rem;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .ds-nav a {
+            color: #a1a1aa;
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .ds-nav a:hover {
+            color: #f97316;
+        }
+
+        .ds-section {
+            padding: 5rem 2rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            max-width: 1200px;
+            margin: 0 auto;
+            color: white;
+        }
+
+        .ds-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 2rem;
+            color: #fff;
+        }
+
+        .ds-subtitle {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            margin-top: 3rem;
+            color: #fff;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 0.5rem;
+        }
+
+        /* Typography */
+        .ds-type-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            padding: 1.5rem 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .ds-type-label {
+            width: 150px;
+            color: #a1a1aa;
+            font-size: 0.875rem;
+            padding-bottom: 10px;
+        }
+
+        .ds-type-preview {
+            flex: 1;
+            padding-right: 2rem;
+        }
+
+        .ds-type-specs {
+            width: 100px;
+            text-align: right;
+            color: #71717a;
+            font-size: 0.875rem;
+            font-family: monospace;
+            padding-bottom: 10px;
+        }
+
+        /* Swatches */
+        .ds-swatch-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .ds-swatch {
+            border-radius: 0.5rem;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .ds-swatch-color {
+            height: 100px;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ds-swatch-info {
+            padding: 0.75rem;
+            background: #18181b;
+        }
+
+        .ds-swatch-name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: #fff;
+            margin-bottom: 0.25rem;
+        }
+
+        .ds-swatch-value {
+            font-size: 0.75rem;
+            color: #a1a1aa;
+            font-family: monospace;
+        }
+
+        /* Components */
+        .ds-component-row {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            margin-bottom: 3rem;
+            align-items: center;
+        }
+
+        .ds-component-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .ds-component-label {
+            font-size: 0.75rem;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 600;
+        }
+
+        /* Layouts */
+        .ds-layout-preview {
+            border: 1px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 0.5rem;
+            padding: 2rem;
+            background: rgba(0, 0, 0, 0.2);
+            margin-bottom: 2rem;
+        }
+
+        /* Motion */
+        .ds-motion-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 2rem;
+        }
+
+        .ds-motion-card {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 2rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            background: #09090b;
+        }
+
+        .ds-motion-label {
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: #a1a1aa;
+            margin-top: 1rem;
+        }
+
+        /* Instagram Rules */
+        .ig-token-card {
+            background: #18181b;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            font-family: monospace;
+            color: #a1a1aa;
+        }
+
+        .ig-token-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.05);
+        }
+
+        .ig-token-row:last-child {
+            border-bottom: none;
+        }
+
+        .ig-token-key {
+            color: #f97316;
+            font-weight: bold;
+        }
+
+        .ig-token-value {
+            color: #fff;
+        }
+
+        .ig-rule-card {
+            background: #18181b;
+            border-left: 4px solid #f97316;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-radius: 0 0.5rem 0.5rem 0;
+        }
+
+        .ig-rule-title {
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.5rem;
+            font-size: 1.125rem;
+        }
+
+        .ig-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.875rem;
+        }
+
+        .ig-table th,
+        .ig-table td {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.75rem;
+            text-align: left;
+        }
+
+        .ig-table th {
+            background: #27272a;
+            color: #fff;
+            font-weight: 600;
+        }
+
+        .ig-table td {
+            color: #a1a1aa;
+        }
+
+        .ig-checklist {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            counter-reset: igcounter;
+        }
+
+        .ig-checklist li {
+            position: relative;
+            padding-left: 2rem;
+            margin-bottom: 1rem;
+            color: #a1a1aa;
+        }
+
+        .ig-checklist li::before {
+            counter-increment: igcounter;
+            content: counter(igcounter);
+            position: absolute;
+            left: 0;
+            top: -2px;
+            width: 1.5rem;
+            height: 1.5rem;
+            background: #f97316;
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: bold;
+        }
+
+        .ig-checklist li strong {
+            color: #fff;
+        }
+
+        /* Instagram Overlay Gradients */
+        .ig-overlay-top {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 45%;
+            background: linear-gradient(to bottom, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0) 100%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ig-overlay-bottom {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 45%;
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0) 100%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ig-overlay-left {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 45%;
+            height: 100%;
+            background: linear-gradient(to right, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0) 100%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .ig-overlay-right {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 45%;
+            height: 100%;
+            background: linear-gradient(to left, rgba(0, 0, 0, 0.92) 0%, rgba(0, 0, 0, 0.75) 50%, rgba(0, 0, 0, 0) 100%);
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        /* Instagram Layout Demos */
+        .ig-gallery {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3rem;
+            margin-top: 2rem;
+            justify-content: center;
+        }
+
+        .ig-preview-container {
+            position: relative;
+            overflow: hidden;
+            background: #000;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            font-family: var(--font-montserrat), sans-serif;
+        }
+
+        .ig-story {
+            width: 270px;
+            aspect-ratio: 9/16;
+        }
+
+        .ig-feed-34 {
+            width: 270px;
+            aspect-ratio: 3/4;
+        }
+
+        .ig-feed-45 {
+            width: 270px;
+            height: 337.5px;
+        }
+
+        /* 270 * 1350/1080 */
+        .ig-feed-11 {
+            width: 270px;
+            aspect-ratio: 1/1;
+        }
+
+        .ig-safe-zone {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 20;
+            pointer-events: none;
+        }
+
+        .ig-story .ig-safe-zone {
+            padding: 15% 8% 18% 8%;
+        }
+
+        .ig-feed-34 .ig-safe-zone,
+        .ig-feed-45 .ig-safe-zone,
+        .ig-feed-11 .ig-safe-zone {
+            padding: 5%;
+        }
+
+        .ig-safe-content {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            z-index: 30;
+            pointer-events: auto;
+        }
+
+        .ig-bg-photo {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+
+        .ig-typography-pre {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            opacity: 0.9;
+            margin-bottom: 0.25rem;
+            font-weight: 600;
+            color: #fff;
+            font-family: var(--font-montserrat), sans-serif;
+        }
+
+        .ig-typography-title {
+            font-size: 1.5rem;
+            font-weight: 800;
+            line-height: 0.85;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.02em;
+            color: #fff;
+            font-family: var(--font-montserrat), sans-serif;
+        }
+
+        .ig-typography-desc {
+            font-size: 0.75rem;
+            line-height: 1.3;
+            opacity: 0.9;
+            color: #fff;
+            font-family: var(--font-montserrat), sans-serif;
+        }
+
+        .ig-typography-cta {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+            margin-top: auto;
+            color: #fff;
+            font-family: var(--font-montserrat), sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .ig-typography-tag {
+            background: rgba(0, 0, 0, 0.55);
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.65rem;
+            font-weight: 500;
+            display: inline-flex;
+            color: #fff;
+            font-family: var(--font-montserrat), sans-serif;
+        }
+
+        .ig-logo {
+            width: 22%;
+            max-width: 75px;
+        }
+
+        .ig-logo-feed {
+            width: 18%;
+            max-width: 55px;
+        }
+
+        /* Dark Theme Reset */
+        body {
+            background-color: #09090b;
+        }
+    </style>
+</head>
+
+<body class="__variable_fe06a9 antialiased text-foreground bg-background"
+    style="font-family: var(--font-montserrat), sans-serif;">
+
+    <nav class="ds-nav">
+        <a href="#hero">0. Componente Hero</a>
+        <a href="#typography">1. Tipografia</a>
+        <a href="#colors">2. Cores e Superfícies</a>
+        <a href="#components">3. Componentes de UI</a>
+        <a href="#layout">4. Layout e Margens</a>
+        <a href="#motion">5. Interação e Animações</a>
+        <a href="#icons">6. Ícones</a>
+        <a href="#instagram">7. Guia do Instagram</a>
+    </nav>
+
+    <!-- 0) HERO EXACT CLONE -->
+    <div id="hero">
+        <section
+            class="relative min-h-[90vh] flex items-center justify-center overflow-hidden pt-20 pb-16 lg:pt-32 group">
+            <div class="pointer-events-none absolute -inset-px opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+                style="background:radial-gradient(
+            600px circle at 0px 0px,
+            rgba(249, 115, 22, 0.15),
+            transparent 80%
+        )"></div>
+            <div class="absolute inset-0 z-0">
+                <div
+                    class="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-gradient-to-b from-background via-background/90 to-background z-10">
+                </div>
+                <div
+                    class="w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-orange-500/20 via-background to-background opacity-40">
+                </div>
+            </div>
+            <div class="container relative z-20 px-4 md:px-6 flex flex-col items-center text-center">
+                <div
+                    class="inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-sm font-medium text-orange-500 mb-8 backdrop-blur-sm">
+                    <span class="flex h-2 w-2 rounded-full bg-orange-500 mr-2 animate-pulse"></span>Design System V3
+                    Oficial
+                </div>
+
+                <h1 class="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground max-w-5xl mb-6">
+                    <span class="text-muted-foreground text-3xl md:text-5xl lg:text-6xl mt-2 block font-semibold">
+                        Master Guide de <span
+                            class="text-orange-500 underline decoration-orange-500/30 underline-offset-8">Identidade
+                            Visual</span>
+                    </span>
+                </h1>
+                <p class="text-xl md:text-2xl text-muted-foreground max-w-3xl mb-10 leading-relaxed">
+                    Este é o repositório central. As regras <span class="text-foreground font-semibold">são
+                        claras</span>, a constância <span class="text-foreground font-semibold">é inegociável</span> e a
+                    estética <span class="text-foreground font-semibold">gera caixa</span>.
+                </p>
+                <div class="flex flex-col sm:flex-row gap-4 w-full justify-center mb-16">
+                    <a class="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 relative active:bg-zinc-700 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 dark:active:bg-zinc-300 bg-orange-600 hover:bg-orange-700 text-white h-14 px-8 text-lg rounded-full shadow-lg shadow-orange-500/25"
+                        href="#instagram">
+                        Ver Guia do Instagram
+                        <svg aria-hidden="true" class="ml-2 h-5 w-5" fill="none" height="24" stroke="currentColor"
+                            stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24"
+                            width="24" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M5 12h14"></path>
+                            <path d="m12 5 7 7-7 7"></path>
+                        </svg>
+                    </a>
+                    <a class="inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 relative border bg-white text-zinc-900 active:bg-zinc-100 dark:border-zinc-700 dark:bg-transparent dark:text-zinc-100 dark:hover:bg-zinc-800 dark:active:bg-zinc-700 shadow-sm h-14 px-8 text-lg rounded-full border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-500"
+                        href="#components">
+                        Ver Componentes UI
+                    </a>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="typography" class="ds-section">
+        <h2 class="ds-title">1. Tipografia</h2>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Título 1</div>
+            <div class="ds-type-preview">
+                <h1 class="text-4xl md:text-6xl lg:text-7xl font-bold tracking-tight text-foreground">Marketing que Gera
+                    Fila</h1>
+            </div>
+            <div class="ds-type-specs">7xl / bold</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Título 2</div>
+            <div class="ds-type-preview">
+                <h2 class="text-3xl md:text-5xl font-bold text-foreground">A Solução Lagosta</h2>
+            </div>
+            <div class="ds-type-specs">5xl / bold</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Título 3</div>
+            <div class="ds-type-preview">
+                <h3 class="text-2xl md:text-3xl font-bold text-foreground">Posicionamento Visual de Elite</h3>
+            </div>
+            <div class="ds-type-specs">3xl / bold</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Título 4</div>
+            <div class="ds-type-preview">
+                <h4 class="text-xl font-bold text-foreground">Ivan</h4>
+            </div>
+            <div class="ds-type-specs">xl / bold</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Parágrafo L</div>
+            <div class="ds-type-preview">
+                <p class="text-xl md:text-2xl text-muted-foreground leading-relaxed">Não vendemos posts. Vendemos mesas
+                    ocupadas, ticket médio maior e marca memorável.</p>
+            </div>
+            <div class="ds-type-specs">2xl / relx</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Parágrafo M</div>
+            <div class="ds-type-preview">
+                <p class="text-lg text-muted-foreground">A maioria não fracassa por comida ruim.</p>
+            </div>
+            <div class="ds-type-specs">lg / normal</div>
+        </div>
+        <div class="ds-type-row">
+            <div class="ds-type-label">Parágrafo S</div>
+            <div class="ds-type-preview">
+                <p class="text-sm text-muted-foreground">Crescimento médio de receita</p>
+            </div>
+            <div class="ds-type-specs">sm / normal</div>
+        </div>
+    </div>
+
+    <div id="colors" class="ds-section">
+        <h2 class="ds-title">2. Cores e Superfícies</h2>
+        <h3 class="ds-subtitle">Colors</h3>
+        <div class="ds-swatch-grid">
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-background"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Background</div>
+                    <div class="ds-swatch-value">bg-background<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;'
+                            onclick='navigator.clipboard.writeText("#09090b")' title='Clique para copiar'>#09090b</code>
+                    </div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-foreground"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Foreground</div>
+                    <div class="ds-swatch-value">bg-foreground<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;'
+                            onclick='navigator.clipboard.writeText("#ffffff")' title='Clique para copiar'>#ffffff</code>
+                    </div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-orange-500"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Primary 500</div>
+                    <div class="ds-swatch-value">bg-orange-500<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;'
+                            onclick='navigator.clipboard.writeText("#f97316")' title='Clique para copiar'>#f97316</code>
+                    </div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-orange-600"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Primary 600</div>
+                    <div class="ds-swatch-value">bg-orange-600<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;'
+                            onclick='navigator.clipboard.writeText("#ea580c")' title='Clique para copiar'>#ea580c</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <h3 class="ds-subtitle">Surfaces & Gradients</h3>
+        <div class="ds-swatch-grid">
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-zinc-950<br><code style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;' onclick='navigator.clipboard.writeText("
+                    #09090b")'>#09090b</code>"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Dark Section</div>
+                    <div class="ds-swatch-value">bg-zinc-950<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;'
+                            onclick='navigator.clipboard.writeText("#09090b")'>#09090b</code></div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-muted/30"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Muted Overlay</div>
+                    <div class="ds-swatch-value">bg-muted/30</div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-card border border-border"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Card Surface</div>
+                    <div class="ds-swatch-value">bg-card</div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-gradient-to-r from-red-500 to-orange-600"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Alert Gradient</div>
+                    <div class="ds-swatch-value">Gradiente de Alerta<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;display:block;margin-top:4px;'
+                            onclick='navigator.clipboard.writeText("linear-gradient(to right, #ef4444, #ea580c)")'>linear-gradient(to right, #ef4444, #ea580c)</code>
+                    </div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color bg-gradient-to-tr from-orange-600 to-amber-500"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Feature Gradient</div>
+                    <div class="ds-swatch-value">Gradiente de Destaque<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;display:block;margin-top:4px;'
+                            onclick='navigator.clipboard.writeText("linear-gradient(to top right, #ea580c, #f59e0b)")'>linear-gradient(to top right, #ea580c, #f59e0b)</code>
+                    </div>
+                </div>
+            </div>
+            <div class="ds-swatch">
+                <div class="ds-swatch-color"
+                    style="background: linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%)"></div>
+                <div class="ds-swatch-info">
+                    <div class="ds-swatch-name">Border Glow Gradient</div>
+                    <div class="ds-swatch-value">Gradiente de Borda Brilhante<br><code
+                            style='user-select:all;cursor:pointer;background:#27272a;padding:2px 4px;border-radius:4px;color:#f97316;display:block;margin-top:4px;'
+                            onclick='navigator.clipboard.writeText("linear-gradient(135deg, #ea580c 0%, #f97316 50%, #fb923c 100%)")'>linear-gradient(135deg, #ea580c, #f97316 50%, #fb923c)</code>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="components" class="ds-section">
+        <h2 class="ds-title">3. Componentes de Interface</h2>
+        <div class="ds-component-row">
+            <div class="ds-component-item">
+                <span class="ds-component-label">Botão Principal (Padrão)</span>
+                <a
+                    class="inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 bg-orange-600 hover:bg-orange-700 text-white h-14 px-8 text-lg rounded-full shadow-lg shadow-orange-500/25">Button
+                    Primary</a>
+            </div>
+            <div class="ds-component-item">
+                <span class="ds-component-label">Botão Secundário (Padrão)</span>
+                <a
+                    class="inline-flex items-center justify-center gap-2 font-medium transition-all duration-200 border bg-white text-zinc-900 shadow-sm h-14 px-8 text-lg rounded-full border-orange-500/20 hover:bg-orange-500/5 hover:text-orange-500 dark:bg-transparent dark:text-zinc-100 dark:hover:bg-zinc-800">Button
+                    Secondary</a>
+            </div>
+        </div>
+
+        <div class="ds-component-row">
+            <div class="ds-component-item">
+                <span class="ds-component-label">Emblema (Badge)</span>
+                <div
+                    class="inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-3 py-1 text-sm font-medium text-orange-500 backdrop-blur-sm">
+                    <span class="flex h-2 w-2 rounded-full bg-orange-500 mr-2 animate-pulse"></span>Active Emblema
+                    (Badge)
+                </div>
+            </div>
+            <div class="ds-component-item">
+                <span class="ds-component-label">Tag de Destaque</span>
+                <div
+                    class="bg-orange-600 text-white text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider shadow-lg">
+                    Mais Popular</div>
+            </div>
+        </div>
+
+        <div class="ds-component-row">
+            <div class="ds-component-item w-full max-w-sm">
+                <span class="ds-component-label">Bloco de Estatísticas</span>
+                <div class="flex flex-col items-center">
+                    <div class="flex items-center text-3xl font-bold text-foreground mb-1"><span
+                            class="text-orange-500 mr-2">↑</span>+2.5k</div>
+                    <p class="text-sm text-muted-foreground">Mesas reservadas/mês</p>
+                </div>
+            </div>
+            <div class="ds-component-item w-full max-w-md">
+                <span class="ds-component-label">Item de Checklist</span>
+                <div class="flex items-start gap-4">
+                    <svg aria-hidden="true" class="h-6 w-6 text-green-500 shrink-0 mt-1" fill="none" height="24"
+                        stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                        viewbox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="12" cy="12" r="10"></circle>
+                        <path d="m9 12 2 2 4-4"></path>
+                    </svg>
+                    <p class="text-lg md:text-xl font-medium text-zinc-200">Lotar sua casa nos dias fracos.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="layout" class="ds-section">
+        <h2 class="ds-title">4. Layout e Estrutura</h2>
+        <h3 class="ds-subtitle">Contêiner Padrão</h3>
+        <div class="ds-layout-preview">
+            <div
+                class="container px-4 md:px-6 mx-auto outline outline-1 outline-orange-500/50 bg-orange-500/10 py-4 text-center">
+                container px-4 md:px-6
+            </div>
+        </div>
+
+        <h3 class="ds-subtitle">Grid de 3 Colunas (Recursos)</h3>
+        <div class="ds-layout-preview">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-16">
+                <div
+                    class="outline outline-1 outline-orange-500/50 bg-orange-500/10 h-24 flex items-center justify-center">
+                    Col 1</div>
+                <div
+                    class="outline outline-1 outline-orange-500/50 bg-orange-500/10 h-24 flex items-center justify-center">
+                    Col 2</div>
+                <div
+                    class="outline outline-1 outline-orange-500/50 bg-orange-500/10 h-24 flex items-center justify-center">
+                    Col 3</div>
+            </div>
+        </div>
+
+        <h3 class="ds-subtitle">Layout Dividido 50/50 (Texto & Mídia)</h3>
+        <div class="ds-layout-preview">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+                <div
+                    class="outline outline-1 outline-orange-500/50 bg-orange-500/10 h-40 flex items-center justify-center">
+                    Conteúdo de Texto</div>
+                <div
+                    class="outline outline-1 outline-orange-500/50 bg-orange-500/10 h-40 flex items-center justify-center">
+                    Mídia / Formulário</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="motion" class="ds-section">
+        <h2 class="ds-title">5. Animações e Interatividade</h2>
+        <div class="ds-motion-grid">
+            <div
+                class="ds-motion-card transition-all duration-300 hover:shadow-lg hover:shadow-orange-500/10 hover:border-orange-500/50 group">
+                <h4 class="font-bold mb-2 group-hover:text-orange-500 transition-colors">Card Hover</h4>
+                <p class="text-xs text-muted-foreground">Passe o mouse sobre este cartão para ver a transição de borda,
+                    sombra e texto.</p>
+                <div class="ds-motion-label">hover:border-orange-500/50 hover:shadow-lg hover:shadow-orange-500/10
+                    group-hover:text-orange-500 transition-all duration-300</div>
+            </div>
+            <div class="ds-motion-card flex flex-col justify-center items-center group">
+                <div
+                    class="h-12 w-12 bg-orange-500/10 rounded-lg flex items-center justify-center mb-6 text-orange-500 group-hover:bg-orange-500 group-hover:text-white transition-colors">
+                    <svg class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                </div>
+                <h4 class="font-bold">Inversão da Caixa de Ícone</h4>
+                <div class="ds-motion-label">group-hover:bg-orange-500 group-hover:text-white transition-colors</div>
+            </div>
+            <div class="ds-motion-card flex flex-col items-center justify-center dark:bg-black group">
+                <div class="absolute inset-0 z-0">
+                    <div class="absolute inset-0 opacity-0 transition duration-300 group-hover:opacity-100 z-10"
+                        style="background:radial-gradient(150px circle at center, rgba(249, 115, 22, 0.5), transparent 80%)">
+                    </div>
+                </div>
+                <h4 class="font-bold relative z-20">Entrada de Brilho Radial</h4>
+                <div class="ds-motion-label relative z-20">opacity-0 group-hover:opacity-100 transition duration-300
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="icons" class="ds-section">
+        <h2 class="ds-title">6. Ícones (Lucide)</h2>
+        <p class="text-zinc-400 mb-8 max-w-2xl">O projeto utiliza Lucide Icons com SVG inline, sempre formatados com
+            aria-hidden, fill="none", stroke="currentColor", classes de tamanho (h-5 w-5 ou h-6 w-6) e pesos
+            estruturados.</p>
+        <div class="ds-swatch-grid">
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                        d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z">
+                    </path>
+                    <circle cx="12" cy="13" r="3"></circle>
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z" />
+                    <path d="M9 13a4.5 4.5 0 0 0 3-4" />
+                    <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5" />
+                    <path d="M3.477 10.896a4 4 0 0 1 .585-.396" />
+                    <path d="M6 18a4 4 0 0 1-1.967-.516" />
+                    <path d="M12 13h4" />
+                    <path d="M12 18h6a2 2 0 0 1 2 2v1" />
+                    <path d="M12 8h8" />
+                    <path d="M16 8V5a2 2 0 0 1 2-2" />
+                    <circle cx="16" cy="13" r=".5" />
+                    <circle cx="18" cy="3" r=".5" />
+                    <circle cx="20" cy="21" r=".5" />
+                    <circle cx="20" cy="8" r=".5" />
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path
+                        d="M17 21a1 1 0 0 0 1-1v-5.35c0-.457.316-.844.727-1.041a4 4 0 0 0-2.134-7.589 5 5 0 0 0-9.186 0 4 4 0 0 0-2.134 7.588c.411.198.727.585.727 1.041V20a1 1 0 0 0 1 1Z" />
+                    <path d="M6 17h12" />
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="m16 2-2.3 2.3a3 3 0 0 0 0 4.2l1.8 1.8a3 3 0 0 0 4.2 0L22 8"></path>
+                    <path d="M15 15 3.3 3.3a4.2 4.2 0 0 0 0 6l7.3 7.3c.7.7 2 .7 2.8 0L15 15Zm0 0 7 7"></path>
+                    <path d="m2.1 21.8 6.4-6.3"></path>
+                    <path d="m19 5-7 7"></path>
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-green-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <path d="m9 12 2 2 4-4"></path>
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-red-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path>
+                    <path d="M12 9v4"></path>
+                    <path d="M12 17h.01"></path>
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+                    <circle cx="12" cy="10" r="3" />
+                </svg>
+            </div>
+            <div class="border border-border p-4 rounded-xl flex items-center justify-center bg-zinc-900 group">
+                <svg class="h-8 w-8 text-orange-500 group-hover:scale-110 transition-transform" fill="none"
+                    stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <polyline points="12 6 12 12 16 14" />
+                </svg>
+            </div>
+        </div>
+    </div>
+
+    <div id="instagram" class="ds-section">
+        <h2 class="ds-title text-orange-500">7. Artes do Instagram — Master Guide do Designer</h2>
+        <p class="ds-subtitle mt-0 mb-8 border-none text-xl">Este manual serve tanto para designers de estúdio humano
+            quanto para prompts em agentes IA.</p>
+
+        <div class="ig-token-card">
+            <h4 class="text-white font-bold mb-4 flex items-center gap-2">STEP 0: Brand Configuration Block <span
+                    class="bg-orange-500/20 text-orange-500 text-xs px-2 py-1 rounded">MANDATORY</span></h4>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_NAME</span><span class="ig-token-value">Lagosta
+                    Criativa</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_PRIMARY</span><span
+                    class="ig-token-value">#f97316 (orange-500)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_SECONDARY</span><span
+                    class="ig-token-value">#ea580c (orange-600)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_TEXT_COLOR</span><span
+                    class="ig-token-value">#ffffff (white)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_BG_COLOR</span><span
+                    class="ig-token-value">#09090b (zinc-950)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_FONT_HEADING</span><span
+                    class="ig-token-value">Montserrat (bold/black)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_FONT_BODY</span><span
+                    class="ig-token-value">Montserrat (medium/semibold)</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_STYLE</span><span class="ig-token-value">dark
+                    premium, cinematic glow</span></div>
+            <div class="ig-token-row"><span class="ig-token-key">BRAND_SEGMENT</span><span
+                    class="ig-token-value">marketing gastronômico especializado</span></div>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R1 — A Lei dos 70/30: A Fotografia Comanda, o Design Suporta</h4>
+            <p class="text-zinc-300">Texto + gradientes + elementos gráficos combinados <strong>nunca devem ocupar mais
+                    de 30%</strong> da altura total da arte. Os 70% restantes devem ser uma fotografia limpa. O
+                visualizador para de rolar a tela por causa da foto, e não do texto.</p>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R2 — Sistema de Overlay com Gradiente: Contraste Calculado</h4>
+            <p class="text-zinc-300">Todos os overlays (sobreposições escurecidas onde o texto fica) devem usar um
+                gradiente linear com opacidade descendente (92% → 75% no centro → 0% na ponta). Altura máxima do
+                overlay: 30% a 45% da arte.</p>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R3 — Margens Seguras (Safe Zones)</h4>
+            <table class="ig-table">
+                <thead>
+                    <tr>
+                        <th>Formato</th>
+                        <th>Topo</th>
+                        <th>Fundo</th>
+                        <th>Lados</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Stories e Reels (9:16)</td>
+                        <td>15%</td>
+                        <td>18%</td>
+                        <td>8%</td>
+                    </tr>
+                    <tr>
+                        <td>Feed (all apps)</td>
+                        <td>5%</td>
+                        <td>5%</td>
+                        <td>5%</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R4 — Hierarquia Tipográfica: Impacto pela Ordem</h4>
+            <div
+                style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 4px; font-family: monospace; color: #a1a1aa;">
+                PRE-TITLE → BRAND_FONT_BODY, small, ALL CAPS, wide spacing<br>
+                TITLE → BRAND_FONT_HEADING, large, line-height: 0.85<br>
+                SUBTITLE → BRAND_FONT_HEADING, medium, line-height: 0.90<br>
+                DESCRIPTION → BRAND_FONT_BODY, small, line-height: 1.3<br>
+                CTA / TAG → BRAND_FONT_BODY, ALL CAPS, minimal, optional icon
+            </div>
+            <p class="text-zinc-300 mt-4"><strong>Crucial:</strong> Nunca deixe o CSS ou alinhamento automático quebrar
+                linhas em Títulos (Titles). Quebre manualmente usando <br> para gerar blocos visuais sólidos e juntos.
+                Evite viúvas (uma palavra sozinha na última linha).</p>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R5 — Posição e Escala da Logo</h4>
+            <p class="text-zinc-300">Stories: topo ao centro ou topo alinhado. Máximo de 25%. Feed: cantos opostos ao
+                texto. Máximo de 20%. A logo deve estar presente, mas NUNCA ser o protagonista ou roubar atenção da
+                foto.</p>
+        </div>
+
+        <div class="ig-rule-card">
+            <h4 class="ig-rule-title">REGRA R6 — Consistência da Série (Grid Rhythm)</h4>
+            <p class="text-zinc-300">Mantenha a posição dos blocos de texto e a direção dos gradientes consistentes
+                dentro dos blocos da mesma campanha ou grupo de publicações, focado em trazer um ritmo visual para a
+                grade do feed.</p>
+        </div>
+
+        <h3 class="ds-subtitle">BIBLIOTECA DE EXEMPLOS — Stories / Reels (9:16)</h3>
+        <div class="ig-gallery">
+            <!-- S1 Centered Focus -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783371.jpg" alt="S1 Story Photo">
+                <div class="ig-overlay-bottom"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo mx-auto" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto text-center" style="margin-bottom: 2rem;">
+                            <div class="ig-typography-pre text-orange-500">PROMOÇÃO EXCLUSIVA</div>
+                            <div class="ig-typography-title">RESERVE<br>HOJE MESMO</div>
+                            <div class="ig-typography-cta justify-center text-orange-500">GARANTIR MESA <svg
+                                    class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2"
+                                    viewBox="0 0 24 24">
+                                    <path d="M5 12h14"></path>
+                                    <path d="m12 5 7 7-7 7"></path>
+                                </svg></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S2 Editorial Asymmetric -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783380.jpg" alt="S2 Story Photo">
+                <div class="ig-overlay-left"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo ml-auto" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto" style="margin-bottom: 3rem;">
+                            <div class="ig-typography-pre">EXPERIÊNCIA</div>
+                            <div class="ig-typography-title">SABOR<br>QUE NÃO<br>SE ESQUECE</div>
+                            <div class="ig-typography-desc mt-2 w-3/4">Preparado lentamente por chefs especialistas para
+                                quem sabe o que é bom.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S3 Info / List -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783389.jpg" alt="S3 Story Photo">
+                <div class="ig-overlay-bottom" style="height: 50%;"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo mx-auto" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto">
+                            <div class="ig-typography-title text-center text-2xl">O QUE TEM HOJE</div>
+                            <ul class="text-white font-medium text-xs space-y-2 mt-4 ml-6 mb-8"
+                                style="list-style-type: disc; color: #f97316;">
+                                <li><span class="text-white">Aberto até 23h</span></li>
+                                <li><span class="text-white">Dose dupla de Chopp</span></li>
+                                <li><span class="text-white">Estacionamento Grátis</span></li>
+                            </ul>
+                            <div class="text-center text-[10px] text-zinc-400 opacity-80 mt-auto">Rua Maktub 123,
+                                Vitória - ES / 27 9999-9999</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S4 Photo Production Tip -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783380.jpg" alt="S4 Story Photo">
+                <div class="ig-overlay-bottom" style="height: 60%;"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo mx-auto" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto text-center" style="margin-bottom: 2rem;">
+                            <div class="mb-3">
+                                <div
+                                    class="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg inline-block">
+                                    BASTIDORES</div>
+                            </div>
+                            <div class="ig-typography-title text-xl leading-tight">A LUZ QUE<br><span
+                                    style="background: linear-gradient(to right, #fb923c, #fcd34d); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">VENDE
+                                    MAIS</span></div>
+                            <div class="ig-typography-desc mb-4 px-4 text-[10px]">Produção audiovisual profissional no
+                                seu restaurante. Sem IA, comida real.</div>
+                            <div
+                                class="inline-flex items-center justify-center gap-1 font-medium border bg-black/40 text-white shadow-sm h-8 px-4 text-xs rounded-full border-white/20 backdrop-blur-md">
+                                Ver Portfolio</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S5 Production Setup -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783412.jpg" alt="S5 Story Photo">
+                <div class="ig-overlay-bottom" style="height: 55%;"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo ml-auto" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto" style="margin-bottom: 2rem;">
+                            <div
+                                class="inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/10 px-2 py-0.5 text-[9px] font-medium text-orange-500 backdrop-blur-sm mb-2">
+                                <span class="flex h-1.5 w-1.5 rounded-full bg-orange-500 mr-1.5 animate-pulse"></span>Em
+                                Gravação
+                            </div>
+                            <div class="ig-typography-title text-xl">FOTOGRAFIA<br><span
+                                    style="background: linear-gradient(to right, #fb923c, #ea580c); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">GASTRONÔMICA</span>
+                            </div>
+
+                            <div class="flex flex-col gap-1.5 mt-3 text-[9px] text-zinc-300">
+                                <div class="flex items-center gap-1.5">
+                                    <svg class="h-3 w-3 text-orange-500 shrink-0" fill="none" stroke="currentColor"
+                                        stroke-width="2" viewBox="0 0 24 24">
+                                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0Z" />
+                                        <circle cx="12" cy="10" r="3" />
+                                    </svg>
+                                    Vitória, ES - Restaurante Tero
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <svg class="h-3 w-3 text-orange-500 shrink-0" fill="none" stroke="currentColor"
+                                        stroke-width="2" viewBox="0 0 24 24">
+                                        <circle cx="12" cy="12" r="10" />
+                                        <polyline points="12 6 12 12 16 14" />
+                                    </svg>
+                                    Sessão das 14h às 18h
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- S6 Final Result Promo -->
+            <div class="ig-preview-container ig-story">
+                <img class="ig-bg-photo" src="assets/media__1773027783401.jpg" alt="S6 Story Photo">
+                <div class="ig-overlay-top" style="height: 35%;"></div>
+                <div class="ig-overlay-bottom" style="height: 40%;"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <div class="flex justify-between items-center w-full">
+                            <div
+                                class="bg-orange-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-lg">
+                                QUALIDADE</div>
+                            <img class="ig-logo" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        </div>
+                        <div class="mt-auto text-center" style="margin-bottom: 2rem;">
+                            <div class="ig-typography-title text-[22px] leading-none mb-3">CONTEÚDO<br><span
+                                    style="background: linear-gradient(to right, #fcd34d, #f97316); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">QUE
+                                    DÁ FOME</span></div>
+                            <div
+                                class="inline-flex items-center justify-center gap-1 font-medium border bg-transparent text-white shadow-sm h-8 px-5 text-xs rounded-full border-orange-500/30">
+                                Agende sua sessão</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="ds-subtitle">BIBLIOTECA DE EXEMPLOS — Feed</h3>
+        <div class="ig-gallery">
+            <!-- F1 Product / Promo 3:4 -->
+            <div class="ig-preview-container ig-feed-34">
+                <img class="ig-bg-photo" src="assets/media__1773027783401.jpg" alt="F1 Feed Photo">
+                <div class="ig-overlay-bottom"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <img class="ig-logo-feed" src="assets/lagosta-logo_4a75b9ab6d10.png" alt="Logo">
+                        <div class="mt-auto">
+                            <div class="ig-typography-pre text-orange-500">APENAS HOJE</div>
+                            <div class="ig-typography-title" style="font-size: 3rem; margin-top: -5px;">R$ 49,90</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- F2 Lifestyle 4:5 -->
+            <div class="ig-preview-container ig-feed-45">
+                <img class="ig-bg-photo" src="assets/media__1773027783412.jpg" alt="F2 Feed Photo">
+                <div class="ig-overlay-left" style="height: 100%; width: 45%;"></div>
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <div class="mt-auto mb-10 w-4/5">
+                            <div class="ig-typography-title text-xl" style="line-height:0.95;">A ARTE<br>DE COMER
+                                BEM<br>ESTÁ NOS<br>DETALHES</div>
+                        </div>
+                        <img class="ig-logo-feed self-end mt-auto" src="assets/lagosta-logo_4a75b9ab6d10.png"
+                            alt="Logo">
+                    </div>
+                </div>
+            </div>
+
+            <!-- F3 Clean 1:1 -->
+            <div class="ig-preview-container ig-feed-11">
+                <img class="ig-bg-photo" src="assets/media__1773027783371.jpg" alt="F3 Feed Photo">
+                <div class="ig-safe-zone">
+                    <div class="ig-safe-content">
+                        <div class="mt-auto mb-2 ml-2">
+                            <div class="ig-typography-tag">#Gastronomia</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <h3 class="ds-subtitle">FLUXO DE PRODUÇÃO — Checklist</h3>
+        <ul class="ig-checklist">
+            <li>Identificar: Formato (Story/Feed), Objetivo da postagem, Texto/Copy e Foto de Fundo.</li>
+            <li>Selecionar a Variação Base: S1, S2, S3, F1, F2 ou F3 de acordo do o Guia acima.</li>
+            <li><strong>Aplicar Tokens:</strong> Utilizar exclusivamente cores e fontes extraídas do bloco de BRAND_* do
+                passo 0.</li>
+            <li><strong>Inserir Fotografia:</strong> Verificar a Regra R1 (espaço 70/30) e as Margens de Segurança (R3).
+            </li>
+            <li><strong>Aplicar Gradiente (Overlay):</strong> Testar contraste do texto sobre o fundo usando a regra R2.
+            </li>
+            <li><strong>Tipografia:</strong> Puxar as fontes do R4, forçar quebras de linha estéticas nos Títulos.</li>
+            <li><strong>Aplicação da Logo:</strong> Garantir discrição pela regra R5.</li>
+            <li><strong>Revisar Trinca Feed:</strong> Verificar ritmo de leitura da grade do perfil.</li>
+            <li>Exportar arte obedecendo os pesos de max 8MB.</li>
+        </ul>
+
+    </div>
+
+    <script>
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+    </script>
+</body>
+
+</html>

@@ -23,7 +23,7 @@ const analyzeSchema = z.object({
 const FORMAT_INFO: Record<string, { width: number; height: number; label: string }> = {
   FEED_PORTRAIT: { width: 1080, height: 1350, label: 'feed retrato (1080x1350)' },
   STORY: { width: 1080, height: 1920, label: 'story vertical (1080x1920)' },
-  SQUARE: { width: 1024, height: 1024, label: 'quadrado (1024x1024)' },
+  SQUARE: { width: 1080, height: 1080, label: 'quadrado (1080x1080)' },
 }
 
 // --- Vision Prompt (A2) ---

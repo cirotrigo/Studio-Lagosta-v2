@@ -39,7 +39,7 @@ export default function ResultImageCard({
       <img
         src={imageUrl}
         alt="Arte gerada"
-        className="h-full w-full object-cover"
+        className="h-full w-full object-contain bg-zinc-950"
       />
 
       {/* Hover Overlay */}

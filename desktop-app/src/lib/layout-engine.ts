@@ -17,7 +17,7 @@ export const SUPPORTED_SCHEMA_VERSION = 1
 export const FORMAT_DIMENSIONS: Record<string, { width: number; height: number }> = {
   FEED_PORTRAIT: { width: 1080, height: 1350 },
   STORY: { width: 1080, height: 1920 },
-  SQUARE: { width: 1024, height: 1024 },
+  SQUARE: { width: 1080, height: 1080 },
 }
 
 const LINE_HEIGHT_MULTIPLIER = 1.2

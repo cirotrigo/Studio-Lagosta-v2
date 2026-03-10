@@ -6,9 +6,11 @@ import { z } from 'zod'
 import { generateObject, generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import sharp from 'sharp'
+import { put } from '@vercel/blob'
 import { processTextForTemplate, type TextProcessingMode } from '@/lib/text-processing'
 import { densityCheckAndMaybeCompress, TextOverflowError } from '@/lib/density-control'
 import { normalizeTemplate } from '@/lib/template-normalize'
+import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
 
 export const runtime = 'nodejs'
 export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
@@ -18,17 +20,39 @@ export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential opera
 const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: string }> = {
   FEED_PORTRAIT: { width: 1080, height: 1350, label: 'feed retrato (1080x1350)' },
   STORY: { width: 1080, height: 1920, label: 'story vertical (1080x1920)' },
-  SQUARE: { width: 1024, height: 1024, label: 'quadrado (1024x1024)' },
+  SQUARE: { width: 1080, height: 1080, label: 'quadrado (1080x1080)' },
 }
 
 const GEMINI_BASE_URL = 'https://generativelanguage.googleapis.com/v1beta/models'
-const GEMINI_PRIMARY_MODEL = 'gemini-3.1-flash-image-preview' // Nano Banana 2
-const GEMINI_FALLBACK_MODEL = 'gemini-2.5-flash-image' // stable fallback
+const GEMINI_PRIMARY_MODEL = process.env.GEMINI_IMAGE_PRIMARY_MODEL || 'gemini-3.1-flash-image-preview' // Nano Banana 2
+const GEMINI_FALLBACK_MODEL = process.env.GEMINI_IMAGE_FALLBACK_MODEL || 'gemini-2.5-flash-image' // previous version fallback
 
 const GEMINI_ASPECT_RATIOS: Record<string, string> = {
   FEED_PORTRAIT: '4:5',
   STORY: '9:16',
   SQUARE: '1:1',
+}
+
+const DIRECT_PHOTO_CROP_POSITIONS: Array<'attention' | 'centre' | 'north' | 'south' | 'east' | 'west'> = [
+  'attention',
+  'centre',
+  'north',
+  'south',
+  'east',
+  'west',
+]
+
+const VISUAL_VARIATION_DIRECTIONS = [
+  'Create a bold hero framing with generous negative space for text.',
+  'Create a tighter crop with cinematic depth and stronger foreground emphasis.',
+  'Create a balanced composition with subtle asymmetry and cleaner background.',
+  'Create a premium editorial framing with layered depth and controlled contrast.',
+]
+
+function buildVariationPrompt(basePrompt: string, index: number, total: number): string {
+  if (total <= 1) return basePrompt
+  const direction = VISUAL_VARIATION_DIRECTIONS[index % VISUAL_VARIATION_DIRECTIONS.length]
+  return `${basePrompt}\n\nVariation ${index + 1}/${total}: ${direction}`
 }
 
 // --- Zod Schema ---
@@ -44,7 +68,7 @@ const generateArtSchema = z.object({
   styleDescription: z.string().max(500).optional(),
   compositionEnabled: z.boolean().default(false),
   compositionPrompt: z.string().max(500).optional(),
-  compositionReferenceUrls: z.array(z.string().url()).max(3).optional(),
+  compositionReferenceUrls: z.array(z.string().url()).max(5).optional(),
   // Template fields
   templateId: z.string().optional(),
   templateIds: z.array(z.string()).max(3).optional(),
@@ -564,7 +588,7 @@ interface PreparedRefImage {
 async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[]> {
   if (!urls.length) return []
 
-  const toFetch = urls.slice(0, 4)
+  const toFetch = urls.slice(0, 5)
   console.log(`[generate-art] Fetching ${toFetch.length} reference images...`)
 
   const results = await Promise.allSettled(
@@ -676,9 +700,9 @@ async function callGeminiImageGeneration(
 async function callNanoBanana2(
   prompt: string,
   photoUrl?: string,
-  format: string = 'FEED_PORTRAIT',
+  format: string = 'STORY',
   referenceImages?: PreparedRefImage[],
-): Promise<{ buffer: Buffer; mimeType: string }> {
+): Promise<{ buffer: Buffer; mimeType: string; modelUsed: string; fallbackUsed: boolean }> {
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
   if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured')
 
@@ -753,11 +777,88 @@ Generate a NEW image following this description:` })
   // Try primary model, fallback to secondary
   console.log(`[generate-art] Calling Gemini with ${contentParts.length} content parts (refs=${hasRefs ? referenceImages!.length : 0}, photo=${photoUrl ? 'yes' : 'no'})...`)
   try {
-    return await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, aspectRatio)
+    const primary = await callGeminiImageGeneration(GEMINI_PRIMARY_MODEL, apiKey, contentParts, aspectRatio)
+    return {
+      ...primary,
+      modelUsed: GEMINI_PRIMARY_MODEL,
+      fallbackUsed: false,
+    }
   } catch (primaryError: any) {
     console.warn(`[generate-art] Primary model (${GEMINI_PRIMARY_MODEL}) failed: ${primaryError.message}. Falling back to ${GEMINI_FALLBACK_MODEL}...`)
-    return await callGeminiImageGeneration(GEMINI_FALLBACK_MODEL, apiKey, contentParts, aspectRatio)
+    const fallback = await callGeminiImageGeneration(GEMINI_FALLBACK_MODEL, apiKey, contentParts, aspectRatio)
+    return {
+      ...fallback,
+      modelUsed: GEMINI_FALLBACK_MODEL,
+      fallbackUsed: true,
+    }
   }
+}
+
+function guessAspectRatio(format: string): string {
+  switch (format) {
+    case 'STORY':
+      return '9:16'
+    case 'SQUARE':
+      return '1:1'
+    default:
+      return '4:5'
+  }
+}
+
+async function persistGeneratedAIImage(params: {
+  projectId: number
+  createdBy: string
+  format: string
+  prompt: string
+  imageBuffer: Buffer
+  model: string
+  provider?: string
+  namePrefix?: string
+}): Promise<string> {
+  const {
+    projectId,
+    createdBy,
+    format,
+    prompt,
+    imageBuffer,
+    model,
+    provider = 'gemini-direct',
+    namePrefix = 'Generate Art',
+  } = params
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error('BLOB_READ_WRITE_TOKEN não configurado para persistir imagens geradas')
+  }
+
+  const timestamp = Date.now()
+  const random = Math.random().toString(36).slice(2, 8)
+  const key = `ai-generated/${createdBy}/${timestamp}-${random}.jpg`
+
+  const blob = await put(key, imageBuffer, {
+    access: 'public',
+    addRandomSuffix: false,
+    contentType: 'image/jpeg',
+  })
+
+  const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
+  await db.aIGeneratedImage.create({
+    data: {
+      projectId,
+      name: `${namePrefix} - ${prompt.slice(0, 40)}${prompt.length > 40 ? '...' : ''}`,
+      prompt,
+      mode: 'GENERATE',
+      fileUrl: blob.url,
+      thumbnailUrl: blob.url,
+      width: formatInfo.width,
+      height: formatInfo.height,
+      aspectRatio: guessAspectRatio(format),
+      provider,
+      model,
+      createdBy,
+    },
+  })
+
+  return blob.url
 }
 
 // --- Main Handler ---
@@ -779,6 +880,68 @@ interface ArtTemplate {
 }
 
 const SUPPORTED_ENGINE_VERSION = 1
+
+function toText(value: unknown): string {
+  return typeof value === 'string' ? value : ''
+}
+
+function toInt(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  return Math.round(value)
+}
+
+function normalizeSlotType(rawType: unknown): string {
+  const type = toText(rawType).toLowerCase()
+  if (!type) return 'generic'
+  if (type.includes('headline') || type.includes('title')) return 'headline'
+  if (type.includes('label') || type.includes('eyebrow')) return 'label'
+  if (type.includes('paragraph') || type.includes('description')) return 'description'
+  if (type.includes('call_to_action') || type.includes('cta')) return 'cta'
+  if (type.includes('location') || type.includes('footer') || type.includes('info')) return 'footer_info'
+  return type
+}
+
+function buildTemplateGuidance(templates: ArtTemplate[]): string {
+  if (templates.length === 0) return ''
+
+  return templates.map((template, index) => {
+    const templateData = (template.templateData ?? {}) as Record<string, unknown>
+    const contentSlots = (templateData.content_slots ?? {}) as Record<string, Record<string, unknown>>
+    const slotPriority = Array.isArray(templateData.slot_priority)
+      ? templateData.slot_priority.filter((item): item is string => typeof item === 'string')
+      : []
+    const textDensity = (templateData.text_density ?? {}) as Record<string, unknown>
+
+    const slotLines = Object.entries(contentSlots).map(([slotName, slot]) => {
+      const slotType = normalizeSlotType(slot?.type)
+      const maxWords = toInt(slot?.max_words)
+      const maxLines = toInt(slot?.max_lines)
+      const constraints: string[] = [`type=${slotType}`]
+      if (maxWords !== null) constraints.push(`max_words=${maxWords}`)
+      if (maxLines !== null) constraints.push(`max_lines=${maxLines}`)
+      return `- ${slotName}: ${constraints.join(', ')}`
+    })
+
+    const densityIdeal = toInt(textDensity.ideal_words)
+    const densityMax = toInt(textDensity.max_words)
+    const densityLine = (densityIdeal !== null || densityMax !== null)
+      ? `- text_density: ideal_words=${densityIdeal ?? 'n/a'}, max_words=${densityMax ?? 'n/a'}`
+      : ''
+
+    const lines = [
+      `Template ${index + 1}${index === 0 ? ' (principal)' : ''}: ${template.name}`,
+      `- format: ${template.format}`,
+      slotPriority.length > 0
+        ? `- slot_priority: ${slotPriority.join(' > ')}`
+        : '',
+      densityLine,
+      '- content_slots:',
+      ...slotLines,
+    ].filter(Boolean)
+
+    return lines.join('\n')
+  }).join('\n\n')
+}
 
 async function classifyTextIntoSlots(
   text: string,
@@ -948,6 +1111,7 @@ async function handleTemplatePath(
   body: any,
   templateIds: string[],
   brandAssets: BrandAssets,
+  clerkUserId: string,
 ): Promise<Response> {
   const startTime = Date.now()
   let llmCallCount = 0
@@ -976,7 +1140,14 @@ async function handleTemplatePath(
   // Load templates
   const ve = (project.brandVisualElements ?? {}) as Record<string, unknown>
   const allTemplates = (ve.artTemplates ?? []) as ArtTemplate[]
-  const templates = templateIds.map(id => allTemplates.find(t => t.id === id)).filter(Boolean) as ArtTemplate[]
+  const templates: ArtTemplate[] = templateIds
+    .map((id) => {
+      const fromProject = allTemplates.find((t) => t.id === id)
+      if (fromProject) return fromProject as ArtTemplate
+      const preset = getInstagramTemplatePreset(id, body.format)
+      return preset as ArtTemplate | undefined
+    })
+    .filter(Boolean) as ArtTemplate[]
 
   if (templates.length === 0) {
     return NextResponse.json({ error: 'Nenhum template encontrado' }, { status: 404 })
@@ -1010,9 +1181,11 @@ async function handleTemplatePath(
   console.log(`[generate-art] Template slot_priority: [${(primaryTemplate.templateData.slot_priority ?? []).join(', ')}]`)
 
   // 1. Text Processing
+  const templateGuidance = buildTemplateGuidance(templates)
   const textConfig = {
     mode: body.textProcessingMode as TextProcessingMode,
     customPrompt: body.textProcessingCustomPrompt,
+    templateGuidance: templateGuidance || undefined,
   }
   const slotNames = Object.keys(primaryTemplate.templateData.content_slots || {})
 
@@ -1087,7 +1260,13 @@ async function handleTemplatePath(
       .toBuffer()
     imageUrl = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`
   } else {
-    const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 4))
+    const mergedReferenceUrls = Array.from(
+      new Set([
+        ...(body.compositionReferenceUrls ?? []),
+        ...brandAssets.referenceImageUrls,
+      ])
+    ).slice(0, 5)
+    const refImages = await prepareReferenceImages(mergedReferenceUrls)
     const systemPrompt = buildGeminiPromptSystemPrompt(
       brandAssets, body.format, useAIComposition,
       refImages.length > 0, body.compositionEnabled ? body.compositionPrompt : undefined,
@@ -1110,19 +1289,28 @@ async function handleTemplatePath(
       temperature: 0.4,
     })
 
-    const { buffer } = await callNanoBanana2(
+    const generated = await callNanoBanana2(
       prompt,
       useAIComposition ? body.photoUrl : undefined,
       body.format,
       refImages.length > 0 ? refImages : undefined,
     )
 
-    const resizedBuffer = await sharp(buffer)
+    const resizedBuffer = await sharp(generated.buffer)
       .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
       .jpeg({ quality: 90 })
       .toBuffer()
 
-    imageUrl = `data:image/jpeg;base64,${resizedBuffer.toString('base64')}`
+    imageUrl = await persistGeneratedAIImage({
+      projectId: body.projectId,
+      createdBy: clerkUserId,
+      format: body.format,
+      prompt: body.text || '',
+      imageBuffer: resizedBuffer,
+      model: generated.modelUsed,
+      provider: 'gemini-direct',
+      namePrefix: 'Generate Art Template',
+    })
   }
 
   // 5. Resolve font sources for each template
@@ -1155,6 +1343,7 @@ async function handleTemplatePath(
     },
     strictTemplateMode: body.strictTemplateMode,
     format: body.format,
+    variations: body.variations,
     logo: logoUrl ? {
       url: logoUrl,
       position: 'bottom-right',
@@ -1168,6 +1357,7 @@ async function handleTemplatePath(
       textCompressed: densityResult.textCompressed,
       droppedSlots: densityResult.droppedSlots,
       slotsUsed: Object.keys(densityResult.slots),
+      templateGuidanceUsed: Boolean(templateGuidance),
       serverTimeMs: Date.now() - startTime,
     },
   })
@@ -1240,7 +1430,7 @@ export async function POST(request: Request) {
     const templateIds = body.templateIds || (body.templateId ? [body.templateId] : [])
 
     if (templateIds.length > 0) {
-      return await handleTemplatePath(body, templateIds, brandAssets)
+      return await handleTemplatePath(body, templateIds, brandAssets, userId)
     }
 
     // --- Legacy Path (no template) ---
@@ -1276,26 +1466,34 @@ export async function POST(request: Request) {
       const photoResponse = await fetch(body.photoUrl!)
       if (!photoResponse.ok) throw new Error('Failed to fetch photo')
       const photoBuffer = Buffer.from(await photoResponse.arrayBuffer())
-      
-      const resizedBuffer = await sharp(photoBuffer)
-        .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
-        .jpeg({ quality: 90 })
-        .toBuffer()
-
-      const base64 = resizedBuffer.toString('base64')
-      const imageUrl = `data:image/jpeg;base64,${base64}`
       technicalPrompt = 'Photo used directly (no AI composition)'
 
-      // For variations with direct photo, use the same image but different text positions
       for (let i = 0; i < body.variations; i++) {
-        generatedImages.push({ url: imageUrl, prompt: technicalPrompt })
+        const cropPosition = DIRECT_PHOTO_CROP_POSITIONS[i % DIRECT_PHOTO_CROP_POSITIONS.length]
+        const resizedBuffer = await sharp(photoBuffer)
+          .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: cropPosition })
+          .jpeg({ quality: 90 })
+          .toBuffer()
+
+        const base64 = resizedBuffer.toString('base64')
+        const imageUrl = `data:image/jpeg;base64,${base64}`
+        generatedImages.push({
+          url: imageUrl,
+          prompt: `${technicalPrompt} [crop:${cropPosition}]`,
+        })
       }
     } else {
       // --- Mode B: Generate image(s) with Gemini ---
       console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o...')
 
       // Pre-fetch reference images ONCE before prompt generation and image generation
-      const refImages = await prepareReferenceImages(brandAssets.referenceImageUrls.slice(0, 4))
+      const mergedReferenceUrls = Array.from(
+        new Set([
+          ...(body.compositionReferenceUrls ?? []),
+          ...brandAssets.referenceImageUrls,
+        ])
+      ).slice(0, 5)
+      const refImages = await prepareReferenceImages(mergedReferenceUrls)
 
       // Log visual elements if available
       if (brandAssets.visualElements) {
@@ -1337,22 +1535,31 @@ export async function POST(request: Request) {
 
       for (let i = 0; i < body.variations; i++) {
         console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
-        const { buffer } = await callNanoBanana2(
-          technicalPrompt,
+        const variationPrompt = buildVariationPrompt(technicalPrompt, i, body.variations)
+        const generated = await callNanoBanana2(
+          variationPrompt,
           useAIComposition ? body.photoUrl : undefined,
           body.format,
           refImages.length > 0 ? refImages : undefined,
         )
 
-        const resizedBuffer = await sharp(buffer)
+        const resizedBuffer = await sharp(generated.buffer)
           .resize(formatInfo.width, formatInfo.height, { fit: 'cover', position: 'attention' })
           .jpeg({ quality: 90 })
           .toBuffer()
 
-        const base64 = resizedBuffer.toString('base64')
-        const imageUrl = `data:image/jpeg;base64,${base64}`
+        const imageUrl = await persistGeneratedAIImage({
+          projectId: body.projectId,
+          createdBy: userId,
+          format: body.format,
+          prompt: variationPrompt,
+          imageBuffer: resizedBuffer,
+          model: generated.modelUsed,
+          provider: 'gemini-direct',
+          namePrefix: 'Generate Art Legacy',
+        })
 
-        generatedImages.push({ url: imageUrl, prompt: technicalPrompt })
+        generatedImages.push({ url: imageUrl, prompt: variationPrompt })
       }
     }
 
@@ -1364,11 +1571,9 @@ export async function POST(request: Request) {
     console.log('[generate-art] Step 4: Positioning text with Vision...')
     const results: Array<{ imageUrl: string; prompt: string; textLayout?: TextLayout }> = []
 
-    // For direct photo mode with variations, we use the same image but request different layouts
-    const uniqueImages = usePhotoDirectly ? [generatedImages[0]] : generatedImages
-    
     for (let i = 0; i < generatedImages.length; i++) {
-      const img = usePhotoDirectly ? uniqueImages[0] : generatedImages[i]
+      const img = generatedImages[i]
+      if (!img) continue
       let textLayout: TextLayout | undefined
       if (textElements.length > 0) {
         try {

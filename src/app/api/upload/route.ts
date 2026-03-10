@@ -14,6 +14,27 @@ const IMAGE_SIGNATURES: Record<string, number[]> = {
   'image/gif': [0x47, 0x49, 0x46],
 }
 
+const DESIGN_SYSTEM_MIME_TYPES = new Set([
+  'text/html',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/octet-stream', // fallback comum para zip em alguns sistemas
+])
+
+function isDesignSystemFile(file: File): boolean {
+  const lowerName = file.name.toLowerCase()
+  if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) return true
+  if (lowerName.endsWith('.zip')) return true
+  return DESIGN_SYSTEM_MIME_TYPES.has(file.type)
+}
+
+function inferDesignSystemContentType(file: File): string {
+  const lowerName = file.name.toLowerCase()
+  if (lowerName.endsWith('.html') || lowerName.endsWith('.htm')) return 'text/html'
+  if (lowerName.endsWith('.zip')) return 'application/zip'
+  return file.type || 'application/octet-stream'
+}
+
 function validateImageMagicBytes(buffer: Buffer, mimeType: string): boolean {
   const signature = IMAGE_SIGNATURES[mimeType]
   if (!signature) {
@@ -59,11 +80,21 @@ export async function POST(request: Request) {
       uploadType,
     })
 
-    // Validate file type (images and videos)
+    const isDesignSystemUpload = uploadType === 'design_system'
+
+    // Validate file type (images, videos, and design system package)
     const isImage = file.type.startsWith('image/')
     const isVideo = file.type.startsWith('video/')
+    const isDesignSystem = isDesignSystemFile(file)
 
-    if (!isImage && !isVideo) {
+    if (isDesignSystemUpload && !isDesignSystem) {
+      return NextResponse.json(
+        { error: 'Design System deve ser HTML ou ZIP' },
+        { status: 400 }
+      )
+    }
+
+    if (!isDesignSystemUpload && !isImage && !isVideo) {
       return NextResponse.json(
         { error: 'Only images and videos are allowed' },
         { status: 400 }
@@ -100,9 +131,9 @@ export async function POST(request: Request) {
       }
     }
 
-    // Auto-crop images to Instagram feed format (4:5 - 1080x1350)
-    // Skip cropping for reference images (used in AI generation)
-    const shouldCrop = isImage && uploadType !== 'reference'
+    // Auto-crop only raw "post" uploads to Instagram feed format (4:5 - 1080x1350)
+    // Keep reference/approved renders untouched to preserve original format (Story/Square/etc)
+    const shouldCrop = isImage && uploadType === 'post'
     if (shouldCrop) {
       try {
         const imageInfo = await getImageInfo(buffer)
@@ -117,8 +148,8 @@ export async function POST(request: Request) {
         // Continue with original buffer if crop fails
         console.warn('⚠️ Using original image (crop failed)')
       }
-    } else if (uploadType === 'reference') {
-      console.log('📷 Skipping crop for reference image')
+    } else if (uploadType === 'reference' || uploadType === 'approved_art') {
+      console.log('📷 Skipping crop for non-post image type:', uploadType)
     }
 
     // Check if Vercel Blob token is configured
@@ -132,9 +163,20 @@ export async function POST(request: Request) {
     }
 
     // Upload to Vercel Blob
-    const extension = uploadType === 'reference' ? file.name.split('.').pop() || 'jpg' : 'jpg'
+    const extension = isDesignSystemUpload
+      ? file.name.split('.').pop() || 'zip'
+      : uploadType === 'reference'
+        ? file.name.split('.').pop() || 'jpg'
+        : 'jpg'
     const fileName = file.name.replace(/\.[^/.]+$/, `.${extension}`)
-    const folder = uploadType === 'reference' ? 'references' : 'posts'
+    const folder =
+      uploadType === 'reference'
+        ? 'references'
+        : uploadType === 'approved_art'
+          ? 'approved-arts'
+          : uploadType === 'design_system'
+            ? 'design-systems'
+          : 'posts'
     console.log('[Upload] Uploading to Vercel Blob...')
 
     const blob = await put(
@@ -143,7 +185,11 @@ export async function POST(request: Request) {
       {
         access: 'public',
         addRandomSuffix: true,
-        contentType: isImage && uploadType !== 'reference' ? 'image/jpeg' : file.type,
+        contentType: isDesignSystemUpload
+          ? inferDesignSystemContentType(file)
+          : isImage && uploadType !== 'reference'
+            ? 'image/jpeg'
+            : file.type,
       }
     )
 

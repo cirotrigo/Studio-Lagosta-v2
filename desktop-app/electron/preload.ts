@@ -25,6 +25,36 @@ export interface ApiResponse {
   data: unknown
 }
 
+export type ArtFormat = 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
+
+export interface GenerateAiTextPayload {
+  projectId: number
+  prompt: string
+  format: ArtFormat
+  variations: 1 | 2 | 4
+  templateIds?: string[]
+  includeLogo: boolean
+  usePhoto: boolean
+  photoUrl?: string
+  compositionEnabled?: boolean
+  compositionPrompt?: string
+  compositionReferenceUrls?: string[]
+}
+
+export interface GenerateAiTextVariation {
+  pre_title: string
+  title: string
+  description: string
+  cta: string
+  badge: string
+  footer_info_1: string
+  footer_info_2: string
+}
+
+export interface GenerateAiTextResponse {
+  variacoes: GenerateAiTextVariation[]
+}
+
 export interface RenderTextArgs {
   imageBuffer: ArrayBuffer
   textLayout: any
@@ -71,6 +101,9 @@ export interface ElectronAPI {
 
   // API Requests (bypasses CORS)
   apiRequest: (url: string, options?: RequestInit) => Promise<ApiResponse>
+
+  // Art automation contracts
+  generateAIText: (payload: GenerateAiTextPayload) => Promise<GenerateAiTextResponse>
   
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => Promise<ApiResponse>
@@ -109,6 +142,9 @@ const electronAPI: ElectronAPI = {
 
   // API Requests (bypasses CORS)
   apiRequest: (url: string, options?: RequestInit) => ipcRenderer.invoke('api:request', url, options),
+
+  // Art automation contracts
+  generateAIText: (payload: GenerateAiTextPayload) => ipcRenderer.invoke('generate-ai-text', payload),
   
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => 

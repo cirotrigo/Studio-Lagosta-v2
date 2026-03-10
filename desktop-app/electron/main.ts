@@ -9,6 +9,84 @@ let mainWindow: BrowserWindow | null = null
 let refreshWindow: BrowserWindow | null = null
 let isRefreshing = false
 
+type ArtFormat = 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
+type VariationCount = 1 | 2 | 4
+
+interface GenerateAiTextPayload {
+  projectId: number
+  prompt: string
+  format: ArtFormat
+  variations: VariationCount
+  templateIds?: string[]
+  includeLogo: boolean
+  usePhoto: boolean
+  photoUrl?: string
+  compositionEnabled?: boolean
+  compositionPrompt?: string
+  compositionReferenceUrls?: string[]
+}
+
+interface GenerateAiTextVariation {
+  pre_title: string
+  title: string
+  description: string
+  cta: string
+  badge: string
+  footer_info_1: string
+  footer_info_2: string
+}
+
+interface GenerateAiTextResponse {
+  variacoes: GenerateAiTextVariation[]
+}
+
+const WEB_APP_BASE_URL = process.env.WEB_APP_BASE_URL || 'https://studio-lagosta-v2.vercel.app'
+const MAX_REFERENCE_IMAGES = 5
+
+function decodeJwtPayload(jwt: string): Record<string, unknown> | null {
+  try {
+    const parts = jwt.split('.')
+    if (parts.length !== 3 || !parts[1]) return null
+    const base64Url = parts[1]
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, '=')
+    const decoded = Buffer.from(padded, 'base64').toString('utf8')
+    return JSON.parse(decoded) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function getJwtExp(jwt: string): number | null {
+  const payload = decodeJwtPayload(jwt)
+  if (!payload || typeof payload.exp !== 'number') return null
+  return payload.exp
+}
+
+function isSessionCookieValid(
+  cookie: Electron.Cookie | undefined,
+  minRemainingSeconds = 20,
+): boolean {
+  if (!cookie?.value) return false
+  const exp = getJwtExp(cookie.value)
+  if (!exp) return false
+  const now = Math.floor(Date.now() / 1000)
+  return exp > now + minRemainingSeconds
+}
+
+function hasValidSessionInCookieHeader(
+  cookieHeader: string | null,
+  minRemainingSeconds = 20,
+): boolean {
+  if (!cookieHeader) return false
+  const sessionMatch = cookieHeader.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
+  if (!sessionMatch?.[1]) return false
+  const exp = getJwtExp(sessionMatch[1])
+  if (!exp) return false
+  const now = Math.floor(Date.now() / 1000)
+  return exp > now + minRemainingSeconds
+}
+
 // Refresh Clerk session using a hidden browser window (Clerk JS handles token rotation)
 async function refreshClerkSession(): Promise<boolean> {
   if (isRefreshing) {
@@ -23,11 +101,9 @@ async function refreshClerkSession(): Promise<boolean> {
           // Check if we now have a valid session
           const cookies = await session.defaultSession.cookies.get({ url: 'https://studio-lagosta-v2.vercel.app' })
           const s = cookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
-          if (s?.value) {
-            try {
-              const p = JSON.parse(Buffer.from(s.value.split('.')[1], 'base64').toString())
-              if (p.exp > Math.floor(Date.now() / 1000)) { resolve(true); return }
-            } catch { /* ignore */ }
+          if (isSessionCookieValid(s, 5)) {
+            resolve(true)
+            return
           }
           resolve(false)
         } else if (waited >= 15000) {
@@ -71,21 +147,19 @@ async function refreshClerkSession(): Promise<boolean> {
       console.log('[Refresh] __session cookie changed, validating...')
       
       // Validate it's a fresh (non-expired) token
-      try {
-        const parts = cookie.value.split('.')
-        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
-        const now = Math.floor(Date.now() / 1000)
-        if (payload.exp > now) {
-          console.log('[Refresh] Got fresh __session, valid for', payload.exp - now, 'seconds')
-          clearTimeout(timeout)
-          session.defaultSession.cookies.removeListener('changed', cookieHandler)
-          if (!win.isDestroyed()) win.close()
-          isRefreshing = false
-          resolve(true)
-        } else {
-          console.log('[Refresh] New __session is also expired, ignoring')
-        }
-      } catch { /* ignore */ }
+      if (!isSessionCookieValid(cookie, 5)) {
+        console.log('[Refresh] New __session is not valid yet, ignoring')
+        return
+      }
+
+      const exp = getJwtExp(cookie.value)
+      const now = Math.floor(Date.now() / 1000)
+      console.log('[Refresh] Got fresh __session, valid for', (exp ?? now) - now, 'seconds')
+      clearTimeout(timeout)
+      session.defaultSession.cookies.removeListener('changed', cookieHandler)
+      if (!win.isDestroyed()) win.close()
+      isRefreshing = false
+      resolve(true)
     }
     
     session.defaultSession.cookies.on('changed', cookieHandler)
@@ -330,13 +404,9 @@ ipcMain.handle('auth:login', async () => {
         console.log('[Auth] __clerk_db_jwt:', dbJwtCookie?.value ? dbJwtCookie.value.substring(0, 20) + '...' : 'NOT FOUND')
         console.log('[Auth] __client_uat:', clientUatCookie ? `${clientUatCookie.name}=${clientUatCookie.value}` : 'NOT FOUND')
         
-        // Wait for __session cookie (with or without suffix) which confirms authenticated user
-        // Also accept __client_uat with a non-zero value as fallback
-        const hasSession = sessionCookie && sessionCookie.value
-        const hasValidUat = clientUatCookie && clientUatCookie.value && clientUatCookie.value !== '0'
-        
-        if (!hasSession && !hasValidUat) {
-          console.warn('[Auth] Session not confirmed yet - waiting...')
+        // Login is only valid when __session JWT exists and is not near expiry.
+        if (!isSessionCookieValid(sessionCookie, 20)) {
+          console.warn('[Auth] __session not valid yet - waiting...')
           return
         }
         
@@ -390,10 +460,8 @@ ipcMain.handle('auth:login', async () => {
       if (!cookie.domain?.includes('studio-lagosta-v2.vercel.app')) return
       
       const isSessionCookie = cookie.name === '__session' || cookie.name.startsWith('__session_')
-      const isValidUat = (cookie.name === '__client_uat' || cookie.name.startsWith('__client_uat_')) && 
-                         cookie.value !== '0' && cookie.value !== ''
-      
-      if (!isSessionCookie && !isValidUat) return
+      if (!isSessionCookie) return
+      if (!cookie.value || cookie.value.length < 20) return
       
       console.log('[Auth] Cookie changed:', cookie.name, '=', cookie.value.substring(0, 30) + '...')
       
@@ -408,14 +476,8 @@ ipcMain.handle('auth:login', async () => {
         })
         
         const sessionCookie = vercelCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
-        const clientUatCookie = vercelCookies.find(c => 
-          (c.name === '__client_uat' || c.name.startsWith('__client_uat_')) && c.value !== '0'
-        )
-        
-        const hasAuth = (sessionCookie && sessionCookie.value) || clientUatCookie
-        
-        if (!hasAuth) {
-          console.log('[Auth] Cookie changed but no valid session yet')
+        if (!isSessionCookieValid(sessionCookie, 20)) {
+          console.log('[Auth] Cookie changed but __session is not valid yet')
           return
         }
         
@@ -498,33 +560,26 @@ async function getFreshCookies(): Promise<string | null> {
       return getCookies()
     }
     
+    const storedCookies = getCookies()
+
     // Check if __session is still valid (not expired)
     const sessionCookie = sessionCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
     const clientUat = sessionCookies.find(c => (c.name === '__client_uat' || c.name.startsWith('__client_uat_')) && c.value !== '0')
     const dbJwt = sessionCookies.find(c => c.name === '__clerk_db_jwt' || c.name.startsWith('__clerk_db_jwt_'))
-    
-    // Check if __session JWT is expired
-    let sessionExpired = true
-    if (sessionCookie?.value) {
-      try {
-        const parts = sessionCookie.value.split('.')
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString())
-          const now = Math.floor(Date.now() / 1000)
-          sessionExpired = payload.exp <= now
-          if (!sessionExpired) {
-            console.log('[Cookies] __session is valid, expires in', payload.exp - now, 'seconds')
-          } else {
-            console.log('[Cookies] __session expired', now - payload.exp, 'seconds ago - need refresh')
-          }
-        }
-      } catch {
-        sessionExpired = true
-      }
+
+    if (isSessionCookieValid(sessionCookie, 20)) {
+      const cookieString = sessionCookies.map(c => `${c.name}=${c.value}`).join('; ')
+      saveCookies(cookieString)
+      return cookieString
+    }
+
+    if (hasValidSessionInCookieHeader(storedCookies, 20)) {
+      console.log('[Cookies] Using valid stored __session fallback')
+      return storedCookies
     }
     
     // If session expired but we have __clerk_db_jwt, try to refresh
-    if (sessionExpired && (dbJwt || clientUat)) {
+    if (dbJwt || clientUat) {
       console.log('[Cookies] Session expired - triggering Clerk refresh via hidden window...')
       const refreshed = await refreshClerkSession()
       
@@ -533,25 +588,24 @@ async function getFreshCookies(): Promise<string | null> {
         const freshCookies = await session.defaultSession.cookies.get({
           url: 'https://studio-lagosta-v2.vercel.app'
         })
+        const freshSession = freshCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
+        if (!isSessionCookieValid(freshSession, 20)) {
+          console.log('[Cookies] Refresh returned cookies but __session is not valid')
+          return hasValidSessionInCookieHeader(storedCookies, 20) ? storedCookies : null
+        }
         const freshString = freshCookies.map(c => `${c.name}=${c.value}`).join('; ')
         saveCookies(freshString)
         return freshString
       }
       
-      console.log('[Cookies] Refresh failed - using expired cookies as fallback')
+      console.log('[Cookies] Refresh failed - no valid session available')
     }
-    
-    const cookieString = sessionCookies
-      .map(c => `${c.name}=${c.value}`)
-      .join('; ')
-    
-    // Also update stored cookies to keep them in sync
-    saveCookies(cookieString)
-    
-    return cookieString
+
+    return hasValidSessionInCookieHeader(storedCookies, 20) ? storedCookies : null
   } catch (e) {
     console.error('[Cookies] Error getting session cookies:', e)
-    return getCookies()
+    const fallback = getCookies()
+    return hasValidSessionInCookieHeader(fallback, 20) ? fallback : null
   }
 }
 
@@ -565,6 +619,167 @@ function buildAuthHeaders(cookies: string | null, extra: Record<string, string> 
     headers['Authorization'] = `Bearer ${sessionMatch[1]}`
   }
   return headers
+}
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object') return {}
+  return value as Record<string, unknown>
+}
+
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function clampVariations(value: unknown): VariationCount {
+  if (value === 2 || value === 4) return value
+  return 1
+}
+
+function normalizeArtFormat(value: unknown): ArtFormat {
+  if (value === 'FEED_PORTRAIT' || value === 'SQUARE') return value
+  return 'STORY'
+}
+
+function normalizeText(value: unknown, maxLength: number): string {
+  if (typeof value !== 'string') return ''
+  return value.replace(/\s+/g, ' ').trim().slice(0, maxLength)
+}
+
+function normalizeTitle(value: unknown): string {
+  return normalizeText(
+    typeof value === 'string'
+      ? value
+        .replace(/<br\s*\/?>/gi, '<br>')
+        .replace(/\s*<br>\s*/g, '<br>')
+      : '',
+    160
+  )
+}
+
+function buildFallbackVariation(prompt: string): GenerateAiTextVariation {
+  const compactPrompt = prompt.replace(/\s+/g, ' ').trim()
+  const titleSeed = compactPrompt
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 6)
+    .join(' ')
+    .toUpperCase()
+
+  const title = normalizeTitle(titleSeed || 'OFERTA ESPECIAL')
+
+  return {
+    pre_title: '',
+    title,
+    description: compactPrompt.slice(0, 220),
+    cta: 'SAIBA MAIS',
+    badge: '',
+    footer_info_1: '',
+    footer_info_2: '',
+  }
+}
+
+function normalizeGenerateAiTextPayload(input: unknown): GenerateAiTextPayload {
+  const raw = asObject(input)
+
+  const projectId = Number(raw.projectId)
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    throw new Error('projectId invalido para generate-ai-text')
+  }
+
+  const prompt = normalizeText(raw.prompt, 500)
+  if (!prompt) {
+    throw new Error('prompt obrigatorio para generate-ai-text')
+  }
+
+  const format = normalizeArtFormat(raw.format)
+  const variations = clampVariations(raw.variations)
+  const templateIds = Array.isArray(raw.templateIds)
+    ? raw.templateIds
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 3)
+    : undefined
+  const includeLogo = raw.includeLogo !== false
+  const usePhoto = raw.usePhoto !== false
+  const photoUrl = isHttpUrl(String(raw.photoUrl || '')) ? String(raw.photoUrl) : undefined
+  const compositionEnabled = raw.compositionEnabled === true
+  const compositionPrompt = normalizeText(raw.compositionPrompt, 500) || undefined
+
+  const refs = Array.isArray(raw.compositionReferenceUrls)
+    ? raw.compositionReferenceUrls
+      .filter((value): value is string => typeof value === 'string' && isHttpUrl(value))
+      .slice(0, MAX_REFERENCE_IMAGES)
+    : undefined
+
+  if (usePhoto && !photoUrl) {
+    throw new Error('photoUrl obrigatoria quando usePhoto=true')
+  }
+
+  return {
+    projectId,
+    prompt,
+    format,
+    variations,
+    templateIds,
+    includeLogo,
+    usePhoto,
+    photoUrl,
+    compositionEnabled,
+    compositionPrompt,
+    compositionReferenceUrls: refs,
+  }
+}
+
+function normalizeGenerateAiTextResponse(
+  rawData: unknown,
+  expectedVariations: VariationCount,
+  prompt: string,
+): GenerateAiTextResponse {
+  const raw = asObject(rawData)
+  const rawVariations = Array.isArray(raw.variacoes) ? raw.variacoes : []
+
+  const normalized = rawVariations
+    .map((variation) => {
+      const item = asObject(variation)
+      return {
+        pre_title: normalizeText(item.pre_title, 80),
+        title: normalizeTitle(item.title),
+        description: normalizeText(item.description, 240),
+        cta: normalizeText(item.cta, 90),
+        badge: normalizeText(item.badge, 90),
+        footer_info_1: normalizeText(item.footer_info_1, 120),
+        footer_info_2: normalizeText(item.footer_info_2, 120),
+      } satisfies GenerateAiTextVariation
+    })
+    .filter((item) => item.title || item.description || item.cta)
+
+  const safe = normalized.length > 0 ? normalized : [buildFallbackVariation(prompt)]
+  const variacoes: GenerateAiTextVariation[] = []
+  for (let i = 0; i < expectedVariations; i++) {
+    const source = safe[Math.min(i, safe.length - 1)]
+    variacoes.push({
+      ...source,
+      title: source.title || safe[0].title,
+      cta: source.cta || 'SAIBA MAIS',
+    })
+  }
+
+  return { variacoes }
+}
+
+function extractErrorMessage(payload: unknown, fallback: string): string {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim()
+  }
+  const raw = asObject(payload)
+  if (typeof raw.error === 'string' && raw.error.trim()) return raw.error.trim()
+  if (typeof raw.message === 'string' && raw.message.trim()) return raw.message.trim()
+  if (typeof raw.debug === 'string' && raw.debug.trim()) return raw.debug.trim()
+  return fallback
 }
 
 // Helper: execute fetch and parse response
@@ -581,7 +796,46 @@ async function executeRequest(url: string, options: RequestInit, cookies: string
   console.log('[API] Response body (first 200):', text.substring(0, 200))
 
   const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
-  return { isHtml, text, status: response.status, statusText: response.statusText, ok: response.ok }
+  return {
+    isHtml,
+    text,
+    status: response.status,
+    statusText: response.statusText,
+    ok: response.ok,
+    responseUrl: response.url,
+    requestUrl: url,
+  }
+}
+
+function isAuthHtmlResponse(result: {
+  isHtml: boolean
+  text: string
+  status: number
+  responseUrl?: string
+}): boolean {
+  if (!result.isHtml) return false
+
+  const urlLower = (result.responseUrl || '').toLowerCase()
+  if (urlLower.includes('/sign-in') || urlLower.includes('__clerk') || urlLower.includes('/handshake')) {
+    return true
+  }
+
+  const textPreview = result.text.slice(0, 800).toLowerCase()
+  if (textPreview.includes('clerk') && (textPreview.includes('sign in') || textPreview.includes('sign-in'))) {
+    return true
+  }
+
+  // Next error pages for missing API routes should NOT be treated as auth expiry
+  if (result.status === 404 && textPreview.includes('__next_error__')) {
+    return false
+  }
+
+  // 401/403 HTML is usually auth middleware response (even without explicit Clerk markers)
+  if (result.status === 401 || result.status === 403) {
+    return true
+  }
+
+  return false
 }
 
 // IPC Handlers - API Requests (to bypass CORS)
@@ -590,8 +844,8 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
   let cookies = await getFreshCookies()
   let result = await executeRequest(url, options, cookies)
 
-  // If HTML (session expired), try refresh once and retry
-  if (result.isHtml) {
+  // If HTML and it looks like auth/session issue, try refresh once and retry
+  if (result.isHtml && isAuthHtmlResponse(result)) {
     console.log('[API] Got HTML - attempting session refresh then retry...')
     const refreshed = await refreshClerkSession()
     if (refreshed) {
@@ -600,7 +854,7 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
     }
   }
 
-  if (result.isHtml) {
+  if (result.isHtml && isAuthHtmlResponse(result)) {
     console.log('[API] Still HTML after refresh - session truly expired')
     return {
       ok: false,
@@ -610,10 +864,104 @@ ipcMain.handle('api:request', async (_event, url: string, options: RequestInit) 
     }
   }
 
+  // HTML can also mean missing endpoint (404) or server rendering error.
+  // In these cases, preserve original status and do not force logout.
+  if (result.isHtml) {
+    console.log('[API] HTML response is not auth-related, returning original status:', result.status)
+    return {
+      ok: false,
+      status: result.status,
+      statusText: result.statusText,
+      data: {
+        error: `Resposta HTML inesperada da API (${result.status})`,
+        requestUrl: url,
+        responseUrl: result.responseUrl,
+      },
+    }
+  }
+
   let data
   try { data = JSON.parse(result.text) } catch { data = result.text }
 
   return { ok: result.ok, status: result.status, statusText: result.statusText, data }
+})
+
+// IPC Handler - Structured AI text generation for art automation
+ipcMain.handle('generate-ai-text', async (_event, payload: unknown) => {
+  const normalizedPayload = normalizeGenerateAiTextPayload(payload)
+  const endpoint = `${WEB_APP_BASE_URL}/api/tools/generate-ai-text`
+
+  let cookies = await getFreshCookies()
+  let result = await executeRequest(
+    endpoint,
+    {
+      method: 'POST',
+      body: JSON.stringify(normalizedPayload),
+    },
+    cookies
+  )
+
+  if (result.isHtml && isAuthHtmlResponse(result)) {
+    console.log('[generate-ai-text] Got HTML - attempting session refresh then retry...')
+    const refreshed = await refreshClerkSession()
+    if (refreshed) {
+      cookies = await getFreshCookies()
+      result = await executeRequest(
+        endpoint,
+        {
+          method: 'POST',
+          body: JSON.stringify(normalizedPayload),
+        },
+        cookies
+      )
+    }
+  }
+
+  if (result.isHtml && isAuthHtmlResponse(result)) {
+    throw new Error('Sessao expirada. Faca login novamente.')
+  }
+
+  if (result.isHtml) {
+    if (result.status === 404) {
+      console.warn('[generate-ai-text] Endpoint not found (404). Using local fallback copy.')
+      return normalizeGenerateAiTextResponse(
+        {},
+        normalizedPayload.variations,
+        normalizedPayload.prompt,
+      )
+    }
+    throw new Error(`Servico de copy indisponivel no momento (HTTP ${result.status})`)
+  }
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(result.text)
+  } catch {
+    throw new Error('Resposta invalida em generate-ai-text')
+  }
+
+  if (!result.ok) {
+    if (result.status === 404) {
+      console.warn('[generate-ai-text] Endpoint returned 404 JSON. Using local fallback copy.')
+      return normalizeGenerateAiTextResponse(
+        parsed,
+        normalizedPayload.variations,
+        normalizedPayload.prompt,
+      )
+    }
+    throw new Error(
+      extractErrorMessage(
+        parsed,
+        `Falha ao gerar copy da arte (${result.status} ${result.statusText})`
+      )
+    )
+  }
+
+  return normalizeGenerateAiTextResponse(
+    parsed,
+    normalizedPayload.variations,
+    normalizedPayload.prompt,
+  )
 })
 
 // IPC Handler - Download Blob (for binary data like images)
@@ -753,13 +1101,31 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
     
     // Detect HTML responses
     const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
-    if (isHtml) {
-      console.log('[Upload] Received HTML instead of JSON - session expired')
+    if (isHtml && isAuthHtmlResponse({
+      isHtml,
+      text,
+      status: finalResponse.status,
+      responseUrl: finalResponse.url,
+    })) {
+      console.log('[Upload] Received auth HTML response - session expired')
       return {
         ok: false,
         status: 401,
         statusText: 'Unauthorized',
         data: { error: 'Sessão expirada. Por favor, faça login novamente.' },
+      }
+    }
+
+    if (isHtml) {
+      console.log('[Upload] Received non-auth HTML response, preserving status:', finalResponse.status)
+      return {
+        ok: false,
+        status: finalResponse.status,
+        statusText: finalResponse.statusText,
+        data: {
+          error: `Resposta HTML inesperada da API (${finalResponse.status})`,
+          responseUrl: finalResponse.url,
+        },
       }
     }
     
@@ -768,6 +1134,10 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
       data = JSON.parse(text)
     } catch {
       data = text
+    }
+
+    if (!finalResponse.ok) {
+      console.log('[Upload] Error response body (first 500):', text.substring(0, 500))
     }
     
     return {

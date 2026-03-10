@@ -1,12 +1,14 @@
 import { useState, useMemo } from 'react'
-import { Download, Loader2, Image as ImageIcon } from 'lucide-react'
+import { Download, Loader2, Image as ImageIcon, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAIImages, AIImage } from '@/hooks/use-art-generation'
 import { cn } from '@/lib/utils'
 import { ArtFormat } from '@/stores/generation.store'
+import { ReeditDraft } from '@/types/art-automation'
 
 interface HistoryTabProps {
   projectId: number
+  onReedit?: (draft: ReeditDraft) => void
 }
 
 type FilterFormat = 'ALL' | ArtFormat
@@ -26,7 +28,7 @@ const PERIOD_OPTIONS: { value: FilterPeriod; label: string }[] = [
   { value: '90D', label: '90 dias' },
 ]
 
-export default function HistoryTab({ projectId }: HistoryTabProps) {
+export default function HistoryTab({ projectId, onReedit }: HistoryTabProps) {
   const { data: images, isLoading, error } = useAIImages(projectId)
   const [filterFormat, setFilterFormat] = useState<FilterFormat>('ALL')
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('ALL')
@@ -99,6 +101,12 @@ export default function HistoryTab({ projectId }: HistoryTabProps) {
       default:
         return 'aspect-[4/5]'
     }
+  }
+
+  const inferFormat = (image: AIImage): ArtFormat => {
+    if (image.format === 'STORY' || image.aspectRatio === '9:16') return 'STORY'
+    if (image.format === 'SQUARE' || image.aspectRatio === '1:1') return 'SQUARE'
+    return 'FEED_PORTRAIT'
   }
 
   if (isLoading) {
@@ -185,7 +193,7 @@ export default function HistoryTab({ projectId }: HistoryTabProps) {
                 <img
                   src={image.fileUrl}
                   alt={image.name}
-                  className="h-full w-full object-cover"
+                  className="h-full w-full object-contain bg-zinc-950"
                 />
 
                 {/* Hover Overlay */}
@@ -209,6 +217,24 @@ export default function HistoryTab({ projectId }: HistoryTabProps) {
                       )}
                       Baixar
                     </button>
+                    {onReedit && (
+                      <button
+                        onClick={() => {
+                          onReedit({
+                            sourceArtId: image.id,
+                            prompt: image.prompt || '',
+                            format: inferFormat(image),
+                            photoUrl: image.fileUrl,
+                            photoSource: 'history',
+                          })
+                          toast.success('Arte carregada para reedição')
+                        }}
+                        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg bg-primary/80 px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary"
+                      >
+                        <Wand2 size={14} />
+                        Reeditar
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

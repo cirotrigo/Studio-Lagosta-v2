@@ -13,6 +13,7 @@ export interface TextProcessingConfig {
   enableHeadlineDetection?: boolean
   enablePromoDetection?: boolean
   customPrompt?: string
+  templateGuidance?: string
 }
 
 // Tagged union for bifurcation in pipeline
@@ -30,7 +31,7 @@ const textProcessingCache = new LRUCache<string, TextProcessingResult>({
 function getCacheKey(text: string, mode: string, config?: TextProcessingConfig): string {
   const flags = `${config?.enableHeadlineDetection ?? false}|${config?.enablePromoDetection ?? false}`
   return createHash('sha256')
-    .update(`${text}|${mode}|${config?.customPrompt ?? ''}|${flags}`)
+    .update(`${text}|${mode}|${config?.customPrompt ?? ''}|${config?.templateGuidance ?? ''}|${flags}`)
     .digest('hex')
 }
 
@@ -112,6 +113,7 @@ Texto: "${text}"`,
 async function applyGenerateCopy(
   customPrompt: string,
   slotNames?: string[],
+  templateGuidance?: string,
 ): Promise<TextProcessingResult> {
   const names = slotNames ?? ['eyebrow', 'title', 'description', 'cta', 'footer']
   const schemaShape: Record<string, z.ZodTypeAny> = {}
@@ -122,6 +124,9 @@ async function applyGenerateCopy(
       : z.string().optional().describe(`Texto para o slot ${name}`)
   }
   const schema = z.object(schemaShape)
+  const guidanceSection = templateGuidance
+    ? `\nGUIA DO TEMPLATE (OBRIGATORIO SEGUIR):\n${templateGuidance}\n`
+    : ''
 
   const { object } = await generateObject({
     model: openai('gpt-4o-mini'),
@@ -129,6 +134,12 @@ async function applyGenerateCopy(
     prompt: `Crie copy curta para Instagram baseada no brief abaixo.
 Estruture o texto nos slots: ${names.join(', ')}.
 Tom publicitario e conciso. Cada slot deve ser curto (max 6-8 palavras para title, 3-4 palavras para cta).
+${guidanceSection}
+Regras obrigatorias:
+- Distribua a mensagem entre os slots disponiveis, sem concentrar tudo em "title".
+- Se houver limite de palavras no guia do template, respeite esse limite.
+- Nao invente telefone/endereco sem evidencia no brief.
+- Mantenha cada slot util para composicao visual (nao repita a mesma frase em slots diferentes).
 
 Brief: "${customPrompt}"`,
     temperature: 0.7,
@@ -187,7 +198,7 @@ export async function processTextForTemplate(
       if (!config.customPrompt) {
         throw new Error('customPrompt is required for generate_copy mode')
       }
-      result = await applyGenerateCopy(config.customPrompt, templateSlotNames)
+      result = await applyGenerateCopy(config.customPrompt, templateSlotNames, config.templateGuidance)
       break
     default:
       throw new Error(`Unknown text processing mode: ${mode}`)

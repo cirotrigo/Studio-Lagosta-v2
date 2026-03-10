@@ -4,7 +4,47 @@ import { useShallow } from 'zustand/react/shallow'
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
 export type TextProcessingMode = 'faithful' | 'grammar_correct' | 'headline_detection' | 'generate_copy'
 
+export interface ReviewField {
+  key: string
+  label: string
+  value: string
+}
+
+export interface ReviewLegacyContext {
+  kind: 'legacy'
+  sourceImageUrl: string
+  textLayout: any
+  fonts?: { title: string; body: string }
+  fontUrls?: { title?: string; body?: string }
+  logo?: { url: string; position: string; sizePct: number }
+  includeLogo: boolean
+}
+
+export interface ReviewTemplateContext {
+  kind: 'template'
+  sourceImageUrl: string
+  templateId?: string
+  templateData: any
+  fontSources: { title: { family: string; url: string | null }; body: { family: string; url: string | null } }
+  strictTemplateMode: boolean
+  logo?: { url: string; position: string; sizePct: number }
+  includeLogo: boolean
+}
+
+export type ReviewRenderContext = ReviewLegacyContext | ReviewTemplateContext
+
+export interface ReviewVariation {
+  id: string
+  imageUrl: string
+  status: 'review' | 'approved' | 'rejected'
+  approvedUrl?: string
+  fields: ReviewField[]
+  renderContext?: ReviewRenderContext
+  isUpdatingPreview?: boolean
+}
+
 export interface GenerationParams {
+  projectId: number
   format: ArtFormat
   text: string
   variations: 1 | 2 | 4
@@ -23,9 +63,10 @@ export interface GenerationParams {
 
 export interface GenerationJob {
   id: string
-  status: 'pending' | 'generating' | 'done' | 'error'
+  status: 'pending' | 'generating' | 'review' | 'saving' | 'done' | 'error'
   params: GenerationParams
   images: string[]
+  reviewItems: ReviewVariation[]
   error?: string
   createdAt: number
 }
@@ -51,6 +92,7 @@ export const useGenerationStore = create<GenerationStore>((set) => ({
           status: 'pending',
           params,
           images: [],
+          reviewItems: [],
           createdAt: Date.now(),
         },
       ],
@@ -84,6 +126,13 @@ export const usePendingJobs = () =>
   useGenerationStore(
     useShallow((state) =>
       state.jobs.filter((job) => job.status === 'pending' || job.status === 'generating')
+    )
+  )
+
+export const useReviewJobs = () =>
+  useGenerationStore(
+    useShallow((state) =>
+      state.jobs.filter((job) => job.status === 'review' || job.status === 'saving')
     )
   )
 

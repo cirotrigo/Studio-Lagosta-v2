@@ -3,6 +3,7 @@ import { Palette, Sparkles, History, Wand2, AlertTriangle, LucideIcon } from 'lu
 import { Link } from 'react-router-dom'
 import { useProjectStore } from '@/stores/project.store'
 import { cn } from '@/lib/utils'
+import { ReeditDraft } from '@/types/art-automation'
 import IdentityTab from '@/components/project/tabs/IdentityTab'
 import GenerateArtTab from '@/components/project/tabs/GenerateArtTab'
 import HistoryTab from '@/components/project/tabs/HistoryTab'
@@ -78,6 +79,7 @@ export default function ProjectPage() {
   const { currentProject } = useProjectStore()
   const [activeTab, setActiveTab] = useState<TabId>('identity')
   const [errorKey, setErrorKey] = useState(0)
+  const [reeditDraft, setReeditDraft] = useState<ReeditDraft | null>(null)
 
   if (!currentProject) {
     return (
@@ -132,8 +134,22 @@ export default function ProjectPage() {
       <div className="flex-1 overflow-hidden">
         <TabErrorBoundary key={`${activeTab}-${errorKey}`} onReset={() => setErrorKey((k) => k + 1)}>
           {activeTab === 'identity' && <IdentityTab projectId={currentProject.id} />}
-          {activeTab === 'generate' && <GenerateArtTab projectId={currentProject.id} />}
-          {activeTab === 'history' && <HistoryTab projectId={currentProject.id} />}
+          {activeTab === 'generate' && (
+            <GenerateArtTab
+              projectId={currentProject.id}
+              draft={reeditDraft}
+              onDraftConsumed={() => setReeditDraft(null)}
+            />
+          )}
+          {activeTab === 'history' && (
+            <HistoryTab
+              projectId={currentProject.id}
+              onReedit={(draft) => {
+                setReeditDraft(draft)
+                setActiveTab('generate')
+              }}
+            />
+          )}
         </TabErrorBoundary>
       </div>
     </div>

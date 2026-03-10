@@ -15,16 +15,16 @@ interface FormatOption {
 
 const FORMAT_OPTIONS: FormatOption[] = [
   {
-    value: 'FEED_PORTRAIT',
-    label: 'Feed Retrato',
-    dimensions: '1080x1350',
-    aspectClass: 'w-8 h-10',
-  },
-  {
     value: 'STORY',
     label: 'Story',
     dimensions: '1080x1920',
     aspectClass: 'w-6 h-10',
+  },
+  {
+    value: 'FEED_PORTRAIT',
+    label: 'Feed Retrato',
+    dimensions: '1080x1350',
+    aspectClass: 'w-8 h-10',
   },
   {
     value: 'SQUARE',

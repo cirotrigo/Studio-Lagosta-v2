@@ -44,11 +44,11 @@ export default function CompositionEditor({
       (file) => ACCEPTED_IMAGE_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE
     )
 
-    if (referenceImages.length + files.length > 3) {
+    if (referenceImages.length + files.length > 5) {
       return
     }
 
-    onReferenceImagesChange([...referenceImages, ...files].slice(0, 3))
+    onReferenceImagesChange([...referenceImages, ...files].slice(0, 5))
   }, [referenceImages, onReferenceImagesChange])
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,11 +56,11 @@ export default function CompositionEditor({
       (file) => ACCEPTED_IMAGE_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE
     )
 
-    if (referenceImages.length + files.length > 3) {
+    if (referenceImages.length + files.length > 5) {
       return
     }
 
-    onReferenceImagesChange([...referenceImages, ...files].slice(0, 3))
+    onReferenceImagesChange([...referenceImages, ...files].slice(0, 5))
     e.target.value = ''
   }, [referenceImages, onReferenceImagesChange])
 
@@ -84,7 +84,7 @@ export default function CompositionEditor({
       {/* Reference Images */}
       <div className="space-y-2">
         <label className="text-xs text-text-muted">
-          Imagens de referência da cena (opcional, max 3)
+          Imagens de referência da cena (opcional, max 5)
         </label>
 
         <div className="flex gap-2">
@@ -105,7 +105,7 @@ export default function CompositionEditor({
           ))}
 
           {/* Add Button */}
-          {referenceImages.length < 3 && (
+          {referenceImages.length < 5 && (
             <label
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}

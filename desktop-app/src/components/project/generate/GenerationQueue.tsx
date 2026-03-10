@@ -1,4 +1,4 @@
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react'
+import { Loader2, AlertCircle, RefreshCw, Clock3 } from 'lucide-react'
 import { useGenerationStore, GenerationJob } from '@/stores/generation.store'
 import { cn } from '@/lib/utils'
 
@@ -34,9 +34,9 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-medium text-text-muted">Gerando...</h3>
+      <h3 className="text-sm font-medium text-text-muted">Fila de geracao</h3>
       <div className="space-y-3">
-        {jobs.map((job) => (
+        {jobs.map((job, idx) => (
           <div
             key={job.id}
             className="overflow-hidden rounded-xl border border-border bg-card p-4 animate-in fade-in slide-in-from-top-2 duration-200"
@@ -78,10 +78,21 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
                 {/* Info */}
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
-                    <Loader2 size={16} className="animate-spin text-primary" />
-                    <span className="text-sm font-medium text-text">Gerando arte...</span>
+                    {job.status === 'generating' ? (
+                      <Loader2 size={16} className="animate-spin text-primary" />
+                    ) : (
+                      <Clock3 size={16} className="text-text-muted" />
+                    )}
+                    <span className="text-sm font-medium text-text">
+                      {job.status === 'generating' ? 'Processando agora...' : 'Na fila de geracao'}
+                    </span>
                   </div>
                   <div className="space-y-1">
+                    {job.status === 'pending' && (
+                      <p className="text-xs text-text-muted">
+                        Posicao na fila: {idx + 1}
+                      </p>
+                    )}
                     <p className="text-xs text-text-muted">
                       Formato: {getFormatLabel(job.params.format)}
                     </p>
