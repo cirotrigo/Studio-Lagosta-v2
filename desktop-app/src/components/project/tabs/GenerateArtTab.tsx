@@ -8,13 +8,14 @@ import { useProjectStore } from '@/stores/project.store'
 import { useGenerationStore, usePendingJobs, useReviewJobs, useCompletedJobs, ArtFormat, TextProcessingMode, GenerationParams, ReviewField, ReviewVariation, ReviewRenderContext } from '@/stores/generation.store'
 import { useGenerateArt, GenerateArtResult } from '@/hooks/use-art-generation'
 import { useArtTemplates, type ArtTemplate } from '@/hooks/use-art-templates'
-import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { useDesignSystem } from '@/hooks/use-design-system'
 import { buildDraftLayout, resolveLayoutWithMeasurements } from '@/lib/layout-engine'
 import { cn } from '@/lib/utils'
 import { ReeditDraft } from '@/types/art-automation'
 import {
   extractDesignSystemCssFromHtml,
+  extractDesignSystemLogoFromHtml,
+  extractDesignSystemLogoFromZip,
   extractDesignSystemCssFromZip,
   extractDesignSystemMetadataFromZip,
   extractInstagramPreviewTokensFromDesignSystemHtml,
@@ -34,7 +35,6 @@ import VariationSelector from '@/components/project/generate/VariationSelector'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
 import ResultImageCard from '@/components/project/generate/ResultImageCard'
 import InstagramHtmlPreview from '@/components/project/generate/InstagramHtmlPreview'
-import InstagramHtmlIframePreview from '@/components/project/generate/InstagramHtmlIframePreview'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import CompositionEditor from '@/components/project/generate/CompositionEditor'
@@ -48,6 +48,16 @@ function getFormatDimensions(format: ArtFormat): { width: number; height: number
   if (format === 'STORY') return { width: 1080, height: 1920 }
   if (format === 'SQUARE') return { width: 1080, height: 1080 }
   return { width: 1080, height: 1350 }
+}
+
+async function arrayBufferToDataUrl(buffer: ArrayBuffer, mimeType: string): Promise<string> {
+  return await new Promise<string>((resolve, reject) => {
+    const blob = new Blob([buffer], { type: mimeType })
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(new Error('Falha ao converter imagem para data URL'))
+    reader.readAsDataURL(blob)
+  })
 }
 
 // Detect if template pipeline is available (Electron with new IPC channels)
@@ -182,8 +192,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
   // Art templates query
   const { data: artTemplates, isLoading: templatesLoading } = useArtTemplates(projectId)
-  const { data: brandAssets } = useBrandAssets(projectId)
   const { data: designSystemData } = useDesignSystem(projectId)
+  const hasImportedDesignSystem = Boolean(
+    designSystemData?.designSystemImport
+      && (designSystemData.designSystemImport.sourceType === 'html' || designSystemData.designSystemImport.sourceType === 'zip')
+  )
 
   // Form state
   const [format, setFormat] = useState<ArtFormat>('STORY')
@@ -205,8 +218,9 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const previewDebounceRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const [designSystemTokenOverrides, setDesignSystemTokenOverrides] = useState<Partial<InstagramPreviewTokens>>({})
   const [designSystemPreviewCss, setDesignSystemPreviewCss] = useState<string>('')
+  const [designSystemLogoUrl, setDesignSystemLogoUrl] = useState<string | null>(null)
   const [importedDsTemplates, setImportedDsTemplates] = useState<ImportedDsTemplateSummary[]>([])
-  const [previewTokenSourceLabel, setPreviewTokenSourceLabel] = useState('Identidade do projeto')
+  const [previewTokenSourceLabel, setPreviewTokenSourceLabel] = useState('Design System (fallback interno)')
 
   // Reset template selection when format changes
   useEffect(() => {
@@ -242,8 +256,9 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     if (!imported || (imported.sourceType !== 'html' && imported.sourceType !== 'zip')) {
       setDesignSystemTokenOverrides({})
       setDesignSystemPreviewCss('')
+      setDesignSystemLogoUrl(null)
       setImportedDsTemplates([])
-      setPreviewTokenSourceLabel('Identidade do projeto')
+      setPreviewTokenSourceLabel('Design System (fallback interno)')
       return () => {
         cancelled = true
       }
@@ -255,8 +270,10 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         if (!downloaded.ok || !downloaded.buffer) {
           if (!cancelled) {
             setDesignSystemTokenOverrides({})
+            setDesignSystemPreviewCss('')
+            setDesignSystemLogoUrl(null)
             setImportedDsTemplates([])
-            setPreviewTokenSourceLabel('Identidade do projeto (falha ao baixar DS)')
+            setPreviewTokenSourceLabel('Design System (falha ao baixar import)')
           }
           return
         }
@@ -264,26 +281,30 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         let extracted: Partial<InstagramPreviewTokens> = {}
         let detectedTemplates: ImportedDsTemplateSummary[] = []
         let extractedCss = ''
+        let extractedLogo: string | null = null
         if (imported.sourceType === 'html') {
           const html = new TextDecoder('utf-8').decode(new Uint8Array(downloaded.buffer))
           extracted = extractInstagramPreviewTokensFromDesignSystemHtml(html)
           detectedTemplates = extractImportedDsTemplatesFromDesignSystemHtml(html)
           extractedCss = extractDesignSystemCssFromHtml(html)
+          extractedLogo = extractDesignSystemLogoFromHtml(html)
         } else {
           const metadata = await extractDesignSystemMetadataFromZip(downloaded.buffer)
           extracted = metadata.tokens
           detectedTemplates = metadata.templates
           extractedCss = await extractDesignSystemCssFromZip(downloaded.buffer)
+          extractedLogo = await extractDesignSystemLogoFromZip(downloaded.buffer)
         }
 
         if (!cancelled) {
           setDesignSystemTokenOverrides(extracted)
           setDesignSystemPreviewCss(extractedCss)
+          setDesignSystemLogoUrl(extractedLogo)
           setImportedDsTemplates(detectedTemplates)
           if (Object.keys(extracted).length > 0) {
             setPreviewTokenSourceLabel(imported.sourceType === 'zip' ? 'Design System importado (ZIP)' : 'Design System importado (HTML)')
           } else {
-            setPreviewTokenSourceLabel('Identidade do projeto (DS sem tokens BRAND_*)')
+            setPreviewTokenSourceLabel('Design System importado (sem tokens BRAND_*)')
           }
         }
       } catch (error) {
@@ -291,8 +312,9 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         if (!cancelled) {
           setDesignSystemTokenOverrides({})
           setDesignSystemPreviewCss('')
+          setDesignSystemLogoUrl(null)
           setImportedDsTemplates([])
-          setPreviewTokenSourceLabel('Identidade do projeto (falha ao ler DS)')
+          setPreviewTokenSourceLabel('Design System (falha ao ler import)')
         }
       }
     }
@@ -305,22 +327,25 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }, [designSystemData?.designSystemImport?.fileUrl, designSystemData?.designSystemImport?.sourceType])
 
   const previewTokens = useMemo<Partial<InstagramPreviewTokens>>(() => {
-    const headingFont = brandAssets?.titleFontFamily || 'Montserrat'
-    const bodyFont = brandAssets?.bodyFontFamily || headingFont || 'Montserrat'
     const baseTokens: Partial<InstagramPreviewTokens> = {
-      primaryColor: brandAssets?.textColorPreferences?.ctaColor || brandAssets?.colors?.[0] || '#f97316',
-      secondaryColor: brandAssets?.colors?.[1],
-      textColor: brandAssets?.textColorPreferences?.titleColor || '#ffffff',
+      primaryColor: '#f97316',
+      secondaryColor: '#ea580c',
+      textColor: '#ffffff',
       bgColor: '#09090b',
-      fontHeading: headingFont,
-      fontBody: bodyFont,
+      fontHeading: 'Montserrat',
+      fontBody: 'Montserrat',
     }
 
     return {
       ...baseTokens,
       ...designSystemTokenOverrides,
     }
-  }, [brandAssets, designSystemTokenOverrides])
+  }, [designSystemTokenOverrides])
+
+  const identityLogoUrl = useMemo(() => {
+    if (hasImportedDesignSystem) return designSystemLogoUrl || undefined
+    return undefined
+  }, [hasImportedDesignSystem, designSystemLogoUrl])
 
   useEffect(() => {
     if (typeof document === 'undefined') return
@@ -333,24 +358,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       )
     )
 
-    const availableFonts = brandAssets?.fonts || []
     const localFontFaces: string[] = []
     const unresolvedFonts = new Set<string>()
 
     for (const font of desiredFonts) {
-      const lookup = normalizeFontLookup(font)
-      const local = availableFonts.find((item) => {
-        const familyLookup = normalizeFontLookup(item.fontFamily)
-        const nameLookup = normalizeFontLookup(item.name)
-        return familyLookup === lookup || nameLookup === lookup
-      })
-
-      if (local?.fileUrl) {
-        const familyName = local.fontFamily || font
-        localFontFaces.push(
-          `@font-face { font-family: "${familyName}"; src: url("${local.fileUrl}"); font-display: swap; }`
-        )
-      } else if (!shouldSkipGoogleFont(font)) {
+      if (!shouldSkipGoogleFont(font)) {
         unresolvedFonts.add(normalizeFontQueryName(font))
       }
     }
@@ -385,7 +397,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     link.rel = 'stylesheet'
     link.href = href
     document.head.appendChild(link)
-  }, [previewTokens.fontHeading, previewTokens.fontBody, brandAssets?.fonts])
+  }, [previewTokens.fontHeading, previewTokens.fontBody])
 
   const hasTemplatePipeline = checkTemplatePipeline()
   const isTemplateMode = hasTemplatePipeline && selectedTemplateIds.length > 0
@@ -436,6 +448,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       throw new Error('Erro ao baixar imagem base')
     }
     const imageBuffer = downloaded.buffer
+    const sourceImageDataUrl = await arrayBufferToDataUrl(
+      imageBuffer,
+      downloaded.contentType && downloaded.contentType.startsWith('image/')
+        ? downloaded.contentType
+        : 'image/jpeg'
+    )
 
     const fieldsFromSlots: ReviewField[] = Object.entries(result.slots).map(([key, value]) => ({
       key,
@@ -478,7 +496,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         const rendered = await window.electronAPI.renderFinalLayout(
           finalLayout,
           imageBuffer,
-          includeLogoOnRender ? result.logo : undefined,
+          undefined,
         )
 
         let imageUrl = result.imageUrl
@@ -492,12 +510,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           fields: finalFields,
           renderContext: {
             kind: 'template',
-            sourceImageUrl: result.imageUrl,
+            sourceImageUrl: sourceImageDataUrl,
             templateId: tpl.templateId,
             templateData: tpl.templateData,
             fontSources: tpl.fontSources,
             strictTemplateMode: result.strictTemplateMode ?? false,
-            logo: result.logo,
+            logo: undefined,
             includeLogo: includeLogoOnRender,
           },
         })
@@ -517,12 +535,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           fields: finalFields,
           renderContext: {
             kind: 'template',
-            sourceImageUrl: result.imageUrl,
+            sourceImageUrl: sourceImageDataUrl,
             templateId: tpl.templateId,
             templateData: tpl.templateData,
             fontSources: tpl.fontSources,
             strictTemplateMode: result.strictTemplateMode ?? false,
-            logo: result.logo,
+            logo: undefined,
             includeLogo: includeLogoOnRender,
           },
         })
@@ -558,14 +576,22 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       let imageUrl = img.imageUrl
       if (img.textLayout && result.fonts && window.electronAPI.renderText) {
         try {
+          const legacyLogo = includeLogoOnRender && identityLogoUrl
+            ? {
+              url: identityLogoUrl,
+              position: 'bottom-right',
+              sizePct: 12,
+            }
+            : undefined
+
           const rendered = await window.electronAPI.renderText({
             imageBuffer: downloaded.buffer,
             textLayout: img.textLayout,
             fonts: result.fonts,
             fontUrls: result.fontUrls,
-            logoUrl: includeLogoOnRender ? result.logo?.url : undefined,
-            logoPosition: result.logo?.position,
-            logoSizePct: result.logo?.sizePct,
+            logoUrl: legacyLogo?.url,
+            logoPosition: legacyLogo?.position,
+            logoSizePct: legacyLogo?.sizePct,
           })
           if (rendered.ok && rendered.buffer) {
             const blob = new Blob([rendered.buffer], { type: 'image/jpeg' })
@@ -588,14 +614,20 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           textLayout: img.textLayout,
           fonts: result.fonts,
           fontUrls: result.fontUrls,
-          logo: result.logo,
+          logo: includeLogoOnRender && identityLogoUrl
+            ? {
+              url: identityLogoUrl,
+              position: 'bottom-right',
+              sizePct: 12,
+            }
+            : undefined,
           includeLogo: includeLogoOnRender,
         } : undefined,
       })
     }
 
     return prepared
-  }, [formatFieldLabel])
+  }, [formatFieldLabel, identityLogoUrl])
 
   const processResultImages = useCallback(async (
     result: GenerateArtResult,
@@ -707,18 +739,57 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }): Promise<string[]> => {
     const persistedUrls: string[] = []
 
+    const toEmbeddableImageUrl = async (url: string | undefined): Promise<string | undefined> => {
+      if (!url) return undefined
+      if (url.startsWith('data:image/')) return url
+
+      const downloaded = await window.electronAPI.downloadBlob(url)
+      if (!downloaded.ok || !downloaded.buffer) {
+        if (url.startsWith('blob:')) {
+          throw new Error('Nao foi possivel preparar a imagem local para aprovacao')
+        }
+        return url
+      }
+
+      const downloadedType = (downloaded.contentType || '').toLowerCase()
+      if (downloadedType && !downloadedType.startsWith('image/')) {
+        if (url.startsWith('blob:')) {
+          throw new Error('Imagem local invalida para aprovacao')
+        }
+        return url
+      }
+
+      const inferredType = downloaded.contentType
+        || (url.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg')
+      return arrayBufferToDataUrl(downloaded.buffer, inferredType)
+    }
+
     for (let idx = 0; idx < items.length; idx++) {
       const item = items[idx]
       if (!item) continue
 
       let imageUrl = item.imageUrl
       const usedHtmlSnapshot = item.renderContext?.kind === 'template'
+      console.log('[Approval] Persisting variation', idx + 1, {
+        contextKind: item.renderContext?.kind || 'none',
+        format: params.format,
+      })
       if (item.renderContext?.kind === 'template') {
+        const embeddedSourceImageUrl = await toEmbeddableImageUrl(item.renderContext.sourceImageUrl)
+        const embeddedLogoUrl = item.renderContext.includeLogo
+          ? await toEmbeddableImageUrl(identityLogoUrl)
+          : undefined
+
+        console.log('[Approval] Rendering HTML snapshot for template', {
+          templateId: item.renderContext.templateId,
+          hasEmbeddedSource: Boolean(embeddedSourceImageUrl),
+          hasEmbeddedLogo: Boolean(embeddedLogoUrl),
+        })
         const snapshot = buildInstagramHtmlSnapshot({
           format: params.format,
           fields: item.fields,
-          sourceImageUrl: item.renderContext.sourceImageUrl,
-          logoUrl: item.renderContext.logo?.url,
+          sourceImageUrl: embeddedSourceImageUrl,
+          logoUrl: embeddedLogoUrl,
           includeLogo: item.renderContext.includeLogo,
           templateName: item.renderContext.templateId,
           tokens: previewTokens,
@@ -737,6 +808,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         if (!rendered.ok || !rendered.buffer) {
           throw new Error('Falha ao renderizar snapshot HTML da variacao aprovada')
         }
+        console.log('[Approval] HTML snapshot rendered buffer:', rendered.buffer.byteLength, 'bytes')
 
         const uploadResponse = await window.electronAPI.uploadFile(
           UPLOAD_URL,
@@ -801,7 +873,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     }
 
     return persistedUrls
-  }, [designSystemPreviewCss, previewTokens])
+  }, [designSystemPreviewCss, identityLogoUrl, previewTokens])
 
   const processQueuedJob = useCallback(async (jobId: string, params: GenerationParams) => {
     updateJob(jobId, { status: 'generating', error: undefined })
@@ -1093,7 +1165,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     let shouldRerender = false
     const updatedItems = job.reviewItems.map((item) => {
       if (item.id !== variationId) return item
-      shouldRerender = !!item.renderContext
+      shouldRerender = item.renderContext?.kind === 'legacy'
       return {
         ...item,
         status: item.status === 'approved' || item.status === 'rejected' ? 'review' : item.status,
@@ -1302,7 +1374,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                 previewTokens={previewTokens}
                 previewCss={designSystemPreviewCss}
                 referenceImageUrl={selectedPhoto?.url}
-                logoUrl={brandAssets?.logo?.url || undefined}
+                logoUrl={identityLogoUrl}
                 format={format}
                 selectedIds={selectedTemplateIds}
                 onChange={setSelectedTemplateIds}
@@ -1472,11 +1544,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                           >
                             <div className={cn('relative', getAspectClass(job.params.format))}>
                               {item.renderContext?.kind === 'template' ? (
-                                <InstagramHtmlIframePreview
+                                <InstagramHtmlPreview
                                   format={job.params.format}
                                   fields={item.fields}
                                   sourceImageUrl={item.renderContext.sourceImageUrl}
-                                  logoUrl={item.renderContext.logo?.url}
+                                  logoUrl={identityLogoUrl}
                                   includeLogo={item.renderContext.includeLogo}
                                   templateName={item.renderContext.templateId}
                                   tokens={previewTokens}
@@ -1560,7 +1632,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                                   format={job.params.format}
                                   fields={activeVariation.fields}
                                   sourceImageUrl={activeVariation.renderContext.sourceImageUrl}
-                                  logoUrl={activeVariation.renderContext.logo?.url}
+                                  logoUrl={identityLogoUrl}
                                   includeLogo={activeVariation.renderContext.includeLogo}
                                   templateName={activeVariation.renderContext.templateId}
                                   tokens={previewTokens}

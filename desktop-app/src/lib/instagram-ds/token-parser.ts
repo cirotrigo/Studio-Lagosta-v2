@@ -13,6 +13,11 @@ export interface ImportedDsTemplateSummary {
   format: 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
 }
 
+function isAbsoluteImageUrl(value: string): boolean {
+  const lower = value.toLowerCase()
+  return lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('data:image/')
+}
+
 function extractFirstHex(value: string): string | undefined {
   const match = value.match(/#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})\b/)
   return match?.[0]
@@ -96,6 +101,33 @@ function htmlEntryPriority(path: string): number {
   if (lower.includes('instagram')) return 2
   if (lower.endsWith('.html') || lower.endsWith('.htm')) return 3
   return 4
+}
+
+function extractLogoSrcFromHtml(html: string): string | null {
+  // Prefer explicit logo classes
+  const classRegex = /<img[^>]*class=["'][^"']*(?:ig-logo|logo)[^"']*["'][^>]*src=["']([^"']+)["'][^>]*>/gi
+  let match: RegExpExecArray | null
+  while ((match = classRegex.exec(html)) !== null) {
+    const src = match[1]?.trim()
+    if (src) return src
+  }
+
+  // Fallback: alt contains "logo"
+  const altRegex = /<img[^>]*alt=["'][^"']*logo[^"']*["'][^>]*src=["']([^"']+)["'][^>]*>/gi
+  while ((match = altRegex.exec(html)) !== null) {
+    const src = match[1]?.trim()
+    if (src) return src
+  }
+
+  return null
+}
+
+export function extractDesignSystemLogoFromHtml(
+  html: string,
+): string | null {
+  const src = extractLogoSrcFromHtml(html)
+  if (!src) return null
+  return isAbsoluteImageUrl(src) ? src : null
 }
 
 export function extractDesignSystemCssFromHtml(
@@ -218,6 +250,88 @@ export async function extractDesignSystemCssFromZip(
   }
 
   return styleChunks.join('\n\n')
+}
+
+function dirname(path: string): string {
+  const parts = path.split('/')
+  parts.pop()
+  return parts.join('/')
+}
+
+function normalizeZipPath(path: string): string {
+  const out: string[] = []
+  const parts = path.split('/').filter(Boolean)
+  for (const part of parts) {
+    if (part === '.') continue
+    if (part === '..') {
+      out.pop()
+      continue
+    }
+    out.push(part)
+  }
+  return out.join('/')
+}
+
+function joinZipPath(baseDir: string, relativePath: string): string {
+  if (!relativePath) return baseDir
+  if (relativePath.startsWith('/')) return normalizeZipPath(relativePath.slice(1))
+  if (!baseDir) return normalizeZipPath(relativePath)
+  return normalizeZipPath(`${baseDir}/${relativePath}`)
+}
+
+function mimeFromPath(path: string): string {
+  const lower = path.toLowerCase()
+  if (lower.endsWith('.png')) return 'image/png'
+  if (lower.endsWith('.webp')) return 'image/webp'
+  if (lower.endsWith('.svg')) return 'image/svg+xml'
+  if (lower.endsWith('.gif')) return 'image/gif'
+  return 'image/jpeg'
+}
+
+export async function extractDesignSystemLogoFromZip(
+  zipBuffer: ArrayBuffer,
+): Promise<string | null> {
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(zipBuffer)
+
+  const htmlEntries: string[] = []
+  zip.forEach((relativePath, file) => {
+    if (file.dir) return
+    if (/\.html?$/i.test(relativePath)) {
+      htmlEntries.push(relativePath)
+    }
+  })
+
+  if (htmlEntries.length === 0) return null
+
+  htmlEntries.sort((a, b) => {
+    const scoreDiff = htmlEntryPriority(a) - htmlEntryPriority(b)
+    if (scoreDiff !== 0) return scoreDiff
+    return a.length - b.length
+  })
+
+  for (const htmlPath of htmlEntries) {
+    const htmlFile = zip.file(htmlPath)
+    if (!htmlFile) continue
+    const html = await htmlFile.async('text')
+    const logoSrc = extractLogoSrcFromHtml(html)
+    if (!logoSrc) continue
+
+    if (isAbsoluteImageUrl(logoSrc)) {
+      return logoSrc
+    }
+
+    const resolvedPath = joinZipPath(dirname(htmlPath), logoSrc)
+    const logoFile = zip.file(resolvedPath)
+    if (!logoFile) continue
+
+    const bytes = await logoFile.async('uint8array')
+    const binary = Array.from(bytes).map((byte) => String.fromCharCode(byte)).join('')
+    const base64 = btoa(binary)
+    return `data:${mimeFromPath(resolvedPath)};base64,${base64}`
+  }
+
+  return null
 }
 
 export async function extractInstagramPreviewTokensFromDesignSystemZip(

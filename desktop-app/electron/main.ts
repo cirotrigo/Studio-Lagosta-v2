@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell, safeStorage, session, net } from 'electron'
 import path from 'path'
+import { promises as fs } from 'fs'
 import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
 import { ensureFont, getFontBase64 } from './ipc/font-cache'
@@ -82,17 +83,67 @@ function isSessionCookieValid(
   return exp > now + minRemainingSeconds
 }
 
+function pickBestSessionCookie(
+  cookies: Electron.Cookie[],
+  minRemainingSeconds = 20,
+): Electron.Cookie | undefined {
+  const now = Math.floor(Date.now() / 1000)
+  let best: Electron.Cookie | undefined
+  let bestExp = 0
+
+  for (const cookie of cookies) {
+    const isSession = cookie.name === '__session' || cookie.name.startsWith('__session_')
+    if (!isSession || !cookie.value) continue
+
+    const exp = getJwtExp(cookie.value)
+    if (!exp || exp <= now + minRemainingSeconds) continue
+    if (!best || exp > bestExp) {
+      best = cookie
+      bestExp = exp
+    }
+  }
+
+  return best
+}
+
+function extractBestSessionTokenFromCookieHeader(
+  cookieHeader: string | null,
+  minRemainingSeconds = 20,
+): string | null {
+  if (!cookieHeader) return null
+
+  const candidates: string[] = []
+  const pattern = /(?:^|;\s*)__session(?:_[^=]+)?=([^;]+)/g
+  let match: RegExpExecArray | null
+
+  while ((match = pattern.exec(cookieHeader)) !== null) {
+    const token = match[1]?.trim()
+    if (token) candidates.push(token)
+  }
+
+  if (candidates.length === 0) return null
+
+  const now = Math.floor(Date.now() / 1000)
+  let bestToken: string | null = null
+  let bestExp = 0
+
+  for (const token of candidates) {
+    const exp = getJwtExp(token)
+    if (!exp || exp <= now + minRemainingSeconds) continue
+    if (!bestToken || exp > bestExp) {
+      bestToken = token
+      bestExp = exp
+    }
+  }
+
+  return bestToken
+}
+
 function hasValidSessionInCookieHeader(
   cookieHeader: string | null,
   minRemainingSeconds = 20,
 ): boolean {
-  if (!cookieHeader) return false
-  const sessionMatch = cookieHeader.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
-  if (!sessionMatch?.[1]) return false
-  const exp = getJwtExp(sessionMatch[1])
-  if (!exp) return false
-  const now = Math.floor(Date.now() / 1000)
-  return exp > now + minRemainingSeconds
+  return Boolean(extractBestSessionTokenFromCookieHeader(cookieHeader, minRemainingSeconds))
 }
 
 // Refresh Clerk session using a hidden browser window (Clerk JS handles token rotation)
@@ -108,8 +159,8 @@ async function refreshClerkSession(): Promise<boolean> {
           clearInterval(interval)
           // Check if we now have a valid session
           const cookies = await session.defaultSession.cookies.get({ url: 'https://studio-lagosta-v2.vercel.app' })
-          const s = cookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
-          if (isSessionCookieValid(s, 5)) {
+          const s = pickBestSessionCookie(cookies, 5)
+          if (s) {
             resolve(true)
             return
           }
@@ -260,11 +311,15 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
   const height = Math.max(128, Math.min(4096, Math.floor(args.height)))
   const mimeType: 'image/jpeg' | 'image/png' = args.mimeType === 'image/png' ? 'image/png' : 'image/jpeg'
   const jpegQuality = Math.max(30, Math.min(100, Math.floor(args.quality ?? 92)))
+  let tempHtmlPath: string | null = null
 
   const worker = new BrowserWindow({
+    x: -10000,
+    y: -10000,
     width,
     height,
-    show: false,
+    show: true,
+    paintWhenInitiallyHidden: true,
     frame: false,
     transparent: false,
     backgroundColor: '#000000',
@@ -280,11 +335,13 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
   })
 
   try {
-    const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(args.html)}`
-    await worker.loadURL(dataUrl)
+    const tempFileName = `lagosta-snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}.html`
+    tempHtmlPath = path.join(app.getPath('temp'), tempFileName)
+    await fs.writeFile(tempHtmlPath, args.html, 'utf8')
+    await worker.loadFile(tempHtmlPath)
 
     // Wait for web fonts/images with a conservative timeout to avoid hanging the queue.
-    await worker.webContents.executeJavaScript(`
+    const snapshotDiagnostics = await worker.webContents.executeJavaScript(`
       (async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         const waitFonts = async () => {
@@ -306,22 +363,51 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
                 });
               })
             ),
-            wait(2500),
+            wait(7000),
+          ]);
+        };
+        const waitPrimaryImage = async () => {
+          const bg = document.querySelector('img.ig-bg-photo');
+          if (!bg) return;
+          if (bg.complete && bg.naturalWidth > 0 && bg.naturalHeight > 0) return;
+          await Promise.race([
+            new Promise((resolve) => {
+              bg.addEventListener('load', () => resolve(), { once: true });
+              bg.addEventListener('error', () => resolve(), { once: true });
+            }),
+            wait(7000),
           ]);
         };
         await waitFonts();
         await waitImages();
-        await wait(80);
+        await waitPrimaryImage();
+        await wait(220);
+
+        const bg = document.querySelector('img.ig-bg-photo');
+        const logo = document.querySelector('img.ig-logo, img.ig-logo-feed');
+        return {
+          imageCount: Array.from(document.images || []).length,
+          bgLoaded: !!(bg && bg.naturalWidth > 0 && bg.naturalHeight > 0),
+          bgNaturalWidth: bg ? bg.naturalWidth : 0,
+          bgNaturalHeight: bg ? bg.naturalHeight : 0,
+          logoLoaded: !!(logo && logo.naturalWidth > 0 && logo.naturalHeight > 0),
+        };
       })();
     `, true)
+    console.log('[HTML Snapshot] Diagnostics:', snapshotDiagnostics)
+    await new Promise<void>((resolve) => setTimeout(resolve, 120))
 
     const snapshot = await worker.webContents.capturePage({ x: 0, y: 0, width, height })
     const buffer = mimeType === 'image/png'
       ? snapshot.toPNG()
       : snapshot.toJPEG(jpegQuality)
+    console.log('[HTML Snapshot] Captured buffer:', buffer.length, 'bytes', mimeType, `${width}x${height}`)
 
     return { buffer, mimeType }
   } finally {
+    if (tempHtmlPath) {
+      await fs.unlink(tempHtmlPath).catch(() => undefined)
+    }
     if (!worker.isDestroyed()) {
       worker.destroy()
     }
@@ -477,7 +563,7 @@ ipcMain.handle('auth:login', async () => {
 
         console.log('[Auth] Cookie names:', vercelCookies.map(c => c.name).join(', '))
 
-        const sessionCookie = vercelCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
+        const sessionCookie = pickBestSessionCookie(vercelCookies, 20)
         const dbJwtCookie = vercelCookies.find(c => c.name === '__clerk_db_jwt')
         const clientUatCookie = vercelCookies.find(c => c.name === '__client_uat' || c.name.startsWith('__client_uat_'))
         
@@ -486,7 +572,7 @@ ipcMain.handle('auth:login', async () => {
         console.log('[Auth] __client_uat:', clientUatCookie ? `${clientUatCookie.name}=${clientUatCookie.value}` : 'NOT FOUND')
         
         // Login is only valid when __session JWT exists and is not near expiry.
-        if (!isSessionCookieValid(sessionCookie, 20)) {
+        if (!sessionCookie) {
           console.warn('[Auth] __session not valid yet - waiting...')
           return
         }
@@ -556,8 +642,8 @@ ipcMain.handle('auth:login', async () => {
           url: 'https://studio-lagosta-v2.vercel.app'
         })
         
-        const sessionCookie = vercelCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
-        if (!isSessionCookieValid(sessionCookie, 20)) {
+        const sessionCookie = pickBestSessionCookie(vercelCookies, 20)
+        if (!sessionCookie) {
           console.log('[Auth] Cookie changed but __session is not valid yet')
           return
         }
@@ -644,11 +730,11 @@ async function getFreshCookies(): Promise<string | null> {
     const storedCookies = getCookies()
 
     // Check if __session is still valid (not expired)
-    const sessionCookie = sessionCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
+    const sessionCookie = pickBestSessionCookie(sessionCookies, 20)
     const clientUat = sessionCookies.find(c => (c.name === '__client_uat' || c.name.startsWith('__client_uat_')) && c.value !== '0')
     const dbJwt = sessionCookies.find(c => c.name === '__clerk_db_jwt' || c.name.startsWith('__clerk_db_jwt_'))
 
-    if (isSessionCookieValid(sessionCookie, 20)) {
+    if (sessionCookie) {
       const cookieString = sessionCookies.map(c => `${c.name}=${c.value}`).join('; ')
       saveCookies(cookieString)
       return cookieString
@@ -669,8 +755,8 @@ async function getFreshCookies(): Promise<string | null> {
         const freshCookies = await session.defaultSession.cookies.get({
           url: 'https://studio-lagosta-v2.vercel.app'
         })
-        const freshSession = freshCookies.find(c => c.name === '__session' || c.name.startsWith('__session_'))
-        if (!isSessionCookieValid(freshSession, 20)) {
+        const freshSession = pickBestSessionCookie(freshCookies, 20)
+        if (!freshSession) {
           console.log('[Cookies] Refresh returned cookies but __session is not valid')
           return hasValidSessionInCookieHeader(storedCookies, 20) ? storedCookies : null
         }
@@ -695,10 +781,6 @@ function buildAuthHeaders(cookies: string | null, extra: Record<string, string> 
   const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extra }
   if (!cookies) return headers
   headers['Cookie'] = cookies
-  const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
-  if (sessionMatch) {
-    headers['Authorization'] = `Bearer ${sessionMatch[1]}`
-  }
   return headers
 }
 
@@ -1102,7 +1184,7 @@ ipcMain.handle('blob:download', async (_event, url: string) => {
 // IPC Handlers - File Upload (to bypass CORS)
 ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => {
   try {
-    const cookies = await getFreshCookies()
+    let cookies = await getFreshCookies()
     
     // IMMEDIATELY clone the ArrayBuffer to prevent "detached ArrayBuffer" error
     // The buffer can be detached after async operations, so we copy it right away
@@ -1141,47 +1223,75 @@ ipcMain.handle('file:upload', async (_event, url: string, fileData: { name: stri
     
     if (cookies) {
       headers['Cookie'] = cookies
-      
-      // Extract __session JWT for Bearer token
-      const sessionMatch = cookies.match(/(?:^|; )__session(?:_[^=]+)?=([^;]+)/)
-      if (sessionMatch) {
-        headers['Authorization'] = `Bearer ${sessionMatch[1]}`
-      }
     }
     
     console.log('[Upload] Headers:', Object.keys(headers))
     console.log('[Upload] Body size:', body.length, 'bytes')
     
-    const response = await fetch(url, {
-      method: 'POST',
-      headers,
-      body,
-      redirect: 'manual',
-    })
-    
-    // Handle redirects manually to avoid detached ArrayBuffer issue
-    // (Node.js fetch detaches the ArrayBuffer body after first send)
-    let finalResponse = response
-    if (response.status >= 300 && response.status < 400) {
-      const redirectUrl = response.headers.get('location')
-      if (redirectUrl) {
-        console.log('[Upload] Following redirect to:', redirectUrl)
-        const resolvedUrl = new URL(redirectUrl, url).href
-        finalResponse = await fetch(resolvedUrl, {
-          method: 'POST',
-          headers,
-          body: Buffer.from(body),
-          redirect: 'follow',
-        })
+    const doUploadAttempt = async (cookieHeader: string | null) => {
+      const attemptHeaders: Record<string, string> = {
+        'Content-Type': `multipart/form-data; boundary=${boundary}`,
       }
+      if (cookieHeader) {
+        attemptHeaders['Cookie'] = cookieHeader
+      }
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: attemptHeaders,
+        body: Buffer.from(body),
+        redirect: 'manual',
+      })
+
+      // Handle redirects manually to avoid detached ArrayBuffer issue
+      let finalResponse = response
+      if (response.status >= 300 && response.status < 400) {
+        const redirectUrl = response.headers.get('location')
+        if (redirectUrl) {
+          console.log('[Upload] Following redirect to:', redirectUrl)
+          const resolvedUrl = new URL(redirectUrl, url).href
+          finalResponse = await fetch(resolvedUrl, {
+            method: 'POST',
+            headers: attemptHeaders,
+            body: Buffer.from(body),
+            redirect: 'follow',
+          })
+        }
+      }
+
+      const text = await finalResponse.text()
+      const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
+
+      return {
+        finalResponse,
+        text,
+        isHtml,
+      }
+    }
+
+    let { finalResponse, text, isHtml } = await doUploadAttempt(cookies)
+    const firstAttemptAuthHtml = isHtml && isAuthHtmlResponse({
+      isHtml,
+      text,
+      status: finalResponse.status,
+      responseUrl: finalResponse.url,
+    })
+
+    if (firstAttemptAuthHtml) {
+      console.log('[Upload] Auth HTML detected - refreshing session and retrying once...')
+      const refreshed = await refreshClerkSession()
+      if (refreshed) {
+        cookies = await getFreshCookies()
+      }
+      const retry = await doUploadAttempt(cookies)
+      finalResponse = retry.finalResponse
+      text = retry.text
+      isHtml = retry.isHtml
     }
     
     console.log('[Upload] Response status:', finalResponse.status)
-    
-    const text = await finalResponse.text()
-    
+
     // Detect HTML responses
-    const isHtml = text.trimStart().startsWith('<!DOCTYPE') || text.trimStart().startsWith('<html')
     if (isHtml && isAuthHtmlResponse({
       isHtml,
       text,
@@ -1453,6 +1563,13 @@ ipcMain.handle('image:render-final-layout', async (_event, finalLayout: any, ima
 // IPC Handler - HTML/CSS snapshot render (headless BrowserWindow + capturePage)
 ipcMain.handle('image:render-html-snapshot', async (_event, args: RenderHtmlSnapshotArgs) => {
   try {
+    console.log('[HTML Snapshot] Request:', {
+      width: args?.width,
+      height: args?.height,
+      mimeType: args?.mimeType,
+      quality: args?.quality,
+      htmlLength: args?.html?.length ?? 0,
+    })
     if (!args || typeof args.html !== 'string' || !args.html.trim()) {
       return { ok: false, error: 'HTML snapshot invalido' }
     }
