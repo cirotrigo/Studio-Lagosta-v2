@@ -34,6 +34,7 @@
     "db:optimize-logs": "npx tsx scripts/optimize-logs.ts",
     "db:debug-org": "npx tsx scripts/debug-org-access.ts",
     "deploy:check": "bash scripts/pre-deploy-check.sh",
+    "deploy:smoke-art": "bash scripts/smoke-art-automation.sh",
     "deploy:vercel": "npm run deploy:check && vercel --prod",
     "check:drive": "npx tsx scripts/check-drive.ts",
     "validate-instagram-ids": "npx tsx src/scripts/validate-instagram-ids.ts",

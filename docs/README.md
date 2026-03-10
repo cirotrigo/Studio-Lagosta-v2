@@ -27,6 +27,7 @@ If you're new to this project, start here:
 - **[Text Editing Toolbar](./text-editing-toolbar.md)** - Text formatting toolbar with real-time updates
 - **[PhotoSwipe Lightbox](./photoswipe-lightbox.md)** - Interactive image gallery with zoom and navigation
 - **[AI Image Generation](./ai-image-generation.md)** - Generate images with Gemini 2.5 Flash via Replicate with reference images support
+- **[Instagram Art Automation Deploy](./instagram-art-automation-deploy.md)** - Production rollout + smoke test for HTML/CSS Instagram automation module
 
 ### Development Guides
 - **[Frontend](./frontend.md)** - React components, Next.js patterns, and client-side development

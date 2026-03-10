@@ -17,6 +17,7 @@ const requestSchema = z.object({
   prompt: z.string().trim().min(1).max(500),
   format: z.enum(['STORY', 'FEED_PORTRAIT', 'SQUARE']).default('STORY'),
   variations: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
+  dryRun: z.boolean().default(false),
   templateIds: z.array(z.string().min(1)).max(3).optional(),
   includeLogo: z.boolean().default(true),
   usePhoto: z.boolean().default(true),
@@ -433,6 +434,21 @@ export async function POST(request: Request) {
     })
     .filter((template): template is TemplateSummary => Boolean(template))
   const templateGuidance = buildTemplateGuidance(selectedTemplates)
+
+  if (body.dryRun) {
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      format: body.format,
+      variations: body.variations,
+      templatesRequested: body.templateIds ?? [],
+      templatesResolved: selectedTemplates.map((template) => ({
+        id: template.id,
+        name: template.name,
+        format: template.format,
+      })),
+    })
+  }
 
   try {
     const { object } = await generateObject({

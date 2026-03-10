@@ -61,6 +61,7 @@ const generateArtSchema = z.object({
   projectId: z.number().int().positive(),
   text: z.string().max(500, 'Texto muito longo (máximo 500 caracteres)'),
   format: z.enum(['FEED_PORTRAIT', 'STORY', 'SQUARE']),
+  dryRun: z.boolean().default(false),
   includeLogo: z.boolean().default(false),
   usePhoto: z.boolean().default(false),
   photoUrl: z.string().url().optional(),
@@ -86,6 +87,7 @@ const generateArtSchema = z.object({
 ).refine(
   (data) => {
     // text can be empty only for generate_copy mode
+    if (data.dryRun) return true
     if (data.textProcessingMode !== 'generate_copy' && (!data.text || data.text.trim().length === 0)) {
       return false
     }
@@ -1163,6 +1165,29 @@ async function handleTemplatePath(
     }
   }
 
+  if (body.dryRun) {
+    const templatesWithFonts = await Promise.all(
+      templates.map(async (tpl) => {
+        const fontSources = await resolveFontSources(tpl, body.projectId, project)
+        return {
+          templateId: tpl.id,
+          name: tpl.name,
+          format: tpl.format,
+          fontSources,
+        }
+      })
+    )
+
+    return NextResponse.json({
+      ok: true,
+      dryRun: true,
+      templatePath: true,
+      format: body.format,
+      templatesRequested: templateIds,
+      templatesResolved: templatesWithFonts,
+    })
+  }
+
   const primaryTemplate = templates[0]
 
   // Re-normalize template data to fix any stored inconsistencies
@@ -1431,6 +1456,15 @@ export async function POST(request: Request) {
 
     if (templateIds.length > 0) {
       return await handleTemplatePath(body, templateIds, brandAssets, userId)
+    }
+
+    if (body.dryRun) {
+      return NextResponse.json({
+        ok: true,
+        dryRun: true,
+        templatePath: false,
+        format: body.format,
+      })
     }
 
     // --- Legacy Path (no template) ---
