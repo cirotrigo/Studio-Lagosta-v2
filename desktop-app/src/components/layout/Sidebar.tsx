@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, Settings, Image, MessageSquare, Palette, Wand2, Layers3 } from 'lucide-react'
+import { Calendar, Settings, Image, MessageSquare, Palette, Wand2, Layers3, Images } from 'lucide-react'
 import ProjectSelector from './ProjectSelector'
 import { cn } from '@/lib/utils'
 
@@ -20,6 +20,12 @@ const navItems = [
     to: '/editor',
     icon: Layers3,
     label: 'Editor',
+    disabled: false,
+  },
+  {
+    to: '/arts',
+    icon: Images,
+    label: 'Artes',
     disabled: false,
   },
   {

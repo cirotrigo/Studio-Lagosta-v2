@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectWriteAccess } from '@/lib/projects/access'
+import { KONVA_PROJECT_EXPORT_CATEGORY } from '@/lib/konva-project-creatives'
 
 export const runtime = 'nodejs'
 
@@ -91,6 +92,12 @@ export async function GET(req: Request) {
           ]
         }
       }
+
+  if (!publicOnly) {
+    where.NOT = {
+      category: KONVA_PROJECT_EXPORT_CATEGORY,
+    }
+  }
 
   if (typeof projectId === 'number') {
     where.projectId = projectId

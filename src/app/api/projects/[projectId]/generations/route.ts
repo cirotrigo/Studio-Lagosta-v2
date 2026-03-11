@@ -86,6 +86,7 @@ export async function GET(
         createdBy: true,
         createdAt: true,
         completedAt: true,
+        fileName: true,
         Template: {
           select: {
             id: true,

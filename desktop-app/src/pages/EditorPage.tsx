@@ -30,7 +30,7 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
 
-  useEditorGenerationQueue()
+  useEditorGenerationQueue(currentProject?.id)
 
   const currentTemplateOption = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
@@ -156,16 +156,12 @@ export default function EditorPage() {
     }
   }
 
-  const handleQueueGeneration = (params: {
-    selectedPageIds: string[]
-    selectedPhoto: { url: string; source: string }
-    variations: 1 | 2 | 4
-  }) => {
+  const handleQueueGeneration = (selectedPageIds: string[]) => {
     if (!document) {
       return
     }
 
-    const selectedPages = orderedPages.filter((page) => params.selectedPageIds.includes(page.id))
+    const selectedPages = orderedPages.filter((page) => selectedPageIds.includes(page.id))
     if (!selectedPages.length) {
       toast.error('Selecione pelo menos uma página para gerar.')
       return
@@ -173,17 +169,17 @@ export default function EditorPage() {
 
     addGenerationJobs(
       selectedPages.map((page) => ({
+        documentId: document.id,
         pageId: page.id,
         pageName: page.name,
         format: document.format,
-        photoUrl: params.selectedPhoto.url,
-        photoSource: params.selectedPhoto.source,
-        variations: params.variations,
+        width: page.width,
+        height: page.height,
         pageSnapshot: cloneKonvaDocument(page),
       })),
     )
 
-    toast.info(`${selectedPages.length} página(s) adicionada(s) à fila do editor.`)
+    toast.info(`${selectedPages.length} página(s) adicionada(s) à fila de exportação.`)
   }
 
   if (!currentProject) {
@@ -293,7 +289,6 @@ export default function EditorPage() {
         <EditorGenerateArtModal
           open={isGenerateModalOpen}
           onClose={() => setIsGenerateModalOpen(false)}
-          projectId={currentProject.id}
           pages={orderedPages}
           currentPageId={document.design.currentPageId}
           thumbnails={thumbnails}

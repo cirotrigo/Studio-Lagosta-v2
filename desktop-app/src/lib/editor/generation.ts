@@ -49,7 +49,12 @@ export async function readImageDimensions(src: string): Promise<{ width: number;
     return directDimensions
   }
 
-  if (!window.electronAPI?.downloadBlob || src.startsWith('blob:') || src.startsWith('data:')) {
+  if (
+    !window.electronAPI?.downloadBlob ||
+    src.startsWith('blob:') ||
+    src.startsWith('data:') ||
+    src.startsWith('/')
+  ) {
     return null
   }
 

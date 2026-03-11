@@ -106,7 +106,14 @@ async function loadRenderableImage(
     return null
   }
 
-  if (!preferBlobDownload || !window.electronAPI?.downloadBlob || src.startsWith('data:') || src.startsWith('blob:')) {
+  const isRelativeAsset = src.startsWith('/')
+  if (
+    !preferBlobDownload ||
+    !window.electronAPI?.downloadBlob ||
+    src.startsWith('data:') ||
+    src.startsWith('blob:') ||
+    isRelativeAsset
+  ) {
     return await loadImageFromSource(src)
   }
 

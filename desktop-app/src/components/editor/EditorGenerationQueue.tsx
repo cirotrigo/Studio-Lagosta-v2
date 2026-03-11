@@ -1,5 +1,5 @@
-import { Download, Loader2, Trash2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { ExternalLink, Loader2, Trash2 } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { cn } from '@/lib/utils'
 
@@ -29,20 +29,29 @@ export function EditorGenerationQueue() {
     <div className="rounded-2xl border border-border bg-card/60 px-4 py-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-text">Fila de geração</h2>
+          <h2 className="text-sm font-semibold text-text">Fila de exportação</h2>
           <p className="mt-1 text-xs text-text-muted">
-            Jobs do editor continuam processando sem travar o canvas.
+            Os criativos são exportados em segundo plano e salvos em `Artes`.
           </p>
         </div>
 
-        <button
-          type="button"
-          disabled={finishedCount === 0}
-          onClick={() => clearFinished()}
-          className="h-9 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40 disabled:opacity-40"
-        >
-          Limpar concluídos
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            to="/arts"
+            className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
+          >
+            <ExternalLink size={14} />
+            Abrir Artes
+          </Link>
+          <button
+            type="button"
+            disabled={finishedCount === 0}
+            onClick={() => clearFinished()}
+            className="h-9 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40 disabled:opacity-40"
+          >
+            Limpar concluídos
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">
@@ -52,7 +61,7 @@ export function EditorGenerationQueue() {
               <div>
                 <p className="text-sm font-semibold text-text">{job.pageName}</p>
                 <p className="mt-1 text-xs text-text-muted">
-                  {job.variations} variação(ões) • fonte: {job.photoSource}
+                  {job.format} • {job.width}x{job.height}
                 </p>
               </div>
 
@@ -60,7 +69,7 @@ export function EditorGenerationQueue() {
                 {job.status === 'processing' ? (
                   <span className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
                     <Loader2 size={14} className="animate-spin" />
-                    Processando
+                    Exportando
                   </span>
                 ) : job.status === 'pending' ? (
                   <span className="rounded-full bg-input px-3 py-1 text-xs font-medium text-text-muted">
@@ -72,7 +81,7 @@ export function EditorGenerationQueue() {
                   </span>
                 ) : (
                   <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-medium text-emerald-300">
-                    Pronto
+                    Salvo em Artes
                   </span>
                 )}
 
@@ -87,55 +96,56 @@ export function EditorGenerationQueue() {
             </div>
 
             {job.status === 'error' ? (
-              <p className="text-sm text-error">{job.error ?? 'Falha ao gerar a página.'}</p>
+              <p className="text-sm text-error">{job.error ?? 'Falha ao exportar a página.'}</p>
             ) : null}
 
-            {job.results.length > 0 ? (
-              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {job.results.map((result) => (
-                  <div key={result.id} className="rounded-2xl border border-border bg-card p-3">
-                    <div className={cn('overflow-hidden rounded-xl border border-border bg-[#0c111d]', getAspectClass(job.format))}>
-                      <img
-                        src={result.imageUrl}
-                        alt={`${job.pageName} variação ${result.variationIndex + 1}`}
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
+            {job.result?.resultUrl ? (
+              <div className="grid gap-3 sm:grid-cols-[180px_minmax(0,1fr)]">
+                <div
+                  className={cn(
+                    'flex items-center justify-center overflow-hidden rounded-2xl border border-border bg-[#0c111d] p-3',
+                    getAspectClass(job.format),
+                  )}
+                >
+                  <img
+                    src={job.result.resultUrl}
+                    alt={job.pageName}
+                    className="max-h-full max-w-full rounded-lg object-contain"
+                  />
+                </div>
 
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-medium text-text">Variação {result.variationIndex + 1}</p>
-                        <p className="text-xs text-text-muted">{job.format}</p>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          try {
-                            const link = document.createElement('a')
-                            link.href = result.imageUrl
-                            link.download = `${job.pageName.toLowerCase().replace(/\s+/g, '-')}-v${result.variationIndex + 1}.png`
-                            document.body.appendChild(link)
-                            link.click()
-                            document.body.removeChild(link)
-                          } catch (_error) {
-                            toast.error('Não foi possível baixar a imagem gerada.')
-                          }
-                        }}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl border border-border text-text transition-colors hover:border-primary/40"
-                      >
-                        <Download size={15} />
-                      </button>
-                    </div>
+                <div className="flex flex-col justify-between gap-3 rounded-2xl border border-border bg-card p-4">
+                  <div>
+                    <p className="text-sm font-medium text-text">Criativo persistido no projeto</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      {job.result.fileName ?? 'Arquivo salvo com nome automático.'}
+                    </p>
                   </div>
-                ))}
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      to="/arts"
+                      className="inline-flex h-9 items-center gap-2 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
+                    >
+                      <ExternalLink size={14} />
+                      Ver em Artes
+                    </Link>
+                  </div>
+                </div>
               </div>
             ) : job.status !== 'error' ? (
-              <div className={cn('w-full overflow-hidden rounded-2xl border border-dashed border-border bg-background/20', getAspectClass(job.format))}>
+              <div
+                className={cn(
+                  'w-full overflow-hidden rounded-2xl border border-dashed border-border bg-background/20',
+                  getAspectClass(job.format),
+                )}
+              >
                 <div className="flex h-full min-h-[180px] items-center justify-center">
                   <div className="text-center">
                     <Loader2 size={20} className="mx-auto animate-spin text-primary" />
-                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-text-subtle">Gerando preview</p>
+                    <p className="mt-2 text-xs uppercase tracking-[0.18em] text-text-subtle">
+                      Exportando criativo
+                    </p>
                   </div>
                 </div>
               </div>

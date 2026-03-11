@@ -3,34 +3,33 @@ import { useShallow } from 'zustand/react/shallow'
 import type { ArtFormat, KonvaPage } from '@/types/template'
 
 export interface EditorGenerationResult {
-  id: string
-  imageUrl: string
-  variationIndex: number
-  generatedPage: KonvaPage
+  generationId: string
+  resultUrl: string | null
+  fileName?: string | null
 }
 
 export interface EditorGenerationJob {
   id: string
+  documentId: string
   pageId: string
   pageName: string
   format: ArtFormat
-  photoUrl: string
-  photoSource: string
-  variations: 1 | 2 | 4
+  width: number
+  height: number
   pageSnapshot: KonvaPage
   status: 'pending' | 'processing' | 'done' | 'error'
-  results: EditorGenerationResult[]
+  result?: EditorGenerationResult
   error?: string
   createdAt: number
 }
 
 interface AddEditorGenerationJobInput {
+  documentId: string
   pageId: string
   pageName: string
   format: ArtFormat
-  photoUrl: string
-  photoSource: string
-  variations: 1 | 2 | 4
+  width: number
+  height: number
   pageSnapshot: KonvaPage
 }
 
@@ -50,7 +49,6 @@ export const useEditorGenerationStore = create<EditorGenerationState>((set) => (
       id: crypto.randomUUID(),
       ...job,
       status: 'pending',
-      results: [],
       createdAt: Date.now(),
     }))
 

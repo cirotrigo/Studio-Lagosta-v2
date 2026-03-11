@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Loader2 } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useProjectStore } from '@/stores/project.store'
 import { useCreatePost } from '@/hooks/use-posts'
@@ -17,21 +17,105 @@ import ProjectBadge from '@/components/layout/ProjectBadge'
 import CarouselReorder from '@/components/post/CarouselReorder'
 import CropEditor from '@/components/post/CropEditor'
 
+interface NewPostLocationState {
+  imageUrl?: string
+  postType?: PostType
+}
+
+function inferFileExtension(contentType: string | undefined, sourceUrl: string) {
+  const byType: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  }
+
+  if (contentType && byType[contentType]) {
+    return byType[contentType]
+  }
+
+  const fromUrl = sourceUrl.split('/').pop()?.split('?')[0]?.split('.').pop()?.toLowerCase()
+  if (fromUrl && ['jpg', 'jpeg', 'png', 'webp'].includes(fromUrl)) {
+    return fromUrl === 'jpeg' ? 'jpg' : fromUrl
+  }
+
+  return 'jpg'
+}
+
 export default function NewPostPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { currentProject } = useProjectStore()
   const createPost = useCreatePost(currentProject?.id)
   const { processedImages, isProcessing, processFiles, removeImage, clearImages, reorderImages, reprocessImage } =
     useImageProcessor()
+  const prefilledState = (location.state as NewPostLocationState | null) ?? null
+  const consumedPrefillKeyRef = useRef<string | null>(null)
 
   // Form state
-  const [postType, setPostType] = useState<PostType>('POST')
+  const [postType, setPostType] = useState<PostType>(prefilledState?.postType ?? 'POST')
   const [caption, setCaption] = useState('')
   const [scheduleType, setScheduleType] = useState<ScheduleType>('SCHEDULED')
   const [scheduledDatetime, setScheduledDatetime] = useState<string>('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [cropEditingIndex, setCropEditingIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    const imageUrl = prefilledState?.imageUrl
+    const targetPostType = prefilledState?.postType ?? 'POST'
+    if (!imageUrl) {
+      return
+    }
+
+    const prefillKey = `${targetPostType}:${imageUrl}`
+    if (consumedPrefillKeyRef.current === prefillKey) {
+      return
+    }
+
+    consumedPrefillKeyRef.current = prefillKey
+
+    let cancelled = false
+
+    const loadPrefilledImage = async () => {
+      try {
+        setPostType(targetPostType)
+        clearImages()
+
+        const response = await window.electronAPI.downloadBlob(imageUrl)
+        if (!response.ok || !response.buffer) {
+          throw new Error(response.error || 'Falha ao carregar a arte selecionada.')
+        }
+
+        const contentType = response.contentType || 'image/jpeg'
+        const extension = inferFileExtension(contentType, imageUrl)
+        const file = new File([response.buffer], `criativo-story.${extension}`, {
+          type: contentType,
+        })
+
+        await processFiles([file], targetPostType)
+
+        if (cancelled) {
+          return
+        }
+
+        navigate(location.pathname, { replace: true, state: null })
+        toast.success('Arte carregada no agendador como story.')
+      } catch (error) {
+        consumedPrefillKeyRef.current = null
+        if (!cancelled) {
+          toast.error(
+            error instanceof Error ? error.message : 'Erro ao carregar a arte selecionada.',
+          )
+        }
+      }
+    }
+
+    void loadPrefilledImage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [clearImages, location.pathname, navigate, prefilledState, processFiles])
 
   // No project selected
   if (!currentProject) {
