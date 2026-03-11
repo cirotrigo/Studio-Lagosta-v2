@@ -9,6 +9,12 @@ export interface Project {
   instagramUsername: string | null
   postingProvider: string | null
   zapierWebhookUrl: string | null
+  googleDriveFolderId?: string | null
+  googleDriveFolderName?: string | null
+  googleDriveImagesFolderId?: string | null
+  googleDriveImagesFolderName?: string | null
+  googleDriveVideosFolderId?: string | null
+  googleDriveVideosFolderName?: string | null
   Logo?: Array<{ fileUrl: string }>
 }
 

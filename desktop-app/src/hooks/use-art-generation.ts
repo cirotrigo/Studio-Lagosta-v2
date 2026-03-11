@@ -90,7 +90,10 @@ export interface DrivePhoto {
   id: string
   name: string
   mimeType: string
+  kind?: 'file' | 'folder'
+  thumbnailLink?: string
   thumbnailUrl?: string
+  webViewLink?: string
   webContentLink?: string
 }
 

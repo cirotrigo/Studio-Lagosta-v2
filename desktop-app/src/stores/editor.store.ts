@@ -172,7 +172,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         (document) =>
           updateCurrentPageDocument(document, (page) => ({
             ...page,
-            layers: [...page.layers, layer],
+            layers:
+              layer.type === 'image' && layer.role === 'background'
+                ? [layer, ...page.layers]
+                : [...page.layers, layer],
           })),
         true,
       ),

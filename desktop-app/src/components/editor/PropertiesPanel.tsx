@@ -3,6 +3,7 @@ import { useMemo } from 'react'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { useProjectColors } from '@/hooks/use-project-colors'
 import { useProjectLogos } from '@/hooks/use-project-logos'
+import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import { normalizeTextSafeArea } from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import { useProjectStore } from '@/stores/project.store'
@@ -267,6 +268,7 @@ export function PropertiesPanel() {
       ? selectedLayer
       : null
 
+  const selectedImageLayer = selectedLayer?.type === 'image' ? selectedLayer : null
   const selectedLogoLayer = selectedLayer?.type === 'logo' ? selectedLayer : null
   const logoOptions = useMemo(() => {
     const options = projectLogos?.map((logo) => ({
@@ -283,6 +285,33 @@ export function PropertiesPanel() {
 
     return [{ label: 'Selecionar logo...', value: '' }, ...options]
   }, [projectLogos, selectedLogoLayer?.src])
+  const selectedImagePhoto = selectedImageLayer?.src
+    ? {
+        url: selectedImageLayer.src,
+        source: 'upload',
+      }
+    : null
+
+  const applyImageLayerToCanvas = (nextSrc?: string) => {
+    if (!selectedImageLayer) {
+      return
+    }
+
+    updateLayer(selectedImageLayer.id, (layer) =>
+      layer.type === 'image'
+        ? {
+            ...layer,
+            src: nextSrc ?? layer.src,
+            x: 0,
+            y: 0,
+            width: currentPage.width,
+            height: currentPage.height,
+            fit: 'cover',
+            role: 'background',
+          }
+        : layer,
+    )
+  }
 
   return (
     <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card/60">
@@ -683,44 +712,91 @@ export function PropertiesPanel() {
                   value={selectedLayer.src}
                   onChange={(value) =>
                     updateLayer(selectedLayer.id, (layer) =>
-                      layer.type === 'image' || layer.type === 'logo' || layer.type === 'icon'
-                        ? { ...layer, src: value }
+                      layer.type === 'image'
+                        ? {
+                            ...layer,
+                            src: value,
+                            x: 0,
+                            y: 0,
+                            width: currentPage.width,
+                            height: currentPage.height,
+                            fit: 'cover',
+                            role: 'background',
+                          }
+                        : layer.type === 'logo' || layer.type === 'icon'
+                          ? { ...layer, src: value }
                         : layer,
                     )
                   }
                 />
 
                 {selectedLayer.type === 'image' ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <SelectField<'cover' | 'contain' | 'fill'>
-                      label="Fit"
-                      value={selectedLayer.fit ?? 'cover'}
+                  <>
+                    {currentProject ? (
+                      <div className="rounded-2xl border border-border bg-background/30 p-3">
+                        <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                          Substituir imagem
+                        </p>
+                        <PhotoSelector
+                          projectId={currentProject.id}
+                          selectedPhoto={selectedImagePhoto}
+                          onPhotoChange={(photo) => {
+                            if (!photo?.url) {
+                              updateLayer(selectedLayer.id, (layer) =>
+                                layer.type === 'image' ? { ...layer, src: '' } : layer,
+                              )
+                              return
+                            }
+
+                            applyImageLayerToCanvas(photo.url)
+                          }}
+                          allowedTabs={['drive', 'upload']}
+                        />
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => applyImageLayerToCanvas()}
+                        className="h-10 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
+                      >
+                        Ajustar ao canvas
+                      </button>
+                      <SelectField<'cover' | 'contain' | 'fill'>
+                        label="Fit"
+                        value={selectedLayer.fit ?? 'cover'}
+                        onChange={(value) =>
+                          updateLayer(selectedLayer.id, (layer) =>
+                            layer.type === 'image'
+                              ? { ...layer, fit: value }
+                              : layer,
+                          )
+                        }
+                        options={[
+                          { label: 'Cover', value: 'cover' },
+                          { label: 'Contain', value: 'contain' },
+                          { label: 'Fill', value: 'fill' },
+                        ]}
+                      />
+                    </div>
+
+                    <SelectField<'background' | 'content'>
+                      label="Modo da imagem"
+                      value={selectedLayer.role === 'background' ? 'background' : 'content'}
                       onChange={(value) =>
                         updateLayer(selectedLayer.id, (layer) =>
                           layer.type === 'image'
-                            ? { ...layer, fit: value }
+                            ? { ...layer, role: value === 'background' ? 'background' : 'content' }
                             : layer,
                         )
                       }
                       options={[
-                        { label: 'Cover', value: 'cover' },
-                        { label: 'Contain', value: 'contain' },
-                        { label: 'Fill', value: 'fill' },
+                        { label: 'Fundo do canvas', value: 'background' },
+                        { label: 'Layer comum', value: 'content' },
                       ]}
                     />
-                    <ToggleField
-                      label="Layer de fundo"
-                      description="Remove borda/raio e marca a imagem como fundo de página."
-                      checked={selectedLayer.role === 'background'}
-                      onChange={(checked) =>
-                        updateLayer(selectedLayer.id, (layer) =>
-                          layer.type === 'image'
-                            ? { ...layer, role: checked ? 'background' : 'content' }
-                            : layer,
-                        )
-                      }
-                    />
-                  </div>
+                  </>
                 ) : null}
               </>
             ) : null}
