@@ -3,6 +3,7 @@ import { createImageLayer, createShapeLayer, createTextLayer } from '@/lib/edito
 import { LayersPanel } from './LayersPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { EditorStage } from './EditorStage'
+import { PagesBar } from './PagesBar'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import { useHistoryStore } from '@/stores/history.store'
 
@@ -170,6 +171,8 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
         <EditorStage />
         <PropertiesPanel />
       </div>
+
+      <PagesBar />
     </div>
   )
 }

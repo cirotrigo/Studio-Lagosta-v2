@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { cloneKonvaDocument, getCurrentPage } from '@/lib/editor/document'
 import type { KonvaPage, KonvaTemplateDocument, Layer } from '@/types/template'
 import { useHistoryStore } from './history.store'
-import { usePagesStore } from './pages.store'
 
 interface ViewportState {
   x: number
@@ -20,6 +19,7 @@ interface EditorState {
   zoom: number
   pan: ViewportState
   setDocument: (document: KonvaTemplateDocument, options?: SetDocumentOptions) => void
+  updateDocument: (updater: (document: KonvaTemplateDocument) => KonvaTemplateDocument, recordHistory?: boolean) => void
   setDocumentName: (name: string) => void
   replaceDocumentWithoutHistory: (document: KonvaTemplateDocument, preserveViewport?: boolean) => void
   updateCurrentPage: (updater: (page: KonvaPage) => KonvaPage, recordHistory?: boolean) => void
@@ -95,7 +95,6 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (options?.resetHistory !== false) {
       useHistoryStore.getState().reset(nextDocument)
     }
-    usePagesStore.getState().reset()
 
     set((state) => ({
       document: nextDocument,
@@ -104,6 +103,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       pan: options?.preserveViewport ? state.pan : { x: 0, y: 0 },
     }))
   },
+
+  updateDocument: (updater, recordHistory = true) =>
+    set((state) => ({
+      document: applyDocumentMutation(state.document, updater, recordHistory),
+    })),
 
   setDocumentName: (name) =>
     set((state) => ({

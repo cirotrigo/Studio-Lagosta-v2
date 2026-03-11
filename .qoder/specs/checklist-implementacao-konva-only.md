@@ -86,13 +86,13 @@ Arquivos:
 - `desktop-app/src/lib/editor/formats.ts`
 
 Tarefas:
-- [ ] Add/remove/duplicar página.
-- [ ] Reorder por drag.
-- [ ] Presets de formato Instagram.
-- [ ] Geração de thumbnail por página.
+- [x] Add/remove/duplicar página.
+- [x] Reorder por drag.
+- [x] Presets de formato Instagram.
+- [x] Geração de thumbnail por página.
 
 DoD:
-- [ ] Story, Feed e Square com dimensões corretas.
+- [x] Story, Feed e Square com dimensões corretas.
 
 ---
 

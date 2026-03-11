@@ -37,7 +37,7 @@ Exemplos:
 | 1 | Contratos e Schema | ✅ Concluído | 36e29e9 | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 2 | Storage JSON + IPC | ✅ Concluído | feat(konva-fase-2): implementa storage json atomico e ipc de templates | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 3 | Editor Konva Core | ✅ Concluído | feat(konva-fase-3): implementa editor konva core no desktop-app | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 4 | Multi-page + Formatos | ⬜ Não iniciado | - | - | - |
+| 4 | Multi-page + Formatos | ✅ Concluído | feat(konva-fase-4): implementa multipage e formatos instagram | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 5 | Prompt-only + RAG | ⬜ Não iniciado | - | - | - |
 | 6 | Fundo IA + Referências | ⬜ Não iniciado | - | - | - |
 | 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
@@ -135,12 +135,26 @@ Legenda status:
 - Próximo passo: iniciar Fase 4 com `PagesBar`, presets de formato Instagram, navegação multipágina, reordenação e thumbnails básicas.
 
 ### Fase 4 — Multi-page + Formatos
-- Escopo fechado:
+- Escopo fechado: barra de páginas integrada ao editor Konva com navegação, criação, duplicação, remoção, reordenação por drag-and-drop, presets globais de formato Instagram e thumbnails básicas por página no renderer.
 - Decisões:
+  - concentrar operações multipágina em `pages.store.ts`, desacoplando histórico/documento principal do runtime de thumbnails.
+  - aplicar troca de formato em todo o documento com resize proporcional de páginas e layers para preservar integridade visual do schema v2.
+  - gerar thumbnails localmente no renderer via Canvas 2D para manter o fluxo estável sem depender de export IPC nesta fase.
+  - manter `currentPageId` no documento como fonte oficial do estado de navegação.
 - Arquivos alterados:
+  - `desktop-app/src/components/editor/EditorShell.tsx`
+  - `desktop-app/src/components/editor/PagesBar.tsx`
+  - `desktop-app/src/lib/editor/thumbnail.ts`
+  - `desktop-app/src/stores/editor.store.ts`
+  - `desktop-app/src/stores/pages.store.ts`
+  - `desktop-app/src/pages/EditorPage.tsx`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-4): implementa multipage e formatos instagram`
+- Próximo passo: parar nesta conversa e abrir a próxima a partir da Fase 5 (Prompt-only + RAG).
 
 ### Fase 5 — Prompt-only + RAG
 - Escopo fechado:
@@ -196,6 +210,6 @@ Legenda status:
 - 
 
 ## Observações de handoff (próxima conversa)
-- Estado atual: Fases 1, 2 e 3 concluídas e validadas com typecheck web/electron.
-- Último commit estável: feat(konva-fase-3): implementa editor konva core no desktop-app
-- Próxima fase recomendada: Fase 4 — Multi-page + Formatos.
+- Estado atual: Fases 1, 2, 3 e 4 concluídas e validadas com typecheck web/electron.
+- Último commit estável: feat(konva-fase-4): implementa multipage e formatos instagram
+- Próxima fase recomendada: Fase 5 — Prompt-only + RAG.

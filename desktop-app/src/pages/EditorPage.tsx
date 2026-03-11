@@ -6,6 +6,7 @@ import { EditorShell } from '@/components/editor/EditorShell'
 import { createStarterDocument, cloneKonvaDocument } from '@/lib/editor/document'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
+import { usePagesStore } from '@/stores/pages.store'
 import type { KonvaTemplateDocument } from '@/types/template'
 
 export default function EditorPage() {
@@ -14,6 +15,7 @@ export default function EditorPage() {
   const setDocument = useEditorStore((state) => state.setDocument)
   const setDocumentName = useEditorStore((state) => state.setDocumentName)
   const replaceDocumentWithoutHistory = useEditorStore((state) => state.replaceDocumentWithoutHistory)
+  const resetPagesState = usePagesStore((state) => state.reset)
 
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
@@ -48,6 +50,7 @@ export default function EditorPage() {
 
         if (!list.length) {
           const starter = createStarterDocument(currentProject)
+          resetPagesState()
           setDocument(starter)
           setSelectedTemplateId(starter.id)
           return
@@ -58,6 +61,7 @@ export default function EditorPage() {
           (selectedTemplateId &&
             list.find((item: KonvaTemplateDocument) => item.id === selectedTemplateId)) ??
           firstTemplate
+        resetPagesState()
         setDocument(nextTemplate)
         setSelectedTemplateId(nextTemplate.id)
       } catch (loadError) {
@@ -77,7 +81,7 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [currentProject, selectedTemplateId, setDocument])
+  }, [currentProject, setDocument, resetPagesState])
 
   const handleTemplateSelect = async (templateId: string) => {
     if (!currentProject) {
@@ -95,6 +99,7 @@ export default function EditorPage() {
         return
       }
 
+      resetPagesState()
       setDocument(template)
       setSelectedTemplateId(template.id)
     } catch (selectError) {
@@ -105,6 +110,7 @@ export default function EditorPage() {
 
   const handleCreateTemplate = () => {
     const starter = createStarterDocument(currentProject, document?.format ?? 'STORY')
+    resetPagesState()
     setDocument(starter)
     setSelectedTemplateId(starter.id)
     toast.success('Novo documento Konva criado localmente.')
