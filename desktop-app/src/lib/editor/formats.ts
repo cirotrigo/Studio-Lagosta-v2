@@ -66,6 +66,12 @@ export function resizeLayerForFormat(layer: Layer, scaleX: number, scaleY: numbe
             fontSize: textLayer.textStyle.fontSize
               ? Math.max(10, Math.round(textLayer.textStyle.fontSize * Math.min(scaleX, scaleY)))
               : textLayer.textStyle.fontSize,
+            minFontSize: textLayer.textStyle.minFontSize
+              ? Math.max(8, Math.round(textLayer.textStyle.minFontSize * Math.min(scaleX, scaleY)))
+              : textLayer.textStyle.minFontSize,
+            maxFontSize: textLayer.textStyle.maxFontSize
+              ? Math.max(8, Math.round(textLayer.textStyle.maxFontSize * Math.min(scaleX, scaleY)))
+              : textLayer.textStyle.maxFontSize,
             letterSpacing: textLayer.textStyle.letterSpacing
               ? Math.round(textLayer.textStyle.letterSpacing * scaleX * 100) / 100
               : textLayer.textStyle.letterSpacing,

@@ -22,6 +22,8 @@ export function PagesBar() {
   const applyFormat = usePagesStore((state) => state.applyFormat)
 
   const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
+  const compactButtonClass =
+    'h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40'
 
   const pages = useMemo(() => (document ? sortPages(document.design.pages) : []), [document])
 
@@ -60,18 +62,18 @@ export function PagesBar() {
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card/60 px-4 py-4">
-      <div className="mb-4 flex items-center justify-between gap-4">
+    <div className="shrink-0 rounded-2xl border border-border bg-card/60 px-4 py-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-sm font-semibold text-text">Páginas e formatos</h2>
           <p className="mt-1 text-xs text-text-muted">Carrossel, variações e presets Instagram no mesmo documento.</p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <select
             value={document.format}
             onChange={(event) => applyFormat(event.target.value as ArtFormat)}
-            className="rounded-xl border border-border bg-input px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
+            className="h-9 min-w-[240px] rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
           >
             {Object.values(ART_FORMAT_PRESETS).map((preset) => (
               <option key={preset.format} value={preset.format}>
@@ -82,7 +84,7 @@ export function PagesBar() {
           <button
             type="button"
             onClick={() => addPage()}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
+            className={compactButtonClass}
           >
             <span className="inline-flex items-center gap-2">
               <Plus size={16} />
@@ -92,7 +94,7 @@ export function PagesBar() {
           <button
             type="button"
             onClick={() => duplicatePage(currentPage.id)}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
+            className={compactButtonClass}
           >
             <span className="inline-flex items-center gap-2">
               <Copy size={16} />
@@ -103,7 +105,7 @@ export function PagesBar() {
             type="button"
             disabled={pages.length <= 1}
             onClick={() => removePage(currentPage.id)}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-error/40 hover:text-error disabled:opacity-40"
+            className="h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-error/40 hover:text-error disabled:opacity-40"
           >
             <span className="inline-flex items-center gap-2">
               <Trash2 size={16} />
@@ -113,7 +115,7 @@ export function PagesBar() {
         </div>
       </div>
 
-      <div className="flex gap-3 overflow-x-auto pb-1">
+      <div className="flex gap-3 overflow-x-auto pb-2">
         {pages.map((page) => {
           const thumbnail = thumbnails[page.id]
           const isActive = currentPage.id === page.id
@@ -134,7 +136,7 @@ export function PagesBar() {
               }}
               onClick={() => setCurrentPageId(page.id)}
               className={cn(
-                'group min-w-[190px] rounded-2xl border p-3 text-left transition-colors',
+                'group min-w-[172px] rounded-2xl border p-3 text-left transition-colors',
                 isActive
                   ? 'border-primary bg-primary/10'
                   : 'border-border bg-background/50 hover:border-primary/35',
@@ -142,9 +144,9 @@ export function PagesBar() {
             >
               <div className="overflow-hidden rounded-xl border border-border bg-[#0f172a]">
                 {thumbnail ? (
-                  <img src={thumbnail} alt={page.name} className="h-[210px] w-full object-cover" />
+                  <img src={thumbnail} alt={page.name} className="h-[192px] w-full object-cover" />
                 ) : (
-                  <div className="flex h-[210px] items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-amber-600/50">
+                  <div className="flex h-[192px] items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-amber-600/50">
                     <span className="text-xs uppercase tracking-[0.2em] text-white/80">Gerando thumb</span>
                   </div>
                 )}

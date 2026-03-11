@@ -4,6 +4,9 @@ import { Layer as KonvaLayer, Line, Rect, Stage, Transformer, Group } from 'reac
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { LayerFactory } from './LayerFactory'
 import { computeSmartGuides, type GuideLine } from '@/lib/editor/smart-guides'
+import {
+  convertAbsoluteTextPositionToOffsets,
+} from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import type { Layer } from '@/types/template'
 
@@ -247,11 +250,30 @@ export function EditorStage() {
 
   const handleLayerDragEnd = (event: KonvaEventObject<DragEvent>, layer: Layer) => {
     setGuides([])
-    updateLayer(layer.id, (currentLayer) => ({
-      ...currentLayer,
-      x: Math.round(event.target.x()),
-      y: Math.round(event.target.y()),
-    }))
+    updateLayer(layer.id, (currentLayer) => {
+      if ((currentLayer.type === 'text' || currentLayer.type === 'rich-text') && currentLayer.textStyle?.safeArea?.enabled) {
+        const offsets = convertAbsoluteTextPositionToOffsets(
+          currentPage,
+          currentLayer,
+          event.target.x(),
+          event.target.y(),
+          currentLayer.width,
+          currentLayer.height,
+        )
+
+        return {
+          ...currentLayer,
+          x: offsets.x,
+          y: offsets.y,
+        }
+      }
+
+      return {
+        ...currentLayer,
+        x: Math.round(event.target.x()),
+        y: Math.round(event.target.y()),
+      }
+    })
   }
 
   const handleDirectEdit = (layer: Layer) => {
@@ -300,18 +322,48 @@ export function EditorStage() {
       const nextWidth = Math.max(20, Math.round((layer.width ?? node.width()) * scaleX))
       const nextHeight = Math.max(20, Math.round((layer.height ?? node.height()) * scaleY))
       const partial: Record<string, unknown> = {
-        x: Math.round(node.x()),
-        y: Math.round(node.y()),
         width: nextWidth,
         height: nextHeight,
         rotation: Math.round(node.rotation()),
       }
 
       if ((layer.type === 'text' || layer.type === 'rich-text') && layer.textStyle?.fontSize) {
+        const nextFontSize = Math.max(12, Math.round(layer.textStyle.fontSize * Math.max(scaleX, scaleY)))
         partial.textStyle = {
           ...layer.textStyle,
-          fontSize: Math.max(12, Math.round(layer.textStyle.fontSize * Math.max(scaleX, scaleY))),
+          fontSize: nextFontSize,
+          minFontSize: layer.textStyle.minFontSize
+            ? Math.max(8, Math.round(layer.textStyle.minFontSize * Math.max(scaleX, scaleY)))
+            : layer.textStyle.minFontSize,
+          maxFontSize: layer.textStyle.maxFontSize
+            ? Math.max(8, Math.round(layer.textStyle.maxFontSize * Math.max(scaleX, scaleY)))
+            : layer.textStyle.maxFontSize,
         }
+
+        if (layer.textStyle?.safeArea?.enabled) {
+          const offsets = convertAbsoluteTextPositionToOffsets(
+            currentPage,
+            {
+              ...layer,
+              width: nextWidth,
+              height: nextHeight,
+              textStyle: partial.textStyle as typeof layer.textStyle,
+            },
+            node.x(),
+            node.y(),
+            nextWidth,
+            nextHeight,
+          )
+
+          partial.x = offsets.x
+          partial.y = offsets.y
+        } else {
+          partial.x = Math.round(node.x())
+          partial.y = Math.round(node.y())
+        }
+      } else {
+        partial.x = Math.round(node.x())
+        partial.y = Math.round(node.y())
       }
 
       nextById.set(layerId, partial as Partial<Layer>)
@@ -386,6 +438,7 @@ export function EditorStage() {
             {orderedLayers.map((layer) => (
               <LayerFactory
                 key={layer.id}
+                page={currentPage}
                 layer={layer}
                 isSelected={selectedLayerIds.includes(layer.id)}
                 onSelect={handleLayerSelect}

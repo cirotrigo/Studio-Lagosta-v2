@@ -19,9 +19,10 @@ interface PhotoSelectorProps {
   projectId: number
   selectedPhoto: SelectedPhotoRef | null
   onPhotoChange: (photo: SelectedPhotoRef | null) => void
+  allowedTabs?: PhotoTab[]
 }
 
-type PhotoTab = 'drive' | 'ai' | 'upload'
+export type PhotoTab = 'drive' | 'ai' | 'upload'
 
 const TABS: { id: PhotoTab; label: string; icon: LucideIcon }[] = [
   { id: 'drive', label: 'Drive', icon: FolderOpen },
@@ -29,14 +30,26 @@ const TABS: { id: PhotoTab; label: string; icon: LucideIcon }[] = [
   { id: 'upload', label: 'Upload', icon: Upload },
 ]
 
-export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange }: PhotoSelectorProps) {
-  const [activeTab, setActiveTab] = useState<PhotoTab>('drive')
+export default function PhotoSelector({
+  projectId,
+  selectedPhoto,
+  onPhotoChange,
+  allowedTabs = ['drive', 'ai', 'upload'],
+}: PhotoSelectorProps) {
+  const [activeTab, setActiveTab] = useState<PhotoTab>(allowedTabs[0] ?? 'drive')
   const [uploadPreview, setUploadPreview] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [selectedNaturalAspect, setSelectedNaturalAspect] = useState<string | null>(null)
 
   const { data: driveData, isLoading: isLoadingDrive } = useDrivePhotos(projectId)
   const { data: aiImages, isLoading: isLoadingAI } = useAIImages(projectId)
+  const visibleTabs = TABS.filter((tab) => allowedTabs.includes(tab.id))
+
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab(allowedTabs[0] ?? 'drive')
+    }
+  }, [activeTab, allowedTabs])
 
   const resolveAspectRatio = useCallback((photo: SelectedPhotoRef | null): string => {
     if (!photo) return '4 / 5'
@@ -219,7 +232,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
     <div className="space-y-3">
       {/* Tab Bar */}
       <div className="flex gap-1 rounded-lg border border-border bg-input p-1">
-        {TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
@@ -238,7 +251,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
 
       {/* Tab Content */}
       <div className="min-h-[200px]">
-        {activeTab === 'drive' && (
+        {activeTab === 'drive' && allowedTabs.includes('drive') && (
           <DriveTab
             photos={driveData?.items || []}
             isLoading={isLoadingDrive}
@@ -246,7 +259,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
             onSelect={handleDriveSelect}
           />
         )}
-        {activeTab === 'ai' && (
+        {activeTab === 'ai' && allowedTabs.includes('ai') && (
           <AITab
             images={aiImages || []}
             isLoading={isLoadingAI}
@@ -254,7 +267,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
             resolveAspectRatioValue={resolveAspectRatioValue}
           />
         )}
-        {activeTab === 'upload' && (
+        {activeTab === 'upload' && allowedTabs.includes('upload') && (
           <UploadTab
             onFileSelect={handleFileUpload}
           />

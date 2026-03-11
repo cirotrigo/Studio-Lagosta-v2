@@ -96,6 +96,35 @@ DoD:
 
 ---
 
+## Fase 4.1 — Refino de texto + geração dentro do editor (2-3 dias)
+
+Arquivos:
+- `desktop-app/src/components/editor/PropertiesPanel.tsx`
+- `desktop-app/src/components/editor/EditorShell.tsx`
+- `desktop-app/src/components/editor/EditorGenerateArtModal.tsx`
+- `desktop-app/src/components/editor/EditorGenerationQueue.tsx`
+- `desktop-app/src/stores/editor-generation.store.ts`
+- `desktop-app/src/lib/editor/text-layout.ts`
+- `desktop-app/src/lib/editor/render-page.ts`
+- `desktop-app/src/lib/editor/generation.ts`
+
+Tarefas:
+- [x] Persistir microtipografia no layer de texto (`lineHeight`, `letterSpacing`, `textTransform`, `maxLines`, `overflowBehavior`, `min/maxFontSize`).
+- [x] Suportar alinhamento horizontal/vertical e ancoragem por safe-area no editor Konva.
+- [x] Priorizar paleta de cores do projeto no seletor de cor de texto.
+- [x] Permitir seleção de logos cadastradas no projeto para layers de logo.
+- [x] Adicionar botão `Gerar Arte` ao lado de `Salvar template`.
+- [x] Implementar modal com seleção de páginas, página atual pré-selecionada e variações `1|2|4`.
+- [x] Reaproveitar fontes de imagem existentes do projeto (`Upload local` + `Drive`).
+- [x] Criar fila assíncrona local no editor sem travar o canvas.
+- [x] Aplicar imagem de fundo em `cover`, ocupando o canvas inteiro da página alvo.
+
+DoD:
+- [x] Microajustes de texto salvam no JSON e refletem no preview.
+- [x] Geração por páginas selecionadas entra em fila e produz variações locais acessíveis no editor.
+
+---
+
 ## Fase 5 — Prompt-only pipeline (1 semana)
 
 Arquivos:

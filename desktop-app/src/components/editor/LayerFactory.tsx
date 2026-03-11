@@ -11,48 +11,18 @@ import {
 } from 'react-konva'
 import useImage from 'use-image'
 import type { KonvaEventObject } from 'konva/lib/Node'
-import type { Layer, KonvaShapeLayer } from '@/types/template'
+import { resolveImageCrop } from '@/lib/editor/image-fit'
+import { resolveTextRenderState } from '@/lib/editor/text-layout'
+import type { KonvaPage, Layer, KonvaShapeLayer } from '@/types/template'
 
 interface LayerFactoryProps {
+  page: KonvaPage
   layer: Layer
   isSelected: boolean
   onSelect: (event: KonvaEventObject<MouseEvent | TouchEvent>, layerId: string) => void
   onDragMove: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
   onDragEnd: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
   onDirectEdit: (layer: Layer) => void
-}
-
-function calculateCrop(
-  imageWidth: number,
-  imageHeight: number,
-  targetWidth: number,
-  targetHeight: number,
-  fit: 'cover' | 'contain' | 'fill' = 'cover',
-) {
-  if (fit !== 'cover') {
-    return undefined
-  }
-
-  const imageRatio = imageWidth / imageHeight
-  const targetRatio = targetWidth / targetHeight
-
-  if (imageRatio > targetRatio) {
-    const cropWidth = imageHeight * targetRatio
-    return {
-      x: (imageWidth - cropWidth) / 2,
-      y: 0,
-      width: cropWidth,
-      height: imageHeight,
-    }
-  }
-
-  const cropHeight = imageWidth / targetRatio
-  return {
-    x: 0,
-    y: (imageHeight - cropHeight) / 2,
-    width: imageWidth,
-    height: cropHeight,
-  }
 }
 
 function calculateGradientPoints(width: number, height: number, angle = 180) {
@@ -166,6 +136,7 @@ function renderShape(layer: KonvaShapeLayer) {
 }
 
 export function LayerFactory({
+  page,
   layer,
   isSelected,
   onSelect,
@@ -181,8 +152,6 @@ export function LayerFactory({
   const commonProps = useMemo(
     () => ({
       id: layer.id,
-      x: layer.x,
-      y: layer.y,
       rotation: layer.rotation ?? 0,
       opacity: layer.opacity ?? 1,
       visible: layer.visible !== false,
@@ -198,14 +167,18 @@ export function LayerFactory({
   )
 
   if (layer.type === 'text' || layer.type === 'rich-text') {
+    const renderState = resolveTextRenderState(page, layer)
+
     return (
       <Text
         {...commonProps}
-        width={layer.width}
-        height={layer.height}
-        text={layer.text}
+        x={renderState.x}
+        y={renderState.y}
+        width={renderState.width}
+        height={renderState.height}
+        text={renderState.text}
         fontFamily={layer.textStyle?.fontFamily ?? 'Inter'}
-        fontSize={layer.textStyle?.fontSize ?? 48}
+        fontSize={renderState.fontSize}
         fontStyle={
           `${layer.textStyle?.fontWeight ?? ''} ${layer.textStyle?.fontStyle ?? ''}`.trim() || 'normal'
         }
@@ -226,26 +199,28 @@ export function LayerFactory({
     const height = layer.height ?? 220
     const crop =
       image && layer.type === 'image'
-        ? calculateCrop(image.width, image.height, width, height, layer.fit ?? 'cover')
+        ? resolveImageCrop(layer, image.width, image.height, width, height)
         : undefined
+    const cornerRadius = layer.role === 'background' ? 0 : layer.type === 'image' ? 18 : 0
+    const showBorder = layer.role !== 'background' || isSelected
 
     return (
-      <Group {...commonProps}>
+      <Group {...commonProps} x={layer.x} y={layer.y}>
         <Rect
           width={width}
           height={height}
-          cornerRadius={18}
+          cornerRadius={cornerRadius}
           fill={image ? undefined : '#E5E7EB'}
-          stroke={isSelected ? '#F59E0B' : '#CBD5E1'}
-          strokeWidth={isSelected ? 3 : 1}
-          dash={image ? undefined : [8, 8]}
+          stroke={showBorder ? (isSelected ? '#F59E0B' : '#CBD5E1') : undefined}
+          strokeWidth={showBorder ? (isSelected ? 3 : 1) : 0}
+          dash={showBorder && !image ? [8, 8] : undefined}
         />
         {image ? (
           <KonvaImage
             image={image}
             width={width}
             height={height}
-            cornerRadius={18}
+            cornerRadius={cornerRadius}
             crop={crop}
           />
         ) : (
@@ -276,6 +251,8 @@ export function LayerFactory({
     return (
       <Rect
         {...commonProps}
+        x={layer.x}
+        y={layer.y}
         width={width}
         height={height}
         cornerRadius={18}
@@ -290,7 +267,7 @@ export function LayerFactory({
 
   if (layer.type === 'shape') {
     return (
-      <Group {...commonProps}>
+      <Group {...commonProps} x={layer.x} y={layer.y}>
         {renderShape(layer)}
         {isSelected ? (
           <Rect
@@ -307,7 +284,7 @@ export function LayerFactory({
   }
 
   return (
-    <Group {...commonProps}>
+    <Group {...commonProps} x={layer.x} y={layer.y}>
       <Rect
         width={layer.width ?? 240}
         height={layer.height ?? 120}

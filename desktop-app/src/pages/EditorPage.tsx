@@ -2,10 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { AlertTriangle, FilePlus2, Layers3 } from 'lucide-react'
 import { toast } from 'sonner'
+import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
+import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
-import { createStarterDocument, cloneKonvaDocument } from '@/lib/editor/document'
+import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
+import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
+import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { usePagesStore } from '@/stores/pages.store'
 import type { KonvaTemplateDocument } from '@/types/template'
 
@@ -15,17 +19,26 @@ export default function EditorPage() {
   const setDocument = useEditorStore((state) => state.setDocument)
   const setDocumentName = useEditorStore((state) => state.setDocumentName)
   const replaceDocumentWithoutHistory = useEditorStore((state) => state.replaceDocumentWithoutHistory)
+  const thumbnails = usePagesStore((state) => state.thumbnails)
   const resetPagesState = usePagesStore((state) => state.reset)
+  const addGenerationJobs = useEditorGenerationStore((state) => state.addJobs)
 
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+
+  useEditorGenerationQueue()
 
   const currentTemplateOption = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templates],
+  )
+  const orderedPages = useMemo(
+    () => (document ? sortPages(document.design.pages) : []),
+    [document],
   )
 
   useEffect(() => {
@@ -143,6 +156,36 @@ export default function EditorPage() {
     }
   }
 
+  const handleQueueGeneration = (params: {
+    selectedPageIds: string[]
+    selectedPhoto: { url: string; source: string }
+    variations: 1 | 2 | 4
+  }) => {
+    if (!document) {
+      return
+    }
+
+    const selectedPages = orderedPages.filter((page) => params.selectedPageIds.includes(page.id))
+    if (!selectedPages.length) {
+      toast.error('Selecione pelo menos uma página para gerar.')
+      return
+    }
+
+    addGenerationJobs(
+      selectedPages.map((page) => ({
+        pageId: page.id,
+        pageName: page.name,
+        format: document.format,
+        photoUrl: params.selectedPhoto.url,
+        photoSource: params.selectedPhoto.source,
+        variations: params.variations,
+        pageSnapshot: cloneKonvaDocument(page),
+      })),
+    )
+
+    toast.info(`${selectedPages.length} página(s) adicionada(s) à fila do editor.`)
+  }
+
   if (!currentProject) {
     return (
       <div className="flex h-full flex-col items-center justify-center p-8">
@@ -186,57 +229,76 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 p-4">
-      <div className="flex items-center justify-between rounded-2xl border border-border bg-card/60 px-4 py-4">
-        <div>
-          <h1 className="text-xl font-semibold text-text">Editor Konva</h1>
-          <p className="mt-1 text-sm text-text-muted">
-            Stage real com JSON v2, propriedades, layers e persistência local via IPC.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <select
-            value={currentTemplateOption?.id ?? selectedTemplateId}
-            onChange={(event) => void handleTemplateSelect(event.target.value)}
-            className="min-w-72 rounded-xl border border-border bg-input px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
-          >
-            {(templates.length ? templates : document ? [document] : []).map((template) => (
-              <option key={template.id} value={template.id}>
-                {template.name}
-              </option>
-            ))}
-          </select>
-
-          <button
-            type="button"
-            onClick={handleCreateTemplate}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
-          >
-            <span className="inline-flex items-center gap-2">
-              <FilePlus2 size={16} />
-              Novo template
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {document ? (
-        <>
-          <div className="rounded-2xl border border-border bg-card/60 px-4 py-3">
-            <label className="space-y-1">
-              <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Nome do documento</span>
-              <input
-                type="text"
-                value={document.name}
-                onChange={(event) => setDocumentName(event.target.value)}
-                className="mt-1 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
-              />
-            </label>
+    <div className="h-full min-h-0 overflow-auto">
+      <div className="flex min-h-full min-w-[1260px] flex-col gap-4 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card/60 px-4 py-4">
+          <div>
+            <h1 className="text-xl font-semibold text-text">Editor Konva</h1>
+            <p className="mt-1 text-sm text-text-muted">
+              Stage real com JSON v2, propriedades, layers e persistência local via IPC.
+            </p>
           </div>
 
-          <EditorShell onSave={handleSave} isSaving={isSaving} />
-        </>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={currentTemplateOption?.id ?? selectedTemplateId}
+              onChange={(event) => void handleTemplateSelect(event.target.value)}
+              className="h-10 min-w-[260px] rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+            >
+              {(templates.length ? templates : document ? [document] : []).map((template) => (
+                <option key={template.id} value={template.id}>
+                  {template.name}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={handleCreateTemplate}
+              className="h-10 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
+            >
+              <span className="inline-flex items-center gap-2">
+                <FilePlus2 size={16} />
+                Novo template
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {document ? (
+          <>
+            <div className="shrink-0 rounded-2xl border border-border bg-card/60 px-4 py-3">
+              <label className="space-y-1">
+                <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Nome do documento</span>
+                <input
+                  type="text"
+                  value={document.name}
+                  onChange={(event) => setDocumentName(event.target.value)}
+                  className="mt-1 h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+                />
+              </label>
+            </div>
+
+            <EditorShell
+              onSave={handleSave}
+              onOpenGenerateArt={() => setIsGenerateModalOpen(true)}
+              isSaving={isSaving}
+            />
+            <EditorGenerationQueue />
+          </>
+        ) : null}
+      </div>
+
+      {document && currentProject ? (
+        <EditorGenerateArtModal
+          open={isGenerateModalOpen}
+          onClose={() => setIsGenerateModalOpen(false)}
+          projectId={currentProject.id}
+          pages={orderedPages}
+          currentPageId={document.design.currentPageId}
+          thumbnails={thumbnails}
+          onGenerate={handleQueueGeneration}
+        />
       ) : null}
     </div>
   )

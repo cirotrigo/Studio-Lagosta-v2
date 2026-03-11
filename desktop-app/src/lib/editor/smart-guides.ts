@@ -1,3 +1,4 @@
+import { resolveLayerAbsoluteFrame } from './text-layout'
 import type { KonvaPage } from '@/types/template'
 
 export interface GuideLine {
@@ -24,12 +25,7 @@ function getLayerRect(page: KonvaPage, layerId: string): RectBox | null {
     return null
   }
 
-  return {
-    x: layer.x,
-    y: layer.y,
-    width: layer.width ?? 240,
-    height: layer.height ?? 120,
-  }
+  return resolveLayerAbsoluteFrame(page, layer)
 }
 
 export function computeSmartGuides(

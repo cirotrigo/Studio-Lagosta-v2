@@ -38,6 +38,7 @@ Exemplos:
 | 2 | Storage JSON + IPC | ✅ Concluído | feat(konva-fase-2): implementa storage json atomico e ipc de templates | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 3 | Editor Konva Core | ✅ Concluído | feat(konva-fase-3): implementa editor konva core no desktop-app | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 4 | Multi-page + Formatos | ✅ Concluído | feat(konva-fase-4): implementa multipage e formatos instagram | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
+| 4.1 | Refino de texto + geração no editor | ✅ Concluído | feat(konva-fase-4.1): refino de texto e gerar arte no editor com selecao de paginas | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 5 | Prompt-only + RAG | ⬜ Não iniciado | - | - | - |
 | 6 | Fundo IA + Referências | ⬜ Não iniciado | - | - | - |
 | 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
@@ -155,6 +156,42 @@ Legenda status:
   - `npm --prefix desktop-app run typecheck:electron` ✅
 - Commit: `feat(konva-fase-4): implementa multipage e formatos instagram`
 - Próximo passo: parar nesta conversa e abrir a próxima a partir da Fase 5 (Prompt-only + RAG).
+
+### Fase 4.1 — Refino de texto + geração no editor
+- Escopo fechado: microtipografia persistida no schema Konva, ancoragem por safe-area, paleta/logos do projeto no painel de propriedades e fluxo local de `Gerar Arte` dentro do editor com seleção de páginas, foto do projeto e fila assíncrona.
+- Decisões:
+  - consolidar o cálculo de texto em `text-layout.ts` para manter stage, thumbnail e render local de geração lendo as mesmas regras de overflow/alinhamento.
+  - reaproveitar a integração existente de fotos (`Drive` + `Upload`) e manter a geração desta fase local ao editor, sem puxar o pipeline completo de prompt/RAG da Fase 5.
+  - aplicar a foto escolhida como layer de fundo em `cover`, ocupando toda a página, com variações por crop/foco para evitar faixas e manter o canvas preenchido.
+  - usar hooks específicos para logos e cores do projeto, priorizando assets oficiais do web no painel sem criar fluxo paralelo.
+- Arquivos alterados:
+  - `desktop-app/src/components/editor/EditorShell.tsx`
+  - `desktop-app/src/components/editor/EditorStage.tsx`
+  - `desktop-app/src/components/editor/LayerFactory.tsx`
+  - `desktop-app/src/components/editor/PropertiesPanel.tsx`
+  - `desktop-app/src/components/editor/EditorGenerateArtModal.tsx`
+  - `desktop-app/src/components/editor/EditorGenerationQueue.tsx`
+  - `desktop-app/src/components/project/generate/PhotoSelector.tsx`
+  - `desktop-app/src/pages/EditorPage.tsx`
+  - `desktop-app/src/stores/editor-generation.store.ts`
+  - `desktop-app/src/hooks/use-editor-generation-queue.ts`
+  - `desktop-app/src/hooks/use-project-colors.ts`
+  - `desktop-app/src/hooks/use-project-logos.ts`
+  - `desktop-app/src/lib/editor/text-layout.ts`
+  - `desktop-app/src/lib/editor/image-fit.ts`
+  - `desktop-app/src/lib/editor/render-page.ts`
+  - `desktop-app/src/lib/editor/generation.ts`
+  - `desktop-app/src/lib/editor/formats.ts`
+  - `desktop-app/src/lib/editor/smart-guides.ts`
+  - `desktop-app/src/lib/editor/thumbnail.ts`
+  - `desktop-app/src/types/template.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-4.1): refino de texto e gerar arte no editor com selecao de paginas`
+- Próximo passo: iniciar a Fase 5 com o pipeline prompt-only + RAG usando o modal/fila do editor como ponto de entrada do fluxo automatizado.
 
 ### Fase 5 — Prompt-only + RAG
 - Escopo fechado:

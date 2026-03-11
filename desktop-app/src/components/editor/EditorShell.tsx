@@ -1,4 +1,4 @@
-import { History, RefreshCw, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Square, Trash2 } from 'lucide-react'
+import { History, RefreshCw, Sparkles, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Square, Trash2 } from 'lucide-react'
 import { createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
 import { LayersPanel } from './LayersPanel'
 import { PropertiesPanel } from './PropertiesPanel'
@@ -9,10 +9,11 @@ import { useHistoryStore } from '@/stores/history.store'
 
 interface EditorShellProps {
   onSave: () => Promise<void> | void
+  onOpenGenerateArt: () => void
   isSaving: boolean
 }
 
-export function EditorShell({ onSave, isSaving }: EditorShellProps) {
+export function EditorShell({ onSave, onOpenGenerateArt, isSaving }: EditorShellProps) {
   const document = useEditorStore((state) => state.document)
   const currentPage = useEditorStore(selectCurrentPageState)
   const zoom = useEditorStore((state) => state.zoom)
@@ -24,6 +25,10 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
   const redo = useEditorStore((state) => state.redo)
   const canUndo = useHistoryStore((state) => state.past.length > 0)
   const canRedo = useHistoryStore((state) => state.future.length > 0)
+  const compactButtonClass =
+    'h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40'
+  const iconButtonClass =
+    'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-border text-text transition-colors hover:border-primary/40'
 
   const handleAddText = () => {
     if (!currentPage) {
@@ -50,8 +55,8 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center justify-between rounded-2xl border border-border bg-card/60 px-4 py-3">
+    <div className="flex min-h-[980px] min-w-[1260px] flex-col gap-4 pb-4">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
         <div>
           <p className="text-sm font-semibold text-text">{document?.name ?? 'Editor Konva'}</p>
           <p className="mt-1 text-xs text-text-muted">
@@ -59,12 +64,12 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           </p>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <button
             type="button"
             onClick={undo}
             disabled={!canUndo}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text-muted hover:border-primary/40 hover:text-text disabled:opacity-40"
+            className={`${compactButtonClass} text-text-muted hover:text-text disabled:opacity-40`}
           >
             <span className="inline-flex items-center gap-2">
               <Undo2 size={16} />
@@ -75,7 +80,7 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
             type="button"
             onClick={redo}
             disabled={!canRedo}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text-muted hover:border-primary/40 hover:text-text disabled:opacity-40"
+            className={`${compactButtonClass} text-text-muted hover:text-text disabled:opacity-40`}
           >
             <span className="inline-flex items-center gap-2">
               <History size={16} />
@@ -86,19 +91,30 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
             type="button"
             onClick={() => onSave()}
             disabled={isSaving || !document}
-            className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-60"
+            className="h-9 shrink-0 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
             {isSaving ? 'Salvando...' : 'Salvar template'}
+          </button>
+          <button
+            type="button"
+            onClick={onOpenGenerateArt}
+            disabled={!document}
+            className="h-9 shrink-0 rounded-xl border border-border px-4 text-sm font-medium text-text transition-colors hover:border-primary/40 disabled:opacity-60"
+          >
+            <span className="inline-flex items-center gap-2">
+              <Sparkles size={16} />
+              Gerar arte
+            </span>
           </button>
         </div>
       </div>
 
-      <div className="flex items-center justify-between rounded-2xl border border-border bg-card/60 px-4 py-3">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card/60 px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={handleAddText}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
+            className={compactButtonClass}
           >
             <span className="inline-flex items-center gap-2">
               <Type size={16} />
@@ -108,7 +124,7 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           <button
             type="button"
             onClick={handleAddImage}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
+            className={compactButtonClass}
           >
             <span className="inline-flex items-center gap-2">
               <ImageIcon size={16} />
@@ -118,7 +134,7 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           <button
             type="button"
             onClick={handleAddShape}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-primary/40"
+            className={compactButtonClass}
           >
             <span className="inline-flex items-center gap-2">
               <Square size={16} />
@@ -128,7 +144,7 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           <button
             type="button"
             onClick={removeSelectedLayers}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text hover:border-error/40 hover:text-error"
+            className="h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-error/40 hover:text-error"
           >
             <span className="inline-flex items-center gap-2">
               <Trash2 size={16} />
@@ -137,11 +153,11 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           </button>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setZoom(Math.max(0.15, Number((zoom - 0.1).toFixed(2))))}
-            className="rounded-xl border border-border p-2 text-text hover:border-primary/40"
+            className={iconButtonClass}
           >
             <ZoomOut size={16} />
           </button>
@@ -149,14 +165,14 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
           <button
             type="button"
             onClick={() => setZoom(Math.min(2.5, Number((zoom + 0.1).toFixed(2))))}
-            className="rounded-xl border border-border p-2 text-text hover:border-primary/40"
+            className={iconButtonClass}
           >
             <ZoomIn size={16} />
           </button>
           <button
             type="button"
             onClick={resetViewport}
-            className="rounded-xl border border-border px-3 py-2 text-sm text-text-muted hover:border-primary/40 hover:text-text"
+            className={`${compactButtonClass} text-text-muted hover:text-text`}
           >
             <span className="inline-flex items-center gap-2">
               <RefreshCw size={16} />
@@ -166,7 +182,7 @@ export function EditorShell({ onSave, isSaving }: EditorShellProps) {
         </div>
       </div>
 
-      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)_320px] gap-4">
+      <div className="grid min-h-[680px] flex-1 grid-cols-[260px_minmax(620px,1fr)_300px] gap-4">
         <LayersPanel />
         <EditorStage />
         <PropertiesPanel />

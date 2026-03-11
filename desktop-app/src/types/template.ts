@@ -36,6 +36,10 @@ export type SlotFieldKey =
   | 'footer_info_2'
 
 export type SlotOverflowBehavior = 'scale-down' | 'ellipsis' | 'clip'
+export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize'
+export type TextOverflowBehavior = 'clip' | 'ellipsis' | 'autoScale'
+export type SafeAreaVertical = 'top' | 'center' | 'bottom'
+export type SafeAreaHorizontal = 'left' | 'center' | 'right'
 
 export interface KonvaLayerBase {
   id: string
@@ -53,6 +57,7 @@ export interface KonvaLayerBase {
   locked?: boolean
   draggable?: boolean
   zIndex?: number
+  role?: 'background' | 'content'
 }
 
 export interface KonvaTextLayer extends KonvaLayerBase {
@@ -65,8 +70,18 @@ export interface KonvaTextLayer extends KonvaLayerBase {
     fontStyle?: 'normal' | 'italic'
     lineHeight?: number
     letterSpacing?: number
+    textTransform?: TextTransform
+    maxLines?: number
+    overflowBehavior?: TextOverflowBehavior
+    minFontSize?: number
+    maxFontSize?: number
     align?: 'left' | 'center' | 'right' | 'justify'
     verticalAlign?: 'top' | 'middle' | 'bottom'
+    safeArea?: {
+      enabled?: boolean
+      vertical: SafeAreaVertical
+      horizontal: SafeAreaHorizontal
+    }
     fill?: string
   }
 }
