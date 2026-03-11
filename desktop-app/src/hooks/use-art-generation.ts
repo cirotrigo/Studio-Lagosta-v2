@@ -98,8 +98,8 @@ export interface DrivePhoto {
 }
 
 export interface DrivePhotosResponse {
-  items: DrivePhoto[]
-  nextPageToken?: string
+  images: DrivePhoto[]
+  nextOffset?: number
 }
 
 export function useGenerateArt() {
@@ -142,11 +142,9 @@ export function useDrivePhotos(projectId: number | undefined) {
     queryKey: ['drive-photos', projectId],
     queryFn: async () => {
       try {
-        const params = new URLSearchParams({
-          projectId: String(projectId),
-          folder: 'images',
-        })
-        return await api.get<DrivePhotosResponse>(`/api/drive/list?${params}`)
+        return await api.get<DrivePhotosResponse>(
+          `/api/projects/${projectId}/google-drive/images?offset=0&limit=60`,
+        )
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           await logout()

@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect, useRef } from 'react'
-import { AlertCircle, ChevronRight, FolderOpen, Search, Sparkles, Upload, X, Loader2, Image as ImageIcon, LucideIcon, RefreshCw } from 'lucide-react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { AlertCircle, FolderOpen, Search, Sparkles, Upload, X, Loader2, Image as ImageIcon, LucideIcon, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { useAIImages, DrivePhoto, AIImage } from '@/hooks/use-art-generation'
 import { api, ApiError } from '@/lib/api-client'
@@ -32,20 +32,15 @@ const TABS: { id: PhotoTab; label: string; icon: LucideIcon }[] = [
   { id: 'upload', label: 'Upload', icon: Upload },
 ]
 const DEFAULT_ALLOWED_TABS: PhotoTab[] = ['drive', 'ai', 'upload']
-const DRIVE_LIST_CACHE_TTL_MS = 30_000
+const DRIVE_LIST_CACHE_TTL_MS = 60_000
 
-interface DriveListPayload {
-  items: DrivePhoto[]
-  currentFolderId: string
-  folderName?: string
+interface ProjectDriveImagesPayload {
+  images: DrivePhoto[]
+  nextOffset?: number
 }
 
-const driveListCache = new Map<string, { data: DriveListPayload; timestamp: number }>()
-const driveListInflight = new Map<string, Promise<DriveListPayload>>()
-
-function getDriveListCacheKey(projectId: number, folderId?: string, searchTerm?: string) {
-  return `${projectId}:${folderId ?? 'root'}:${searchTerm?.trim().toLowerCase() ?? ''}`
-}
+const driveListCache = new Map<string, { data: ProjectDriveImagesPayload; timestamp: number }>()
+const driveListInflight = new Map<string, Promise<ProjectDriveImagesPayload>>()
 
 export default function PhotoSelector({
   projectId,
@@ -60,8 +55,6 @@ export default function PhotoSelector({
   const hasAiTab = allowedTabs.includes('ai')
   const hasUploadTab = allowedTabs.includes('upload')
   const firstAllowedTab = allowedTabs[0] ?? 'drive'
-  const initialDriveFolderId =
-    currentProject?.googleDriveImagesFolderId ?? currentProject?.googleDriveFolderId ?? undefined
   const initialDriveFolderName =
     currentProject?.googleDriveImagesFolderName ?? currentProject?.googleDriveFolderName ?? undefined
   const [activeTab, setActiveTab] = useState<PhotoTab>(firstAllowedTab)
@@ -69,7 +62,6 @@ export default function PhotoSelector({
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [selectedNaturalAspect, setSelectedNaturalAspect] = useState<string | null>(null)
   const [driveItems, setDriveItems] = useState<DrivePhoto[]>([])
-  const [driveFolderStack, setDriveFolderStack] = useState<Array<{ id: string; name: string }>>([])
   const [driveSearchInput, setDriveSearchInput] = useState('')
   const [driveSearch, setDriveSearch] = useState('')
   const [driveError, setDriveError] = useState<string | null>(null)
@@ -78,7 +70,14 @@ export default function PhotoSelector({
 
   const { data: aiImages, isLoading: isLoadingAI } = useAIImages(projectId)
   const visibleTabs = TABS.filter((tab) => allowedTabs.includes(tab.id))
-  const currentDriveFolderId = driveFolderStack[driveFolderStack.length - 1]?.id ?? initialDriveFolderId
+  const filteredDriveItems = useMemo(() => {
+    if (!driveSearch) {
+      return driveItems
+    }
+
+    const normalizedSearch = driveSearch.toLowerCase()
+    return driveItems.filter((item) => item.name.toLowerCase().includes(normalizedSearch))
+  }, [driveItems, driveSearch])
 
   useEffect(() => {
     if (
@@ -100,32 +99,20 @@ export default function PhotoSelector({
     return () => window.clearTimeout(timeoutId)
   }, [driveSearchInput])
 
-  const loadDriveItems = useCallback(async (folderId?: string, searchTerm?: string) => {
+  const loadDriveItems = useCallback(async (forceRefresh = false) => {
     setIsLoadingDrive(true)
     setDriveError(null)
-    const cacheKey = getDriveListCacheKey(projectId, folderId, searchTerm)
+    const cacheKey = String(projectId)
     driveRequestKeyRef.current = cacheKey
 
     try {
-      const cached = driveListCache.get(cacheKey)
+      const cached = forceRefresh ? undefined : driveListCache.get(cacheKey)
       if (cached && Date.now() - cached.timestamp < DRIVE_LIST_CACHE_TTL_MS) {
         if (driveRequestKeyRef.current !== cacheKey) {
           return
         }
 
-        setDriveItems(cached.data.items)
-        setDriveFolderStack((previous) => {
-          if (previous.length > 0 || !cached.data.currentFolderId) {
-            return previous
-          }
-
-          return [
-            {
-              id: cached.data.currentFolderId,
-              name: initialDriveFolderName ?? cached.data.folderName ?? 'Google Drive',
-            },
-          ]
-        })
+        setDriveItems(cached.data.images)
         return
       }
 
@@ -133,20 +120,9 @@ export default function PhotoSelector({
       const request =
         existingRequest ??
         (async () => {
-          const params = new URLSearchParams({
-            projectId: String(projectId),
-            folder: 'images',
-          })
-
-          if (folderId) {
-            params.set('folderId', folderId)
-          }
-
-          if (searchTerm?.trim()) {
-            params.set('search', searchTerm.trim())
-          }
-
-          return await api.get<DriveListPayload>(`/api/drive/list?${params.toString()}`)
+          return await api.get<ProjectDriveImagesPayload>(
+            `/api/projects/${projectId}/google-drive/images?offset=0&limit=60`,
+          )
         })()
 
       if (!existingRequest) {
@@ -160,29 +136,12 @@ export default function PhotoSelector({
         return
       }
 
-      setDriveItems(data.items)
-
-      setDriveFolderStack((previous) => {
-        if (previous.length > 0) {
-          return previous
-        }
-
-        if (!data.currentFolderId) {
-          return previous
-        }
-
-        return [
-          {
-            id: data.currentFolderId,
-            name: initialDriveFolderName ?? data.folderName ?? 'Google Drive',
-          },
-        ]
-      })
+      setDriveItems(data.images)
     } catch (error) {
       const cached = driveListCache.get(cacheKey)
       if (cached && error instanceof ApiError && error.status === 429) {
         if (driveRequestKeyRef.current === cacheKey) {
-          setDriveItems(cached.data.items)
+          setDriveItems(cached.data.images)
           setDriveError(null)
         }
         return
@@ -198,27 +157,22 @@ export default function PhotoSelector({
         setIsLoadingDrive(false)
       }
     }
-  }, [initialDriveFolderName, projectId])
+  }, [projectId])
 
   useEffect(() => {
     setDriveItems([])
     setDriveError(null)
     setDriveSearchInput('')
     setDriveSearch('')
-    setDriveFolderStack(
-      initialDriveFolderId
-        ? [{ id: initialDriveFolderId, name: initialDriveFolderName ?? 'Google Drive' }]
-        : [],
-    )
-  }, [initialDriveFolderId, initialDriveFolderName, projectId])
+  }, [projectId])
 
   useEffect(() => {
     if (!projectId || !hasDriveTab || selectedPhoto) {
       return
     }
 
-    void loadDriveItems(currentDriveFolderId, driveSearch)
-  }, [currentDriveFolderId, driveSearch, hasDriveTab, loadDriveItems, projectId, selectedPhoto])
+    void loadDriveItems()
+  }, [hasDriveTab, loadDriveItems, projectId, selectedPhoto])
 
   const resolveAspectRatio = useCallback((photo: SelectedPhotoRef | null): string => {
     if (!photo) return '4 / 5'
@@ -422,30 +376,15 @@ export default function PhotoSelector({
       <div className="min-h-[200px]">
         {activeTab === 'drive' && hasDriveTab && (
           <DriveTab
-            items={driveItems}
+            items={filteredDriveItems}
             isLoading={isLoadingDrive}
             error={driveError}
             search={driveSearchInput}
-            breadcrumbs={driveFolderStack}
+            folderName={initialDriveFolderName}
             downloadingId={downloadingId}
-            onRefresh={() => void loadDriveItems(currentDriveFolderId, driveSearch)}
+            onRefresh={() => void loadDriveItems(true)}
             onSearchChange={(value) => {
               setDriveSearchInput(value)
-            }}
-            onOpenFolder={(folder) => {
-              setDriveFolderStack((previous) => [...previous, { id: folder.id, name: folder.name }])
-              setDriveSearchInput('')
-              setDriveSearch('')
-            }}
-            onBreadcrumbClick={(index) => {
-              const crumb = driveFolderStack[index]
-              if (!crumb) {
-                return
-              }
-              const nextStack = driveFolderStack.slice(0, index + 1)
-              setDriveFolderStack(nextStack)
-              setDriveSearchInput('')
-              setDriveSearch('')
             }}
             onSelect={handleDriveSelect}
           />
@@ -474,28 +413,23 @@ function DriveTab({
   isLoading,
   error,
   search,
-  breadcrumbs,
+  folderName,
   downloadingId,
   onRefresh,
   onSearchChange,
-  onOpenFolder,
-  onBreadcrumbClick,
   onSelect,
 }: {
   items: DrivePhoto[]
   isLoading: boolean
   error: string | null
   search: string
-  breadcrumbs: Array<{ id: string; name: string }>
+  folderName?: string
   downloadingId: string | null
   onRefresh: () => void
   onSearchChange: (value: string) => void
-  onOpenFolder: (photo: DrivePhoto) => void
-  onBreadcrumbClick: (index: number) => void
   onSelect: (photo: DrivePhoto) => void
 }) {
-  const folders = items.filter((item) => item.kind === 'folder')
-  const photos = items.filter((item) => item.kind !== 'folder' && item.mimeType?.startsWith('image/'))
+  const photos = items.filter((item) => item.mimeType?.startsWith('image/'))
 
   if (isLoading) {
     return (
@@ -533,7 +467,7 @@ function DriveTab({
     )
   }
 
-  if (photos.length === 0 && folders.length === 0) {
+  if (photos.length === 0) {
     return (
       <div className="space-y-3">
         <div className="flex items-center gap-2 rounded-lg border border-border bg-input px-3 py-2">
@@ -554,7 +488,9 @@ function DriveTab({
         </div>
         <div className="flex flex-col items-center justify-center py-8 text-center">
           <FolderOpen size={32} className="mb-2 text-text-subtle" />
-          <p className="text-sm text-text-muted">Nenhuma foto no Drive</p>
+          <p className="text-sm text-text-muted">
+            {search ? 'Nenhuma imagem encontrada' : 'Nenhuma foto na pasta configurada do projeto'}
+          </p>
         </div>
       </div>
     )
@@ -562,6 +498,12 @@ function DriveTab({
 
   return (
     <div className="space-y-3">
+      {folderName ? (
+        <div className="rounded-lg border border-border bg-background/30 px-3 py-2 text-xs text-text-muted">
+          Pasta do projeto: <span className="font-medium text-text">{folderName}</span>
+        </div>
+      ) : null}
+
       <div className="flex items-center gap-2 rounded-lg border border-border bg-input px-3 py-2">
         <Search size={14} className="text-text-muted" />
         <input
@@ -579,60 +521,26 @@ function DriveTab({
         </button>
       </div>
 
-      {breadcrumbs.length > 0 ? (
-        <div className="flex items-center gap-1 overflow-x-auto text-xs text-text-muted">
-          {breadcrumbs.map((crumb, index) => (
-            <span key={crumb.id} className="flex shrink-0 items-center gap-1">
-              {index > 0 ? <ChevronRight size={12} /> : null}
-              <button
-                type="button"
-                onClick={() => onBreadcrumbClick(index)}
-                className={cn(
-                  'rounded px-1 py-0.5 transition-colors hover:text-text',
-                  index === breadcrumbs.length - 1 ? 'font-medium text-text' : '',
-                )}
-              >
-                {crumb.name}
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="space-y-3">
-        {folders.length > 0 ? (
-          <div className="grid grid-cols-2 gap-2">
-            {folders.map((folder) => (
-              <button
-                key={folder.id}
-                type="button"
-                onClick={() => onOpenFolder(folder)}
-                className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-left text-sm text-text transition-colors hover:border-primary/40"
-              >
-                <FolderOpen size={16} className="text-primary" />
-                <span className="truncate">{folder.name}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-3 gap-2">
-          {photos.slice(0, 18).map((photo) => (
-            <button
-              key={photo.id}
-              onClick={() => onSelect(photo)}
-              disabled={downloadingId === photo.id}
-              className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-card transition-all hover:ring-2 hover:ring-primary/50"
-            >
-              <DriveThumbnail fileId={photo.id} fileName={photo.name} />
-              {downloadingId === photo.id && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                  <Loader2 size={20} className="animate-spin text-white" />
-                </div>
-              )}
-            </button>
-          ))}
-        </div>
+      <div className="grid grid-cols-3 gap-2">
+        {photos.slice(0, 18).map((photo) => (
+          <button
+            key={photo.id}
+            onClick={() => onSelect(photo)}
+            disabled={downloadingId === photo.id}
+            className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-card transition-all hover:ring-2 hover:ring-primary/50"
+            title={photo.name}
+          >
+            <DriveThumbnail fileId={photo.id} fileName={photo.name} />
+            <div className="absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1 text-left">
+              <p className="truncate text-[10px] text-white">{photo.name}</p>
+            </div>
+            {downloadingId === photo.id && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                <Loader2 size={20} className="animate-spin text-white" />
+              </div>
+            )}
+          </button>
+        ))}
       </div>
     </div>
   )
