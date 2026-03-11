@@ -8,6 +8,7 @@ import { renderText, measureTextLayout, renderFinalLayout, registerFontFromPath 
 import { JsonStorageService } from './services/json-storage'
 import { registerTemplateHandlers } from './ipc/template-handlers'
 import { registerSyncHandlers } from './ipc/sync-handlers'
+import { registerGenerationHandlers } from './ipc/generation-handlers'
 
 let mainWindow: BrowserWindow | null = null
 let refreshWindow: BrowserWindow | null = null
@@ -318,6 +319,14 @@ app.whenReady().then(async () => {
     await konvaStorage.ensureBaseStructure()
     registerTemplateHandlers(konvaStorage)
     registerSyncHandlers(konvaStorage)
+    registerGenerationHandlers({
+      webAppBaseUrl: WEB_APP_BASE_URL,
+      getFreshCookies,
+      refreshClerkSession,
+      executeRequest,
+      isAuthHtmlResponse,
+      extractErrorMessage,
+    })
     console.info('[Konva Storage] Inicializado em:', konvaStorage.getRootDir())
   } catch (error) {
     console.error('[Konva Storage] Falha ao inicializar handlers/storage:', error)

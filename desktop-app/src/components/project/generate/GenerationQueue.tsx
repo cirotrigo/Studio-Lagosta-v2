@@ -92,7 +92,7 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
                       Variacoes: {job.params.variations}
                     </p>
                     <p className="text-xs text-text-muted">
-                      Fundo: {job.params.backgroundMode === 'photo' ? 'Foto' : 'IA (fallback visual)'}
+                      Fundo: {job.params.backgroundMode === 'photo' ? 'Foto' : 'IA (Nano Banana 2 + fallback)'}
                     </p>
                     <p className="line-clamp-2 text-xs text-text-subtle">
                       "{job.params.text}"

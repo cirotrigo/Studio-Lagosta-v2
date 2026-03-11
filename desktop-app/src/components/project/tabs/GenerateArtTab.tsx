@@ -1,9 +1,11 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Clock3, Database, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
+import { generateBackgroundAsset } from '@/lib/automation/background-service'
 import {
   preparePromptBatch,
   renderPromptVariation,
@@ -25,6 +27,7 @@ import {
   type GenerationJob,
   type GenerationVariationJob,
   type GenerationParams,
+  type BackgroundGenerationInfo,
 } from '@/stores/generation.store'
 import type { ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
@@ -93,7 +96,11 @@ function ReferenceUploader({ files, onChange }: ReferenceUploaderProps) {
     const selectedFiles = Array.from(event.target.files || []).filter(
       (file) => ACCEPTED_IMAGE_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE,
     )
-    onChange([...files, ...selectedFiles].slice(0, 5))
+    const nextFiles = [...files, ...selectedFiles]
+    if (nextFiles.length > 5) {
+      toast.error('Voce pode enviar ate 5 referencias visuais.')
+    }
+    onChange(nextFiles.slice(0, 5))
     event.target.value = ''
   }
 
@@ -102,7 +109,7 @@ function ReferenceUploader({ files, onChange }: ReferenceUploaderProps) {
       <div>
         <p className="text-sm font-medium text-text">Referencias visuais</p>
         <p className="mt-1 text-xs text-text-muted">
-          Ate 5 imagens. Nesta fase elas entram apenas na orquestracao do pipeline.
+          Ate 5 imagens. O fundo IA usa essas referencias diretamente e salva o resultado em Geradas com IA.
         </p>
       </div>
 
@@ -139,6 +146,7 @@ function ReferenceUploader({ files, onChange }: ReferenceUploaderProps) {
 
 export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: GenerateArtTabProps) {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(projectId)
   const jobs = useGenerationStore((state) => state.jobs)
@@ -308,6 +316,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
     try {
       const preparedBatch: PreparedPromptBatch = await preparePromptBatch(orchestratorInput)
+      const backgroundPipelineWarnings: string[] = []
+      let shouldInvalidateAiGallery = false
 
       updateJob(jobId, {
         templateSelection: preparedBatch.templateSelection,
@@ -332,11 +342,55 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           error: undefined,
         })
 
+        let currentStage: 'background' | 'render' =
+          job.params.backgroundMode === 'ai' ? 'background' : 'render'
+
         try {
+          let backgroundImageUrl: string | undefined
+          let backgroundWarnings: string[] = []
+          let background: BackgroundGenerationInfo | undefined
+
+          if (job.params.backgroundMode === 'ai') {
+            const generatedBackground = await generateBackgroundAsset({
+              projectId: job.params.projectId,
+              prompt: job.params.text,
+              format: job.params.format,
+              variationIndex: preparedVariation.index,
+              fields: preparedVariation.fields,
+              referenceUrls: job.params.referenceUrls,
+            })
+
+            backgroundImageUrl = generatedBackground.imageUrl
+            backgroundWarnings = generatedBackground.warnings
+            background = {
+              mode: 'ai',
+              provider: generatedBackground.provider,
+              model: generatedBackground.modelUsed,
+              modelLabel: generatedBackground.modelLabel,
+              fallbackModel: generatedBackground.fallbackModel,
+              fallbackLabel: generatedBackground.fallbackLabel,
+              fallbackUsed: generatedBackground.fallbackUsed,
+              persisted: generatedBackground.persisted,
+              persistedImageUrl: generatedBackground.persistedImageUrl,
+              referenceCount: generatedBackground.referenceCount,
+            }
+
+            backgroundPipelineWarnings.push(...backgroundWarnings)
+            shouldInvalidateAiGallery =
+              shouldInvalidateAiGallery || generatedBackground.persisted === true
+            currentStage = 'render'
+          } else if (job.params.photoUrl) {
+            background = {
+              mode: 'photo',
+              persisted: false,
+            }
+          }
+
           const renderedVariation = await renderPromptVariation(
             orchestratorInput,
             preparedBatch.selectedTemplate,
             preparedVariation,
+            { backgroundImageUrl },
           )
 
           updateVariation(jobId, targetVariation.id, {
@@ -347,15 +401,21 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             warnings: [
               ...preparedBatch.warnings,
               ...preparedBatch.conflicts,
+              ...backgroundWarnings,
               ...renderedVariation.warnings,
             ],
             templateId: renderedVariation.templateId,
             templateName: renderedVariation.templateName,
+            background,
             error: undefined,
           })
         } catch (error) {
           const message =
-            error instanceof Error ? error.message : 'Falha ao renderizar a variacao Konva.'
+            error instanceof Error
+              ? error.message
+              : currentStage === 'background'
+                ? 'Falha ao gerar o fundo com IA.'
+                : 'Falha ao renderizar a variacao Konva.'
 
           updateVariation(jobId, targetVariation.id, {
             status: 'error',
@@ -367,12 +427,25 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         }
       }
 
+      if (shouldInvalidateAiGallery) {
+        await queryClient.invalidateQueries({
+          queryKey: ['ai-images', job.params.projectId],
+        })
+      }
+
       const completedJob = useGenerationStore.getState().jobs.find((entry) => entry.id === jobId)
       if (!completedJob) return
 
       const nextStatus = deriveJobStatus(completedJob)
       updateJob(jobId, {
         status: nextStatus,
+        warnings: Array.from(
+          new Set([
+            ...preparedBatch.warnings,
+            ...preparedBatch.conflicts,
+            ...backgroundPipelineWarnings,
+          ]),
+        ),
         images: completedJob.variations
           .filter((variation) => variation.status === 'ready' && variation.imageUrl)
           .map((variation) => variation.imageUrl as string),
@@ -383,8 +456,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       })
 
       const readyCount = completedJob.variations.filter((variation) => variation.status === 'ready').length
+      const fallbackCount = completedJob.variations.filter((variation) => variation.background?.fallbackUsed).length
       if (readyCount > 0) {
         toast.success(`${readyCount} variacao(oes) pronta(s) no modo rapido.`)
+        if (fallbackCount > 0) {
+          toast.info(`${fallbackCount} variacao(oes) usaram fallback automatico do Nano Banana 2.`)
+        }
       } else {
         toast.error('A fila terminou sem variacoes validas.')
       }
@@ -406,7 +483,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       })
       toast.error(message)
     }
-  }, [brandAssets, currentProject, templates, updateJob, updateVariation])
+  }, [brandAssets, currentProject, queryClient, templates, updateJob, updateVariation])
 
   const runQueue = useCallback(async () => {
     if (isQueueRunningRef.current) return
@@ -628,7 +705,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             </div>
             <h3 className="text-lg font-semibold text-text">As variacoes Konva aparecerao aqui</h3>
             <p className="mt-2 max-w-lg text-sm text-text-muted">
-              O pipeline recupera contexto da base do projeto, escolhe um template, aplica os slots e renderiza cada variacao sem travar o formulario.
+              O pipeline recupera contexto da base do projeto, escolhe um template, gera o fundo quando necessario e renderiza cada variacao sem travar o formulario.
             </p>
           </div>
         ) : (
@@ -656,7 +733,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                     <p className="mt-2 text-sm font-medium text-text">"{job.params.text}"</p>
                     <p className="mt-1 text-xs text-text-muted">
                       {job.params.format} • {job.params.variations} variacao(oes) • fundo{' '}
-                      {job.params.backgroundMode === 'photo' ? 'foto' : 'IA (fallback visual nesta fase)'}
+                      {job.params.backgroundMode === 'photo' ? 'foto' : 'IA (Nano Banana 2 + fallback automatico)'}
                     </p>
                     {job.templateSelection ? (
                       <p className="mt-1 text-xs text-text-muted">
@@ -829,6 +906,29 @@ function VariationCard({
                 <p className="mt-1 text-sm text-text">{field.value}</p>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {variation.background ? (
+          <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
+              Fundo
+            </p>
+            <p className="mt-1 text-xs text-text-muted">
+              {variation.background.mode === 'photo'
+                ? 'Foto do projeto aplicada sem IA.'
+                : variation.background.fallbackUsed
+                  ? `Fallback automatico aplicado com ${variation.background.fallbackLabel || variation.background.modelLabel || 'modelo legado'}.`
+                  : `${variation.background.modelLabel || 'Nano Banana 2'} aplicado ao fundo.`}
+            </p>
+            {variation.background.mode === 'ai' && variation.background.persisted ? (
+              <p className="mt-1 text-[11px] text-text-subtle">
+                Salva em Geradas com IA
+                {variation.background.referenceCount
+                  ? ` • ${variation.background.referenceCount} referencia(s)`
+                  : ''}
+              </p>
+            ) : null}
           </div>
         ) : null}
 

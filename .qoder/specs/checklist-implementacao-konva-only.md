@@ -166,13 +166,39 @@ Arquivos:
 - `desktop-app/src/lib/automation/background-service.ts`
 
 Tarefas:
-- [ ] Integrar motor primário `Nano Banana 2`.
-- [ ] Fallback automático para versão anterior em erro.
-- [ ] Suporte a referências (até 5 no UX; backend pode aceitar mais).
-- [ ] Persistir imagens geradas em "Geradas com IA".
+- [x] Integrar motor primário `Nano Banana 2`.
+- [x] Fallback automático para versão anterior em erro.
+- [x] Suporte a referências (até 5 no UX; backend pode aceitar mais).
+- [x] Persistir imagens geradas em "Geradas com IA".
 
 DoD:
-- [ ] Retry/fallback e mensagens de erro claras.
+- [x] Retry/fallback e mensagens de erro claras.
+
+---
+
+## Fase 6.1 — Análise de imagem opcional para contexto de copy (2-3 dias)
+
+Arquivos:
+- `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+- `desktop-app/src/components/editor/EditorGenerateArtModal.tsx`
+- `desktop-app/src/lib/automation/prompt-orchestrator.ts`
+- `desktop-app/src/lib/automation/image-context-analyzer.ts`
+- `desktop-app/src/stores/generation.store.ts`
+- `src/app/api/tools/generate-ai-text/route.ts` (web)
+
+Tarefas:
+- [ ] Adicionar toggle `Analisar imagem para contexto` no modo de geração (`default = false`).
+- [ ] Quando ativo, executar análise da imagem enviada antes da etapa de copy.
+- [ ] Produzir metadados estruturados da imagem (`dishNameCandidates`, `sceneType`, `ingredientsHints`, `confidence`).
+- [ ] Cruzar metadados da imagem com base de conhecimento do projeto (`CARDAPIO`, `CAMPANHAS`) para sugerir prato/descrição.
+- [ ] Injetar contexto visual no prompt final da LLM sem sobrepor o pedido textual do usuário.
+- [ ] Exibir transparência no UI: badge `Análise de imagem aplicada` + resumo do que foi inferido.
+- [ ] Em baixa confiança, manter geração padrão sem inventar prato.
+
+DoD:
+- [ ] Toggle vem desmarcado por padrão.
+- [ ] Prompt exemplo `Crie variações com essa foto para divulgar o almoço executivo de quinta-feira` usa a análise da foto para associar prato do cardápio quando houver match.
+- [ ] Se não houver match confiável, fluxo não quebra e segue com copy genérica contextualizada.
 
 ---
 

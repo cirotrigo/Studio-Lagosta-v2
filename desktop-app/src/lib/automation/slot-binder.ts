@@ -46,6 +46,7 @@ export interface SlotBinderInput {
   fieldValues: Partial<Record<SlotFieldKey, string>>
   backgroundMode: 'photo' | 'ai'
   photoUrl?: string
+  backgroundImageUrl?: string
   brandLogoUrl?: string | null
   brandColors?: string[]
 }
@@ -250,12 +251,16 @@ function applyMediaToPage(
   input: SlotBinderInput,
   warnings: string[],
 ) {
-  if (input.backgroundMode === 'photo' && input.photoUrl) {
+  const resolvedBackgroundUrl =
+    input.backgroundImageUrl ??
+    (input.backgroundMode === 'photo' ? input.photoUrl : undefined)
+
+  if (resolvedBackgroundUrl) {
     const target = findPreferredImageTarget(page)
     if (target) {
       const updatedTarget: KonvaImageLayer = {
         ...target,
-        src: input.photoUrl,
+        src: resolvedBackgroundUrl,
         fit: 'cover',
         visible: true,
       }
@@ -278,7 +283,7 @@ function applyMediaToPage(
         visible: true,
         locked: false,
         draggable: true,
-        src: input.photoUrl,
+        src: resolvedBackgroundUrl,
         fit: 'cover',
       },
       ...page.layers,
@@ -310,7 +315,9 @@ function applyMediaToPage(
 
   if (!hasVisibleBackground) {
     page.background = input.brandColors?.[0] || page.background || '#111827'
-    warnings.push('Modo IA ainda usa fundo de fallback do template nesta fase.')
+    if (input.backgroundMode === 'ai') {
+      warnings.push('Nao foi possivel aplicar o fundo IA; o template manteve o fundo padrao.')
+    }
   }
 }
 

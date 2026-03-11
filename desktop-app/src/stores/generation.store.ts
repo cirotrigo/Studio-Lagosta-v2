@@ -23,6 +23,19 @@ export interface GenerationKnowledgeHit {
   source: 'rag' | 'fallback-db'
 }
 
+export interface BackgroundGenerationInfo {
+  mode: 'photo' | 'ai'
+  provider?: string
+  model?: string
+  modelLabel?: string
+  fallbackModel?: string
+  fallbackLabel?: string
+  fallbackUsed?: boolean
+  persisted?: boolean
+  persistedImageUrl?: string
+  referenceCount?: number
+}
+
 export interface GenerationVariationJob {
   id: string
   index: number
@@ -33,6 +46,7 @@ export interface GenerationVariationJob {
   warnings: string[]
   templateId?: string
   templateName?: string
+  background?: BackgroundGenerationInfo
   error?: string
 }
 

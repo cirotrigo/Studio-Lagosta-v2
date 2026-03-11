@@ -62,6 +62,7 @@ const generateArtSchema = z.object({
   text: z.string().max(500, 'Texto muito longo (máximo 500 caracteres)'),
   format: z.enum(['FEED_PORTRAIT', 'STORY', 'SQUARE']),
   dryRun: z.boolean().default(false),
+  backgroundOnly: z.boolean().default(false),
   includeLogo: z.boolean().default(false),
   usePhoto: z.boolean().default(false),
   photoUrl: z.string().url().optional(),
@@ -165,6 +166,20 @@ interface TextLayout {
 interface GeneratedImage {
   url: string
   prompt: string
+}
+
+interface BackgroundGenerationMeta {
+  variationIndex: number
+  engine: 'nano-banana-2'
+  provider: 'gemini-direct'
+  requestedModel: string
+  fallbackModel: string
+  modelUsed: string
+  fallbackUsed: boolean
+  referenceCount: number
+  persisted: boolean
+  persistedImageUrl?: string
+  warnings: string[]
 }
 
 // --- Brand Assets ---
@@ -863,6 +878,40 @@ async function persistGeneratedAIImage(params: {
   return blob.url
 }
 
+function describeGeminiImageModel(model: string): string {
+  if (model === GEMINI_PRIMARY_MODEL) return 'Nano Banana 2'
+  if (model === GEMINI_FALLBACK_MODEL) return 'Gemini 2.5 Flash Image'
+  return model
+}
+
+function buildBackgroundGenerationMeta(params: {
+  variationIndex: number
+  modelUsed: string
+  fallbackUsed: boolean
+  referenceCount: number
+  persistedImageUrl?: string
+}): BackgroundGenerationMeta {
+  const warnings = params.fallbackUsed
+    ? [
+        `Nano Banana 2 indisponível nesta tentativa. Fallback automático aplicado com ${describeGeminiImageModel(params.modelUsed)}.`,
+      ]
+    : []
+
+  return {
+    variationIndex: params.variationIndex,
+    engine: 'nano-banana-2',
+    provider: 'gemini-direct',
+    requestedModel: GEMINI_PRIMARY_MODEL,
+    fallbackModel: GEMINI_FALLBACK_MODEL,
+    modelUsed: params.modelUsed,
+    fallbackUsed: params.fallbackUsed,
+    referenceCount: params.referenceCount,
+    persisted: Boolean(params.persistedImageUrl),
+    persistedImageUrl: params.persistedImageUrl,
+    warnings,
+  }
+}
+
 // --- Main Handler ---
 
 // --- Template Path Helpers ---
@@ -1270,6 +1319,7 @@ async function handleTemplatePath(
   // 4. Generate base image (reuse existing logic)
   const formatInfo = FORMAT_DIMENSIONS[body.format]
   let imageUrl: string
+  let backgroundGeneration: BackgroundGenerationMeta | null = null
 
   const hasPhoto = body.usePhoto && !!body.photoUrl
   const useAIComposition = body.compositionEnabled && hasPhoto
@@ -1336,6 +1386,14 @@ async function handleTemplatePath(
       provider: 'gemini-direct',
       namePrefix: 'Generate Art Template',
     })
+
+    backgroundGeneration = buildBackgroundGenerationMeta({
+      variationIndex: 0,
+      modelUsed: generated.modelUsed,
+      fallbackUsed: generated.fallbackUsed,
+      referenceCount: mergedReferenceUrls.length,
+      persistedImageUrl: imageUrl,
+    })
   }
 
   // 5. Resolve font sources for each template
@@ -1359,6 +1417,12 @@ async function handleTemplatePath(
   return NextResponse.json({
     imageUrl,
     templatePath: true,
+    backgroundOnly: body.backgroundOnly,
+    backgroundGenerations: imageUrl.startsWith('data:')
+      ? []
+      : backgroundGeneration
+        ? [backgroundGeneration]
+        : [],
     templates: templatesWithFonts,
     slots: densityResult.slots,
     densityResult: {
@@ -1469,17 +1533,20 @@ export async function POST(request: Request) {
 
     // --- Legacy Path (no template) ---
     // --- Step 1: Separate text into visual elements ---
-    console.log('[generate-art] Step 1: Separating text elements...')
-    console.log('[generate-art] Brand colors:', brandAssets.colors)
     let textElements: TextElement[] = []
-    try {
-      textElements = await separateTextElements(body.text, brandAssets)
-      console.log(`[generate-art] Separated into ${textElements.length} elements:`)
-      textElements.forEach((el, i) => {
-        console.log(`  [${i}] ${el.type}: "${el.text.substring(0, 30)}..." - color: ${el.color}, font: ${el.font}, size: ${el.size}, weight: ${el.weight}`)
-      })
-    } catch (e) {
-      console.error('[generate-art] Text separation failed, will skip text rendering:', e)
+    const backgroundGenerations: BackgroundGenerationMeta[] = []
+    if (!body.backgroundOnly) {
+      console.log('[generate-art] Step 1: Separating text elements...')
+      console.log('[generate-art] Brand colors:', brandAssets.colors)
+      try {
+        textElements = await separateTextElements(body.text, brandAssets)
+        console.log(`[generate-art] Separated into ${textElements.length} elements:`)
+        textElements.forEach((el, i) => {
+          console.log(`  [${i}] ${el.type}: "${el.text.substring(0, 30)}..." - color: ${el.color}, font: ${el.font}, size: ${el.size}, weight: ${el.weight}`)
+        })
+      } catch (e) {
+        console.error('[generate-art] Text separation failed, will skip text rendering:', e)
+      }
     }
 
     // --- Determine generation mode ---
@@ -1593,12 +1660,37 @@ export async function POST(request: Request) {
           namePrefix: 'Generate Art Legacy',
         })
 
+        backgroundGenerations.push(
+          buildBackgroundGenerationMeta({
+            variationIndex: i,
+            modelUsed: generated.modelUsed,
+            fallbackUsed: generated.fallbackUsed,
+            referenceCount: mergedReferenceUrls.length,
+            persistedImageUrl: imageUrl,
+          }),
+        )
+
         generatedImages.push({ url: imageUrl, prompt: variationPrompt })
       }
     }
 
     if (generatedImages.length === 0) {
       throw new Error('Nenhuma imagem foi gerada')
+    }
+
+    if (body.backgroundOnly) {
+      return NextResponse.json({
+        images: generatedImages.map((image) => ({
+          imageUrl: image.url,
+          prompt: image.prompt,
+        })),
+        prompt: technicalPrompt,
+        provider: 'nano-banana-2',
+        format: body.format,
+        variations: generatedImages.length,
+        backgroundOnly: true,
+        backgroundGenerations,
+      })
     }
 
     // --- Step 4: Position text with Vision ---
@@ -1652,6 +1744,8 @@ export async function POST(request: Request) {
       provider: 'nano-banana-2',
       format: body.format,
       variations: results.length,
+      backgroundOnly: false,
+      backgroundGenerations,
       fonts: {
         title: brandAssets.titleFontFamily || 'Inter',
         body: brandAssets.bodyFontFamily || 'Inter',
@@ -1670,7 +1764,7 @@ export async function POST(request: Request) {
     if (errorStack) console.error('[generate-art] Stack:', errorStack)
 
     return NextResponse.json(
-      { error: 'Erro ao gerar arte. Tente novamente.', debug: errorMessage },
+      { error: errorMessage, debug: errorMessage },
       { status: 500 }
     )
   }

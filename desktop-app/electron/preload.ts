@@ -81,6 +81,26 @@ export interface GenerateAiTextResponse {
   conflicts?: string[]
 }
 
+export interface GenerateAiBackgroundPayload {
+  projectId: number
+  prompt: string
+  format: ArtFormat
+  referenceUrls?: string[]
+}
+
+export interface GenerateAiBackgroundResponse {
+  imageUrl: string
+  prompt: string
+  provider: string
+  modelUsed: string
+  fallbackModel: string
+  fallbackUsed: boolean
+  referenceCount: number
+  persisted: boolean
+  persistedImageUrl?: string
+  warnings: string[]
+}
+
 export interface RenderTextArgs {
   imageBuffer: ArrayBuffer
   textLayout: any
@@ -139,6 +159,7 @@ export interface ElectronAPI {
 
   // Art automation contracts
   generateAIText: (payload: GenerateAiTextPayload) => Promise<GenerateAiTextResponse>
+  generateAIBackground: (payload: GenerateAiBackgroundPayload) => Promise<GenerateAiBackgroundResponse>
   
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => Promise<ApiResponse>
@@ -196,6 +217,8 @@ const electronAPI: ElectronAPI = {
 
   // Art automation contracts
   generateAIText: (payload: GenerateAiTextPayload) => ipcRenderer.invoke('generate-ai-text', payload),
+  generateAIBackground: (payload: GenerateAiBackgroundPayload) =>
+    ipcRenderer.invoke('generate-ai-background', payload),
   
   // File Upload (bypasses CORS)
   uploadFile: (url: string, fileData: { name: string; type: string; buffer: ArrayBuffer }, fields: Record<string, string>) => 

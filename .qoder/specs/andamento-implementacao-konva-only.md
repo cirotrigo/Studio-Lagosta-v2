@@ -40,7 +40,8 @@ Exemplos:
 | 4 | Multi-page + Formatos | ✅ Concluído | feat(konva-fase-4): implementa multipage e formatos instagram | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 4.1 | Refino de texto + geração no editor | ✅ Concluído | feat(konva-fase-4.1): refino de texto e gerar arte no editor com selecao de paginas | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 5 | Prompt-only + RAG | ✅ Concluído | feat(konva-fase-5): pipeline prompt-only com RAG e slot binding | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 6 | Fundo IA + Referências | ⬜ Não iniciado | - | - | - |
+| 6 | Fundo IA + Referências | ✅ Concluído | feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
+| 6.1 | Análise de imagem opcional | ⬜ Não iniciado | - | - | - |
 | 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
 | 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
 | 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
@@ -222,12 +223,30 @@ Legenda status:
 - Próximo passo: iniciar a Fase 6 com a integração definitiva de geração de fundo IA (Nano Banana 2 + fallback) reaproveitando o `backgroundMode='ai'`, as referências visuais e o payload já orquestrado na Fase 5.
 
 ### Fase 6 — Fundo IA + Referências
-- Escopo fechado:
+- Escopo fechado: integração do fundo IA ao modo rápido Konva-only com Nano Banana 2 como primário, fallback automático para a versão anterior, referências visuais até 5 no fluxo padrão, persistência em `Geradas com IA` e invalidação da galeria após geração.
 - Decisões:
+  - reaproveitar a rota web `src/app/api/tools/generate-art/route.ts` como backend de fundo IA via `backgroundOnly`, preservando a persistência existente em `AIGeneratedImage`.
+  - criar IPC dedicado `generate-ai-background` no Electron para centralizar sessão, retry de autenticação e normalização do retorno do backend para o renderer.
+  - aplicar o fundo IA gerado no binder Konva por `backgroundImageUrl`, removendo o aviso legado de fallback visual da Fase 5.
+  - expor no estado/UI da fila os metadados de fundo (`model`, `fallbackUsed`, `persisted`, `referenceCount`) para transparência e debug do usuário.
 - Arquivos alterados:
+  - `desktop-app/electron/ipc/generation-handlers.ts`
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `desktop-app/src/lib/automation/background-service.ts`
+  - `desktop-app/src/lib/automation/prompt-orchestrator.ts`
+  - `desktop-app/src/lib/automation/slot-binder.ts`
+  - `desktop-app/src/stores/generation.store.ts`
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+  - `desktop-app/src/components/project/generate/GenerationQueue.tsx`
+  - `src/app/api/tools/generate-art/route.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback`
+- Próximo passo: iniciar a Fase 6.1 para análise opcional de imagem antes da geração de copy, sem alterar o fluxo padrão quando o toggle estiver desligado.
 
 ### Fase 7 — Aprovação + Reedição
 - Escopo fechado:

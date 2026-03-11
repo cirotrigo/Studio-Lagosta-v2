@@ -77,6 +77,10 @@ export interface RenderedPromptVariation extends PreparedPromptVariation {
   document: KonvaTemplateDocument
 }
 
+interface RenderPromptVariationOptions {
+  backgroundImageUrl?: string
+}
+
 interface GenerateAiTextResponse {
   variacoes: StructuredCopyVariation[]
   knowledge?: PromptKnowledgeResult
@@ -496,9 +500,6 @@ export async function preparePromptBatch(
   const selection = selectTemplate(input, copies)
   const warnings = [
     ...(copyResponse.warnings ?? []),
-    ...(input.backgroundMode === 'ai'
-      ? ['Geracao definitiva de fundo com IA entra na Fase 6; usando fallback visual do template nesta etapa.']
-      : []),
   ]
 
   return {
@@ -532,11 +533,13 @@ export async function renderPromptVariation(
   input: PromptOrchestratorInput,
   template: KonvaTemplateDocument,
   variation: PreparedPromptVariation,
+  options?: RenderPromptVariationOptions,
 ): Promise<RenderedPromptVariation> {
   const binderInput: SlotBinderInput = {
     fieldValues: variation.fieldValues,
     backgroundMode: input.backgroundMode,
     photoUrl: input.photoUrl,
+    backgroundImageUrl: options?.backgroundImageUrl,
     brandLogoUrl: input.brandAssets?.logo?.url || input.project?.logoUrl || null,
     brandColors: input.brandAssets?.colors,
   }
