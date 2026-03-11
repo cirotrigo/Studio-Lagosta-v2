@@ -1,4 +1,4 @@
-import { ArtFormat } from '@/stores/generation.store'
+import type { ArtFormat } from './template'
 
 export interface ReeditDraft {
   sourceArtId: string
