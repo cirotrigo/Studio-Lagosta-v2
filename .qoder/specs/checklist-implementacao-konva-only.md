@@ -68,13 +68,13 @@ Arquivos (port/adaptação):
 - `desktop-app/src/stores/history.store.ts`
 
 Tarefas:
-- [ ] Portar stage + layers + transformer.
-- [ ] Seleção múltipla e transform.
-- [ ] Zoom + pan + smart guides.
-- [ ] Undo/redo linear (limite 100 snapshots).
+- [x] Portar stage + layers + transformer.
+- [x] Seleção múltipla e transform.
+- [x] Zoom + pan + smart guides.
+- [x] Undo/redo linear (limite 100 snapshots).
 
 DoD:
-- [ ] Edição WYSIWYG estável para text/image/shape/logo.
+- [x] Edição WYSIWYG estável para text/image/shape/logo.
 
 ---
 

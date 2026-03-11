@@ -8,6 +8,7 @@ import EditPostPage from './pages/EditPostPage'
 import SettingsPage from './pages/SettingsPage'
 import ProjectPage from './pages/ProjectPage'
 import AppShell from './components/layout/AppShell'
+import EditorPage from './pages/EditorPage'
 
 function App() {
   const { isAuthenticated, isLoading, initialize } = useAuthStore()
@@ -52,6 +53,7 @@ function App() {
           <Route path="/" element={<Navigate to="/scheduler" replace />} />
           <Route path="/scheduler" element={<SchedulerPage />} />
           <Route path="/project" element={<ProjectPage />} />
+          <Route path="/editor" element={<EditorPage />} />
           <Route path="/new-post" element={<NewPostPage />} />
           <Route path="/edit-post/:postId" element={<EditPostPage />} />
           <Route path="/settings" element={<SettingsPage />} />

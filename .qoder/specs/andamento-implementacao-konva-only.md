@@ -36,7 +36,7 @@ Exemplos:
 | 0 | Alinhamento | ⬜ Não iniciado | - | - | - |
 | 1 | Contratos e Schema | ✅ Concluído | 36e29e9 | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 2 | Storage JSON + IPC | ✅ Concluído | feat(konva-fase-2): implementa storage json atomico e ipc de templates | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 3 | Editor Konva Core | ⬜ Não iniciado | - | - | - |
+| 3 | Editor Konva Core | ✅ Concluído | feat(konva-fase-3): implementa editor konva core no desktop-app | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 4 | Multi-page + Formatos | ⬜ Não iniciado | - | - | - |
 | 5 | Prompt-only + RAG | ⬜ Não iniciado | - | - | - |
 | 6 | Fundo IA + Referências | ⬜ Não iniciado | - | - | - |
@@ -103,12 +103,36 @@ Legenda status:
 - Próximo passo: iniciar Fase 3 (Editor Konva Core), sem reintroduzir pipeline HTML/DS no motor de geração.
 
 ### Fase 3 — Editor Konva Core
-- Escopo fechado:
+- Escopo fechado: editor Konva funcional no `desktop-app` com `EditorPage`, persistência local via IPC da Fase 2, stage WYSIWYG para documento v2, seleção/transform, zoom/pan, smart guides básicos, painel de layers e painel de propriedades.
 - Decisões:
+  - portar apenas o núcleo estável do editor existente no repositório, sem reintroduzir pipeline HTML/DS.
+  - usar `react-konva@18.2.14` com `konva@10.2.0`, compatíveis com React 18 do `desktop-app`.
+  - manter histórico linear em store separada (`history.store.ts`) com limite de 100 snapshots e mutações centralizadas em `editor.store.ts`.
+  - priorizar edição direta mínima no preview via `double click` para texto/imagem e edição detalhada no painel de propriedades.
 - Arquivos alterados:
+  - `desktop-app/package.json`
+  - `desktop-app/package-lock.json`
+  - `desktop-app/src/App.tsx`
+  - `desktop-app/src/components/layout/Sidebar.tsx`
+  - `desktop-app/src/pages/EditorPage.tsx`
+  - `desktop-app/src/components/editor/EditorShell.tsx`
+  - `desktop-app/src/components/editor/EditorStage.tsx`
+  - `desktop-app/src/components/editor/LayerFactory.tsx`
+  - `desktop-app/src/components/editor/LayersPanel.tsx`
+  - `desktop-app/src/components/editor/PropertiesPanel.tsx`
+  - `desktop-app/src/stores/editor.store.ts`
+  - `desktop-app/src/stores/history.store.ts`
+  - `desktop-app/src/stores/pages.store.ts`
+  - `desktop-app/src/lib/editor/document.ts`
+  - `desktop-app/src/lib/editor/formats.ts`
+  - `desktop-app/src/lib/editor/smart-guides.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-3): implementa editor konva core no desktop-app`
+- Próximo passo: iniciar Fase 4 com `PagesBar`, presets de formato Instagram, navegação multipágina, reordenação e thumbnails básicas.
 
 ### Fase 4 — Multi-page + Formatos
 - Escopo fechado:
@@ -172,6 +196,6 @@ Legenda status:
 - 
 
 ## Observações de handoff (próxima conversa)
-- Estado atual: Fases 1 e 2 concluídas e validadas com typecheck web/electron.
-- Último commit estável: feat(konva-fase-2): implementa storage json atomico e ipc de templates
-- Próxima fase recomendada: Fase 3 — Editor Konva Core.
+- Estado atual: Fases 1, 2 e 3 concluídas e validadas com typecheck web/electron.
+- Último commit estável: feat(konva-fase-3): implementa editor konva core no desktop-app
+- Próxima fase recomendada: Fase 4 — Multi-page + Formatos.
