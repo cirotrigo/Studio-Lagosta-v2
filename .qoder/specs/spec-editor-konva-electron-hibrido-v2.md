@@ -238,10 +238,11 @@ export interface SlotBinding {
 1. Usuário escolhe projeto, formato e template Konva.
 2. Seleciona foto e prompt base.
 3. Define variações (`1`, `2`, `4` inicialmente).
-4. Pipeline consulta base de conhecimento do projeto (RAG) com base no prompt.
-5. LLM gera copy estruturada em JSON com contexto do projeto.
-6. Slot binder aplica copy no documento Konva.
-7. Sistema cria variações em fila e mostra preview Konva.
+4. Opcional: se `analisarImagem = true`, pipeline extrai contexto visual da foto (prato/cena/ingredientes com confiança).
+5. Pipeline consulta base de conhecimento do projeto (RAG) com base no prompt e no contexto visual (quando disponível).
+6. LLM gera copy estruturada em JSON com contexto do projeto.
+7. Slot binder aplica copy no documento Konva.
+8. Sistema cria variações em fila e mostra preview Konva.
 
 ## 7.2 Aprovação
 - Aprovação por variação (não bloqueante).
@@ -261,6 +262,21 @@ Comportamento esperado:
 2. Copy já vem com informações relevantes sem o usuário repetir detalhes.
 3. Usuário aprova direto ou ajusta no Konva.
 4. Variações aprovadas vão para histórico/publicação.
+
+## 7.5 Exemplo de uso (Almoço Executivo com análise de imagem)
+Entrada do usuário:
+- Prompt: “Crie variações com essa foto para divulgar o almoço executivo de quinta-feira.”
+- Toggle: `Analisar imagem para contexto = ligado`
+
+Comportamento esperado:
+1. Motor de visão descreve a foto e sugere possíveis pratos com score de confiança.
+2. Sistema cruza candidatos com `CARDAPIO`/`CAMPANHAS` do projeto.
+3. Se houver match confiável, copy usa nome/descrição do prato alinhado ao prompt.
+4. Se não houver match confiável, sistema mantém copy contextual sem inventar itens.
+
+Regra de UX:
+- Toggle de análise de imagem deve vir **desligado por padrão**.
+- Quando ativo, UI deve indicar “Análise de imagem aplicada”.
 
 ---
 

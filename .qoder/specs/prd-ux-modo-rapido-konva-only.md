@@ -91,6 +91,7 @@ Permitir gerar artes prontas para Instagram com **1 prompt + 1 clique**, mantend
 - Ajustes de tom da copy
 - Seleção manual de template
 - Configurações de constraints
+- Toggle `Analisar imagem para contexto` (default: desligado)
 
 ## 8.3 Transparência de contexto
 - Badge: `Contexto do projeto aplicado`
@@ -102,7 +103,19 @@ Permitir gerar artes prontas para Instagram com **1 prompt + 1 clique**, mantend
 ## 9.1 Orquestrador de prompt
 - Input: prompt + formato + mídia + refs + projectId
 - Enriquecimento: RAG context
+- Opcional: enriquecimento por análise da imagem quando toggle estiver ativo
 - Output: copy estruturada por slots
+
+## 9.4 Análise de imagem opcional
+- Entrada: imagem base da arte.
+- Saída esperada:
+  - `dishNameCandidates[]`
+  - `sceneType`
+  - `ingredientsHints[]`
+  - `confidence`
+- Regra:
+  - só aplicar automaticamente quando `confidence >= threshold`.
+  - abaixo do limiar, não inferir prato específico.
 
 ## 9.2 Slot binder
 - Mapeia `title/description/cta/badge/footer` para layers Konva.
@@ -133,10 +146,10 @@ Permitir gerar artes prontas para Instagram com **1 prompt + 1 clique**, mantend
 2. Usuário não precisa repetir dados estáveis do negócio.
 3. Variações aprovadas mantêm fidelidade visual do preview para export.
 4. Reedição Konva funciona para qualquer variação gerada.
+5. Com toggle ativo, prompt de almoço executivo pode aproveitar contexto visual da foto para associar prato quando houver match confiável no cardápio.
 
 ## 12. Não-objetivos do MVP
 
 - Export SVG vetorial.
 - Histórico em árvore com merge.
 - Recomendador avançado de campanha multiobjetivo.
-
