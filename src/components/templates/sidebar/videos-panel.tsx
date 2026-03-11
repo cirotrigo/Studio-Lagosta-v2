@@ -32,6 +32,7 @@ export function VideosPanel() {
   const [isApplying, setIsApplying] = React.useState(false)
   const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(undefined)
   const [isLoadingMore, setIsLoadingMore] = React.useState(false)
+  const initializedFolderKeyRef = React.useRef<string | null>(null)
 
   const fileInputRef = React.useRef<HTMLInputElement>(null)
 
@@ -191,9 +192,16 @@ export function VideosPanel() {
   React.useEffect(() => {
     if (driveFolderId) {
       const initialName = driveFolderName ?? 'Pasta do projeto'
+      const folderKey = `${driveFolderId}:${initialName}`
+      if (initializedFolderKeyRef.current === folderKey) {
+        return
+      }
+
+      initializedFolderKeyRef.current = folderKey
       setBreadcrumbs([{ id: driveFolderId, name: initialName }])
       void loadDriveFiles(driveFolderId, initialName)
     } else {
+      initializedFolderKeyRef.current = null
       setBreadcrumbs([])
       setDriveItems([])
     }

@@ -1,20 +1,61 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
-import { db } from '@/lib/db'
 import { googleDriveService } from '@/server/google-drive-service'
 import { assertRateLimit, RateLimitError } from '@/lib/rate-limit'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import type { GoogleDriveItem } from '@/types/google-drive'
 
 const querySchema = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 })
 
+const PROJECT_DRIVE_IMAGES_CACHE_TTL_MS = 60_000
+const PROJECT_DRIVE_IMAGES_RATE_LIMIT = 300
+
+interface ProjectDriveImagesPayload {
+  images: Array<Pick<GoogleDriveItem, 'id' | 'name' | 'mimeType' | 'thumbnailLink' | 'webContentLink'>>
+  nextOffset?: number
+}
+
+const projectDriveImagesCache = new Map<string, { payload: ProjectDriveImagesPayload; timestamp: number }>()
+
+function getProjectDriveImagesCacheKey({
+  userId,
+  projectId,
+  driveFolderId,
+  offset,
+  limit,
+}: {
+  userId: string
+  projectId: number
+  driveFolderId: string
+  offset: number
+  limit: number
+}) {
+  return [userId, projectId, driveFolderId, offset, limit].join(':')
+}
+
+function getCachedProjectDriveImages(cacheKey: string) {
+  const cached = projectDriveImagesCache.get(cacheKey)
+  if (!cached) {
+    return null
+  }
+
+  if (Date.now() - cached.timestamp > PROJECT_DRIVE_IMAGES_CACHE_TTL_MS) {
+    projectDriveImagesCache.delete(cacheKey)
+    return null
+  }
+
+  return cached.payload
+}
+
 export async function GET(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  let cacheKey: string | null = null
   try {
     const { userId, orgId } = await auth()
     if (!userId) {
@@ -68,10 +109,20 @@ export async function GET(
 
     const { offset, limit } = parseResult.data
 
-    // Rate limiting
-    assertRateLimit({ key: `drive:project-images:${userId}:${projectId}` })
-
     // Listar imagens da pasta
+    cacheKey = getProjectDriveImagesCacheKey({ userId, projectId, driveFolderId, offset, limit })
+    const cachedPayload = getCachedProjectDriveImages(cacheKey)
+    if (cachedPayload) {
+      return NextResponse.json(cachedPayload, {
+        headers: { 'X-Drive-Cache': 'HIT' },
+      })
+    }
+
+    assertRateLimit({
+      key: `drive:project-images:${userId}:${projectId}:${driveFolderId}`,
+      limit: PROJECT_DRIVE_IMAGES_RATE_LIMIT,
+    })
+
     const result = await googleDriveService.listFiles({
       folderId: driveFolderId,
       mode: 'images',
@@ -90,20 +141,37 @@ export async function GET(
     const nextOffset = hasMore ? offset + limit : undefined
 
     // Mapear para o formato esperado
-    const images = paginatedFiles.map((file) => ({
-      id: file.id,
-      name: file.name,
-      mimeType: file.mimeType,
-      thumbnailLink: file.thumbnailLink,
-      webContentLink: file.webContentLink,
-    }))
-
-    return NextResponse.json({
-      images,
+    const payload: ProjectDriveImagesPayload = {
+      images: paginatedFiles.map((file) => ({
+        id: file.id,
+        name: file.name,
+        mimeType: file.mimeType,
+        thumbnailLink: file.thumbnailLink,
+        webContentLink: file.webContentLink,
+      })),
       nextOffset,
+    }
+
+    projectDriveImagesCache.set(cacheKey, {
+      payload,
+      timestamp: Date.now(),
     })
+
+    return NextResponse.json(payload)
   } catch (error) {
     if (error instanceof RateLimitError) {
+      if (cacheKey) {
+        const cachedPayload = getCachedProjectDriveImages(cacheKey)
+        if (cachedPayload) {
+          return NextResponse.json(cachedPayload, {
+            headers: {
+              'Retry-After': String(error.retryAfter),
+              'X-Drive-Cache': 'STALE',
+            },
+          })
+        }
+      }
+
       return NextResponse.json(
         { error: 'Limite de requisições atingido' },
         { status: 429, headers: { 'Retry-After': String(error.retryAfter) } }

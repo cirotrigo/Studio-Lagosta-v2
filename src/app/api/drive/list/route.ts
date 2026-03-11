@@ -18,6 +18,7 @@ const querySchema = z.object({
 })
 
 const DRIVE_LIST_CACHE_TTL_MS = 60_000
+const DRIVE_LIST_RATE_LIMIT = 300
 
 interface DriveListRoutePayload {
   items: GoogleDriveItem[]
@@ -146,6 +147,7 @@ export async function GET(req: Request) {
 
     assertRateLimit({
       key: `drive:list:${userId}:${projectId}:${resolvedFolderType}:${effectiveFolderId}`,
+      limit: DRIVE_LIST_RATE_LIMIT,
     })
 
     const listResponse = await googleDriveService.listFiles({
