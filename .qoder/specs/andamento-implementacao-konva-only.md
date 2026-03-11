@@ -34,8 +34,8 @@ Exemplos:
 | Fase | Nome | Status | Commit | Validação | Atualizado em |
 |------|------|--------|--------|-----------|---------------|
 | 0 | Alinhamento | ⬜ Não iniciado | - | - | - |
-| 1 | Contratos e Schema | ✅ Concluído | feat(konva-fase-1): define schema v2 e contratos ipc konva-only | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 2 | Storage JSON + IPC | ⬜ Não iniciado | - | - | - |
+| 1 | Contratos e Schema | ✅ Concluído | 36e29e9 | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
+| 2 | Storage JSON + IPC | ✅ Concluído | feat(konva-fase-2): implementa storage json atomico e ipc de templates | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 3 | Editor Konva Core | ⬜ Não iniciado | - | - | - |
 | 4 | Multi-page + Formatos | ⬜ Não iniciado | - | - | - |
 | 5 | Prompt-only + RAG | ⬜ Não iniciado | - | - | - |
@@ -77,16 +77,30 @@ Legenda status:
 - Testes executados:
   - `npm --prefix desktop-app run typecheck` ✅
   - `npm --prefix desktop-app run typecheck:electron` ✅
-- Commit: `feat(konva-fase-1): define schema v2 e contratos ipc konva-only`
+- Commit: `36e29e9 - feat(konva-fase-1): define schema v2 e contratos ipc konva-only`
 - Próximo passo: implementar Fase 2 com storage JSON atômico no main process e handlers IPC de template/sync.
 
 ### Fase 2 — Storage JSON + IPC
-- Escopo fechado:
+- Escopo fechado: persistência local JSON no main process com escrita atômica e handlers IPC `konva:template:*`/`konva:sync:*` conectados ao preload.
 - Decisões:
+  - storage local em `appData/LagostaTools` com criação automática da árvore base.
+  - escrita atômica via arquivo temporário (`.tmp-*`) + `rename`.
+  - deduplicação da fila de sync por chave `projectId:entityId:op` em `sync/queue.json`.
+  - handlers IPC modularizados e registrados no bootstrap do Electron.
 - Arquivos alterados:
+  - `desktop-app/electron/services/json-storage.ts`
+  - `desktop-app/electron/ipc/template-handlers.ts`
+  - `desktop-app/electron/ipc/sync-handlers.ts`
+  - `desktop-app/electron/ipc/konva-ipc-types.ts`
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-2): implementa storage json atomico e ipc de templates`
+- Próximo passo: iniciar Fase 3 (Editor Konva Core), sem reintroduzir pipeline HTML/DS no motor de geração.
 
 ### Fase 3 — Editor Konva Core
 - Escopo fechado:
@@ -158,6 +172,6 @@ Legenda status:
 - 
 
 ## Observações de handoff (próxima conversa)
-- Estado atual: Fase 1 concluída e validada; Fase 2 pendente.
-- Último commit estável: feat(konva-fase-1): define schema v2 e contratos ipc konva-only
-- Próxima fase recomendada: Fase 2 — Storage JSON + IPC.
+- Estado atual: Fases 1 e 2 concluídas e validadas com typecheck web/electron.
+- Último commit estável: feat(konva-fase-2): implementa storage json atomico e ipc de templates
+- Próxima fase recomendada: Fase 3 — Editor Konva Core.

@@ -1,4 +1,11 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import {
+  KONVA_CHANNELS,
+  type KonvaTemplateDocument,
+  type SyncPullResult,
+  type SyncPushResult,
+  type SyncStatus,
+} from './ipc/konva-ipc-types'
 
 export interface ProcessedImageResult {
   buffer: ArrayBuffer
@@ -119,6 +126,21 @@ export interface ElectronAPI {
   
   // Blob Download (bypasses CORS for binary data)
   downloadBlob: (url: string) => Promise<{ ok: boolean; status: number; buffer?: ArrayBuffer; contentType?: string; error?: string }>
+
+  // Konva-only template contracts
+  konvaTemplates: {
+    list: (projectId: number) => Promise<KonvaTemplateDocument[]>
+    get: (projectId: number, templateId: string) => Promise<KonvaTemplateDocument | null>
+    save: (projectId: number, doc: KonvaTemplateDocument) => Promise<{ ok: true; id: string }>
+    delete: (projectId: number, templateId: string) => Promise<{ ok: true }>
+  }
+
+  // Konva-only sync contracts
+  konvaSync: {
+    pull: (projectId: number) => Promise<SyncPullResult>
+    push: (projectId: number) => Promise<SyncPushResult>
+    status: (projectId: number) => Promise<SyncStatus>
+  }
 }
 
 const electronAPI: ElectronAPI = {
@@ -162,6 +184,24 @@ const electronAPI: ElectronAPI = {
 
   // Blob Download (bypasses CORS for binary data)
   downloadBlob: (url: string) => ipcRenderer.invoke('blob:download', url),
+
+  // Konva-only template contracts
+  konvaTemplates: {
+    list: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_LIST, projectId),
+    get: (projectId: number, templateId: string) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_GET, projectId, templateId),
+    save: (projectId: number, doc: KonvaTemplateDocument) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_SAVE, projectId, doc),
+    delete: (projectId: number, templateId: string) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_DELETE, projectId, templateId),
+  },
+
+  // Konva-only sync contracts
+  konvaSync: {
+    pull: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_PULL, projectId),
+    push: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_PUSH, projectId),
+    status: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_STATUS, projectId),
+  },
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

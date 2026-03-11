@@ -5,6 +5,9 @@ import { processImage } from './ipc/image-processor'
 import { getCookies, saveCookies, clearCookies } from './ipc/secure-storage'
 import { ensureFont, getFontBase64 } from './ipc/font-cache'
 import { renderText, measureTextLayout, renderFinalLayout, registerFontFromPath } from './ipc/text-renderer'
+import { JsonStorageService } from './services/json-storage'
+import { registerTemplateHandlers } from './ipc/template-handlers'
+import { registerSyncHandlers } from './ipc/sync-handlers'
 
 let mainWindow: BrowserWindow | null = null
 let refreshWindow: BrowserWindow | null = null
@@ -290,7 +293,17 @@ function createWindow() {
 }
 
 // App lifecycle
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  try {
+    const konvaStorage = new JsonStorageService()
+    await konvaStorage.ensureBaseStructure()
+    registerTemplateHandlers(konvaStorage)
+    registerSyncHandlers(konvaStorage)
+    console.info('[Konva Storage] Inicializado em:', konvaStorage.getRootDir())
+  } catch (error) {
+    console.error('[Konva Storage] Falha ao inicializar handlers/storage:', error)
+  }
+
   createWindow()
 
   app.on('activate', () => {

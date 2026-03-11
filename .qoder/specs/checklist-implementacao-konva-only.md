@@ -44,14 +44,14 @@ Arquivos:
 - `desktop-app/electron/preload.ts`
 
 Tarefas:
-- [ ] Implementar persistência local JSON com escrita atômica.
-- [ ] Criar CRUD de templates via IPC.
-- [ ] Criar fila local de sync (`sync/queue.json`) com deduplicação.
-- [ ] Expor APIs seguras no preload.
+- [x] Implementar persistência local JSON com escrita atômica.
+- [x] Criar CRUD de templates via IPC.
+- [x] Criar fila local de sync (`sync/queue.json`) com deduplicação.
+- [x] Expor APIs seguras no preload.
 
 DoD:
-- [ ] Criar/editar/remover/listar template local funciona.
-- [ ] Restart do app preserva dados.
+- [x] Criar/editar/remover/listar template local funciona.
+- [x] Restart do app preserva dados.
 
 ---
 
