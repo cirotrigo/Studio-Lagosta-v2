@@ -32,7 +32,15 @@ export default function InstagramHtmlIframePreview({
   fallback,
 }: InstagramHtmlIframePreviewProps) {
   const frameRef = useRef<HTMLIFrameElement | null>(null)
+  const hostRef = useRef<HTMLDivElement | null>(null)
   const [useFallback, setUseFallback] = useState(false)
+  const [hostSize, setHostSize] = useState({ width: 0, height: 0 })
+
+  const targetSize = useMemo(() => {
+    if (format === 'STORY') return { width: 1080, height: 1920 }
+    if (format === 'SQUARE') return { width: 1080, height: 1080 }
+    return { width: 1080, height: 1350 }
+  }, [format])
 
   const snapshot = useMemo(
     () =>
@@ -54,6 +62,42 @@ export default function InstagramHtmlIframePreview({
     setUseFallback(false)
   }, [snapshot.html])
 
+  useEffect(() => {
+    const element = hostRef.current
+    if (!element) return
+
+    const updateSize = () => {
+      const rect = element.getBoundingClientRect()
+      setHostSize({
+        width: Math.max(0, Math.round(rect.width)),
+        height: Math.max(0, Math.round(rect.height)),
+      })
+    }
+
+    updateSize()
+    const raf = window.requestAnimationFrame(updateSize)
+    const timeout = window.setTimeout(updateSize, 60)
+    const onWindowResize = () => updateSize()
+    window.addEventListener('resize', onWindowResize)
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateSize)
+      observer.observe(element)
+      return () => {
+        window.removeEventListener('resize', onWindowResize)
+        window.cancelAnimationFrame(raf)
+        window.clearTimeout(timeout)
+        observer.disconnect()
+      }
+    }
+
+    return () => {
+      window.removeEventListener('resize', onWindowResize)
+      window.cancelAnimationFrame(raf)
+      window.clearTimeout(timeout)
+    }
+  }, [format])
+
   const evaluateFrame = () => {
     if (!sourceImageUrl) return
     if (!frameRef.current) return
@@ -68,9 +112,18 @@ export default function InstagramHtmlIframePreview({
         return
       }
 
-      if (!bgPhoto.complete || bgPhoto.naturalWidth <= 0 || bgPhoto.naturalHeight <= 0) {
-        setUseFallback(true)
+      // Do not fallback while the background image is still loading.
+      // Falling back too early causes a visual mismatch vs approval snapshot.
+      if (!bgPhoto.complete) {
+        return
       }
+
+      if (bgPhoto.naturalWidth <= 0 || bgPhoto.naturalHeight <= 0) {
+        setUseFallback(true)
+        return
+      }
+
+      setUseFallback(false)
     } catch {
       setUseFallback(true)
     }
@@ -80,20 +133,43 @@ export default function InstagramHtmlIframePreview({
     return <>{fallback}</>
   }
 
+  const scale = hostSize.width > 0 && hostSize.height > 0
+    ? Math.min(hostSize.width / targetSize.width, hostSize.height / targetSize.height)
+    : 1
+  const safeScale = Math.max(0.0001, scale)
+  const isMeasured = hostSize.width > 0 && hostSize.height > 0
+  const scaledWidth = targetSize.width * safeScale
+  const scaledHeight = targetSize.height * safeScale
+  const offsetX = Math.max(0, (hostSize.width - scaledWidth) / 2)
+  const offsetY = Math.max(0, (hostSize.height - scaledHeight) / 2)
+
   return (
-    <iframe
-      ref={frameRef}
-      title={`Preview template ${snapshot.templateId}`}
-      srcDoc={snapshot.html}
-      className={cn('h-full w-full border-0 bg-zinc-950', className)}
-      sandbox="allow-same-origin"
-      loading="lazy"
-      onLoad={() => {
-        evaluateFrame()
-        // Remote background may resolve a bit later than iframe load.
-        window.setTimeout(evaluateFrame, 280)
-        window.setTimeout(evaluateFrame, 900)
-      }}
-    />
+    <div ref={hostRef} className={cn('relative h-full w-full overflow-hidden bg-zinc-950', className)}>
+      <iframe
+        ref={frameRef}
+        title={`Preview template ${snapshot.templateId}`}
+        srcDoc={snapshot.html}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: `${targetSize.width}px`,
+          height: `${targetSize.height}px`,
+          border: '0',
+          background: '#09090b',
+          transform: `translate(${offsetX}px, ${offsetY}px) scale(${safeScale})`,
+          transformOrigin: 'top left',
+          opacity: isMeasured ? 1 : 0,
+        }}
+        sandbox="allow-same-origin"
+        loading="lazy"
+        onLoad={() => {
+          // Remote background may resolve later than iframe load.
+          // Evaluate after a longer delay to avoid premature fallback.
+          window.setTimeout(evaluateFrame, 2200)
+          window.setTimeout(evaluateFrame, 4200)
+        }}
+      />
+    </div>
   )
 }

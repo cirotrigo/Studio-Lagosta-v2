@@ -109,6 +109,15 @@ interface GenerateArtTabProps {
   onDraftConsumed?: () => void
 }
 
+interface SelectedPhotoRef {
+  url: string
+  source: string
+  format?: ArtFormat
+  aspectRatio?: string
+  width?: number
+  height?: number
+}
+
 interface PreparedReviewVariation {
   imageUrl: string
   fields: ReviewField[]
@@ -200,7 +209,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
   // Form state
   const [format, setFormat] = useState<ArtFormat>('STORY')
-  const [selectedPhoto, setSelectedPhoto] = useState<{ url: string; source: string } | null>(null)
+  const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
   const [text, setText] = useState('')
   const [includeLogo, setIncludeLogo] = useState(true)
   const [usePhoto, setUsePhoto] = useState(true)
@@ -431,6 +440,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     result: GenerateArtResult,
     includeLogoOnRender: boolean,
     copyVariations?: StructuredCopyVariation[],
+    preferredSourceImageUrl?: string,
+    templateCodeMap?: Record<string, string>,
   ): Promise<PreparedReviewVariation[]> => {
     const prepared: PreparedReviewVariation[] = []
 
@@ -442,8 +453,17 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       ? result.format
       : 'FEED_PORTRAIT'
 
-    // Download base image once
-    const downloaded = await window.electronAPI.downloadBlob(result.imageUrl)
+    // Download source image for template background once.
+    // Prefer the user's selected photo (clean source) over legacy-rendered output.
+    const initialSourceUrl = preferredSourceImageUrl || result.imageUrl
+    console.log('[template-render] Source image selected for preview:', {
+      preferred: Boolean(preferredSourceImageUrl),
+      initialIsDataUrl: initialSourceUrl.startsWith('data:image/'),
+    })
+    let downloaded = await window.electronAPI.downloadBlob(initialSourceUrl)
+    if ((!downloaded.ok || !downloaded.buffer) && initialSourceUrl !== result.imageUrl) {
+      downloaded = await window.electronAPI.downloadBlob(result.imageUrl)
+    }
     if (!downloaded.ok || !downloaded.buffer) {
       throw new Error('Erro ao baixar imagem base')
     }
@@ -454,6 +474,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         ? downloaded.contentType
         : 'image/jpeg'
     )
+    const previewSourceImageUrl = preferredSourceImageUrl || sourceImageDataUrl
 
     const fieldsFromSlots: ReviewField[] = Object.entries(result.slots).map(([key, value]) => ({
       key,
@@ -471,6 +492,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     for (let idx = 0; idx < targetCount; idx++) {
       const tpl = result.templates[idx % result.templates.length]
       if (!tpl) continue
+      const templateNameForPreview = templateCodeMap?.[tpl.templateId] || tpl.templateId
       try {
         const selectedCopy = copyVariations && copyVariations.length > 0
           ? copyVariations[Math.min(idx, copyVariations.length - 1)]
@@ -510,8 +532,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           fields: finalFields,
           renderContext: {
             kind: 'template',
-            sourceImageUrl: sourceImageDataUrl,
-            templateId: tpl.templateId,
+            sourceImageUrl: previewSourceImageUrl,
+            templateId: templateNameForPreview,
             templateData: tpl.templateData,
             fontSources: tpl.fontSources,
             strictTemplateMode: result.strictTemplateMode ?? false,
@@ -535,8 +557,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           fields: finalFields,
           renderContext: {
             kind: 'template',
-            sourceImageUrl: sourceImageDataUrl,
-            templateId: tpl.templateId,
+            sourceImageUrl: previewSourceImageUrl,
+            templateId: templateNameForPreview,
             templateData: tpl.templateData,
             fontSources: tpl.fontSources,
             strictTemplateMode: result.strictTemplateMode ?? false,
@@ -633,10 +655,18 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     result: GenerateArtResult,
     includeLogoOnRender: boolean,
     copyVariations?: StructuredCopyVariation[],
+    preferredSourceImageUrl?: string,
+    templateCodeMap?: Record<string, string>,
   ): Promise<PreparedReviewVariation[]> => {
     const pipelineAvailable = checkTemplatePipeline()
     if (result.templatePath && pipelineAvailable) {
-      return processResultWithTemplate(result, includeLogoOnRender, copyVariations)
+      return processResultWithTemplate(
+        result,
+        includeLogoOnRender,
+        copyVariations,
+        preferredSourceImageUrl,
+        templateCodeMap,
+      )
     } else if (result.templatePath && !pipelineAvailable) {
       throw new Error('Templates requerem o app desktop')
     }
@@ -925,7 +955,13 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       })
 
       try {
-        const preparedVariations = await processResultImages(result, params.includeLogo, copyVariations)
+        const preparedVariations = await processResultImages(
+          result,
+          params.includeLogo,
+          copyVariations,
+          params.photoUrl,
+          params.templateCodeMap,
+        )
         if (preparedVariations.length === 0) {
           throw new Error('Nenhuma arte foi gerada')
         }
@@ -1008,9 +1044,17 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     }
 
     let templateIdsForGeneration: string[] | undefined
+    let templateCodeMapForGeneration: Record<string, string> | undefined
     if (isTemplateMode) {
       try {
         templateIdsForGeneration = await ensureTemplateIdsForGeneration(selectedTemplateIds, format)
+        templateCodeMapForGeneration = templateIdsForGeneration.reduce<Record<string, string>>((acc, resolvedId, index) => {
+          const dsTemplateCode = selectedTemplateIds[index] || selectedTemplateIds[0]
+          if (resolvedId && dsTemplateCode) {
+            acc[resolvedId] = dsTemplateCode
+          }
+          return acc
+        }, {})
       } catch (error: any) {
         toast.error(error?.message || 'Erro ao preparar templates para geracao')
         return
@@ -1030,6 +1074,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       compositionReferenceUrls,
       ...(isTemplateMode && {
         templateIds: templateIdsForGeneration,
+        templateCodeMap: templateCodeMapForGeneration,
         textProcessingMode,
         textProcessingCustomPrompt: textProcessingMode === 'generate_copy' ? textProcessingCustomPrompt : undefined,
         strictTemplateMode,

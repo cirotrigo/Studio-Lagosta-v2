@@ -33,6 +33,7 @@ export default function HistoryTab({ projectId, onReedit }: HistoryTabProps) {
   const [filterFormat, setFilterFormat] = useState<FilterFormat>('ALL')
   const [filterPeriod, setFilterPeriod] = useState<FilterPeriod>('ALL')
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [naturalAspectById, setNaturalAspectById] = useState<Record<string, string>>({})
 
   const filteredImages = useMemo(() => {
     if (!images) return []
@@ -92,15 +93,21 @@ export default function HistoryTab({ projectId, onReedit }: HistoryTabProps) {
     })
   }
 
-  const getAspectClass = (format?: string) => {
-    switch (format) {
-      case 'STORY':
-        return 'aspect-[9/16]'
-      case 'SQUARE':
-        return 'aspect-square'
-      default:
-        return 'aspect-[4/5]'
+  const resolveAspectRatioValue = (image: AIImage): string => {
+    if (naturalAspectById[image.id]) return naturalAspectById[image.id]
+    if (image.aspectRatio && image.aspectRatio.includes(':')) {
+      const [w, h] = image.aspectRatio.split(':').map((v) => Number(v.trim()))
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        return `${w} / ${h}`
+      }
     }
+    if (typeof image.width === 'number' && typeof image.height === 'number' && image.width > 0 && image.height > 0) {
+      return `${image.width} / ${image.height}`
+    }
+    if (image.format === 'STORY') return '9 / 16'
+    if (image.format === 'SQUARE') return '1 / 1'
+    if (image.format === 'FEED_PORTRAIT') return '4 / 5'
+    return '4 / 5'
   }
 
   const inferFormat = (image: AIImage): ArtFormat => {
@@ -186,14 +193,20 @@ export default function HistoryTab({ projectId, onReedit }: HistoryTabProps) {
               <div
                 key={image.id}
                 className={cn(
-                  'group relative overflow-hidden rounded-xl border border-border bg-card',
-                  getAspectClass(image.format)
+                  'group relative overflow-hidden rounded-xl border border-border bg-card'
                 )}
+                style={{ aspectRatio: resolveAspectRatioValue(image) }}
               >
                 <img
                   src={image.fileUrl}
                   alt={image.name}
                   className="h-full w-full object-contain bg-zinc-950"
+                  onLoad={(event) => {
+                    const imgEl = event.currentTarget
+                    if (imgEl.naturalWidth <= 0 || imgEl.naturalHeight <= 0) return
+                    const next = `${imgEl.naturalWidth} / ${imgEl.naturalHeight}`
+                    setNaturalAspectById((prev) => (prev[image.id] === next ? prev : { ...prev, [image.id]: next }))
+                  }}
                 />
 
                 {/* Hover Overlay */}

@@ -15,7 +15,7 @@ export interface DsTemplateSpec {
   id: DsTemplateId
   format: ArtFormat
   title: string
-  overlay: 'top' | 'bottom' | 'left' | 'right' | 'double'
+  overlay: 'top' | 'bottom' | 'left' | 'right' | 'double' | 'none'
   notes: string
 }
 
@@ -80,7 +80,7 @@ const TEMPLATE_SPECS: Record<DsTemplateId, DsTemplateSpec> = {
     id: 'F3',
     format: 'SQUARE',
     title: 'Clean / Tag',
-    overlay: 'bottom',
+    overlay: 'none',
     notes: 'Photo-first, minimal tag',
   },
 }

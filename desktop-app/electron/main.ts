@@ -327,11 +327,9 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
   let tempHtmlPath: string | null = null
 
   const worker = new BrowserWindow({
-    x: -10000,
-    y: -10000,
     width,
     height,
-    show: true,
+    show: false,
     paintWhenInitiallyHidden: true,
     frame: false,
     transparent: false,
@@ -346,6 +344,7 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
       javascript: true,
     },
   })
+  worker.setContentSize(width, height)
 
   try {
     const tempFileName = `lagosta-snapshot-${Date.now()}-${Math.random().toString(16).slice(2)}.html`
@@ -357,6 +356,35 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
     const snapshotDiagnostics = await worker.webContents.executeJavaScript(`
       (async () => {
         const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+        const forceSnapshotLayout = () => {
+          const app = document.getElementById('app');
+          if (app) {
+            app.style.setProperty('position', 'relative', 'important');
+            app.style.setProperty('width', '${width}px', 'important');
+            app.style.setProperty('height', '${height}px', 'important');
+            app.style.setProperty('min-height', '${height}px', 'important');
+            app.style.setProperty('max-height', '${height}px', 'important');
+            app.style.setProperty('max-width', '${width}px', 'important');
+            app.style.setProperty('overflow', 'hidden', 'important');
+            app.style.setProperty('transform', 'none', 'important');
+            app.style.setProperty('transform-origin', 'top left', 'important');
+          }
+          const preview = document.querySelector('.ig-preview-container');
+          if (preview) {
+            preview.style.setProperty('position', 'absolute', 'important');
+            preview.style.setProperty('left', '0', 'important');
+            preview.style.setProperty('top', '0', 'important');
+            preview.style.setProperty('width', '${width}px', 'important');
+            preview.style.setProperty('height', '${height}px', 'important');
+            preview.style.setProperty('min-height', '${height}px', 'important');
+            preview.style.setProperty('max-height', '${height}px', 'important');
+            preview.style.setProperty('max-width', '${width}px', 'important');
+            preview.style.setProperty('aspect-ratio', 'auto', 'important');
+            preview.style.setProperty('overflow', 'hidden', 'important');
+            preview.style.setProperty('transform', 'none', 'important');
+            preview.style.setProperty('transform-origin', 'top left', 'important');
+          }
+        };
         const waitFonts = async () => {
           if (!document.fonts || !document.fonts.ready) return;
           try {
@@ -391,19 +419,29 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
             wait(7000),
           ]);
         };
+        forceSnapshotLayout();
+        await wait(30);
         await waitFonts();
         await waitImages();
         await waitPrimaryImage();
+        forceSnapshotLayout();
         await wait(220);
 
         const bg = document.querySelector('img.ig-bg-photo');
         const logo = document.querySelector('img.ig-logo, img.ig-logo-feed');
+        const preview = document.querySelector('.ig-preview-container');
+        const rect = preview ? preview.getBoundingClientRect() : null;
         return {
+          devicePixelRatio: window.devicePixelRatio || 1,
           imageCount: Array.from(document.images || []).length,
           bgLoaded: !!(bg && bg.naturalWidth > 0 && bg.naturalHeight > 0),
           bgNaturalWidth: bg ? bg.naturalWidth : 0,
           bgNaturalHeight: bg ? bg.naturalHeight : 0,
           logoLoaded: !!(logo && logo.naturalWidth > 0 && logo.naturalHeight > 0),
+          previewRect: rect ? {
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          } : null,
         };
       })();
     `, true)
@@ -411,10 +449,47 @@ async function renderHtmlSnapshotOffscreen(args: RenderHtmlSnapshotArgs): Promis
     await new Promise<void>((resolve) => setTimeout(resolve, 120))
 
     const snapshot = await worker.webContents.capturePage({ x: 0, y: 0, width, height })
-    const buffer = mimeType === 'image/png'
-      ? snapshot.toPNG()
-      : snapshot.toJPEG(jpegQuality)
-    console.log('[HTML Snapshot] Captured buffer:', buffer.length, 'bytes', mimeType, `${width}x${height}`)
+    const capturedPngBuffer = snapshot.toPNG()
+    let buffer: Buffer
+
+    try {
+      const sharp = (await import('sharp')).default
+      const capturedMeta = await sharp(capturedPngBuffer).metadata()
+      const capturedWidth = capturedMeta.width || width
+      const capturedHeight = capturedMeta.height || height
+      const needsNormalization = capturedWidth !== width || capturedHeight !== height
+      console.log(
+        '[HTML Snapshot] Captured PNG buffer:',
+        capturedPngBuffer.length,
+        'bytes',
+        `${capturedWidth}x${capturedHeight}`,
+      )
+
+      const normalizedPngBuffer = needsNormalization
+        ? await sharp(capturedPngBuffer)
+            .resize(width, height, { fit: 'fill' })
+            .png()
+            .toBuffer()
+        : capturedPngBuffer
+
+      if (needsNormalization) {
+        console.log('[HTML Snapshot] Normalized PNG buffer:', normalizedPngBuffer.length, 'bytes', `${width}x${height}`)
+      }
+
+      if (mimeType === 'image/png') {
+        buffer = normalizedPngBuffer
+      } else {
+        buffer = await sharp(normalizedPngBuffer).jpeg({
+          quality: jpegQuality,
+          chromaSubsampling: '4:4:4',
+        }).toBuffer()
+      }
+    } catch (error) {
+      console.warn('[HTML Snapshot] Sharp normalization/conversion failed, fallback to nativeImage:', error)
+      console.log('[HTML Snapshot] Captured PNG buffer:', capturedPngBuffer.length, 'bytes', `${width}x${height}`)
+      buffer = mimeType === 'image/png' ? capturedPngBuffer : snapshot.toJPEG(jpegQuality)
+    }
+    console.log('[HTML Snapshot] Final buffer:', buffer.length, 'bytes', mimeType, `${width}x${height}`)
 
     return { buffer, mimeType }
   } finally {

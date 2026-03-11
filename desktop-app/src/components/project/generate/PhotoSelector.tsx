@@ -4,11 +4,21 @@ import { toast } from 'sonner'
 import { useDrivePhotos, useAIImages, DrivePhoto, AIImage } from '@/hooks/use-art-generation'
 import { cn } from '@/lib/utils'
 import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
+import type { ArtFormat } from '@/stores/generation.store'
+
+interface SelectedPhotoRef {
+  url: string
+  source: string
+  format?: ArtFormat
+  aspectRatio?: string
+  width?: number
+  height?: number
+}
 
 interface PhotoSelectorProps {
   projectId: number
-  selectedPhoto: { url: string; source: string } | null
-  onPhotoChange: (photo: { url: string; source: string } | null) => void
+  selectedPhoto: SelectedPhotoRef | null
+  onPhotoChange: (photo: SelectedPhotoRef | null) => void
 }
 
 type PhotoTab = 'drive' | 'ai' | 'upload'
@@ -23,9 +33,47 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
   const [activeTab, setActiveTab] = useState<PhotoTab>('drive')
   const [uploadPreview, setUploadPreview] = useState<string | null>(null)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [selectedNaturalAspect, setSelectedNaturalAspect] = useState<string | null>(null)
 
   const { data: driveData, isLoading: isLoadingDrive } = useDrivePhotos(projectId)
   const { data: aiImages, isLoading: isLoadingAI } = useAIImages(projectId)
+
+  const resolveAspectRatio = useCallback((photo: SelectedPhotoRef | null): string => {
+    if (!photo) return '4 / 5'
+    if (photo.aspectRatio && photo.aspectRatio.includes(':')) {
+      const [w, h] = photo.aspectRatio.split(':').map((v) => Number(v.trim()))
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        return `${w} / ${h}`
+      }
+    }
+    if (
+      Number.isFinite(photo.width)
+      && Number.isFinite(photo.height)
+      && (photo.width || 0) > 0
+      && (photo.height || 0) > 0
+    ) {
+      return `${photo.width} / ${photo.height}`
+    }
+    if (photo.format === 'STORY') return '9 / 16'
+    if (photo.format === 'SQUARE') return '1 / 1'
+    if (photo.format === 'FEED_PORTRAIT') return '4 / 5'
+    return '4 / 5'
+  }, [])
+
+  const resolveAspectRatioValue = useCallback((image: AIImage): string => {
+    if (image.aspectRatio && image.aspectRatio.includes(':')) {
+      const [w, h] = image.aspectRatio.split(':').map((v) => Number(v.trim()))
+      if (Number.isFinite(w) && Number.isFinite(h) && w > 0 && h > 0) {
+        return `${w} / ${h}`
+      }
+    }
+    if (typeof image.width === 'number' && typeof image.height === 'number' && image.width > 0 && image.height > 0) {
+      return `${image.width} / ${image.height}`
+    }
+    if (image.format === 'STORY') return '9 / 16'
+    if (image.format === 'SQUARE') return '1 / 1'
+    return '4 / 5'
+  }, [])
 
   // Clean up preview URL on unmount
   useEffect(() => {
@@ -35,6 +83,10 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
       }
     }
   }, [uploadPreview])
+
+  useEffect(() => {
+    setSelectedNaturalAspect(null)
+  }, [selectedPhoto?.url])
 
   const handleDriveSelect = useCallback(async (photo: DrivePhoto) => {
     setDownloadingId(photo.id)
@@ -66,7 +118,14 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
   }, [projectId, onPhotoChange])
 
   const handleAISelect = useCallback((image: AIImage) => {
-    onPhotoChange({ url: image.fileUrl, source: 'ai' })
+    onPhotoChange({
+      url: image.fileUrl,
+      source: 'ai',
+      format: image.format,
+      aspectRatio: image.aspectRatio,
+      width: image.width,
+      height: image.height,
+    })
     toast.success('Foto selecionada!')
   }, [onPhotoChange])
 
@@ -118,6 +177,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
 
   const handleRemove = useCallback(() => {
     onPhotoChange(null)
+    setSelectedNaturalAspect(null)
     if (uploadPreview) {
       URL.revokeObjectURL(uploadPreview)
       setUploadPreview(null)
@@ -127,11 +187,20 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
   // Show selected photo preview
   if (selectedPhoto) {
     return (
-      <div className="relative aspect-[4/5] w-full max-w-[200px] overflow-hidden rounded-xl border border-border bg-card">
+      <div
+        className="relative w-full max-w-[220px] overflow-hidden rounded-xl border border-border bg-card"
+        style={{ aspectRatio: selectedNaturalAspect || resolveAspectRatio(selectedPhoto) }}
+      >
         <img
           src={selectedPhoto.url}
           alt="Foto selecionada"
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain bg-zinc-950"
+          onLoad={(event) => {
+            const img = event.currentTarget
+            if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+              setSelectedNaturalAspect(`${img.naturalWidth} / ${img.naturalHeight}`)
+            }
+          }}
         />
         <button
           onClick={handleRemove}
@@ -182,6 +251,7 @@ export default function PhotoSelector({ projectId, selectedPhoto, onPhotoChange 
             images={aiImages || []}
             isLoading={isLoadingAI}
             onSelect={handleAISelect}
+            resolveAspectRatioValue={resolveAspectRatioValue}
           />
         )}
         {activeTab === 'upload' && (
@@ -259,11 +329,15 @@ function AITab({
   images,
   isLoading,
   onSelect,
+  resolveAspectRatioValue,
 }: {
   images: AIImage[]
   isLoading: boolean
   onSelect: (image: AIImage) => void
+  resolveAspectRatioValue: (image: AIImage) => string
 }) {
+  const [naturalAspectById, setNaturalAspectById] = useState<Record<string, string>>({})
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -287,12 +361,21 @@ function AITab({
         <button
           key={image.id}
           onClick={() => onSelect(image)}
-          className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-card transition-all hover:ring-2 hover:ring-primary/50"
+          className={cn(
+            'group relative overflow-hidden rounded-lg border border-border bg-card transition-all hover:ring-2 hover:ring-primary/50'
+          )}
+          style={{ aspectRatio: naturalAspectById[image.id] || resolveAspectRatioValue(image) }}
         >
           <img
             src={image.fileUrl}
             alt={image.name}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-contain bg-zinc-950"
+            onLoad={(event) => {
+              const img = event.currentTarget
+              if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return
+              const next = `${img.naturalWidth} / ${img.naturalHeight}`
+              setNaturalAspectById((prev) => (prev[image.id] === next ? prev : { ...prev, [image.id]: next }))
+            }}
           />
         </button>
       ))}

@@ -3,12 +3,13 @@ export const INSTAGRAM_DS_STYLE_ID = 'lc-instagram-ds-style-v1'
 export const INSTAGRAM_DS_CSS = `
 .ig-preview-container {
   position: relative;
+  --ig-scale: 1;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
   background: var(--ig-bg-color, #09090b);
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
   color: var(--ig-text-color, #ffffff);
@@ -120,16 +121,16 @@ export const INSTAGRAM_DS_CSS = `
 
 .ig-logo {
   width: 22%;
-  max-width: 84px;
-  min-width: 36px;
+  max-width: calc(75px * var(--ig-scale));
+  min-width: calc(36px * var(--ig-scale));
   object-fit: contain;
   opacity: 0.98;
 }
 
 .ig-logo-feed {
   width: 18%;
-  max-width: 62px;
-  min-width: 30px;
+  max-width: calc(55px * var(--ig-scale));
+  min-width: calc(30px * var(--ig-scale));
   object-fit: contain;
   opacity: 0.98;
 }
@@ -146,25 +147,25 @@ export const INSTAGRAM_DS_CSS = `
 }
 
 .ig-typography-pre {
-  color: var(--ig-primary-color, #f97316);
+  color: #ffffff;
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(0.52rem, 1.05vw, 0.7rem);
+  font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  opacity: 0.95;
-  margin-bottom: 0.35rem;
-  line-height: 1.15;
+  opacity: 0.9;
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
 }
 
 .ig-typography-title {
   color: var(--ig-text-color, #ffffff);
   font-family: var(--ig-font-heading, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(1.05rem, 3.2vw, 1.75rem);
+  font-size: 1.5rem;
   font-weight: 800;
-  line-height: 0.9;
+  line-height: 0.85;
   letter-spacing: -0.02em;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.5rem;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
@@ -172,11 +173,11 @@ export const INSTAGRAM_DS_CSS = `
 }
 
 .ig-typography-desc {
-  color: rgba(255, 255, 255, 0.96);
+  color: rgba(255, 255, 255, 0.9);
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(0.56rem, 1.35vw, 0.82rem);
+  font-size: 0.75rem;
   font-weight: 500;
-  line-height: 1.28;
+  line-height: 1.3;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
@@ -184,27 +185,27 @@ export const INSTAGRAM_DS_CSS = `
 }
 
 .ig-typography-cta {
-  color: var(--ig-primary-color, #f97316);
+  color: #ffffff;
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(0.54rem, 1.15vw, 0.72rem);
+  font-size: 0.65rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  margin-top: 0.55rem;
-  line-height: 1.2;
+  margin-top: auto;
+  line-height: 1.15;
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.25rem;
 }
 
 .ig-typography-tag {
   background: rgba(0, 0, 0, 0.56);
   border-radius: 4px;
-  padding: 0.24rem 0.54rem;
+  padding: 0.25rem 0.5rem;
   color: #ffffff;
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(0.52rem, 1.1vw, 0.7rem);
-  font-weight: 600;
+  font-size: 0.65rem;
+  font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: inline-flex;
@@ -214,7 +215,7 @@ export const INSTAGRAM_DS_CSS = `
 .ig-typography-footer {
   color: rgba(255, 255, 255, 0.82);
   font-family: var(--ig-font-body, "Montserrat"), "Inter", sans-serif;
-  font-size: clamp(0.5rem, 1.02vw, 0.66rem);
+  font-size: 0.66rem;
   line-height: 1.28;
   display: -webkit-box;
   -webkit-box-orient: vertical;

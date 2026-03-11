@@ -56,6 +56,7 @@ export interface GenerationParams {
   compositionReferenceUrls?: string[]
   templateId?: string
   templateIds?: string[]
+  templateCodeMap?: Record<string, string>
   textProcessingMode?: TextProcessingMode
   textProcessingCustomPrompt?: string
   strictTemplateMode?: boolean
