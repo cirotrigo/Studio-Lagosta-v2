@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { useCreativeDownloadCost, useCreditsBalance } from '@/hooks/use-project-generations'
 import { sortPages } from '@/lib/editor/document'
 import { cn } from '@/lib/utils'
+import { useGenerationStore } from '@/stores/generation.store'
 import type { KonvaPage } from '@/types/template'
 
 interface EditorGenerateArtModalProps {
@@ -36,6 +37,8 @@ export function EditorGenerateArtModal({
 }: EditorGenerateArtModalProps) {
   const [selectedPageIds, setSelectedPageIds] = useState<Set<string>>(new Set())
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const analyzeImageForContext = useGenerationStore((state) => state.analyzeImageForContext)
+  const setAnalyzeImageForContext = useGenerationStore((state) => state.setAnalyzeImageForContext)
   const creditCostQuery = useCreativeDownloadCost()
   const creditsBalanceQuery = useCreditsBalance()
 
@@ -213,6 +216,35 @@ export function EditorGenerateArtModal({
                 </p>
               </div>
             ) : null}
+          </div>
+
+          <div className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.02] px-6 py-5">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-base font-semibold text-white">Analisar imagem para contexto</p>
+                <p className="mt-1 text-sm text-white/55">
+                  Preferencia compartilhada com o modo rapido. Fica desligada por padrao e so entra no pipeline de copy quando houver imagem base.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={analyzeImageForContext}
+                onClick={() => setAnalyzeImageForContext(!analyzeImageForContext)}
+                className={cn(
+                  'relative inline-flex h-8 w-14 items-center rounded-full transition-colors',
+                  analyzeImageForContext ? 'bg-[#ff7a3d]' : 'bg-white/15',
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-6 w-6 rounded-full bg-white transition-transform',
+                    analyzeImageForContext ? 'translate-x-7' : 'translate-x-1',
+                  )}
+                />
+              </button>
+            </div>
           </div>
         </div>
 

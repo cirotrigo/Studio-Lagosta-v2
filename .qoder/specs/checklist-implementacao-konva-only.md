@@ -187,18 +187,18 @@ Arquivos:
 - `src/app/api/tools/generate-ai-text/route.ts` (web)
 
 Tarefas:
-- [ ] Adicionar toggle `Analisar imagem para contexto` no modo de geração (`default = false`).
-- [ ] Quando ativo, executar análise da imagem enviada antes da etapa de copy.
-- [ ] Produzir metadados estruturados da imagem (`dishNameCandidates`, `sceneType`, `ingredientsHints`, `confidence`).
-- [ ] Cruzar metadados da imagem com base de conhecimento do projeto (`CARDAPIO`, `CAMPANHAS`) para sugerir prato/descrição.
-- [ ] Injetar contexto visual no prompt final da LLM sem sobrepor o pedido textual do usuário.
-- [ ] Exibir transparência no UI: badge `Análise de imagem aplicada` + resumo do que foi inferido.
-- [ ] Em baixa confiança, manter geração padrão sem inventar prato.
+- [x] Adicionar toggle `Analisar imagem para contexto` no modo de geração (`default = false`).
+- [x] Quando ativo, executar análise da imagem enviada antes da etapa de copy.
+- [x] Produzir metadados estruturados da imagem (`dishNameCandidates`, `sceneType`, `ingredientsHints`, `confidence`).
+- [x] Cruzar metadados da imagem com base de conhecimento do projeto (`CARDAPIO`, `CAMPANHAS`) para sugerir prato/descrição.
+- [x] Injetar contexto visual no prompt final da LLM sem sobrepor o pedido textual do usuário.
+- [x] Exibir transparência no UI: badge `Análise de imagem aplicada` + resumo do que foi inferido.
+- [x] Em baixa confiança, manter geração padrão sem inventar prato.
 
 DoD:
-- [ ] Toggle vem desmarcado por padrão.
-- [ ] Prompt exemplo `Crie variações com essa foto para divulgar o almoço executivo de quinta-feira` usa a análise da foto para associar prato do cardápio quando houver match.
-- [ ] Se não houver match confiável, fluxo não quebra e segue com copy genérica contextualizada.
+- [x] Toggle vem desmarcado por padrão.
+- [x] Prompt exemplo `Crie variações com essa foto para divulgar o almoço executivo de quinta-feira` usa a análise da foto para associar prato do cardápio quando houver match.
+- [x] Se não houver match confiável, fluxo não quebra e segue com copy genérica contextualizada.
 
 ---
 

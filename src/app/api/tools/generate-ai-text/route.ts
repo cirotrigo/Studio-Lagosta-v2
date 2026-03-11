@@ -1,17 +1,29 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { generateObject } from 'ai'
+import { generateObject, generateText } from 'ai'
+import { google } from '@ai-sdk/google'
 import { openai } from '@ai-sdk/openai'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
-import { getProjectPromptKnowledgeContext } from '@/lib/knowledge/search'
+import { getProjectPromptKnowledgeContext, searchKnowledgeBase } from '@/lib/knowledge/search'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
-export const maxDuration = 45
+export const maxDuration = 60
 
 type VariationCount = 1 | 2 | 4
+type VisualKnowledgeCategory = 'CARDAPIO' | 'CAMPANHAS'
+
+const IMAGE_ANALYSIS_MODEL = 'gemini-2.5-flash'
+const IMAGE_ANALYSIS_CONFIDENCE_THRESHOLD = 0.68
+const IMAGE_ANALYSIS_MATCH_THRESHOLD = 0.72
+const IMAGE_ANALYSIS_MAX_BYTES = 5 * 1024 * 1024
+const VISUAL_KNOWLEDGE_CATEGORIES: VisualKnowledgeCategory[] = [
+  'CARDAPIO',
+  'CAMPANHAS',
+]
 
 const requestSchema = z.object({
   projectId: z.number().int().positive(),
@@ -26,6 +38,8 @@ const requestSchema = z.object({
   compositionEnabled: z.boolean().default(false),
   compositionPrompt: z.string().trim().max(500).optional(),
   compositionReferenceUrls: z.array(z.string().url()).max(5).optional(),
+  analyzeImageForContext: z.boolean().default(false),
+  analysisImageUrl: z.string().url().optional(),
 }).superRefine((value, ctx) => {
   if (value.usePhoto && !value.photoUrl) {
     ctx.addIssue({
@@ -50,7 +64,16 @@ const responseSchema = z.object({
   variacoes: z.array(variationSchema).min(1).max(4),
 })
 
+const imageContextSchema = z.object({
+  summary: z.string().trim().max(280).default(''),
+  dishNameCandidates: z.array(z.string().trim().min(1).max(80)).max(5).default([]),
+  sceneType: z.string().trim().max(120).default(''),
+  ingredientsHints: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+  confidence: z.number().min(0).max(1).default(0),
+})
+
 type Variation = z.infer<typeof variationSchema>
+type ImageContextModelOutput = z.infer<typeof imageContextSchema>
 
 interface TemplateSummary {
   id: string
@@ -71,6 +94,426 @@ interface GenerateAiTextKnowledgePayload {
     score: number
     source: 'rag' | 'fallback-db'
   }>
+}
+
+interface VisualKnowledgeHit {
+  entryId: string
+  title: string
+  category: VisualKnowledgeCategory
+  content: string
+  score: number
+  source: 'rag' | 'fallback-db'
+}
+
+interface GenerateAiTextImageAnalysisPayload {
+  requested: boolean
+  applied: boolean
+  sourceImageUrl?: string
+  summary: string
+  sceneType: string
+  confidence: number
+  dishNameCandidates: string[]
+  ingredientsHints: string[]
+  matchedKnowledge?: {
+    entryId: string
+    title: string
+    category: VisualKnowledgeCategory
+    score: number
+    reason: string
+  }
+  warnings: string[]
+}
+
+function normalizeLooseText(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function extractGoogleDriveFileId(url: string): string | null {
+  const match = url.match(/\/api\/(?:google-drive\/image|drive\/thumbnail)\/([^/?]+)/)
+  return match?.[1] ?? null
+}
+
+async function fetchImageAsBuffer(url: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+  try {
+    const driveFileId = extractGoogleDriveFileId(url)
+
+    if (driveFileId) {
+      if (!googleDriveService.isEnabled()) {
+        console.warn('[generate-ai-text] Google Drive nao configurado para analise contextual.')
+        return null
+      }
+
+      const { stream, mimeType } = await googleDriveService.getFileStream(driveFileId)
+      const chunks: Buffer[] = []
+      for await (const chunk of stream) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      }
+
+      const buffer = Buffer.concat(chunks)
+      if (buffer.length > IMAGE_ANALYSIS_MAX_BYTES) {
+        console.warn('[generate-ai-text] Imagem do Drive muito grande para analise contextual:', buffer.length)
+        return null
+      }
+
+      return { buffer, mimeType }
+    }
+
+    const response = await fetch(url, { signal: AbortSignal.timeout(15_000) })
+    if (!response.ok) {
+      console.warn('[generate-ai-text] Falha ao baixar imagem para analise:', response.status, url)
+      return null
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    if (buffer.length > IMAGE_ANALYSIS_MAX_BYTES) {
+      console.warn('[generate-ai-text] Imagem muito grande para analise contextual:', buffer.length)
+      return null
+    }
+
+    return {
+      buffer,
+      mimeType: response.headers.get('content-type') || 'image/jpeg',
+    }
+  } catch (error) {
+    console.warn(
+      '[generate-ai-text] Erro ao baixar imagem para analise:',
+      error instanceof Error ? error.message : error,
+    )
+    return null
+  }
+}
+
+function extractJsonObject(raw: string): string {
+  const cleaned = raw
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim()
+
+  const match = cleaned.match(/\{[\s\S]*\}/)
+  if (!match) {
+    throw new Error('Nenhum JSON encontrado na resposta do modelo visual.')
+  }
+
+  return match[0]
+}
+
+function dedupeStrings(values: string[], max: number): string[] {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => value.replace(/\s+/g, ' ').trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, max)
+}
+
+function composeVisualKnowledgeQuery(
+  prompt: string,
+  analysis: ImageContextModelOutput,
+): string {
+  return dedupeStrings(
+    [
+      prompt,
+      analysis.sceneType,
+      analysis.summary,
+      ...analysis.dishNameCandidates,
+      ...analysis.ingredientsHints,
+    ],
+    14,
+  ).join(' ')
+}
+
+function keywordPresenceScore(text: string, terms: string[]): number {
+  if (terms.length === 0) return 0
+  const normalized = normalizeLooseText(text)
+  const matches = terms.filter((term) => normalized.includes(normalizeLooseText(term))).length
+  return matches === 0 ? 0 : Math.min(0.22, matches * 0.06)
+}
+
+function computeVisualKnowledgeScore(
+  prompt: string,
+  analysis: ImageContextModelOutput,
+  hit: VisualKnowledgeHit,
+): number {
+  const haystack = `${hit.title}\n${hit.content}`
+  let score = hit.score
+  score += keywordPresenceScore(haystack, analysis.dishNameCandidates)
+  score += keywordPresenceScore(haystack, analysis.ingredientsHints)
+
+  if (analysis.sceneType) {
+    score += keywordPresenceScore(haystack, [analysis.sceneType])
+  }
+
+  if (normalizeLooseText(prompt).includes('almoco executivo')) {
+    score += keywordPresenceScore(haystack, ['almoco executivo', 'executivo'])
+  }
+
+  return Math.min(0.99, score)
+}
+
+function rankVisualKnowledgeHits(
+  prompt: string,
+  analysis: ImageContextModelOutput,
+  hits: VisualKnowledgeHit[],
+): VisualKnowledgeHit[] {
+  return [...hits].sort((left, right) => {
+    const rightScore = computeVisualKnowledgeScore(prompt, analysis, right)
+    const leftScore = computeVisualKnowledgeScore(prompt, analysis, left)
+    if (rightScore !== leftScore) {
+      return rightScore - leftScore
+    }
+    return right.score - left.score
+  })
+}
+
+async function getFallbackVisualKnowledgeHits(
+  projectId: number,
+  analysisQuery: string,
+): Promise<VisualKnowledgeHit[]> {
+  const normalizedTerms = dedupeStrings(
+    analysisQuery
+      .split(/\s+/)
+      .map((value) => value.trim())
+      .filter((value) => value.length >= 4),
+    12,
+  )
+  const now = new Date()
+  const hits: VisualKnowledgeHit[] = []
+
+  for (const category of VISUAL_KNOWLEDGE_CATEGORIES) {
+    const entries = await db.knowledgeBaseEntry.findMany({
+      where: {
+        projectId,
+        category,
+        status: 'ACTIVE',
+        OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
+      },
+      select: {
+        id: true,
+        title: true,
+        content: true,
+        tags: true,
+        updatedAt: true,
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 6,
+    })
+
+    const ranked = entries
+      .map((entry) => {
+        const haystack = normalizeLooseText(
+          [entry.title, entry.content, ...(entry.tags ?? [])].join(' '),
+        )
+        const matches = normalizedTerms.filter((term) => haystack.includes(normalizeLooseText(term))).length
+        return {
+          entry,
+          score: matches > 0 ? 0.64 + matches * 0.04 : 0.52,
+        }
+      })
+      .sort((left, right) => right.score - left.score)
+      .slice(0, 2)
+
+    for (const { entry, score } of ranked) {
+      hits.push({
+        entryId: entry.id,
+        title: entry.title,
+        category,
+        content: entry.content,
+        score,
+        source: 'fallback-db',
+      })
+    }
+  }
+
+  return hits
+}
+
+async function getFocusedVisualKnowledge(
+  projectId: number,
+  prompt: string,
+  analysis: ImageContextModelOutput,
+): Promise<{ hits: VisualKnowledgeHit[]; warnings: string[] }> {
+  const warnings: string[] = []
+  const deduped = new Map<string, VisualKnowledgeHit>()
+  const analysisQuery = composeVisualKnowledgeQuery(prompt, analysis)
+
+  try {
+    for (const category of VISUAL_KNOWLEDGE_CATEGORIES) {
+      const results = await searchKnowledgeBase(
+        analysisQuery,
+        { projectId },
+        {
+          topK: 2,
+          minScore: 0.55,
+          includeEntryMetadata: true,
+          categoryFilter: category,
+        },
+      )
+
+      for (const result of results) {
+        const key = `${result.entryId}:${result.chunkId}`
+        if (deduped.has(key)) continue
+
+        deduped.set(key, {
+          entryId: result.entryId,
+          title: result.entry?.title || 'Conhecimento visual do projeto',
+          category: (result.entry?.category || category) as VisualKnowledgeCategory,
+          content: result.content,
+          score: result.score,
+          source: 'rag',
+        })
+      }
+    }
+  } catch (error) {
+    console.warn('[generate-ai-text] Busca visual focada caiu para fallback textual:', error)
+    warnings.push('Analise visual sem RAG especializado; usando fallback textual do projeto.')
+  }
+
+  if (deduped.size === 0) {
+    const fallbackHits = await getFallbackVisualKnowledgeHits(projectId, analysisQuery)
+    for (const hit of fallbackHits) {
+      deduped.set(`${hit.entryId}:${hit.category}`, hit)
+    }
+  }
+
+  return {
+    hits: rankVisualKnowledgeHits(prompt, analysis, Array.from(deduped.values())).slice(0, 4),
+    warnings,
+  }
+}
+
+async function analyzeImageContext(
+  prompt: string,
+  imageUrl: string,
+): Promise<ImageContextModelOutput> {
+  const image = await fetchImageAsBuffer(imageUrl)
+  if (!image) {
+    throw new Error('Nao foi possivel carregar a imagem para analise contextual.')
+  }
+
+  const { text } = await generateText({
+    model: google(IMAGE_ANALYSIS_MODEL),
+    temperature: 0.2,
+    maxOutputTokens: 500,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            image: image.buffer,
+            mediaType: image.mimeType,
+          },
+          {
+            type: 'text',
+            text: [
+              'Analise esta imagem de restaurante/comida para enriquecer a geracao de copy.',
+              `Prompt do usuario: "${prompt}"`,
+              'Regras:',
+              '- Nao invente nome especifico de prato se a imagem nao permitir alta confianca.',
+              '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
+              '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
+              '- sceneType deve descrever o contexto da cena em poucas palavras.',
+              '- confidence mede a confianca da identificacao do prato principal/contexto.',
+              'Retorne APENAS JSON valido neste formato:',
+              '{"summary":"","dishNameCandidates":[],"sceneType":"","ingredientsHints":[],"confidence":0}',
+            ].join('\n'),
+          },
+        ],
+      },
+    ],
+  })
+
+  const parsed = JSON.parse(extractJsonObject(text))
+  return imageContextSchema.parse(parsed)
+}
+
+function buildImageAnalysisPayload(
+  requested: boolean,
+  sourceImageUrl: string | undefined,
+  analysis: ImageContextModelOutput | null,
+  focusedHits: VisualKnowledgeHit[],
+  warnings: string[],
+  prompt: string,
+): GenerateAiTextImageAnalysisPayload {
+  if (!analysis) {
+    return {
+      requested,
+      applied: false,
+      sourceImageUrl,
+      summary: '',
+      sceneType: '',
+      confidence: 0,
+      dishNameCandidates: [],
+      ingredientsHints: [],
+      warnings,
+    }
+  }
+
+  const bestHit = focusedHits[0]
+  const bestScore = bestHit ? computeVisualKnowledgeScore(prompt, analysis, bestHit) : 0
+  const matchedKnowledge =
+    bestHit &&
+    analysis.confidence >= IMAGE_ANALYSIS_CONFIDENCE_THRESHOLD &&
+    bestScore >= IMAGE_ANALYSIS_MATCH_THRESHOLD
+      ? {
+          entryId: bestHit.entryId,
+          title: bestHit.title,
+          category: bestHit.category,
+          score: Number(bestScore.toFixed(4)),
+          reason:
+            bestHit.category === 'CARDAPIO'
+              ? 'Match visual confiavel com item do cardapio.'
+              : 'Match visual confiavel com campanha relacionada.',
+        }
+      : undefined
+
+  if (!matchedKnowledge && analysis.confidence < IMAGE_ANALYSIS_CONFIDENCE_THRESHOLD) {
+    warnings.push('Analise visual com baixa confianca; copy segue sem prato especifico inventado.')
+  }
+
+  return {
+    requested,
+    applied: true,
+    sourceImageUrl,
+    summary: limitText(analysis.summary, 280),
+    sceneType: limitText(analysis.sceneType, 120),
+    confidence: Number(Math.max(0, Math.min(1, analysis.confidence)).toFixed(4)),
+    dishNameCandidates: dedupeStrings(analysis.dishNameCandidates, 5),
+    ingredientsHints: dedupeStrings(analysis.ingredientsHints, 8),
+    matchedKnowledge,
+    warnings: dedupeStrings(warnings, 6),
+  }
+}
+
+function mergeKnowledgeHits(
+  baseHits: GenerateAiTextKnowledgePayload['hits'],
+  extraHits: VisualKnowledgeHit[],
+): GenerateAiTextKnowledgePayload['hits'] {
+  const merged = new Map<string, GenerateAiTextKnowledgePayload['hits'][number]>()
+
+  for (const hit of baseHits) {
+    merged.set(`${hit.entryId}:${hit.category}:${hit.content}`, hit)
+  }
+
+  for (const hit of extraHits) {
+    const key = `${hit.entryId}:${hit.category}:${hit.content}`
+    if (merged.has(key)) continue
+    merged.set(key, {
+      entryId: hit.entryId,
+      title: hit.title,
+      category: hit.category,
+      content: hit.content,
+      score: Number(hit.score.toFixed(4)),
+      source: hit.source,
+    })
+  }
+
+  return Array.from(merged.values()).slice(0, 10)
 }
 
 function limitText(value: string | undefined, max: number): string {
@@ -361,6 +804,41 @@ function buildKnowledgePromptSection(knowledge: {
   return `${knowledgeBlock}${warningsBlock}${conflictsBlock}`
 }
 
+function buildImageAnalysisPromptSection(
+  imageAnalysis: GenerateAiTextImageAnalysisPayload,
+): string {
+  if (!imageAnalysis.applied) {
+    return 'ANALISE VISUAL: nao aplicada.'
+  }
+
+  const lines = [
+    'ANALISE VISUAL DA IMAGEM (apoio, nunca sobrepor o prompt do usuario):',
+    `- resumo: ${imageAnalysis.summary || 'sem resumo'}`,
+    `- cena: ${imageAnalysis.sceneType || 'nao identificada'}`,
+    `- confianca: ${imageAnalysis.confidence}`,
+    `- candidatos: ${imageAnalysis.dishNameCandidates.join(', ') || 'nenhum'}`,
+    `- ingredientes/pistas: ${imageAnalysis.ingredientsHints.join(', ') || 'nenhum'}`,
+  ]
+
+  if (imageAnalysis.matchedKnowledge) {
+    lines.push(
+      `- match confirmado na base: [${imageAnalysis.matchedKnowledge.category}] ${imageAnalysis.matchedKnowledge.title}`,
+    )
+    lines.push(`- motivo do match: ${imageAnalysis.matchedKnowledge.reason}`)
+  } else {
+    lines.push('- match confirmado na base: nenhum')
+    lines.push(
+      '- regra: se nao houver match confiavel, use apenas contexto visual generico sem inventar nome de prato.',
+    )
+  }
+
+  if (imageAnalysis.warnings.length > 0) {
+    lines.push(`- avisos: ${imageAnalysis.warnings.join(' | ')}`)
+  }
+
+  return lines.join('\n')
+}
+
 function buildUserPrompt(
   input: z.infer<typeof requestSchema>,
   templateGuidance: string,
@@ -369,11 +847,13 @@ function buildUserPrompt(
     warnings: string[]
     conflicts: string[]
   },
+  imageAnalysis: GenerateAiTextImageAnalysisPayload,
 ): string {
   const templateSection = templateGuidance
     ? `\nGUIA DE TEMPLATES (OBRIGATORIO SEGUIR):\n${templateGuidance}\n`
     : ''
   const knowledgeSection = `\n${buildKnowledgePromptSection(knowledge)}\n`
+  const imageAnalysisSection = `\n${buildImageAnalysisPromptSection(imageAnalysis)}\n`
 
   return [
     'Gerar variacoes de copy para arte no Instagram com base no prompt abaixo.',
@@ -386,8 +866,10 @@ function buildUserPrompt(
     `Composicao com IA: ${input.compositionEnabled ? 'sim' : 'nao'}`,
     `Prompt de composicao: ${input.compositionPrompt || ''}`,
     `Quantidade de referencias: ${input.compositionReferenceUrls?.length || 0}`,
+    `Analise de imagem para contexto: ${input.analyzeImageForContext ? 'sim' : 'nao'}`,
     `Templates selecionados: ${input.templateIds?.length || 0}`,
     knowledgeSection,
+    imageAnalysisSection,
     templateSection,
     '',
     'Regras obrigatorias:',
@@ -400,6 +882,8 @@ function buildUserPrompt(
     '7. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
     '8. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
     '9. Em conflito entre prompt e base, priorize o prompt do usuario.',
+    '10. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
+    '11. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
   ].join('\n')
 }
 
@@ -489,19 +973,67 @@ export async function POST(request: Request) {
     { projectId: body.projectId },
     { topKPerCategory: 2, maxTokens: 1200, minScore: 0.6 },
   )
+  const sourceImageUrl =
+    body.analysisImageUrl ||
+    body.photoUrl ||
+    body.compositionReferenceUrls?.[0]
+  const visualWarnings: string[] = []
+  let visualAnalysis: ImageContextModelOutput | null = null
+  let focusedVisualHits: VisualKnowledgeHit[] = []
+
+  if (body.analyzeImageForContext) {
+    if (!sourceImageUrl) {
+      visualWarnings.push('Analise de imagem ativada, mas nenhuma imagem-base foi encontrada no fluxo.')
+    } else if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      visualWarnings.push('Analise visual indisponivel no ambiente atual; fluxo segue sem enriquecimento por imagem.')
+    } else {
+      try {
+        visualAnalysis = await analyzeImageContext(body.prompt, sourceImageUrl)
+        const focusedKnowledge = await getFocusedVisualKnowledge(
+          body.projectId,
+          body.prompt,
+          visualAnalysis,
+        )
+        focusedVisualHits = focusedKnowledge.hits
+        visualWarnings.push(...focusedKnowledge.warnings)
+      } catch (error) {
+        console.warn('[generate-ai-text] Analise visual opcional falhou:', error)
+        visualWarnings.push(
+          error instanceof Error
+            ? `Analise visual nao aplicada: ${error.message}`
+            : 'Analise visual nao aplicada nesta solicitacao.',
+        )
+      }
+    }
+  }
+
+  const imageAnalysisPayload = buildImageAnalysisPayload(
+    body.analyzeImageForContext,
+    sourceImageUrl,
+    visualAnalysis,
+    focusedVisualHits,
+    visualWarnings,
+    body.prompt,
+  )
   const knowledgePayload: GenerateAiTextKnowledgePayload = {
     applied: knowledgeContext.hits.length > 0,
     context: knowledgeContext.context,
-    categoriesUsed: knowledgeContext.categoriesUsed,
-    hits: knowledgeContext.hits.map((hit) => ({
+    categoriesUsed: Array.from(
+      new Set([
+        ...knowledgeContext.categoriesUsed,
+        ...focusedVisualHits.map((hit) => hit.category),
+      ]),
+    ),
+    hits: mergeKnowledgeHits(knowledgeContext.hits.map((hit) => ({
       entryId: hit.entryId,
       title: hit.title,
       category: hit.category,
       content: hit.content,
       score: Number(hit.score.toFixed(4)),
       source: hit.source,
-    })),
+    })), focusedVisualHits),
   }
+  knowledgePayload.applied = knowledgePayload.hits.length > 0
 
   if (body.dryRun) {
     return NextResponse.json({
@@ -516,7 +1048,8 @@ export async function POST(request: Request) {
         format: template.format,
       })),
       knowledge: knowledgePayload,
-      warnings: knowledgeContext.warnings,
+      imageAnalysis: imageAnalysisPayload,
+      warnings: dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
       conflicts: knowledgeContext.conflicts,
     })
   }
@@ -526,7 +1059,7 @@ export async function POST(request: Request) {
       model: openai('gpt-4o-mini'),
       schema: responseSchema,
       system: buildSystemPrompt(brandContext),
-      prompt: buildUserPrompt(body, templateGuidance, knowledgeContext),
+      prompt: buildUserPrompt(body, templateGuidance, knowledgeContext, imageAnalysisPayload),
       temperature: 0.6,
       maxOutputTokens: 900,
     })
@@ -540,7 +1073,8 @@ export async function POST(request: Request) {
     return NextResponse.json({
       variacoes,
       knowledge: knowledgePayload,
-      warnings: knowledgeContext.warnings,
+      imageAnalysis: imageAnalysisPayload,
+      warnings: dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
       conflicts: knowledgeContext.conflicts,
     })
   } catch (error) {
@@ -550,8 +1084,9 @@ export async function POST(request: Request) {
     return NextResponse.json({
       variacoes,
       knowledge: knowledgePayload,
+      imageAnalysis: imageAnalysisPayload,
       warnings: [
-        ...knowledgeContext.warnings,
+        ...dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
         'Falha ao gerar copy estruturada com IA; fallback local aplicado.',
       ],
       conflicts: knowledgeContext.conflicts,

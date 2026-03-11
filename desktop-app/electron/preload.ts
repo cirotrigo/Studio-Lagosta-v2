@@ -46,6 +46,8 @@ export interface GenerateAiTextPayload {
   compositionEnabled?: boolean
   compositionPrompt?: string
   compositionReferenceUrls?: string[]
+  analyzeImageForContext?: boolean
+  analysisImageUrl?: string
 }
 
 export interface GenerateAiTextVariation {
@@ -74,9 +76,29 @@ export interface GenerateAiTextKnowledge {
   hits: GenerateAiTextKnowledgeHit[]
 }
 
+export interface GenerateAiTextImageAnalysis {
+  requested: boolean
+  applied: boolean
+  sourceImageUrl?: string
+  summary: string
+  sceneType: string
+  confidence: number
+  dishNameCandidates: string[]
+  ingredientsHints: string[]
+  matchedKnowledge?: {
+    entryId: string
+    title: string
+    category: 'CARDAPIO' | 'CAMPANHAS'
+    score: number
+    reason: string
+  }
+  warnings: string[]
+}
+
 export interface GenerateAiTextResponse {
   variacoes: GenerateAiTextVariation[]
   knowledge?: GenerateAiTextKnowledge
+  imageAnalysis?: GenerateAiTextImageAnalysis
   warnings?: string[]
   conflicts?: string[]
 }

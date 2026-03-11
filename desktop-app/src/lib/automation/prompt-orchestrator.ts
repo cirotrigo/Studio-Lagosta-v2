@@ -1,6 +1,7 @@
 import { createBlankPage } from '@/lib/editor/document'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import type { BrandAssets } from '@/hooks/use-brand-assets'
+import type { ImageContextAnalysis } from '@/lib/automation/image-context-analyzer'
 import type { Project } from '@/stores/project.store'
 import type { ReviewField } from '@/stores/generation.store'
 import type {
@@ -41,6 +42,7 @@ export interface PromptOrchestratorInput {
   photoUrl?: string
   referenceUrls?: string[]
   manualTemplateId?: string
+  analyzeImageForContext?: boolean
   templates: KonvaTemplateDocument[]
   project?: Pick<Project, 'id' | 'name' | 'logoUrl'>
   brandAssets?: Pick<
@@ -67,6 +69,7 @@ export interface PreparedPromptBatch {
     templateName: string
   }
   knowledge: PromptKnowledgeResult
+  imageAnalysis?: ImageContextAnalysis
   warnings: string[]
   conflicts: string[]
   variations: PreparedPromptVariation[]
@@ -84,6 +87,7 @@ interface RenderPromptVariationOptions {
 interface GenerateAiTextResponse {
   variacoes: StructuredCopyVariation[]
   knowledge?: PromptKnowledgeResult
+  imageAnalysis?: ImageContextAnalysis
   warnings?: string[]
   conflicts?: string[]
 }
@@ -494,6 +498,8 @@ export async function preparePromptBatch(
     compositionEnabled: input.backgroundMode === 'ai',
     compositionPrompt: input.backgroundMode === 'ai' ? input.prompt : undefined,
     compositionReferenceUrls: input.referenceUrls,
+    analyzeImageForContext: input.analyzeImageForContext === true,
+    analysisImageUrl: input.photoUrl || input.referenceUrls?.[0],
   }) as GenerateAiTextResponse
 
   const copies = copyResponse.variacoes.map((variation) => normalizeVariation(variation))
@@ -515,6 +521,7 @@ export async function preparePromptBatch(
       categoriesUsed: copyResponse.knowledge?.categoriesUsed ?? [],
       hits: copyResponse.knowledge?.hits ?? [],
     },
+    imageAnalysis: copyResponse.imageAnalysis,
     warnings,
     conflicts: copyResponse.conflicts ?? [],
     variations: copies.map((copy, index) => ({

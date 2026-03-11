@@ -41,7 +41,7 @@ Exemplos:
 | 4.1 | Refino de texto + geração no editor | ✅ Concluído | feat(konva-fase-4.1): refino de texto e gerar arte no editor com selecao de paginas | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 5 | Prompt-only + RAG | ✅ Concluído | feat(konva-fase-5): pipeline prompt-only com RAG e slot binding | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 6 | Fundo IA + Referências | ✅ Concluído | feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 6.1 | Análise de imagem opcional | ⬜ Não iniciado | - | - | - |
+| 6.1 | Análise de imagem opcional | ✅ Concluído | feat(konva-fase-6.1): analise de imagem opcional no pipeline de copy | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
 | 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
 | 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
@@ -246,7 +246,35 @@ Legenda status:
   - `npm --prefix desktop-app run typecheck` ✅
   - `npm --prefix desktop-app run typecheck:electron` ✅
 - Commit: `feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback`
-- Próximo passo: iniciar a Fase 6.1 para análise opcional de imagem antes da geração de copy, sem alterar o fluxo padrão quando o toggle estiver desligado.
+
+### Fase 6.1 — Análise de imagem opcional
+- Escopo fechado:
+  - adicionar toggle persistido no estado para análise visual opcional no modo rápido, mantendo `default = false`.
+  - executar análise de imagem antes da etapa de copy quando houver foto base ou referência disponível.
+  - cruzar candidatos visuais com `CARDAPIO` e `CAMPANHAS`, injetando apenas contexto confiável na LLM.
+  - expor badge e resumo curto da análise no resultado, sem mudar o fluxo quando o toggle estiver desligado.
+- Decisões:
+  - a análise visual roda no backend de `generate-ai-text` com `gemini-2.5-flash`, usando a foto base ou a primeira referência do job.
+  - associação automática de prato só acontece quando há dupla validação: confiança visual mínima e match suficiente com a base do projeto.
+  - em baixa confiança ou falha da análise, o pipeline segue com copy contextual genérica e aviso explícito, sem inventar prato.
+  - o modal do editor espelha a preferência do toggle para manter consistência de UX, mas o enriquecimento efetivo acontece no pipeline de copy do modo rápido.
+- Arquivos alterados:
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `desktop-app/src/components/editor/EditorGenerateArtModal.tsx`
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+  - `desktop-app/src/features/art-automation/ipc-contracts.ts`
+  - `desktop-app/src/lib/automation/image-context-analyzer.ts`
+  - `desktop-app/src/lib/automation/prompt-orchestrator.ts`
+  - `desktop-app/src/stores/generation.store.ts`
+  - `src/app/api/tools/generate-ai-text/route.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-6.1): analise de imagem opcional no pipeline de copy`
+- Próximo passo: iniciar a Fase 7 para aprovação por variação, abertura da arte no editor e fluxo de reedição.
 
 ### Fase 7 — Aprovação + Reedição
 - Escopo fechado:

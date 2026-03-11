@@ -12,6 +12,8 @@ export interface GenerateAiTextPayload {
   compositionEnabled?: boolean
   compositionPrompt?: string
   compositionReferenceUrls?: string[]
+  analyzeImageForContext?: boolean
+  analysisImageUrl?: string
 }
 
 export interface GenerateAiTextResponse {
@@ -28,6 +30,24 @@ export interface GenerateAiTextResponse {
       score: number
       source: 'rag' | 'fallback-db'
     }>
+  }
+  imageAnalysis?: {
+    requested: boolean
+    applied: boolean
+    sourceImageUrl?: string
+    summary: string
+    sceneType: string
+    confidence: number
+    dishNameCandidates: string[]
+    ingredientsHints: string[]
+    matchedKnowledge?: {
+      entryId: string
+      title: string
+      category: 'CARDAPIO' | 'CAMPANHAS'
+      score: number
+      reason: string
+    }
+    warnings: string[]
   }
   warnings?: string[]
   conflicts?: string[]

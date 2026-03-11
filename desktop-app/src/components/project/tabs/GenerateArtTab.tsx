@@ -7,6 +7,10 @@ import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { generateBackgroundAsset } from '@/lib/automation/background-service'
 import {
+  formatImageContextConfidence,
+  summarizeImageContextAnalysis,
+} from '@/lib/automation/image-context-analyzer'
+import {
   preparePromptBatch,
   renderPromptVariation,
   type PreparedPromptBatch,
@@ -150,6 +154,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(projectId)
   const jobs = useGenerationStore((state) => state.jobs)
+  const analyzeImageForContext = useGenerationStore((state) => state.analyzeImageForContext)
+  const setAnalyzeImageForContext = useGenerationStore((state) => state.setAnalyzeImageForContext)
   const addJob = useGenerationStore((state) => state.addJob)
   const updateJob = useGenerationStore((state) => state.updateJob)
   const updateVariation = useGenerationStore((state) => state.updateVariation)
@@ -300,6 +306,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: job.params.photoUrl,
       referenceUrls: job.params.referenceUrls,
       manualTemplateId: job.params.manualTemplateId,
+      analyzeImageForContext: job.params.analyzeImageForContext,
       templates,
       project: currentProject ?? undefined,
       brandAssets: brandAssets
@@ -322,6 +329,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       updateJob(jobId, {
         templateSelection: preparedBatch.templateSelection,
         knowledge: preparedBatch.knowledge,
+        imageAnalysis: preparedBatch.imageAnalysis,
         warnings: preparedBatch.warnings,
         conflicts: preparedBatch.conflicts,
       })
@@ -526,6 +534,10 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       return
     }
 
+    if (backgroundMode === 'ai' && analyzeImageForContext && referenceFiles.length === 0) {
+      toast.info('Sem referencia visual para analisar. O job segue sem contexto de imagem.')
+    }
+
     let referenceUrls: string[] | undefined
     if (backgroundMode === 'ai' && referenceFiles.length > 0) {
       try {
@@ -545,6 +557,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
       referenceUrls,
       manualTemplateId: manualTemplateId || undefined,
+      analyzeImageForContext,
     }
 
     addJob(params)
@@ -560,6 +573,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     prompt,
     referenceFiles,
     runQueue,
+    analyzeImageForContext,
     selectedPhoto?.url,
     uploadReferenceImages,
     variations,
@@ -649,6 +663,45 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             <ReferenceUploader files={referenceFiles} onChange={setReferenceFiles} />
           )}
 
+          <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-text">Analisar imagem para contexto</p>
+                <p className="mt-1 text-xs text-text-muted">
+                  Desligado por padrao. Quando ativo, a IA tenta identificar a cena e cruza o resultado com cardapio e campanhas do projeto antes de gerar a copy.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                role="switch"
+                aria-checked={analyzeImageForContext}
+                onClick={() => setAnalyzeImageForContext(!analyzeImageForContext)}
+                className={cn(
+                  'relative inline-flex h-7 w-12 items-center rounded-full transition-colors',
+                  analyzeImageForContext ? 'bg-primary' : 'bg-input',
+                )}
+              >
+                <span
+                  className={cn(
+                    'inline-block h-5 w-5 rounded-full bg-white transition-transform',
+                    analyzeImageForContext ? 'translate-x-6' : 'translate-x-1',
+                  )}
+                />
+              </button>
+            </div>
+
+            <div className="rounded-lg border border-border bg-background/40 px-3 py-2 text-xs text-text-muted">
+              {backgroundMode === 'photo'
+                ? selectedPhoto?.url
+                  ? 'A foto selecionada sera usada como base da analise visual.'
+                  : 'Selecione uma foto para habilitar a analise visual deste job.'
+                : referenceFiles.length > 0
+                  ? 'A primeira referencia visual sera usada como base da analise contextual.'
+                  : 'Envie pelo menos uma referencia para usar a analise visual com fundo IA.'}
+            </div>
+          </div>
+
           <div className="space-y-2">
             <label className="block text-sm font-medium text-text">Variacoes</label>
             <VariationSelector value={variations} onChange={setVariations} />
@@ -729,6 +782,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                           Sem contexto relevante
                         </span>
                       )}
+                      {job.imageAnalysis?.applied ? (
+                        <span className="rounded-full bg-sky-500/10 px-3 py-1 text-xs font-medium text-sky-200">
+                          Analise de imagem aplicada
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-2 text-sm font-medium text-text">"{job.params.text}"</p>
                     <p className="mt-1 text-xs text-text-muted">
@@ -738,6 +796,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                     {job.templateSelection ? (
                       <p className="mt-1 text-xs text-text-muted">
                         Template usado: {job.templateSelection.templateName}
+                      </p>
+                    ) : null}
+                    {job.imageAnalysis?.applied ? (
+                      <p className="mt-1 text-xs text-text-muted">
+                        {summarizeImageContextAnalysis(job.imageAnalysis) || job.imageAnalysis.summary}
                       </p>
                     ) : null}
                   </div>
@@ -798,6 +861,34 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                           <p className="mt-1 text-sm text-text-muted">{hit.content}</p>
                         </div>
                       ))}
+                    </div>
+                  </details>
+                ) : null}
+
+                {job.imageAnalysis?.applied ? (
+                  <details className="rounded-xl border border-sky-500/20 bg-sky-500/[0.06] p-3">
+                    <summary className="cursor-pointer text-sm font-medium text-text">
+                      Ver analise de imagem
+                    </summary>
+                    <div className="mt-3 space-y-2 text-sm text-text-muted">
+                      <p>{job.imageAnalysis.summary || 'Sem resumo adicional.'}</p>
+                      <p>
+                        Confianca: {formatImageContextConfidence(job.imageAnalysis.confidence)}
+                        {job.imageAnalysis.sceneType ? ` • Cena: ${job.imageAnalysis.sceneType}` : ''}
+                      </p>
+                      {job.imageAnalysis.dishNameCandidates.length > 0 ? (
+                        <p>Candidatos: {job.imageAnalysis.dishNameCandidates.join(', ')}</p>
+                      ) : null}
+                      {job.imageAnalysis.ingredientsHints.length > 0 ? (
+                        <p>Pistas visuais: {job.imageAnalysis.ingredientsHints.join(', ')}</p>
+                      ) : null}
+                      {job.imageAnalysis.matchedKnowledge ? (
+                        <p>
+                          Match na base: [{job.imageAnalysis.matchedKnowledge.category}] {job.imageAnalysis.matchedKnowledge.title}
+                        </p>
+                      ) : (
+                        <p>Sem match confiavel na base. A copy ficou contextual sem inventar prato.</p>
+                      )}
                     </div>
                   </details>
                 ) : null}

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import type { ImageContextAnalysis } from '@/lib/automation/image-context-analyzer'
 import type { KonvaTemplateDocument } from '@/types/template'
 
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
@@ -59,6 +60,7 @@ export interface GenerationParams {
   photoUrl?: string
   referenceUrls?: string[]
   manualTemplateId?: string
+  analyzeImageForContext?: boolean
 }
 
 export interface GenerationJob {
@@ -78,6 +80,7 @@ export interface GenerationJob {
     categoriesUsed: string[]
     hits: GenerationKnowledgeHit[]
   }
+  imageAnalysis?: ImageContextAnalysis
   warnings: string[]
   conflicts: string[]
   error?: string
@@ -86,6 +89,7 @@ export interface GenerationJob {
 
 interface GenerationStore {
   jobs: GenerationJob[]
+  analyzeImageForContext: boolean
   addJob: (params: GenerationParams) => string
   updateJob: (id: string, data: Partial<GenerationJob>) => void
   updateVariation: (
@@ -96,6 +100,7 @@ interface GenerationStore {
   removeJob: (id: string) => void
   removeVariation: (jobId: string, variationId: string) => void
   clearFinished: () => void
+  setAnalyzeImageForContext: (value: boolean) => void
 }
 
 function deriveStatusFromVariations(variations: GenerationVariationJob[]): GenerationJobStatus {
@@ -117,6 +122,7 @@ function buildEmptyVariation(index: number): GenerationVariationJob {
 
 export const useGenerationStore = create<GenerationStore>((set) => ({
   jobs: [],
+  analyzeImageForContext: false,
 
   addJob: (params) => {
     const id = crypto.randomUUID()
@@ -205,6 +211,10 @@ export const useGenerationStore = create<GenerationStore>((set) => ({
     set((state) => ({
       jobs: state.jobs.filter((job) => job.status === 'queued' || job.status === 'processing'),
     }))
+  },
+
+  setAnalyzeImageForContext: (value) => {
+    set({ analyzeImageForContext: value })
   },
 }))
 

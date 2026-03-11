@@ -29,6 +29,8 @@ interface GenerateAiTextPayload {
   compositionEnabled?: boolean
   compositionPrompt?: string
   compositionReferenceUrls?: string[]
+  analyzeImageForContext?: boolean
+  analysisImageUrl?: string
 }
 
 interface GenerateAiTextVariation {
@@ -57,9 +59,29 @@ interface GenerateAiTextKnowledge {
   hits: GenerateAiTextKnowledgeHit[]
 }
 
+interface GenerateAiTextImageAnalysis {
+  requested: boolean
+  applied: boolean
+  sourceImageUrl?: string
+  summary: string
+  sceneType: string
+  confidence: number
+  dishNameCandidates: string[]
+  ingredientsHints: string[]
+  matchedKnowledge?: {
+    entryId: string
+    title: string
+    category: 'CARDAPIO' | 'CAMPANHAS'
+    score: number
+    reason: string
+  }
+  warnings: string[]
+}
+
 interface GenerateAiTextResponse {
   variacoes: GenerateAiTextVariation[]
   knowledge?: GenerateAiTextKnowledge
+  imageAnalysis?: GenerateAiTextImageAnalysis
   warnings?: string[]
   conflicts?: string[]
 }
@@ -987,6 +1009,10 @@ function normalizeGenerateAiTextPayload(input: unknown): GenerateAiTextPayload {
   const photoUrl = isHttpUrl(String(raw.photoUrl || '')) ? String(raw.photoUrl) : undefined
   const compositionEnabled = raw.compositionEnabled === true
   const compositionPrompt = normalizeText(raw.compositionPrompt, 500) || undefined
+  const analyzeImageForContext = raw.analyzeImageForContext === true
+  const analysisImageUrl = isHttpUrl(String(raw.analysisImageUrl || ''))
+    ? String(raw.analysisImageUrl)
+    : undefined
 
   const refs = Array.isArray(raw.compositionReferenceUrls)
     ? raw.compositionReferenceUrls
@@ -1010,6 +1036,8 @@ function normalizeGenerateAiTextPayload(input: unknown): GenerateAiTextPayload {
     compositionEnabled,
     compositionPrompt,
     compositionReferenceUrls: refs,
+    analyzeImageForContext,
+    analysisImageUrl,
   }
 }
 
@@ -1048,6 +1076,7 @@ function normalizeGenerateAiTextResponse(
   }
 
   const rawKnowledge = asObject(raw.knowledge)
+  const rawImageAnalysis = asObject(raw.imageAnalysis)
   const knowledgeHits = Array.isArray(rawKnowledge.hits)
     ? rawKnowledge.hits
       .map((hit) => {
@@ -1095,6 +1124,59 @@ function normalizeGenerateAiTextResponse(
       .slice(0, 8)
     : []
 
+  const matchedKnowledgeRaw = asObject(rawImageAnalysis.matchedKnowledge)
+  const matchedKnowledgeEntryId = normalizeText(matchedKnowledgeRaw.entryId, 120)
+  const matchedKnowledgeTitle = normalizeText(matchedKnowledgeRaw.title, 200)
+  const matchedKnowledgeCategory =
+    matchedKnowledgeRaw.category === 'CARDAPIO' || matchedKnowledgeRaw.category === 'CAMPANHAS'
+      ? matchedKnowledgeRaw.category
+      : undefined
+  const matchedKnowledgeReason = normalizeText(matchedKnowledgeRaw.reason, 320)
+  const imageAnalysisWarnings = Array.isArray(rawImageAnalysis.warnings)
+    ? rawImageAnalysis.warnings
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 6)
+    : []
+
+  const imageAnalysis: GenerateAiTextImageAnalysis = {
+    requested: rawImageAnalysis.requested === true,
+    applied: rawImageAnalysis.applied === true,
+    sourceImageUrl: normalizeText(rawImageAnalysis.sourceImageUrl, 4_000) || undefined,
+    summary: normalizeText(rawImageAnalysis.summary, 400),
+    sceneType: normalizeText(rawImageAnalysis.sceneType, 120),
+    confidence:
+      typeof rawImageAnalysis.confidence === 'number' && Number.isFinite(rawImageAnalysis.confidence)
+        ? Math.max(0, Math.min(1, rawImageAnalysis.confidence))
+        : 0,
+    dishNameCandidates: Array.isArray(rawImageAnalysis.dishNameCandidates)
+      ? rawImageAnalysis.dishNameCandidates
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .slice(0, 5)
+      : [],
+    ingredientsHints: Array.isArray(rawImageAnalysis.ingredientsHints)
+      ? rawImageAnalysis.ingredientsHints
+          .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+          .slice(0, 8)
+      : [],
+    matchedKnowledge:
+      matchedKnowledgeEntryId &&
+      matchedKnowledgeTitle &&
+      matchedKnowledgeCategory &&
+      matchedKnowledgeReason
+        ? {
+            entryId: matchedKnowledgeEntryId,
+            title: matchedKnowledgeTitle,
+            category: matchedKnowledgeCategory,
+            score:
+              typeof matchedKnowledgeRaw.score === 'number' && Number.isFinite(matchedKnowledgeRaw.score)
+                ? Math.max(0, Math.min(1, matchedKnowledgeRaw.score))
+                : 0,
+            reason: matchedKnowledgeReason,
+          }
+        : undefined,
+    warnings: imageAnalysisWarnings,
+  }
+
   return {
     variacoes,
     knowledge: {
@@ -1103,6 +1185,7 @@ function normalizeGenerateAiTextResponse(
       categoriesUsed,
       hits: knowledgeHits,
     },
+    imageAnalysis,
     warnings,
     conflicts,
   }
