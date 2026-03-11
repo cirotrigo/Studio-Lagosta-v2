@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
+import { getProjectPromptKnowledgeContext } from '@/lib/knowledge/search'
 
 export const runtime = 'nodejs'
 export const maxDuration = 45
@@ -56,6 +57,20 @@ interface TemplateSummary {
   name: string
   format: string
   templateData: Record<string, unknown>
+}
+
+interface GenerateAiTextKnowledgePayload {
+  applied: boolean
+  context: string
+  categoriesUsed: string[]
+  hits: Array<{
+    entryId: string
+    title: string
+    category: string
+    content: string
+    score: number
+    source: 'rag' | 'fallback-db'
+  }>
 }
 
 function limitText(value: string | undefined, max: number): string {
@@ -313,6 +328,9 @@ function buildSystemPrompt(brandContext: {
     'Use <br> literal no title quando melhorar a leitura.',
     'Nao use markdown, nao inclua comentarios.',
     'Textos devem ser curtos para caber em safe zone de story/feed.',
+    'Nao invente dados criticos como horario, preco, endereco ou condicao comercial.',
+    'Se houver contexto da base do projeto, use somente o que estiver presente e relevante.',
+    'Se o prompt do usuario conflitar com a base, priorize o pedido explicito do usuario.',
     '',
     'Contexto da marca:',
     `- Projeto: ${brandContext.projectName}`,
@@ -323,10 +341,39 @@ function buildSystemPrompt(brandContext: {
   ].join('\n')
 }
 
-function buildUserPrompt(input: z.infer<typeof requestSchema>, templateGuidance: string): string {
+function buildKnowledgePromptSection(knowledge: {
+  context: string
+  warnings: string[]
+  conflicts: string[]
+}): string {
+  const knowledgeBlock = knowledge.context
+    ? `BASE DE CONHECIMENTO DO PROJETO (use apenas quando relevante):\n${knowledge.context}`
+    : 'BASE DE CONHECIMENTO DO PROJETO: nenhum contexto relevante encontrado.'
+
+  const warningsBlock = knowledge.warnings.length > 0
+    ? `\nAvisos internos:\n- ${knowledge.warnings.join('\n- ')}`
+    : ''
+
+  const conflictsBlock = knowledge.conflicts.length > 0
+    ? `\nConflitos potenciais:\n- ${knowledge.conflicts.join('\n- ')}\nPriorize o pedido explicito do usuario e deixe os dados criticos revisaveis.`
+    : ''
+
+  return `${knowledgeBlock}${warningsBlock}${conflictsBlock}`
+}
+
+function buildUserPrompt(
+  input: z.infer<typeof requestSchema>,
+  templateGuidance: string,
+  knowledge: {
+    context: string
+    warnings: string[]
+    conflicts: string[]
+  },
+): string {
   const templateSection = templateGuidance
     ? `\nGUIA DE TEMPLATES (OBRIGATORIO SEGUIR):\n${templateGuidance}\n`
     : ''
+  const knowledgeSection = `\n${buildKnowledgePromptSection(knowledge)}\n`
 
   return [
     'Gerar variacoes de copy para arte no Instagram com base no prompt abaixo.',
@@ -340,16 +387,19 @@ function buildUserPrompt(input: z.infer<typeof requestSchema>, templateGuidance:
     `Prompt de composicao: ${input.compositionPrompt || ''}`,
     `Quantidade de referencias: ${input.compositionReferenceUrls?.length || 0}`,
     `Templates selecionados: ${input.templateIds?.length || 0}`,
+    knowledgeSection,
     templateSection,
     '',
     'Regras obrigatorias:',
     '1. Preserve o sentido principal do prompt base.',
     '2. Gere exatamente o numero de variacoes solicitado.',
-    '3. Nao invente telefone/endereco se nao houver no prompt: deixe footer_info_1 e footer_info_2 vazios.',
+    '3. Nao invente telefone/endereco se nao houver no prompt ou na base: deixe footer_info_1 e footer_info_2 vazios.',
     '4. CTA deve ser objetivo e acionavel.',
     '5. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
     '6. Respeite os slots, prioridade e densidade quando houver guia de template.',
     '7. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
+    '8. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
+    '9. Em conflito entre prompt e base, priorize o prompt do usuario.',
   ].join('\n')
 }
 
@@ -434,6 +484,24 @@ export async function POST(request: Request) {
     })
     .filter((template): template is TemplateSummary => Boolean(template))
   const templateGuidance = buildTemplateGuidance(selectedTemplates)
+  const knowledgeContext = await getProjectPromptKnowledgeContext(
+    body.prompt,
+    { projectId: body.projectId },
+    { topKPerCategory: 2, maxTokens: 1200, minScore: 0.6 },
+  )
+  const knowledgePayload: GenerateAiTextKnowledgePayload = {
+    applied: knowledgeContext.hits.length > 0,
+    context: knowledgeContext.context,
+    categoriesUsed: knowledgeContext.categoriesUsed,
+    hits: knowledgeContext.hits.map((hit) => ({
+      entryId: hit.entryId,
+      title: hit.title,
+      category: hit.category,
+      content: hit.content,
+      score: Number(hit.score.toFixed(4)),
+      source: hit.source,
+    })),
+  }
 
   if (body.dryRun) {
     return NextResponse.json({
@@ -447,6 +515,9 @@ export async function POST(request: Request) {
         name: template.name,
         format: template.format,
       })),
+      knowledge: knowledgePayload,
+      warnings: knowledgeContext.warnings,
+      conflicts: knowledgeContext.conflicts,
     })
   }
 
@@ -455,7 +526,7 @@ export async function POST(request: Request) {
       model: openai('gpt-4o-mini'),
       schema: responseSchema,
       system: buildSystemPrompt(brandContext),
-      prompt: buildUserPrompt(body, templateGuidance),
+      prompt: buildUserPrompt(body, templateGuidance, knowledgeContext),
       temperature: 0.6,
       maxOutputTokens: 900,
     })
@@ -466,11 +537,24 @@ export async function POST(request: Request) {
       body.prompt,
     )
 
-    return NextResponse.json({ variacoes })
+    return NextResponse.json({
+      variacoes,
+      knowledge: knowledgePayload,
+      warnings: knowledgeContext.warnings,
+      conflicts: knowledgeContext.conflicts,
+    })
   } catch (error) {
     console.error('[generate-ai-text] Error:', error)
 
     const variacoes = ensureVariationCount(undefined, body.variations, body.prompt)
-    return NextResponse.json({ variacoes })
+    return NextResponse.json({
+      variacoes,
+      knowledge: knowledgePayload,
+      warnings: [
+        ...knowledgeContext.warnings,
+        'Falha ao gerar copy estruturada com IA; fallback local aplicado.',
+      ],
+      conflicts: knowledgeContext.conflicts,
+    })
   }
 }

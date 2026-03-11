@@ -1,4 +1,4 @@
-import { Loader2, AlertCircle, RefreshCw, Clock3 } from 'lucide-react'
+import { Loader2, AlertCircle, Clock3 } from 'lucide-react'
 import { useGenerationStore, GenerationJob } from '@/stores/generation.store'
 import { cn } from '@/lib/utils'
 
@@ -7,7 +7,6 @@ interface GenerationQueueProps {
 }
 
 export default function GenerationQueue({ jobs }: GenerationQueueProps) {
-  const updateJob = useGenerationStore((s) => s.updateJob)
   const removeJob = useGenerationStore((s) => s.removeJob)
 
   const getAspectClass = (format: string) => {
@@ -58,13 +57,6 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
                   >
                     Descartar
                   </button>
-                  <button
-                    onClick={() => updateJob(job.id, { status: 'pending', error: undefined })}
-                    className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
-                  >
-                    <RefreshCw size={12} />
-                    Tentar novamente
-                  </button>
                 </div>
               </div>
             ) : (
@@ -78,17 +70,17 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
                 {/* Info */}
                 <div className="flex-1 space-y-2">
                   <div className="flex items-center gap-2">
-                    {job.status === 'generating' ? (
+                    {job.status === 'processing' ? (
                       <Loader2 size={16} className="animate-spin text-primary" />
                     ) : (
                       <Clock3 size={16} className="text-text-muted" />
                     )}
                     <span className="text-sm font-medium text-text">
-                      {job.status === 'generating' ? 'Processando agora...' : 'Na fila de geracao'}
+                      {job.status === 'processing' ? 'Processando agora...' : 'Na fila de geracao'}
                     </span>
                   </div>
                   <div className="space-y-1">
-                    {job.status === 'pending' && (
+                    {job.status === 'queued' && (
                       <p className="text-xs text-text-muted">
                         Posicao na fila: {idx + 1}
                       </p>
@@ -98,6 +90,9 @@ export default function GenerationQueue({ jobs }: GenerationQueueProps) {
                     </p>
                     <p className="text-xs text-text-muted">
                       Variacoes: {job.params.variations}
+                    </p>
+                    <p className="text-xs text-text-muted">
+                      Fundo: {job.params.backgroundMode === 'photo' ? 'Foto' : 'IA (fallback visual)'}
                     </p>
                     <p className="line-clamp-2 text-xs text-text-subtle">
                       "{job.params.text}"

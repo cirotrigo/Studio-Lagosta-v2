@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
+import type { KonvaTemplateDocument } from '@/types/template'
 
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
 export type TextProcessingMode = 'faithful' | 'grammar_correct' | 'headline_detection' | 'generate_copy'
@@ -10,37 +11,29 @@ export interface ReviewField {
   value: string
 }
 
-export interface ReviewLegacyContext {
-  kind: 'legacy'
-  sourceImageUrl: string
-  textLayout: any
-  fonts?: { title: string; body: string }
-  fontUrls?: { title?: string; body?: string }
-  logo?: { url: string; position: string; sizePct: number }
-  includeLogo: boolean
+export type GenerationVariationStatus = 'queued' | 'processing' | 'ready' | 'error'
+export type GenerationJobStatus = GenerationVariationStatus
+
+export interface GenerationKnowledgeHit {
+  entryId: string
+  title: string
+  category: string
+  content: string
+  score: number
+  source: 'rag' | 'fallback-db'
 }
 
-export interface ReviewTemplateContext {
-  kind: 'template'
-  sourceImageUrl: string
-  templateId?: string
-  templateData: any
-  fontSources: { title: { family: string; url: string | null }; body: { family: string; url: string | null } }
-  strictTemplateMode: boolean
-  logo?: { url: string; position: string; sizePct: number }
-  includeLogo: boolean
-}
-
-export type ReviewRenderContext = ReviewLegacyContext | ReviewTemplateContext
-
-export interface ReviewVariation {
+export interface GenerationVariationJob {
   id: string
-  imageUrl: string
-  status: 'review' | 'approved' | 'rejected'
-  approvedUrl?: string
+  index: number
+  status: GenerationVariationStatus
+  imageUrl?: string
+  document?: KonvaTemplateDocument
   fields: ReviewField[]
-  renderContext?: ReviewRenderContext
-  isUpdatingPreview?: boolean
+  warnings: string[]
+  templateId?: string
+  templateName?: string
+  error?: string
 }
 
 export interface GenerationParams {
@@ -48,26 +41,31 @@ export interface GenerationParams {
   format: ArtFormat
   text: string
   variations: 1 | 2 | 4
-  includeLogo: boolean
-  usePhoto: boolean
+  backgroundMode: 'photo' | 'ai'
   photoUrl?: string
-  compositionEnabled?: boolean
-  compositionPrompt?: string
-  compositionReferenceUrls?: string[]
-  templateId?: string
-  templateIds?: string[]
-  templateCodeMap?: Record<string, string>
-  textProcessingMode?: TextProcessingMode
-  textProcessingCustomPrompt?: string
-  strictTemplateMode?: boolean
+  referenceUrls?: string[]
+  manualTemplateId?: string
 }
 
 export interface GenerationJob {
   id: string
-  status: 'pending' | 'generating' | 'review' | 'saving' | 'done' | 'error'
+  status: GenerationJobStatus
   params: GenerationParams
   images: string[]
-  reviewItems: ReviewVariation[]
+  variations: GenerationVariationJob[]
+  templateSelection?: {
+    mode: 'auto' | 'manual'
+    templateId: string
+    templateName: string
+  }
+  knowledge?: {
+    applied: boolean
+    context: string
+    categoriesUsed: string[]
+    hits: GenerationKnowledgeHit[]
+  }
+  warnings: string[]
+  conflicts: string[]
   error?: string
   createdAt: number
 }
@@ -76,8 +74,31 @@ interface GenerationStore {
   jobs: GenerationJob[]
   addJob: (params: GenerationParams) => string
   updateJob: (id: string, data: Partial<GenerationJob>) => void
+  updateVariation: (
+    jobId: string,
+    variationId: string,
+    data: Partial<GenerationVariationJob>,
+  ) => void
   removeJob: (id: string) => void
-  clearCompletedJobs: () => void
+  removeVariation: (jobId: string, variationId: string) => void
+  clearFinished: () => void
+}
+
+function deriveStatusFromVariations(variations: GenerationVariationJob[]): GenerationJobStatus {
+  if (variations.some((variation) => variation.status === 'processing')) return 'processing'
+  if (variations.some((variation) => variation.status === 'queued')) return 'queued'
+  if (variations.some((variation) => variation.status === 'ready')) return 'ready'
+  return 'error'
+}
+
+function buildEmptyVariation(index: number): GenerationVariationJob {
+  return {
+    id: crypto.randomUUID(),
+    index,
+    status: 'queued',
+    fields: [],
+    warnings: [],
+  }
 }
 
 export const useGenerationStore = create<GenerationStore>((set) => ({
@@ -85,27 +106,54 @@ export const useGenerationStore = create<GenerationStore>((set) => ({
 
   addJob: (params) => {
     const id = crypto.randomUUID()
+    const variations = Array.from({ length: params.variations }, (_value, index) =>
+      buildEmptyVariation(index),
+    )
+
     set((state) => ({
       jobs: [
         ...state.jobs,
         {
           id,
-          status: 'pending',
+          status: 'queued',
           params,
           images: [],
-          reviewItems: [],
+          variations,
+          warnings: [],
+          conflicts: [],
           createdAt: Date.now(),
         },
       ],
     }))
+
     return id
   },
 
   updateJob: (id, data) => {
     set((state) => ({
-      jobs: state.jobs.map((job) =>
-        job.id === id ? { ...job, ...data } : job
-      ),
+      jobs: state.jobs.map((job) => (job.id === id ? { ...job, ...data } : job)),
+    }))
+  },
+
+  updateVariation: (jobId, variationId, data) => {
+    set((state) => ({
+      jobs: state.jobs.map((job) => {
+        if (job.id !== jobId) return job
+
+        const variations = job.variations.map((variation) =>
+          variation.id === variationId ? { ...variation, ...data } : variation,
+        )
+        const images = variations
+          .filter((variation) => variation.status === 'ready' && variation.imageUrl)
+          .map((variation) => variation.imageUrl as string)
+
+        return {
+          ...job,
+          status: deriveStatusFromVariations(variations),
+          variations,
+          images,
+        }
+      }),
     }))
   },
 
@@ -115,31 +163,50 @@ export const useGenerationStore = create<GenerationStore>((set) => ({
     }))
   },
 
-  clearCompletedJobs: () => {
+  removeVariation: (jobId, variationId) => {
     set((state) => ({
-      jobs: state.jobs.filter((job) => job.status !== 'done'),
+      jobs: state.jobs.flatMap((job) => {
+        if (job.id !== jobId) return [job]
+
+        const variations = job.variations.filter((variation) => variation.id !== variationId)
+        if (variations.length === 0) {
+          return []
+        }
+
+        return [
+          {
+            ...job,
+            status: deriveStatusFromVariations(variations),
+            variations,
+            images: variations
+              .filter((variation) => variation.status === 'ready' && variation.imageUrl)
+              .map((variation) => variation.imageUrl as string),
+          },
+        ]
+      }),
+    }))
+  },
+
+  clearFinished: () => {
+    set((state) => ({
+      jobs: state.jobs.filter((job) => job.status === 'queued' || job.status === 'processing'),
     }))
   },
 }))
 
-// Selectors — useShallow prevents infinite re-renders from .filter() creating new array refs
-export const usePendingJobs = () =>
+export const useQueuedJobs = () =>
   useGenerationStore(
     useShallow((state) =>
-      state.jobs.filter((job) => job.status === 'pending' || job.status === 'generating')
-    )
+      state.jobs.filter((job) => job.status === 'queued' || job.status === 'processing'),
+    ),
   )
 
-export const useReviewJobs = () =>
+export const useReadyJobs = () =>
   useGenerationStore(
-    useShallow((state) =>
-      state.jobs.filter((job) => job.status === 'review' || job.status === 'saving')
-    )
+    useShallow((state) => state.jobs.filter((job) => job.status === 'ready')),
   )
 
-export const useCompletedJobs = () =>
+export const useErroredJobs = () =>
   useGenerationStore(
-    useShallow((state) =>
-      state.jobs.filter((job) => job.status === 'done')
-    )
+    useShallow((state) => state.jobs.filter((job) => job.status === 'error')),
   )

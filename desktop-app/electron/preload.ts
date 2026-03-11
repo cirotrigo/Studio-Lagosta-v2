@@ -58,8 +58,27 @@ export interface GenerateAiTextVariation {
   footer_info_2: string
 }
 
+export interface GenerateAiTextKnowledgeHit {
+  entryId: string
+  title: string
+  category: string
+  content: string
+  score: number
+  source: 'rag' | 'fallback-db'
+}
+
+export interface GenerateAiTextKnowledge {
+  applied: boolean
+  context: string
+  categoriesUsed: string[]
+  hits: GenerateAiTextKnowledgeHit[]
+}
+
 export interface GenerateAiTextResponse {
   variacoes: GenerateAiTextVariation[]
+  knowledge?: GenerateAiTextKnowledge
+  warnings?: string[]
+  conflicts?: string[]
 }
 
 export interface RenderTextArgs {

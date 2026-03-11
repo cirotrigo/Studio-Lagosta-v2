@@ -16,6 +16,21 @@ export interface GenerateAiTextPayload {
 
 export interface GenerateAiTextResponse {
   variacoes: ArtTextFields[]
+  knowledge?: {
+    applied: boolean
+    context: string
+    categoriesUsed: string[]
+    hits: Array<{
+      entryId: string
+      title: string
+      category: string
+      content: string
+      score: number
+      source: 'rag' | 'fallback-db'
+    }>
+  }
+  warnings?: string[]
+  conflicts?: string[]
 }
 
 export interface RenderImageBatchPayload {

@@ -136,26 +136,26 @@ Arquivos:
 - `src/lib/knowledge/search.ts` (web)
 
 Tarefas:
-- [ ] Criar modo "Rápido" com campos mínimos:
+- [x] Criar modo "Rápido" com campos mínimos:
   - prompt único
-  - formato (story/feed/carrossel)
-  - imagem de fundo: `usar foto` ou `gerar com IA`
+  - formato (story/feed/quadrado)
+  - imagem de fundo: `usar foto` ou `gerar com IA` (orquestração com fallback visual nesta fase)
   - referências (até 5)
-- [ ] Injetar contexto da base de conhecimento do projeto por padrão no pipeline de copy:
+- [x] Injetar contexto da base de conhecimento do projeto por padrão no pipeline de copy:
   - usar `projectId` para isolamento
   - priorizar categorias `CAMPANHAS`, `HORARIOS`, `CARDAPIO`, `DIFERENCIAIS`
   - fallback gracioso quando não houver contexto
-- [ ] Orquestrar pipeline:
+- [x] Orquestrar pipeline:
   1. recuperar contexto RAG do projeto
   2. gerar copy estruturada
   3. gerar/escolher fundo
   4. aplicar slots no template Konva
   5. produzir variações em fila
-- [ ] Auto-seleção de template por objetivo + tamanho do texto.
+- [x] Auto-seleção de template por objetivo + tamanho do texto.
 
 DoD:
-- [ ] Usuário consegue gerar arte válida com 1 prompt e 1 clique em "Gerar".
-- [ ] Cenário "happy hour" funciona sem usuário repetir dia/horário quando isso estiver cadastrado na base.
+- [x] Usuário consegue gerar arte válida com 1 prompt e 1 clique em "Gerar".
+- [x] Cenário "happy hour" funciona sem usuário repetir dia/horário quando isso estiver cadastrado na base.
 
 ---
 

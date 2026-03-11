@@ -40,8 +40,27 @@ interface GenerateAiTextVariation {
   footer_info_2: string
 }
 
+interface GenerateAiTextKnowledgeHit {
+  entryId: string
+  title: string
+  category: string
+  content: string
+  score: number
+  source: 'rag' | 'fallback-db'
+}
+
+interface GenerateAiTextKnowledge {
+  applied: boolean
+  context: string
+  categoriesUsed: string[]
+  hits: GenerateAiTextKnowledgeHit[]
+}
+
 interface GenerateAiTextResponse {
   variacoes: GenerateAiTextVariation[]
+  knowledge?: GenerateAiTextKnowledge
+  warnings?: string[]
+  conflicts?: string[]
 }
 
 const WEB_APP_BASE_URL = process.env.WEB_APP_BASE_URL || 'https://studio-lagosta-v2.vercel.app'
@@ -1019,7 +1038,65 @@ function normalizeGenerateAiTextResponse(
     })
   }
 
-  return { variacoes }
+  const rawKnowledge = asObject(raw.knowledge)
+  const knowledgeHits = Array.isArray(rawKnowledge.hits)
+    ? rawKnowledge.hits
+      .map((hit) => {
+        const item = asObject(hit)
+        const entryId = normalizeText(item.entryId, 120)
+        const title = normalizeText(item.title, 200)
+        const category = normalizeText(item.category, 80)
+        const content = normalizeText(item.content, 1200)
+        const score = typeof item.score === 'number' && Number.isFinite(item.score)
+          ? Number(item.score)
+          : 0
+        const source = item.source === 'fallback-db' ? 'fallback-db' : 'rag'
+
+        if (!entryId || !title || !category || !content) {
+          return null
+        }
+
+        return {
+          entryId,
+          title,
+          category,
+          content,
+          score,
+          source,
+        } satisfies GenerateAiTextKnowledgeHit
+      })
+      .filter((hit): hit is GenerateAiTextKnowledgeHit => hit !== null)
+    : []
+
+  const categoriesUsed = Array.isArray(rawKnowledge.categoriesUsed)
+    ? rawKnowledge.categoriesUsed
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 8)
+    : []
+
+  const warnings = Array.isArray(raw.warnings)
+    ? raw.warnings
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 8)
+    : []
+
+  const conflicts = Array.isArray(raw.conflicts)
+    ? raw.conflicts
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .slice(0, 8)
+    : []
+
+  return {
+    variacoes,
+    knowledge: {
+      applied: rawKnowledge.applied === true || knowledgeHits.length > 0,
+      context: normalizeText(rawKnowledge.context, 4_000),
+      categoriesUsed,
+      hits: knowledgeHits,
+    },
+    warnings,
+    conflicts,
+  }
 }
 
 function extractErrorMessage(payload: unknown, fallback: string): string {

@@ -39,7 +39,7 @@ Exemplos:
 | 3 | Editor Konva Core | ✅ Concluído | feat(konva-fase-3): implementa editor konva core no desktop-app | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 4 | Multi-page + Formatos | ✅ Concluído | feat(konva-fase-4): implementa multipage e formatos instagram | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 4.1 | Refino de texto + geração no editor | ✅ Concluído | feat(konva-fase-4.1): refino de texto e gerar arte no editor com selecao de paginas | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 5 | Prompt-only + RAG | ⬜ Não iniciado | - | - | - |
+| 5 | Prompt-only + RAG | ✅ Concluído | feat(konva-fase-5): pipeline prompt-only com RAG e slot binding | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 6 | Fundo IA + Referências | ⬜ Não iniciado | - | - | - |
 | 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
 | 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
@@ -194,12 +194,32 @@ Legenda status:
 - Próximo passo: iniciar a Fase 5 com o pipeline prompt-only + RAG usando o modal/fila do editor como ponto de entrada do fluxo automatizado.
 
 ### Fase 5 — Prompt-only + RAG
-- Escopo fechado:
+- Escopo fechado: modo rápido com 1 prompt no `GenerateArtTab`, orquestração local Konva-only para copy estruturada + seleção automática/manual de template, binder de slots com constraints, fila assíncrona por variação e injeção automática do contexto da base de conhecimento por `projectId`.
 - Decisões:
+  - manter a geração 100% no motor Konva do desktop, sem reintroduzir preview/render HTML no fluxo da Fase 5.
+  - usar RAG priorizado por categoria (`CAMPANHAS`, `HORARIOS`, `CARDAPIO`, `DIFERENCIAIS`) com fallback textual no banco quando a busca semântica não responder.
+  - preservar prioridade do pedido do usuário em conflitos com a base e devolver avisos de revisão para dados críticos.
+  - suportar templates Konva antigos sem `slots` explícitos inferindo bindings por heurística e fazendo merge seguro de campos faltantes.
+  - tratar `Gerar com IA` nesta fase apenas como orquestração de pipeline, com fallback visual local até a integração definitiva do fundo na Fase 6.
 - Arquivos alterados:
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+  - `desktop-app/src/components/project/generate/GenerationQueue.tsx`
+  - `desktop-app/src/lib/automation/prompt-orchestrator.ts`
+  - `desktop-app/src/lib/automation/slot-binder.ts`
+  - `desktop-app/src/stores/generation.store.ts`
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `desktop-app/src/features/art-automation/ipc-contracts.ts`
+  - `src/app/api/tools/generate-ai-text/route.ts`
+  - `src/lib/knowledge/search.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+  - `npx tsc -p /tmp/tsconfig-web-phase5-<temp>.json --noEmit` (validação isolada dos arquivos web alterados) ✅
+- Commit: `feat(konva-fase-5): pipeline prompt-only com RAG e slot binding`
+- Próximo passo: iniciar a Fase 6 com a integração definitiva de geração de fundo IA (Nano Banana 2 + fallback) reaproveitando o `backgroundMode='ai'`, as referências visuais e o payload já orquestrado na Fase 5.
 
 ### Fase 6 — Fundo IA + Referências
 - Escopo fechado:
@@ -247,6 +267,6 @@ Legenda status:
 - 
 
 ## Observações de handoff (próxima conversa)
-- Estado atual: Fases 1, 2, 3 e 4 concluídas e validadas com typecheck web/electron.
-- Último commit estável: feat(konva-fase-4): implementa multipage e formatos instagram
-- Próxima fase recomendada: Fase 5 — Prompt-only + RAG.
+- Estado atual: Fases 1, 2, 3, 4, 4.1 e 5 concluídas; desktop/electron validados e web alterado validado via `tsc` isolado porque o `tsconfig` raiz hoje também puxa `desktop-app/**`.
+- Último commit estável: feat(konva-fase-5): pipeline prompt-only com RAG e slot binding
+- Próxima fase recomendada: Fase 6 — Fundo IA + Referências.
