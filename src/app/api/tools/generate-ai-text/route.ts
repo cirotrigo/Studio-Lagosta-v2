@@ -395,10 +395,11 @@ async function analyzeImageContext(
     throw new Error('Nao foi possivel carregar a imagem para analise contextual.')
   }
 
-  const { text } = await generateText({
+  const { object } = await generateObject({
     model: google(IMAGE_ANALYSIS_MODEL),
     temperature: 0.2,
-    maxOutputTokens: 500,
+    maxTokens: 500,
+    schema: imageContextSchema,
     messages: [
       {
         role: 'user',
@@ -406,7 +407,7 @@ async function analyzeImageContext(
           {
             type: 'image',
             image: image.buffer,
-            mediaType: image.mimeType,
+            mimeType: image.mimeType,
           },
           {
             type: 'text',
@@ -418,9 +419,7 @@ async function analyzeImageContext(
               '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
               '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
               '- sceneType deve descrever o contexto da cena em poucas palavras.',
-              '- confidence mede a confianca da identificacao do prato principal/contexto.',
-              'Retorne APENAS JSON valido neste formato:',
-              '{"summary":"","dishNameCandidates":[],"sceneType":"","ingredientsHints":[],"confidence":0}',
+              '- confidence mede a confianca da identificacao do prato principal/contexto (0 a 1).',
             ].join('\n'),
           },
         ],
@@ -428,8 +427,7 @@ async function analyzeImageContext(
     ],
   })
 
-  const parsed = JSON.parse(extractJsonObject(text))
-  return imageContextSchema.parse(parsed)
+  return object
 }
 
 function buildImageAnalysisPayload(

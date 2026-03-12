@@ -38,6 +38,7 @@ interface DriveListPayload {
   items: DrivePhoto[]
   currentFolderId: string
   folderName?: string
+  nextPageToken?: string
 }
 
 const driveListCache = new Map<string, { data: DriveListPayload; timestamp: number }>()
@@ -70,6 +71,8 @@ export default function PhotoSelector({
   const [driveSearch, setDriveSearch] = useState('')
   const [driveError, setDriveError] = useState<string | null>(null)
   const [isLoadingDrive, setIsLoadingDrive] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [driveNextPageToken, setDriveNextPageToken] = useState<string | undefined>(undefined)
   const driveRequestKeyRef = useRef<string | null>(null)
 
   const { data: aiImages, isLoading: isLoadingAI } = useAIImages(projectId)
@@ -104,33 +107,43 @@ export default function PhotoSelector({
     return () => window.clearTimeout(timeoutId)
   }, [driveSearchInput])
 
-  const loadDriveItems = useCallback(async (folderId?: string, forceRefresh = false) => {
-    setIsLoadingDrive(true)
+  const loadDriveItems = useCallback(async (folderId?: string, forceRefresh = false, pageToken?: string) => {
+    const isLoadingMore = !!pageToken
+    if (isLoadingMore) {
+      setIsLoadingMore(true)
+    } else {
+      setIsLoadingDrive(true)
+      setDriveNextPageToken(undefined)
+    }
     setDriveError(null)
-    const cacheKey = `${projectId}:${folderId ?? 'root'}`
+    const cacheKey = `${projectId}:${folderId ?? 'root'}:${pageToken ?? ''}`
     driveRequestKeyRef.current = cacheKey
 
     try {
-      const cached = forceRefresh ? undefined : driveListCache.get(cacheKey)
-      if (cached && Date.now() - cached.timestamp < DRIVE_LIST_CACHE_TTL_MS) {
-        if (driveRequestKeyRef.current !== cacheKey) {
-          return
-        }
-
-        setDriveItems(cached.data.items)
-        setDriveFolderStack((previous) => {
-          if (previous.length > 0 || !cached.data.currentFolderId) {
-            return previous
+      // Only use cache for initial load, not pagination
+      if (!isLoadingMore) {
+        const cached = forceRefresh ? undefined : driveListCache.get(cacheKey)
+        if (cached && Date.now() - cached.timestamp < DRIVE_LIST_CACHE_TTL_MS) {
+          if (driveRequestKeyRef.current !== cacheKey) {
+            return
           }
 
-          return [
-            {
-              id: cached.data.currentFolderId,
-              name: initialDriveFolderName ?? cached.data.folderName ?? 'Google Drive',
-            },
-          ]
-        })
-        return
+          setDriveItems(cached.data.items)
+          setDriveNextPageToken(cached.data.nextPageToken)
+          setDriveFolderStack((previous) => {
+            if (previous.length > 0 || !cached.data.currentFolderId) {
+              return previous
+            }
+
+            return [
+              {
+                id: cached.data.currentFolderId,
+                name: initialDriveFolderName ?? cached.data.folderName ?? 'Google Drive',
+              },
+            ]
+          })
+          return
+        }
       }
 
       const existingRequest = driveListInflight.get(cacheKey)
@@ -146,6 +159,10 @@ export default function PhotoSelector({
             params.set('folderId', folderId)
           }
 
+          if (pageToken) {
+            params.set('pageToken', pageToken)
+          }
+
           return await api.get<DriveListPayload>(`/api/drive/list?${params.toString()}`)
         })()
 
@@ -154,43 +171,66 @@ export default function PhotoSelector({
       }
 
       const data = await request
-      driveListCache.set(cacheKey, { data, timestamp: Date.now() })
+
+      // Only cache first page
+      if (!isLoadingMore) {
+        driveListCache.set(cacheKey, { data, timestamp: Date.now() })
+      }
 
       if (driveRequestKeyRef.current !== cacheKey) {
         return
       }
 
-      setDriveItems(data.items)
-      setDriveFolderStack((previous) => {
-        if (previous.length > 0 || !data.currentFolderId) {
-          return previous
-        }
+      if (isLoadingMore) {
+        // Append items for pagination
+        setDriveItems((prev) => [...prev, ...data.items])
+      } else {
+        setDriveItems(data.items)
+      }
 
-        return [
-          {
-            id: data.currentFolderId,
-            name: initialDriveFolderName ?? data.folderName ?? 'Google Drive',
-          },
-        ]
-      })
+      setDriveNextPageToken(data.nextPageToken)
+
+      if (!isLoadingMore) {
+        setDriveFolderStack((previous) => {
+          if (previous.length > 0 || !data.currentFolderId) {
+            return previous
+          }
+
+          return [
+            {
+              id: data.currentFolderId,
+              name: initialDriveFolderName ?? data.folderName ?? 'Google Drive',
+            },
+          ]
+        })
+      }
     } catch (error) {
       const cached = driveListCache.get(cacheKey)
       if (cached && error instanceof ApiError && error.status === 429) {
         if (driveRequestKeyRef.current === cacheKey) {
-          setDriveItems(cached.data.items)
+          if (!isLoadingMore) {
+            setDriveItems(cached.data.items)
+            setDriveNextPageToken(cached.data.nextPageToken)
+          }
           setDriveError(null)
         }
         return
       }
 
       if (driveRequestKeyRef.current === cacheKey) {
-        setDriveItems([])
+        if (!isLoadingMore) {
+          setDriveItems([])
+        }
         setDriveError(error instanceof Error ? error.message : 'Erro ao carregar imagens do Drive')
       }
     } finally {
       driveListInflight.delete(cacheKey)
       if (driveRequestKeyRef.current === cacheKey) {
-        setIsLoadingDrive(false)
+        if (isLoadingMore) {
+          setIsLoadingMore(false)
+        } else {
+          setIsLoadingDrive(false)
+        }
       }
     }
   }, [initialDriveFolderName, projectId])
@@ -419,11 +459,18 @@ export default function PhotoSelector({
           <DriveTab
             items={filteredDriveItems}
             isLoading={isLoadingDrive}
+            isLoadingMore={isLoadingMore}
+            hasMore={!!driveNextPageToken && !driveSearch}
             error={driveError}
             search={driveSearchInput}
             breadcrumbs={driveFolderStack}
             downloadingId={downloadingId}
             onRefresh={() => void loadDriveItems(currentDriveFolderId, true)}
+            onLoadMore={() => {
+              if (driveNextPageToken && !isLoadingMore) {
+                void loadDriveItems(currentDriveFolderId, false, driveNextPageToken)
+              }
+            }}
             onSearchChange={(value) => {
               setDriveSearchInput(value)
             }}
@@ -476,11 +523,14 @@ export default function PhotoSelector({
 function DriveTab({
   items,
   isLoading,
+  isLoadingMore,
+  hasMore,
   error,
   search,
   breadcrumbs,
   downloadingId,
   onRefresh,
+  onLoadMore,
   onSearchChange,
   onOpenFolder,
   onBreadcrumbClick,
@@ -488,18 +538,47 @@ function DriveTab({
 }: {
   items: DrivePhoto[]
   isLoading: boolean
+  isLoadingMore: boolean
+  hasMore: boolean
   error: string | null
   search: string
   breadcrumbs: Array<{ id: string; name: string }>
   downloadingId: string | null
   onRefresh: () => void
+  onLoadMore: () => void
   onSearchChange: (value: string) => void
   onOpenFolder: (folder: DrivePhoto) => void
   onBreadcrumbClick: (index: number) => void
   onSelect: (photo: DrivePhoto) => void
 }) {
+  const loadMoreRef = useRef<HTMLDivElement>(null)
   const folders = items.filter((item) => item.mimeType === 'application/vnd.google-apps.folder')
   const photos = items.filter((item) => item.mimeType?.startsWith('image/'))
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (!hasMore || isLoadingMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          onLoadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const target = loadMoreRef.current
+    if (target) {
+      observer.observe(target)
+    }
+
+    return () => {
+      if (target) {
+        observer.unobserve(target)
+      }
+    }
+  }, [hasMore, isLoadingMore, onLoadMore])
 
   if (isLoading) {
     return (
@@ -660,7 +739,7 @@ function DriveTab({
       ) : null}
 
       <div className="grid grid-cols-3 gap-2">
-        {photos.slice(0, 18).map((photo) => (
+        {photos.map((photo) => (
           <button
             key={photo.id}
             onClick={() => onSelect(photo)}
@@ -680,6 +759,17 @@ function DriveTab({
           </button>
         ))}
       </div>
+
+      {/* Infinite scroll trigger */}
+      {hasMore && (
+        <div ref={loadMoreRef} className="flex items-center justify-center py-4">
+          {isLoadingMore ? (
+            <Loader2 size={20} className="animate-spin text-primary" />
+          ) : (
+            <span className="text-xs text-text-muted">Carregando mais...</span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

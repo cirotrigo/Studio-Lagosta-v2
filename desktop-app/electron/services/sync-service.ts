@@ -495,9 +495,18 @@ export class SyncService {
       }
     }
 
+    // Skip operations without valid payload for create/update
+    if (op.op !== 'delete' && !op.payload) {
+      console.warn('[SyncService] Skipping operation without payload:', op.operationId)
+      return true // Return true to remove from queue
+    }
+
     const endpoint = this.getEndpointForOperation(op, remoteId)
     const method = this.getMethodForOperation(op)
-    const body = op.op === 'delete' ? undefined : JSON.stringify(this.localToRemotePayload(op))
+    const payload = op.op === 'delete' ? null : this.localToRemotePayload(op)
+    const body = payload ? JSON.stringify(payload) : undefined
+
+    console.log(`[SyncService] Push ${op.op} to ${endpoint}`)
 
     let cookies = await this.deps.getFreshCookies()
     let result = await this.deps.executeRequest(
@@ -521,6 +530,12 @@ export class SyncService {
 
     if (result.isHtml && this.deps.isAuthHtmlResponse(result)) {
       throw new Error('auth_expired')
+    }
+
+    // Log failures for debugging
+    if (!result.ok) {
+      console.error(`[SyncService] Push failed: ${result.status} ${result.statusText}`)
+      console.error('[SyncService] Response:', result.text.slice(0, 500))
     }
 
     // On successful create, save the remoteId to local template
@@ -567,25 +582,46 @@ export class SyncService {
   }
 
   private localToRemotePayload(op: SyncQueueItem): Record<string, unknown> {
-    if (!op.payload) return {}
+    if (!op.payload) {
+      console.warn('[SyncService] localToRemotePayload: no payload')
+      return {}
+    }
 
     const doc = op.payload
-    const firstPage = doc.design.pages[0]
+    const firstPage = doc.design?.pages?.[0]
 
-    return {
-      name: doc.name,
-      type: doc.format,
-      dimensions: `${firstPage?.width ?? 1080}x${firstPage?.height ?? 1920}`,
+    // Ensure all required fields have values
+    const name = doc.name || 'Template sem nome'
+    const type = doc.format || 'STORY'
+    const width = firstPage?.width ?? 1080
+    const height = firstPage?.height ?? 1920
+    const projectId = doc.projectId ?? op.projectId
+
+    const payload = {
+      name,
+      type,
+      dimensions: `${width}x${height}`,
       designData: {
         canvas: {
-          width: firstPage?.width ?? 1080,
-          height: firstPage?.height ?? 1920,
+          width,
+          height,
           backgroundColor: firstPage?.background ?? '#ffffff',
         },
-        pages: doc.design.pages,
+        pages: doc.design?.pages ?? [],
       },
       localId: doc.id,
-      projectId: doc.projectId,
+      projectId,
     }
+
+    console.log('[SyncService] Push payload:', {
+      name: payload.name,
+      type: payload.type,
+      dimensions: payload.dimensions,
+      projectId: payload.projectId,
+      hasDesignData: !!payload.designData,
+      pagesCount: payload.designData.pages.length,
+    })
+
+    return payload
   }
 }
