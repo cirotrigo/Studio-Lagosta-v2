@@ -1,12 +1,8 @@
-import { useState, Component, ReactNode } from 'react'
-import { Palette, Sparkles, History, Wand2, AlertTriangle, LucideIcon } from 'lucide-react'
+import { Component, ReactNode } from 'react'
+import { Wand2, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useProjectStore } from '@/stores/project.store'
-import { cn } from '@/lib/utils'
-import { ReeditDraft } from '@/types/art-automation'
-import IdentityTab from '@/components/project/tabs/IdentityTab'
 import GenerateArtTab from '@/components/project/tabs/GenerateArtTab'
-import HistoryTab from '@/components/project/tabs/HistoryTab'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 
 // ErrorBoundary to prevent full app crash when a tab fails to render
@@ -61,25 +57,8 @@ class TabErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
   }
 }
 
-type TabId = 'identity' | 'generate' | 'history'
-
-interface Tab {
-  id: TabId
-  label: string
-  icon: LucideIcon
-}
-
-const TABS: Tab[] = [
-  { id: 'identity', label: 'Identidade', icon: Palette },
-  { id: 'generate', label: 'Gerar Arte', icon: Sparkles },
-  { id: 'history', label: 'Historico', icon: History },
-]
-
 export default function ProjectPage() {
   const { currentProject } = useProjectStore()
-  const [activeTab, setActiveTab] = useState<TabId>('identity')
-  const [errorKey, setErrorKey] = useState(0)
-  const [reeditDraft, setReeditDraft] = useState<ReeditDraft | null>(null)
 
   if (!currentProject) {
     return (
@@ -107,49 +86,14 @@ export default function ProjectPage() {
     <div className="flex h-full flex-col">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-border p-4">
-        <h1 className="text-xl font-semibold text-text">Projeto</h1>
+        <h1 className="text-xl font-semibold text-text">Arte Rapida</h1>
         <ProjectBadge project={currentProject} />
-      </div>
-
-      {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-border bg-sidebar px-4 py-2">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-all duration-200',
-              activeTab === tab.id
-                ? 'bg-card text-text'
-                : 'text-text-muted hover:text-text'
-            )}
-          >
-            <tab.icon size={16} />
-            {tab.label}
-          </button>
-        ))}
       </div>
 
       {/* Content */}
       <div className="flex-1 overflow-hidden">
-        <TabErrorBoundary key={`${activeTab}-${errorKey}`} onReset={() => setErrorKey((k) => k + 1)}>
-          {activeTab === 'identity' && <IdentityTab projectId={currentProject.id} />}
-          {activeTab === 'generate' && (
-            <GenerateArtTab
-              projectId={currentProject.id}
-              draft={reeditDraft}
-              onDraftConsumed={() => setReeditDraft(null)}
-            />
-          )}
-          {activeTab === 'history' && (
-            <HistoryTab
-              projectId={currentProject.id}
-              onReedit={(draft) => {
-                setReeditDraft(draft)
-                setActiveTab('generate')
-              }}
-            />
-          )}
+        <TabErrorBoundary onReset={() => window.location.reload()}>
+          <GenerateArtTab projectId={currentProject.id} />
         </TabErrorBoundary>
       </div>
     </div>

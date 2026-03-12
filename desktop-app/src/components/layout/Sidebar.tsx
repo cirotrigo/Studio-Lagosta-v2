@@ -13,7 +13,7 @@ const navItems = [
   {
     to: '/project',
     icon: Wand2,
-    label: 'Projeto',
+    label: 'Arte Rapida',
     disabled: false,
   },
   {

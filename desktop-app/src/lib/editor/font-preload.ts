@@ -6,6 +6,7 @@ import {
   normalizeEditorFontFamily,
   type EditorFontSource,
 } from './font-utils'
+import { API_BASE_URL } from '@/lib/constants'
 import type { KonvaTemplateDocument } from '@/types/template'
 
 interface PreloadEditorFontSourcesOptions {
@@ -22,6 +23,7 @@ export interface PreloadEditorFontsResult {
 }
 
 const fontLoadCache = new Map<string, Promise<string | null>>()
+const googleStylesheetCache = new Map<string, Promise<boolean>>()
 
 function buildFontLoadKey(font: EditorFontSource) {
   return `${normalizeEditorFontFamily(font.fontFamily)}::${font.fileUrl ?? 'local'}`
@@ -35,6 +37,90 @@ function canUseDocumentFontsApi() {
   return typeof document !== 'undefined' && 'fonts' in document && Boolean(document.fonts)
 }
 
+function resolveFontUrl(fileUrl: string) {
+  const trimmed = fileUrl.trim()
+  if (!trimmed) {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return trimmed
+  }
+
+  if (trimmed.startsWith('//')) {
+    return `https:${trimmed}`
+  }
+
+  if (trimmed.startsWith('/')) {
+    return `${API_BASE_URL}${trimmed}`
+  }
+
+  return `${API_BASE_URL}/${trimmed.replace(/^\/+/, '')}`
+}
+
+function bufferLooksLikeHtml(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer.slice(0, 20))
+  const head = Array.from(bytes)
+    .map((byte) => String.fromCharCode(byte))
+    .join('')
+    .toLowerCase()
+  return head.includes('<!do') || head.includes('<html') || head.includes('<!doctype')
+}
+
+function buildGoogleFontsHref(fontFamily: string) {
+  const queryFamily = encodeURIComponent(fontFamily.trim()).replace(/%20/g, '+')
+  return `https://fonts.googleapis.com/css2?family=${queryFamily}&display=swap`
+}
+
+async function ensureGoogleFontStylesheet(fontFamily: string): Promise<boolean> {
+  if (typeof document === 'undefined') {
+    return false
+  }
+
+  const normalized = normalizeEditorFontFamily(fontFamily)
+  if (!normalized) {
+    return false
+  }
+
+  const cached = googleStylesheetCache.get(normalized)
+  if (cached) {
+    return await cached
+  }
+
+  const pending = (async () => {
+    const href = buildGoogleFontsHref(normalized)
+
+    const existing = document.querySelector<HTMLLinkElement>(
+      `link[data-editor-google-font="${normalized}"]`,
+    )
+    if (existing) {
+      return true
+    }
+
+    return await new Promise<boolean>((resolve) => {
+      const link = document.createElement('link')
+      link.rel = 'stylesheet'
+      link.href = href
+      link.setAttribute('data-editor-google-font', normalized)
+
+      const timeoutId = window.setTimeout(() => resolve(false), 3500)
+      link.onload = () => {
+        window.clearTimeout(timeoutId)
+        resolve(true)
+      }
+      link.onerror = () => {
+        window.clearTimeout(timeoutId)
+        resolve(false)
+      }
+
+      document.head.appendChild(link)
+    })
+  })()
+
+  googleStylesheetCache.set(normalized, pending)
+  return await pending
+}
+
 async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | null> {
   const fontFamily = normalizeEditorFontFamily(font.fontFamily)
   if (!fontFamily || !canUseDocumentFontsApi() || !document.fonts) {
@@ -46,6 +132,10 @@ async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | 
   }
 
   if (!font.fileUrl) {
+    if (!COMMON_AVAILABLE_FONT_FAMILIES.has(fontFamily)) {
+      await ensureGoogleFontStylesheet(fontFamily)
+    }
+
     try {
       await document.fonts.load(toFontCheckString(fontFamily))
       if (document.fonts.check(toFontCheckString(fontFamily))) {
@@ -74,9 +164,21 @@ async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | 
         return `Falha ao baixar a fonte "${fontFamily}". Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
       }
 
-      const response = await window.electronAPI.downloadBlob(font.fileUrl as string)
+      const resolvedUrl = resolveFontUrl(font.fileUrl as string)
+      if (!resolvedUrl) {
+        return `URL da fonte "${fontFamily}" esta vazia. Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
+      }
+
+      const response = await window.electronAPI.downloadBlob(resolvedUrl)
       if (!response.ok || !response.buffer) {
-        return `Falha ao baixar a fonte "${fontFamily}". Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
+        return `Falha ao baixar a fonte "${fontFamily}" (${resolvedUrl}). Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
+      }
+
+      if (
+        bufferLooksLikeHtml(response.buffer) ||
+        (response.contentType && response.contentType.includes('text/html'))
+      ) {
+        return `Fonte "${fontFamily}" retornou HTML em vez de arquivo de fonte (${resolvedUrl}). Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
       }
 
       const fontFace = new FontFace(fontFamily, response.buffer.slice(0))

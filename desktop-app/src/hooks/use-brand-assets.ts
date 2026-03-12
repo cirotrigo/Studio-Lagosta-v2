@@ -5,7 +5,7 @@ import { useAuthStore } from '@/stores/auth.store'
 export interface FontInfo {
   name: string
   fontFamily: string
-  fileUrl: string
+  fileUrl?: string
 }
 
 export interface TextColorPreferences {
@@ -48,7 +48,43 @@ export function useBrandAssets(projectId: number | undefined) {
     queryKey: ['brand-assets', projectId],
     queryFn: async () => {
       try {
-        return await api.get<BrandAssets>(`/api/projects/${projectId}/brand-assets`)
+        const brandAssets = await api.get<BrandAssets>(`/api/projects/${projectId}/brand-assets`)
+
+        // Fallback robusto: algumas contas carregam fontes via endpoint dedicado de assets.
+        // Mesclamos as duas fontes para evitar cenário onde só Inter aparece no editor.
+        let projectFonts: Array<{ name?: string; fontFamily?: string; fileUrl?: string }> = []
+        try {
+          const response = await api.get<Array<{ name?: string; fontFamily?: string; fileUrl?: string }>>(
+            `/api/projects/${projectId}/fonts`,
+          )
+          projectFonts = Array.isArray(response) ? response : []
+        } catch (_fontsError) {
+          // Mantém fluxo principal com brand-assets mesmo se endpoint de fontes falhar.
+        }
+
+        const mergedFonts = new Map<string, FontInfo>()
+
+        const mergeFont = (font: { name?: string; fontFamily?: string; fileUrl?: string }) => {
+          const family = font.fontFamily?.trim()
+          if (!family) return
+
+          const current = mergedFonts.get(family)
+          if (!current || (!current.fileUrl && font.fileUrl)) {
+            mergedFonts.set(family, {
+              name: font.name?.trim() || family,
+              fontFamily: family,
+              fileUrl: font.fileUrl,
+            })
+          }
+        }
+
+        for (const font of brandAssets.fonts || []) mergeFont(font)
+        for (const font of projectFonts) mergeFont(font)
+
+        return {
+          ...brandAssets,
+          fonts: Array.from(mergedFonts.values()),
+        }
       } catch (error) {
         if (error instanceof ApiError && error.status === 401) {
           await logout()

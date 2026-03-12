@@ -101,8 +101,17 @@ export function getProjectIdentityFonts(
   brandAssets: BrandAssets | undefined,
   document: KonvaTemplateDocument | null,
 ) {
+  const preferredFonts = [
+    brandAssets?.titleFontFamily,
+    brandAssets?.bodyFontFamily,
+  ]
+    .map((fontFamily) => normalizeEditorFontFamily(fontFamily))
+    .filter(Boolean)
+    .map((fontFamily) => ({ fontFamily }))
+
   return mergeEditorFontSources(
     brandAssets?.fonts,
+    preferredFonts,
     document?.identity.fonts,
     collectDocumentFontFamilies(document).map((fontFamily) => ({ fontFamily })),
   )
