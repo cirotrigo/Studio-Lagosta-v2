@@ -483,14 +483,26 @@ export class SyncService {
       return true
     }
 
-    const endpoint = this.getEndpointForOperation(op)
+    // For update/delete, we need the remoteId (numeric ID from server)
+    const remoteId = op.payload?.meta?.remoteId
+    if ((op.op === 'update' || op.op === 'delete') && !remoteId) {
+      // No remoteId means this was never synced - convert update to create
+      if (op.op === 'update') {
+        op = { ...op, op: 'create' }
+      } else {
+        // Can't delete something that doesn't exist on server
+        return true
+      }
+    }
+
+    const endpoint = this.getEndpointForOperation(op, remoteId)
     const method = this.getMethodForOperation(op)
     const body = op.op === 'delete' ? undefined : JSON.stringify(this.localToRemotePayload(op))
 
     let cookies = await this.deps.getFreshCookies()
     let result = await this.deps.executeRequest(
       endpoint,
-      { method, body },
+      { method, body, headers: { 'Content-Type': 'application/json' } },
       cookies,
     )
 
@@ -499,7 +511,11 @@ export class SyncService {
       const refreshed = await this.deps.refreshClerkSession()
       if (refreshed) {
         cookies = await this.deps.getFreshCookies()
-        result = await this.deps.executeRequest(endpoint, { method, body }, cookies)
+        result = await this.deps.executeRequest(
+          endpoint,
+          { method, body, headers: { 'Content-Type': 'application/json' } },
+          cookies,
+        )
       }
     }
 
@@ -507,13 +523,34 @@ export class SyncService {
       throw new Error('auth_expired')
     }
 
+    // On successful create, save the remoteId to local template
+    if (result.ok && op.op === 'create') {
+      try {
+        const responseData = JSON.parse(result.text)
+        const newRemoteId = responseData?.id
+        if (typeof newRemoteId === 'number' && op.payload) {
+          const template = await this.storage.getTemplate(op.projectId, op.entityId)
+          if (template) {
+            await this.storage.saveTemplate(op.projectId, {
+              ...template,
+              meta: { ...template.meta, remoteId: newRemoteId },
+            })
+          }
+        }
+      } catch {
+        // Failed to parse response, but operation was successful
+        console.warn('[SyncService] Could not save remoteId after create')
+      }
+    }
+
     return result.ok
   }
 
-  private getEndpointForOperation(op: SyncQueueItem): string {
-    const base = `${this.deps.webAppBaseUrl}/api/projects/${op.projectId}/templates`
+  private getEndpointForOperation(op: SyncQueueItem, remoteId?: number): string {
+    const base = `${this.deps.webAppBaseUrl}/api/templates`
     if (op.op === 'create') return base
-    return `${base}/${op.entityId}`
+    // For update/delete, use the numeric remoteId
+    return `${base}/${remoteId}`
   }
 
   private getMethodForOperation(op: SyncQueueItem): string {
