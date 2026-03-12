@@ -258,9 +258,15 @@ Tarefas:
 - [ ] Export PNG/JPEG por página.
 - [ ] Export batch para variações e carrossel.
 - [ ] Naming padronizado por projeto/campanha.
+- [ ] Garantir fidelidade visual do export em relação ao preview Konva (sem redução inesperada de texto/logo).
+- [ ] Garantir dimensões exatas por formato (`STORY 1080x1920`, `FEED_PORTRAIT 1080x1350`, `SQUARE 1080x1080`).
+- [ ] Evitar corte/faixa preta/letterbox no export final.
+- [ ] Definir padrão de nome com índice para batch/carrossel (`..._v01_p01` etc.).
 
 DoD:
 - [ ] Sem corte indevido; dimensão final correta.
+- [ ] Export single e batch reprodutíveis com naming consistente.
+- [ ] QA manual validando preview vs arquivo final em story/feed/square.
 
 ---
 
