@@ -116,10 +116,16 @@ Permitir gerar artes prontas para Instagram com **1 prompt + 1 clique**, mantend
 - Regra:
   - só aplicar automaticamente quando `confidence >= threshold`.
   - abaixo do limiar, não inferir prato específico.
+  - se a API/chave de visão não estiver disponível, manter pipeline padrão com aviso não-bloqueante.
+
+Nota de escopo:
+- O toggle pode aparecer também no modal do editor por consistência visual, mas o enriquecimento da copy ocorre no pipeline do modo rápido.
 
 ## 9.2 Slot binder
 - Mapeia `title/description/cta/badge/footer` para layers Konva.
 - Aplica constraints (`maxLines`, `overflowBehavior`, `min/maxFont`).
+- Normaliza quebras de linha legadas (`<br>` -> `\\n`) para render Konva.
+- Remove/neutraliza markup HTML literal para evitar texto quebrado no canvas.
 
 ## 9.3 Fila de geração
 - Cada variação é um job independente.

@@ -51,6 +51,9 @@ Total: **10 tipos**.
 - LLM retorna copy estruturada (title/description/cta/badge etc.).
 - Engine aplica copy nos slots com constraints (maxLines, overflowBehavior, min/max font).
 - Usuário edita cada variação no Konva antes da aprovação.
+- Compatibilidade de quebra de linha:
+  - se a copy vier com `<br>` (legado HTML), converter para `\\n` antes de renderizar no Konva.
+  - não exibir tags HTML literais no stage (`<br>`, `<p>`, etc.).
 
 ---
 
@@ -252,6 +255,8 @@ export interface SlotBinding {
 ## 7.3 Reedição
 - Arte aprovada abre em modo editor com estado completo.
 - Suporte a “Salvar como novo template”.
+- Reedição deve carregar identidade do projeto (incluindo fontes) antes de montar o stage.
+- Propriedades tipográficas (`fontFamily`, `fontSize`, `lineHeight`, `letterSpacing`) devem permanecer editáveis em drafts vindos das variações.
 
 ## 7.4 Exemplo de uso (Happy Hour)
 Entrada do usuário:
@@ -277,6 +282,13 @@ Comportamento esperado:
 Regra de UX:
 - Toggle de análise de imagem deve vir **desligado por padrão**.
 - Quando ativo, UI deve indicar “Análise de imagem aplicada”.
+
+Regra de escopo (Fase 6.1):
+- O toggle deve existir no modo rápido e pode ser espelhado no modal do editor para consistência de UX.
+- O enriquecimento efetivo da copy ocorre no pipeline de geração por prompt (modo rápido), sem bloquear o fluxo local de exportação do editor.
+
+Regra de resiliência:
+- Se a chave/API de visão não estiver disponível, o sistema deve seguir com geração padrão (sem análise visual) e exibir aviso não-bloqueante.
 
 ---
 
@@ -441,6 +453,7 @@ npm --prefix desktop-app run package
 - Template JSON aplica identidade do projeto web (`brand-assets`).
 - Automação por slots gera variações editáveis no Konva.
 - Aprovação salva arte final e permite reedição posterior.
+- Reedição de variação mantém fontes do projeto e permite ajuste de tamanho de fonte sem regressão.
 - Export batch PNG/JPEG estável em fila.
 - Sync offline-first funcional com resolução de conflito.
 
