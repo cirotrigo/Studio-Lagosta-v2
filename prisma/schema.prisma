@@ -204,6 +204,10 @@ model Project {
   Template                    Template[]
   youtubeDownloads            YoutubeDownloadJob[]
   knowledgeEntries            KnowledgeBaseEntry[]
+  brandStyleDescription       String?
+  brandVisualElements         Json?
+  brandReferenceUrls          String[]  @default([])
+  cuisineType                 String?
 
   @@index([status])
   @@index([userId])
