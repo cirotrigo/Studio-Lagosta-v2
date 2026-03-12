@@ -213,6 +213,7 @@ export interface Page {
   thumbnail?: string
   isTemplate?: boolean
   templateName?: string
+  tags?: string[]
   createdAt?: Date
   updatedAt?: Date
 }

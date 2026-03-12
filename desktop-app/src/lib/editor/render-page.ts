@@ -25,6 +25,15 @@ function calculateGradientPoints(width: number, height: number, angle = 180) {
   }
 }
 
+function hexToRgbaForCanvas(hex: string, opacity: number): string {
+  if (opacity >= 1) return hex
+  const cleanHex = hex.replace('#', '')
+  const r = parseInt(cleanHex.substring(0, 2), 16)
+  const g = parseInt(cleanHex.substring(2, 4), 16)
+  const b = parseInt(cleanHex.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
 function createRoundedRectPath(
   context: CanvasRenderingContext2D,
   x: number,
@@ -418,15 +427,33 @@ export async function renderPageToDataUrl(
     }
 
     if (layer.type === 'gradient' || layer.type === 'gradient2') {
-      const points = calculateGradientPoints(frameWidth, frameHeight, layer.angle ?? 180)
-      const gradient = context.createLinearGradient(points.startX, points.startY, points.endX, points.endY)
       const colors = layer.colors.length > 1 ? layer.colors : ['#111827', '#F59E0B']
       const stops =
         layer.stops && layer.stops.length === colors.length
           ? layer.stops
           : colors.map((_, index) => index / Math.max(colors.length - 1, 1))
+      const opacities = layer.opacities && layer.opacities.length === colors.length
+        ? layer.opacities
+        : colors.map(() => 1)
 
-      colors.forEach((color, index) => gradient.addColorStop(stops[index], color))
+      let gradient: CanvasGradient
+
+      if (layer.gradientType === 'radial') {
+        const centerX = frameWidth / 2
+        const centerY = frameHeight / 2
+        const radius = Math.max(frameWidth, frameHeight) / 2
+        gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
+      } else {
+        const points = calculateGradientPoints(frameWidth, frameHeight, layer.angle ?? 180)
+        gradient = context.createLinearGradient(points.startX, points.startY, points.endX, points.endY)
+      }
+
+      colors.forEach((color, index) => {
+        const opacity = opacities[index] ?? 1
+        const finalColor = hexToRgbaForCanvas(color, opacity)
+        gradient.addColorStop(stops[index], finalColor)
+      })
+
       context.fillStyle = gradient
       context.fillRect(0, 0, frameWidth, frameHeight)
       context.restore()

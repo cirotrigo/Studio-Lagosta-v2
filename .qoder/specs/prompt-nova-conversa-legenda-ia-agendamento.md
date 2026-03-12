@@ -54,9 +54,9 @@ Quero implementar **geração de legenda com IA** no fluxo de agendamento de pos
 
 ### D) Prompt Otimizado para Legendas Curtas
 - Configurar o prompt da LLM para gerar legendas:
-  - Concisas (máximo 150-200 caracteres para stories, 300-400 para feed)
+  - Concisas (máximo 100-180 caracteres para stories, 200-400 para feed)
   - Com call-to-action quando apropriado
-  - Com hashtags relevantes (opcional, configurável)
+  - Com hashtags relevantes (opcional, no máximo 3)
   - Adaptadas ao tom selecionado
 - Respeitar limite de caracteres do Instagram.
 
@@ -66,10 +66,16 @@ O usuário escreve no prompt:
 
 O sistema:
 1. Busca na base de conhecimento: menu da parrilla, informações do T-bone
-2. Injeta contexto: preços, descrição, horários do estabelecimento
+2. Injeta contexto: descrição, horários do estabelecimento, como funciona o menu se tiver definido
 3. Gera legenda curta no tom selecionado
 4. Retorna algo como (tom Casual):
-> "Já conhece nosso menu de parrilla? 🥩 O T-bone é perfeito pra dividir com alguém especial. Vem provar! #TERO #Parrilla"
+> "Já conhece nosso menu de parrilla? 🥩 O T-bone é perfeito pra dividir com alguém especial. 
+
+Você escolhe uma das opções de cortes, um dos acompahamentos e um molho que mais combina com o corte.
+
+O menu Parrilla TERO serve até 2 pessoas! Marque aqui vai compartilhar esse menu com você hoje.
+
+#TERO #Parrilla"
 
 ### F) API de Geração de Legenda
 - Criar endpoint ou reaproveitar `generate-ai-text` com flag `mode: 'caption'`.

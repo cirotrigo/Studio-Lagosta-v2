@@ -55,6 +55,7 @@ export interface WebPage {
   background?: string
   order: number
   thumbnail?: string
+  tags?: string[]
 }
 
 export interface WebLayer {
@@ -475,6 +476,7 @@ function localPageToWeb(page: KonvaPage, warnings: NormalizationWarning[]): WebP
     background: page.background,
     order: page.order,
     thumbnail: page.thumbnailPath,
+    tags: page.tags,
   }
 }
 
@@ -488,6 +490,7 @@ function webPageToLocal(page: WebPage, warnings: NormalizationWarning[]): KonvaP
     background: page.background,
     order: page.order,
     thumbnailPath: page.thumbnail,
+    tags: page.tags,
   }
 }
 
@@ -592,6 +595,7 @@ export function normalizeForLocal(
           background: pageObj.background ?? (canvas.backgroundColor as string) ?? '#ffffff',
           order: pageObj.order ?? index,
           thumbnail: pageObj.thumbnail,
+          tags: pageObj.tags,
         },
         warnings
       )

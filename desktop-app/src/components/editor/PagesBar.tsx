@@ -4,6 +4,7 @@ import { renderPageThumbnail } from '@/lib/editor/thumbnail'
 import { ART_FORMAT_PRESETS } from '@/lib/editor/formats'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import { usePagesStore } from '@/stores/pages.store'
+import { useTagsStore } from '@/stores/tags.store'
 import { sortPages } from '@/lib/editor/document'
 import type { ArtFormat } from '@/types/template'
 import { cn } from '@/lib/utils'
@@ -20,6 +21,13 @@ export function PagesBar() {
   const removePage = usePagesStore((state) => state.removePage)
   const reorderPages = usePagesStore((state) => state.reorderPages)
   const applyFormat = usePagesStore((state) => state.applyFormat)
+  const projectTags = useTagsStore((state) => state.tags)
+
+  // Helper to get tag color
+  const getTagColor = (tagName: string): string => {
+    const tag = projectTags.find((t) => t.name.toLowerCase() === tagName.toLowerCase())
+    return tag?.color ?? '#6B7280'
+  }
 
   const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
   const compactButtonClass =
@@ -157,6 +165,19 @@ export function PagesBar() {
                 <p className="mt-1 text-xs text-text-muted">
                   {page.width}x{page.height} • {page.layers.length} layers
                 </p>
+                {page.tags && page.tags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {page.tags.map((tagName) => (
+                      <span
+                        key={tagName}
+                        className="inline-flex items-center rounded px-1.5 py-0.5 text-[10px] font-medium text-white"
+                        style={{ backgroundColor: getTagColor(tagName) }}
+                      >
+                        {tagName}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-text-subtle">
                   Arraste para reordenar
                 </p>

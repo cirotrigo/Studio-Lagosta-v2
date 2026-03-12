@@ -39,15 +39,15 @@ export async function GET(
       _count: {
         select: { Page: true },
       },
-      // Include pages with layers for full design data
-      ...(includeDesign ? { Page: { orderBy: { order: 'asc' } } } : {}),
+      // Include pages with layers and tags for full design data
+      ...(includeDesign ? { Page: { orderBy: { order: 'asc' }, select: { id: true, name: true, width: true, height: true, layers: true, background: true, order: true, thumbnail: true, tags: true } } } : {}),
     },
   })
 
   // Transform response to include designData when requested
   if (includeDesign) {
     const templatesWithDesign = templates.map((template) => {
-      const pages = (template as typeof template & { Page?: Array<{ id: string; name: string; width: number; height: number; layers: unknown; background: string | null; order: number; thumbnail: string | null }> }).Page ?? []
+      const pages = (template as typeof template & { Page?: Array<{ id: string; name: string; width: number; height: number; layers: unknown; background: string | null; order: number; thumbnail: string | null; tags: string[] }> }).Page ?? []
 
       // Build designData structure expected by desktop-app
       const designData = {
@@ -65,6 +65,7 @@ export async function GET(
           background: page.background ?? '#ffffff',
           order: page.order,
           thumbnail: page.thumbnail,
+          tags: page.tags ?? [],
         })),
       }
 

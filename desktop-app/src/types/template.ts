@@ -158,6 +158,15 @@ export interface KonvaPage {
   order: number
   layers: Layer[]
   thumbnailPath?: string
+  tags?: string[]
+}
+
+export interface ProjectTag {
+  id: string
+  name: string
+  color: string
+  projectId: number
+  createdAt?: string
 }
 
 export interface SlotBinding {

@@ -16,6 +16,7 @@ const updatePageSchema = z.object({
   background: z.string().optional(),
   order: z.number().int().optional(),
   thumbnail: z.string().optional(),
+  tags: z.array(z.string()).optional(),
 })
 
 // GET - Buscar página específica

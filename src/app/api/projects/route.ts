@@ -250,6 +250,15 @@ export async function POST(req: Request) {
         },
       })
 
+      // Create default "Template" tag for the project
+      await tx.projectTag.create({
+        data: {
+          name: 'Template',
+          color: '#F59E0B', // amber - first color in palette
+          projectId: createdProject.id,
+        },
+      })
+
       if (organization) {
         await tx.organizationProject.create({
           data: {

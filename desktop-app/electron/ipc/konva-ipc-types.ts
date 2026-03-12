@@ -58,6 +58,7 @@ export interface KonvaPage {
   order: number
   layers: KonvaLayer[]
   thumbnailPath?: string
+  tags?: string[]
 }
 
 export interface KonvaTemplateDocument {

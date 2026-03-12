@@ -11,6 +11,7 @@ const createPageSchema = z.object({
   layers: z.array(z.any()).default([]),
   background: z.string().optional(),
   order: z.number().int().default(0),
+  tags: z.array(z.string()).default([]),
 })
 
 // GET - Listar páginas de um template
@@ -138,6 +139,7 @@ export async function POST(
         layers: JSON.stringify(validatedData.layers), // Serializar para JSON
         background: validatedData.background,
         order: validatedData.order,
+        tags: validatedData.tags,
         templateId,
       },
     })

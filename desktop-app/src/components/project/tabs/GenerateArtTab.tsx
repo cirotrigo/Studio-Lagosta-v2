@@ -33,6 +33,7 @@ import TonePresets from '@/components/project/generate/TonePresets'
 import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
 import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
 import { useProjectStore } from '@/stores/project.store'
+import { useTagsStore } from '@/stores/tags.store'
 import {
   useGenerationStore,
   useQueuedJobs,
@@ -242,11 +243,26 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
+  const [selectedTagFilter, setSelectedTagFilter] = useState('Template')
 
-  const availableTemplates = useMemo(
-    () => templates.filter((template) => template.format === format),
-    [format, templates],
-  )
+  const projectTags = useTagsStore((state) => state.tags)
+
+  // Filter templates by format and pages by selected tag
+  const availableTemplates = useMemo(() => {
+    const formatFiltered = templates.filter((template) => template.format === format)
+
+    // If no tag filter or no tags available, return all templates
+    if (!selectedTagFilter || projectTags.length === 0) {
+      return formatFiltered
+    }
+
+    // Filter templates that have at least one page with the selected tag
+    return formatFiltered.filter((template) =>
+      template.design.pages.some((page) =>
+        page.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase()),
+      ),
+    )
+  }, [format, templates, selectedTagFilter, projectTags.length])
 
   useEffect(() => {
     let cancelled = false
@@ -915,6 +931,27 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                 <VariationSelector value={variations} onChange={setVariations} />
               </div>
 
+              {projectTags.length > 0 && (
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-text">Filtrar por tag</label>
+                  <select
+                    value={selectedTagFilter}
+                    onChange={(event) => setSelectedTagFilter(event.target.value)}
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Todas as paginas</option>
+                    {projectTags.map((tag) => (
+                      <option key={tag.id} value={tag.name}>
+                        {tag.name}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-text-subtle">
+                    Apenas paginas com esta tag serao usadas para geracao.
+                  </p>
+                </div>
+              )}
+
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-text">Template</label>
                 <select
@@ -933,7 +970,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                   {isLoadingTemplates
                     ? 'Carregando templates...'
                     : availableTemplates.length > 0
-                      ? `${availableTemplates.length} template(s) para ${format}`
+                      ? `${availableTemplates.length} template(s) para ${format}${selectedTagFilter ? ` (tag: ${selectedTagFilter})` : ''}`
                       : 'Usando fallback interno'}
                 </div>
                 {templatesError ? (
