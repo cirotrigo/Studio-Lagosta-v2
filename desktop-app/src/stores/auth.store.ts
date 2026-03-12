@@ -1,11 +1,29 @@
 import { create } from 'zustand'
 import { api } from '@/lib/api-client'
 
+// Mensagem de erro amigável quando a bridge não está disponível
+const BRIDGE_MISSING_ERROR = 'Bridge Electron indisponível. Execute o app com: npm --prefix desktop-app run dev:electron'
+
+// Verifica se a bridge Electron está disponível
+export function isElectronBridgeAvailable(): boolean {
+  return typeof window !== 'undefined' && !!window.electronAPI?.login
+}
+
+// Log discreto de diagnóstico no bootstrap
+if (typeof window !== 'undefined') {
+  if (!window.electronAPI) {
+    console.warn('[Auth] window.electronAPI não encontrada. Certifique-se de rodar via Electron.')
+  } else if (!window.electronAPI.login) {
+    console.warn('[Auth] window.electronAPI.login não disponível. Bridge incompleta.')
+  }
+}
+
 interface AuthState {
   cookies: string | null
   isAuthenticated: boolean
   isLoading: boolean
   error: string | null
+  bridgeAvailable: boolean
 
   // Actions
   initialize: () => Promise<void>
@@ -20,9 +38,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isAuthenticated: false,
   isLoading: false,
   error: null,
+  bridgeAvailable: isElectronBridgeAvailable(),
 
   initialize: async () => {
     set({ isLoading: true, error: null })
+
+    // Guard: verificar se bridge está disponível
+    if (!window.electronAPI?.getCookies) {
+      set({ isLoading: false, error: BRIDGE_MISSING_ERROR, bridgeAvailable: false })
+      return
+    }
 
     try {
       // Try to get stored cookies from Electron
@@ -56,6 +81,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async () => {
     set({ isLoading: true, error: null })
+
+    // Guard: verificar se bridge está disponível
+    if (!window.electronAPI?.login) {
+      set({ isLoading: false, error: BRIDGE_MISSING_ERROR, bridgeAvailable: false })
+      return false
+    }
 
     try {
       // Open Clerk login window
@@ -108,6 +139,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    // Guard: verificar se bridge está disponível
+    if (!window.electronAPI?.logout) {
+      set({ cookies: null, isAuthenticated: false, error: null })
+      return
+    }
+
     try {
       await window.electronAPI.logout()
     } catch (error) {

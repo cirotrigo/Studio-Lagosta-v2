@@ -1,9 +1,9 @@
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertTriangle, Terminal } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { cn } from '@/lib/utils'
 
 export default function AuthPage() {
-  const { login, isLoading, error, setError } = useAuthStore()
+  const { login, isLoading, error, setError, bridgeAvailable } = useAuthStore()
 
   const handleLogin = async () => {
     setError(null)
@@ -31,8 +31,25 @@ export default function AuthPage() {
 
           {/* Login button */}
           <div className="space-y-6">
+            {/* Bridge missing diagnostic */}
+            {!bridgeAvailable && (
+              <div className="rounded-lg border border-warning/30 bg-warning/10 p-4">
+                <div className="mb-2 flex items-center gap-2 text-warning">
+                  <AlertTriangle size={18} />
+                  <span className="font-medium">Modo web detectado</span>
+                </div>
+                <p className="mb-3 text-sm text-text-muted">
+                  A bridge Electron não está disponível. Este app deve ser executado via Electron, não no navegador.
+                </p>
+                <div className="flex items-center gap-2 rounded bg-bg-tertiary px-3 py-2 font-mono text-xs text-text">
+                  <Terminal size={14} className="text-text-muted" />
+                  <code>npm --prefix desktop-app run dev:electron</code>
+                </div>
+              </div>
+            )}
+
             {/* Error message */}
-            {error && (
+            {error && bridgeAvailable && (
               <div className="rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">
                 {error}
               </div>
@@ -41,7 +58,7 @@ export default function AuthPage() {
             {/* Login button */}
             <button
               onClick={handleLogin}
-              disabled={isLoading}
+              disabled={isLoading || !bridgeAvailable}
               className={cn(
                 'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-medium',
                 'bg-primary text-primary-foreground',
@@ -55,6 +72,8 @@ export default function AuthPage() {
                   <Loader2 size={20} className="animate-spin" />
                   Aguardando login...
                 </>
+              ) : !bridgeAvailable ? (
+                'Login indisponível'
               ) : (
                 'Entrar com Studio Lagosta'
               )}

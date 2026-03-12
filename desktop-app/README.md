@@ -82,6 +82,29 @@ O token é armazenado de forma segura no Keychain do macOS.
 - **Zustand**: Estado global
 - **Sharp**: Processamento de imagens
 
+## Troubleshooting
+
+### Erro: Cannot read properties of undefined (reading 'login')
+
+**Causa:** A bridge Electron (`window.electronAPI`) não está disponível. Isso acontece quando o app é aberto diretamente no navegador em vez de via Electron.
+
+**Solução:** Execute o app com Electron:
+
+```bash
+npm --prefix desktop-app run dev:electron
+```
+
+**Validação no DevTools:**
+
+1. Abra o DevTools (Cmd+Option+I)
+2. No Console, digite: `window.electronAPI`
+3. Se retornar `undefined`, a bridge não está carregada
+4. Se retornar um objeto com métodos (`login`, `getCookies`, etc.), está OK
+
+**Por que isso acontece:**
+- `npm run dev` inicia apenas o Vite (React) — abre no navegador
+- `npm run dev:electron` inicia Vite + Electron juntos — usa a bridge IPC
+
 ## API Consumida
 
 O app se conecta à API do Studio Lagosta em produção:
