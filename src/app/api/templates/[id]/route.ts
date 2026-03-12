@@ -115,10 +115,44 @@ export async function PUT(
     if (parsed.thumbnailUrl !== undefined) {
       data.thumbnailUrl = parsed.thumbnailUrl
     }
+    if (parsed.localId !== undefined) {
+      data.localId = parsed.localId
+    }
 
-    const updated = await db.template.update({
-      where: { id: templateId },
-      data,
+    // Use transaction to update template and pages together
+    const updated = await db.$transaction(async (tx) => {
+      const updatedTemplate = await tx.template.update({
+        where: { id: templateId },
+        data,
+      })
+
+      // If designData.pages is provided, update the Page records
+      const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null }> } | undefined
+      if (designData?.pages && Array.isArray(designData.pages)) {
+        // Delete existing pages
+        await tx.page.deleteMany({
+          where: { templateId },
+        })
+
+        // Create new pages from designData.pages
+        for (let i = 0; i < designData.pages.length; i++) {
+          const page = designData.pages[i]
+          await tx.page.create({
+            data: {
+              name: page.name ?? `Página ${i + 1}`,
+              width: page.width ?? 1080,
+              height: page.height ?? 1920,
+              layers: typeof page.layers === 'string' ? page.layers : JSON.stringify(page.layers ?? []),
+              background: page.background ?? '#ffffff',
+              order: page.order ?? i,
+              thumbnail: page.thumbnail ?? null,
+              templateId,
+            },
+          })
+        }
+      }
+
+      return updatedTemplate
     })
 
     return NextResponse.json(updated)

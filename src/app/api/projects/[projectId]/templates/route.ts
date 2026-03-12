@@ -9,7 +9,7 @@ import type { Prisma } from '@/lib/prisma-types'
 export const runtime = 'nodejs'
 
 export async function GET(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   const { projectId } = await params
@@ -28,6 +28,10 @@ export async function GET(
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 
+  // Check if designData should be included (for sync)
+  const url = new URL(req.url)
+  const includeDesign = url.searchParams.get('includeDesign') === 'true'
+
   const templates = await db.template.findMany({
     where: { projectId: projectIdNum },
     orderBy: { updatedAt: 'desc' },
@@ -35,8 +39,45 @@ export async function GET(
       _count: {
         select: { Page: true },
       },
+      // Include pages with layers for full design data
+      ...(includeDesign ? { Page: { orderBy: { order: 'asc' } } } : {}),
     },
   })
+
+  // Transform response to include designData when requested
+  if (includeDesign) {
+    const templatesWithDesign = templates.map((template) => {
+      const pages = (template as typeof template & { Page?: Array<{ id: string; name: string; width: number; height: number; layers: unknown; background: string | null; order: number; thumbnail: string | null }> }).Page ?? []
+
+      // Build designData structure expected by desktop-app
+      const designData = {
+        canvas: {
+          width: pages[0]?.width ?? 1080,
+          height: pages[0]?.height ?? 1920,
+          backgroundColor: pages[0]?.background ?? '#ffffff',
+        },
+        pages: pages.map((page) => ({
+          id: page.id,
+          name: page.name,
+          width: page.width,
+          height: page.height,
+          layers: typeof page.layers === 'string' ? JSON.parse(page.layers) : (page.layers ?? []),
+          background: page.background ?? '#ffffff',
+          order: page.order,
+          thumbnail: page.thumbnail,
+        })),
+      }
+
+      // Return template with designData, excluding Page relation
+      const { Page: _pages, ...rest } = template as typeof template & { Page?: unknown }
+      return {
+        ...rest,
+        designData,
+      }
+    })
+
+    return NextResponse.json(templatesWithDesign)
+  }
 
   return NextResponse.json(templates)
 }

@@ -418,6 +418,7 @@ model Template {
   isPremium     Boolean      @default(false)
   isPublic      Boolean      @default(false)
   tags          String[]     @default([])
+  localId       String?      // ID from desktop-app for sync tracking
   Generation    Generation[]
   Page          Page[]
   Project       Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -427,6 +428,7 @@ model Template {
   @@index([type])
   @@index([category])
   @@index([isPublic])
+  @@index([localId])
 }
 
 model Page {

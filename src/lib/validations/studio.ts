@@ -128,14 +128,31 @@ export const createTemplateSchema = z.object({
   dimensions: z.string().regex(/^\d+x\d+$/, 'Formato inválido'),
 })
 
+// Schema for sync updates from desktop-app (pages format)
+export const syncDesignDataSchema = z.object({
+  canvas: canvasConfigSchema,
+  pages: z.array(z.object({
+    id: z.string().optional(),
+    name: z.string().optional(),
+    width: z.number().optional(),
+    height: z.number().optional(),
+    layers: z.array(z.any()).or(z.string()).optional(),
+    background: z.string().optional(),
+    order: z.number().optional(),
+    thumbnail: z.string().nullable().optional(),
+  })).optional(),
+  layers: z.array(layerSchema).optional(), // Legacy single-page format
+})
+
 export const updateTemplateSchema = z.object({
   name: z.string().trim().min(1).optional(),
-  designData: designDataSchema.optional(),
+  designData: syncDesignDataSchema.optional(), // Accepts both pages and layers format
   dynamicFields: z.array(z.record(z.string(), z.any())).optional(),
   thumbnailUrl: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() === '' ? null : val),
     z.string().url().nullable().optional()
   ),
+  localId: z.string().optional(), // For sync tracking
 })
 
 export const createGenerationSchema = z.object({

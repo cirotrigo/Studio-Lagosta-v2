@@ -175,7 +175,8 @@ function localLayerToWeb(layer: KonvaLayer, warnings: NormalizationWarning[]): W
 
   // Handle role as metadata
   if (layer.role) {
-    baseLayer.metadata = { ...(baseLayer.metadata ?? {}), role: layer.role }
+    const existingMeta = (baseLayer.metadata as Record<string, unknown>) ?? {}
+    baseLayer.metadata = { ...existingMeta, role: layer.role }
   }
 
   // Type-specific conversions
@@ -209,8 +210,9 @@ function localLayerToWeb(layer: KonvaLayer, warnings: NormalizationWarning[]): W
 
       // Store Konva-specific fields in metadata
       if (textStyle.maxLines || textStyle.overflowBehavior) {
+        const existingMeta = (baseLayer.metadata as Record<string, unknown>) ?? {}
         baseLayer.metadata = {
-          ...(baseLayer.metadata ?? {}),
+          ...existingMeta,
           konvaTextConfig: {
             maxLines: textStyle.maxLines,
             overflowBehavior: textStyle.overflowBehavior,
@@ -220,8 +222,9 @@ function localLayerToWeb(layer: KonvaLayer, warnings: NormalizationWarning[]): W
 
       // Handle safeArea as metadata
       if (textStyle.safeArea) {
+        const existingMeta = (baseLayer.metadata as Record<string, unknown>) ?? {}
         baseLayer.metadata = {
-          ...(baseLayer.metadata ?? {}),
+          ...existingMeta,
           konvaSafeArea: textStyle.safeArea,
         }
         warnings.push({

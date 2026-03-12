@@ -119,6 +119,7 @@ export async function GET(req: Request) {
     ? undefined
     : {
         id: true,
+        localId: true, // Para sincronização com desktop-app
         name: true,
         type: true,
         dimensions: true,
@@ -154,7 +155,7 @@ export async function POST(req: Request) {
 
   try {
     const body = await req.json()
-    const { name, type, dimensions, designData, dynamicFields, thumbnailUrl, category, tags, isPublic, isPremium, projectId } = body
+    const { name, type, dimensions, designData, dynamicFields, thumbnailUrl, category, tags, isPublic, isPremium, projectId, localId } = body
 
     if (!name || !type || !dimensions || !designData || !projectId) {
       return NextResponse.json({ error: 'Campos obrigatórios faltando' }, { status: 400 })
@@ -185,7 +186,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    // Criar template e primeira página juntos em uma transação
+    // Criar template e páginas juntos em uma transação
     const template = await db.$transaction(async (tx) => {
       // Criar o template
       const newTemplate = await tx.template.create({
@@ -202,23 +203,44 @@ export async function POST(req: Request) {
           isPremium: isPremium ?? false,
           projectId,
           createdBy: userId,
+          localId: localId ?? null, // Salva o localId do desktop-app para sincronização
         },
       })
 
-      // Criar automaticamente a primeira página (Página 1) com o design inicial
-      // Esta página serve como "template base" e preserva o design original
+      // Criar páginas do design
       const designDataParsed = typeof designData === 'string' ? JSON.parse(designData) : designData
-      await tx.page.create({
-        data: {
-          name: 'Página 1',
-          width: designDataParsed.canvas?.width ?? 1080,
-          height: designDataParsed.canvas?.height ?? 1920,
-          layers: JSON.stringify([]), // Página inicial vazia
-          background: designDataParsed.canvas?.backgroundColor ?? '#ffffff',
-          order: 0, // Sempre primeira página
-          templateId: newTemplate.id,
-        },
-      })
+      const pages = Array.isArray(designDataParsed.pages) ? designDataParsed.pages : []
+
+      if (pages.length > 0) {
+        // Criar páginas do designData.pages (sincronização do desktop-app)
+        for (let i = 0; i < pages.length; i++) {
+          const page = pages[i]
+          await tx.page.create({
+            data: {
+              name: page.name ?? `Página ${i + 1}`,
+              width: page.width ?? designDataParsed.canvas?.width ?? 1080,
+              height: page.height ?? designDataParsed.canvas?.height ?? 1920,
+              layers: typeof page.layers === 'string' ? page.layers : JSON.stringify(page.layers ?? []),
+              background: page.background ?? designDataParsed.canvas?.backgroundColor ?? '#ffffff',
+              order: page.order ?? i,
+              templateId: newTemplate.id,
+            },
+          })
+        }
+      } else {
+        // Criar página inicial vazia (template criado pelo web)
+        await tx.page.create({
+          data: {
+            name: 'Página 1',
+            width: designDataParsed.canvas?.width ?? 1080,
+            height: designDataParsed.canvas?.height ?? 1920,
+            layers: JSON.stringify([]),
+            background: designDataParsed.canvas?.backgroundColor ?? '#ffffff',
+            order: 0,
+            templateId: newTemplate.id,
+          },
+        })
+      }
 
       return newTemplate
     })
