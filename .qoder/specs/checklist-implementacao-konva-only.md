@@ -316,6 +316,33 @@ DoD:
 
 ---
 
+## Fase 11 — Normalização JSON Templates (1-2 dias)
+
+Arquivos:
+- `desktop-app/electron/services/sync-service.ts`
+- `desktop-app/electron/services/sync/template-normalizer.ts`
+- `desktop-app/electron/services/sync/template-validator.ts`
+- `desktop-app/src/lib/sync/template-normalizer.ts`
+- `desktop-app/src/lib/sync/template-validator.ts`
+- `desktop-app/src/lib/sync/template-migration.ts`
+
+Tarefas:
+- [x] Mapear diferenças entre schema local (KonvaDocument) e web (Template/designData).
+- [x] Implementar `normalizeForWeb()` para converter template local → formato web.
+- [x] Implementar `normalizeForLocal()` para converter template web → formato local.
+- [x] Criar validador de schema com Zod para ambos os formatos.
+- [x] Integrar normalização no sync-service (push/pull).
+- [x] Criar módulo de migração para templates antigos.
+- [x] Garantir fallback seguro quando normalização falha.
+- [x] Logar warnings para campos transformados ou removidos.
+
+DoD:
+- [x] Template local abre corretamente no web após sync.
+- [x] Template web abre corretamente no local após sync.
+- [x] Typecheck passa sem erros.
+
+---
+
 ## QA de Aceite Final
 - [ ] 1 prompt gera Story pronto para aprovação.
 - [ ] 1 prompt + referências gera fundo IA coerente.

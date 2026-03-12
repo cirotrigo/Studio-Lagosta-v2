@@ -13,6 +13,12 @@ import {
   type SyncResolveConflictResult,
 } from '../ipc/konva-ipc-types'
 import { JsonStorageService } from './json-storage'
+import {
+  normalizeForWeb,
+  normalizeForLocal,
+  logNormalizationWarnings,
+} from './sync/template-normalizer'
+import { validateWebPayload } from './sync/template-validator'
 
 interface ExecuteRequestResult {
   isHtml: boolean
@@ -410,11 +416,57 @@ export class SyncService {
     remote: RemoteTemplateMetadata,
     existingId?: string,
   ): KonvaTemplateDocument {
+    // Use the centralized normalizer for web → local conversion
+    const result = normalizeForLocal(
+      {
+        id: remote.id,
+        name: remote.name,
+        type: this.extractRemoteType(remote),
+        updatedAt: remote.updatedAt,
+        designData: remote.designData,
+        localId: remote.localId,
+      },
+      projectId,
+      existingId
+    )
+
+    if (!result.success) {
+      console.error('[SyncService] Normalization failed:', result.errors)
+      // Fall back to basic conversion on error
+      return this.remoteToLocalFallback(projectId, remote, existingId)
+    }
+
+    // Log warnings for debugging
+    if (result.warnings.length > 0) {
+      logNormalizationWarnings('pull', remote.localId ?? String(remote.id), result.warnings)
+    }
+
+    return result.data
+  }
+
+  private extractRemoteType(remote: RemoteTemplateMetadata): string {
+    const designData = asObject(remote.designData)
+    // Try to extract type from various possible locations
+    if (typeof designData.type === 'string') return designData.type
+    const canvas = asObject(designData.canvas)
+    const width = Number(canvas.width) || 1080
+    const height = Number(canvas.height) || 1920
+    const ratio = width / height
+    if (Math.abs(ratio - 1) < 0.1) return 'SQUARE'
+    if (ratio < 1 && height / width > 1.3) return 'STORY'
+    return 'FEED'
+  }
+
+  private remoteToLocalFallback(
+    projectId: number,
+    remote: RemoteTemplateMetadata,
+    existingId?: string,
+  ): KonvaTemplateDocument {
+    // Legacy fallback for when normalization fails
     const designData = asObject(remote.designData)
     const canvas = asObject(designData.canvas)
     const pages = Array.isArray(designData.pages) ? designData.pages : []
 
-    // Convert remote design format to local Konva format
     const konvaPages = pages.map((page, index) => {
       const pageObj = asObject(page)
       return {
@@ -428,7 +480,6 @@ export class SyncService {
       }
     })
 
-    // Fallback: create default page if none exist
     if (konvaPages.length === 0) {
       konvaPages.push({
         id: randomUUID(),
@@ -588,11 +639,48 @@ export class SyncService {
     }
 
     const doc = op.payload
+
+    // Use the centralized normalizer for local → web conversion
+    const result = normalizeForWeb(doc)
+
+    if (!result.success) {
+      console.error('[SyncService] Normalization failed:', result.errors)
+      // Fall back to basic conversion on error
+      return this.localToRemotePayloadFallback(op)
+    }
+
+    // Log warnings for debugging
+    if (result.warnings.length > 0) {
+      logNormalizationWarnings('push', doc.id, result.warnings)
+    }
+
+    // Validate the payload before sending
+    const validation = validateWebPayload(result.data)
+    if (!validation.valid) {
+      console.warn('[SyncService] Web payload validation warnings:', validation.errors)
+      // Continue anyway, the server will validate
+    }
+
+    console.log('[SyncService] Push payload (normalized):', {
+      name: result.data.name,
+      type: result.data.type,
+      dimensions: result.data.dimensions,
+      projectId: result.data.projectId,
+      hasDesignData: !!result.data.designData,
+      pagesCount: result.data.designData.pages.length,
+      warnings: result.warnings.length,
+    })
+
+    return result.data as unknown as Record<string, unknown>
+  }
+
+  private localToRemotePayloadFallback(op: SyncQueueItem): Record<string, unknown> {
+    // Legacy fallback for when normalization fails
+    const doc = op.payload!
     const firstPage = doc.design?.pages?.[0]
 
-    // Ensure all required fields have values
     const name = doc.name || 'Template sem nome'
-    const type = doc.format || 'STORY'
+    const type = doc.format === 'FEED_PORTRAIT' ? 'FEED' : doc.format || 'STORY'
     const width = firstPage?.width ?? 1080
     const height = firstPage?.height ?? 1920
     const projectId = doc.projectId ?? op.projectId
@@ -613,7 +701,7 @@ export class SyncService {
       projectId,
     }
 
-    console.log('[SyncService] Push payload:', {
+    console.log('[SyncService] Push payload (fallback):', {
       name: payload.name,
       type: payload.type,
       dimensions: payload.dimensions,

@@ -47,6 +47,8 @@ Exemplos:
 | 8 | Export Single/Batch | ✅ Concluído | feat(konva-fase-8): export single e batch com naming padronizado | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 9 | Sync Offline-first | ✅ Concluído | feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 10 | UX de simplicidade máxima | ✅ Concluído | feat(konva-fase-10): ux simplicidade maxima com presets e progresso | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
+| 11 | Normalização JSON Templates | ✅ Concluído | feat(konva-fase-11): normalizacao json para compatibilidade local/web | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
+| 12 | Gradiente no Editor Local | ⬜ Não iniciado | - | - | - |
 
 Legenda status:
 - ⬜ Não iniciado
@@ -435,6 +437,72 @@ Legenda status:
 - Commit: `feat(konva-fase-10): ux simplicidade maxima com presets e progresso`
 - Próximo passo: QA final de aceite, testes manuais de fluxo completo.
 
+### Fase 11 — Normalização JSON Templates
+- Escopo fechado:
+  - Criar camada de normalização JSON bidirecional para compatibilidade entre editor local e web.
+  - Implementar `normalizeForWeb()` para transformar templates locais para formato web.
+  - Implementar `normalizeForLocal()` para transformar templates web para formato local.
+  - Integrar normalização no sync-service (push/pull).
+  - Criar validador de schema com Zod para ambos os formatos.
+  - Criar módulo de migração para templates antigos/incompatíveis.
+- Decisões:
+  - Normalização aplicada no sync-service durante push (local→web) e pull (web→local).
+  - Templates locais mantêm formato completo; normalização apenas no momento do sync.
+  - Módulos criados em `electron/services/sync/` para compatibilidade com tsconfig do electron.
+  - Fallback seguro: se normalização falha, usa método legado para não corromper dados.
+  - Warnings logados para campos transformados ou removidos.
+- Diferenças mapeadas e tratadas:
+  - `format`: `FEED_PORTRAIT` (local) ↔ `FEED` (web)
+  - `layer.x/y`: direto (local) ↔ `position: {x, y}` (web)
+  - `layer.width/height`: direto (local) ↔ `size: {width, height}` (web)
+  - `layer.text`: `text` (local) ↔ `content` (web)
+  - `layer.textStyle`: aninhado (local) ↔ `style` (web)
+  - `layer.textStyle.fill`: `fill` (local) ↔ `color` (web)
+  - `layer.zIndex`: `zIndex` (local) ↔ `order` (web)
+  - `layer.src` (image): `src` (local) ↔ `fileUrl` (web)
+  - `identity`, `slots`, `meta`: preservados apenas no local, slots armazenados em designData para referência
+- Arquivos alterados:
+  - `desktop-app/electron/services/sync-service.ts` (integrar normalização)
+  - `desktop-app/electron/services/sync/template-normalizer.ts` (novo)
+  - `desktop-app/electron/services/sync/template-validator.ts` (novo)
+  - `desktop-app/electron/services/sync/index.ts` (novo)
+  - `desktop-app/src/lib/sync/template-normalizer.ts` (novo, para renderer)
+  - `desktop-app/src/lib/sync/template-validator.ts` (novo, para renderer)
+  - `desktop-app/src/lib/sync/template-migration.ts` (novo, para renderer)
+  - `desktop-app/src/lib/sync/index.ts` (novo)
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-11): normalizacao json para compatibilidade local/web`
+- Próximo passo: testes manuais de round-trip local/web, depois Fase 12 (Gradiente).
+
+### Fase 12 — Gradiente no Editor Local
+- Escopo fechado:
+  - Implementar suporte a gradiente no editor Konva local (desktop-app).
+  - Paridade de funcionalidade com o editor web que já possui gradiente.
+- Decisões pendentes:
+  - Analisar implementação de gradiente no editor web.
+  - Decidir se usar gradiente linear, radial, ou ambos.
+  - Definir UX para seleção e edição de cores do gradiente.
+- Investigação necessária:
+  - Localizar e analisar código de gradiente no editor web.
+  - Entender como gradientes são serializados no schema atual.
+  - Verificar compatibilidade com Konva.js (LinearGradient, RadialGradient).
+- Arquivos a analisar (web - para referência):
+  - Editor web com funcionalidade de gradiente
+  - Schema de layer que suporta gradiente
+  - Componentes de UI para seleção de gradiente
+- Arquivos a modificar (desktop):
+  - `desktop-app/src/components/editor/PropertiesPanel.tsx` (UI do gradiente)
+  - `desktop-app/src/components/editor/LayerFactory.tsx` (renderização)
+  - `desktop-app/src/types/template.ts` (schema se necessário)
+- Testes a executar:
+  - Criar layer com gradiente no editor local.
+  - Verificar renderização correta no stage e export.
+  - Testar sync de template com gradiente para web.
+- Commit: -
+- Próximo passo: analisar implementação web e portar para Konva local.
+
 ---
 
 ## Bloqueios / decisões pendentes
@@ -442,7 +510,9 @@ Legenda status:
 
 
 ## Observações de handoff (proxima conversa)
-- Estado atual: Fases 1 a 10 concluidas; desktop/electron validados.
-- Ultimo commit estavel: feat(konva-fase-10): ux simplicidade maxima com presets e progresso
-- Proxima etapa recomendada: QA de aceite final e testes manuais do fluxo completo.
-- MVP Konva-only completo para validação de usuário.
+- Estado atual: Fases 1 a 11 concluidas; desktop/electron validados.
+- Ultimo commit estavel: feat(konva-fase-11): normalizacao json para compatibilidade local/web
+- Proximas etapas:
+  - Testes manuais de round-trip local/web para validar normalização.
+  - Fase 12: Implementar gradiente no editor local (paridade com web).
+- MVP Konva-only completo; fase 12 é melhoria pós-MVP.
