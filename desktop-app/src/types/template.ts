@@ -97,7 +97,9 @@ export interface KonvaGradientLayer extends KonvaLayerBase {
   type: 'gradient' | 'gradient2'
   colors: string[]
   stops?: number[]
+  opacities?: number[]
   angle?: number
+  gradientType?: 'linear' | 'radial'
 }
 
 export interface KonvaShapeLayer extends KonvaLayerBase {

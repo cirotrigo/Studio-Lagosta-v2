@@ -131,7 +131,9 @@ export interface WebLayer {
   // Gradient specific
   colors?: string[]
   stops?: number[]
+  opacities?: number[]
   angle?: number
+  gradientType?: 'linear' | 'radial'
   // Shape specific
   shape?: string
   points?: number[]
@@ -343,18 +345,20 @@ function localLayerToWeb(layer: Layer, warnings: NormalizationWarning[]): WebLay
       const gradLayer = layer as KonvaGradientLayer
       baseLayer.colors = gradLayer.colors
       baseLayer.stops = gradLayer.stops
+      baseLayer.opacities = gradLayer.opacities
       baseLayer.angle = gradLayer.angle
+      baseLayer.gradientType = gradLayer.gradientType
       // Also store in style for web compatibility
       if (gradLayer.colors && gradLayer.colors.length >= 2) {
         baseLayer.style = {
           ...baseLayer.style,
-          gradientType: 'linear',
+          gradientType: gradLayer.gradientType ?? 'linear',
           gradientAngle: gradLayer.angle ?? 0,
           gradientStops: gradLayer.colors.map((color, i) => ({
             id: `stop-${i}`,
             color,
             position: gradLayer.stops?.[i] ?? i / (gradLayer.colors.length - 1),
-            opacity: 1,
+            opacity: gradLayer.opacities?.[i] ?? 1,
           })),
         }
       }
@@ -536,15 +540,28 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Lay
 
     case 'gradient':
     case 'gradient2': {
-      // Prefer direct colors/stops, fall back to style.gradientStops
+      // Prefer direct colors/stops/opacities, fall back to style.gradientStops
       let colors = layer.colors
       let stops = layer.stops
+      let opacities = layer.opacities as number[] | undefined
       let angle = layer.angle
+      let gradientType = layer.gradientType as 'linear' | 'radial' | undefined
 
+      // If colors not present at root, extract from style.gradientStops
       if (!colors && layer.style?.gradientStops) {
         colors = layer.style.gradientStops.map((s) => s.color)
         stops = layer.style.gradientStops.map((s) => s.position)
+        opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
         angle = layer.style.gradientAngle
+        gradientType = layer.style.gradientType
+      } else if (!opacities && layer.style?.gradientStops) {
+        // Extract opacities from gradientStops if not present at root
+        opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
+      }
+
+      // Fall back gradientType from style if not at root
+      if (!gradientType && layer.style?.gradientType) {
+        gradientType = layer.style.gradientType
       }
 
       const gradLayer: KonvaGradientLayer = {
@@ -552,7 +569,9 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Lay
         type: layer.type as 'gradient' | 'gradient2',
         colors: colors ?? ['#ffffff', '#000000'],
         stops: stops,
+        opacities: opacities,
         angle: angle,
+        gradientType: gradientType,
       }
       return gradLayer
     }

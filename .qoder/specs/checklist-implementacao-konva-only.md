@@ -343,6 +343,39 @@ DoD:
 
 ---
 
+## Fase 12 — Gradiente no Editor Local (1-2 dias)
+
+Arquivos:
+- `desktop-app/src/types/template.ts`
+- `desktop-app/src/components/editor/LayerFactory.tsx`
+- `desktop-app/src/components/editor/PropertiesPanel.tsx`
+- `desktop-app/src/lib/sync/template-normalizer.ts`
+- `desktop-app/src/lib/sync/template-validator.ts`
+- `desktop-app/electron/services/sync/template-normalizer.ts`
+
+Tarefas:
+- [x] Adicionar campos `opacities` e `gradientType` ao tipo `KonvaGradientLayer`.
+- [x] Implementar renderização de gradiente radial no `LayerFactory.tsx`.
+- [x] Implementar suporte a opacidade por color stop na renderização.
+- [x] Criar UI de edição de gradiente no `PropertiesPanel.tsx`.
+- [x] Controle de tipo (linear/radial) no painel.
+- [x] Controle de ângulo para gradiente linear.
+- [x] Editor de color stops (cor, posição, opacidade).
+- [x] Botões adicionar/remover color stop (min 2, max 6).
+- [x] Corrigir normalização local→web para preservar opacity e gradientType.
+- [x] Corrigir normalização web→local para restaurar opacity e gradientType.
+- [x] Atualizar validador de schema Zod com novos campos.
+
+DoD:
+- [x] Gradiente linear renderiza corretamente com múltiplos stops.
+- [x] Gradiente radial renderiza corretamente.
+- [x] UI permite criar/editar gradiente completo.
+- [x] Sync local→web preserva todos os dados do gradiente.
+- [x] Sync web→local preserva todos os dados do gradiente.
+- [x] Typecheck passa sem erros.
+
+---
+
 ## QA de Aceite Final
 - [ ] 1 prompt gera Story pronto para aprovação.
 - [ ] 1 prompt + referências gera fundo IA coerente.

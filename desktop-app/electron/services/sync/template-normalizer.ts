@@ -252,20 +252,24 @@ function localLayerToWeb(layer: KonvaLayer, warnings: NormalizationWarning[]): W
   } else if (layerType === 'gradient' || layerType === 'gradient2') {
     const colors = layer.colors as string[]
     const stops = layer.stops as number[]
+    const opacities = layer.opacities as number[]
     const angle = layer.angle as number
+    const gradType = (layer.gradientType as 'linear' | 'radial') ?? 'linear'
     baseLayer.colors = colors
     baseLayer.stops = stops
+    baseLayer.opacities = opacities
     baseLayer.angle = angle
+    baseLayer.gradientType = gradType
     if (colors && colors.length >= 2) {
       baseLayer.style = {
         ...baseLayer.style,
-        gradientType: 'linear',
+        gradientType: gradType,
         gradientAngle: angle ?? 0,
         gradientStops: colors.map((color, i) => ({
           id: `stop-${i}`,
           color,
           position: stops?.[i] ?? i / (colors.length - 1),
-          opacity: 1,
+          opacity: opacities?.[i] ?? 1,
         })),
       }
     }
@@ -393,19 +397,35 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Kon
     baseProps.fit = layer.fit ?? layer.style?.objectFit
     baseProps.crop = layer.crop
   } else if (layer.type === 'gradient' || layer.type === 'gradient2') {
+    // Prefer direct colors/stops/opacities, fall back to style.gradientStops
     let colors = layer.colors as string[]
     let stops = layer.stops as number[]
+    let opacities = layer.opacities as number[] | undefined
     let angle = layer.angle as number
+    let gradientType = layer.gradientType as 'linear' | 'radial' | undefined
 
+    // If colors not present at root, extract from style.gradientStops
     if (!colors && layer.style?.gradientStops) {
       colors = layer.style.gradientStops.map((s) => s.color)
       stops = layer.style.gradientStops.map((s) => s.position)
+      opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
       angle = layer.style.gradientAngle ?? 0
+      gradientType = layer.style.gradientType
+    } else if (!opacities && layer.style?.gradientStops) {
+      // Extract opacities from gradientStops if not present at root
+      opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
+    }
+
+    // Fall back gradientType from style if not at root
+    if (!gradientType && layer.style?.gradientType) {
+      gradientType = layer.style.gradientType
     }
 
     baseProps.colors = colors ?? ['#ffffff', '#000000']
     baseProps.stops = stops
+    baseProps.opacities = opacities
     baseProps.angle = angle
+    baseProps.gradientType = gradientType
   } else if (layer.type === 'shape') {
     baseProps.shape = layer.shape ?? layer.style?.shapeType ?? 'rectangle'
     baseProps.fill = layer.style?.fill

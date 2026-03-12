@@ -874,6 +874,166 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                 </div>
               </>
             ) : null}
+
+            {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') ? (
+              <>
+                <SectionTitle
+                  title="Gradiente"
+                  description="Tipo, ângulo e color stops do gradiente."
+                />
+                <SelectField<'linear' | 'radial'>
+                  label="Tipo"
+                  value={selectedLayer.gradientType ?? 'linear'}
+                  onChange={(value) =>
+                    updateLayer(selectedLayer.id, (layer) =>
+                      layer.type === 'gradient' || layer.type === 'gradient2'
+                        ? { ...layer, gradientType: value }
+                        : layer,
+                    )
+                  }
+                  options={[
+                    { label: 'Linear', value: 'linear' },
+                    { label: 'Radial', value: 'radial' },
+                  ]}
+                />
+                {(selectedLayer.gradientType ?? 'linear') === 'linear' ? (
+                  <NumberField
+                    label="Ângulo"
+                    value={selectedLayer.angle ?? 180}
+                    onChange={(value) =>
+                      updateLayer(selectedLayer.id, (layer) =>
+                        layer.type === 'gradient' || layer.type === 'gradient2'
+                          ? { ...layer, angle: value }
+                          : layer,
+                      )
+                    }
+                  />
+                ) : null}
+                <div className="space-y-3">
+                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                    Color Stops
+                  </span>
+                  {selectedLayer.colors.map((color, index) => (
+                    <div key={index} className="space-y-2 rounded-xl border border-border bg-background/30 p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-text-muted">Stop {index + 1}</span>
+                        {selectedLayer.colors.length > 2 ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateLayer(selectedLayer.id, (layer) => {
+                                if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                                const newColors = [...layer.colors]
+                                const newStops = [...(layer.stops ?? [])]
+                                const newOpacities = [...(layer.opacities ?? [])]
+                                newColors.splice(index, 1)
+                                newStops.splice(index, 1)
+                                newOpacities.splice(index, 1)
+                                return { ...layer, colors: newColors, stops: newStops, opacities: newOpacities }
+                              })
+                            }
+                            className="text-xs text-red-400 hover:text-red-300"
+                          >
+                            Remover
+                          </button>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={color}
+                          onChange={(event) =>
+                            updateLayer(selectedLayer.id, (layer) => {
+                              if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                              const newColors = [...layer.colors]
+                              newColors[index] = event.target.value
+                              return { ...layer, colors: newColors }
+                            })
+                          }
+                          className="h-8 w-8 rounded border-0 bg-transparent p-0"
+                        />
+                        <input
+                          type="text"
+                          value={color}
+                          onChange={(event) =>
+                            updateLayer(selectedLayer.id, (layer) => {
+                              if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                              const newColors = [...layer.colors]
+                              newColors[index] = event.target.value
+                              return { ...layer, colors: newColors }
+                            })
+                          }
+                          className="flex-1 rounded-lg border border-border bg-input px-2 py-1 text-xs text-text"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <label className="space-y-1">
+                          <span className="text-[10px] text-text-subtle">Posição (%)</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={Math.round((selectedLayer.stops?.[index] ?? index / Math.max(selectedLayer.colors.length - 1, 1)) * 100)}
+                            onChange={(event) =>
+                              updateLayer(selectedLayer.id, (layer) => {
+                                if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                                const newStops = layer.stops?.length === layer.colors.length
+                                  ? [...layer.stops]
+                                  : layer.colors.map((_, i) => i / Math.max(layer.colors.length - 1, 1))
+                                newStops[index] = Math.min(100, Math.max(0, Number(event.target.value))) / 100
+                                return { ...layer, stops: newStops }
+                              })
+                            }
+                            className="h-8 w-full rounded-lg border border-border bg-input px-2 text-xs text-text"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] text-text-subtle">Opacidade (%)</span>
+                          <input
+                            type="number"
+                            min={0}
+                            max={100}
+                            value={Math.round((selectedLayer.opacities?.[index] ?? 1) * 100)}
+                            onChange={(event) =>
+                              updateLayer(selectedLayer.id, (layer) => {
+                                if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                                const newOpacities = layer.opacities?.length === layer.colors.length
+                                  ? [...layer.opacities]
+                                  : layer.colors.map(() => 1)
+                                newOpacities[index] = Math.min(100, Math.max(0, Number(event.target.value))) / 100
+                                return { ...layer, opacities: newOpacities }
+                              })
+                            }
+                            className="h-8 w-full rounded-lg border border-border bg-input px-2 text-xs text-text"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  ))}
+                  {selectedLayer.colors.length < 6 ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        updateLayer(selectedLayer.id, (layer) => {
+                          if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
+                          const newColors = [...layer.colors, '#888888']
+                          const newStops = layer.stops?.length === layer.colors.length
+                            ? [...layer.stops, 1]
+                            : newColors.map((_, i) => i / Math.max(newColors.length - 1, 1))
+                          const newOpacities = layer.opacities?.length === layer.colors.length
+                            ? [...layer.opacities, 1]
+                            : newColors.map(() => 1)
+                          return { ...layer, colors: newColors, stops: newStops, opacities: newOpacities }
+                        })
+                      }
+                      className="w-full rounded-xl border border-dashed border-border py-2 text-xs text-text-muted hover:border-primary/50 hover:text-text"
+                    >
+                      + Adicionar cor
+                    </button>
+                  ) : null}
+                </div>
+              </>
+            ) : null}
           </>
         )}
       </div>

@@ -109,7 +109,9 @@ const KonvaGradientLayerSchema = KonvaLayerBaseSchema.extend({
   type: z.enum(['gradient', 'gradient2']),
   colors: z.array(z.string()).min(2),
   stops: z.array(z.number()).optional(),
+  opacities: z.array(z.number().min(0).max(1)).optional(),
   angle: z.number().optional(),
+  gradientType: z.enum(['linear', 'radial']).optional(),
 })
 
 const KonvaShapeLayerSchema = KonvaLayerBaseSchema.extend({

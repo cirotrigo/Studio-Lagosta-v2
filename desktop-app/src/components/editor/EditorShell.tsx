@@ -1,5 +1,5 @@
-import { AlertTriangle, History, RefreshCw, Sparkles, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
-import { createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
+import { AlertTriangle, Blend, History, RefreshCw, Sparkles, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
+import { createGradientLayer, createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
 import { LayersPanel } from './LayersPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { EditorStage } from './EditorStage'
@@ -65,6 +65,14 @@ export function EditorShell({
     }
 
     addLayer(createShapeLayer(currentPage))
+  }
+
+  const handleAddGradient = () => {
+    if (!currentPage) {
+      return
+    }
+
+    addLayer(createGradientLayer(currentPage))
   }
 
   return (
@@ -152,6 +160,16 @@ export function EditorShell({
             <span className="inline-flex items-center gap-2">
               <Square size={16} />
               Shape
+            </span>
+          </button>
+          <button
+            type="button"
+            onClick={handleAddGradient}
+            className={compactButtonClass}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Blend size={16} />
+              Gradiente
             </span>
           </button>
           <button

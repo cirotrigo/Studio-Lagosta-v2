@@ -1,6 +1,7 @@
 import type { Project } from '@/stores/project.store'
 import type {
   ArtFormat,
+  KonvaGradientLayer,
   KonvaImageLayer,
   KonvaPage,
   KonvaShapeLayer,
@@ -100,6 +101,29 @@ export function createShapeLayer(page: KonvaPage, overrides: Partial<KonvaShapeL
     stroke: '#F59E0B',
     strokeWidth: 2,
     cornerRadius: 36,
+    ...overrides,
+  }
+}
+
+export function createGradientLayer(page: KonvaPage, overrides: Partial<KonvaGradientLayer> = {}): KonvaGradientLayer {
+  return {
+    id: crypto.randomUUID(),
+    type: 'gradient',
+    name: 'Gradiente',
+    x: Math.round(page.width * 0.1),
+    y: Math.round(page.height * 0.3),
+    width: Math.round(page.width * 0.8),
+    height: Math.round(page.height * 0.3),
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    draggable: true,
+    colors: ['#111827', '#F59E0B'],
+    stops: [0, 1],
+    opacities: [1, 1],
+    angle: 180,
+    gradientType: 'linear',
     ...overrides,
   }
 }

@@ -46,6 +46,14 @@ function calculateGradientPoints(width: number, height: number, angle = 180) {
   }
 }
 
+function hexToRgba(hex: string, opacity: number): string {
+  const cleanHex = hex.replace('#', '')
+  const r = parseInt(cleanHex.substring(0, 2), 16)
+  const g = parseInt(cleanHex.substring(2, 4), 16)
+  const b = parseInt(cleanHex.substring(4, 6), 16)
+  return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
 function renderShape(layer: KonvaShapeLayer) {
   const width = layer.width ?? 240
   const height = layer.height ?? 140
@@ -242,13 +250,45 @@ export function LayerFactory({
   if (layer.type === 'gradient' || layer.type === 'gradient2') {
     const width = layer.width ?? 280
     const height = layer.height ?? 240
-    const { start, end } = calculateGradientPoints(width, height, layer.angle ?? 180)
     const colors = layer.colors.length > 1 ? layer.colors : ['#111827', '#F59E0B']
     const stops =
       layer.stops && layer.stops.length === colors.length
         ? layer.stops
         : colors.map((_, index) => index / Math.max(colors.length - 1, 1))
+    const opacities = layer.opacities && layer.opacities.length === colors.length
+      ? layer.opacities
+      : colors.map(() => 1)
 
+    // Build color stops with opacity support
+    const colorStops = colors.flatMap((color, index) => [
+      stops[index],
+      opacities[index] < 1 ? hexToRgba(color, opacities[index]) : color,
+    ])
+
+    const isRadial = layer.gradientType === 'radial'
+
+    if (isRadial) {
+      const radius = Math.max(width, height) / 2
+      return (
+        <Rect
+          {...commonProps}
+          x={layer.x}
+          y={layer.y}
+          width={width}
+          height={height}
+          cornerRadius={18}
+          fillRadialGradientStartPoint={{ x: width / 2, y: height / 2 }}
+          fillRadialGradientStartRadius={0}
+          fillRadialGradientEndPoint={{ x: width / 2, y: height / 2 }}
+          fillRadialGradientEndRadius={radius}
+          fillRadialGradientColorStops={colorStops}
+          stroke={isSelected ? '#F59E0B' : undefined}
+          strokeWidth={isSelected ? 3 : 0}
+        />
+      )
+    }
+
+    const { start, end } = calculateGradientPoints(width, height, layer.angle ?? 180)
     return (
       <Rect
         {...commonProps}
@@ -259,7 +299,7 @@ export function LayerFactory({
         cornerRadius={18}
         fillLinearGradientStartPoint={start}
         fillLinearGradientEndPoint={end}
-        fillLinearGradientColorStops={colors.flatMap((color, index) => [stops[index], color])}
+        fillLinearGradientColorStops={colorStops}
         stroke={isSelected ? '#F59E0B' : undefined}
         strokeWidth={isSelected ? 3 : 0}
       />

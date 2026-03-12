@@ -48,7 +48,7 @@ Exemplos:
 | 9 | Sync Offline-first | ✅ Concluído | feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 10 | UX de simplicidade máxima | ✅ Concluído | feat(konva-fase-10): ux simplicidade maxima com presets e progresso | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 11 | Normalização JSON Templates | ✅ Concluído | 27c84a2 + dfddf87 | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
-| 12 | Gradiente no Editor Local | ⬜ Não iniciado | - | - | - |
+| 12 | Gradiente no Editor Local | ✅ Concluído | - | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 
 Legenda status:
 - ⬜ Não iniciado
@@ -490,30 +490,30 @@ Legenda status:
 
 ### Fase 12 — Gradiente no Editor Local
 - Escopo fechado:
-  - Implementar suporte a gradiente no editor Konva local (desktop-app).
+  - Implementar suporte completo a gradiente no editor Konva local (desktop-app).
   - Paridade de funcionalidade com o editor web que já possui gradiente.
-- Decisões pendentes:
-  - Analisar implementação de gradiente no editor web.
-  - Decidir se usar gradiente linear, radial, ou ambos.
-  - Definir UX para seleção e edição de cores do gradiente.
-- Investigação necessária:
-  - Localizar e analisar código de gradiente no editor web.
-  - Entender como gradientes são serializados no schema atual.
-  - Verificar compatibilidade com Konva.js (LinearGradient, RadialGradient).
-- Arquivos a analisar (web - para referência):
-  - Editor web com funcionalidade de gradiente
-  - Schema de layer que suporta gradiente
-  - Componentes de UI para seleção de gradiente
-- Arquivos a modificar (desktop):
-  - `desktop-app/src/components/editor/PropertiesPanel.tsx` (UI do gradiente)
-  - `desktop-app/src/components/editor/LayerFactory.tsx` (renderização)
-  - `desktop-app/src/types/template.ts` (schema se necessário)
-- Testes a executar:
-  - Criar layer com gradiente no editor local.
-  - Verificar renderização correta no stage e export.
-  - Testar sync de template com gradiente para web.
-- Commit: -
-- Próximo passo: analisar implementação web e portar para Konva local.
+  - Suporte a gradiente linear e radial com múltiplos color stops.
+  - UI de edição de gradiente no PropertiesPanel.
+  - Normalização corrigida para preservar opacity e gradientType no sync.
+- Decisões:
+  - Adicionar campos `opacities?: number[]` e `gradientType?: 'linear' | 'radial'` ao `KonvaGradientLayer`.
+  - Renderizar gradiente radial usando `fillRadialGradient*` do Konva.js com raio = max(width, height) / 2.
+  - Converter hex + opacity para rgba inline no colorStops do Konva.
+  - UI permite até 6 color stops com controle individual de cor, posição e opacidade.
+  - Normalização local→web agora extrai opacity de `opacities[]` e usa `gradientType` do layer.
+  - Normalização web→local agora restaura `opacities[]` e `gradientType` de `style.gradientStops`.
+- Arquivos alterados:
+  - `desktop-app/src/types/template.ts` (novos campos opacities e gradientType)
+  - `desktop-app/src/components/editor/LayerFactory.tsx` (suporte radial + opacities)
+  - `desktop-app/src/components/editor/PropertiesPanel.tsx` (UI de edição de gradiente)
+  - `desktop-app/src/lib/sync/template-normalizer.ts` (preservar opacity e gradientType)
+  - `desktop-app/src/lib/sync/template-validator.ts` (schema atualizado)
+  - `desktop-app/electron/services/sync/template-normalizer.ts` (preservar opacity e gradientType)
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: pendente
+- Próximo passo: QA manual de gradiente no editor e sync com web.
 
 ---
 
@@ -522,9 +522,10 @@ Legenda status:
 
 
 ## Observações de handoff (proxima conversa)
-- Estado atual: Fases 1 a 11 concluidas; desktop/electron validados.
-- Ultimo commit estavel: feat(konva-fase-11): normalizacao json para compatibilidade local/web
+- Estado atual: Fases 1 a 12 concluidas; desktop/electron validados.
+- Ultimo commit estavel: pendente commit fase 12
 - Proximas etapas:
-  - Testes manuais de round-trip local/web para validar normalização.
-  - Fase 12: Implementar gradiente no editor local (paridade com web).
-- MVP Konva-only completo; fase 12 é melhoria pós-MVP.
+  - QA manual de gradiente no editor local (criar, editar, render, export).
+  - Testar sync de templates com gradiente entre local e web.
+  - QA final de aceite do MVP.
+- MVP Konva-only completo com paridade de gradiente.
