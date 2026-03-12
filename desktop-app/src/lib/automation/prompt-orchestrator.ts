@@ -1,4 +1,5 @@
 import { createBlankPage } from '@/lib/editor/document'
+import { preloadKonvaDocumentFonts } from '@/lib/editor/font-preload'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import type { BrandAssets } from '@/hooks/use-brand-assets'
@@ -385,7 +386,7 @@ function buildFallbackTemplate(input: PromptOrchestratorInput): KonvaTemplateDoc
       brandName: input.brandAssets?.name || input.project?.name,
       logoUrl: input.brandAssets?.logo?.url || input.project?.logoUrl || undefined,
       colors: input.brandAssets?.colors || [primary, accent, surface],
-      fonts: (input.brandAssets?.fonts || []).slice(0, 2).map((font) => ({
+      fonts: (input.brandAssets?.fonts || []).map((font) => ({
         name: font.name,
         fontFamily: font.fontFamily,
         fileUrl: font.fileUrl,
@@ -559,6 +560,15 @@ export async function renderPromptVariation(
 
   if (!currentPage) {
     throw new Error('Template Konva sem pagina para renderizar.')
+  }
+
+  const preloadResult = await preloadKonvaDocumentFonts({
+    document: bound.document,
+    brandFonts: input.brandAssets?.fonts,
+  })
+
+  if (preloadResult.warnings.length > 0) {
+    console.warn('[Prompt Orchestrator] Font preload warnings:', preloadResult.warnings)
   }
 
   const imageUrl = await renderPageToDataUrl(currentPage, {

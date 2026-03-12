@@ -6,11 +6,13 @@ import { exportSingle } from '@/lib/export/konva-exporter'
 import { cn } from '@/lib/utils'
 import type { GenerationVariationJob } from '@/stores/generation.store'
 import type { ArtFormat, KonvaPage } from '@/types/template'
+import type { EditorFontSource } from '@/lib/editor/font-utils'
 
 interface ResultImageCardProps {
   format: ArtFormat
   variation: GenerationVariationJob
   projectSlug?: string
+  projectFonts?: EditorFontSource[]
   onDownload: () => void
   onSchedule: () => void
   onRemove: () => void
@@ -40,6 +42,7 @@ export function ResultImageCard({
   format,
   variation,
   projectSlug,
+  projectFonts,
   onDownload,
   onSchedule,
   onRemove,
@@ -66,6 +69,8 @@ export function ResultImageCard({
       const result = await exportSingle({
         page,
         format,
+        document: variation.document,
+        projectFonts,
         projectSlug: projectSlug || 'arte',
         mimeType: 'image/jpeg',
         quality: 92,

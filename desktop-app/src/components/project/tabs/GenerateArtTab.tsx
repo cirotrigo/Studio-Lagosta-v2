@@ -13,6 +13,7 @@ import {
 } from '@/lib/automation/image-context-analyzer'
 import { buildKonvaExportFileName } from '@/lib/editor/export-file-name'
 import { cloneKonvaDocument } from '@/lib/editor/document'
+import { preloadKonvaDocumentFonts } from '@/lib/editor/font-preload'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import { exportVariations } from '@/lib/export/konva-exporter'
 import {
@@ -375,6 +376,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           document: v.document!,
           variationIndex: v.index,
         })),
+        projectFonts: brandAssets?.fonts,
         projectSlug,
         mimeType: 'image/jpeg',
         quality: 92,
@@ -389,7 +391,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     } finally {
       setExportingJobId(null)
     }
-  }, [currentProject])
+  }, [brandAssets, currentProject])
 
   const handleOpenVariationInEditor = useCallback((job: GenerationJob, variation: GenerationVariationJob) => {
     const draftPayload = createApprovedVariationEditorDraft(job, variation)
@@ -423,6 +425,14 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     })
 
     try {
+      const preloadResult = await preloadKonvaDocumentFonts({
+        document: variation.document,
+        brandFonts: brandAssets?.fonts,
+      })
+      if (preloadResult.warnings.length > 0) {
+        console.warn('[GenerateArtTab] Font preload warnings before approval:', preloadResult.warnings)
+      }
+
       const dataUrl = await renderPageToDataUrl(currentPage, {
         mimeType: 'image/jpeg',
         quality: 0.94,
@@ -465,7 +475,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
       toast.error(message)
     }
-  }, [exportCreative, updateVariation])
+  }, [brandAssets, exportCreative, updateVariation])
 
   const processQueuedJob = useCallback(async (jobId: string) => {
     const job = useGenerationStore.getState().jobs.find((entry) => entry.id === jobId)
@@ -1091,6 +1101,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                       format={job.params.format}
                       variation={variation}
                       projectSlug={currentProject?.name}
+                      projectFonts={brandAssets?.fonts}
                       onDownload={() => variation.imageUrl && handleDownload(variation.imageUrl)}
                       onSchedule={() => variation.imageUrl && handleSchedule(variation.imageUrl)}
                       onRemove={() => removeVariation(job.id, variation.id)}

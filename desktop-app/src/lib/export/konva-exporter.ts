@@ -1,3 +1,4 @@
+import { preloadKonvaDocumentFonts } from '@/lib/editor/font-preload'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import {
   buildExportFileName,
@@ -6,12 +7,15 @@ import {
   type BatchExportFileNameParams,
 } from '@/lib/editor/export-file-name'
 import type { KonvaPage, KonvaTemplateDocument, ArtFormat } from '@/types/template'
+import type { EditorFontSource } from '@/lib/editor/font-utils'
 
 export type ExportMimeType = 'image/png' | 'image/jpeg'
 
 export interface ExportSingleOptions {
   page: KonvaPage
   format: ArtFormat
+  document?: KonvaTemplateDocument
+  projectFonts?: EditorFontSource[]
   projectSlug?: string
   mimeType?: ExportMimeType
   quality?: number
@@ -27,6 +31,7 @@ export interface ExportSingleResult {
 
 export interface ExportBatchOptions {
   document: KonvaTemplateDocument
+  projectFonts?: EditorFontSource[]
   projectSlug?: string
   mimeType?: ExportMimeType
   quality?: number
@@ -52,6 +57,7 @@ export interface ExportVariationsOptions {
     document: KonvaTemplateDocument
     variationIndex: number
   }>
+  projectFonts?: EditorFontSource[]
   projectSlug?: string
   mimeType?: ExportMimeType
   quality?: number
@@ -85,6 +91,8 @@ export async function exportSingle(options: ExportSingleOptions): Promise<Export
   const {
     page,
     format,
+    document,
+    projectFonts,
     projectSlug = 'arte',
     mimeType = 'image/jpeg',
     quality = 92,
@@ -93,6 +101,16 @@ export async function exportSingle(options: ExportSingleOptions): Promise<Export
 
   if (!window.electronAPI) {
     throw new Error('Export requer ambiente Electron')
+  }
+
+  if (document) {
+    const preloadResult = await preloadKonvaDocumentFonts({
+      document,
+      brandFonts: projectFonts,
+    })
+    if (preloadResult.warnings.length > 0) {
+      console.warn('[Export Single] Font preload warnings:', preloadResult.warnings)
+    }
   }
 
   // Render page to data URL at full resolution
@@ -124,6 +142,7 @@ export async function exportSingle(options: ExportSingleOptions): Promise<Export
 export async function exportBatch(options: ExportBatchOptions): Promise<ExportBatchResult> {
   const {
     document,
+    projectFonts,
     projectSlug = 'arte',
     mimeType = 'image/jpeg',
     quality = 92,
@@ -133,6 +152,14 @@ export async function exportBatch(options: ExportBatchOptions): Promise<ExportBa
 
   if (!window.electronAPI) {
     throw new Error('Export requer ambiente Electron')
+  }
+
+  const preloadResult = await preloadKonvaDocumentFonts({
+    document,
+    brandFonts: projectFonts,
+  })
+  if (preloadResult.warnings.length > 0) {
+    console.warn('[Export Batch] Font preload warnings:', preloadResult.warnings)
   }
 
   const pagesToExport = pagesSubset || document.design.pages
@@ -190,6 +217,7 @@ export async function exportVariations(
 ): Promise<ExportVariationsResult> {
   const {
     variations,
+    projectFonts,
     projectSlug = 'arte',
     mimeType = 'image/jpeg',
     quality = 92,
@@ -209,6 +237,17 @@ export async function exportVariations(
   }> = []
 
   for (const { document, variationIndex } of variations) {
+    const preloadResult = await preloadKonvaDocumentFonts({
+      document,
+      brandFonts: projectFonts,
+    })
+    if (preloadResult.warnings.length > 0) {
+      console.warn(
+        `[Export Variations] Font preload warnings for variation ${variationIndex + 1}:`,
+        preloadResult.warnings,
+      )
+    }
+
     const sortedPages = [...document.design.pages].sort((a, b) => a.order - b.order)
 
     for (let pageIndex = 0; pageIndex < sortedPages.length; pageIndex++) {
