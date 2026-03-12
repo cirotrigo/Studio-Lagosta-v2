@@ -97,8 +97,11 @@ export class SyncService {
       const remoteTemplates = await this.fetchRemoteTemplates(projectId)
       const localTemplates = await this.storage.listTemplates(projectId)
 
+      console.log(`[SyncService] Pull: ${remoteTemplates.length} remote templates, ${localTemplates.length} local templates`)
+
       let pulled = 0
       let conflicts = 0
+      let skipped = 0
 
       for (const remote of remoteTemplates) {
         // Find matching local template by remote ID stored in meta
@@ -106,8 +109,11 @@ export class SyncService {
           (t) => t.meta.remoteId === remote.id || t.id === remote.localId
         )
 
+        console.log(`[SyncService] Remote template ${remote.id} "${remote.name}": localId=${remote.localId || 'null'}, matched local: ${local?.id || 'none'}`)
+
         if (!local) {
           // New remote template, create locally
+          console.log(`[SyncService] Creating local template from remote ${remote.id} "${remote.name}"`)
           const newDoc = this.remoteToLocal(projectId, remote)
           await this.storage.saveTemplate(projectId, newDoc)
           pulled++
@@ -148,12 +154,17 @@ export class SyncService {
 
         // Remote is newer and local is clean - update local
         if (remoteTime > localTime && !local.meta.isDirty) {
+          console.log(`[SyncService] Updating local template ${local.id} from remote ${remote.id}`)
           const updated = this.remoteToLocal(projectId, remote, local.id)
           await this.storage.saveTemplate(projectId, { ...updated, meta: { ...updated.meta, isDirty: false } })
           pulled++
+        } else {
+          console.log(`[SyncService] Skipping ${remote.id}: remoteTime=${remoteTime}, localTime=${localTime}, isDirty=${local.meta.isDirty}`)
+          skipped++
         }
       }
 
+      console.log(`[SyncService] Pull complete: pulled=${pulled}, conflicts=${conflicts}, skipped=${skipped}`)
       const now = new Date().toISOString()
       await this.storage.setLastSync(projectId, now)
 
@@ -394,6 +405,21 @@ export class SyncService {
 
     if (!Array.isArray(parsed)) {
       throw new Error('invalid_response_format')
+    }
+
+    console.log(`[SyncService] Fetched ${parsed.length} templates from server`)
+
+    // Log first template to debug structure
+    if (parsed.length > 0) {
+      const first = parsed[0]
+      console.log(`[SyncService] First template sample:`, {
+        id: first.id,
+        name: first.name,
+        localId: first.localId,
+        hasDesignData: !!first.designData,
+        designDataKeys: first.designData ? Object.keys(first.designData) : [],
+        pagesCount: first.designData?.pages?.length ?? 0,
+      })
     }
 
     return parsed.map((item) => this.normalizeRemoteTemplate(item))

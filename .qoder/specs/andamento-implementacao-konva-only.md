@@ -47,7 +47,7 @@ Exemplos:
 | 8 | Export Single/Batch | ✅ Concluído | feat(konva-fase-8): export single e batch com naming padronizado | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 9 | Sync Offline-first | ✅ Concluído | feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 10 | UX de simplicidade máxima | ✅ Concluído | feat(konva-fase-10): ux simplicidade maxima com presets e progresso | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
-| 11 | Normalização JSON Templates | ✅ Concluído | feat(konva-fase-11): normalizacao json para compatibilidade local/web | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
+| 11 | Normalização JSON Templates | ✅ Concluído | 27c84a2 + dfddf87 | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 12 | Gradiente no Editor Local | ⬜ Não iniciado | - | - | - |
 
 Legenda status:
@@ -445,12 +445,15 @@ Legenda status:
   - Integrar normalização no sync-service (push/pull).
   - Criar validador de schema com Zod para ambos os formatos.
   - Criar módulo de migração para templates antigos/incompatíveis.
+  - Corrigir APIs web para suportar sincronização completa.
 - Decisões:
   - Normalização aplicada no sync-service durante push (local→web) e pull (web→local).
   - Templates locais mantêm formato completo; normalização apenas no momento do sync.
   - Módulos criados em `electron/services/sync/` para compatibilidade com tsconfig do electron.
   - Fallback seguro: se normalização falha, usa método legado para não corromper dados.
   - Warnings logados para campos transformados ou removidos.
+  - Campo `localId` adicionado ao schema Prisma para rastreamento bidirecional.
+  - APIs web atualizadas para salvar/retornar `localId` e processar `designData.pages`.
 - Diferenças mapeadas e tratadas:
   - `format`: `FEED_PORTRAIT` (local) ↔ `FEED` (web)
   - `layer.x/y`: direto (local) ↔ `position: {x, y}` (web)
@@ -461,8 +464,9 @@ Legenda status:
   - `layer.zIndex`: `zIndex` (local) ↔ `order` (web)
   - `layer.src` (image): `src` (local) ↔ `fileUrl` (web)
   - `identity`, `slots`, `meta`: preservados apenas no local, slots armazenados em designData para referência
+  - **Gradiente**: parcialmente tratado, requer atualização na Fase 12 para paridade completa
 - Arquivos alterados:
-  - `desktop-app/electron/services/sync-service.ts` (integrar normalização)
+  - `desktop-app/electron/services/sync-service.ts` (integrar normalização + logging debug)
   - `desktop-app/electron/services/sync/template-normalizer.ts` (novo)
   - `desktop-app/electron/services/sync/template-validator.ts` (novo)
   - `desktop-app/electron/services/sync/index.ts` (novo)
@@ -470,11 +474,19 @@ Legenda status:
   - `desktop-app/src/lib/sync/template-validator.ts` (novo, para renderer)
   - `desktop-app/src/lib/sync/template-migration.ts` (novo, para renderer)
   - `desktop-app/src/lib/sync/index.ts` (novo)
+  - `prisma/schema.prisma` (campo `localId` no Template)
+  - `src/app/api/templates/route.ts` (POST aceita localId + pages, GET retorna localId)
+  - `src/app/api/templates/[id]/route.ts` (PUT atualiza localId + pages)
+  - `src/app/api/projects/[projectId]/templates/route.ts` (GET constrói designData.pages)
+  - `src/lib/validations/studio.ts` (syncDesignDataSchema para aceitar pages)
 - Testes executados:
   - `npm --prefix desktop-app run typecheck` ✅
   - `npm --prefix desktop-app run typecheck:electron` ✅
-- Commit: `feat(konva-fase-11): normalizacao json para compatibilidade local/web`
-- Próximo passo: testes manuais de round-trip local/web, depois Fase 12 (Gradiente).
+  - Sync manual testado: templates novos sincronizam corretamente ✅
+- Commits:
+  - `dfddf87 feat(konva-fase-11): normalizacao json para compatibilidade local/web`
+  - `27c84a2 feat(sync): enhance template synchronization with localId and design data support`
+- Próximo passo: Fase 12 (Gradiente no editor local) + atualização da normalização para gradientes.
 
 ### Fase 12 — Gradiente no Editor Local
 - Escopo fechado:
