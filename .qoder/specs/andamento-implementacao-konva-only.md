@@ -46,7 +46,7 @@ Exemplos:
 | 7.1 | Hotfix fontes na reedição | ✅ Concluído | fix(konva-fase-7.1): corrige fontes e fontSize na reediçao | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 8 | Export Single/Batch | ✅ Concluído | feat(konva-fase-8): export single e batch com naming padronizado | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 9 | Sync Offline-first | ✅ Concluído | feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
-| 10 | UX de simplicidade máxima | ⬜ Não iniciado | - | - | - |
+| 10 | UX de simplicidade máxima | ✅ Concluído | feat(konva-fase-10): ux simplicidade maxima com presets e progresso | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 
 Legenda status:
 - ⬜ Não iniciado
@@ -404,20 +404,45 @@ Legenda status:
 
 ### Fase 10 — UX de simplicidade máxima
 - Escopo fechado:
+  - Modo rápido como padrão no `GenerateArtTab` com UX simplificada.
+  - Presets de objetivo (Promoção, Institucional, Agenda, Oferta) com sugestão de prompt.
+  - Presets de tom de copy (Casual, Profissional, Urgente, Inspirador) injetados no system prompt da LLM.
+  - Drawer de opções avançadas colapsado por padrão com persistência de estado na sessão.
+  - Indicador de contexto do projeto com badge e popover expandível.
+  - Stepper visual de progresso nas etapas de geração (contexto, copy, fundo, montagem).
 - Decisões:
+  - Presets de objetivo pré-preenchem o prompt quando ele está vazio, facilitando o início.
+  - Tom de copy é injetado no system prompt via `TONE_INSTRUCTIONS` e `OBJECTIVE_INSTRUCTIONS`.
+  - Opções avançadas (análise de imagem, variações, template manual) ficam colapsadas para simplificar a UX inicial.
+  - Stepper mostra progresso em tempo real com estados completos, em andamento e pendentes.
+  - Botão "Gerar" maior e mais proeminente para facilitar a ação principal.
 - Arquivos alterados:
+  - `desktop-app/src/stores/generation.store.ts` (tipos ObjectivePreset e TonePreset)
+  - `desktop-app/src/lib/automation/prompt-orchestrator.ts` (suporte a objective e tone)
+  - `desktop-app/src/components/project/generate/ObjectivePresets.tsx` (novo)
+  - `desktop-app/src/components/project/generate/TonePresets.tsx` (novo)
+  - `desktop-app/src/components/project/generate/AdvancedOptionsDrawer.tsx` (novo)
+  - `desktop-app/src/components/project/generate/ProjectContextIndicator.tsx` (novo)
+  - `desktop-app/src/components/project/generate/GenerationProgressStepper.tsx` (novo)
+  - `desktop-app/src/components/project/generate/GenerationQueue.tsx` (integração do stepper)
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx` (refatoração completa da UI)
+  - `src/app/api/tools/generate-ai-text/route.ts` (suporte a objective e tone no backend)
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-10): ux simplicidade maxima com presets e progresso`
+- Próximo passo: QA final de aceite, testes manuais de fluxo completo.
 
 ---
 
 ## Bloqueios / decisões pendentes
-- 
+- Nenhum pendente para MVP Konva-only.
 
 
 ## Observações de handoff (proxima conversa)
-- Estado atual: Fases 1, 2, 3, 4, 4.1, 5, 6, 6.1, 7, 7.1, 8 e 9 concluidas; desktop/electron validados.
-- Ultimo commit estavel: feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos
-- Proxima fase recomendada: Fase 10 — UX de simplicidade maxima.
-- Prompt preparado: aguardando criacao de `.qoder/specs/prompt-nova-conversa-konva-fase10.md`
+- Estado atual: Fases 1 a 10 concluidas; desktop/electron validados.
+- Ultimo commit estavel: feat(konva-fase-10): ux simplicidade maxima com presets e progresso
+- Proxima etapa recomendada: QA de aceite final e testes manuais do fluxo completo.
+- MVP Konva-only completo para validação de usuário.

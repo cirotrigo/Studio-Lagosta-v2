@@ -35,6 +35,9 @@ export interface PromptKnowledgeResult {
   hits: PromptKnowledgeHit[]
 }
 
+export type ObjectivePreset = 'promocao' | 'institucional' | 'agenda' | 'oferta' | null
+export type TonePreset = 'casual' | 'profissional' | 'urgente' | 'inspirador' | null
+
 export interface PromptOrchestratorInput {
   projectId: number
   prompt: string
@@ -45,6 +48,8 @@ export interface PromptOrchestratorInput {
   referenceUrls?: string[]
   manualTemplateId?: string
   analyzeImageForContext?: boolean
+  objective?: ObjectivePreset
+  tone?: TonePreset
   templates: KonvaTemplateDocument[]
   project?: Pick<Project, 'id' | 'name' | 'logoUrl'>
   brandAssets?: Pick<
@@ -502,6 +507,8 @@ export async function preparePromptBatch(
     compositionReferenceUrls: input.referenceUrls,
     analyzeImageForContext: input.analyzeImageForContext === true,
     analysisImageUrl: input.photoUrl || input.referenceUrls?.[0],
+    objective: input.objective ?? undefined,
+    tone: input.tone ?? undefined,
   }) as GenerateAiTextResponse
 
   const copies = copyResponse.variacoes.map((variation) => normalizeVariation(variation))

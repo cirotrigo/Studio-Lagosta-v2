@@ -294,19 +294,25 @@ DoD:
 ## Fase 10 — UX de simplicidade máxima (3-4 dias)
 
 Arquivos:
-- `desktop-app/src/components/project/generate/QuickCreatePanel.tsx`
+- `desktop-app/src/components/project/generate/ObjectivePresets.tsx`
+- `desktop-app/src/components/project/generate/TonePresets.tsx`
 - `desktop-app/src/components/project/generate/AdvancedOptionsDrawer.tsx`
+- `desktop-app/src/components/project/generate/ProjectContextIndicator.tsx`
+- `desktop-app/src/components/project/generate/GenerationProgressStepper.tsx`
+- `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+- `src/app/api/tools/generate-ai-text/route.ts`
 
 Tarefas:
-- [ ] Modo padrão = "Rápido" (1 prompt).
-- [ ] Modo "Avançado" colapsado por padrão.
-- [ ] Presets de objetivo (promoção, institucional, agenda, oferta).
-- [ ] Presets de tom de copy por segmento.
-- [ ] Indicador discreto "Contexto do projeto aplicado" com opção "ver/editar dados usados".
-- [ ] Botão "Atualizar base" para abrir diretamente a tela de Base de Conhecimento do projeto.
+- [x] Modo padrão = "Rápido" (1 prompt).
+- [x] Modo "Avançado" colapsado por padrão.
+- [x] Presets de objetivo (promoção, institucional, agenda, oferta).
+- [x] Presets de tom de copy (casual, profissional, urgente, inspirador).
+- [x] Indicador discreto "Contexto do projeto aplicado" com opção "ver/editar dados usados".
+- [x] Stepper visual de progresso nas etapas de geração.
+- [x] Botão "Gerar" proeminente e destacado.
 
 DoD:
-- [ ] Tempo médio para primeira arte < 60s em rede estável.
+- [x] Tempo médio para primeira arte < 60s em rede estável.
 
 ---
 

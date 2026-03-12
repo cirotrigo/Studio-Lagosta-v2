@@ -5,6 +5,8 @@ import type { KonvaTemplateDocument } from '@/types/template'
 
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
 export type TextProcessingMode = 'faithful' | 'grammar_correct' | 'headline_detection' | 'generate_copy'
+export type ObjectivePreset = 'promocao' | 'institucional' | 'agenda' | 'oferta' | null
+export type TonePreset = 'casual' | 'profissional' | 'urgente' | 'inspirador' | null
 
 export interface ReviewField {
   key: string
@@ -67,6 +69,8 @@ export interface GenerationParams {
   referenceUrls?: string[]
   manualTemplateId?: string
   analyzeImageForContext?: boolean
+  objective?: ObjectivePreset
+  tone?: TonePreset
 }
 
 export interface GenerationJob {

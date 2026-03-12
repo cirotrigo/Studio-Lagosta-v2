@@ -28,6 +28,10 @@ import { ResultImageCard } from '@/components/project/generate/ResultImageCard'
 import FormatSelector from '@/components/project/generate/FormatSelector'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import VariationSelector from '@/components/project/generate/VariationSelector'
+import ObjectivePresets from '@/components/project/generate/ObjectivePresets'
+import TonePresets from '@/components/project/generate/TonePresets'
+import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
+import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
 import { useProjectStore } from '@/stores/project.store'
 import {
   useGenerationStore,
@@ -39,6 +43,8 @@ import {
   type GenerationVariationJob,
   type GenerationParams,
   type BackgroundGenerationInfo,
+  type ObjectivePreset,
+  type TonePreset,
 } from '@/stores/generation.store'
 import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
@@ -234,6 +240,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
+  const [objective, setObjective] = useState<ObjectivePreset>(null)
+  const [tone, setTone] = useState<TonePreset>(null)
 
   const availableTemplates = useMemo(
     () => templates.filter((template) => template.format === format),
@@ -493,6 +501,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       referenceUrls: job.params.referenceUrls,
       manualTemplateId: job.params.manualTemplateId,
       analyzeImageForContext: job.params.analyzeImageForContext,
+      objective: job.params.objective,
+      tone: job.params.tone,
       templates,
       project: currentProject ?? undefined,
       brandAssets: brandAssets
@@ -744,6 +754,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       referenceUrls,
       manualTemplateId: manualTemplateId || undefined,
       analyzeImageForContext,
+      objective,
+      tone,
     }
 
     addJob(params)
@@ -767,10 +779,16 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
   const canGenerate = prompt.trim().length > 0
 
+  const handlePromptSuggestion = useCallback((suggestion: string) => {
+    if (!prompt.trim()) {
+      setPrompt(suggestion + ' ')
+    }
+  }, [prompt])
+
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
       <div className="w-[460px] flex-shrink-0 overflow-y-auto border-r border-border p-6">
-        <div className="space-y-6">
+        <div className="space-y-5">
           {currentProject && (
             <div className="rounded-xl border border-border bg-card p-4">
               <ProjectBadge project={currentProject} size="lg" />
@@ -783,23 +801,28 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
               <span className="text-sm font-semibold">Modo Rapido</span>
             </div>
             <p className="mt-2 text-sm text-text-muted">
-              1 prompt, 1 clique e contexto automatico da base do projeto quando existir.
+              1 prompt, 1 clique e contexto automatico. Arte pronta em menos de 60 segundos.
             </p>
           </div>
 
+          <ObjectivePresets
+            value={objective}
+            onChange={setObjective}
+            onPromptSuggestion={handlePromptSuggestion}
+          />
+
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-text">Prompt unico</label>
+            <label className="block text-sm font-medium text-text">Prompt</label>
             <textarea
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder='Ex: crie variacoes sobre happy hour com essa foto'
-              rows={4}
+              rows={3}
               className="w-full resize-none rounded-lg border border-border bg-input px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
-            <p className="text-xs text-text-subtle">
-              O pipeline prioriza o pedido do usuario e completa horario, campanha e cardapio via base quando houver contexto.
-            </p>
           </div>
+
+          <TonePresets value={tone} onChange={setTone} />
 
           <div className="space-y-2">
             <label className="block text-sm font-medium text-text">Formato</label>
@@ -849,89 +872,87 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             <ReferenceUploader files={referenceFiles} onChange={setReferenceFiles} />
           )}
 
-          <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-medium text-text">Analisar imagem para contexto</p>
-                <p className="mt-1 text-xs text-text-muted">
-                  Desligado por padrao. Quando ativo, a IA tenta identificar a cena e cruza o resultado com cardapio e campanhas do projeto antes de gerar a copy.
-                </p>
+          <ProjectContextIndicator
+            projectId={projectId}
+            projectName={currentProject?.name}
+            knowledgeCount={brandAssets ? 1 : 0}
+          />
+
+          <AdvancedOptionsDrawer>
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium text-text">Analisar imagem para contexto</p>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Cruza a foto com cardapio e campanhas do projeto.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={analyzeImageForContext}
+                  onClick={() => setAnalyzeImageForContext(!analyzeImageForContext)}
+                  className={cn(
+                    'relative inline-flex h-7 w-12 items-center rounded-full transition-colors',
+                    analyzeImageForContext ? 'bg-primary' : 'bg-input',
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'inline-block h-5 w-5 rounded-full bg-white transition-transform',
+                      analyzeImageForContext ? 'translate-x-6' : 'translate-x-1',
+                    )}
+                  />
+                </button>
               </div>
 
-              <button
-                type="button"
-                role="switch"
-                aria-checked={analyzeImageForContext}
-                onClick={() => setAnalyzeImageForContext(!analyzeImageForContext)}
-                className={cn(
-                  'relative inline-flex h-7 w-12 items-center rounded-full transition-colors',
-                  analyzeImageForContext ? 'bg-primary' : 'bg-input',
-                )}
-              >
-                <span
-                  className={cn(
-                    'inline-block h-5 w-5 rounded-full bg-white transition-transform',
-                    analyzeImageForContext ? 'translate-x-6' : 'translate-x-1',
-                  )}
-                />
-              </button>
-            </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text">Variacoes</label>
+                <VariationSelector value={variations} onChange={setVariations} />
+              </div>
 
-            <div className="rounded-lg border border-border bg-background/40 px-3 py-2 text-xs text-text-muted">
-              {backgroundMode === 'photo'
-                ? selectedPhoto?.url
-                  ? 'A foto selecionada sera usada como base da analise visual.'
-                  : 'Selecione uma foto para habilitar a analise visual deste job.'
-                : referenceFiles.length > 0
-                  ? 'A primeira referencia visual sera usada como base da analise contextual.'
-                  : 'Envie pelo menos uma referencia para usar a analise visual com fundo IA.'}
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text">Template</label>
+                <select
+                  value={manualTemplateId}
+                  onChange={(event) => setManualTemplateId(event.target.value)}
+                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Automatico</option>
+                  {availableTemplates.map((template) => (
+                    <option key={template.id} value={template.id}>
+                      {template.name}
+                    </option>
+                  ))}
+                </select>
+                <div className="text-xs text-text-muted">
+                  {isLoadingTemplates
+                    ? 'Carregando templates...'
+                    : availableTemplates.length > 0
+                      ? `${availableTemplates.length} template(s) para ${format}`
+                      : 'Usando fallback interno'}
+                </div>
+                {templatesError ? (
+                  <p className="text-xs text-error">{templatesError}</p>
+                ) : null}
+              </div>
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-text">Variacoes</label>
-            <VariationSelector value={variations} onChange={setVariations} />
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-sm font-medium text-text">Template</label>
-            <select
-              value={manualTemplateId}
-              onChange={(event) => setManualTemplateId(event.target.value)}
-              className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            >
-              <option value="">Automatico</option>
-              {availableTemplates.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-            <div className="rounded-lg border border-border bg-card/60 px-3 py-2 text-xs text-text-muted">
-              {isLoadingTemplates
-                ? 'Carregando templates Konva locais...'
-                : availableTemplates.length > 0
-                  ? `${availableTemplates.length} template(s) local(is) disponivel(is) para ${format}.`
-                  : 'Nenhum template local neste formato. O app usa o fallback interno do modo rapido.'}
-            </div>
-            {templatesError ? (
-              <p className="text-xs text-error">{templatesError}</p>
-            ) : null}
-          </div>
+          </AdvancedOptionsDrawer>
 
           <button
             type="button"
             onClick={handleGenerate}
             disabled={!canGenerate}
             className={cn(
-              'flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 font-medium transition-colors',
+              'flex w-full items-center justify-center gap-2 rounded-xl px-4 py-4 text-base font-semibold transition-colors',
               canGenerate
                 ? 'bg-primary text-primary-foreground hover:bg-primary-hover'
                 : 'cursor-not-allowed bg-input text-text-subtle',
             )}
           >
-            <Sparkles size={18} />
-            Gerar Artes
+            <Sparkles size={20} />
+            Gerar
           </button>
         </div>
       </div>

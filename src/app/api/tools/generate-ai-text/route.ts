@@ -25,6 +25,9 @@ const VISUAL_KNOWLEDGE_CATEGORIES: VisualKnowledgeCategory[] = [
   'CAMPANHAS',
 ]
 
+const objectivePresetSchema = z.enum(['promocao', 'institucional', 'agenda', 'oferta']).nullable().optional()
+const tonePresetSchema = z.enum(['casual', 'profissional', 'urgente', 'inspirador']).nullable().optional()
+
 const requestSchema = z.object({
   projectId: z.number().int().positive(),
   prompt: z.string().trim().min(1).max(500),
@@ -40,6 +43,8 @@ const requestSchema = z.object({
   compositionReferenceUrls: z.array(z.string().url()).max(5).optional(),
   analyzeImageForContext: z.boolean().default(false),
   analysisImageUrl: z.string().url().optional(),
+  objective: objectivePresetSchema,
+  tone: tonePresetSchema,
 }).superRefine((value, ctx) => {
   if (value.usePhoto && !value.photoUrl) {
     ctx.addIssue({
@@ -751,16 +756,38 @@ function buildTemplateGuidance(templates: TemplateSummary[]): string {
   }).join('\n\n')
 }
 
+const TONE_INSTRUCTIONS: Record<string, string> = {
+  casual: 'Use linguagem descontraida, amigavel e acessivel. Fale como um amigo conversando.',
+  profissional: 'Use tom corporativo, formal e confiante. Mantenha credibilidade e sofisticacao.',
+  urgente: 'Crie senso de urgencia e escassez. Use frases curtas e diretas que motivem acao imediata.',
+  inspirador: 'Use linguagem motivacional e emocional. Conecte com valores e aspiracoes do publico.',
+}
+
+const OBJECTIVE_INSTRUCTIONS: Record<string, string> = {
+  promocao: 'Foco em destacar uma promocao especial, desconto ou oferta por tempo limitado.',
+  institucional: 'Foco em reforcar a identidade da marca, valores e diferenciais do estabelecimento.',
+  agenda: 'Foco em comunicar um evento, programacao ou agenda especifica com data e horario.',
+  oferta: 'Foco em destacar um produto ou servico especifico com preco ou condicao comercial.',
+}
+
 function buildSystemPrompt(brandContext: {
   projectName: string
   brandStyleDescription: string
   cuisineType: string
   colorPalette: string[]
   instagramUsername: string
-}): string {
+}, options?: { tone?: string | null; objective?: string | null }): string {
   const palette = brandContext.colorPalette.length > 0
     ? brandContext.colorPalette.join(', ')
     : 'sem paleta definida'
+
+  const toneInstruction = options?.tone && TONE_INSTRUCTIONS[options.tone]
+    ? `\nTOM DA COPY: ${TONE_INSTRUCTIONS[options.tone]}`
+    : ''
+
+  const objectiveInstruction = options?.objective && OBJECTIVE_INSTRUCTIONS[options.objective]
+    ? `\nOBJETIVO DA ARTE: ${OBJECTIVE_INSTRUCTIONS[options.objective]}`
+    : ''
 
   return [
     'Voce e um redator senior de social media para Instagram.',
@@ -772,6 +799,8 @@ function buildSystemPrompt(brandContext: {
     'Nao invente dados criticos como horario, preco, endereco ou condicao comercial.',
     'Se houver contexto da base do projeto, use somente o que estiver presente e relevante.',
     'Se o prompt do usuario conflitar com a base, priorize o pedido explicito do usuario.',
+    toneInstruction,
+    objectiveInstruction,
     '',
     'Contexto da marca:',
     `- Projeto: ${brandContext.projectName}`,
@@ -779,7 +808,7 @@ function buildSystemPrompt(brandContext: {
     `- Segmento: ${brandContext.cuisineType || 'nao informado'}`,
     `- Instagram: ${brandContext.instagramUsername || 'nao informado'}`,
     `- Paleta: ${palette}`,
-  ].join('\n')
+  ].filter(Boolean).join('\n')
 }
 
 function buildKnowledgePromptSection(knowledge: {
@@ -1056,7 +1085,7 @@ export async function POST(request: Request) {
     const { object } = await generateObject({
       model: openai('gpt-4o-mini'),
       schema: responseSchema,
-      system: buildSystemPrompt(brandContext),
+      system: buildSystemPrompt(brandContext, { tone: body.tone, objective: body.objective }),
       prompt: buildUserPrompt(body, templateGuidance, knowledgeContext, imageAnalysisPayload),
       temperature: 0.6,
       maxOutputTokens: 900,
