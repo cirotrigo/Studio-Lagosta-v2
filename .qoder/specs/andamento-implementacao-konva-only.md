@@ -43,6 +43,7 @@ Exemplos:
 | 6 | Fundo IA + Referências | ✅ Concluído | feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 6.1 | Análise de imagem opcional | ✅ Concluído | feat(konva-fase-6.1): analise de imagem opcional no pipeline de copy | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 7 | Aprovação + Reedição | ✅ Concluído | feat(konva-fase-7): aprova variacoes e abre reedicao no editor | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
+| 7.1 | Hotfix fontes na reedição | ✅ Concluído | fix(konva-fase-7.1): corrige fontes e fontSize na reediçao | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
 | 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
 | 10 | UX de simplicidade máxima | ⬜ Não iniciado | - | - | - |
@@ -304,6 +305,36 @@ Legenda status:
 - Commit: `feat(konva-fase-7): aprova variacoes e abre reedicao no editor`
 - Próximo passo: iniciar a Fase 8 para export single/batch padronizado e carrossel a partir dos documentos Konva já aprovados/revisados.
 
+### Fase 7.1 — Hotfix fontes na reedição
+- Escopo fechado:
+  - restaurar o microajuste tipográfico nas variações abertas via `Editar no Konva`, preservando `fontFamily`, `fontSize`, `lineHeight` e `letterSpacing` no draft.
+  - pré-carregar as fontes do projeto/documento antes da montagem do stage no editor e exibir fallback controlado quando alguma família falhar.
+  - eliminar markup HTML legado (`<br>`, `<p>`, tags soltas) no pipeline Konva para preview, aprovação e reedição.
+- Decisões:
+  - o draft de reedição passou a receber merge da identidade do projeto no `EditorPage`, priorizando `brand-assets` para popular `identity.fonts`, `logoUrl` e `colors`.
+  - o carregamento de fontes ficou centralizado em um hook dedicado do editor, usando `downloadBlob` + `FontFace` e segurando o stage até o registro inicial terminar.
+  - o fallback passou a ser controlado por stack explícita (`fonte solicitada -> Inter -> Arial -> sans-serif`) tanto no stage Konva quanto no renderer canvas.
+  - o `autoScale` passou a respeitar `fontSize` como tamanho preferido, evitando que o painel parecesse "ignorar" alterações de tamanho no draft.
+  - a normalização de `<br>`/HTML residual foi centralizada no fluxo Konva (`prompt-orchestrator` + `slot-binder`) para cobrir preview, aprovação e reedição no mesmo ponto.
+- Arquivos alterados:
+  - `desktop-app/src/components/editor/EditorShell.tsx`
+  - `desktop-app/src/components/editor/LayerFactory.tsx`
+  - `desktop-app/src/components/editor/PropertiesPanel.tsx`
+  - `desktop-app/src/hooks/use-editor-project-fonts.ts`
+  - `desktop-app/src/lib/automation/prompt-orchestrator.ts`
+  - `desktop-app/src/lib/automation/slot-binder.ts`
+  - `desktop-app/src/lib/editor/font-utils.ts`
+  - `desktop-app/src/lib/editor/text-layout.ts`
+  - `desktop-app/src/lib/editor/text-normalization.ts`
+  - `desktop-app/src/pages/EditorPage.tsx`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `fix(konva-fase-7.1): corrige fontes e fontSize na reediçao`
+- Próximo passo: iniciar a Fase 8 para consolidar export single/batch e carrossel no fluxo Konva-only.
+
 ### Fase 8 — Export Single/Batch
 - Escopo fechado:
 - Decisões:
@@ -335,5 +366,5 @@ Legenda status:
 
 ## Observações de handoff (próxima conversa)
 - Estado atual: Fases 1, 2, 3, 4, 4.1 e 5 concluídas; desktop/electron validados e web alterado validado via `tsc` isolado porque o `tsconfig` raiz hoje também puxa `desktop-app/**`.
-- Último commit estável: feat(konva-fase-7): aprova variacoes e abre reedicao no editor
+- Último commit estável: fix(konva-fase-7.1): corrige fontes e fontSize na reediçao
 - Próxima fase recomendada: Fase 8 — Export Single/Batch.

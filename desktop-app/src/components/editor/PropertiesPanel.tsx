@@ -207,7 +207,11 @@ function uniqueColors(values: Array<string | null | undefined>) {
   )
 }
 
-export function PropertiesPanel() {
+interface PropertiesPanelProps {
+  availableFontFamilies?: string[]
+}
+
+export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelProps) {
   const currentProject = useProjectStore((state) => state.currentProject)
   const document = useEditorStore((state) => state.document)
   const currentPage = useEditorStore(selectCurrentPageState)
@@ -438,23 +442,44 @@ export function PropertiesPanel() {
                         textStyle: {
                           ...layer.textStyle,
                           fontSize: value,
+                          maxFontSize:
+                            (layer.textStyle?.overflowBehavior ?? 'clip') === 'autoScale'
+                              ? Math.max(value, layer.textStyle?.maxFontSize ?? value)
+                              : layer.textStyle?.maxFontSize,
                         },
                       }))
                     }
                   />
-                  <TextField
-                    label="Font family"
-                    value={selectedTextLayer.textStyle?.fontFamily}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          fontFamily: value,
-                        },
-                      }))
-                    }
-                  />
+                  <label className="space-y-1">
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                      Font family
+                    </span>
+                    <input
+                      type="text"
+                      list="editor-font-family-options"
+                      value={selectedTextLayer.textStyle?.fontFamily ?? ''}
+                      onChange={(event) =>
+                        updateTextLayer((layer) => ({
+                          ...layer,
+                          textStyle: {
+                            ...layer.textStyle,
+                            fontFamily: event.target.value,
+                          },
+                        }))
+                      }
+                      className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+                    />
+                    <datalist id="editor-font-family-options">
+                      {availableFontFamilies.map((fontFamily) => (
+                        <option key={fontFamily} value={fontFamily} />
+                      ))}
+                    </datalist>
+                    <p className="text-[11px] text-text-subtle">
+                      {availableFontFamilies.length > 0
+                        ? 'Fontes do projeto e do documento disponiveis para selecao rapida.'
+                        : 'Digite a familia manualmente se a fonte nao estiver listada.'}
+                    </p>
+                  </label>
                   <NumberField
                     label="Line height"
                     value={selectedTextLayer.textStyle?.lineHeight}

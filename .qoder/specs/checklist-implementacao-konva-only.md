@@ -220,6 +220,34 @@ DoD:
 
 ---
 
+## Fase 7.1 — Estabilização da reedição no editor (fontes + tipografia) (1-2 dias)
+
+Arquivos:
+- `desktop-app/src/pages/EditorPage.tsx`
+- `desktop-app/src/components/editor/EditorShell.tsx`
+- `desktop-app/src/components/editor/PropertiesPanel.tsx`
+- `desktop-app/src/components/editor/LayerFactory.tsx`
+- `desktop-app/src/stores/editor.store.ts`
+- `desktop-app/src/lib/fonts/*` (ou módulo equivalente de carregamento)
+- `desktop-app/src/hooks/use-project-fonts.ts` (se aplicável)
+
+Tarefas:
+- [x] Garantir carregamento das fontes do projeto ao abrir variação em `Editar no Konva` (draft via `location.state`).
+- [x] Garantir que `fontFamily` e `fontSize` fiquem editáveis para layers de texto no draft.
+- [x] Normalizar quebras de linha legadas: converter `<br>` para `\\n` antes de aplicar texto no Konva.
+- [x] Sanitizar texto para não exibir markup HTML literal no canvas (ex.: `<br>`, `<p>`).
+- [x] Resolver fallback de fonte quando a fonte do projeto não estiver disponível localmente.
+- [x] Evitar regressão no fluxo de templates normais (sem draft).
+- [x] Exibir aviso não-bloqueante quando uma fonte de projeto falhar ao carregar.
+
+DoD:
+- [x] Em microajuste, usuário consegue alterar tamanho de fonte normalmente.
+- [x] Texto renderiza com fonte do projeto quando disponível.
+- [x] `<br>` não aparece literal no canvas; quebra de linha renderiza corretamente.
+- [x] Com fonte indisponível, fallback explícito sem quebrar edição.
+
+---
+
 ## Fase 8 — Export single/batch (3-4 dias)
 
 Arquivos:

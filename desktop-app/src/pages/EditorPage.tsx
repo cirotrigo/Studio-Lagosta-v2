@@ -6,7 +6,10 @@ import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtMod
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
+import { mergeEditorFontSources } from '@/lib/editor/font-utils'
+import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
+import { useBrandAssets, type BrandAssets } from '@/hooks/use-brand-assets'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
@@ -14,9 +17,60 @@ import { usePagesStore } from '@/stores/pages.store'
 import type { EditorPageLocationState } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
 
+function normalizeDraftDocumentText(document: KonvaTemplateDocument) {
+  const nextDocument = cloneKonvaDocument(document)
+
+  nextDocument.design.pages = nextDocument.design.pages.map((page) => ({
+    ...page,
+    layers: page.layers.map((layer) =>
+      layer.type === 'text' || layer.type === 'rich-text'
+        ? {
+            ...layer,
+            text: normalizeKonvaTextValue(layer.text),
+          }
+        : layer,
+    ),
+  }))
+
+  return nextDocument
+}
+
+function mergeDraftIdentity(
+  document: KonvaTemplateDocument,
+  project: ReturnType<typeof useProjectStore.getState>['currentProject'],
+  brandAssets: BrandAssets | undefined,
+) {
+  const normalizedDocument = normalizeDraftDocumentText(document)
+
+  return {
+    ...normalizedDocument,
+    identity: {
+      ...normalizedDocument.identity,
+      brandName:
+        brandAssets?.name ||
+        project?.name ||
+        normalizedDocument.identity.brandName,
+      logoUrl:
+        brandAssets?.logo?.url ||
+        project?.logoUrl ||
+        normalizedDocument.identity.logoUrl,
+      colors:
+        brandAssets?.colors && brandAssets.colors.length > 0
+          ? brandAssets.colors
+          : normalizedDocument.identity.colors,
+      fonts: mergeEditorFontSources(brandAssets?.fonts, normalizedDocument.identity.fonts).map((font) => ({
+        name: font.name || font.fontFamily,
+        fontFamily: font.fontFamily,
+        fileUrl: font.fileUrl,
+      })),
+    },
+  }
+}
+
 export default function EditorPage() {
   const location = useLocation()
   const currentProject = useProjectStore((state) => state.currentProject)
+  const { data: brandAssets } = useBrandAssets(currentProject?.id)
   const document = useEditorStore((state) => state.document)
   const setDocument = useEditorStore((state) => state.setDocument)
   const setDocumentName = useEditorStore((state) => state.setDocumentName)
@@ -42,6 +96,20 @@ export default function EditorPage() {
 
   const incomingApprovedVariationDraft =
     ((location.state as EditorPageLocationState | null) ?? null)?.approvedVariationDraft ?? null
+  const preparedApprovedVariationDraft = useMemo(() => {
+    if (!incomingApprovedVariationDraft) {
+      return null
+    }
+
+    return {
+      ...incomingApprovedVariationDraft,
+      document: mergeDraftIdentity(
+        incomingApprovedVariationDraft.document,
+        currentProject,
+        brandAssets,
+      ),
+    }
+  }, [brandAssets, currentProject, incomingApprovedVariationDraft])
 
   const templateOptions = useMemo(() => {
     const seen = new Set<string>()
@@ -71,11 +139,8 @@ export default function EditorPage() {
   )
 
   useEffect(() => {
-    setApprovedVariationDraft(incomingApprovedVariationDraft)
-  }, [
-    incomingApprovedVariationDraft?.jobId,
-    incomingApprovedVariationDraft?.variationId,
-  ])
+    setApprovedVariationDraft(preparedApprovedVariationDraft)
+  }, [preparedApprovedVariationDraft])
 
   useEffect(() => {
     let cancelled = false
@@ -98,12 +163,12 @@ export default function EditorPage() {
         setTemplates(list)
 
         if (
-          incomingApprovedVariationDraft &&
-          incomingApprovedVariationDraft.document.projectId === currentProject.id
+          preparedApprovedVariationDraft &&
+          preparedApprovedVariationDraft.document.projectId === currentProject.id
         ) {
           resetPagesState()
-          setDocument(incomingApprovedVariationDraft.document)
-          setSelectedTemplateId(incomingApprovedVariationDraft.document.id)
+          setDocument(preparedApprovedVariationDraft.document)
+          setSelectedTemplateId(preparedApprovedVariationDraft.document.id)
           return
         }
 
@@ -142,7 +207,7 @@ export default function EditorPage() {
     }
   }, [
     currentProject,
-    incomingApprovedVariationDraft,
+    preparedApprovedVariationDraft,
     resetPagesState,
     setDocument,
   ])

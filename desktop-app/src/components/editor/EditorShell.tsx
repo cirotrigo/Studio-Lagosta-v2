@@ -1,10 +1,12 @@
-import { History, RefreshCw, Sparkles, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Square, Trash2 } from 'lucide-react'
+import { AlertTriangle, History, RefreshCw, Sparkles, Type, Undo2, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
 import { createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
 import { LayersPanel } from './LayersPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { EditorStage } from './EditorStage'
 import { PagesBar } from './PagesBar'
+import { useEditorProjectFonts } from '@/hooks/use-editor-project-fonts'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
+import { useProjectStore } from '@/stores/project.store'
 import { useHistoryStore } from '@/stores/history.store'
 
 interface EditorShellProps {
@@ -20,6 +22,7 @@ export function EditorShell({
   isSaving,
   saveLabel = 'Salvar template',
 }: EditorShellProps) {
+  const currentProject = useProjectStore((state) => state.currentProject)
   const document = useEditorStore((state) => state.document)
   const currentPage = useEditorStore(selectCurrentPageState)
   const zoom = useEditorStore((state) => state.zoom)
@@ -29,6 +32,10 @@ export function EditorShell({
   const removeSelectedLayers = useEditorStore((state) => state.removeSelectedLayers)
   const undo = useEditorStore((state) => state.undo)
   const redo = useEditorStore((state) => state.redo)
+  const { availableFontFamilies, fontWarnings, isLoadingFonts } = useEditorProjectFonts(
+    currentProject?.id,
+    document,
+  )
   const canUndo = useHistoryStore((state) => state.past.length > 0)
   const canRedo = useHistoryStore((state) => state.future.length > 0)
   const compactButtonClass =
@@ -188,10 +195,45 @@ export function EditorShell({
         </div>
       </div>
 
+      {isLoadingFonts ? (
+        <div className="rounded-2xl border border-border bg-card/60 px-4 py-3">
+          <div className="inline-flex items-center gap-2 text-sm text-text-muted">
+            <Loader2 size={16} className="animate-spin text-primary" />
+            Carregando fontes do projeto para o editor Konva...
+          </div>
+        </div>
+      ) : null}
+
+      {fontWarnings.length > 0 ? (
+        <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-amber-200" />
+            <div className="space-y-1">
+              {fontWarnings.map((warning) => (
+                <p key={warning} className="text-sm text-amber-100">
+                  {warning}
+                </p>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="grid min-h-[680px] flex-1 grid-cols-[260px_minmax(620px,1fr)_300px] gap-4">
         <LayersPanel />
-        <EditorStage />
-        <PropertiesPanel />
+        {isLoadingFonts ? (
+          <div className="flex h-full min-h-[680px] items-center justify-center rounded-2xl border border-border bg-[#0c111d]">
+            <div className="text-center">
+              <Loader2 size={22} className="mx-auto animate-spin text-primary" />
+              <p className="mt-3 text-sm text-text-muted">
+                Preparando fontes antes da renderização do stage.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <EditorStage />
+        )}
+        <PropertiesPanel availableFontFamilies={availableFontFamilies} />
       </div>
 
       <PagesBar />

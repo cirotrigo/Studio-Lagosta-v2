@@ -1,5 +1,6 @@
 import { createBlankPage } from '@/lib/editor/document'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
+import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import type { BrandAssets } from '@/hooks/use-brand-assets'
 import type { ImageContextAnalysis } from '@/lib/automation/image-context-analyzer'
 import type { Project } from '@/stores/project.store'
@@ -94,13 +95,13 @@ interface GenerateAiTextResponse {
 
 function normalizeVariation(variation: Partial<StructuredCopyVariation> | undefined): StructuredCopyVariation {
   return {
-    pre_title: variation?.pre_title?.trim() ?? '',
-    title: variation?.title?.trim() ?? '',
-    description: variation?.description?.trim() ?? '',
-    cta: variation?.cta?.trim() ?? '',
-    badge: variation?.badge?.trim() ?? '',
-    footer_info_1: variation?.footer_info_1?.trim() ?? '',
-    footer_info_2: variation?.footer_info_2?.trim() ?? '',
+    pre_title: normalizeKonvaTextValue(variation?.pre_title),
+    title: normalizeKonvaTextValue(variation?.title),
+    description: normalizeKonvaTextValue(variation?.description),
+    cta: normalizeKonvaTextValue(variation?.cta),
+    badge: normalizeKonvaTextValue(variation?.badge),
+    footer_info_1: normalizeKonvaTextValue(variation?.footer_info_1),
+    footer_info_2: normalizeKonvaTextValue(variation?.footer_info_2),
   }
 }
 

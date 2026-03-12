@@ -1,4 +1,5 @@
 import { cloneKonvaDocument, getCurrentPage, sortPages } from '@/lib/editor/document'
+import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import type {
   KonvaImageLayer,
   KonvaPage,
@@ -66,6 +67,12 @@ export interface TemplateAnalysis {
   supportsCta: boolean
   supportsFooter: boolean
   hasPhotoSlot: boolean
+}
+
+function sanitizeFieldValues(fieldValues: Partial<Record<SlotFieldKey, string>>) {
+  return Object.fromEntries(
+    Object.entries(fieldValues).map(([fieldKey, value]) => [fieldKey, normalizeKonvaTextValue(value)]),
+  ) as Partial<Record<SlotFieldKey, string>>
 }
 
 function isTextLayer(layer: Layer): layer is KonvaTextLayer {
@@ -362,10 +369,12 @@ function buildLayerAssignments(
 }
 
 function toReviewFields(fieldValues: Partial<Record<SlotFieldKey, string>>): ReviewField[] {
+  const sanitized = sanitizeFieldValues(fieldValues)
+
   return SLOT_PRIORITY.map((fieldKey) => ({
     key: fieldKey,
     label: SLOT_LABELS[fieldKey],
-    value: fieldValues[fieldKey] ?? '',
+    value: sanitized[fieldKey] ?? '',
   })).filter((field) => field.value.trim().length > 0)
 }
 
@@ -400,8 +409,9 @@ export function applyCopyToKonvaTemplate(
   const warnings: string[] = []
   const slotBindings = inferSlotBindings(document)
   document.slots = slotBindings
+  const sanitizedFieldValues = sanitizeFieldValues(input.fieldValues)
 
-  const assignedValues = buildLayerAssignments(slotBindings, input.fieldValues)
+  const assignedValues = buildLayerAssignments(slotBindings, sanitizedFieldValues)
 
   for (const binding of slotBindings) {
     const page = findLayerPage(document, binding.layerId)
@@ -412,7 +422,7 @@ export function applyCopyToKonvaTemplate(
       continue
     }
 
-    const nextValue = assignedValues[binding.fieldKey] ?? input.fieldValues[binding.fieldKey] ?? ''
+    const nextValue = assignedValues[binding.fieldKey] ?? sanitizedFieldValues[binding.fieldKey] ?? ''
     layer.text = nextValue
     layer.textStyle = {
       ...layer.textStyle,
@@ -445,7 +455,7 @@ export function applyCopyToKonvaTemplate(
   return {
     document,
     slotBindings,
-    fields: toReviewFields(input.fieldValues),
+    fields: toReviewFields(sanitizedFieldValues),
     warnings: Array.from(new Set(warnings)),
   }
 }

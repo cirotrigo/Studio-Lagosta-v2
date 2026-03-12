@@ -12,6 +12,7 @@ import {
 import useImage from 'use-image'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { resolveImageCrop } from '@/lib/editor/image-fit'
+import { serializeFontFamilyStack } from '@/lib/editor/font-utils'
 import { resolveTextRenderState } from '@/lib/editor/text-layout'
 import type { KonvaPage, Layer, KonvaShapeLayer } from '@/types/template'
 
@@ -177,7 +178,7 @@ export function LayerFactory({
         width={renderState.width}
         height={renderState.height}
         text={renderState.text}
-        fontFamily={layer.textStyle?.fontFamily ?? 'Inter'}
+        fontFamily={serializeFontFamilyStack(layer.textStyle?.fontFamily)}
         fontSize={renderState.fontSize}
         fontStyle={
           `${layer.textStyle?.fontWeight ?? ''} ${layer.textStyle?.fontStyle ?? ''}`.trim() || 'normal'

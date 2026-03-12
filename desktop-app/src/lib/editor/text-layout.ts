@@ -1,3 +1,4 @@
+import { serializeFontFamilyStack } from './font-utils'
 import type { KonvaPage, KonvaTextLayer, Layer, TextTransform } from '@/types/template'
 
 const MEASURE_CANVAS = typeof document !== 'undefined' ? document.createElement('canvas') : null
@@ -10,7 +11,7 @@ function getMeasureContext(): CanvasRenderingContext2D | null {
 export function buildTextFontString(fontSize: number, layer: KonvaTextLayer): string {
   const fontStyle = layer.textStyle?.fontStyle ?? 'normal'
   const fontWeight = layer.textStyle?.fontWeight ?? 'normal'
-  const fontFamily = layer.textStyle?.fontFamily ?? 'Inter'
+  const fontFamily = serializeFontFamilyStack(layer.textStyle?.fontFamily)
   return `${fontStyle} ${fontWeight} ${Math.max(1, Math.round(fontSize))}px ${fontFamily}`
 }
 
@@ -267,11 +268,15 @@ export function resolveTextRenderState(page: KonvaPage, layer: KonvaTextLayer) {
     }
   }
 
-  let resolvedFontSize = Math.min(maxFontSize, Math.max(minFontSize, layer.textStyle?.fontSize ?? maxFontSize))
+  const preferredFontSize = Math.min(
+    maxFontSize,
+    Math.max(minFontSize, layer.textStyle?.fontSize ?? maxFontSize),
+  )
+  let resolvedFontSize = preferredFontSize
   let wrappedLines = wrapText(context, transformedText, frame.width, resolvedFontSize, layer)
 
   if (behavior === 'autoScale') {
-    for (let fontSize = maxFontSize; fontSize >= minFontSize; fontSize -= 1) {
+    for (let fontSize = preferredFontSize; fontSize >= minFontSize; fontSize -= 1) {
       const nextLines = wrapText(context, transformedText, frame.width, fontSize, layer)
       const { overflowed } = clampLines(nextLines, fontSize)
       if (!overflowed) {
