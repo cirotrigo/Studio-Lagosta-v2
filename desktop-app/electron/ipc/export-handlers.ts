@@ -1,12 +1,7 @@
 import { ipcMain, app, dialog } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
-
-const KONVA_EXPORT_CHANNELS = {
-  EXPORT_SINGLE: 'konva:export:single',
-  EXPORT_BATCH: 'konva:export:batch',
-  EXPORT_PICK_DIRECTORY: 'konva:export:pick-directory',
-} as const
+import { KONVA_EXPORT_CHANNELS } from './export-channels'
 
 export type ArtFormat = 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
 

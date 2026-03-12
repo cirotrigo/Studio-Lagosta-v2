@@ -6,7 +6,7 @@ import {
   type SyncPushResult,
   type SyncStatus,
 } from './ipc/konva-ipc-types'
-import { KONVA_EXPORT_CHANNELS } from './ipc/export-handlers'
+import { KONVA_EXPORT_CHANNELS } from './ipc/export-channels'
 
 export interface ProcessedImageResult {
   buffer: ArrayBuffer
