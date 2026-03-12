@@ -139,18 +139,20 @@ export default function NewPostPage() {
   }
 
   const handlePostTypeChange = async (type: PostType) => {
+    const prevImages = processedImages
     setPostType(type)
 
     // If there are images, reprocess them for the new post type dimensions
-    // instead of clearing them
-    if (processedImages.length > 0) {
-      // Get the original files/blobs to reprocess
-      const filesToReprocess = processedImages.map((img) => {
-        // Create a new File from the original blob if available
-        return new File([img.blob], img.fileName, { type: img.blob.type })
+    if (prevImages.length > 0) {
+      // Get the original files to reprocess - use originalArrayBuffer for accurate resizing
+      const filesToReprocess = prevImages.map((img) => {
+        // Use original data if available, otherwise fall back to processed blob
+        const buffer = img.originalArrayBuffer || img.blob
+        return new File([buffer], img.fileName, { type: img.blob.type || 'image/jpeg' })
       })
 
-      // Clear and reprocess for new dimensions
+      // Clear old URLs before reprocessing
+      // processFiles handles the replacement logic (isReplacement check in hook)
       clearImages()
       await processFiles(filesToReprocess, type)
     }

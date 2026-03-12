@@ -876,6 +876,9 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             projectId={projectId}
             projectName={currentProject?.name}
             knowledgeCount={brandAssets ? 1 : 0}
+            onRefresh={() => {
+              queryClient.invalidateQueries({ queryKey: ['brand-assets', projectId] })
+            }}
           />
 
           <AdvancedOptionsDrawer>

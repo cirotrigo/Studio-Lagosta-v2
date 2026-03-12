@@ -25,8 +25,11 @@ export function useImageProcessor() {
 
     try {
       // Validate file count for carousel
+      // For non-carousel posts, 1 file is always allowed (it replaces existing)
+      // This handles the case when reprocessing for a different post type
       const maxImages = postType === 'CAROUSEL' ? MAX_CAROUSEL_IMAGES : 1
-      if (processedImages.length + files.length > maxImages) {
+      const isReplacement = postType !== 'CAROUSEL' && files.length === 1
+      if (!isReplacement && processedImages.length + files.length > maxImages) {
         throw new Error(
           postType === 'CAROUSEL'
             ? `Máximo de ${MAX_CAROUSEL_IMAGES} imagens permitido`

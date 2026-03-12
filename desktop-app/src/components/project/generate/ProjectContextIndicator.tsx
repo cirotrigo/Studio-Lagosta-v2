@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { Database, ChevronDown, ExternalLink, RefreshCw } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -26,13 +25,13 @@ export default function ProjectContextIndicator({
   isLoading,
   onRefresh,
 }: ProjectContextIndicatorProps) {
-  const navigate = useNavigate()
   const [isExpanded, setIsExpanded] = useState(false)
 
   const hasContext = knowledgeCount > 0
 
   const handleEditData = () => {
-    navigate(`/project/${projectId}/knowledge`)
+    // Open web app to edit project knowledge data
+    window.electronAPI.openExternal(`https://studio-lagosta-v2.vercel.app/projects/${projectId}/data`)
   }
 
   const handleUpdateBase = () => {
