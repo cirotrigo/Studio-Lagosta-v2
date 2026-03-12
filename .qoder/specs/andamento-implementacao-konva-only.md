@@ -515,6 +515,31 @@ Legenda status:
 - Commit: pendente
 - Próximo passo: QA manual de gradiente no editor e sync com web.
 
+### Feature Extra — Geração de Legenda com IA
+- Escopo fechado:
+  - Integrar geração de legenda com IA no fluxo de agendamento de posts.
+  - Usar base de conhecimento do projeto via RAG para enriquecer contexto.
+  - Implementar seletor de tom de voz com 6 opções.
+  - Adaptar limites de caracteres por tipo de post (Story mais curto).
+- Decisões:
+  - Rota `/api/tools/generate-caption` atualizada para receber `projectId` e integrar RAG.
+  - Retorno JSON em vez de streaming para compatibilidade com IPC Electron.
+  - Tons de voz: casual (default), divertido, inspiracional, explicativo, profissional, formal.
+  - Hashtags opcionais (desabilitadas por padrão em Stories).
+  - Badge "Contexto do projeto aplicado" exibido quando RAG encontra hits.
+- Arquivos alterados:
+  - `desktop-app/src/lib/constants.ts` (novos tons de voz)
+  - `desktop-app/src/components/post/CaptionEditor.tsx` (integração completa com API)
+  - `desktop-app/src/pages/NewPostPage.tsx` (passa projectId)
+  - `desktop-app/src/pages/EditPostPage.tsx` (passa projectId)
+  - `src/app/api/tools/generate-caption/route.ts` (integração RAG + projectId)
+  - `tsconfig.json` (exclui desktop-app do typecheck web)
+- Testes executados:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: pendente
+- Próximo passo: QA manual de geração de legenda com diferentes tons e contextos.
+
 ---
 
 ## Bloqueios / decisões pendentes
@@ -522,10 +547,11 @@ Legenda status:
 
 
 ## Observações de handoff (proxima conversa)
-- Estado atual: Fases 1 a 12 concluidas; desktop/electron validados.
-- Ultimo commit estavel: pendente commit fase 12
-- Proximas etapas:
+- Estado atual: Fases 1 a 12 concluídas + feature de geração de legenda com IA.
+- Ultimo commit estável: pendente commit da feature de legenda IA
+- Próximas etapas:
+  - QA manual de geração de legenda com diferentes tons e contextos.
   - QA manual de gradiente no editor local (criar, editar, render, export).
   - Testar sync de templates com gradiente entre local e web.
   - QA final de aceite do MVP.
-- MVP Konva-only completo com paridade de gradiente.
+- MVP Konva-only completo com paridade de gradiente e geração de legenda IA.

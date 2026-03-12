@@ -376,6 +376,37 @@ DoD:
 
 ---
 
+## Feature Extra — Geração de Legenda com IA (Agendamento)
+
+Arquivos:
+- `desktop-app/src/lib/constants.ts`
+- `desktop-app/src/components/post/CaptionEditor.tsx`
+- `desktop-app/src/pages/NewPostPage.tsx`
+- `desktop-app/src/pages/EditPostPage.tsx`
+- `src/app/api/tools/generate-caption/route.ts`
+
+Tarefas:
+- [x] Adicionar botão "Gerar com IA" no editor de legenda.
+- [x] Criar modal com campo de prompt e seletor de tom de voz.
+- [x] Implementar 6 tons de voz (casual, divertido, inspiracional, explicativo, profissional, formal).
+- [x] Integrar API de geração com base de conhecimento (RAG).
+- [x] Adaptar limites de caracteres por tipo de post (Story: 180, Feed/Carrossel: 400).
+- [x] Exibir badge "Contexto do projeto aplicado" quando RAG encontrar hits.
+- [x] Permitir toggle de hashtags (desabilitado por padrão em Stories).
+- [x] Loading visual durante geração.
+- [x] Tratamento de erro gracioso com fallback.
+- [x] Typecheck passa sem erros.
+
+DoD:
+- [x] Botão "Gerar com IA" aparece no editor de legenda.
+- [x] Modal abre com campo de prompt e seletor de tom.
+- [x] Tom selecionado influencia o estilo da legenda gerada.
+- [x] Base de conhecimento é consultada e contexto é injetado.
+- [x] Legenda gerada é curta e adequada ao tipo de post.
+- [x] Legenda é inserida no campo ao confirmar.
+
+---
+
 ## QA de Aceite Final
 - [ ] 1 prompt gera Story pronto para aprovação.
 - [ ] 1 prompt + referências gera fundo IA coerente.
@@ -384,6 +415,7 @@ DoD:
 - [ ] Reedição no Konva funciona em arte automatizada.
 - [ ] Aprovação salva local + web + histórico.
 - [ ] Feed e carrossel exportam no tamanho correto.
+- [ ] Geração de legenda com IA funciona com diferentes tons e contextos.
 
 ---
 

@@ -231,7 +231,7 @@ export default function EditPostPage() {
               value={caption}
               onChange={setCaption}
               maxLength={MAX_CAPTION_LENGTH}
-              projectName={currentProject.name}
+              projectId={currentProject.id}
               postType={post.postType as 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'}
             />
           </div>

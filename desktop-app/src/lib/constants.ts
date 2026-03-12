@@ -69,13 +69,25 @@ export const POST_STATUS_COLORS: Record<PostStatus, string> = {
 
 // Caption Tones
 export const CAPTION_TONES = {
-  professional: 'Profissional',
   casual: 'Casual',
   fun: 'Divertido',
   inspirational: 'Inspiracional',
+  explanatory: 'Explicativo',
+  professional: 'Profissional',
+  formal: 'Formal',
 } as const
 
 export type CaptionTone = keyof typeof CAPTION_TONES
+
+// Caption Tone Instructions (for LLM system prompt)
+export const CAPTION_TONE_INSTRUCTIONS: Record<CaptionTone, string> = {
+  casual: 'Use linguagem informal e próxima, como uma conversa entre amigos.',
+  fun: 'Use tom leve e divertido, com humor sutil. Emojis são bem-vindos.',
+  inspirational: 'Use tom motivador e positivo, inspirando o leitor.',
+  explanatory: 'Seja informativo e didático, explicando de forma clara.',
+  professional: 'Use linguagem corporativa e objetiva.',
+  formal: 'Use linguagem rebuscada e institucional.',
+}
 
 // Max file size for uploads (20MB)
 export const MAX_FILE_SIZE = 20 * 1024 * 1024

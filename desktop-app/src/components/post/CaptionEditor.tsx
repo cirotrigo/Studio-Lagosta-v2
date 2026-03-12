@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Sparkles, Loader2 } from 'lucide-react'
+import { Sparkles, Loader2, Check, AlertCircle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostType, CAPTION_TONES, CaptionTone } from '@/lib/constants'
 import { api } from '@/lib/api-client'
@@ -8,56 +8,84 @@ interface CaptionEditorProps {
   value: string
   onChange: (value: string) => void
   maxLength: number
-  projectName: string
+  projectId: number
   postType: PostType
+}
+
+interface GenerateCaptionResponse {
+  caption: string
+  hashtags?: string[]
+  knowledgeUsed: boolean
+  tone: string
 }
 
 export default function CaptionEditor({
   value,
   onChange,
   maxLength,
-  projectName,
+  projectId,
   postType,
 }: CaptionEditorProps) {
   const [showAIModal, setShowAIModal] = useState(false)
-  const [aiContext, setAiContext] = useState('')
+  const [aiPrompt, setAiPrompt] = useState('')
   const [aiTone, setAiTone] = useState<CaptionTone>('casual')
+  const [includeHashtags, setIncludeHashtags] = useState(postType !== 'STORY')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedCaption, setGeneratedCaption] = useState('')
+  const [generatedHashtags, setGeneratedHashtags] = useState<string[]>([])
+  const [knowledgeUsed, setKnowledgeUsed] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const handleOpenModal = () => {
+    setShowAIModal(true)
+    setError(null)
+    setIncludeHashtags(postType !== 'STORY')
+  }
+
+  const handleCloseModal = () => {
+    setShowAIModal(false)
+    setGeneratedCaption('')
+    setGeneratedHashtags([])
+    setError(null)
+  }
 
   const handleGenerate = async () => {
-    if (!aiContext.trim()) return
+    if (!aiPrompt.trim()) return
 
     setIsGenerating(true)
     setGeneratedCaption('')
+    setGeneratedHashtags([])
+    setKnowledgeUsed(false)
+    setError(null)
 
     try {
-      // Use streaming API
-      const stream = api.stream('/api/tools/generate-caption', {
-        context: aiContext.trim(),
+      const response = await api.post<GenerateCaptionResponse>('/api/tools/generate-caption', {
+        projectId,
+        prompt: aiPrompt.trim(),
         postType,
         tone: aiTone,
-        projectName,
+        includeHashtags,
       })
 
-      let fullText = ''
-      for await (const chunk of stream) {
-        fullText += chunk
-        setGeneratedCaption(fullText)
-      }
-    } catch (error) {
-      console.error('Error generating caption:', error)
-      setGeneratedCaption('Erro ao gerar legenda. Tente novamente.')
+      setGeneratedCaption(response.caption)
+      setGeneratedHashtags(response.hashtags || [])
+      setKnowledgeUsed(response.knowledgeUsed)
+    } catch (err) {
+      console.error('Error generating caption:', err)
+      setError(err instanceof Error ? err.message : 'Erro ao gerar legenda. Tente novamente.')
     } finally {
       setIsGenerating(false)
     }
   }
 
   const handleUseCaption = () => {
-    onChange(generatedCaption)
-    setShowAIModal(false)
-    setGeneratedCaption('')
-    setAiContext('')
+    let finalCaption = generatedCaption
+    if (generatedHashtags.length > 0) {
+      finalCaption += '\n\n' + generatedHashtags.join(' ')
+    }
+    onChange(finalCaption)
+    handleCloseModal()
+    setAiPrompt('')
   }
 
   return (
@@ -85,7 +113,7 @@ export default function CaptionEditor({
       {/* AI button */}
       <button
         type="button"
-        onClick={() => setShowAIModal(true)}
+        onClick={handleOpenModal}
         className={cn(
           'flex items-center gap-2 rounded-lg border border-border bg-input px-3 py-2 text-sm',
           'text-text-muted hover:border-primary/50 hover:text-primary',
@@ -104,15 +132,15 @@ export default function CaptionEditor({
               Gerar Legenda com IA
             </h3>
 
-            {/* Context input */}
+            {/* Prompt input */}
             <div className="mb-4 space-y-2">
               <label className="block text-sm font-medium text-text">
-                Contexto do post
+                O que você quer na legenda?
               </label>
               <textarea
-                value={aiContext}
-                onChange={(e) => setAiContext(e.target.value.slice(0, 500))}
-                placeholder="Ex: Novo prato do cardápio, promoção de fim de semana..."
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value.slice(0, 500))}
+                placeholder="Ex: Apresentar o menu da parrilla TERO e indicar o T-bone como sugestão"
                 rows={3}
                 className={cn(
                   'w-full resize-none rounded-lg border border-border bg-input p-3 text-text',
@@ -120,13 +148,13 @@ export default function CaptionEditor({
                   'focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20'
                 )}
               />
-              <p className="text-xs text-text-subtle">{aiContext.length}/500</p>
+              <p className="text-xs text-text-subtle">{aiPrompt.length}/500</p>
             </div>
 
             {/* Tone selector */}
             <div className="mb-4 space-y-2">
-              <label className="block text-sm font-medium text-text">Tom</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block text-sm font-medium text-text">Tom de voz</label>
+              <div className="grid grid-cols-3 gap-2">
                 {(Object.keys(CAPTION_TONES) as CaptionTone[]).map((tone) => (
                   <button
                     key={tone}
@@ -146,12 +174,56 @@ export default function CaptionEditor({
               </div>
             </div>
 
+            {/* Hashtags toggle */}
+            <div className="mb-4 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIncludeHashtags(!includeHashtags)}
+                className={cn(
+                  'flex h-5 w-9 items-center rounded-full p-0.5 transition-colors',
+                  includeHashtags ? 'bg-primary' : 'bg-border'
+                )}
+              >
+                <span
+                  className={cn(
+                    'h-4 w-4 rounded-full bg-white transition-transform',
+                    includeHashtags ? 'translate-x-4' : 'translate-x-0'
+                  )}
+                />
+              </button>
+              <span className="text-sm text-text-muted">Incluir hashtags (máx. 3)</span>
+            </div>
+
+            {/* Error message */}
+            {error && (
+              <div className="mb-4 flex items-center gap-2 rounded-lg border border-error/30 bg-error/10 p-3">
+                <AlertCircle size={16} className="text-error" />
+                <p className="text-sm text-error">{error}</p>
+              </div>
+            )}
+
             {/* Generated caption */}
             {generatedCaption && (
-              <div className="mb-4 rounded-lg border border-border bg-input p-3">
-                <p className="whitespace-pre-wrap text-sm text-text">
-                  {generatedCaption}
-                </p>
+              <div className="mb-4 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-text">Legenda gerada</span>
+                  {knowledgeUsed && (
+                    <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs text-primary">
+                      <Check size={12} />
+                      Contexto do projeto aplicado
+                    </span>
+                  )}
+                </div>
+                <div className="rounded-lg border border-border bg-input p-3">
+                  <p className="whitespace-pre-wrap text-sm text-text">
+                    {generatedCaption}
+                  </p>
+                  {generatedHashtags.length > 0 && (
+                    <p className="mt-2 text-sm text-primary">
+                      {generatedHashtags.join(' ')}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -159,10 +231,7 @@ export default function CaptionEditor({
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  setShowAIModal(false)
-                  setGeneratedCaption('')
-                }}
+                onClick={handleCloseModal}
                 className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:bg-input"
               >
                 Cancelar
@@ -173,7 +242,7 @@ export default function CaptionEditor({
                   <button
                     type="button"
                     onClick={handleGenerate}
-                    disabled={!aiContext.trim()}
+                    disabled={!aiPrompt.trim()}
                     className="flex-1 rounded-lg border border-border px-4 py-2 text-sm text-text-muted hover:bg-input disabled:opacity-50"
                   >
                     Regenerar
@@ -190,7 +259,7 @@ export default function CaptionEditor({
                 <button
                   type="button"
                   onClick={handleGenerate}
-                  disabled={!aiContext.trim() || isGenerating}
+                  disabled={!aiPrompt.trim() || isGenerating}
                   className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
                 >
                   {isGenerating ? (

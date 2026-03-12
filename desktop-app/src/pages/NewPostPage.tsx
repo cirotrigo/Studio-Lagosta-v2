@@ -334,7 +334,7 @@ export default function NewPostPage() {
                 value={caption}
                 onChange={setCaption}
                 maxLength={MAX_CAPTION_LENGTH}
-                projectName={currentProject.name}
+                projectId={currentProject.id}
                 postType={postType}
               />
             </div>
