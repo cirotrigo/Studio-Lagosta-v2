@@ -6,6 +6,7 @@ import {
   type SyncPushResult,
   type SyncStatus,
 } from './ipc/konva-ipc-types'
+import { KONVA_EXPORT_CHANNELS } from './ipc/export-handlers'
 
 export interface ProcessedImageResult {
   buffer: ArrayBuffer
@@ -141,6 +142,49 @@ export interface RenderHtmlSnapshotArgs {
   quality?: number
 }
 
+// Export types
+export interface ExportSinglePayload {
+  imageData: string
+  fileName: string
+  format: ArtFormat
+  mimeType: 'image/png' | 'image/jpeg'
+  quality?: number
+  outputDir?: string
+}
+
+export interface ExportSingleResult {
+  ok: true
+  filePath: string
+  fileName: string
+  sizeBytes: number
+}
+
+export interface ExportBatchPayload {
+  items: Array<{
+    imageData: string
+    fileName: string
+    format: ArtFormat
+    variationIndex?: number
+    pageIndex?: number
+  }>
+  mimeType: 'image/png' | 'image/jpeg'
+  quality?: number
+  outputDir?: string
+}
+
+export interface ExportBatchResult {
+  ok: true
+  files: Array<{
+    filePath: string
+    fileName: string
+    sizeBytes: number
+    variationIndex?: number
+    pageIndex?: number
+  }>
+  outputDir: string
+  totalBytes: number
+}
+
 export interface ElectronAPI {
   // Authentication
   login: () => Promise<LoginResult>
@@ -203,6 +247,11 @@ export interface ElectronAPI {
     push: (projectId: number) => Promise<SyncPushResult>
     status: (projectId: number) => Promise<SyncStatus>
   }
+
+  // Konva export contracts
+  exportSingle: (payload: ExportSinglePayload) => Promise<ExportSingleResult>
+  exportBatch: (payload: ExportBatchPayload) => Promise<ExportBatchResult>
+  pickExportDirectory: () => Promise<string | null>
 }
 
 const electronAPI: ElectronAPI = {
@@ -266,6 +315,13 @@ const electronAPI: ElectronAPI = {
     push: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_PUSH, projectId),
     status: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_STATUS, projectId),
   },
+
+  // Konva export contracts
+  exportSingle: (payload: ExportSinglePayload) =>
+    ipcRenderer.invoke(KONVA_EXPORT_CHANNELS.EXPORT_SINGLE, payload),
+  exportBatch: (payload: ExportBatchPayload) =>
+    ipcRenderer.invoke(KONVA_EXPORT_CHANNELS.EXPORT_BATCH, payload),
+  pickExportDirectory: () => ipcRenderer.invoke(KONVA_EXPORT_CHANNELS.EXPORT_PICK_DIRECTORY),
 }
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI)

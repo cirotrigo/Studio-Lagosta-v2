@@ -44,7 +44,7 @@ Exemplos:
 | 6.1 | Análise de imagem opcional | ✅ Concluído | feat(konva-fase-6.1): analise de imagem opcional no pipeline de copy | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 7 | Aprovação + Reedição | ✅ Concluído | feat(konva-fase-7): aprova variacoes e abre reedicao no editor | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 7.1 | Hotfix fontes na reedição | ✅ Concluído | fix(konva-fase-7.1): corrige fontes e fontSize na reediçao | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
-| 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
+| 8 | Export Single/Batch | ✅ Concluído | feat(konva-fase-8): export single e batch com naming padronizado | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
 | 10 | UX de simplicidade máxima | ⬜ Não iniciado | - | - | - |
 
@@ -337,11 +337,32 @@ Legenda status:
 
 ### Fase 8 — Export Single/Batch
 - Escopo fechado:
+  - export single de página/variação individual em PNG e JPEG com dimensões corretas por formato.
+  - export batch de variações e carrossel com ordem preservada.
+  - naming padronizado com padrão `{projectSlug}_{format}_{timestamp}` para single e `{projectSlug}_{format}_{timestamp}_v{index}_p{index}` para batch.
+  - fidelidade visual entre preview Konva e arquivo exportado (sem letterbox, sem corte indevido).
+  - botão "Exportar" no card de variação e "Exportar todas" no job.
 - Decisões:
+  - usar Sharp no main process para garantir dimensões exatas e qualidade de output.
+  - exportar PNG internamente no renderer e converter para JPEG no handler IPC quando solicitado.
+  - diretório padrão em `Pictures/LagostaTools` com opção de escolher outro via dialog.
+  - naming usa timestamp compacto (`YYYYMMDD-HHmmss`) para evitar colisões sem ser verboso.
+  - manter fallback para download simples quando export Electron não estiver disponível.
 - Arquivos alterados:
+  - `desktop-app/electron/ipc/export-handlers.ts` (novo)
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `desktop-app/src/lib/export/konva-exporter.ts` (novo)
+  - `desktop-app/src/lib/editor/export-file-name.ts`
+  - `desktop-app/src/components/project/generate/ResultImageCard.tsx`
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-8): export single e batch com naming padronizado`
+- Próximo passo: iniciar a Fase 9 para sync offline-first com push/pull incremental e detecção de conflitos.
 
 ### Fase 9 — Sync Offline-first
 - Escopo fechado:
@@ -367,4 +388,4 @@ Legenda status:
 ## Observações de handoff (próxima conversa)
 - Estado atual: Fases 1, 2, 3, 4, 4.1 e 5 concluídas; desktop/electron validados e web alterado validado via `tsc` isolado porque o `tsconfig` raiz hoje também puxa `desktop-app/**`.
 - Último commit estável: fix(konva-fase-7.1): corrige fontes e fontSize na reediçao
-- Próxima fase recomendada: Fase 8 — Export Single/Batch.
+- Próxima fase recomendada: Fase 9 — Export Single/Batch.

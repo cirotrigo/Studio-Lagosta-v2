@@ -1,12 +1,16 @@
-import { Clock3, Loader2, TriangleAlert } from 'lucide-react'
+import { useState } from 'react'
+import { Clock3, Download, Loader2, TriangleAlert } from 'lucide-react'
+import { toast } from 'sonner'
 import { ApprovalPanel } from '@/components/project/generate/ApprovalPanel'
+import { exportSingle } from '@/lib/export/konva-exporter'
 import { cn } from '@/lib/utils'
 import type { GenerationVariationJob } from '@/stores/generation.store'
-import type { ArtFormat } from '@/types/template'
+import type { ArtFormat, KonvaPage } from '@/types/template'
 
 interface ResultImageCardProps {
   format: ArtFormat
   variation: GenerationVariationJob
+  projectSlug?: string
   onDownload: () => void
   onSchedule: () => void
   onRemove: () => void
@@ -26,9 +30,16 @@ function getAspectClass(format: ArtFormat) {
   }
 }
 
+function getCurrentPage(variation: GenerationVariationJob): KonvaPage | null {
+  if (!variation.document) return null
+  const doc = variation.document
+  return doc.design.pages.find((p) => p.id === doc.design.currentPageId) ?? doc.design.pages[0] ?? null
+}
+
 export function ResultImageCard({
   format,
   variation,
+  projectSlug,
   onDownload,
   onSchedule,
   onRemove,
@@ -36,6 +47,40 @@ export function ResultImageCard({
   onOpenInEditor,
   onOpenArts,
 }: ResultImageCardProps) {
+  const [isExporting, setIsExporting] = useState(false)
+
+  async function handleExport() {
+    const page = getCurrentPage(variation)
+    if (!page) {
+      onDownload()
+      return
+    }
+
+    if (!window.electronAPI?.exportSingle) {
+      onDownload()
+      return
+    }
+
+    setIsExporting(true)
+    try {
+      const result = await exportSingle({
+        page,
+        format,
+        projectSlug: projectSlug || 'arte',
+        mimeType: 'image/jpeg',
+        quality: 92,
+      })
+
+      toast.success(`Exportado: ${result.fileName}`)
+    } catch (error) {
+      console.error('[Export Single] Falha:', error)
+      toast.error(error instanceof Error ? error.message : 'Falha ao exportar')
+      onDownload()
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
   return (
     <div className="overflow-hidden rounded-2xl border border-border bg-card">
       <div
@@ -173,11 +218,16 @@ export function ResultImageCard({
         <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
-            disabled={!variation.imageUrl}
-            onClick={onDownload}
-            className="rounded-lg border border-border bg-input/60 px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-input disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!variation.imageUrl || isExporting}
+            onClick={handleExport}
+            className="flex items-center justify-center gap-1.5 rounded-lg border border-border bg-input/60 px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-input disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Baixar
+            {isExporting ? (
+              <Loader2 size={12} className="animate-spin" />
+            ) : (
+              <Download size={12} />
+            )}
+            {isExporting ? 'Exportando' : 'Exportar'}
           </button>
           <button
             type="button"

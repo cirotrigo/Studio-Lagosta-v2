@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, ImagePlus, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
+import { Database, Download, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
@@ -14,6 +14,7 @@ import {
 import { buildKonvaExportFileName } from '@/lib/editor/export-file-name'
 import { cloneKonvaDocument } from '@/lib/editor/document'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
+import { exportVariations } from '@/lib/export/konva-exporter'
 import {
   preparePromptBatch,
   renderPromptVariation,
@@ -231,6 +232,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templatesError, setTemplatesError] = useState<string | null>(null)
+  const [exportingJobId, setExportingJobId] = useState<string | null>(null)
 
   const availableTemplates = useMemo(
     () => templates.filter((template) => template.format === format),
@@ -349,6 +351,45 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const handleOpenArts = useCallback(() => {
     navigate('/arts')
   }, [navigate])
+
+  const handleExportBatch = useCallback(async (job: GenerationJob) => {
+    const readyVariations = job.variations.filter(
+      (v) => v.status === 'ready' && v.document,
+    )
+
+    if (readyVariations.length === 0) {
+      toast.error('Nenhuma variacao pronta para exportar.')
+      return
+    }
+
+    if (!window.electronAPI?.exportBatch) {
+      toast.error('Export batch requer ambiente Electron.')
+      return
+    }
+
+    setExportingJobId(job.id)
+    try {
+      const projectSlug = currentProject?.name || 'arte'
+      const result = await exportVariations({
+        variations: readyVariations.map((v) => ({
+          document: v.document!,
+          variationIndex: v.index,
+        })),
+        projectSlug,
+        mimeType: 'image/jpeg',
+        quality: 92,
+      })
+
+      toast.success(
+        `${result.files.length} arquivo(s) exportado(s) para ${result.outputDir}`,
+      )
+    } catch (error) {
+      console.error('[Export Batch] Falha:', error)
+      toast.error(error instanceof Error ? error.message : 'Falha ao exportar batch')
+    } finally {
+      setExportingJobId(null)
+    }
+  }, [currentProject])
 
   const handleOpenVariationInEditor = useCallback((job: GenerationJob, variation: GenerationVariationJob) => {
     const draftPayload = createApprovedVariationEditorDraft(job, variation)
@@ -940,14 +981,29 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                     ) : null}
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => removeJob(job.id)}
-                    className="flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-muted transition-colors hover:border-error/40 hover:text-error"
-                  >
-                    <Trash2 size={14} />
-                    Remover job
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      disabled={exportingJobId === job.id || job.variations.every((v) => v.status !== 'ready')}
+                      onClick={() => void handleExportBatch(job)}
+                      className="flex h-10 items-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-3 text-sm font-medium text-primary transition-colors hover:bg-primary/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {exportingJobId === job.id ? (
+                        <Loader2 size={14} className="animate-spin" />
+                      ) : (
+                        <Download size={14} />
+                      )}
+                      {exportingJobId === job.id ? 'Exportando...' : 'Exportar todas'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeJob(job.id)}
+                      className="flex h-10 items-center gap-2 rounded-xl border border-border px-3 text-sm text-text-muted transition-colors hover:border-error/40 hover:text-error"
+                    >
+                      <Trash2 size={14} />
+                      Remover job
+                    </button>
+                  </div>
                 </div>
 
                 {job.conflicts.length > 0 ? (
@@ -1034,6 +1090,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                       key={variation.id}
                       format={job.params.format}
                       variation={variation}
+                      projectSlug={currentProject?.name}
                       onDownload={() => variation.imageUrl && handleDownload(variation.imageUrl)}
                       onSchedule={() => variation.imageUrl && handleSchedule(variation.imageUrl)}
                       onRemove={() => removeVariation(job.id, variation.id)}
