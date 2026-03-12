@@ -454,9 +454,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                     <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
                       Font family
                     </span>
-                    <input
-                      type="text"
-                      list="editor-font-family-options"
+                    <select
                       value={selectedTextLayer.textStyle?.fontFamily ?? ''}
                       onChange={(event) =>
                         updateTextLayer((layer) => ({
@@ -468,16 +466,18 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                         }))
                       }
                       className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
-                    />
-                    <datalist id="editor-font-family-options">
+                    >
+                      <option value="">Selecionar fonte...</option>
                       {availableFontFamilies.map((fontFamily) => (
-                        <option key={fontFamily} value={fontFamily} />
+                        <option key={fontFamily} value={fontFamily}>
+                          {fontFamily}
+                        </option>
                       ))}
-                    </datalist>
+                    </select>
                     <p className="text-[11px] text-text-subtle">
-                      {availableFontFamilies.length > 0
-                        ? 'Fontes do projeto e do documento disponiveis para selecao rapida.'
-                        : 'Digite a familia manualmente se a fonte nao estiver listada.'}
+                      {availableFontFamilies.length > 1
+                        ? `${availableFontFamilies.length} fontes do projeto disponiveis.`
+                        : 'Nenhuma fonte customizada encontrada.'}
                     </p>
                   </label>
                   <NumberField

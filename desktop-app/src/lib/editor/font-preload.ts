@@ -123,11 +123,15 @@ async function ensureGoogleFontStylesheet(fontFamily: string): Promise<boolean> 
 
 async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | null> {
   const fontFamily = normalizeEditorFontFamily(font.fontFamily)
+
   if (!fontFamily || !canUseDocumentFontsApi() || !document.fonts) {
     return null
   }
 
-  if (document.fonts.check(toFontCheckString(fontFamily))) {
+  // IMPORTANTE: Não confiar em document.fonts.check() para fontes com fileUrl
+  // O check() retorna true mesmo quando a fonte não está carregada (usa fallback)
+  // Para fontes com fileUrl, sempre verificamos o cache e tentamos carregar
+  if (!font.fileUrl && document.fonts.check(toFontCheckString(fontFamily))) {
     return null
   }
 
@@ -152,6 +156,18 @@ async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | 
     return `Fonte "${fontFamily}" indisponivel no draft. Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
   }
 
+  // Verificar se a fonte realmente existe no document.fonts (não apenas o check)
+  let fontExistsInDocumentFonts = false
+  document.fonts.forEach((f) => {
+    if (f.family === fontFamily) {
+      fontExistsInDocumentFonts = true
+    }
+  })
+
+  if (fontExistsInDocumentFonts) {
+    return null
+  }
+
   const cacheKey = buildFontLoadKey(font)
   const cached = fontLoadCache.get(cacheKey)
   if (cached) {
@@ -170,6 +186,7 @@ async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | 
       }
 
       const response = await window.electronAPI.downloadBlob(resolvedUrl)
+
       if (!response.ok || !response.buffer) {
         return `Falha ao baixar a fonte "${fontFamily}" (${resolvedUrl}). Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
       }
@@ -185,10 +202,6 @@ async function ensureEditorFontLoaded(font: EditorFontSource): Promise<string | 
       const loadedFontFace = await fontFace.load()
       document.fonts?.add(loadedFontFace)
       await document.fonts?.load(toFontCheckString(fontFamily))
-
-      if (!document.fonts?.check(toFontCheckString(fontFamily))) {
-        return `A fonte "${fontFamily}" nao ficou disponivel no editor. Fallback controlado aplicado com ${EDITOR_FONT_FALLBACK_FAMILY}.`
-      }
 
       return null
     } catch (_error) {
