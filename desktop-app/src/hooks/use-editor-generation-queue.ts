@@ -1,23 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { toast } from 'sonner'
 import { renderPageToDataUrl } from '@/lib/editor/render-page'
+import { buildKonvaExportFileName } from '@/lib/editor/export-file-name'
 import { ApiError } from '@/lib/api-client'
 import { useKonvaProjectCreativeExport } from '@/hooks/use-project-generations'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
-
-function slugifySegment(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-}
-
-function buildFileName(documentId: string, pageId: string, pageName: string) {
-  const safePageName = slugifySegment(pageName) || 'pagina'
-  return `konva-${safePageName}-${documentId.slice(0, 8)}-${pageId.slice(0, 6)}.jpg`
-}
 
 export function useEditorGenerationQueue(projectId: number | undefined) {
   const jobs = useEditorGenerationStore((state) => state.jobs)
@@ -51,7 +38,7 @@ export function useEditorGenerationQueue(projectId: number | undefined) {
       const response = await exportCreative.mutateAsync({
         format: job.format,
         dataUrl,
-        fileName: buildFileName(job.documentId, job.pageId, job.pageName),
+        fileName: buildKonvaExportFileName(job.documentId, job.pageId, job.pageName),
         pageId: job.pageId,
         pageName: job.pageName,
         documentId: job.documentId,

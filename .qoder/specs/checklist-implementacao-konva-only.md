@@ -210,13 +210,13 @@ Arquivos:
 - `desktop-app/src/pages/EditorPage.tsx`
 
 Tarefas:
-- [ ] Aprovação individual por variação.
-- [ ] Abrir variação no Konva para microajuste.
-- [ ] "Salvar como novo template" após edição.
-- [ ] Aprovação envia ao web/histórico corretamente.
+- [x] Aprovação individual por variação.
+- [x] Abrir variação no Konva para microajuste.
+- [x] "Salvar como novo template" após edição.
+- [x] Aprovação envia ao web/histórico corretamente.
 
 DoD:
-- [ ] Arte aprovada mantém fidelidade visual entre preview e arquivo final.
+- [x] Arte aprovada mantém fidelidade visual entre preview e arquivo final.
 
 ---
 

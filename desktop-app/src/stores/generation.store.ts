@@ -14,6 +14,7 @@ export interface ReviewField {
 
 export type GenerationVariationStatus = 'queued' | 'processing' | 'ready' | 'error'
 export type GenerationJobStatus = GenerationVariationStatus
+export type GenerationApprovalStatus = 'idle' | 'syncing' | 'approved' | 'error'
 
 export interface GenerationKnowledgeHit {
   entryId: string
@@ -41,6 +42,7 @@ export interface GenerationVariationJob {
   id: string
   index: number
   status: GenerationVariationStatus
+  approvalStatus: GenerationApprovalStatus
   imageUrl?: string
   document?: KonvaTemplateDocument
   fields: ReviewField[]
@@ -48,6 +50,10 @@ export interface GenerationVariationJob {
   templateId?: string
   templateName?: string
   background?: BackgroundGenerationInfo
+  approvedAt?: number
+  approvedGenerationId?: string
+  approvedResultUrl?: string | null
+  approvalError?: string
   error?: string
 }
 
@@ -115,6 +121,7 @@ function buildEmptyVariation(index: number): GenerationVariationJob {
     id: crypto.randomUUID(),
     index,
     status: 'queued',
+    approvalStatus: 'idle',
     fields: [],
     warnings: [],
   }

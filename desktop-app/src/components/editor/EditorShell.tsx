@@ -11,9 +11,15 @@ interface EditorShellProps {
   onSave: () => Promise<void> | void
   onOpenGenerateArt: () => void
   isSaving: boolean
+  saveLabel?: string
 }
 
-export function EditorShell({ onSave, onOpenGenerateArt, isSaving }: EditorShellProps) {
+export function EditorShell({
+  onSave,
+  onOpenGenerateArt,
+  isSaving,
+  saveLabel = 'Salvar template',
+}: EditorShellProps) {
   const document = useEditorStore((state) => state.document)
   const currentPage = useEditorStore(selectCurrentPageState)
   const zoom = useEditorStore((state) => state.zoom)
@@ -93,7 +99,7 @@ export function EditorShell({ onSave, onOpenGenerateArt, isSaving }: EditorShell
             disabled={isSaving || !document}
             className="h-9 shrink-0 rounded-xl bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
           >
-            {isSaving ? 'Salvando...' : 'Salvar template'}
+            {isSaving ? 'Salvando...' : saveLabel}
           </button>
           <button
             type="button"

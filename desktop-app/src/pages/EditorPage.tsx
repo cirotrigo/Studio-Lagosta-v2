@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { AlertTriangle, FilePlus2, Layers3 } from 'lucide-react'
+import { Link, useLocation } from 'react-router-dom'
+import { AlertTriangle, FilePlus2, Layers3, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
@@ -11,9 +11,11 @@ import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { usePagesStore } from '@/stores/pages.store'
+import type { EditorPageLocationState } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
 
 export default function EditorPage() {
+  const location = useLocation()
   const currentProject = useProjectStore((state) => state.currentProject)
   const document = useEditorStore((state) => state.document)
   const setDocument = useEditorStore((state) => state.setDocument)
@@ -29,17 +31,51 @@ export default function EditorPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+  const [approvedVariationDraft, setApprovedVariationDraft] = useState(
+    (() => {
+      const state = (location.state as EditorPageLocationState | null) ?? null
+      return state?.approvedVariationDraft ?? null
+    })(),
+  )
 
   useEditorGenerationQueue(currentProject?.id)
 
+  const incomingApprovedVariationDraft =
+    ((location.state as EditorPageLocationState | null) ?? null)?.approvedVariationDraft ?? null
+
+  const templateOptions = useMemo(() => {
+    const seen = new Set<string>()
+    const options: KonvaTemplateDocument[] = []
+
+    if (document && !seen.has(document.id)) {
+      seen.add(document.id)
+      options.push(document)
+    }
+
+    for (const template of templates) {
+      if (!seen.has(template.id)) {
+        seen.add(template.id)
+        options.push(template)
+      }
+    }
+
+    return options
+  }, [document, templates])
   const currentTemplateOption = useMemo(
-    () => templates.find((template) => template.id === selectedTemplateId) ?? null,
-    [selectedTemplateId, templates],
+    () => templateOptions.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, templateOptions],
   )
   const orderedPages = useMemo(
     () => (document ? sortPages(document.design.pages) : []),
     [document],
   )
+
+  useEffect(() => {
+    setApprovedVariationDraft(incomingApprovedVariationDraft)
+  }, [
+    incomingApprovedVariationDraft?.jobId,
+    incomingApprovedVariationDraft?.variationId,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -60,6 +96,16 @@ export default function EditorPage() {
         }
 
         setTemplates(list)
+
+        if (
+          incomingApprovedVariationDraft &&
+          incomingApprovedVariationDraft.document.projectId === currentProject.id
+        ) {
+          resetPagesState()
+          setDocument(incomingApprovedVariationDraft.document)
+          setSelectedTemplateId(incomingApprovedVariationDraft.document.id)
+          return
+        }
 
         if (!list.length) {
           const starter = createStarterDocument(currentProject)
@@ -94,7 +140,12 @@ export default function EditorPage() {
     return () => {
       cancelled = true
     }
-  }, [currentProject, setDocument, resetPagesState])
+  }, [
+    currentProject,
+    incomingApprovedVariationDraft,
+    resetPagesState,
+    setDocument,
+  ])
 
   const handleTemplateSelect = async (templateId: string) => {
     if (!currentProject) {
@@ -115,6 +166,7 @@ export default function EditorPage() {
       resetPagesState()
       setDocument(template)
       setSelectedTemplateId(template.id)
+      setApprovedVariationDraft(null)
     } catch (selectError) {
       console.error('[EditorPage] Falha ao abrir template:', selectError)
       toast.error('Não foi possível abrir o template selecionado.')
@@ -126,6 +178,7 @@ export default function EditorPage() {
     resetPagesState()
     setDocument(starter)
     setSelectedTemplateId(starter.id)
+    setApprovedVariationDraft(null)
     toast.success('Novo documento Konva criado localmente.')
   }
 
@@ -147,7 +200,12 @@ export default function EditorPage() {
       const list = await window.electronAPI.konvaTemplates.list(currentProject.id)
       setTemplates(list)
       setSelectedTemplateId(payload.id)
-      toast.success('Template salvo no storage local.')
+      setApprovedVariationDraft(null)
+      toast.success(
+        approvedVariationDraft
+          ? 'Novo template salvo a partir da variacao do modo rapido.'
+          : 'Template salvo no storage local.',
+      )
     } catch (saveError) {
       console.error('[EditorPage] Falha ao salvar template:', saveError)
       toast.error('Falha ao salvar template Konva.')
@@ -241,7 +299,7 @@ export default function EditorPage() {
               onChange={(event) => void handleTemplateSelect(event.target.value)}
               className="h-10 min-w-[260px] rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
             >
-              {(templates.length ? templates : document ? [document] : []).map((template) => (
+              {templateOptions.map((template) => (
                 <option key={template.id} value={template.id}>
                   {template.name}
                 </option>
@@ -263,6 +321,29 @@ export default function EditorPage() {
 
         {document ? (
           <>
+            {approvedVariationDraft ? (
+              <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <div className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                      <Sparkles size={16} />
+                      Variacao carregada do modo rapido
+                    </div>
+                    <p className="mt-2 text-sm text-text">
+                      Ajuste a arte e salve como novo template local quando terminar.
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Origem: {approvedVariationDraft.sourceTemplateName || 'Template Konva'} •
+                      variacao {approvedVariationDraft.variationIndex + 1}
+                    </p>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Prompt: "{approvedVariationDraft.prompt}"
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
             <div className="shrink-0 rounded-2xl border border-border bg-card/60 px-4 py-3">
               <label className="space-y-1">
                 <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Nome do documento</span>
@@ -279,6 +360,7 @@ export default function EditorPage() {
               onSave={handleSave}
               onOpenGenerateArt={() => setIsGenerateModalOpen(true)}
               isSaving={isSaving}
+              saveLabel={approvedVariationDraft ? 'Salvar como novo template' : 'Salvar template'}
             />
             <EditorGenerationQueue />
           </>

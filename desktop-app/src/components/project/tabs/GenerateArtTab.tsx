@@ -1,15 +1,19 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Clock3, Database, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
+import { Database, ImagePlus, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
+import { useKonvaProjectCreativeExport } from '@/hooks/use-project-generations'
 import { generateBackgroundAsset } from '@/lib/automation/background-service'
 import {
   formatImageContextConfidence,
   summarizeImageContextAnalysis,
 } from '@/lib/automation/image-context-analyzer'
+import { buildKonvaExportFileName } from '@/lib/editor/export-file-name'
+import { cloneKonvaDocument } from '@/lib/editor/document'
+import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import {
   preparePromptBatch,
   renderPromptVariation,
@@ -18,6 +22,7 @@ import {
 import { cn } from '@/lib/utils'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
+import { ResultImageCard } from '@/components/project/generate/ResultImageCard'
 import FormatSelector from '@/components/project/generate/FormatSelector'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import VariationSelector from '@/components/project/generate/VariationSelector'
@@ -33,7 +38,7 @@ import {
   type GenerationParams,
   type BackgroundGenerationInfo,
 } from '@/stores/generation.store'
-import type { ReeditDraft } from '@/types/art-automation'
+import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
 
 const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
@@ -58,17 +63,6 @@ interface ReferenceUploaderProps {
   onChange: (files: File[]) => void
 }
 
-function getAspectClass(format: ArtFormat) {
-  switch (format) {
-    case 'STORY':
-      return 'aspect-[9/16]'
-    case 'SQUARE':
-      return 'aspect-square'
-    default:
-      return 'aspect-[4/5]'
-  }
-}
-
 function deriveJobStatus(job: GenerationJob): GenerationJob['status'] {
   if (job.variations.some((variation) => variation.status === 'processing')) {
     return 'processing'
@@ -83,6 +77,66 @@ function deriveJobStatus(job: GenerationJob): GenerationJob['status'] {
   }
 
   return 'error'
+}
+
+function getVariationCurrentPage(document: KonvaTemplateDocument) {
+  return (
+    document.design.pages.find((page) => page.id === document.design.currentPageId) ??
+    document.design.pages[0] ??
+    null
+  )
+}
+
+function buildApprovedVariationPageName(variation: GenerationVariationJob) {
+  const pageName = variation.document ? getVariationCurrentPage(variation.document)?.name : null
+  const baseName = variation.templateName || pageName || 'Criativo'
+  return `${baseName} V${variation.index + 1}`
+}
+
+function createApprovedVariationEditorDraft(
+  job: GenerationJob,
+  variation: GenerationVariationJob,
+): ApprovedVariationEditorDraft | null {
+  if (!variation.document) {
+    return null
+  }
+
+  const sourceDocument = cloneKonvaDocument(variation.document)
+  const currentPage = getVariationCurrentPage(sourceDocument)
+  if (!currentPage) {
+    return null
+  }
+
+  const pageLayerIds = new Set(currentPage.layers.map((layer) => layer.id))
+  const now = new Date().toISOString()
+  const nextDocument: KonvaTemplateDocument = {
+    ...sourceDocument,
+    id: crypto.randomUUID(),
+    projectId: job.params.projectId,
+    source: 'local',
+    name: buildApprovedVariationPageName(variation),
+    design: {
+      pages: [cloneKonvaDocument(currentPage)],
+      currentPageId: currentPage.id,
+    },
+    slots: sourceDocument.slots.filter((slot) => pageLayerIds.has(slot.layerId)),
+    meta: {
+      ...sourceDocument.meta,
+      createdAt: now,
+      updatedAt: now,
+      isDirty: true,
+    },
+  }
+
+  return {
+    jobId: job.id,
+    variationId: variation.id,
+    variationIndex: variation.index,
+    prompt: job.params.text,
+    sourceTemplateId: variation.templateId,
+    sourceTemplateName: variation.templateName || sourceDocument.name,
+    document: nextDocument,
+  }
 }
 
 function ReferenceUploader({ files, onChange }: ReferenceUploaderProps) {
@@ -153,6 +207,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const queryClient = useQueryClient()
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(projectId)
+  const exportCreative = useKonvaProjectCreativeExport(projectId)
   const jobs = useGenerationStore((state) => state.jobs)
   const analyzeImageForContext = useGenerationStore((state) => state.analyzeImageForContext)
   const setAnalyzeImageForContext = useGenerationStore((state) => state.setAnalyzeImageForContext)
@@ -290,6 +345,86 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const handleSchedule = useCallback((imageUrl: string) => {
     navigate('/new-post', { state: { imageUrl } })
   }, [navigate])
+
+  const handleOpenArts = useCallback(() => {
+    navigate('/arts')
+  }, [navigate])
+
+  const handleOpenVariationInEditor = useCallback((job: GenerationJob, variation: GenerationVariationJob) => {
+    const draftPayload = createApprovedVariationEditorDraft(job, variation)
+    if (!draftPayload) {
+      toast.error('Nao foi possivel abrir a variacao no editor.')
+      return
+    }
+
+    navigate('/editor', {
+      state: {
+        approvedVariationDraft: draftPayload,
+      },
+    })
+  }, [navigate])
+
+  const handleApproveVariation = useCallback(async (job: GenerationJob, variation: GenerationVariationJob) => {
+    if (!variation.document || !variation.imageUrl) {
+      toast.error('A variacao ainda nao esta pronta para aprovacao.')
+      return
+    }
+
+    const currentPage = getVariationCurrentPage(variation.document)
+    if (!currentPage) {
+      toast.error('Documento Konva sem pagina valida para aprovacao.')
+      return
+    }
+
+    updateVariation(job.id, variation.id, {
+      approvalStatus: 'syncing',
+      approvalError: undefined,
+    })
+
+    try {
+      const dataUrl = await renderPageToDataUrl(currentPage, {
+        mimeType: 'image/jpeg',
+        quality: 0.94,
+        preferBlobDownload: true,
+      })
+
+      if (!dataUrl) {
+        throw new Error('Falha ao renderizar a variacao para aprovacao.')
+      }
+
+      const pageName = buildApprovedVariationPageName(variation)
+      const response = await exportCreative.mutateAsync({
+        format: job.params.format,
+        dataUrl,
+        fileName: buildKonvaExportFileName(variation.document.id, currentPage.id, pageName, `v${variation.index + 1}`),
+        pageId: currentPage.id,
+        pageName,
+        documentId: variation.document.id,
+        width: currentPage.width,
+        height: currentPage.height,
+      })
+
+      updateVariation(job.id, variation.id, {
+        approvalStatus: 'approved',
+        approvedAt: Date.now(),
+        approvedGenerationId: response.generation.id,
+        approvedResultUrl: response.generation.resultUrl,
+        approvalError: undefined,
+      })
+
+      toast.success(`Variacao ${variation.index + 1} aprovada e salva em Artes.`)
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Falha ao enviar a variacao aprovada para o projeto.'
+
+      updateVariation(job.id, variation.id, {
+        approvalStatus: 'error',
+        approvalError: message,
+      })
+
+      toast.error(message)
+    }
+  }, [exportCreative, updateVariation])
 
   const processQueuedJob = useCallback(async (jobId: string) => {
     const job = useGenerationStore.getState().jobs.find((entry) => entry.id === jobId)
@@ -895,13 +1030,16 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
                 <div className="grid gap-4 xl:grid-cols-2">
                   {job.variations.map((variation) => (
-                    <VariationCard
+                    <ResultImageCard
                       key={variation.id}
-                      job={job}
+                      format={job.params.format}
                       variation={variation}
-                      onDownload={handleDownload}
-                      onSchedule={handleSchedule}
+                      onDownload={() => variation.imageUrl && handleDownload(variation.imageUrl)}
+                      onSchedule={() => variation.imageUrl && handleSchedule(variation.imageUrl)}
                       onRemove={() => removeVariation(job.id, variation.id)}
+                      onApprove={() => void handleApproveVariation(job, variation)}
+                      onOpenInEditor={() => handleOpenVariationInEditor(job, variation)}
+                      onOpenArts={handleOpenArts}
                     />
                   ))}
                 </div>
@@ -909,160 +1047,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             ))}
           </div>
         )}
-      </div>
-    </div>
-  )
-}
-
-function VariationCard({
-  job,
-  variation,
-  onDownload,
-  onSchedule,
-  onRemove,
-}: {
-  job: GenerationJob
-  variation: GenerationVariationJob
-  onDownload: (imageUrl: string) => void
-  onSchedule: (imageUrl: string) => void
-  onRemove: () => void
-}) {
-  return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-card">
-      <div className={cn('relative overflow-hidden border-b border-border bg-[#0c111d]', getAspectClass(job.params.format))}>
-        {variation.status === 'ready' && variation.imageUrl ? (
-          <img
-            src={variation.imageUrl}
-            alt={`Variacao ${variation.index + 1}`}
-            className="h-full w-full object-contain"
-          />
-        ) : variation.status === 'error' ? (
-          <div className="flex h-full min-h-[220px] items-center justify-center p-6 text-center">
-            <div>
-              <TriangleAlert size={20} className="mx-auto text-error" />
-              <p className="mt-2 text-sm font-medium text-text">Falha nesta variacao</p>
-              <p className="mt-1 text-xs text-text-muted">{variation.error || 'Sem detalhes adicionais.'}</p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex h-full min-h-[220px] items-center justify-center">
-            <div className="text-center">
-              {variation.status === 'processing' ? (
-                <Loader2 size={20} className="mx-auto animate-spin text-primary" />
-              ) : (
-                <Clock3 size={20} className="mx-auto text-text-muted" />
-              )}
-              <p className="mt-2 text-xs uppercase tracking-[0.18em] text-text-subtle">
-                {variation.status === 'processing' ? 'Processando' : 'Na fila'}
-              </p>
-            </div>
-          </div>
-        )}
-
-        <div className="absolute left-3 top-3 rounded-full bg-black/70 px-2 py-1 text-[10px] font-medium text-white">
-          Variacao {variation.index + 1}
-        </div>
-      </div>
-
-      <div className="space-y-3 p-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={cn(
-              'rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-[0.16em]',
-              variation.status === 'ready'
-                ? 'bg-emerald-500/10 text-emerald-300'
-                : variation.status === 'error'
-                  ? 'bg-error/10 text-error'
-                  : variation.status === 'processing'
-                    ? 'bg-primary/10 text-primary'
-                    : 'bg-input text-text-muted',
-            )}
-          >
-            {variation.status}
-          </span>
-          {variation.templateName ? (
-            <span className="rounded-full bg-input px-2.5 py-1 text-[10px] font-medium text-text-muted">
-              {variation.templateName}
-            </span>
-          ) : null}
-        </div>
-
-        {variation.fields.length > 0 ? (
-          <div className="space-y-2">
-            {variation.fields.map((field) => (
-              <div key={`${variation.id}-${field.key}`} className="rounded-lg border border-border bg-background/30 px-3 py-2">
-                <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
-                  {field.label}
-                </p>
-                <p className="mt-1 text-sm text-text">{field.value}</p>
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        {variation.background ? (
-          <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
-              Fundo
-            </p>
-            <p className="mt-1 text-xs text-text-muted">
-              {variation.background.mode === 'photo'
-                ? 'Foto do projeto aplicada sem IA.'
-                : variation.background.fallbackUsed
-                  ? `Fallback automatico aplicado com ${variation.background.fallbackLabel || variation.background.modelLabel || 'modelo legado'}.`
-                  : `${variation.background.modelLabel || 'Nano Banana 2'} aplicado ao fundo.`}
-            </p>
-            {variation.background.mode === 'ai' && variation.background.persisted ? (
-              <p className="mt-1 text-[11px] text-text-subtle">
-                Salva em Geradas com IA
-                {variation.background.referenceCount
-                  ? ` • ${variation.background.referenceCount} referencia(s)`
-                  : ''}
-              </p>
-            ) : null}
-          </div>
-        ) : null}
-
-        {variation.warnings.length > 0 ? (
-          <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
-            <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
-              Observacoes
-            </p>
-            <div className="mt-1 space-y-1">
-              {variation.warnings.map((warning) => (
-                <p key={`${variation.id}-${warning}`} className="text-xs text-text-muted">
-                  {warning}
-                </p>
-              ))}
-            </div>
-          </div>
-        ) : null}
-
-        <div className="grid grid-cols-3 gap-2">
-          <button
-            type="button"
-            disabled={!variation.imageUrl}
-            onClick={() => variation.imageUrl && onDownload(variation.imageUrl)}
-            className="rounded-lg border border-border bg-input/60 px-3 py-2 text-xs font-medium text-text transition-colors hover:bg-input disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Baixar
-          </button>
-          <button
-            type="button"
-            disabled={!variation.imageUrl}
-            onClick={() => variation.imageUrl && onSchedule(variation.imageUrl)}
-            className="rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Agendar
-          </button>
-          <button
-            type="button"
-            onClick={onRemove}
-            className="rounded-lg border border-border bg-card px-3 py-2 text-xs font-medium text-text-muted transition-colors hover:border-error/40 hover:text-error"
-          >
-            Remover
-          </button>
-        </div>
       </div>
     </div>
   )

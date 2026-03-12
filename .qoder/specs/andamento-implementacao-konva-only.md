@@ -42,7 +42,7 @@ Exemplos:
 | 5 | Prompt-only + RAG | ✅ Concluído | feat(konva-fase-5): pipeline prompt-only com RAG e slot binding | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 6 | Fundo IA + Referências | ✅ Concluído | feat(konva-fase-6): integra fundo ia com nano banana 2 e fallback | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
 | 6.1 | Análise de imagem opcional | ✅ Concluído | feat(konva-fase-6.1): analise de imagem opcional no pipeline de copy | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 7 | Aprovação + Reedição | ⬜ Não iniciado | - | - | - |
+| 7 | Aprovação + Reedição | ✅ Concluído | feat(konva-fase-7): aprova variacoes e abre reedicao no editor | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 8 | Export Single/Batch | ⬜ Não iniciado | - | - | - |
 | 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
 | 10 | UX de simplicidade máxima | ⬜ Não iniciado | - | - | - |
@@ -278,11 +278,31 @@ Legenda status:
 
 ### Fase 7 — Aprovação + Reedição
 - Escopo fechado:
+  - adicionar aprovação individual por card no resultado do modo rápido, com persistência no projeto via export Konva para `Artes`.
+  - abrir qualquer variação pronta como draft isolado no `EditorPage`, preservando o estado visual da página aprovada sem sobrescrever o template de origem.
+  - expor no editor o fluxo explícito de `Salvar como novo template` para documentos vindos do modo rápido.
 - Decisões:
+  - aprovação reaproveita o mesmo renderer Konva do preview (`renderPageToDataUrl`) antes do envio ao backend, para reduzir divergência entre preview e arquivo final salvo.
+  - o draft aberto no editor é recortado para a página atual da variação e recebe `id` novo, evitando overwrite acidental do template base.
+  - a persistência aprovada usa a mesma rota de export dos criativos do editor, fazendo a variação aparecer em `Artes`/histórico web do projeto sem criar um pipeline paralelo.
+  - o resultado foi extraído para `ResultImageCard` + `ApprovalPanel` para separar estados de geração e aprovação do `GenerateArtTab`.
 - Arquivos alterados:
+  - `desktop-app/src/components/editor/EditorShell.tsx`
+  - `desktop-app/src/components/project/generate/ApprovalPanel.tsx`
+  - `desktop-app/src/components/project/generate/ResultImageCard.tsx`
+  - `desktop-app/src/components/project/tabs/GenerateArtTab.tsx`
+  - `desktop-app/src/hooks/use-editor-generation-queue.ts`
+  - `desktop-app/src/lib/editor/export-file-name.ts`
+  - `desktop-app/src/pages/EditorPage.tsx`
+  - `desktop-app/src/stores/generation.store.ts`
+  - `desktop-app/src/types/art-automation.ts`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-7): aprova variacoes e abre reedicao no editor`
+- Próximo passo: iniciar a Fase 8 para export single/batch padronizado e carrossel a partir dos documentos Konva já aprovados/revisados.
 
 ### Fase 8 — Export Single/Batch
 - Escopo fechado:
@@ -315,5 +335,5 @@ Legenda status:
 
 ## Observações de handoff (próxima conversa)
 - Estado atual: Fases 1, 2, 3, 4, 4.1 e 5 concluídas; desktop/electron validados e web alterado validado via `tsc` isolado porque o `tsconfig` raiz hoje também puxa `desktop-app/**`.
-- Último commit estável: feat(konva-fase-5): pipeline prompt-only com RAG e slot binding
-- Próxima fase recomendada: Fase 6 — Fundo IA + Referências.
+- Último commit estável: feat(konva-fase-7): aprova variacoes e abre reedicao no editor
+- Próxima fase recomendada: Fase 8 — Export Single/Batch.
