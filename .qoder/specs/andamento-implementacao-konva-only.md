@@ -45,7 +45,7 @@ Exemplos:
 | 7 | Aprovação + Reedição | ✅ Concluído | feat(konva-fase-7): aprova variacoes e abre reedicao no editor | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 7.1 | Hotfix fontes na reedição | ✅ Concluído | fix(konva-fase-7.1): corrige fontes e fontSize na reediçao | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 8 | Export Single/Batch | ✅ Concluído | feat(konva-fase-8): export single e batch com naming padronizado | `typecheck` + `typecheck:electron` ✅ | 2026-03-11 |
-| 9 | Sync Offline-first | ⬜ Não iniciado | - | - | - |
+| 9 | Sync Offline-first | ✅ Concluído | feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos | `typecheck` + `typecheck:electron` ✅ | 2026-03-12 |
 | 10 | UX de simplicidade máxima | ⬜ Não iniciado | - | - | - |
 
 Legenda status:
@@ -366,11 +366,41 @@ Legenda status:
 
 ### Fase 9 — Sync Offline-first
 - Escopo fechado:
+  - Push/pull incremental com fila local (`sync/queue.json`) e deduplicação por chave.
+  - Detecção de conflito via `updatedAt` + hash SHA256 do documento.
+  - Três estratégias de resolução: `keep-local`, `keep-remote`, `duplicate-local`.
+  - Indicador de status de sync na sidebar com estados visuais (idle/syncing/offline/conflict/error).
+  - Dialog de resolução de conflito com comparação de versões e opções claras.
+  - Hook `useSyncStatus` para polling automático e integração com eventos online/offline.
 - Decisões:
+  - Manter fila local em JSON no main process, nunca descartar por erro de auth.
+  - Hash calculado excluindo campos voláteis (`updatedAt`, `createdAt`, `syncedAt`, `isDirty`).
+  - Retry com refresh de sessão em `401` antes de falhar permanentemente.
+  - Sync automático via polling (30s online, 5s offline) + manual via botão.
+  - Conflitos armazenados em arquivo separado (`sync/conflicts.json`) com lifecycle próprio.
+  - Integração transparente: save template já enfileira operação de sync automaticamente.
 - Arquivos alterados:
+  - `desktop-app/electron/ipc/konva-ipc-types.ts`
+  - `desktop-app/electron/services/json-storage.ts`
+  - `desktop-app/electron/services/sync-service.ts` (novo)
+  - `desktop-app/electron/ipc/sync-handlers.ts`
+  - `desktop-app/electron/ipc/template-handlers.ts`
+  - `desktop-app/electron/main.ts`
+  - `desktop-app/electron/preload.ts`
+  - `desktop-app/src/types/template.ts`
+  - `desktop-app/src/stores/sync.store.ts` (novo)
+  - `desktop-app/src/hooks/use-sync-status.ts` (novo)
+  - `desktop-app/src/components/layout/SyncStatusIndicator.tsx` (novo)
+  - `desktop-app/src/components/layout/Sidebar.tsx`
+  - `desktop-app/src/components/sync/ConflictResolutionDialog.tsx` (novo)
+  - `desktop-app/src/App.tsx`
+  - `.qoder/specs/andamento-implementacao-konva-only.md`
+  - `.qoder/specs/checklist-implementacao-konva-only.md`
 - Testes executados:
-- Commit:
-- Próximo passo:
+  - `npm --prefix desktop-app run typecheck` ✅
+  - `npm --prefix desktop-app run typecheck:electron` ✅
+- Commit: `feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos`
+- Próximo passo: iniciar a Fase 10 com UX de simplicidade máxima (modo rápido padrão, presets, indicadores de contexto).
 
 ### Fase 10 — UX de simplicidade máxima
 - Escopo fechado:
@@ -385,7 +415,9 @@ Legenda status:
 ## Bloqueios / decisões pendentes
 - 
 
-## Observações de handoff (próxima conversa)
-- Estado atual: Fases 1, 2, 3, 4, 4.1 e 5 concluídas; desktop/electron validados e web alterado validado via `tsc` isolado porque o `tsconfig` raiz hoje também puxa `desktop-app/**`.
-- Último commit estável: fix(konva-fase-7.1): corrige fontes e fontSize na reediçao
-- Próxima fase recomendada: Fase 9 — Export Single/Batch.
+
+## Observações de handoff (proxima conversa)
+- Estado atual: Fases 1, 2, 3, 4, 4.1, 5, 6, 6.1, 7, 7.1, 8 e 9 concluidas; desktop/electron validados.
+- Ultimo commit estavel: feat(konva-fase-9): sync offline-first com push/pull e resolucao de conflitos
+- Proxima fase recomendada: Fase 10 — UX de simplicidade maxima.
+- Prompt preparado: aguardando criacao de `.qoder/specs/prompt-nova-conversa-konva-fase10.md`

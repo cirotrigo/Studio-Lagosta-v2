@@ -341,7 +341,14 @@ app.whenReady().then(async () => {
     const konvaStorage = new JsonStorageService()
     await konvaStorage.ensureBaseStructure()
     registerTemplateHandlers(konvaStorage)
-    registerSyncHandlers(konvaStorage)
+    const syncService = registerSyncHandlers(konvaStorage, {
+      webAppBaseUrl: WEB_APP_BASE_URL,
+      getFreshCookies,
+      refreshClerkSession,
+      executeRequest,
+      isAuthHtmlResponse,
+      extractErrorMessage,
+    })
     registerGenerationHandlers({
       webAppBaseUrl: WEB_APP_BASE_URL,
       getFreshCookies,

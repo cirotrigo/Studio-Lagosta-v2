@@ -1,13 +1,16 @@
-import { randomUUID } from 'crypto'
+import { createHash, randomUUID } from 'crypto'
 import { app } from 'electron'
 import { promises as fs } from 'fs'
 import path from 'path'
 
 import {
   KONVA_TEMPLATE_SCHEMA_VERSION,
+  type ConflictResolution,
   type KonvaTemplateDocument,
+  type SyncConflict,
   type SyncOperationType,
   type SyncQueueItem,
+  type SyncState,
   type SyncStatus,
 } from '../ipc/konva-ipc-types'
 
@@ -17,8 +20,16 @@ const TEMPLATES_FOLDER = 'templates'
 const SYNC_FOLDER = 'sync'
 const SYNC_QUEUE_FILE = 'queue.json'
 const SYNC_LAST_FILE = 'last-sync.json'
+const SYNC_CONFLICTS_FILE = 'conflicts.json'
+const SYNC_STATE_FILE = 'state.json'
 
 type LastSyncMap = Record<string, string>
+
+interface ProjectSyncState {
+  state: SyncState
+  lastError?: string
+  isOnline: boolean
+}
 
 export class JsonStorageService {
   private readonly rootDir: string
@@ -46,6 +57,34 @@ export class JsonStorageService {
     if (!(await this.exists(this.getLastSyncPath()))) {
       await this.writeJsonAtomic(this.getLastSyncPath(), {})
     }
+
+    if (!(await this.exists(this.getConflictsPath()))) {
+      await this.writeJsonAtomic(this.getConflictsPath(), [])
+    }
+
+    if (!(await this.exists(this.getSyncStatePath()))) {
+      await this.writeJsonAtomic(this.getSyncStatePath(), {})
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Hash calculation for conflict detection
+  // ─────────────────────────────────────────────────────────────────
+
+  calculateDocumentHash(doc: KonvaTemplateDocument): string {
+    // Normalize document by removing volatile fields
+    const normalized = {
+      ...doc,
+      meta: {
+        ...doc.meta,
+        updatedAt: undefined,
+        createdAt: undefined,
+        syncedAt: undefined,
+        isDirty: undefined,
+      },
+    }
+    const content = JSON.stringify(normalized, Object.keys(normalized).sort())
+    return createHash('sha256').update(content).digest('hex').slice(0, 16)
   }
 
   async listTemplates(projectId: number): Promise<KonvaTemplateDocument[]> {
@@ -122,6 +161,7 @@ export class JsonStorageService {
     entity: SyncQueueItem['entity']
     entityId: string
     op: SyncOperationType
+    payload?: KonvaTemplateDocument
   }): Promise<SyncQueueItem[]> {
     const queue = await this.readQueue()
     const now = new Date().toISOString()
@@ -130,6 +170,8 @@ export class JsonStorageService {
       this.buildQueueDedupeKey(item.projectId, item.entityId, item.op) === dedupeKey
     )
 
+    const localHash = input.payload ? this.calculateDocumentHash(input.payload) : ''
+
     const nextItem: SyncQueueItem = {
       operationId: randomUUID(),
       projectId: input.projectId,
@@ -137,12 +179,17 @@ export class JsonStorageService {
       entityId: input.entityId,
       op: input.op,
       queuedAt: now,
+      payload: input.payload,
+      localUpdatedAt: input.payload?.meta?.updatedAt ?? now,
+      localHash,
+      retryCount: 0,
     }
 
     if (existingIndex >= 0) {
       queue[existingIndex] = {
         ...queue[existingIndex],
         ...nextItem,
+        retryCount: queue[existingIndex].retryCount,
       }
     } else {
       queue.push(nextItem)
@@ -152,16 +199,119 @@ export class JsonStorageService {
     return queue
   }
 
+  async listSyncQueue(projectId?: number): Promise<SyncQueueItem[]> {
+    const queue = await this.readQueue()
+    if (projectId === undefined) return queue
+    return queue.filter((item) => item.projectId === projectId)
+  }
+
+  async removeSyncOperation(operationId: string): Promise<void> {
+    const queue = await this.readQueue()
+    const filtered = queue.filter((item) => item.operationId !== operationId)
+    await this.writeQueue(filtered)
+  }
+
+  async updateSyncOperation(operationId: string, update: Partial<SyncQueueItem>): Promise<void> {
+    const queue = await this.readQueue()
+    const index = queue.findIndex((item) => item.operationId === operationId)
+    if (index >= 0) {
+      queue[index] = { ...queue[index], ...update }
+      await this.writeQueue(queue)
+    }
+  }
+
+  async clearSyncQueue(projectId?: number): Promise<void> {
+    if (projectId === undefined) {
+      await this.writeQueue([])
+    } else {
+      const queue = await this.readQueue()
+      const filtered = queue.filter((item) => item.projectId !== projectId)
+      await this.writeQueue(filtered)
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Conflict management
+  // ─────────────────────────────────────────────────────────────────
+
+  async listConflicts(projectId?: number): Promise<SyncConflict[]> {
+    const conflicts = await this.readConflicts()
+    if (projectId === undefined) return conflicts
+    return conflicts.filter((c) => c.projectId === projectId)
+  }
+
+  async addConflict(conflict: SyncConflict): Promise<void> {
+    const conflicts = await this.readConflicts()
+    const existingIndex = conflicts.findIndex((c) => c.id === conflict.id)
+    if (existingIndex >= 0) {
+      conflicts[existingIndex] = conflict
+    } else {
+      conflicts.push(conflict)
+    }
+    await this.writeConflicts(conflicts)
+  }
+
+  async resolveConflict(conflictId: string, resolution: ConflictResolution): Promise<SyncConflict | null> {
+    const conflicts = await this.readConflicts()
+    const index = conflicts.findIndex((c) => c.id === conflictId)
+    if (index < 0) return null
+
+    const resolved: SyncConflict = {
+      ...conflicts[index],
+      resolution,
+      resolvedAt: new Date().toISOString(),
+    }
+    conflicts[index] = resolved
+    await this.writeConflicts(conflicts)
+    return resolved
+  }
+
+  async removeConflict(conflictId: string): Promise<void> {
+    const conflicts = await this.readConflicts()
+    const filtered = conflicts.filter((c) => c.id !== conflictId)
+    await this.writeConflicts(filtered)
+  }
+
+  async getConflictCount(projectId: number): Promise<number> {
+    const conflicts = await this.readConflicts()
+    return conflicts.filter((c) => c.projectId === projectId && !c.resolvedAt).length
+  }
+
+  // ─────────────────────────────────────────────────────────────────
+  // Sync state management
+  // ─────────────────────────────────────────────────────────────────
+
+  async setSyncState(projectId: number, state: SyncState, lastError?: string): Promise<void> {
+    const stateMap = await this.readSyncStateMap()
+    stateMap[String(projectId)] = { state, lastError, isOnline: state !== 'offline' }
+    await this.writeJsonAtomic(this.getSyncStatePath(), stateMap)
+  }
+
+  async getSyncState(projectId: number): Promise<ProjectSyncState> {
+    const stateMap = await this.readSyncStateMap()
+    return stateMap[String(projectId)] ?? { state: 'idle', isOnline: true }
+  }
+
   async getSyncStatus(projectId: number): Promise<SyncStatus> {
     const queue = await this.readQueue()
     const pending = queue.filter((item) => item.projectId === projectId).length
     const lastSyncAt = await this.getLastSync(projectId)
+    const conflictCount = await this.getConflictCount(projectId)
+    const { state, lastError } = await this.getSyncState(projectId)
+
+    // Determine effective state based on pending/conflicts
+    let effectiveState: SyncState = state
+    if (conflictCount > 0 && state === 'idle') {
+      effectiveState = 'conflict'
+    }
 
     return {
       projectId,
-      state: 'idle',
+      state: effectiveState,
       pending,
+      conflictCount,
       lastSyncAt,
+      lastError,
     }
   }
 
@@ -204,6 +354,14 @@ export class JsonStorageService {
     return path.join(this.getSyncDir(), SYNC_LAST_FILE)
   }
 
+  private getConflictsPath(): string {
+    return path.join(this.getSyncDir(), SYNC_CONFLICTS_FILE)
+  }
+
+  private getSyncStatePath(): string {
+    return path.join(this.getSyncDir(), SYNC_STATE_FILE)
+  }
+
   private async readQueue(): Promise<SyncQueueItem[]> {
     const raw = await this.readJsonFile<unknown>(this.getSyncQueuePath())
     if (!raw) return []
@@ -217,6 +375,25 @@ export class JsonStorageService {
 
   private async writeQueue(queue: SyncQueueItem[]): Promise<void> {
     await this.writeJsonAtomic(this.getSyncQueuePath(), queue)
+  }
+
+  private async readConflicts(): Promise<SyncConflict[]> {
+    const raw = await this.readJsonFile<unknown>(this.getConflictsPath())
+    if (!raw) return []
+    if (Array.isArray(raw)) {
+      return raw.filter((item): item is SyncConflict => this.isSyncConflict(item))
+    }
+    return []
+  }
+
+  private async writeConflicts(conflicts: SyncConflict[]): Promise<void> {
+    await this.writeJsonAtomic(this.getConflictsPath(), conflicts)
+  }
+
+  private async readSyncStateMap(): Promise<Record<string, ProjectSyncState>> {
+    const raw = await this.readJsonFile<unknown>(this.getSyncStatePath())
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
+    return raw as Record<string, ProjectSyncState>
   }
 
   private async readLastSyncMap(): Promise<LastSyncMap> {
@@ -276,6 +453,20 @@ export class JsonStorageService {
       typeof raw.entityId === 'string' &&
       typeof raw.op === 'string' &&
       typeof raw.queuedAt === 'string'
+    )
+  }
+
+  private isSyncConflict(value: unknown): value is SyncConflict {
+    if (!value || typeof value !== 'object') return false
+    const raw = value as Record<string, unknown>
+    return (
+      typeof raw.id === 'string' &&
+      typeof raw.projectId === 'number' &&
+      typeof raw.entityType === 'string' &&
+      typeof raw.entityId === 'string' &&
+      typeof raw.detectedAt === 'string' &&
+      raw.localVersion !== undefined &&
+      raw.remoteVersion !== undefined
     )
   }
 

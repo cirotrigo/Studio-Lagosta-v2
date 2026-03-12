@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import { Calendar, Settings, Image, MessageSquare, Palette, Wand2, Layers3, Images } from 'lucide-react'
 import ProjectSelector from './ProjectSelector'
+import SyncStatusIndicator from './SyncStatusIndicator'
 import { cn } from '@/lib/utils'
 
 const navItems = [
@@ -99,6 +100,11 @@ export default function Sidebar() {
 
       {/* Divider */}
       <div className="mx-3 my-2 h-px bg-border" />
+
+      {/* Sync Status */}
+      <div className="px-3 py-1">
+        <SyncStatusIndicator />
+      </div>
 
       {/* Settings */}
       <div className="px-3 py-2">

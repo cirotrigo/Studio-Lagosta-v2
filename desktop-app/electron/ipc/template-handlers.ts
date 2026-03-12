@@ -79,13 +79,25 @@ export function registerTemplateHandlers(storage: JsonStorageService): void {
       try {
         const projectId = parseProjectId(rawProjectId)
         const doc = parseTemplateDocument(rawDoc)
+
+        // Check if template exists to determine create vs update
+        const existing = await storage.getTemplate(projectId, doc.id)
+        const op = existing ? 'update' : 'create'
+
         const saved = await storage.saveTemplate(projectId, doc)
-        await storage.enqueueSyncOperation({
-          projectId,
-          entity: 'template',
-          entityId: saved.id,
-          op: 'update',
-        })
+
+        // Get the saved document with updated timestamps for proper hash calculation
+        const savedDoc = await storage.getTemplate(projectId, saved.id)
+        if (savedDoc) {
+          await storage.enqueueSyncOperation({
+            projectId,
+            entity: 'template',
+            entityId: saved.id,
+            op,
+            payload: savedDoc,
+          })
+        }
+
         return { ok: true, id: saved.id }
       } catch (error) {
         return handleTemplateError('save', error)

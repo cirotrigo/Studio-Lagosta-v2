@@ -276,15 +276,18 @@ Arquivos:
 - `desktop-app/src/stores/sync.store.ts`
 - `desktop-app/electron/services/sync-service.ts`
 - `desktop-app/electron/ipc/sync-handlers.ts`
+- `desktop-app/src/hooks/use-sync-status.ts`
+- `desktop-app/src/components/layout/SyncStatusIndicator.tsx`
+- `desktop-app/src/components/sync/ConflictResolutionDialog.tsx`
 
 Tarefas:
-- [ ] Push/pull incremental com fila local.
-- [ ] Detecção de conflito (`updatedAt + hash`).
-- [ ] Estratégias de resolução (`keep-local`, `keep-remote`, `duplicate-local`).
-- [ ] Indicadores de status no UI.
+- [x] Push/pull incremental com fila local.
+- [x] Detecção de conflito (`updatedAt + hash`).
+- [x] Estratégias de resolução (`keep-local`, `keep-remote`, `duplicate-local`).
+- [x] Indicadores de status no UI.
 
 DoD:
-- [ ] Offline edita normal; reconexão sincroniza sem perda.
+- [x] Offline edita normal; reconexão sincroniza sem perda.
 
 ---
 

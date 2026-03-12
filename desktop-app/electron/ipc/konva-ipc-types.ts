@@ -8,6 +8,11 @@ export const KONVA_CHANNELS = {
   SYNC_PULL: 'konva:sync:pull',
   SYNC_PUSH: 'konva:sync:push',
   SYNC_STATUS: 'konva:sync:status',
+  SYNC_FORCE: 'konva:sync:force',
+  SYNC_RESOLVE_CONFLICT: 'konva:sync:resolve-conflict',
+  SYNC_LIST_CONFLICTS: 'konva:sync:list-conflicts',
+  SYNC_QUEUE_LIST: 'konva:sync:queue-list',
+  SYNC_QUEUE_CLEAR: 'konva:sync:queue-clear',
 } as const
 
 export type KonvaChannel = (typeof KONVA_CHANNELS)[keyof typeof KONVA_CHANNELS]
@@ -87,6 +92,7 @@ export interface KonvaTemplateDocument {
     syncedAt?: string
     isDirty: boolean
     thumbnailPath?: string
+    remoteId?: number
   }
 }
 
@@ -99,8 +105,9 @@ export interface TemplateDeleteResult {
   ok: true
 }
 
-export type SyncEntity = 'template' | 'generation'
+export type SyncEntity = 'template' | 'generation' | 'settings'
 export type SyncOperationType = 'create' | 'update' | 'delete'
+export type ConflictResolution = 'keep-local' | 'keep-remote' | 'duplicate-local'
 
 export interface SyncQueueItem {
   operationId: string
@@ -109,6 +116,11 @@ export interface SyncQueueItem {
   entityId: string
   op: SyncOperationType
   queuedAt: string
+  payload?: KonvaTemplateDocument
+  localUpdatedAt: string
+  localHash: string
+  retryCount: number
+  lastError?: string
 }
 
 export type SyncState = 'idle' | 'offline' | 'syncing' | 'conflict' | 'error'
@@ -117,8 +129,29 @@ export interface SyncStatus {
   projectId: number
   state: SyncState
   pending: number
+  conflictCount: number
   lastSyncAt?: string
   lastError?: string
+}
+
+export interface SyncConflict {
+  id: string
+  projectId: number
+  entityType: SyncEntity
+  entityId: string
+  localVersion: {
+    updatedAt: string
+    hash: string
+    document: KonvaTemplateDocument
+  }
+  remoteVersion: {
+    updatedAt: string
+    hash: string
+    document: KonvaTemplateDocument
+  }
+  detectedAt: string
+  resolution?: ConflictResolution
+  resolvedAt?: string
 }
 
 export interface SyncPullResult {
@@ -126,6 +159,7 @@ export interface SyncPullResult {
   pulled: number
   conflicts: number
   updatedAt: string
+  error?: string
 }
 
 export interface SyncPushResult {
@@ -133,4 +167,34 @@ export interface SyncPushResult {
   pushed: number
   pending: number
   updatedAt: string
+  error?: string
+}
+
+export interface SyncForceResult {
+  ok: boolean
+  pulled: number
+  pushed: number
+  conflicts: number
+  error?: string
+}
+
+export interface SyncResolveConflictResult {
+  ok: boolean
+  resolution: ConflictResolution
+  entityId: string
+  error?: string
+}
+
+export interface RemoteTemplateMetadata {
+  id: number
+  localId?: string
+  name: string
+  updatedAt: string
+  hash?: string
+  designData?: unknown
+}
+
+export interface RemoteSyncResponse {
+  templates: RemoteTemplateMetadata[]
+  lastSync: string
 }

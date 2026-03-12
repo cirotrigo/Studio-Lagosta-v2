@@ -204,5 +204,6 @@ export interface KonvaTemplateDocument {
     syncedAt?: string
     isDirty: boolean
     thumbnailPath?: string
+    remoteId?: number
   }
 }

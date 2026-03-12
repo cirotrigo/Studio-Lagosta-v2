@@ -10,6 +10,7 @@ import ProjectPage from './pages/ProjectPage'
 import AppShell from './components/layout/AppShell'
 import EditorPage from './pages/EditorPage'
 import ArtsPage from './pages/ArtsPage'
+import ConflictResolutionDialog from './components/sync/ConflictResolutionDialog'
 
 function App() {
   const { isAuthenticated, isLoading, initialize } = useAuthStore()
@@ -62,6 +63,7 @@ function App() {
           <Route path="*" element={<Navigate to="/scheduler" replace />} />
         </Routes>
       </AppShell>
+      <ConflictResolutionDialog />
     </BrowserRouter>
   )
 }

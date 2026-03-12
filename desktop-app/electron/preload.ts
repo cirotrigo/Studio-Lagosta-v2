@@ -1,9 +1,14 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   KONVA_CHANNELS,
+  type ConflictResolution,
   type KonvaTemplateDocument,
+  type SyncConflict,
+  type SyncForceResult,
   type SyncPullResult,
   type SyncPushResult,
+  type SyncQueueItem,
+  type SyncResolveConflictResult,
   type SyncStatus,
 } from './ipc/konva-ipc-types'
 import { KONVA_EXPORT_CHANNELS } from './ipc/export-channels'
@@ -246,6 +251,11 @@ export interface ElectronAPI {
     pull: (projectId: number) => Promise<SyncPullResult>
     push: (projectId: number) => Promise<SyncPushResult>
     status: (projectId: number) => Promise<SyncStatus>
+    force: (projectId: number) => Promise<SyncForceResult>
+    resolveConflict: (conflictId: string, resolution: ConflictResolution) => Promise<SyncResolveConflictResult>
+    listConflicts: (projectId?: number) => Promise<SyncConflict[]>
+    listQueue: (projectId?: number) => Promise<SyncQueueItem[]>
+    clearQueue: (projectId?: number) => Promise<{ ok: boolean; error?: string }>
   }
 
   // Konva export contracts
@@ -314,6 +324,15 @@ const electronAPI: ElectronAPI = {
     pull: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_PULL, projectId),
     push: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_PUSH, projectId),
     status: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_STATUS, projectId),
+    force: (projectId: number) => ipcRenderer.invoke(KONVA_CHANNELS.SYNC_FORCE, projectId),
+    resolveConflict: (conflictId: string, resolution: ConflictResolution) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.SYNC_RESOLVE_CONFLICT, conflictId, resolution),
+    listConflicts: (projectId?: number) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.SYNC_LIST_CONFLICTS, projectId),
+    listQueue: (projectId?: number) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.SYNC_QUEUE_LIST, projectId),
+    clearQueue: (projectId?: number) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.SYNC_QUEUE_CLEAR, projectId),
   },
 
   // Konva export contracts
