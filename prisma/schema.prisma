@@ -183,6 +183,12 @@ model Project {
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)
   webhookReminderUrl          String?
+  brandStyleDescription       String?
+  brandVisualElements         Json?
+  brandReferenceUrls          String[]              @default([])
+  cuisineType                 String?
+  titleFontFamily             String?
+  bodyFontFamily              String?
   AIGeneratedImage            AIGeneratedImage[]
   BrandColor                  BrandColor[]
   chatConversations           ChatConversation[]

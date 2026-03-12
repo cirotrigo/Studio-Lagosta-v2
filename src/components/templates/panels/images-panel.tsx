@@ -30,6 +30,7 @@ export function ImagesPanelContent() {
   const [isApplyingMedia, setIsApplyingMedia] = React.useState(false)
   const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(undefined)
   const [isLoadingMore, setIsLoadingMore] = React.useState(false)
+  const initializedFolderKeyRef = React.useRef<string | null>(null)
 
   const { upload: uploadToBlob, isUploading } = useBlobUpload()
 
@@ -171,17 +172,19 @@ export function ImagesPanelContent() {
 
   // Load Drive files on mount
   React.useEffect(() => {
-    console.log('[ImagesPanel] Mount effect - driveFolderId:', driveFolderId, 'driveFolderName:', driveFolderName)
-    console.log('[ImagesPanel] Project data:', project)
-
     if (driveFolderId && driveFolderName) {
-      console.log('[ImagesPanel] Initializing with folder:', driveFolderId)
+      const folderKey = `${driveFolderId}:${driveFolderName}`
+      if (initializedFolderKeyRef.current === folderKey) {
+        return
+      }
+
+      initializedFolderKeyRef.current = folderKey
       setBreadcrumbs([{ id: driveFolderId, name: driveFolderName }])
-      loadDriveFiles(driveFolderId, driveFolderName)
+      void loadDriveFiles(driveFolderId, driveFolderName)
     } else {
-      console.warn('[ImagesPanel] No Drive folder configured for this project')
+      initializedFolderKeyRef.current = null
     }
-  }, [driveFolderId, driveFolderName, project, loadDriveFiles])
+  }, [driveFolderId, driveFolderName, loadDriveFiles])
 
   // File upload
   const uploadFile = React.useCallback(

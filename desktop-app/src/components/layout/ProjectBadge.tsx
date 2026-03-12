@@ -1,4 +1,4 @@
-import { cn, getInitials } from '@/lib/utils'
+import { cn, getInitials, getProjectLogo } from '@/lib/utils'
 import { Project } from '@/stores/project.store'
 
 interface ProjectBadgeProps {
@@ -32,9 +32,9 @@ export default function ProjectBadge({
         className
       )}
     >
-      {project.logoUrl ? (
+      {getProjectLogo(project) ? (
         <img
-          src={project.logoUrl}
+          src={getProjectLogo(project)!}
           alt={project.name}
           className={cn('rounded object-cover', avatarSizes[size])}
         />

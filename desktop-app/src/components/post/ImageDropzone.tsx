@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { Upload, X, Loader2 } from 'lucide-react'
+import { Upload, X, Loader2, Crop } from 'lucide-react'
 import { cn, formatFileSize } from '@/lib/utils'
 import { PostType, MAX_CAROUSEL_IMAGES, ACCEPTED_IMAGE_TYPES } from '@/lib/constants'
 import { ProcessedImage } from '@/hooks/use-image-processor'
@@ -10,6 +10,7 @@ interface ImageDropzoneProps {
   isProcessing: boolean
   processedImages: ProcessedImage[]
   onRemoveImage: (index: number) => void
+  onEditCrop?: (index: number) => void
 }
 
 export default function ImageDropzone({
@@ -18,11 +19,13 @@ export default function ImageDropzone({
   isProcessing,
   processedImages,
   onRemoveImage,
+  onEditCrop,
 }: ImageDropzoneProps) {
   const [isDragging, setIsDragging] = useState(false)
 
   const maxImages = postType === 'CAROUSEL' ? MAX_CAROUSEL_IMAGES : 1
   const canAddMore = processedImages.length < maxImages
+  const aspectClass = (postType === 'STORY' || postType === 'REEL') ? 'aspect-[9/16]' : 'aspect-[4/5]'
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -78,19 +81,30 @@ export default function ImageDropzone({
           {processedImages.map((image, index) => (
             <div
               key={index}
-              className="group relative aspect-[4/5] overflow-hidden rounded-lg bg-input"
+              className={cn('group relative overflow-hidden rounded-lg bg-input', aspectClass)}
             >
               <img
                 src={image.previewUrl}
                 alt=""
                 className="h-full w-full object-cover"
               />
+              {/* Remove button */}
               <button
                 onClick={() => onRemoveImage(index)}
                 className="absolute right-1 top-1 rounded-full bg-black/50 p-1 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100"
               >
                 <X size={14} />
               </button>
+              {/* Crop button */}
+              {onEditCrop && (
+                <button
+                  onClick={() => onEditCrop(index)}
+                  className="absolute left-1 top-1 rounded-full bg-black/50 p-1 text-white opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+                  title="Ajustar crop"
+                >
+                  <Crop size={14} />
+                </button>
+              )}
               <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/50 to-transparent p-2">
                 <p className="text-xs text-white">
                   {image.width}×{image.height} • {formatFileSize(image.sizeBytes)}

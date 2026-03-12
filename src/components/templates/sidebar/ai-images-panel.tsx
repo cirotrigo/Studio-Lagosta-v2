@@ -1696,12 +1696,19 @@ function ImageCard({
         rel="noopener noreferrer"
         className="block cursor-zoom-in"
       >
-        <div className="aspect-square relative">
+        <div
+          className="relative bg-black/50"
+          style={{
+            aspectRatio: image.aspectRatio
+              ? image.aspectRatio.replace(':', ' / ')
+              : (image.width && image.height ? `${image.width} / ${image.height}` : '4 / 5'),
+          }}
+        >
           <Image
             src={image.thumbnailUrl || image.fileUrl}
             alt={image.name}
             fill
-            className="object-cover"
+            className="object-contain"
           />
 
           {/* Overlay no hover */}

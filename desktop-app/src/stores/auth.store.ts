@@ -31,7 +31,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (storedCookies) {
         // Validate cookies by making a test request
         set({ cookies: storedCookies })
-        const isValid = await get().validateCookies()
+        let isValid = await get().validateCookies()
+        if (!isValid) {
+          // Avoid false negatives right after session refresh/rotation
+          await new Promise((resolve) => setTimeout(resolve, 700))
+          isValid = await get().validateCookies()
+        }
 
         if (isValid) {
           set({ isAuthenticated: true, isLoading: false })
@@ -70,7 +75,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const storedCookies = await window.electronAPI.getCookies()
       set({ cookies: storedCookies })
 
-      const isValid = await get().validateCookies()
+      let isValid = await get().validateCookies()
+      if (!isValid) {
+        // Clerk cookies can settle asynchronously right after login
+        await new Promise((resolve) => setTimeout(resolve, 900))
+        isValid = await get().validateCookies()
+      }
 
       if (!isValid) {
         set({

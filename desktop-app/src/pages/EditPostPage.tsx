@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2, GripVertical, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useProjectStore } from '@/stores/project.store'
@@ -22,6 +22,8 @@ export default function EditPostPage() {
   const [scheduledDatetime, setScheduledDatetime] = useState<string>('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [initialized, setInitialized] = useState(false)
+  const [mediaUrls, setMediaUrls] = useState<string[]>([])
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
 
   // Initialize form with post data
   useEffect(() => {
@@ -31,9 +33,29 @@ export default function EditPostPage() {
       setScheduledDatetime(
         post.scheduledDatetime ? formatDateTimeLocal(post.scheduledDatetime) : ''
       )
+      setMediaUrls(post.mediaUrls || [])
       setInitialized(true)
     }
   }, [post, initialized])
+
+  // Handle reordering for carousel
+  const handleReorder = (dragIndex: number, dropIndex: number) => {
+    if (dragIndex === dropIndex) return
+    const newUrls = [...mediaUrls]
+    const [removed] = newUrls.splice(dragIndex, 1)
+    newUrls.splice(dropIndex, 0, removed)
+    setMediaUrls(newUrls)
+  }
+
+  const handleMoveUp = (index: number) => {
+    if (index === 0) return
+    handleReorder(index, index - 1)
+  }
+
+  const handleMoveDown = (index: number) => {
+    if (index === mediaUrls.length - 1) return
+    handleReorder(index, index + 1)
+  }
 
   if (!currentProject) {
     return (
@@ -94,6 +116,7 @@ export default function EditPostPage() {
       await updatePost.mutateAsync({
         caption: caption.trim(),
         scheduledDatetime: scheduledDatetimeISO,
+        mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
       })
 
       toast.success('Post atualizado com sucesso!')
@@ -127,8 +150,67 @@ export default function EditPostPage() {
       {/* Content */}
       <div className="flex-1 overflow-auto p-6">
         <div className="mx-auto max-w-2xl space-y-6">
-          {/* Current image (read-only) */}
-          {post.mediaUrls[0] && (
+          {/* Current images - with reorder for carousel */}
+          {post.postType === 'CAROUSEL' && mediaUrls.length > 0 ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-medium text-text">
+                  Imagens do carrossel
+                </label>
+                <span className="text-xs text-text-muted">
+                  Arraste para reordenar
+                </span>
+              </div>
+              <div className="space-y-2">
+                {mediaUrls.map((url, index) => (
+                  <div
+                    key={`${url}-${index}`}
+                    draggable
+                    onDragStart={() => setDraggedIndex(index)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault()
+                      if (draggedIndex !== null && draggedIndex !== index) {
+                        handleReorder(draggedIndex, index)
+                        setDraggedIndex(null)
+                      }
+                    }}
+                    className={cn(
+                      'group flex items-center gap-3 rounded-lg border p-2 transition-all',
+                      'cursor-move hover:border-primary/50 hover:bg-input'
+                    )}
+                  >
+                    <div className="flex flex-col items-center gap-1">
+                      <GripVertical size={16} className="text-text-muted" />
+                      <span className="text-xs font-medium text-text-muted">{index + 1}</span>
+                    </div>
+                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-input">
+                      <img src={url} alt="" className="h-full w-full object-cover" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-text truncate">Imagem {index + 1}</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleMoveUp(index)}
+                        disabled={index === 0}
+                        className="rounded p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+                      >
+                        <ChevronLeft size={16} className="rotate-90" />
+                      </button>
+                      <button
+                        onClick={() => handleMoveDown(index)}
+                        disabled={index === mediaUrls.length - 1}
+                        className="rounded p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+                      >
+                        <ChevronRight size={16} className="rotate-90" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : post.mediaUrls[0] && (
             <div className="space-y-2">
               <label className="block text-sm font-medium text-text">Imagem atual</label>
               <div className="overflow-hidden rounded-lg border border-border">

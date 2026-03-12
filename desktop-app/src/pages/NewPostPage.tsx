@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ArrowLeft, Loader2 } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { useProjectStore } from '@/stores/project.store'
 import { useCreatePost } from '@/hooks/use-posts'
@@ -8,27 +8,114 @@ import { useImageProcessor } from '@/hooks/use-image-processor'
 import { cn } from '@/lib/utils'
 import { PostType, POST_TYPE_LABELS, ScheduleType, MAX_CAPTION_LENGTH } from '@/lib/constants'
 import PostTypeSelector from '@/components/post/PostTypeSelector'
-import ImageDropzone from '@/components/post/ImageDropzone'
+import UploadTabs from '@/components/post/upload-tabs/UploadTabs'
 import ImagePreview from '@/components/post/ImagePreview'
 import CaptionEditor from '@/components/post/CaptionEditor'
 import SchedulePicker from '@/components/post/SchedulePicker'
 import ConfirmModal from '@/components/post/ConfirmModal'
 import ProjectBadge from '@/components/layout/ProjectBadge'
+import CarouselReorder from '@/components/post/CarouselReorder'
+import CropEditor from '@/components/post/CropEditor'
+
+interface NewPostLocationState {
+  imageUrl?: string
+  postType?: PostType
+}
+
+function inferFileExtension(contentType: string | undefined, sourceUrl: string) {
+  const byType: Record<string, string> = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+  }
+
+  if (contentType && byType[contentType]) {
+    return byType[contentType]
+  }
+
+  const fromUrl = sourceUrl.split('/').pop()?.split('?')[0]?.split('.').pop()?.toLowerCase()
+  if (fromUrl && ['jpg', 'jpeg', 'png', 'webp'].includes(fromUrl)) {
+    return fromUrl === 'jpeg' ? 'jpg' : fromUrl
+  }
+
+  return 'jpg'
+}
 
 export default function NewPostPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { currentProject } = useProjectStore()
   const createPost = useCreatePost(currentProject?.id)
-  const { processedImages, isProcessing, processFiles, removeImage, clearImages } =
+  const { processedImages, isProcessing, processFiles, removeImage, clearImages, reorderImages, reprocessImage } =
     useImageProcessor()
+  const prefilledState = (location.state as NewPostLocationState | null) ?? null
+  const consumedPrefillKeyRef = useRef<string | null>(null)
 
   // Form state
-  const [postType, setPostType] = useState<PostType>('POST')
+  const [postType, setPostType] = useState<PostType>(prefilledState?.postType ?? 'POST')
   const [caption, setCaption] = useState('')
   const [scheduleType, setScheduleType] = useState<ScheduleType>('SCHEDULED')
   const [scheduledDatetime, setScheduledDatetime] = useState<string>('')
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [cropEditingIndex, setCropEditingIndex] = useState<number | null>(null)
+
+  useEffect(() => {
+    const imageUrl = prefilledState?.imageUrl
+    const targetPostType = prefilledState?.postType ?? 'POST'
+    if (!imageUrl) {
+      return
+    }
+
+    const prefillKey = `${targetPostType}:${imageUrl}`
+    if (consumedPrefillKeyRef.current === prefillKey) {
+      return
+    }
+
+    consumedPrefillKeyRef.current = prefillKey
+
+    let cancelled = false
+
+    const loadPrefilledImage = async () => {
+      try {
+        setPostType(targetPostType)
+        clearImages()
+
+        const response = await window.electronAPI.downloadBlob(imageUrl)
+        if (!response.ok || !response.buffer) {
+          throw new Error(response.error || 'Falha ao carregar a arte selecionada.')
+        }
+
+        const contentType = response.contentType || 'image/jpeg'
+        const extension = inferFileExtension(contentType, imageUrl)
+        const file = new File([response.buffer], `criativo-story.${extension}`, {
+          type: contentType,
+        })
+
+        await processFiles([file], targetPostType)
+
+        if (cancelled) {
+          return
+        }
+
+        navigate(location.pathname, { replace: true, state: null })
+        toast.success('Arte carregada no agendador como story.')
+      } catch (error) {
+        consumedPrefillKeyRef.current = null
+        if (!cancelled) {
+          toast.error(
+            error instanceof Error ? error.message : 'Erro ao carregar a arte selecionada.',
+          )
+        }
+      }
+    }
+
+    void loadPrefilledImage()
+
+    return () => {
+      cancelled = true
+    }
+  }, [clearImages, location.pathname, navigate, prefilledState, processFiles])
 
   // No project selected
   if (!currentProject) {
@@ -65,6 +152,26 @@ export default function NewPostPage() {
 
   const handleRemoveImage = (index: number) => {
     removeImage(index)
+  }
+
+  const handleReorderImages = (newImages: typeof processedImages) => {
+    reorderImages(newImages)
+  }
+
+  const handleEditCrop = (index: number) => {
+    setCropEditingIndex(index)
+  }
+
+  const handleCropConfirm = async (cropRegion: { left: number; top: number; width: number; height: number }) => {
+    if (cropEditingIndex === null) return
+    
+    try {
+      await reprocessImage(cropEditingIndex, postType, cropRegion)
+      setCropEditingIndex(null)
+      toast.success('Crop aplicado com sucesso')
+    } catch (error) {
+      toast.error('Erro ao aplicar crop')
+    }
   }
 
   const canSubmit = () => {
@@ -182,14 +289,26 @@ export default function NewPostPage() {
               <label className="block text-sm font-medium text-text">
                 {postType === 'CAROUSEL' ? 'Imagens (até 10)' : 'Imagem'}
               </label>
-              <ImageDropzone
+              <UploadTabs
                 postType={postType}
-                onFilesSelected={handleFilesSelected}
-                isProcessing={isProcessing}
                 processedImages={processedImages}
+                isProcessing={isProcessing}
+                onFilesSelected={handleFilesSelected}
                 onRemoveImage={handleRemoveImage}
+                onEditCrop={handleEditCrop}
+                projectId={currentProject.id}
               />
             </div>
+
+            {/* Carousel Reorder - only for carousel with multiple images */}
+            {postType === 'CAROUSEL' && processedImages.length > 1 && (
+              <CarouselReorder
+                images={processedImages}
+                onReorder={handleReorderImages}
+                onRemove={handleRemoveImage}
+                onEditCrop={handleEditCrop}
+              />
+            )}
 
             {/* Caption */}
             <div className="space-y-2">
@@ -272,6 +391,17 @@ export default function NewPostPage() {
         caption={caption}
         scheduleType={scheduleType}
         scheduledDatetime={scheduledDatetime}
+      />
+
+      {/* Crop Editor Modal */}
+      <CropEditor
+        isOpen={cropEditingIndex !== null}
+        imageUrl={cropEditingIndex !== null ? (processedImages[cropEditingIndex]?.originalPreviewUrl || processedImages[cropEditingIndex]?.previewUrl) : ''}
+        originalWidth={cropEditingIndex !== null ? processedImages[cropEditingIndex]?.originalWidth : 0}
+        originalHeight={cropEditingIndex !== null ? processedImages[cropEditingIndex]?.originalHeight : 0}
+        postType={postType}
+        onConfirm={handleCropConfirm}
+        onCancel={() => setCropEditingIndex(null)}
       />
     </div>
   )

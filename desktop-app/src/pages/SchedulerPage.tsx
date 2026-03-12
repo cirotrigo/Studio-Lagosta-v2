@@ -3,7 +3,7 @@ import { Plus, Calendar, List, RefreshCw } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useProjectStore } from '@/stores/project.store'
 import { usePosts } from '@/hooks/use-posts'
-import { cn } from '@/lib/utils'
+import { cn, getProjectLogo } from '@/lib/utils'
 import PostCard from '@/components/post/PostCard'
 import CalendarView from '@/components/post/CalendarView'
 
@@ -38,9 +38,9 @@ export default function SchedulerPage() {
         <div className="flex items-center gap-3">
           {/* Project Logo */}
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
-            {currentProject.logoUrl ? (
+            {getProjectLogo(currentProject) ? (
               <img
-                src={currentProject.logoUrl}
+                src={getProjectLogo(currentProject)!}
                 alt={currentProject.name}
                 className="h-full w-full object-cover"
               />

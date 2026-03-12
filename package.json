@@ -34,6 +34,7 @@
     "db:optimize-logs": "npx tsx scripts/optimize-logs.ts",
     "db:debug-org": "npx tsx scripts/debug-org-access.ts",
     "deploy:check": "bash scripts/pre-deploy-check.sh",
+    "deploy:smoke-art": "bash scripts/smoke-art-automation.sh",
     "deploy:vercel": "npm run deploy:check && vercel --prod",
     "check:drive": "npx tsx scripts/check-drive.ts",
     "validate-instagram-ids": "npx tsx src/scripts/validate-instagram-ids.ts",
@@ -94,12 +95,15 @@
     "form-data": "^4.0.5",
     "framer-motion": "12.23.12",
     "googleapis": "^161.0.0",
+    "json-stable-stringify": "^1.3.0",
     "jszip": "^3.10.1",
     "konva": "^9.3.22",
+    "lru-cache": "^11.2.6",
     "lucide-react": "0.525.0",
     "music-metadata-browser": "^2.5.11",
     "nanoid": "^5.1.6",
     "next": "^15.3.6",
+    "openai": "^6.25.0",
     "photoswipe": "^5.4.4",
     "react": "^19.0.0",
     "react-colorful": "^5.6.1",
@@ -135,6 +139,7 @@
     "@tailwindcss/postcss": "^4",
     "@tanstack/react-query-devtools": "^5.87.4",
     "@types/fluent-ffmpeg": "^2.1.27",
+    "@types/json-stable-stringify": "^1.1.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -146,6 +151,7 @@
     "prettier": "^3.6.2",
     "prisma": "^6.16.3",
     "tailwindcss": "^4.1.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.0.18"
   }
 }
