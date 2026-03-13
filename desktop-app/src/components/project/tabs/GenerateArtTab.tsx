@@ -32,6 +32,8 @@ import ObjectivePresets from '@/components/project/generate/ObjectivePresets'
 import TonePresets from '@/components/project/generate/TonePresets'
 import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
 import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
+import { TemplateCarousel } from '@/components/project/generate/TemplateCarousel'
+import type { Design } from '@/hooks/use-project-designs'
 import { useProjectStore } from '@/stores/project.store'
 import { useTagsStore } from '@/stores/tags.store'
 import {
@@ -237,6 +239,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [referenceFiles, setReferenceFiles] = useState<File[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
   const [manualTemplateId, setManualTemplateId] = useState('')
+  const [selectedCarouselDesign, setSelectedCarouselDesign] = useState<Design | null>(null)
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
   const [templatesError, setTemplatesError] = useState<string | null>(null)
@@ -297,6 +300,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
 
   useEffect(() => {
     setManualTemplateId('')
+    setSelectedCarouselDesign(null)
   }, [format])
 
   useEffect(() => {
@@ -760,6 +764,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       }
     }
 
+    // Use carousel selection if available, otherwise fall back to manual dropdown
+    const effectiveTemplateId = selectedCarouselDesign
+      ? String(selectedCarouselDesign.templateId)
+      : manualTemplateId || undefined
+
     const params: GenerationParams = {
       projectId,
       format,
@@ -768,7 +777,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       backgroundMode,
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
       referenceUrls,
-      manualTemplateId: manualTemplateId || undefined,
+      manualTemplateId: effectiveTemplateId,
+      selectedPageId: selectedCarouselDesign?.id, // Pass the specific page ID from carousel
       analyzeImageForContext,
       objective,
       tone,
@@ -783,6 +793,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     backgroundMode,
     format,
     manualTemplateId,
+    selectedCarouselDesign,
     projectId,
     prompt,
     referenceFiles,
@@ -791,6 +802,8 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     selectedPhoto?.url,
     uploadReferenceImages,
     variations,
+    objective,
+    tone,
   ])
 
   const canGenerate = prompt.trim().length > 0
@@ -844,6 +857,14 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             <label className="block text-sm font-medium text-text">Formato</label>
             <FormatSelector value={format} onChange={setFormat} />
           </div>
+
+          {/* Template Carousel - shows designs with tag "Template" */}
+          <TemplateCarousel
+            projectId={projectId}
+            format={format}
+            selectedDesignId={selectedCarouselDesign?.id ?? null}
+            onSelectDesign={setSelectedCarouselDesign}
+          />
 
           <div className="space-y-3">
             <label className="block text-sm font-medium text-text">Fundo</label>

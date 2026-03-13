@@ -68,6 +68,7 @@ export interface GenerationParams {
   photoUrl?: string
   referenceUrls?: string[]
   manualTemplateId?: string
+  selectedPageId?: string // Specific page from carousel selection
   analyzeImageForContext?: boolean
   objective?: ObjectivePreset
   tone?: TonePreset

@@ -8,6 +8,7 @@ import { EditorShell } from '@/components/editor/EditorShell'
 import { TagFilterBar } from '@/components/editor/TagFilterBar'
 import { FilteredPagesGallery } from '@/components/editor/FilteredPagesGallery'
 import { DesignsGallery } from '@/components/editor/DesignsGallery'
+import { TemplateTagsModal } from '@/components/editor/TemplateTagsModal'
 import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
@@ -95,6 +96,8 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [isTagsManagerOpen, setIsTagsManagerOpen] = useState(false)
+  const [isDesignTagsModalOpen, setIsDesignTagsModalOpen] = useState(false)
+  const [selectedDesignForTags, setSelectedDesignForTags] = useState<Design | null>(null)
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>(['Template'])
   const [selectedFormat, setSelectedFormat] = useState<DesignFormat | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
@@ -298,6 +301,11 @@ export default function EditorPage() {
     }
   }
 
+  const handleDesignManageTags = (design: Design) => {
+    setSelectedDesignForTags(design)
+    setIsDesignTagsModalOpen(true)
+  }
+
   const handleCreateTemplate = () => {
     const starter = createStarterDocument(currentProject, document?.format ?? 'STORY')
     resetPagesState()
@@ -474,6 +482,7 @@ export default function EditorPage() {
             search={searchQuery}
             onDesignSelect={handleDesignSelect}
             onDesignEdit={handleDesignSelect}
+            onDesignManageTags={handleDesignManageTags}
           />
         </div>
 
@@ -560,6 +569,16 @@ export default function EditorPage() {
           onClose={() => setIsTagsManagerOpen(false)}
         />
       ) : null}
+
+      <TemplateTagsModal
+        isOpen={isDesignTagsModalOpen}
+        onClose={() => {
+          setIsDesignTagsModalOpen(false)
+          setSelectedDesignForTags(null)
+        }}
+        design={selectedDesignForTags}
+        projectId={currentProject?.id}
+      />
     </div>
   )
 }
