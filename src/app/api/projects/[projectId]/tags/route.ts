@@ -22,6 +22,9 @@ function getNextTagColor(usedColors: string[]): string {
   return available ?? TAG_COLORS[usedColors.length % TAG_COLORS.length]
 }
 
+const DEFAULT_TAG_NAME = 'Template'
+const DEFAULT_TAG_COLOR = '#F59E0B' // amber
+
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ projectId: string }> },
@@ -40,6 +43,24 @@ export async function GET(
   const project = await fetchProjectWithShares(projectIdNum)
   if (!hasProjectReadAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })
+  }
+
+  // Ensure default "Template" tag exists for this project
+  const existingTemplateTag = await db.projectTag.findFirst({
+    where: {
+      projectId: projectIdNum,
+      name: { equals: DEFAULT_TAG_NAME, mode: 'insensitive' },
+    },
+  })
+
+  if (!existingTemplateTag) {
+    await db.projectTag.create({
+      data: {
+        name: DEFAULT_TAG_NAME,
+        color: DEFAULT_TAG_COLOR,
+        projectId: projectIdNum,
+      },
+    })
   }
 
   const tags = await db.projectTag.findMany({
