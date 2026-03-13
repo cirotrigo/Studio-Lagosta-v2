@@ -10,6 +10,7 @@ import { mergeEditorFontSources } from '@/lib/editor/font-utils'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
 import { useBrandAssets, type BrandAssets } from '@/hooks/use-brand-assets'
+import { useProjectTags } from '@/hooks/use-project-tags'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
@@ -71,6 +72,9 @@ export default function EditorPage() {
   const location = useLocation()
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(currentProject?.id)
+
+  // Sync project tags to store when project changes
+  useProjectTags(currentProject?.id)
   const document = useEditorStore((state) => state.document)
   const setDocument = useEditorStore((state) => state.setDocument)
   const setDocumentName = useEditorStore((state) => state.setDocumentName)

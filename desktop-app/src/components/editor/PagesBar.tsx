@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Copy, Plus, Trash2 } from 'lucide-react'
+import { Copy, Plus, Tag, Trash2 } from 'lucide-react'
 import { renderPageThumbnail } from '@/lib/editor/thumbnail'
 import { ART_FORMAT_PRESETS } from '@/lib/editor/formats'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
@@ -8,6 +8,7 @@ import { useTagsStore } from '@/stores/tags.store'
 import { sortPages } from '@/lib/editor/document'
 import type { ArtFormat } from '@/types/template'
 import { cn } from '@/lib/utils'
+import { PageTagsModal } from './PageTagsModal'
 
 export function PagesBar() {
   const document = useEditorStore((state) => state.document)
@@ -30,6 +31,7 @@ export function PagesBar() {
   }
 
   const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
+  const [isTagsModalOpen, setIsTagsModalOpen] = useState(false)
   const compactButtonClass =
     'h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40'
 
@@ -111,6 +113,16 @@ export function PagesBar() {
           </button>
           <button
             type="button"
+            onClick={() => setIsTagsModalOpen(true)}
+            className={compactButtonClass}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Tag size={16} />
+              Tags
+            </span>
+          </button>
+          <button
+            type="button"
             disabled={pages.length <= 1}
             onClick={() => removePage(currentPage.id)}
             className="h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-error/40 hover:text-error disabled:opacity-40"
@@ -122,6 +134,8 @@ export function PagesBar() {
           </button>
         </div>
       </div>
+
+      <PageTagsModal isOpen={isTagsModalOpen} onClose={() => setIsTagsModalOpen(false)} />
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {pages.map((page) => {

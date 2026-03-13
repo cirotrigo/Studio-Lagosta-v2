@@ -2,6 +2,7 @@ import { Component, ReactNode } from 'react'
 import { Wand2, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useProjectStore } from '@/stores/project.store'
+import { useProjectTags } from '@/hooks/use-project-tags'
 import GenerateArtTab from '@/components/project/tabs/GenerateArtTab'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 
@@ -59,6 +60,9 @@ class TabErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
 
 export default function ProjectPage() {
   const { currentProject } = useProjectStore()
+
+  // Sync project tags to store when project changes
+  useProjectTags(currentProject?.id)
 
   if (!currentProject) {
     return (

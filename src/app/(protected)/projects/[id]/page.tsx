@@ -31,6 +31,7 @@ import { InstagramAccountConfig } from '@/components/projects/instagram-account-
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
 import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
+import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { InstagramTabContent } from '@/components/projects/instagram-tab-content'
@@ -356,6 +357,9 @@ export default function ProjectDetailPage() {
                   projectId={projectId}
                   initialBehavior={projectDetails.aiChatBehavior}
                 />
+
+                {/* Project Tags Configuration */}
+                <ProjectTagsConfig projectId={projectId} />
 
                 {/* Instagram Account Configuration */}
                 <InstagramAccountConfig

@@ -243,7 +243,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
-  const [selectedTagFilter, setSelectedTagFilter] = useState('Template')
+  const [selectedTagFilter, setSelectedTagFilter] = useState('')
 
   const projectTags = useTagsStore((state) => state.tags)
 

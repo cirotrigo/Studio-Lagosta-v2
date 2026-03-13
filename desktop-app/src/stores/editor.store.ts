@@ -23,6 +23,7 @@ interface EditorState {
   setDocumentName: (name: string) => void
   replaceDocumentWithoutHistory: (document: KonvaTemplateDocument, preserveViewport?: boolean) => void
   updateCurrentPage: (updater: (page: KonvaPage) => KonvaPage, recordHistory?: boolean) => void
+  updatePage: (pageId: string, updates: Partial<KonvaPage>, recordHistory?: boolean) => void
   updateLayer: (layerId: string, updater: (layer: Layer) => Layer, recordHistory?: boolean) => void
   updateSelectedLayers: (updater: (layer: Layer) => Layer) => void
   addLayer: (layer: Layer) => void
@@ -132,6 +133,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       document: applyDocumentMutation(
         state.document,
         (document) => updateCurrentPageDocument(document, updater),
+        recordHistory,
+      ),
+    })),
+
+  updatePage: (pageId, updates, recordHistory = true) =>
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (document) => ({
+          ...document,
+          design: {
+            ...document.design,
+            pages: document.design.pages.map((page) =>
+              page.id === pageId ? { ...page, ...updates } : page,
+            ),
+          },
+        }),
         recordHistory,
       ),
     })),
