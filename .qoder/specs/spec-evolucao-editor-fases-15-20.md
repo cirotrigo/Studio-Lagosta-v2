@@ -18,7 +18,7 @@
 | 15 | Quick Wins - Interacao Basica | Canvas + Layers | Baixo | Pendente |
 | 16 | Navegacao Avancada do Canvas | Canvas | Medio | Pendente |
 | 17 | Gestao Avancada de Camadas | Layers Panel | Medio | Pendente |
-| 18 | Painel de Efeitos | Efeitos Visuais | Alto | Pendente |
+| 18 | Painel de Efeitos + Shape Styling | Efeitos + Formas | Alto | Pendente |
 | 19 | Modo Crop de Imagens | Imagens | Alto | Pendente |
 | 20 | Atalhos e Polish Final | Global | Medio | Pendente |
 
@@ -252,15 +252,15 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 ---
 
-## Fase 18 — Painel de Efeitos
+## Fase 18 — Painel de Efeitos + Shape Styling
 **Esforco: Alto | Prioridade: Media**
 
 ### Objetivo
-Portar os efeitos de manipulacao visual da versao Web para o app Electron, garantindo paridade de funcionalidade.
+Portar os efeitos de manipulacao visual da versao Web para o app Electron e implementar o painel de propriedades para formas geometricas, garantindo paridade de funcionalidade.
 
-### 18.1 Arquitetura de Efeitos
+### 18.1 Arquitetura de Efeitos e Propriedades
 
-**Estrutura de dados:**
+**Estrutura de dados - Efeitos:**
 ```typescript
 interface LayerEffects {
   dropShadow?: {
@@ -287,6 +287,20 @@ interface LayerEffects {
     enabled: boolean
     power: number        // -100 a 100
   }
+}
+```
+
+**Estrutura de dados - Propriedades de Forma:**
+```typescript
+interface ShapeProperties {
+  fill: string                    // Cor de preenchimento
+  stroke: string                  // Cor da borda (independente)
+  strokeWidth: number             // 0-100 px
+  strokeStyle: {
+    type: 'solid' | 'dashed' | 'dotted'
+    dashArray?: number[]          // Ex: [10, 5] para tracejado
+  }
+  cornerRadius: number            // 0 a min(width, height) / 2
 }
 ```
 
@@ -336,7 +350,141 @@ interface LayerEffects {
 - Usar `textPath` SVG para renderizar texto ao longo de um arco
 - Calcular path dinamicamente baseado no slider power
 
-### 18.6 UI do Painel de Efeitos
+### 18.6 Estilizacao de Formas (Shape Styling)
+
+**Escopo:** Camadas de forma (shape) - retangulos, circulos, botoes, etc.
+
+#### 18.6.1 Stroke Style (Estilo do Tracado)
+
+**Controles:**
+- Seletor de estilo com 3 opcoes:
+  - **Solido:** linha continua
+  - **Tracejado (Dashed):** variacoes de espacamento (ex: `[10, 5]`, `[15, 10]`, `[20, 5, 5, 5]`)
+  - **Pontilhado (Dotted):** pequenos pontos (`[2, 4]`)
+
+**Estrutura de dados:**
+```typescript
+interface StrokeStyle {
+  type: 'solid' | 'dashed' | 'dotted'
+  dashArray?: number[]  // Ex: [10, 5] para tracejado
+}
+```
+
+**Implementacao Konva:**
+```typescript
+shapeNode.dash(strokeStyle.dashArray ?? [])
+shapeNode.dashEnabled(strokeStyle.type !== 'solid')
+```
+
+#### 18.6.2 Stroke Width (Espessura da Borda)
+
+**Controles:**
+- Campo numerico: input de 0 a 100
+- Slider: controle deslizante sincronizado
+- Valor padrao: 0 (sem borda)
+
+**Implementacao:**
+```typescript
+shapeNode.strokeWidth(strokeWidth)
+shapeNode.strokeEnabled(strokeWidth > 0)
+```
+
+#### 18.6.3 Corner Radius (Arredondamento de Cantos)
+
+**Controles:**
+- Slider deslizante: 0 a MAX dinamico
+- Campo numerico sincronizado
+- Valor padrao: 0 (cantos retos)
+
+**Nota tecnica - Maximo Dinamico:**
+O valor maximo deve ser calculado com base na **menor dimensao** do objeto dividida por 2, garantindo o efeito "pilula" perfeito:
+
+```typescript
+const maxCornerRadius = Math.min(shape.width, shape.height) / 2
+
+// No slider
+<Slider
+  max={maxCornerRadius}
+  value={cornerRadius}
+  onChange={setCornerRadius}
+/>
+```
+
+**Implementacao Konva:**
+```typescript
+// Para Rect
+rectNode.cornerRadius(cornerRadius)
+
+// Para valores uniformes em todos os cantos
+rectNode.cornerRadius([tl, tr, br, bl]) // Opcional: cantos individuais
+```
+
+#### 18.6.4 Border Color (Cor da Borda)
+
+**Controles:**
+- Seletor de cor (color picker) independente do fill
+- Suporte a canal alpha (transparencia)
+- Preview visual ao lado do icone de tracado
+
+**Importante:** A cor da borda deve ser **independente** da cor de preenchimento (fill).
+
+**Estrutura de dados:**
+```typescript
+interface ShapeStyle {
+  fill: string           // Cor de preenchimento
+  stroke: string         // Cor da borda (independente)
+  strokeWidth: number
+  strokeStyle: StrokeStyle
+  cornerRadius: number
+}
+```
+
+### 18.7 Estrutura Completa de Dados (Atualizada)
+
+```typescript
+interface LayerEffects {
+  // Efeitos globais
+  dropShadow?: {
+    enabled: boolean
+    offsetX: number
+    offsetY: number
+    blur: number
+    opacity: number
+    color: string
+  }
+
+  // Efeitos de texto
+  textStroke?: {
+    enabled: boolean
+    width: number
+    color: string
+  }
+  textBackground?: {
+    enabled: boolean
+    cornerRadius: number
+    padding: number
+    opacity: number
+    color: string
+  }
+  curvedText?: {
+    enabled: boolean
+    power: number
+  }
+}
+
+interface ShapeProperties {
+  fill: string
+  stroke: string
+  strokeWidth: number
+  strokeStyle: {
+    type: 'solid' | 'dashed' | 'dotted'
+    dashArray?: number[]
+  }
+  cornerRadius: number
+}
+```
+
+### 18.8 UI do Painel de Efeitos
 
 **Componentes a criar:**
 - `desktop-app/src/components/editor/properties/EffectsPanel.tsx`
@@ -344,15 +492,23 @@ interface LayerEffects {
 - `desktop-app/src/components/editor/properties/effects/TextStrokeControl.tsx`
 - `desktop-app/src/components/editor/properties/effects/TextBackgroundControl.tsx`
 - `desktop-app/src/components/editor/properties/effects/CurvedTextControl.tsx`
+- `desktop-app/src/components/editor/properties/shape/ShapeStylePanel.tsx`
+- `desktop-app/src/components/editor/properties/shape/StrokeStylePicker.tsx`
+- `desktop-app/src/components/editor/properties/shape/CornerRadiusControl.tsx`
 
 ### Criterios de Aceite - Fase 18
 - [ ] Drop Shadow funciona em todos os tipos de elementos
 - [ ] Text Stroke renderiza corretamente com diferentes espessuras
 - [ ] Text Background adapta-se ao tamanho do texto
 - [ ] Curved Text atualiza em tempo real ao arrastar slider
-- [ ] Todos os efeitos sao salvos/carregados corretamente
+- [ ] Stroke Style permite escolher solido, tracejado e pontilhado
+- [ ] Stroke Width controla espessura de 0 a 100px
+- [ ] Corner Radius tem maximo dinamico baseado na altura do objeto
+- [ ] Border Color e independente do fill color
+- [ ] Todos os efeitos e propriedades sao salvos/carregados corretamente
 - [ ] Efeitos sao aplicados na exportacao final
 - [ ] Painel de efeitos aparece no PropertiesPanel quando elemento selecionado
+- [ ] Painel de Shape aparece apenas para camadas de forma
 
 ---
 
