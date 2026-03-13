@@ -223,6 +223,8 @@ export async function POST(req: Request) {
               layers: typeof page.layers === 'string' ? page.layers : JSON.stringify(page.layers ?? []),
               background: page.background ?? designDataParsed.canvas?.backgroundColor ?? '#ffffff',
               order: page.order ?? i,
+              thumbnail: page.thumbnail ?? null,
+              tags: Array.isArray(page.tags) ? page.tags : [],
               templateId: newTemplate.id,
             },
           })

@@ -127,7 +127,7 @@ export async function PUT(
       })
 
       // If designData.pages is provided, update the Page records
-      const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null }> } | undefined
+      const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null; tags?: string[] }> } | undefined
       if (designData?.pages && Array.isArray(designData.pages)) {
         // Delete existing pages
         await tx.page.deleteMany({
@@ -146,6 +146,7 @@ export async function PUT(
               background: page.background ?? '#ffffff',
               order: page.order ?? i,
               thumbnail: page.thumbnail ?? null,
+              tags: Array.isArray(page.tags) ? page.tags : [],
               templateId,
             },
           })
