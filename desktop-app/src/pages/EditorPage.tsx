@@ -5,8 +5,9 @@ import { toast } from 'sonner'
 import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
-import { PageTagFilter } from '@/components/editor/PageTagFilter'
+import { TagFilterBar } from '@/components/editor/TagFilterBar'
 import { FilteredPagesGallery } from '@/components/editor/FilteredPagesGallery'
+import { DesignsGallery } from '@/components/editor/DesignsGallery'
 import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
@@ -20,6 +21,7 @@ import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { usePagesStore } from '@/stores/pages.store'
 import type { EditorPageLocationState } from '@/types/art-automation'
 import type { KonvaPage, KonvaTemplateDocument } from '@/types/template'
+import type { Design, DesignFormat } from '@/hooks/use-project-designs'
 
 function normalizeDraftDocumentText(document: KonvaTemplateDocument) {
   const nextDocument = cloneKonvaDocument(document)
@@ -94,6 +96,8 @@ export default function EditorPage() {
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [isTagsManagerOpen, setIsTagsManagerOpen] = useState(false)
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>(['Template'])
+  const [selectedFormat, setSelectedFormat] = useState<DesignFormat | undefined>(undefined)
+  const [searchQuery, setSearchQuery] = useState('')
   const [approvedVariationDraft, setApprovedVariationDraft] = useState(
     (() => {
       const state = (location.state as EditorPageLocationState | null) ?? null
@@ -263,6 +267,37 @@ export default function EditorPage() {
     setApprovedVariationDraft(null)
   }
 
+  const handleDesignSelect = async (design: Design) => {
+    if (!currentProject) return
+
+    // Find the local template that contains this design (page)
+    // Design.id is the page ID, we need to find it in local templates
+    for (const template of templates) {
+      const page = template.design.pages.find((p) => p.id === design.id)
+      if (page) {
+        handlePageSelectFromGallery(template, page)
+        return
+      }
+    }
+
+    // If not found in local templates, try to load from storage using templateId
+    try {
+      const localTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
+      for (const template of localTemplates) {
+        const page = template.design.pages.find((p: KonvaPage) => p.id === design.id)
+        if (page) {
+          handlePageSelectFromGallery(template, page)
+          setTemplates(localTemplates)
+          return
+        }
+      }
+      toast.error('Design nao encontrado no storage local. Sincronize os templates.')
+    } catch (err) {
+      console.error('[EditorPage] Falha ao buscar design:', err)
+      toast.error('Falha ao abrir o design selecionado.')
+    }
+  }
+
   const handleCreateTemplate = () => {
     const starter = createStarterDocument(currentProject, document?.format ?? 'STORY')
     resetPagesState()
@@ -409,20 +444,47 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* Tag Filter and Pages Gallery */}
-        <PageTagFilter
+        {/* Tag Filter Bar */}
+        <TagFilterBar
           selectedTags={selectedFilterTags}
           onTagsChange={setSelectedFilterTags}
+          selectedFormat={selectedFormat}
+          onFormatChange={setSelectedFormat}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
           onManageTags={() => setIsTagsManagerOpen(true)}
+          showFormatFilter
+          showSearch
         />
 
+        {/* Designs Gallery (API) */}
         <div className="rounded-2xl border border-border bg-card/60 p-4">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-text">
-              Paginas {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todas)'}
+              Designs {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todos)'}
             </h2>
             <p className="text-xs text-text-muted">
-              Clique em uma pagina para abrir no editor
+              Clique em um design para abrir no editor
+            </p>
+          </div>
+          <DesignsGallery
+            projectId={currentProject?.id}
+            selectedTags={selectedFilterTags}
+            format={selectedFormat}
+            search={searchQuery}
+            onDesignSelect={handleDesignSelect}
+            onDesignEdit={handleDesignSelect}
+          />
+        </div>
+
+        {/* Local Templates Gallery (legacy - filtro por tags local) */}
+        <div className="rounded-2xl border border-border bg-card/60 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text">
+              Templates Locais {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todos)'}
+            </h2>
+            <p className="text-xs text-text-muted">
+              Paginas do storage local do Electron
             </p>
           </div>
           <FilteredPagesGallery
