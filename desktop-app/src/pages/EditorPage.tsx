@@ -1,29 +1,24 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { AlertTriangle, FilePlus2, Layers3, Sparkles } from 'lucide-react'
+import { AlertTriangle, Layers3, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
-import { TagFilterBar } from '@/components/editor/TagFilterBar'
-import { FilteredPagesGallery } from '@/components/editor/FilteredPagesGallery'
-import { DesignsGallery } from '@/components/editor/DesignsGallery'
-import { TemplateTagsModal } from '@/components/editor/TemplateTagsModal'
-import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
+import { EditorTemplateCarousel } from '@/components/editor/EditorTemplateCarousel'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
 import { useBrandAssets, type BrandAssets } from '@/hooks/use-brand-assets'
-import { useProjectTags } from '@/hooks/use-project-tags'
 import { useSyncStatus } from '@/hooks/use-sync-status'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { usePagesStore } from '@/stores/pages.store'
 import type { EditorPageLocationState } from '@/types/art-automation'
-import type { KonvaPage, KonvaTemplateDocument } from '@/types/template'
-import type { Design, DesignFormat } from '@/hooks/use-project-designs'
+import type { KonvaTemplateDocument } from '@/types/template'
+import type { Design } from '@/hooks/use-project-designs'
 
 function normalizeDraftDocumentText(document: KonvaTemplateDocument) {
   const nextDocument = cloneKonvaDocument(document)
@@ -80,9 +75,6 @@ export default function EditorPage() {
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(currentProject?.id)
 
-  // Sync project tags to store when project changes
-  useProjectTags(currentProject?.id)
-
   // Sync status for auto-syncing templates
   const { pull: syncPull } = useSyncStatus()
 
@@ -100,12 +92,6 @@ export default function EditorPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
-  const [isTagsManagerOpen, setIsTagsManagerOpen] = useState(false)
-  const [isDesignTagsModalOpen, setIsDesignTagsModalOpen] = useState(false)
-  const [selectedDesignForTags, setSelectedDesignForTags] = useState<Design | null>(null)
-  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>(['Template'])
-  const [selectedFormat, setSelectedFormat] = useState<DesignFormat | undefined>(undefined)
-  const [searchQuery, setSearchQuery] = useState('')
   const [isAutoSyncing, setIsAutoSyncing] = useState(false)
   const [approvedVariationDraft, setApprovedVariationDraft] = useState(
     (() => {
@@ -133,28 +119,6 @@ export default function EditorPage() {
     }
   }, [brandAssets, currentProject, incomingApprovedVariationDraft])
 
-  const templateOptions = useMemo(() => {
-    const seen = new Set<string>()
-    const options: KonvaTemplateDocument[] = []
-
-    if (document && !seen.has(document.id)) {
-      seen.add(document.id)
-      options.push(document)
-    }
-
-    for (const template of templates) {
-      if (!seen.has(template.id)) {
-        seen.add(template.id)
-        options.push(template)
-      }
-    }
-
-    return options
-  }, [document, templates])
-  const currentTemplateOption = useMemo(
-    () => templateOptions.find((template) => template.id === selectedTemplateId) ?? null,
-    [selectedTemplateId, templateOptions],
-  )
   const orderedPages = useMemo(
     () => (document ? sortPages(document.design.pages) : []),
     [document],
@@ -234,75 +198,40 @@ export default function EditorPage() {
     setDocument,
   ])
 
-  const handleTemplateSelect = async (templateId: string) => {
-    if (!currentProject) {
-      return
-    }
-
-    if (!templateId) {
-      return
-    }
-
-    try {
-      const template = await window.electronAPI.konvaTemplates.get(currentProject.id, templateId)
-      if (!template) {
-        toast.error('Template não encontrado no storage local.')
-        return
+  // Helper to find and load a template for a design
+  const loadTemplateForDesign = (templateList: KonvaTemplateDocument[], design: Design) => {
+    for (const template of templateList) {
+      const page = template.design.pages.find((p) => p.id === design.id)
+      if (page) {
+        const templateWithCurrentPage: KonvaTemplateDocument = {
+          ...template,
+          design: {
+            ...template.design,
+            currentPageId: page.id,
+          },
+        }
+        resetPagesState()
+        setDocument(templateWithCurrentPage)
+        setSelectedTemplateId(template.id)
+        setApprovedVariationDraft(null)
+        return true
       }
-
-      resetPagesState()
-      setDocument(template)
-      setSelectedTemplateId(template.id)
-      setApprovedVariationDraft(null)
-    } catch (selectError) {
-      console.error('[EditorPage] Falha ao abrir template:', selectError)
-      toast.error('Não foi possível abrir o template selecionado.')
     }
-  }
-
-  const handlePageSelectFromGallery = (template: KonvaTemplateDocument, page: KonvaPage) => {
-    // Set the template and navigate to the specific page
-    const templateWithCurrentPage: KonvaTemplateDocument = {
-      ...template,
-      design: {
-        ...template.design,
-        currentPageId: page.id,
-      },
-    }
-
-    resetPagesState()
-    setDocument(templateWithCurrentPage)
-    setSelectedTemplateId(template.id)
-    setApprovedVariationDraft(null)
+    return false
   }
 
   const handleDesignSelect = async (design: Design) => {
     if (!currentProject) return
 
-    // Helper to find design in templates
-    const findDesignInTemplates = (templateList: KonvaTemplateDocument[]) => {
-      for (const template of templateList) {
-        const page = template.design.pages.find((p) => p.id === design.id)
-        if (page) {
-          return { template, page }
-        }
-      }
-      return null
-    }
-
     // First, try to find in current templates state
-    const foundInState = findDesignInTemplates(templates)
-    if (foundInState) {
-      handlePageSelectFromGallery(foundInState.template, foundInState.page)
+    if (loadTemplateForDesign(templates, design)) {
       return
     }
 
     // If not found, try to load fresh from local storage
     try {
       const localTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
-      const foundInStorage = findDesignInTemplates(localTemplates)
-      if (foundInStorage) {
-        handlePageSelectFromGallery(foundInStorage.template, foundInStorage.page)
+      if (loadTemplateForDesign(localTemplates, design)) {
         setTemplates(localTemplates)
         return
       }
@@ -318,29 +247,72 @@ export default function EditorPage() {
         const syncedTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
         setTemplates(syncedTemplates)
 
-        const foundAfterSync = findDesignInTemplates(syncedTemplates)
-        if (foundAfterSync) {
-          toast.success('Template sincronizado com sucesso!', { id: 'auto-sync' })
-          handlePageSelectFromGallery(foundAfterSync.template, foundAfterSync.page)
+        if (loadTemplateForDesign(syncedTemplates, design)) {
+          toast.success('Template sincronizado!', { id: 'auto-sync' })
           return
         }
 
-        toast.error('Design não encontrado mesmo após sincronização.', { id: 'auto-sync' })
+        toast.error('Design não encontrado.', { id: 'auto-sync' })
       } catch (syncError) {
-        console.error('[EditorPage] Falha na sincronização automática:', syncError)
-        toast.error('Falha ao sincronizar templates. Tente novamente.', { id: 'auto-sync' })
+        console.error('[EditorPage] Falha na sincronização:', syncError)
+        toast.error('Falha ao sincronizar.', { id: 'auto-sync' })
       } finally {
         setIsAutoSyncing(false)
       }
     } catch (err) {
       console.error('[EditorPage] Falha ao buscar design:', err)
-      toast.error('Falha ao abrir o design selecionado.')
+      toast.error('Falha ao abrir o design.')
     }
   }
 
-  const handleDesignManageTags = (design: Design) => {
-    setSelectedDesignForTags(design)
-    setIsDesignTagsModalOpen(true)
+  const handleDeleteDesign = async (design: Design) => {
+    if (!currentProject) return
+
+    const confirmDelete = window.confirm(`Excluir o template "${design.name}"? Esta ação não pode ser desfeita.`)
+    if (!confirmDelete) return
+
+    try {
+      // Find the template that contains this design
+      for (const template of templates) {
+        const pageIndex = template.design.pages.findIndex((p) => p.id === design.id)
+        if (pageIndex !== -1) {
+          // If template has only one page, delete the entire template
+          if (template.design.pages.length === 1) {
+            await window.electronAPI.konvaTemplates.delete(currentProject.id, template.id)
+            toast.success('Template excluído.')
+          } else {
+            // Remove just this page from the template
+            const updatedTemplate = cloneKonvaDocument(template)
+            updatedTemplate.design.pages.splice(pageIndex, 1)
+            await window.electronAPI.konvaTemplates.save(currentProject.id, updatedTemplate)
+            toast.success('Página excluída do template.')
+          }
+
+          // Reload templates
+          const list = await window.electronAPI.konvaTemplates.list(currentProject.id)
+          setTemplates(list)
+
+          // If the deleted design was selected, load another one
+          if (selectedTemplateId === template.id) {
+            if (list.length > 0) {
+              resetPagesState()
+              setDocument(list[0])
+              setSelectedTemplateId(list[0].id)
+            } else {
+              const starter = createStarterDocument(currentProject)
+              resetPagesState()
+              setDocument(starter)
+              setSelectedTemplateId(starter.id)
+            }
+          }
+          return
+        }
+      }
+      toast.error('Design não encontrado.')
+    } catch (err) {
+      console.error('[EditorPage] Falha ao excluir:', err)
+      toast.error('Falha ao excluir o template.')
+    }
   }
 
   const handleCreateTemplate = () => {
@@ -455,97 +427,22 @@ export default function EditorPage() {
   return (
     <div className="h-full min-h-0 overflow-auto">
       <div className="flex min-h-full min-w-[1260px] flex-col gap-4 p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3 rounded-2xl border border-border bg-card/60 px-4 py-4">
-          <div>
-            <h1 className="text-xl font-semibold text-text">Editor Konva</h1>
-            <p className="mt-1 text-sm text-text-muted">
-              Stage real com JSON v2, propriedades, layers e persistência local via IPC.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <select
-              value={currentTemplateOption?.id ?? selectedTemplateId}
-              onChange={(event) => void handleTemplateSelect(event.target.value)}
-              className="h-10 min-w-[260px] rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
-            >
-              {templateOptions.map((template) => (
-                <option key={template.id} value={template.id}>
-                  {template.name}
-                </option>
-              ))}
-            </select>
-
-            <button
-              type="button"
-              onClick={handleCreateTemplate}
-              className="h-10 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
-            >
-              <span className="inline-flex items-center gap-2">
-                <FilePlus2 size={16} />
-                Novo template
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tag Filter Bar */}
-        <TagFilterBar
-          selectedTags={selectedFilterTags}
-          onTagsChange={setSelectedFilterTags}
-          selectedFormat={selectedFormat}
-          onFormatChange={setSelectedFormat}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          onManageTags={() => setIsTagsManagerOpen(true)}
-          showFormatFilter
-          showSearch
-        />
-
-        {/* Designs Gallery (API) */}
-        <div className="relative rounded-2xl border border-border bg-card/60 p-4">
-          {/* Auto-sync overlay */}
+        {/* Template Carousel */}
+        <div className="relative">
           {isAutoSyncing && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-sm font-medium text-text">Sincronizando templates...</p>
+                <p className="text-sm font-medium text-text">Sincronizando...</p>
               </div>
             </div>
           )}
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-text">
-              Designs {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todos)'}
-            </h2>
-            <p className="text-xs text-text-muted">
-              Clique em um design para abrir no editor
-            </p>
-          </div>
-          <DesignsGallery
+          <EditorTemplateCarousel
             projectId={currentProject?.id}
-            selectedTags={selectedFilterTags}
-            format={selectedFormat}
-            search={searchQuery}
-            onDesignSelect={handleDesignSelect}
-            onDesignEdit={handleDesignSelect}
-            onDesignManageTags={handleDesignManageTags}
-          />
-        </div>
-
-        {/* Local Templates Gallery (legacy - filtro por tags local) */}
-        <div className="rounded-2xl border border-border bg-card/60 p-4">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-text">
-              Templates Locais {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todos)'}
-            </h2>
-            <p className="text-xs text-text-muted">
-              Paginas do storage local do Electron
-            </p>
-          </div>
-          <FilteredPagesGallery
-            templates={templates}
-            selectedTags={selectedFilterTags}
-            onPageSelect={handlePageSelectFromGallery}
+            selectedDesignId={document?.design.currentPageId ?? null}
+            onSelectDesign={handleDesignSelect}
+            onCreateNew={handleCreateTemplate}
+            onDeleteDesign={handleDeleteDesign}
           />
         </div>
 
@@ -607,24 +504,6 @@ export default function EditorPage() {
           onGenerate={handleQueueGeneration}
         />
       ) : null}
-
-      {currentProject ? (
-        <ProjectTagsManager
-          projectId={currentProject.id}
-          isOpen={isTagsManagerOpen}
-          onClose={() => setIsTagsManagerOpen(false)}
-        />
-      ) : null}
-
-      <TemplateTagsModal
-        isOpen={isDesignTagsModalOpen}
-        onClose={() => {
-          setIsDesignTagsModalOpen(false)
-          setSelectedDesignForTags(null)
-        }}
-        design={selectedDesignForTags}
-        projectId={currentProject?.id}
-      />
     </div>
   )
 }
