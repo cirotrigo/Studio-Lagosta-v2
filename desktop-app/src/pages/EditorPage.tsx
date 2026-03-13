@@ -5,6 +5,9 @@ import { toast } from 'sonner'
 import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
+import { PageTagFilter } from '@/components/editor/PageTagFilter'
+import { FilteredPagesGallery } from '@/components/editor/FilteredPagesGallery'
+import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
@@ -16,7 +19,7 @@ import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
 import { usePagesStore } from '@/stores/pages.store'
 import type { EditorPageLocationState } from '@/types/art-automation'
-import type { KonvaTemplateDocument } from '@/types/template'
+import type { KonvaPage, KonvaTemplateDocument } from '@/types/template'
 
 function normalizeDraftDocumentText(document: KonvaTemplateDocument) {
   const nextDocument = cloneKonvaDocument(document)
@@ -89,6 +92,8 @@ export default function EditorPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+  const [isTagsManagerOpen, setIsTagsManagerOpen] = useState(false)
+  const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>(['Template'])
   const [approvedVariationDraft, setApprovedVariationDraft] = useState(
     (() => {
       const state = (location.state as EditorPageLocationState | null) ?? null
@@ -242,6 +247,22 @@ export default function EditorPage() {
     }
   }
 
+  const handlePageSelectFromGallery = (template: KonvaTemplateDocument, page: KonvaPage) => {
+    // Set the template and navigate to the specific page
+    const templateWithCurrentPage: KonvaTemplateDocument = {
+      ...template,
+      design: {
+        ...template.design,
+        currentPageId: page.id,
+      },
+    }
+
+    resetPagesState()
+    setDocument(templateWithCurrentPage)
+    setSelectedTemplateId(template.id)
+    setApprovedVariationDraft(null)
+  }
+
   const handleCreateTemplate = () => {
     const starter = createStarterDocument(currentProject, document?.format ?? 'STORY')
     resetPagesState()
@@ -388,6 +409,29 @@ export default function EditorPage() {
           </div>
         </div>
 
+        {/* Tag Filter and Pages Gallery */}
+        <PageTagFilter
+          selectedTags={selectedFilterTags}
+          onTagsChange={setSelectedFilterTags}
+          onManageTags={() => setIsTagsManagerOpen(true)}
+        />
+
+        <div className="rounded-2xl border border-border bg-card/60 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-text">
+              Paginas {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todas)'}
+            </h2>
+            <p className="text-xs text-text-muted">
+              Clique em uma pagina para abrir no editor
+            </p>
+          </div>
+          <FilteredPagesGallery
+            templates={templates}
+            selectedTags={selectedFilterTags}
+            onPageSelect={handlePageSelectFromGallery}
+          />
+        </div>
+
         {document ? (
           <>
             {approvedVariationDraft ? (
@@ -444,6 +488,14 @@ export default function EditorPage() {
           currentPageId={document.design.currentPageId}
           thumbnails={thumbnails}
           onGenerate={handleQueueGeneration}
+        />
+      ) : null}
+
+      {currentProject ? (
+        <ProjectTagsManager
+          projectId={currentProject.id}
+          isOpen={isTagsManagerOpen}
+          onClose={() => setIsTagsManagerOpen(false)}
         />
       ) : null}
     </div>
