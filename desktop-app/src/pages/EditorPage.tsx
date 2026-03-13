@@ -16,6 +16,7 @@ import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
 import { useBrandAssets, type BrandAssets } from '@/hooks/use-brand-assets'
 import { useProjectTags } from '@/hooks/use-project-tags'
+import { useSyncStatus } from '@/hooks/use-sync-status'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
 import { useEditorGenerationStore } from '@/stores/editor-generation.store'
@@ -81,6 +82,10 @@ export default function EditorPage() {
 
   // Sync project tags to store when project changes
   useProjectTags(currentProject?.id)
+
+  // Sync status for auto-syncing templates
+  const { pull: syncPull } = useSyncStatus()
+
   const document = useEditorStore((state) => state.document)
   const setDocument = useEditorStore((state) => state.setDocument)
   const setDocumentName = useEditorStore((state) => state.setDocumentName)
@@ -101,6 +106,7 @@ export default function EditorPage() {
   const [selectedFilterTags, setSelectedFilterTags] = useState<string[]>(['Template'])
   const [selectedFormat, setSelectedFormat] = useState<DesignFormat | undefined>(undefined)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isAutoSyncing, setIsAutoSyncing] = useState(false)
   const [approvedVariationDraft, setApprovedVariationDraft] = useState(
     (() => {
       const state = (location.state as EditorPageLocationState | null) ?? null
@@ -273,28 +279,59 @@ export default function EditorPage() {
   const handleDesignSelect = async (design: Design) => {
     if (!currentProject) return
 
-    // Find the local template that contains this design (page)
-    // Design.id is the page ID, we need to find it in local templates
-    for (const template of templates) {
-      const page = template.design.pages.find((p) => p.id === design.id)
-      if (page) {
-        handlePageSelectFromGallery(template, page)
-        return
-      }
-    }
-
-    // If not found in local templates, try to load from storage using templateId
-    try {
-      const localTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
-      for (const template of localTemplates) {
-        const page = template.design.pages.find((p: KonvaPage) => p.id === design.id)
+    // Helper to find design in templates
+    const findDesignInTemplates = (templateList: KonvaTemplateDocument[]) => {
+      for (const template of templateList) {
+        const page = template.design.pages.find((p) => p.id === design.id)
         if (page) {
-          handlePageSelectFromGallery(template, page)
-          setTemplates(localTemplates)
-          return
+          return { template, page }
         }
       }
-      toast.error('Design nao encontrado no storage local. Sincronize os templates.')
+      return null
+    }
+
+    // First, try to find in current templates state
+    const foundInState = findDesignInTemplates(templates)
+    if (foundInState) {
+      handlePageSelectFromGallery(foundInState.template, foundInState.page)
+      return
+    }
+
+    // If not found, try to load fresh from local storage
+    try {
+      const localTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
+      const foundInStorage = findDesignInTemplates(localTemplates)
+      if (foundInStorage) {
+        handlePageSelectFromGallery(foundInStorage.template, foundInStorage.page)
+        setTemplates(localTemplates)
+        return
+      }
+
+      // Not found locally - auto-sync from remote
+      setIsAutoSyncing(true)
+      toast.info('Sincronizando templates...', { id: 'auto-sync' })
+
+      try {
+        await syncPull()
+
+        // After sync, reload templates and try again
+        const syncedTemplates: KonvaTemplateDocument[] = await window.electronAPI.konvaTemplates.list(currentProject.id)
+        setTemplates(syncedTemplates)
+
+        const foundAfterSync = findDesignInTemplates(syncedTemplates)
+        if (foundAfterSync) {
+          toast.success('Template sincronizado com sucesso!', { id: 'auto-sync' })
+          handlePageSelectFromGallery(foundAfterSync.template, foundAfterSync.page)
+          return
+        }
+
+        toast.error('Design não encontrado mesmo após sincronização.', { id: 'auto-sync' })
+      } catch (syncError) {
+        console.error('[EditorPage] Falha na sincronização automática:', syncError)
+        toast.error('Falha ao sincronizar templates. Tente novamente.', { id: 'auto-sync' })
+      } finally {
+        setIsAutoSyncing(false)
+      }
     } catch (err) {
       console.error('[EditorPage] Falha ao buscar design:', err)
       toast.error('Falha ao abrir o design selecionado.')
@@ -466,7 +503,16 @@ export default function EditorPage() {
         />
 
         {/* Designs Gallery (API) */}
-        <div className="rounded-2xl border border-border bg-card/60 p-4">
+        <div className="relative rounded-2xl border border-border bg-card/60 p-4">
+          {/* Auto-sync overlay */}
+          {isAutoSyncing && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80 backdrop-blur-sm">
+              <div className="flex flex-col items-center gap-3">
+                <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                <p className="text-sm font-medium text-text">Sincronizando templates...</p>
+              </div>
+            </div>
+          )}
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-text">
               Designs {selectedFilterTags.length > 0 ? `(${selectedFilterTags.join(', ')})` : '(Todos)'}
