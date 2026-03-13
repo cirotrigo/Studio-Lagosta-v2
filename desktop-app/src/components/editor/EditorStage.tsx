@@ -45,6 +45,7 @@ export function EditorStage() {
   const clearSelection = useEditorStore((state) => state.clearSelection)
   const selectLayer = useEditorStore((state) => state.selectLayer)
   const updateLayer = useEditorStore((state) => state.updateLayer)
+  const removeSelectedLayers = useEditorStore((state) => state.removeSelectedLayers)
   const setZoom = useEditorStore((state) => state.setZoom)
   const setPan = useEditorStore((state) => state.setPan)
 
@@ -96,6 +97,21 @@ export function EditorStage() {
       window.removeEventListener('keyup', handleKeyUp)
     }
   }, [])
+
+  useEffect(() => {
+    const handleDeleteKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
+
+      if ((event.key === 'Delete' || event.key === 'Backspace') && !isTextInput && selectedLayerIds.length > 0) {
+        event.preventDefault()
+        removeSelectedLayers()
+      }
+    }
+
+    window.addEventListener('keydown', handleDeleteKey)
+    return () => window.removeEventListener('keydown', handleDeleteKey)
+  }, [selectedLayerIds, removeSelectedLayers])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -477,8 +493,8 @@ export function EditorStage() {
               borderStrokeWidth={2 / zoom}
               anchorStroke="#F59E0B"
               anchorFill="#FDF4E7"
-              anchorSize={10 / zoom}
-              anchorCornerRadius={3}
+              anchorSize={8 / zoom}
+              anchorCornerRadius={2 / zoom}
               onTransformEnd={handleTransformEnd}
               boundBoxFunc={(oldBox, newBox) => {
                 if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) {

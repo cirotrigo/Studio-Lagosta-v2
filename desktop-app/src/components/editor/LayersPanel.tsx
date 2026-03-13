@@ -90,9 +90,10 @@ export function LayersPanel() {
                     disabled={index === 0}
                     onClick={(event) => {
                       event.stopPropagation()
-                      reorderLayer(layer.id, 'front')
+                      reorderLayer(layer.id, 'forward')
                     }}
                     className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+                    title="Mover uma camada acima"
                   >
                     <MoveUp size={14} />
                   </button>
@@ -101,9 +102,10 @@ export function LayersPanel() {
                     disabled={index === layers.length - 1}
                     onClick={(event) => {
                       event.stopPropagation()
-                      reorderLayer(layer.id, 'back')
+                      reorderLayer(layer.id, 'backward')
                     }}
                     className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+                    title="Mover uma camada abaixo"
                   >
                     <MoveDown size={14} />
                   </button>
