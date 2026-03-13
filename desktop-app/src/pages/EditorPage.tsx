@@ -209,6 +209,7 @@ export default function EditorPage() {
 
   // Helper to find and load a template for a design
   const loadTemplateForDesign = (templateList: KonvaTemplateDocument[], design: Design) => {
+    // Strategy 1: Match by exact page ID
     for (const template of templateList) {
       const page = template.design.pages.find((p) => p.id === design.id)
       if (page) {
@@ -226,6 +227,32 @@ export default function EditorPage() {
         return true
       }
     }
+
+    // Strategy 2: Match by templateId (meta.remoteId) and use first page
+    // This handles cases where local page IDs differ from server page IDs
+    for (const template of templateList) {
+      if (template.meta.remoteId === design.templateId) {
+        // Find by name or use first page
+        const page = template.design.pages.find((p) => p.name === design.name)
+          ?? template.design.pages[0]
+        if (page) {
+          const templateWithCurrentPage: KonvaTemplateDocument = {
+            ...template,
+            design: {
+              ...template.design,
+              currentPageId: page.id,
+            },
+          }
+          resetPagesState()
+          setDocument(templateWithCurrentPage)
+          setSelectedTemplateId(template.id)
+          setApprovedVariationDraft(null)
+          console.log(`[EditorPage] Matched by templateId=${design.templateId}, page="${page.name}"`)
+          return true
+        }
+      }
+    }
+
     return false
   }
 
