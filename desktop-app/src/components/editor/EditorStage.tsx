@@ -485,25 +485,26 @@ export function EditorStage() {
                 />
               ),
             )}
-
-            <Transformer
-              ref={transformerRef}
-              rotateEnabled
-              borderStroke="#F59E0B"
-              borderStrokeWidth={2 / zoom}
-              anchorStroke="#F59E0B"
-              anchorFill="#FDF4E7"
-              anchorSize={8 / zoom}
-              anchorCornerRadius={2 / zoom}
-              onTransformEnd={handleTransformEnd}
-              boundBoxFunc={(oldBox, newBox) => {
-                if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) {
-                  return oldBox
-                }
-                return newBox
-              }}
-            />
           </Group>
+
+          {/* Transformer fora do Group escalado para manter handles com tamanho fixo */}
+          <Transformer
+            ref={transformerRef}
+            rotateEnabled
+            borderStroke="#F59E0B"
+            borderStrokeWidth={2}
+            anchorStroke="#F59E0B"
+            anchorFill="#FDF4E7"
+            anchorSize={8}
+            anchorCornerRadius={2}
+            onTransformEnd={handleTransformEnd}
+            boundBoxFunc={(oldBox, newBox) => {
+              if (Math.abs(newBox.width) < 20 || Math.abs(newBox.height) < 20) {
+                return oldBox
+              }
+              return newBox
+            }}
+          />
         </KonvaLayer>
       </Stage>
     </div>
