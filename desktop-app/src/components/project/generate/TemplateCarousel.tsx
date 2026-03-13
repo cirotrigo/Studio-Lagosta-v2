@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, Shuffle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Shuffle, ImageOff } from 'lucide-react'
 import { useProjectDesigns, getAspectRatioClass, type Design } from '@/hooks/use-project-designs'
 import { cn } from '@/lib/utils'
 
@@ -8,6 +8,62 @@ interface TemplateCarouselProps {
   format: 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
   selectedDesignId: string | null
   onSelectDesign: (design: Design | null) => void
+}
+
+// Skeleton placeholder for loading state
+function CarouselSkeleton({ format }: { format: string }) {
+  return (
+    <div className="flex gap-3 overflow-hidden">
+      {Array.from({ length: 5 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex-shrink-0 rounded-xl border-2 border-border bg-card/60 p-1.5"
+        >
+          <div
+            className={cn(
+              'w-[100px] animate-pulse rounded-lg bg-input/60',
+              getAspectRatioClass(format as 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'),
+            )}
+          />
+          <div className="mx-auto mt-1.5 h-3 w-16 animate-pulse rounded bg-input/60" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Thumbnail image with fade-in loading effect
+function ThumbnailImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [loaded, setLoaded] = useState(false)
+  const [error, setError] = useState(false)
+
+  return (
+    <div className={cn('relative', className)}>
+      {/* Loading placeholder */}
+      {!loaded && !error && (
+        <div className="absolute inset-0 animate-pulse bg-input/40" />
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-amber-600/50">
+          <ImageOff size={16} className="text-white/50" />
+        </div>
+      )}
+
+      {/* Actual image */}
+      <img
+        src={src}
+        alt={alt}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        className={cn(
+          'h-full w-full object-cover transition-opacity duration-300',
+          loaded ? 'opacity-100' : 'opacity-0',
+        )}
+      />
+    </div>
+  )
 }
 
 export function TemplateCarousel({
@@ -77,20 +133,28 @@ export function TemplateCarousel({
 
   if (isLoading) {
     return (
-      <div className="flex h-32 items-center justify-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="h-4 w-32 animate-pulse rounded bg-input/60" />
+          <div className="h-6 w-20 animate-pulse rounded-lg bg-input/60" />
+        </div>
+        <CarouselSkeleton format={format} />
       </div>
     )
   }
 
   if (designs.length === 0) {
+    const formatLabel = format === 'STORY' ? 'Stories' : format === 'SQUARE' ? 'Quadrado' : 'Feed'
     return (
-      <div className="rounded-xl border border-border bg-card/60 p-4 text-center">
-        <p className="text-sm text-text-muted">
-          Nenhum template com tag "Template" encontrado para {format}
+      <div className="rounded-xl border border-dashed border-border bg-card/30 p-5 text-center">
+        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-input/60">
+          <ImageOff size={18} className="text-text-subtle" />
+        </div>
+        <p className="text-sm font-medium text-text-muted">
+          Nenhum template para {formatLabel}
         </p>
-        <p className="mt-1 text-xs text-text-subtle">
-          Adicione a tag "Template" aos designs que deseja usar aqui
+        <p className="mt-1.5 text-xs text-text-subtle">
+          Adicione a tag "Template" aos designs no Editor para usa-los aqui
         </p>
       </div>
     )
@@ -105,24 +169,27 @@ export function TemplateCarousel({
         <button
           type="button"
           onClick={handleRandomSelect}
-          className="flex items-center gap-1.5 rounded-lg border border-border px-2 py-1 text-xs text-text-muted hover:border-primary/40 hover:text-text"
+          className="group flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs text-text-muted transition-all hover:border-primary/40 hover:text-text hover:shadow-sm active:scale-95"
         >
-          <Shuffle size={12} />
+          <Shuffle size={12} className="transition-transform group-hover:rotate-180" />
           Aleatorio
         </button>
       </div>
 
       <div className="relative">
         {/* Left scroll button */}
-        {canScrollLeft && (
-          <button
-            type="button"
-            onClick={() => scrollTo('left')}
-            className="absolute -left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg hover:bg-input"
-          >
-            <ChevronLeft size={16} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => scrollTo('left')}
+          className={cn(
+            'absolute -left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg transition-all duration-200',
+            canScrollLeft
+              ? 'opacity-100 hover:bg-input hover:scale-110'
+              : 'pointer-events-none opacity-0',
+          )}
+        >
+          <ChevronLeft size={16} />
+        </button>
 
         {/* Carousel */}
         <div
@@ -139,10 +206,10 @@ export function TemplateCarousel({
                 type="button"
                 onClick={() => onSelectDesign(design)}
                 className={cn(
-                  'flex-shrink-0 rounded-xl border-2 p-1.5 transition-all',
+                  'group flex-shrink-0 rounded-xl border-2 p-1.5 transition-all duration-200',
                   isSelected
-                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30'
-                    : 'border-border bg-card/60 hover:border-primary/40',
+                    ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
+                    : 'border-border bg-card/60 hover:border-primary/40 hover:scale-[1.02] hover:shadow-lg',
                 )}
               >
                 {/* Thumbnail */}
@@ -153,10 +220,10 @@ export function TemplateCarousel({
                   )}
                 >
                   {design.thumbnail ? (
-                    <img
+                    <ThumbnailImage
                       src={design.thumbnail}
                       alt={design.name}
-                      className="h-full w-full object-cover"
+                      className="h-full w-full"
                     />
                   ) : (
                     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-amber-600/50">
@@ -168,7 +235,12 @@ export function TemplateCarousel({
                 </div>
 
                 {/* Name */}
-                <p className="mt-1.5 w-[100px] truncate text-center text-[10px] font-medium text-text">
+                <p
+                  className={cn(
+                    'mt-1.5 w-[100px] truncate text-center text-[10px] font-medium transition-colors',
+                    isSelected ? 'text-primary' : 'text-text group-hover:text-primary',
+                  )}
+                >
                   {design.name}
                 </p>
               </button>
@@ -177,22 +249,28 @@ export function TemplateCarousel({
         </div>
 
         {/* Right scroll button */}
-        {canScrollRight && (
-          <button
-            type="button"
-            onClick={() => scrollTo('right')}
-            className="absolute -right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg hover:bg-input"
-          >
-            <ChevronRight size={16} />
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={() => scrollTo('right')}
+          className={cn(
+            'absolute -right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg transition-all duration-200',
+            canScrollRight
+              ? 'opacity-100 hover:bg-input hover:scale-110'
+              : 'pointer-events-none opacity-0',
+          )}
+        >
+          <ChevronRight size={16} />
+        </button>
       </div>
 
       {/* Selected template info */}
       {selectedDesignId && (
-        <p className="text-xs text-text-muted">
-          Selecionado: {designs.find((d) => d.id === selectedDesignId)?.name ?? 'Template'}
-        </p>
+        <div className="flex items-center gap-2 text-xs">
+          <span className="text-text-subtle">Selecionado:</span>
+          <span className="font-medium text-primary">
+            {designs.find((d) => d.id === selectedDesignId)?.name ?? 'Template'}
+          </span>
+        </div>
       )}
     </div>
   )

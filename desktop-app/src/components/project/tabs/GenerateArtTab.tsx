@@ -35,7 +35,6 @@ import ProjectContextIndicator from '@/components/project/generate/ProjectContex
 import { TemplateCarousel } from '@/components/project/generate/TemplateCarousel'
 import type { Design } from '@/hooks/use-project-designs'
 import { useProjectStore } from '@/stores/project.store'
-import { useTagsStore } from '@/stores/tags.store'
 import {
   useGenerationStore,
   useQueuedJobs,
@@ -238,56 +237,22 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
   const [referenceFiles, setReferenceFiles] = useState<File[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
-  const [manualTemplateId, setManualTemplateId] = useState('')
   const [selectedCarouselDesign, setSelectedCarouselDesign] = useState<Design | null>(null)
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
-  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
-  const [templatesError, setTemplatesError] = useState<string | null>(null)
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
-  const [selectedTagFilter, setSelectedTagFilter] = useState('')
-
-  const projectTags = useTagsStore((state) => state.tags)
-
-  // Filter templates by format and pages by selected tag
-  const availableTemplates = useMemo(() => {
-    const formatFiltered = templates.filter((template) => template.format === format)
-
-    // If no tag filter or no tags available, return all templates
-    if (!selectedTagFilter || projectTags.length === 0) {
-      return formatFiltered
-    }
-
-    // Filter templates that have at least one page with the selected tag
-    return formatFiltered.filter((template) =>
-      template.design.pages.some((page) =>
-        page.tags?.some((t) => t.toLowerCase() === selectedTagFilter.toLowerCase()),
-      ),
-    )
-  }, [format, templates, selectedTagFilter, projectTags.length])
 
   useEffect(() => {
     let cancelled = false
 
     async function loadTemplates() {
       try {
-        setIsLoadingTemplates(true)
-        setTemplatesError(null)
         const localTemplates = await window.electronAPI.konvaTemplates.list(projectId)
         if (cancelled) return
         setTemplates(localTemplates)
       } catch (error) {
         console.error('[GenerateArtTab] Falha ao carregar templates locais:', error)
-        if (!cancelled) {
-          setTemplatesError(
-            error instanceof Error ? error.message : 'Falha ao carregar templates Konva locais.',
-          )
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingTemplates(false)
-        }
       }
     }
 
@@ -299,7 +264,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }, [projectId])
 
   useEffect(() => {
-    setManualTemplateId('')
     setSelectedCarouselDesign(null)
   }, [format])
 
@@ -764,10 +728,10 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       }
     }
 
-    // Use carousel selection if available, otherwise fall back to manual dropdown
+    // Use carousel selection (template with tag "Template")
     const effectiveTemplateId = selectedCarouselDesign
       ? String(selectedCarouselDesign.templateId)
-      : manualTemplateId || undefined
+      : undefined
 
     const params: GenerationParams = {
       projectId,
@@ -778,7 +742,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
       referenceUrls,
       manualTemplateId: effectiveTemplateId,
-      selectedPageId: selectedCarouselDesign?.id, // Pass the specific page ID from carousel
+      selectedPageId: selectedCarouselDesign?.id,
       analyzeImageForContext,
       objective,
       tone,
@@ -792,7 +756,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     addJob,
     backgroundMode,
     format,
-    manualTemplateId,
     selectedCarouselDesign,
     projectId,
     prompt,
@@ -950,53 +913,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-text">Variacoes</label>
                 <VariationSelector value={variations} onChange={setVariations} />
-              </div>
-
-              {projectTags.length > 0 && (
-                <div className="space-y-2">
-                  <label className="block text-sm font-medium text-text">Filtrar por tag</label>
-                  <select
-                    value={selectedTagFilter}
-                    onChange={(event) => setSelectedTagFilter(event.target.value)}
-                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                  >
-                    <option value="">Todas as paginas</option>
-                    {projectTags.map((tag) => (
-                      <option key={tag.id} value={tag.name}>
-                        {tag.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-[10px] text-text-subtle">
-                    Apenas paginas com esta tag serao usadas para geracao.
-                  </p>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-text">Template</label>
-                <select
-                  value={manualTemplateId}
-                  onChange={(event) => setManualTemplateId(event.target.value)}
-                  className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-text focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  <option value="">Automatico</option>
-                  {availableTemplates.map((template) => (
-                    <option key={template.id} value={template.id}>
-                      {template.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="text-xs text-text-muted">
-                  {isLoadingTemplates
-                    ? 'Carregando templates...'
-                    : availableTemplates.length > 0
-                      ? `${availableTemplates.length} template(s) para ${format}${selectedTagFilter ? ` (tag: ${selectedTagFilter})` : ''}`
-                      : 'Usando fallback interno'}
-                </div>
-                {templatesError ? (
-                  <p className="text-xs text-error">{templatesError}</p>
-                ) : null}
               </div>
             </div>
           </AdvancedOptionsDrawer>
