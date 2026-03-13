@@ -13,11 +13,18 @@ interface SetDocumentOptions {
   resetHistory?: boolean
 }
 
+interface CropModeState {
+  layerId: string
+  originalCrop?: { x: number; y: number; width: number; height: number }
+  previewCrop?: { x: number; y: number; width: number; height: number }
+}
+
 interface EditorState {
   document: KonvaTemplateDocument | null
   selectedLayerIds: string[]
   zoom: number
   pan: ViewportState
+  cropMode: CropModeState | null
   setDocument: (document: KonvaTemplateDocument, options?: SetDocumentOptions) => void
   updateDocument: (updater: (document: KonvaTemplateDocument) => KonvaTemplateDocument, recordHistory?: boolean) => void
   setDocumentName: (name: string) => void
@@ -42,6 +49,9 @@ interface EditorState {
   resetViewport: () => void
   undo: () => void
   redo: () => void
+  enterCropMode: (layerId: string) => void
+  exitCropMode: (confirm: boolean) => void
+  updateCropPreview: (crop: { x: number; y: number; width: number; height: number }) => void
 }
 
 function markDocumentDirty(document: KonvaTemplateDocument): KonvaTemplateDocument {
@@ -91,6 +101,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   selectedLayerIds: [],
   zoom: 0.45,
   pan: { x: 0, y: 0 },
+  cropMode: null,
 
   setDocument: (document, options) => {
     const nextDocument = cloneKonvaDocument(document)
@@ -361,6 +372,51 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       document: next,
       selectedLayerIds: [],
     })
+  },
+
+  enterCropMode: (layerId) => {
+    const { document } = get()
+    if (!document) return
+
+    const page = getCurrentPage(document)
+    if (!page) return
+
+    const layer = page.layers.find((l) => l.id === layerId)
+    if (!layer || layer.type !== 'image') return
+
+    set({
+      cropMode: {
+        layerId,
+        originalCrop: layer.crop,
+        previewCrop: layer.crop,
+      },
+    })
+  },
+
+  exitCropMode: (confirm) => {
+    const { cropMode, document } = get()
+    if (!cropMode || !document) {
+      set({ cropMode: null })
+      return
+    }
+
+    if (confirm && cropMode.previewCrop) {
+      // Apply the preview crop to the layer
+      get().updateLayer(cropMode.layerId, (layer) => {
+        if (layer.type !== 'image') return layer
+        return { ...layer, crop: cropMode.previewCrop }
+      })
+    }
+
+    set({ cropMode: null })
+  },
+
+  updateCropPreview: (crop) => {
+    set((state) => ({
+      cropMode: state.cropMode
+        ? { ...state.cropMode, previewCrop: crop }
+        : null,
+    }))
   },
 }))
 

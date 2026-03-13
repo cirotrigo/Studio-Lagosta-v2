@@ -149,7 +149,9 @@ export interface KonvaShapeLayer extends KonvaLayerBase {
   type: 'shape'
   shape: KonvaShapeType
   fill?: string
+  fillOpacity?: number
   stroke?: string
+  strokeOpacity?: number
   strokeWidth?: number
   strokeStyle?: StrokeStyle
   cornerRadius?: number

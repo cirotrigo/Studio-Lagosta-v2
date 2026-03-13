@@ -4,11 +4,15 @@ import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { useProjectColors } from '@/hooks/use-project-colors'
 import { useProjectLogos } from '@/hooks/use-project-logos'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
+import { EffectsPanel } from './properties/EffectsPanel'
+import { ShapeStylePanel } from './properties/ShapeStylePanel'
 import { normalizeTextSafeArea } from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import { useProjectStore } from '@/stores/project.store'
 import type {
+  KonvaShapeLayer,
   KonvaTextLayer,
+  LayerEffects,
   SafeAreaHorizontal,
   SafeAreaVertical,
   TextOverflowBehavior,
@@ -827,52 +831,15 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
             ) : null}
 
             {selectedLayer.type === 'shape' ? (
-              <>
-                <SectionTitle
-                  title="Shape"
-                  description="Fill, stroke e raio da forma."
-                />
-                <ColorField
-                  label="Fill"
-                  value={selectedLayer.fill}
-                  palette={projectPalette}
-                  onChange={(value) =>
-                    updateLayer(selectedLayer.id, (layer) =>
-                      layer.type === 'shape' ? { ...layer, fill: value } : layer,
-                    )
-                  }
-                />
-                <ColorField
-                  label="Stroke"
-                  value={selectedLayer.stroke}
-                  palette={projectPalette}
-                  onChange={(value) =>
-                    updateLayer(selectedLayer.id, (layer) =>
-                      layer.type === 'shape' ? { ...layer, stroke: value } : layer,
-                    )
-                  }
-                />
-                <div className="grid grid-cols-2 gap-3">
-                  <NumberField
-                    label="Stroke width"
-                    value={selectedLayer.strokeWidth}
-                    onChange={(value) =>
-                      updateLayer(selectedLayer.id, (layer) =>
-                        layer.type === 'shape' ? { ...layer, strokeWidth: value } : layer,
-                      )
-                    }
-                  />
-                  <NumberField
-                    label="Radius"
-                    value={selectedLayer.cornerRadius}
-                    onChange={(value) =>
-                      updateLayer(selectedLayer.id, (layer) =>
-                        layer.type === 'shape' ? { ...layer, cornerRadius: value } : layer,
-                      )
-                    }
-                  />
-                </div>
-              </>
+              <ShapeStylePanel
+                layer={selectedLayer as KonvaShapeLayer}
+                palette={projectPalette}
+                onUpdate={(updates) =>
+                  updateLayer(selectedLayer.id, (layer) =>
+                    layer.type === 'shape' ? { ...layer, ...updates } : layer,
+                  )
+                }
+              />
             ) : null}
 
             {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') ? (
@@ -1034,6 +1001,14 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                 </div>
               </>
             ) : null}
+
+            {/* Painel de Efeitos - disponivel para todas as layers */}
+            <EffectsPanel
+              layer={selectedLayer}
+              onUpdateEffects={(effects: LayerEffects) =>
+                updateLayer(selectedLayer.id, (layer) => ({ ...layer, effects }))
+              }
+            />
           </>
         )}
       </div>

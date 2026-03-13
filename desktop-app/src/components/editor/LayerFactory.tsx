@@ -7,6 +7,7 @@ import {
   RegularPolygon,
   Star,
   Text,
+  TextPath,
   Circle,
 } from 'react-konva'
 import useImage from 'use-image'
@@ -54,13 +55,61 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`
 }
 
-function renderShape(layer: KonvaShapeLayer) {
+/**
+ * Generates an SVG path for curved text using a quadratic Bezier curve.
+ * The text will follow the curve and remain centered on the arc.
+ * @param width - Width of the text area
+ * @param height - Height of the text area
+ * @param power - Curve power from -100 to 100 (negative = down, positive = up)
+ */
+function generateCurvedTextPath(width: number, height: number, power: number): string {
+  // Power determines how much the curve bends
+  // Positive = curve bends up (convex arc)
+  // Negative = curve bends down (concave arc)
+
+  // Calculate the maximum curve deflection (proportional to text dimensions)
+  // Using 4x multiplier for very aggressive curve effect
+  const maxDeflection = Math.min(width, height)
+  const curveDeflection = (power / 100) * maxDeflection * 4
+
+  // Center Y position - the baseline for start and end points
+  const centerY = height / 2
+
+  // For upward curve (positive power): control point is above center
+  // For downward curve (negative power): control point is below center
+  const controlY = centerY - curveDeflection
+
+  // Start and end points are at center height, creating a symmetric arc
+  // The text baseline will follow the curve
+  const startY = centerY
+  const endY = centerY
+
+  // Use quadratic Bezier curve: M (move to start) Q (control point, end point)
+  return `M 0,${startY} Q ${width / 2},${controlY} ${width},${endY}`
+}
+
+interface ShapeShadowProps {
+  shadowColor?: string
+  shadowBlur?: number
+  shadowOffsetX?: number
+  shadowOffsetY?: number
+  shadowOpacity?: number
+}
+
+function renderShape(layer: KonvaShapeLayer, shadowProps: ShapeShadowProps = {}) {
   const width = layer.width ?? 240
   const height = layer.height ?? 140
-  const fill = layer.fill ?? '#F59E0B'
-  const stroke = layer.stroke ?? '#111827'
+  const baseFill = layer.fill ?? '#F59E0B'
+  const baseStroke = layer.stroke ?? '#111827'
+  const fillOpacity = layer.fillOpacity ?? 100
+  const strokeOpacity = layer.strokeOpacity ?? 100
   const strokeWidth = layer.strokeWidth ?? 0
   const cornerRadius = layer.cornerRadius ?? 0
+  const dash = layer.strokeStyle?.dashArray
+
+  // Apply opacity to colors using RGBA
+  const fill = fillOpacity < 100 ? hexToRgba(baseFill, fillOpacity / 100) : baseFill
+  const stroke = strokeOpacity < 100 ? hexToRgba(baseStroke, strokeOpacity / 100) : baseStroke
 
   switch (layer.shape) {
     case 'circle':
@@ -72,6 +121,8 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={dash}
+          {...shadowProps}
         />
       )
     case 'triangle':
@@ -84,6 +135,8 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={dash}
+          {...shadowProps}
         />
       )
     case 'star':
@@ -97,6 +150,8 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={dash}
+          {...shadowProps}
         />
       )
     case 'arrow':
@@ -106,7 +161,9 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth || 6}
+          dash={dash}
           closed
+          {...shadowProps}
         />
       )
     case 'line':
@@ -115,7 +172,9 @@ function renderShape(layer: KonvaShapeLayer) {
           points={layer.points ?? [0, height / 2, width, height / 2]}
           stroke={stroke || fill}
           strokeWidth={strokeWidth || 8}
+          dash={dash}
           lineCap="round"
+          {...shadowProps}
         />
       )
     case 'rounded-rectangle':
@@ -126,7 +185,9 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={dash}
           cornerRadius={cornerRadius || 24}
+          {...shadowProps}
         />
       )
     case 'rectangle':
@@ -138,7 +199,9 @@ function renderShape(layer: KonvaShapeLayer) {
           fill={fill}
           stroke={stroke}
           strokeWidth={strokeWidth}
+          dash={dash}
           cornerRadius={cornerRadius}
+          {...shadowProps}
         />
       )
   }
@@ -177,29 +240,96 @@ export function LayerFactory({
 
   if (layer.type === 'text' || layer.type === 'rich-text') {
     const renderState = resolveTextRenderState(page, layer)
+    const effects = layer.effects
+
+    // Drop Shadow
+    const dropShadow = effects?.dropShadow?.enabled ? effects.dropShadow : null
+
+    // Text Stroke
+    const textStroke = effects?.textStroke?.enabled ? effects.textStroke : null
+
+    // Text Background
+    const textBackground = effects?.textBackground?.enabled ? effects.textBackground : null
+
+    // Curved Text
+    const curvedText = effects?.curvedText?.enabled && effects.curvedText.power !== 0 ? effects.curvedText : null
+
+    // Common text styling props
+    const textStyleProps = {
+      fontFamily: serializeFontFamilyStack(layer.textStyle?.fontFamily),
+      fontSize: renderState.fontSize,
+      fontStyle:
+        `${layer.textStyle?.fontWeight ?? ''} ${layer.textStyle?.fontStyle ?? ''}`.trim() || 'normal',
+      fill: layer.textStyle?.fill ?? '#111827',
+      letterSpacing: layer.textStyle?.letterSpacing ?? 0,
+      // Text Stroke
+      stroke: textStroke ? textStroke.color : isSelected ? '#F59E0B' : undefined,
+      strokeWidth: textStroke ? textStroke.width : isSelected ? 0.6 : 0,
+      // Drop Shadow
+      shadowColor: dropShadow ? dropShadow.color : undefined,
+      shadowBlur: dropShadow ? dropShadow.blur : undefined,
+      shadowOffsetX: dropShadow ? dropShadow.offsetX : undefined,
+      shadowOffsetY: dropShadow ? dropShadow.offsetY : undefined,
+      shadowOpacity: dropShadow ? dropShadow.opacity / 100 : undefined,
+    }
+
+    // Render curved text using TextPath
+    if (curvedText) {
+      const curvePath = generateCurvedTextPath(renderState.width, renderState.height, curvedText.power)
+
+      return (
+        <Group {...commonProps} x={renderState.x} y={renderState.y}>
+          {/* Text Background */}
+          {textBackground && (
+            <Rect
+              x={-textBackground.padding}
+              y={-textBackground.padding}
+              width={renderState.width + textBackground.padding * 2}
+              height={renderState.height + textBackground.padding * 2}
+              fill={textBackground.color}
+              opacity={textBackground.opacity / 100}
+              cornerRadius={textBackground.cornerRadius}
+            />
+          )}
+
+          {/* Curved Text using TextPath */}
+          <TextPath
+            data={curvePath}
+            text={renderState.text}
+            align={layer.textStyle?.align ?? 'center'}
+            {...textStyleProps}
+          />
+        </Group>
+      )
+    }
 
     return (
-      <Text
-        {...commonProps}
-        x={renderState.x}
-        y={renderState.y}
-        width={renderState.width}
-        height={renderState.height}
-        text={renderState.text}
-        fontFamily={serializeFontFamilyStack(layer.textStyle?.fontFamily)}
-        fontSize={renderState.fontSize}
-        fontStyle={
-          `${layer.textStyle?.fontWeight ?? ''} ${layer.textStyle?.fontStyle ?? ''}`.trim() || 'normal'
-        }
-        fill={layer.textStyle?.fill ?? '#111827'}
-        lineHeight={layer.textStyle?.lineHeight ?? 1.1}
-        align={layer.textStyle?.align ?? 'left'}
-        letterSpacing={layer.textStyle?.letterSpacing ?? 0}
-        verticalAlign={layer.textStyle?.verticalAlign ?? 'top'}
-        wrap="word"
-        stroke={isSelected ? '#F59E0B' : undefined}
-        strokeWidth={isSelected ? 0.6 : 0}
-      />
+      <Group {...commonProps} x={renderState.x} y={renderState.y}>
+        {/* Text Background */}
+        {textBackground && (
+          <Rect
+            x={-textBackground.padding}
+            y={-textBackground.padding}
+            width={renderState.width + textBackground.padding * 2}
+            height={renderState.height + textBackground.padding * 2}
+            fill={textBackground.color}
+            opacity={textBackground.opacity / 100}
+            cornerRadius={textBackground.cornerRadius}
+          />
+        )}
+
+        {/* Text with effects */}
+        <Text
+          width={renderState.width}
+          height={renderState.height}
+          text={renderState.text}
+          {...textStyleProps}
+          lineHeight={layer.textStyle?.lineHeight ?? 1.1}
+          align={layer.textStyle?.align ?? 'left'}
+          verticalAlign={layer.textStyle?.verticalAlign ?? 'top'}
+          wrap="word"
+        />
+      </Group>
     )
   }
 
@@ -307,9 +437,22 @@ export function LayerFactory({
   }
 
   if (layer.type === 'shape') {
+    const effects = layer.effects
+    const dropShadow = effects?.dropShadow?.enabled ? effects.dropShadow : null
+
+    const shadowProps: ShapeShadowProps = dropShadow
+      ? {
+          shadowColor: dropShadow.color,
+          shadowBlur: dropShadow.blur,
+          shadowOffsetX: dropShadow.offsetX,
+          shadowOffsetY: dropShadow.offsetY,
+          shadowOpacity: dropShadow.opacity / 100,
+        }
+      : {}
+
     return (
       <Group {...commonProps} x={layer.x} y={layer.y}>
-        {renderShape(layer)}
+        {renderShape(layer, shadowProps)}
         {isSelected ? (
           <Rect
             width={layer.width ?? 240}

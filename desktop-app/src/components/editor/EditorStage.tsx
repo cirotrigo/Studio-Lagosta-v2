@@ -5,6 +5,7 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import { LayerFactory } from './LayerFactory'
 import { Ruler, RulerCorner } from './canvas/Ruler'
 import { AlignmentQuickMenu, type AlignmentType } from './canvas/AlignmentQuickMenu'
+import { ImageCropOverlay } from './canvas/ImageCropOverlay'
 import { computeSmartGuides, type GuideLine } from '@/lib/editor/smart-guides'
 import {
   convertAbsoluteTextPositionToOffsets,
@@ -44,12 +45,15 @@ export function EditorStage() {
   const selectedLayerIds = useEditorStore((state) => state.selectedLayerIds)
   const zoom = useEditorStore((state) => state.zoom)
   const pan = useEditorStore((state) => state.pan)
+  const cropMode = useEditorStore((state) => state.cropMode)
   const clearSelection = useEditorStore((state) => state.clearSelection)
   const selectLayer = useEditorStore((state) => state.selectLayer)
   const updateLayer = useEditorStore((state) => state.updateLayer)
   const removeSelectedLayers = useEditorStore((state) => state.removeSelectedLayers)
   const setZoom = useEditorStore((state) => state.setZoom)
   const setPan = useEditorStore((state) => state.setPan)
+  const enterCropMode = useEditorStore((state) => state.enterCropMode)
+  const exitCropMode = useEditorStore((state) => state.exitCropMode)
 
   const [containerSize, setContainerSize] = useState({ width: 1200, height: 900 })
   const [guides, setGuides] = useState<GuideLine[]>([])
@@ -106,6 +110,21 @@ export function EditorStage() {
       const target = event.target as HTMLElement
       const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
+      // Crop mode keyboard handling
+      if (cropMode) {
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          exitCropMode(false) // Cancel
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          exitCropMode(true) // Confirm
+          return
+        }
+        return // Block other keys while in crop mode
+      }
+
       // Delete/Backspace para excluir elementos
       if ((event.key === 'Delete' || event.key === 'Backspace') && !isTextInput && selectedLayerIds.length > 0) {
         event.preventDefault()
@@ -120,7 +139,7 @@ export function EditorStage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, removeSelectedLayers])
+  }, [selectedLayerIds, removeSelectedLayers, cropMode, exitCropMode])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -365,11 +384,17 @@ export function EditorStage() {
       return
     }
 
-    if (layer.type === 'image' || layer.type === 'logo' || layer.type === 'icon') {
+    if (layer.type === 'image') {
+      // Enter crop mode for images
+      enterCropMode(layer.id)
+      return
+    }
+
+    if (layer.type === 'logo' || layer.type === 'icon') {
       const nextSource = window.prompt('Defina a URL da imagem', layer.src)
       if (nextSource !== null) {
         updateLayer(layer.id, (currentLayer) =>
-          currentLayer.type === 'image' || currentLayer.type === 'logo' || currentLayer.type === 'icon'
+          currentLayer.type === 'logo' || currentLayer.type === 'icon'
             ? { ...currentLayer, src: nextSource }
             : currentLayer,
         )
@@ -538,8 +563,20 @@ export function EditorStage() {
               shadowBlur={24}
               shadowOpacity={0.22}
               shadowOffset={{ x: 0, y: 18 }}
-              onClick={() => clearSelection()}
-              onTap={() => clearSelection()}
+              onClick={() => {
+                if (cropMode) {
+                  exitCropMode(true) // Confirm crop on click outside
+                } else {
+                  clearSelection()
+                }
+              }}
+              onTap={() => {
+                if (cropMode) {
+                  exitCropMode(true)
+                } else {
+                  clearSelection()
+                }
+              }}
             />
 
             {orderedLayers.map((layer) => (
@@ -547,13 +584,28 @@ export function EditorStage() {
                 key={layer.id}
                 page={currentPage}
                 layer={layer}
-                isSelected={selectedLayerIds.includes(layer.id)}
+                isSelected={selectedLayerIds.includes(layer.id) && !cropMode}
                 onSelect={handleLayerSelect}
                 onDragMove={handleLayerDragMove}
                 onDragEnd={handleLayerDragEnd}
                 onDirectEdit={handleDirectEdit}
               />
             ))}
+
+            {/* Image Crop Mode Overlay */}
+            {cropMode && (() => {
+              const cropLayer = currentPage.layers.find((l) => l.id === cropMode.layerId)
+              if (cropLayer?.type === 'image') {
+                return (
+                  <ImageCropOverlay
+                    page={currentPage}
+                    layer={cropLayer}
+                    zoom={zoom}
+                  />
+                )
+              }
+              return null
+            })()}
 
             {guides.map((guide) =>
               guide.orientation === 'vertical' ? (
@@ -598,6 +650,29 @@ export function EditorStage() {
           />
         </KonvaLayer>
       </Stage>
+
+      {/* Crop Mode UI */}
+      {cropMode && (
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-xl bg-background/95 px-4 py-3 shadow-xl backdrop-blur-sm border border-border">
+          <span className="text-sm text-text-muted">
+            Arraste para ajustar o enquadramento
+          </span>
+          <button
+            type="button"
+            onClick={() => exitCropMode(false)}
+            className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-text hover:bg-background/80 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="button"
+            onClick={() => exitCropMode(true)}
+            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+          >
+            Concluir
+          </button>
+        </div>
+      )}
     </div>
   )
 }
