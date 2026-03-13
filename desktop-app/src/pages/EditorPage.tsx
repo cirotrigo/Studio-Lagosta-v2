@@ -6,11 +6,14 @@ import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtMod
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
 import { EditorTemplateCarousel } from '@/components/editor/EditorTemplateCarousel'
+import { TemplateTagsModal } from '@/components/editor/TemplateTagsModal'
+import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
 import { useEditorGenerationQueue } from '@/hooks/use-editor-generation-queue'
 import { useBrandAssets, type BrandAssets } from '@/hooks/use-brand-assets'
+import { useProjectTags } from '@/hooks/use-project-tags'
 import { useSyncStatus } from '@/hooks/use-sync-status'
 import { useProjectStore } from '@/stores/project.store'
 import { useEditorStore } from '@/stores/editor.store'
@@ -75,6 +78,9 @@ export default function EditorPage() {
   const currentProject = useProjectStore((state) => state.currentProject)
   const { data: brandAssets } = useBrandAssets(currentProject?.id)
 
+  // Sync project tags to store
+  useProjectTags(currentProject?.id)
+
   // Sync status for auto-syncing templates
   const { pull: syncPull } = useSyncStatus()
 
@@ -93,6 +99,9 @@ export default function EditorPage() {
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [isAutoSyncing, setIsAutoSyncing] = useState(false)
+  const [isTagsModalOpen, setIsTagsModalOpen] = useState(false)
+  const [selectedDesignForTags, setSelectedDesignForTags] = useState<Design | null>(null)
+  const [isProjectTagsOpen, setIsProjectTagsOpen] = useState(false)
   const [approvedVariationDraft, setApprovedVariationDraft] = useState(
     (() => {
       const state = (location.state as EditorPageLocationState | null) ?? null
@@ -315,6 +324,11 @@ export default function EditorPage() {
     }
   }
 
+  const handleManageTags = (design: Design) => {
+    setSelectedDesignForTags(design)
+    setIsTagsModalOpen(true)
+  }
+
   const handleCreateTemplate = () => {
     const starter = createStarterDocument(currentProject, document?.format ?? 'STORY')
     resetPagesState()
@@ -399,50 +413,39 @@ export default function EditorPage() {
     )
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-          <p className="text-sm text-text-muted">Carregando editor Konva...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center p-8">
-        <div className="max-w-lg rounded-2xl border border-error/30 bg-card/80 p-6 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-error/10">
-            <AlertTriangle size={22} className="text-error" />
-          </div>
-          <h2 className="text-lg font-semibold text-text">Falha ao carregar o editor</h2>
-          <p className="mt-2 text-sm text-text-muted">{error}</p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="h-full min-h-0 overflow-auto">
       <div className="flex min-h-full min-w-[1260px] flex-col gap-4 p-4">
+        {/* Error message */}
+        {error && (
+          <div className="rounded-2xl border border-error/30 bg-card/80 p-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-error">
+              <AlertTriangle size={18} />
+              <span className="text-sm font-medium">{error}</span>
+            </div>
+          </div>
+        )}
+
         {/* Template Carousel */}
         <div className="relative">
-          {isAutoSyncing && (
+          {(isAutoSyncing || isLoading) && (
             <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-sm font-medium text-text">Sincronizando...</p>
+                <p className="text-sm font-medium text-text">
+                  {isAutoSyncing ? 'Sincronizando...' : 'Carregando...'}
+                </p>
               </div>
             </div>
           )}
           <EditorTemplateCarousel
             projectId={currentProject?.id}
-            selectedDesignId={document?.design.currentPageId ?? null}
+            selectedDesignId={document?.design?.currentPageId ?? null}
             onSelectDesign={handleDesignSelect}
             onCreateNew={handleCreateTemplate}
             onDeleteDesign={handleDeleteDesign}
+            onManageTags={handleManageTags}
+            onManageProjectTags={() => setIsProjectTagsOpen(true)}
           />
         </div>
 
@@ -504,6 +507,24 @@ export default function EditorPage() {
           onGenerate={handleQueueGeneration}
         />
       ) : null}
+
+      <TemplateTagsModal
+        isOpen={isTagsModalOpen}
+        onClose={() => {
+          setIsTagsModalOpen(false)
+          setSelectedDesignForTags(null)
+        }}
+        design={selectedDesignForTags}
+        projectId={currentProject?.id}
+      />
+
+      {currentProject && (
+        <ProjectTagsManager
+          projectId={currentProject.id}
+          isOpen={isProjectTagsOpen}
+          onClose={() => setIsProjectTagsOpen(false)}
+        />
+      )}
     </div>
   )
 }

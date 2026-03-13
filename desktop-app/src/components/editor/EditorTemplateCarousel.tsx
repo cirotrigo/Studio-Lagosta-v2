@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
-import { ChevronLeft, ChevronRight, ImageOff, Plus, Trash2 } from 'lucide-react'
-import { useProjectDesigns, getAspectRatioClass, type Design } from '@/hooks/use-project-designs'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight, Edit3, ImageOff, Plus, Settings2, Tag, Trash2, X } from 'lucide-react'
+import { useProjectDesigns, getAspectRatioClass, type Design, type DesignFormat } from '@/hooks/use-project-designs'
+import { useTagsStore } from '@/stores/tags.store'
 import { cn } from '@/lib/utils'
 
 interface EditorTemplateCarouselProps {
@@ -9,7 +10,16 @@ interface EditorTemplateCarouselProps {
   onSelectDesign: (design: Design) => void
   onCreateNew: () => void
   onDeleteDesign: (design: Design) => void
+  onManageTags?: (design: Design) => void
+  onManageProjectTags?: () => void
 }
+
+const FORMAT_OPTIONS: { value: DesignFormat | 'ALL'; label: string }[] = [
+  { value: 'ALL', label: 'Todos' },
+  { value: 'STORY', label: 'Story' },
+  { value: 'FEED_PORTRAIT', label: 'Feed' },
+  { value: 'SQUARE', label: 'Quadrado' },
+]
 
 // Skeleton placeholder for loading state
 function CarouselSkeleton() {
@@ -62,16 +72,48 @@ export function EditorTemplateCarousel({
   onSelectDesign,
   onCreateNew,
   onDeleteDesign,
+  onManageTags,
+  onManageProjectTags,
 }: EditorTemplateCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
   const [hoveredDesignId, setHoveredDesignId] = useState<string | null>(null)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [selectedFormat, setSelectedFormat] = useState<DesignFormat | 'ALL'>('ALL')
+
+  // Get project tags from store
+  const projectTags = useTagsStore((state) => state.tags)
 
   // Fetch all designs for the project
-  const { data, isLoading } = useProjectDesigns(projectId)
+  const { data, isLoading } = useProjectDesigns(projectId, {
+    tags: selectedTags.length > 0 ? selectedTags : undefined,
+    format: selectedFormat !== 'ALL' ? selectedFormat : undefined,
+  })
 
   const designs = data?.designs ?? []
+
+  // Available tags from current designs
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>()
+    data?.designs?.forEach((design) => {
+      design.tags?.forEach((tag) => tagSet.add(tag))
+    })
+    return Array.from(tagSet).sort()
+  }, [data])
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    )
+  }
+
+  const clearFilters = () => {
+    setSelectedTags([])
+    setSelectedFormat('ALL')
+  }
+
+  const hasFilters = selectedTags.length > 0 || selectedFormat !== 'ALL'
 
   // Check scroll state
   const updateScrollButtons = () => {
@@ -116,6 +158,7 @@ export function EditorTemplateCarousel({
 
   return (
     <div className="rounded-2xl border border-border bg-card/60 p-4">
+      {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-text">
           Templates ({designs.length})
@@ -128,6 +171,73 @@ export function EditorTemplateCarousel({
           <Plus size={14} />
           Novo Template
         </button>
+      </div>
+
+      {/* Filters */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {/* Format filter */}
+        <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
+          {FORMAT_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setSelectedFormat(option.value)}
+              className={cn(
+                'rounded-md px-2 py-1 text-[10px] font-medium transition-all',
+                selectedFormat === option.value
+                  ? 'bg-primary text-white'
+                  : 'text-text-muted hover:bg-input hover:text-text',
+              )}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Tag chips */}
+        <div className="flex flex-wrap items-center gap-1">
+          {projectTags.slice(0, 8).map((tag) => (
+            <button
+              key={tag.id}
+              type="button"
+              onClick={() => toggleTag(tag.name)}
+              className={cn(
+                'rounded-full px-2 py-0.5 text-[10px] font-medium transition-all',
+                selectedTags.includes(tag.name)
+                  ? 'text-white'
+                  : 'bg-input/60 text-text-muted hover:bg-input',
+              )}
+              style={{
+                backgroundColor: selectedTags.includes(tag.name) ? tag.color : undefined,
+              }}
+            >
+              {tag.name}
+            </button>
+          ))}
+          {onManageProjectTags && (
+            <button
+              type="button"
+              onClick={onManageProjectTags}
+              className="flex items-center gap-1 rounded-full bg-input/60 px-2 py-0.5 text-[10px] font-medium text-text-muted transition-all hover:bg-input hover:text-text"
+              title="Gerenciar tags do projeto"
+            >
+              <Settings2 size={10} />
+              Tags
+            </button>
+          )}
+        </div>
+
+        {/* Clear filters */}
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium text-error transition-all hover:bg-error/20"
+          >
+            <X size={10} />
+            Limpar
+          </button>
+        )}
       </div>
 
       {designs.length === 0 ? (
@@ -204,19 +314,43 @@ export function EditorTemplateCarousel({
                       </div>
                     )}
 
-                    {/* Delete button on hover */}
-                    {isHovered && !isSelected && (
+                    {/* Action buttons on hover */}
+                    {isHovered && (
                       <div
-                        className="absolute inset-0 flex items-center justify-center bg-black/50 backdrop-blur-[2px] transition-opacity"
+                        className="absolute inset-0 flex items-center justify-center gap-1 bg-black/60 backdrop-blur-[2px] transition-opacity"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <button
                           type="button"
-                          onClick={(e) => handleDelete(e, design)}
-                          className="rounded-lg bg-red-500/20 p-2 text-red-400 transition-all hover:bg-red-500/40 hover:scale-110"
-                          title="Excluir template"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onSelectDesign(design)
+                          }}
+                          className="rounded-lg bg-white/20 p-1.5 text-white transition-all hover:bg-white/30 hover:scale-110"
+                          title="Editar"
                         >
-                          <Trash2 size={14} />
+                          <Edit3 size={12} />
+                        </button>
+                        {onManageTags && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              onManageTags(design)
+                            }}
+                            className="rounded-lg bg-white/20 p-1.5 text-white transition-all hover:bg-white/30 hover:scale-110"
+                            title="Gerenciar tags"
+                          >
+                            <Tag size={12} />
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDelete(e, design)}
+                          className="rounded-lg bg-red-500/30 p-1.5 text-red-300 transition-all hover:bg-red-500/50 hover:scale-110"
+                          title="Excluir"
+                        >
+                          <Trash2 size={12} />
                         </button>
                       </div>
                     )}
