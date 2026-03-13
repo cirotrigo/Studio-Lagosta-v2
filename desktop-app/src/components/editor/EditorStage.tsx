@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Konva from 'konva'
 import { Layer as KonvaLayer, Line, Rect, Stage, Transformer, Group } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { LayerFactory } from './LayerFactory'
+import { Ruler, RulerCorner } from './canvas/Ruler'
+import { AlignmentQuickMenu, type AlignmentType } from './canvas/AlignmentQuickMenu'
 import { computeSmartGuides, type GuideLine } from '@/lib/editor/smart-guides'
 import {
   convertAbsoluteTextPositionToOffsets,
@@ -52,6 +54,7 @@ export function EditorStage() {
   const [containerSize, setContainerSize] = useState({ width: 1200, height: 900 })
   const [guides, setGuides] = useState<GuideLine[]>([])
   const [isSpacePressed, setIsSpacePressed] = useState(false)
+  const [showRulers, setShowRulers] = useState(true)
 
   useEffect(() => {
     const container = containerRef.current
@@ -99,18 +102,24 @@ export function EditorStage() {
   }, [])
 
   useEffect(() => {
-    const handleDeleteKey = (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
       const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
+      // Delete/Backspace para excluir elementos
       if ((event.key === 'Delete' || event.key === 'Backspace') && !isTextInput && selectedLayerIds.length > 0) {
         event.preventDefault()
         removeSelectedLayers()
       }
+
+      // R para toggle das réguas
+      if (event.key === 'r' && !isTextInput) {
+        setShowRulers((prev) => !prev)
+      }
     }
 
-    window.addEventListener('keydown', handleDeleteKey)
-    return () => window.removeEventListener('keydown', handleDeleteKey)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [selectedLayerIds, removeSelectedLayers])
 
   useEffect(() => {
@@ -148,6 +157,45 @@ export function EditorStage() {
   const orderedLayers = useMemo(
     () => currentPage?.layers ?? [],
     [currentPage],
+  )
+
+  const selectedLayers = useMemo(
+    () => orderedLayers.filter((layer) => selectedLayerIds.includes(layer.id)),
+    [orderedLayers, selectedLayerIds],
+  )
+
+  const handleAlign = useCallback(
+    (alignment: AlignmentType) => {
+      if (!currentPage || selectedLayers.length === 0) return
+
+      const pageWidth = currentPage.width
+      const pageHeight = currentPage.height
+
+      selectedLayers.forEach((layer) => {
+        updateLayer(layer.id, (l) => {
+          const width = l.width ?? 100
+          const height = l.height ?? 100
+
+          switch (alignment) {
+            case 'left':
+              return { ...l, x: 0 }
+            case 'center-h':
+              return { ...l, x: (pageWidth - width) / 2 }
+            case 'right':
+              return { ...l, x: pageWidth - width }
+            case 'top':
+              return { ...l, y: 0 }
+            case 'center-v':
+              return { ...l, y: (pageHeight - height) / 2 }
+            case 'bottom':
+              return { ...l, y: pageHeight - height }
+            default:
+              return l
+          }
+        }, false)
+      })
+    },
+    [currentPage, selectedLayers, updateLayer],
   )
 
   if (!currentPage) {
@@ -212,32 +260,44 @@ export function EditorStage() {
       return
     }
 
-    const pointer = stage.getPointerPosition()
-    if (!pointer) {
-      return
+    // Pinch-to-zoom no Mac (ctrlKey = true) ou Ctrl+Scroll no Windows
+    if (event.evt.ctrlKey || event.evt.metaKey) {
+      const pointer = stage.getPointerPosition()
+      if (!pointer) {
+        return
+      }
+
+      const oldZoom = zoom
+      // Pinch usa deltaY invertido e com valores menores
+      const zoomFactor = event.evt.deltaY > 0 ? 0.97 : 1.03
+      const nextZoom = oldZoom * zoomFactor
+      const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom))
+
+      // Zoom mantendo o ponto sob o cursor fixo
+      const oldPageX = containerSize.width / 2 - (currentPage.width * oldZoom) / 2 + pan.x
+      const oldPageY = containerSize.height / 2 - (currentPage.height * oldZoom) / 2 + pan.y
+      const mousePoint = {
+        x: (pointer.x - oldPageX) / oldZoom,
+        y: (pointer.y - oldPageY) / oldZoom,
+      }
+
+      const newPageX = pointer.x - mousePoint.x * clampedZoom
+      const newPageY = pointer.y - mousePoint.y * clampedZoom
+      const centeredPageX = containerSize.width / 2 - (currentPage.width * clampedZoom) / 2
+      const centeredPageY = containerSize.height / 2 - (currentPage.height * clampedZoom) / 2
+
+      setZoom(Number(clampedZoom.toFixed(3)))
+      setPan({
+        x: Math.round(newPageX - centeredPageX),
+        y: Math.round(newPageY - centeredPageY),
+      })
+    } else {
+      // Panning com dois dedos no trackpad (scroll normal)
+      setPan({
+        x: Math.round(pan.x - event.evt.deltaX),
+        y: Math.round(pan.y - event.evt.deltaY),
+      })
     }
-
-    const oldZoom = zoom
-    const nextZoom = event.evt.deltaY > 0 ? oldZoom * 0.94 : oldZoom * 1.06
-    const clampedZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, nextZoom))
-
-    const oldPageX = containerSize.width / 2 - (currentPage.width * oldZoom) / 2 + pan.x
-    const oldPageY = containerSize.height / 2 - (currentPage.height * oldZoom) / 2 + pan.y
-    const mousePoint = {
-      x: (pointer.x - oldPageX) / oldZoom,
-      y: (pointer.y - oldPageY) / oldZoom,
-    }
-
-    const newPageX = pointer.x - mousePoint.x * clampedZoom
-    const newPageY = pointer.y - mousePoint.y * clampedZoom
-    const centeredPageX = containerSize.width / 2 - (currentPage.width * clampedZoom) / 2
-    const centeredPageY = containerSize.height / 2 - (currentPage.height * clampedZoom) / 2
-
-    setZoom(Number(clampedZoom.toFixed(3)))
-    setPan({
-      x: Math.round(newPageX - centeredPageX),
-      y: Math.round(newPageY - centeredPageY),
-    })
   }
 
   const handleLayerSelect = (event: KonvaEventObject<MouseEvent | TouchEvent>, layerId: string) => {
@@ -418,8 +478,39 @@ export function EditorStage() {
   return (
     <div
       ref={containerRef}
-      className={`h-full rounded-2xl border border-border bg-[#0c111d] ${isSpacePressed ? 'cursor-grab' : 'cursor-default'}`}
+      className={`relative h-full rounded-2xl border border-border bg-[#0c111d] ${isSpacePressed ? 'cursor-grab' : 'cursor-default'}`}
     >
+      {/* Réguas de precisão */}
+      {showRulers && (
+        <>
+          <RulerCorner />
+          <Ruler
+            orientation="horizontal"
+            size={containerSize.width - 20}
+            pageSize={currentPage.width}
+            pageOffset={pagePosition.x - 20}
+            zoom={zoom}
+          />
+          <Ruler
+            orientation="vertical"
+            size={containerSize.height - 20}
+            pageSize={currentPage.height}
+            pageOffset={pagePosition.y - 20}
+            zoom={zoom}
+          />
+        </>
+      )}
+
+      {/* Quick Menu de alinhamento */}
+      {selectedLayers.length > 0 && (
+        <AlignmentQuickMenu
+          selectedLayers={selectedLayers}
+          pagePosition={pagePosition}
+          zoom={zoom}
+          onAlign={handleAlign}
+        />
+      )}
+
       <Stage
         ref={stageRef}
         width={containerSize.width}

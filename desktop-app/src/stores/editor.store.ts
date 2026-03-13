@@ -30,6 +30,7 @@ interface EditorState {
   removeLayer: (layerId: string) => void
   removeSelectedLayers: () => void
   reorderLayer: (layerId: string, direction: 'forward' | 'backward' | 'front' | 'back') => void
+  moveLayerToIndex: (layerId: string, newIndex: number) => void
   toggleLayerVisibility: (layerId: string) => void
   toggleLayerLock: (layerId: string) => void
   selectLayer: (layerId: string, additive?: boolean) => void
@@ -255,6 +256,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
                   : Math.max(0, index - 1)
               layers.splice(targetIndex, 0, layer)
             }
+
+            return {
+              ...page,
+              layers,
+            }
+          }),
+        true,
+      ),
+    })),
+
+  moveLayerToIndex: (layerId, newIndex) =>
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (document) =>
+          updateCurrentPageDocument(document, (page) => {
+            const layers = [...page.layers]
+            const currentIndex = layers.findIndex((layer) => layer.id === layerId)
+            if (currentIndex === -1 || currentIndex === newIndex) {
+              return page
+            }
+
+            const [layer] = layers.splice(currentIndex, 1)
+            layers.splice(newIndex, 0, layer)
 
             return {
               ...page,

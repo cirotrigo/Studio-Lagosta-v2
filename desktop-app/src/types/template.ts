@@ -41,6 +41,48 @@ export type TextOverflowBehavior = 'clip' | 'ellipsis' | 'autoScale'
 export type SafeAreaVertical = 'top' | 'center' | 'bottom'
 export type SafeAreaHorizontal = 'left' | 'center' | 'right'
 
+export type StrokeStyleType = 'solid' | 'dashed' | 'dotted'
+
+export interface StrokeStyle {
+  type: StrokeStyleType
+  dashArray?: number[]
+}
+
+export interface DropShadowEffect {
+  enabled: boolean
+  offsetX: number
+  offsetY: number
+  blur: number
+  opacity: number
+  color: string
+}
+
+export interface TextStrokeEffect {
+  enabled: boolean
+  width: number
+  color: string
+}
+
+export interface TextBackgroundEffect {
+  enabled: boolean
+  cornerRadius: number
+  padding: number
+  opacity: number
+  color: string
+}
+
+export interface CurvedTextEffect {
+  enabled: boolean
+  power: number
+}
+
+export interface LayerEffects {
+  dropShadow?: DropShadowEffect
+  textStroke?: TextStrokeEffect
+  textBackground?: TextBackgroundEffect
+  curvedText?: CurvedTextEffect
+}
+
 export interface KonvaLayerBase {
   id: string
   type: KonvaLayerType
@@ -58,6 +100,7 @@ export interface KonvaLayerBase {
   draggable?: boolean
   zIndex?: number
   role?: 'background' | 'content'
+  effects?: LayerEffects
 }
 
 export interface KonvaTextLayer extends KonvaLayerBase {
@@ -108,6 +151,7 @@ export interface KonvaShapeLayer extends KonvaLayerBase {
   fill?: string
   stroke?: string
   strokeWidth?: number
+  strokeStyle?: StrokeStyle
   cornerRadius?: number
   points?: number[]
 }
