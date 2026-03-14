@@ -86,7 +86,7 @@ export async function PUT(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ projectId: string; tagId: string }> },
 ) {
   const authData = await auth()
@@ -119,18 +119,88 @@ export async function DELETE(
     return NextResponse.json({ error: 'Cannot delete the default Template tag' }, { status: 400 })
   }
 
-  // Remove this tag from all pages
   const tagName = existingTag.name
-  await db.$executeRaw`
-    UPDATE "Page"
-    SET tags = array_remove(tags, ${tagName})
-    WHERE ${tagName} = ANY(tags)
-  `
+
+  // Count pages that have this tag (within this project's templates)
+  const pagesWithTag = await db.page.findMany({
+    where: {
+      Template: { projectId: projectIdNum },
+      tags: { has: tagName },
+    },
+    select: { id: true },
+  })
+
+  const pageCount = pagesWithTag.length
+
+  // Parse request body for transfer option
+  let transferToTagId: string | null = null
+  let forceDelete = false
+
+  try {
+    const body = await req.json()
+    transferToTagId = body.transferToTagId || null
+    forceDelete = body.forceDelete === true
+  } catch {
+    // No body provided, which is fine for simple delete
+  }
+
+  // If there are pages with this tag and no transfer/force option, return error with count
+  if (pageCount > 0 && !transferToTagId && !forceDelete) {
+    return NextResponse.json(
+      {
+        error: 'Tag has associated pages',
+        code: 'TAG_HAS_PAGES',
+        pageCount,
+        message: `Esta tag está associada a ${pageCount} página(s). Escolha uma tag para transferir ou force a exclusão.`,
+      },
+      { status: 409 },
+    )
+  }
+
+  // If transfer is requested, validate and perform transfer
+  if (transferToTagId) {
+    const targetTag = await db.projectTag.findFirst({
+      where: { id: transferToTagId, projectId: projectIdNum },
+    })
+
+    if (!targetTag) {
+      return NextResponse.json({ error: 'Target tag not found' }, { status: 404 })
+    }
+
+    // Transfer: replace old tag with new tag in all pages
+    // First, remove old tag and add new tag (avoiding duplicates)
+    await db.$executeRaw`
+      UPDATE "Page" p
+      SET tags = (
+        SELECT array_agg(DISTINCT t)
+        FROM (
+          SELECT unnest(array_remove(tags, ${tagName})) AS t
+          UNION
+          SELECT ${targetTag.name}
+        ) sub
+        WHERE t IS NOT NULL
+      )
+      FROM "Template" tpl
+      WHERE p."templateId" = tpl.id
+        AND tpl."projectId" = ${projectIdNum}
+        AND ${tagName} = ANY(p.tags)
+    `
+  } else if (forceDelete || pageCount === 0) {
+    // Just remove the tag from all pages without transfer
+    await db.$executeRaw`
+      UPDATE "Page" p
+      SET tags = array_remove(tags, ${tagName})
+      FROM "Template" tpl
+      WHERE p."templateId" = tpl.id
+        AND tpl."projectId" = ${projectIdNum}
+        AND ${tagName} = ANY(p.tags)
+    `
+  }
 
   // Delete the tag
   await db.projectTag.delete({
     where: { id: tagId },
   })
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, pagesUpdated: pageCount })
 }

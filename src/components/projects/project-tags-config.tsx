@@ -4,8 +4,23 @@ import { useState } from 'react'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Plus, Tag, Trash2, Pencil, Check, X, Loader2 } from 'lucide-react'
+import { Plus, Tag, Trash2, Pencil, Check, X, Loader2, AlertTriangle } from 'lucide-react'
 import { toast } from 'sonner'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import {
   useProjectTags,
   useCreateProjectTag,
@@ -18,10 +33,23 @@ interface ProjectTagsConfigProps {
   projectId: number
 }
 
+interface DeleteDialogState {
+  isOpen: boolean
+  tag: ProjectTag | null
+  pageCount: number
+  transferToTagId: string
+}
+
 export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
   const [newTagName, setNewTagName] = useState('')
   const [editingTagId, setEditingTagId] = useState<string | null>(null)
   const [editingTagName, setEditingTagName] = useState('')
+  const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState>({
+    isOpen: false,
+    tag: null,
+    pageCount: 0,
+    transferToTagId: '',
+  })
 
   const { data: tags, isLoading } = useProjectTags({ projectId })
   const createMutation = useCreateProjectTag()
@@ -104,11 +132,22 @@ export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
       return
     }
 
+    // First try to delete - API will return TAG_HAS_PAGES if there are associated pages
     deleteMutation.mutate(
       { projectId, tagId: tag.id },
       {
-        onSuccess: () => {
-          toast.success('Tag removida com sucesso!')
+        onSuccess: (data) => {
+          if (data.code === 'TAG_HAS_PAGES' && data.pageCount) {
+            // Show confirmation dialog with transfer option
+            setDeleteDialog({
+              isOpen: true,
+              tag,
+              pageCount: data.pageCount,
+              transferToTagId: '',
+            })
+          } else if (data.success) {
+            toast.success('Tag removida com sucesso!')
+          }
         },
         onError: (error) => {
           toast.error(error instanceof Error ? error.message : 'Erro ao remover tag')
@@ -116,6 +155,48 @@ export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
       },
     )
   }
+
+  const handleConfirmDelete = () => {
+    if (!deleteDialog.tag) return
+
+    const { tag, transferToTagId } = deleteDialog
+
+    deleteMutation.mutate(
+      {
+        projectId,
+        tagId: tag.id,
+        transferToTagId: transferToTagId || undefined,
+        forceDelete: !transferToTagId,
+      },
+      {
+        onSuccess: (data) => {
+          if (data.success) {
+            if (transferToTagId) {
+              const targetTag = tags?.find((t) => t.id === transferToTagId)
+              toast.success(
+                `Tag removida e ${deleteDialog.pageCount} pagina(s) transferida(s) para "${targetTag?.name}"`,
+              )
+            } else {
+              toast.success(`Tag removida e ${deleteDialog.pageCount} pagina(s) atualizadas`)
+            }
+            setDeleteDialog({ isOpen: false, tag: null, pageCount: 0, transferToTagId: '' })
+          }
+        },
+        onError: (error) => {
+          toast.error(error instanceof Error ? error.message : 'Erro ao remover tag')
+        },
+      },
+    )
+  }
+
+  const handleCancelDelete = () => {
+    setDeleteDialog({ isOpen: false, tag: null, pageCount: 0, transferToTagId: '' })
+  }
+
+  // Filter available tags for transfer (exclude the tag being deleted and "Template")
+  const availableTagsForTransfer = tags?.filter(
+    (t) => t.id !== deleteDialog.tag?.id,
+  )
 
   return (
     <Card className="p-6">
@@ -273,6 +354,72 @@ export function ProjectTagsConfig({ projectId }: ProjectTagsConfigProps) {
           As tags sao usadas para organizar as paginas dos templates. Paginas com a tag "Template" aparecem no modo Arte Rapida.
         </p>
       </div>
+
+      {/* Delete confirmation dialog with transfer option */}
+      <Dialog open={deleteDialog.isOpen} onOpenChange={(open) => !open && handleCancelDelete()}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Tag com paginas associadas
+            </DialogTitle>
+            <DialogDescription>
+              A tag <strong>"{deleteDialog.tag?.name}"</strong> esta associada a{' '}
+              <strong>{deleteDialog.pageCount} pagina(s)</strong>. O que deseja fazer?
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Transferir para outra tag (opcional)</label>
+              <Select
+                value={deleteDialog.transferToTagId}
+                onValueChange={(value) =>
+                  setDeleteDialog((prev) => ({ ...prev, transferToTagId: value }))
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione uma tag para transferir..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableTagsForTransfer?.map((tag) => (
+                    <SelectItem key={tag.id} value={tag.id}>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: tag.color }}
+                        />
+                        {tag.name}
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {deleteDialog.transferToTagId
+                  ? 'As paginas serao transferidas para a tag selecionada antes da exclusao.'
+                  : 'Se nenhuma tag for selecionada, as paginas perderao esta tag.'}
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCancelDelete}>
+              Cancelar
+            </Button>
+            <Button
+              variant={deleteDialog.transferToTagId ? 'default' : 'destructive'}
+              onClick={handleConfirmDelete}
+              disabled={deleteMutation.isPending}
+            >
+              {deleteMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              ) : null}
+              {deleteDialog.transferToTagId ? 'Transferir e Excluir' : 'Excluir sem transferir'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   )
 }
