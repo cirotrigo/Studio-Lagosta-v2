@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain, shell, safeStorage, session, net } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, safeStorage, session, net, dialog } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import path from 'path'
 import { promises as fs } from 'fs'
 import { processImage } from './ipc/image-processor'
@@ -364,6 +365,52 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+
+  // Auto-updater configuration
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () => {
+    console.log('[AutoUpdater] Verificando atualizações...')
+  })
+
+  autoUpdater.on('update-available', (info) => {
+    console.log('[AutoUpdater] Atualização disponível:', info.version)
+    mainWindow?.webContents.send('update-available', info)
+  })
+
+  autoUpdater.on('update-not-available', () => {
+    console.log('[AutoUpdater] Nenhuma atualização disponível')
+  })
+
+  autoUpdater.on('download-progress', (progress) => {
+    console.log(`[AutoUpdater] Baixando: ${Math.round(progress.percent)}%`)
+    mainWindow?.webContents.send('update-progress', progress)
+  })
+
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log('[AutoUpdater] Atualização baixada:', info.version)
+    mainWindow?.webContents.send('update-downloaded', info)
+    dialog.showMessageBox(mainWindow!, {
+      type: 'info',
+      title: 'Atualização disponível',
+      message: `Versão ${info.version} foi baixada. Reinicie para aplicar.`,
+      buttons: ['Reiniciar agora', 'Depois']
+    }).then((result) => {
+      if (result.response === 0) {
+        autoUpdater.quitAndInstall()
+      }
+    })
+  })
+
+  autoUpdater.on('error', (error) => {
+    console.error('[AutoUpdater] Erro:', error)
+  })
+
+  // Verifica atualizações ao iniciar (só em produção)
+  if (!process.env.VITE_DEV_SERVER_URL) {
+    autoUpdater.checkForUpdates()
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

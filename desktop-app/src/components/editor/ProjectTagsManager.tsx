@@ -107,7 +107,7 @@ export function ProjectTagsManager({ projectId, isOpen, onClose }: ProjectTagsMa
             method: 'DELETE',
             headers: {
               'Content-Type': 'application/json',
-              Authorization: `Bearer ${useAuthStore.getState().token}`,
+              Authorization: `Bearer ${useAuthStore.getState().cookies}`,
             },
             body: JSON.stringify({ transferToTagId, forceDelete }),
           },

@@ -2,10 +2,19 @@
   "permissions": {
     "allow": [
       "Bash(git status:*)",
-      "Bash(grep -oE \"#[0-9a-fA-F]{3,8}\" /Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/design-system.html)"
+      "Bash(grep -oE \"#[0-9a-fA-F]{3,8}\" /Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/design-system.html)",
+      "Bash(hdiutil detach:*)",
+      "Bash(ls -lah /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.dmg)",
+      "Bash(open /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/)",
+      "Bash(ls -la /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.dmg)",
+      "Bash(ls -la /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.zip)",
+      "Bash(ls -lah /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.dmg /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.zip)",
+      "Bash(npx asar:*)",
+      "Read(//tmp/**)"
     ],
     "additionalDirectories": [
-      "/Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/assets"
+      "/Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/assets",
+      "/private/tmp/asar-check"
     ]
   }
 }

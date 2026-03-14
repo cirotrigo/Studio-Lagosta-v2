@@ -10,10 +10,12 @@
     "dev": "vite",
     "dev:electron": "concurrently -k \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "build": "tsc && vite build",
-    "build:electron": "npm run build && tsc -p tsconfig.electron.json",
+    "build:electron": "npm run build",
     "package": "npm run build:electron && electron-builder",
     "package:mac": "npm run build:electron && electron-builder --mac",
     "package:win": "npm run build:electron && electron-builder --win",
+    "publish:mac": "npm run build:electron && electron-builder --mac --publish always",
+    "release": "npm version patch && npm run publish:mac",
     "typecheck": "tsc --noEmit",
     "typecheck:electron": "tsc -p tsconfig.electron.json --noEmit",
     "lint": "eslint src electron --ext .ts,.tsx"
@@ -25,6 +27,7 @@
     "@tanstack/react-query": "^5.60.0",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
+    "electron-updater": "^6.8.3",
     "jszip": "^3.10.1",
     "konva": "^10.2.0",
     "lucide-react": "^0.460.0",
@@ -36,11 +39,12 @@
     "sonner": "^1.7.0",
     "tailwind-merge": "^2.5.0",
     "use-image": "^1.1.4",
-    "zustand": "^5.0.0"
+    "zustand": "^5.0.0",
+    "sharp": "^0.33.5",
+    "@napi-rs/canvas": "^0.1.95"
   },
   "devDependencies": {
     "@fontsource/inter": "^5.1.0",
-    "@napi-rs/canvas": "^0.1.95",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -50,7 +54,6 @@
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "postcss": "^8.4.49",
-    "sharp": "^0.33.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
@@ -139,8 +142,18 @@
       "dist-electron/**/*",
       "resources/**/*"
     ],
+    "asarUnpack": [
+      "node_modules/sharp/**/*",
+      "node_modules/@napi-rs/canvas/**/*"
+    ],
     "extraMetadata": {
       "main": "dist-electron/main.js"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "studiolagosta",
+      "repo": "lagosta-tools",
+      "releaseType": "release"
     }
   }
 }

@@ -14,7 +14,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['electron', 'electron-store', 'sharp', '@napi-rs/canvas'],
+              external: ['electron', 'electron-store', 'sharp', '@napi-rs/canvas', 'electron-updater'],
             },
           },
         },
@@ -29,6 +29,10 @@ export default defineConfig({
             outDir: 'dist-electron',
             rollupOptions: {
               external: ['electron'],
+              output: {
+                // Bundle all imports into a single file
+                inlineDynamicImports: true,
+              },
             },
           },
         },
