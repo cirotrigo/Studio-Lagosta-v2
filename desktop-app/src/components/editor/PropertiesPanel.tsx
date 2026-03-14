@@ -1,5 +1,6 @@
 import type { ChangeEvent } from 'react'
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { ChevronDown, ChevronRight, Type, Move, Image as ImageIcon, Paintbrush, Layout, Settings2, AlignLeft } from 'lucide-react'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { useProjectColors } from '@/hooks/use-project-colors'
 import { useProjectLogos } from '@/hooks/use-project-logos'
@@ -192,12 +193,79 @@ function ColorField({
   )
 }
 
-function SectionTitle({ title, description }: { title: string; description: string }) {
+function PanelGroup({ title, icon: Icon, defaultOpen = true, children }: { title: string, icon?: React.ElementType, defaultOpen?: boolean, children: React.ReactNode }) {
+  const [isOpen, setIsOpen] = useState(defaultOpen)
+  
   return (
-    <div className="space-y-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-3">
-      <p className="text-sm font-semibold text-white">{title}</p>
-      <p className="text-xs text-white/50">{description}</p>
+    <div className="rounded-2xl border border-white/5 bg-black/20 overflow-hidden shadow-sm">
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex w-full items-center justify-between px-3 py-3 hover:bg-white/5 transition-colors focus:outline-none"
+      >
+        <div className="flex items-center gap-2.5">
+          {Icon && <Icon size={14} className="text-orange-500/80" />}
+          <span className="text-sm font-semibold text-white/90 tracking-wide">{title}</span>
+        </div>
+        <div className="text-white/40">
+          {isOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </div>
+      </button>
+      {isOpen && (
+        <div className="px-3 pb-3 pt-1 border-t border-white/5 space-y-4">
+          {children}
+        </div>
+      )}
     </div>
+  )
+}
+
+function SliderField({
+  label,
+  value,
+  min,
+  max,
+  step = 1,
+  onChange,
+  disabled = false,
+}: {
+  label: string
+  value: number | undefined
+  min: number
+  max: number
+  step?: number
+  disabled?: boolean
+  onChange: (value: number) => void
+}) {
+  const safeValue = value ?? 0
+  return (
+    <label className="space-y-2 block">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">{label}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={min}
+          max={max}
+          step={step}
+          value={safeValue}
+          disabled={disabled}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="w-full h-1.5 rounded-full appearance-none outline-none disabled:opacity-50 cursor-pointer bg-white/10 accent-orange-500"
+        />
+        <input
+          type="number"
+          min={min}
+          max={max}
+          step={step}
+          value={safeValue}
+          disabled={disabled}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="w-16 h-7 text-xs text-center bg-black/50 border border-white/10 rounded-md text-white/90 focus:border-orange-500/50 outline-none shadow-inner"
+        />
+      </div>
+    </label>
   )
 }
 
@@ -332,11 +400,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         {!selectedLayer ? (
-          <>
-            <SectionTitle
-              title="Página"
-              description="Nome, cor de fundo e dimensões ativas do formato atual."
-            />
+          <PanelGroup title="Configurações da Página" icon={Layout}>
             <TextField
               label="Nome da página"
               value={currentPage.name}
@@ -362,100 +426,81 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
               <NumberField label="Largura" value={currentPage.width} disabled onChange={() => {}} />
               <NumberField label="Altura" value={currentPage.height} disabled onChange={() => {}} />
             </div>
-          </>
+          </PanelGroup>
         ) : (
           <>
-            <SectionTitle
-              title="Layer"
-              description="Posição, dimensões e propriedades específicas do tipo selecionado."
-            />
+            <PanelGroup title="Layout & Posição da Camada" icon={Move}>
+              <label className="space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Nome da layer</span>
+                <input
+                  type="text"
+                  value={selectedLayer.name ?? ''}
+                  onChange={updateSelectedLayerName}
+                  className="input-field h-9 text-sm w-full"
+                />
+              </label>
 
-            <label className="space-y-1">
-              <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">Nome da layer</span>
-              <input
-                type="text"
-                value={selectedLayer.name ?? ''}
-                onChange={updateSelectedLayerName}
-                className="input-field h-10"
-              />
-            </label>
+              <div className="grid grid-cols-2 gap-3">
+                <NumberField
+                  label="X"
+                  value={selectedLayer.x}
+                  onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, x: value }))}
+                />
+                <NumberField
+                  label="Y"
+                  value={selectedLayer.y}
+                  onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, y: value }))}
+                />
+                <NumberField
+                  label="Largura"
+                  value={selectedLayer.width}
+                  onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, width: value }))}
+                />
+                <NumberField
+                  label="Altura"
+                  value={selectedLayer.height}
+                  onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, height: value }))}
+                />
+              </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <NumberField
-                label="X"
-                value={selectedLayer.x}
-                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, x: value }))}
-              />
-              <NumberField
-                label="Y"
-                value={selectedLayer.y}
-                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, y: value }))}
-              />
-              <NumberField
-                label="Largura"
-                value={selectedLayer.width}
-                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, width: value }))}
-              />
-              <NumberField
-                label="Altura"
-                value={selectedLayer.height}
-                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, height: value }))}
-              />
-              <NumberField
-                label="Rotação"
+              <SliderField
+                label="Rotação (Graus)"
                 value={selectedLayer.rotation}
+                min={0}
+                max={360}
+                step={1}
                 onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, rotation: value }))}
               />
-              <NumberField
-                label="Opacidade"
-                value={selectedLayer.opacity ?? 1}
-                step={0.05}
-                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, opacity: value }))}
+              <SliderField
+                label="Opacidade (%)"
+                value={Math.round((selectedLayer.opacity ?? 1) * 100)}
+                min={0}
+                max={100}
+                step={1}
+                onChange={(value) => updateLayer(selectedLayer.id, (layer) => ({ ...layer, opacity: value / 100 }))}
               />
-            </div>
+            </PanelGroup>
 
             {selectedTextLayer ? (
               <>
-                <SectionTitle
-                  title="Texto"
-                  description="Microtipografia persistida no JSON do template, com overflow e ancoragem de safe-area."
-                />
-
-                <label className="space-y-1">
-                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">Conteúdo</span>
-                  <textarea
-                    rows={5}
-                    value={selectedTextLayer.text}
-                    onChange={(event) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        text: event.target.value,
-                      }))
-                    }
-                    className="input-field py-2"
-                  />
-                </label>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <NumberField
-                    label="Font size"
-                    value={selectedTextLayer.textStyle?.fontSize}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          fontSize: value,
-                          maxFontSize:
-                            (layer.textStyle?.overflowBehavior ?? 'clip') === 'autoScale'
-                              ? Math.max(value, layer.textStyle?.maxFontSize ?? value)
-                              : layer.textStyle?.maxFontSize,
-                        },
-                      }))
-                    }
-                  />
+                <PanelGroup title="Conteúdo & Tipografia" icon={Type}>
                   <label className="space-y-1">
-                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">Conteúdo</span>
+                    <textarea
+                      rows={4}
+                      value={selectedTextLayer.text}
+                      onChange={(event) =>
+                        updateTextLayer((layer) => ({
+                          ...layer,
+                          text: event.target.value,
+                        }))
+                      }
+                      className="input-field py-2 text-sm leading-relaxed"
+                    />
+                  </label>
+
+                  <label className="space-y-1">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-white/50">
                       Font family
                     </span>
                     <select
@@ -478,15 +523,96 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                         </option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-white/40">
+                    <p className="text-[10px] mt-1 text-white/40">
                       {availableFontFamilies.length > 1
-                        ? `${availableFontFamilies.length} fontes do projeto disponiveis.`
+                        ? `${availableFontFamilies.length} fontes do projeto disponíveis.`
                         : 'Nenhuma fonte customizada encontrada.'}
                     </p>
                   </label>
-                  <NumberField
-                    label="Line height"
-                    value={selectedTextLayer.textStyle?.lineHeight}
+
+                  <SliderField
+                    label="Tamanho da Fonte (px)"
+                    value={selectedTextLayer.textStyle?.fontSize}
+                    min={8}
+                    max={400}
+                    step={1}
+                    onChange={(value) =>
+                      updateTextLayer((layer) => ({
+                        ...layer,
+                        textStyle: {
+                          ...layer.textStyle,
+                          fontSize: value,
+                          maxFontSize:
+                            (layer.textStyle?.overflowBehavior ?? 'clip') === 'autoScale'
+                              ? Math.max(value, layer.textStyle?.maxFontSize ?? value)
+                              : layer.textStyle?.maxFontSize,
+                        },
+                      }))
+                    }
+                  />
+
+                  <ColorField
+                    label="Cor do texto"
+                    value={selectedTextLayer.textStyle?.fill}
+                    palette={projectPalette}
+                    onChange={(value) =>
+                      updateTextLayer((layer) => ({
+                        ...layer,
+                        textStyle: {
+                          ...layer.textStyle,
+                          fill: value,
+                        },
+                      }))
+                    }
+                  />
+                </PanelGroup>
+
+                <PanelGroup title="Formatação e Espaçamento" icon={AlignLeft} defaultOpen={false}>
+                  <div className="grid grid-cols-2 gap-3 mb-2">
+                    <SelectField<'left' | 'center' | 'right' | 'justify'>
+                      label="Alinhamento Horizontal"
+                      value={selectedTextLayer.textStyle?.align ?? 'left'}
+                      onChange={(value) =>
+                        updateTextLayer((layer) => ({
+                          ...layer,
+                          textStyle: {
+                            ...layer.textStyle,
+                            align: value,
+                          },
+                        }))
+                      }
+                      options={[
+                        { label: 'Esquerda', value: 'left' },
+                        { label: 'Centro', value: 'center' },
+                        { label: 'Direita', value: 'right' },
+                        { label: 'Justificado', value: 'justify' },
+                      ]}
+                    />
+                    <SelectField<'top' | 'middle' | 'bottom'>
+                      label="Alinhamento Vertical"
+                      value={selectedTextLayer.textStyle?.verticalAlign ?? 'top'}
+                      onChange={(value) =>
+                        updateTextLayer((layer) => ({
+                          ...layer,
+                          textStyle: {
+                            ...layer.textStyle,
+                            verticalAlign: value,
+                          },
+                        }))
+                      }
+                      options={[
+                        { label: 'Topo', value: 'top' },
+                        { label: 'Meio', value: 'middle' },
+                        { label: 'Base', value: 'bottom' },
+                      ]}
+                    />
+                  </div>
+
+                  <SliderField
+                    label="Altura de Linha (line height)"
+                    value={selectedTextLayer.textStyle?.lineHeight ?? 1.2}
+                    min={0.5}
+                    max={3}
                     step={0.05}
                     onChange={(value) =>
                       updateTextLayer((layer) => ({
@@ -498,9 +624,12 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                       }))
                     }
                   />
-                  <NumberField
-                    label="Letter spacing"
-                    value={selectedTextLayer.textStyle?.letterSpacing}
+                  
+                  <SliderField
+                    label="Espaçamento Letras (letter spc)"
+                    value={selectedTextLayer.textStyle?.letterSpacing ?? 0}
+                    min={-20}
+                    max={100}
                     step={0.5}
                     onChange={(value) =>
                       updateTextLayer((layer) => ({
@@ -512,26 +641,9 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                       }))
                     }
                   />
-                </div>
-
-                <ColorField
-                  label="Cor do texto"
-                  value={selectedTextLayer.textStyle?.fill}
-                  palette={projectPalette}
-                  onChange={(value) =>
-                    updateTextLayer((layer) => ({
-                      ...layer,
-                      textStyle: {
-                        ...layer.textStyle,
-                        fill: value,
-                      },
-                    }))
-                  }
-                />
-
-                <div className="grid grid-cols-2 gap-3">
+                  
                   <SelectField<TextTransform>
-                    label="Text transform"
+                    label="Transformação (Caps Lock)"
                     value={selectedTextLayer.textStyle?.textTransform ?? 'none'}
                     onChange={(value) =>
                       updateTextLayer((layer) => ({
@@ -544,13 +656,16 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                     }
                     options={[
                       { label: 'Nenhum', value: 'none' },
-                      { label: 'UPPERCASE', value: 'uppercase' },
-                      { label: 'lowercase', value: 'lowercase' },
+                      { label: 'MAIÚSCULA', value: 'uppercase' },
+                      { label: 'minúscula', value: 'lowercase' },
                       { label: 'Capitalize', value: 'capitalize' },
                     ]}
                   />
+                </PanelGroup>
+
+                <PanelGroup title="Limites e Overflow" icon={Settings2} defaultOpen={false}>
                   <SelectField<TextOverflowBehavior>
-                    label="Overflow"
+                    label="Comportamento (se não couber)"
                     value={selectedTextLayer.textStyle?.overflowBehavior ?? 'clip'}
                     onChange={(value) =>
                       updateTextLayer((layer) => ({
@@ -562,164 +677,129 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                       }))
                     }
                     options={[
-                      { label: 'Clip', value: 'clip' },
-                      { label: 'Ellipsis', value: 'ellipsis' },
-                      { label: 'Auto-scale', value: 'autoScale' },
+                      { label: 'Cortar Excedente', value: 'clip' },
+                      { label: 'Reticências (...)', value: 'ellipsis' },
+                      { label: 'Auto-escala (reduz a fonte)', value: 'autoScale' },
                     ]}
                   />
-                  <NumberField
-                    label="Max lines"
-                    value={selectedTextLayer.textStyle?.maxLines}
+                  
+                  <SliderField
+                    label="Máximo de Linhas (0 = Ilimitado)"
+                    value={selectedTextLayer.textStyle?.maxLines ?? 0}
+                    min={0}
+                    max={20}
+                    step={1}
                     onChange={(value) =>
                       updateTextLayer((layer) => ({
                         ...layer,
                         textStyle: {
                           ...layer.textStyle,
-                          maxLines: value,
+                          maxLines: value > 0 ? value : undefined,
                         },
                       }))
                     }
                   />
-                  <NumberField
-                    label="Min font"
-                    value={selectedTextLayer.textStyle?.minFontSize}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          minFontSize: value,
-                        },
-                      }))
-                    }
-                    disabled={(selectedTextLayer.textStyle?.overflowBehavior ?? 'clip') !== 'autoScale'}
-                  />
-                  <NumberField
-                    label="Max font"
-                    value={selectedTextLayer.textStyle?.maxFontSize}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          maxFontSize: value,
-                        },
-                      }))
-                    }
-                    disabled={(selectedTextLayer.textStyle?.overflowBehavior ?? 'clip') !== 'autoScale'}
-                  />
-                </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <SelectField<'left' | 'center' | 'right' | 'justify'>
-                    label="Alinhamento horizontal"
-                    value={selectedTextLayer.textStyle?.align ?? 'left'}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          align: value,
-                        },
-                      }))
-                    }
-                    options={[
-                      { label: 'Esquerda', value: 'left' },
-                      { label: 'Centro', value: 'center' },
-                      { label: 'Direita', value: 'right' },
-                      { label: 'Justificado', value: 'justify' },
-                    ]}
-                  />
-                  <SelectField<'top' | 'middle' | 'bottom'>
-                    label="Alinhamento vertical"
-                    value={selectedTextLayer.textStyle?.verticalAlign ?? 'top'}
-                    onChange={(value) =>
-                      updateTextLayer((layer) => ({
-                        ...layer,
-                        textStyle: {
-                          ...layer.textStyle,
-                          verticalAlign: value,
-                        },
-                      }))
-                    }
-                    options={[
-                      { label: 'Topo', value: 'top' },
-                      { label: 'Centro', value: 'middle' },
-                      { label: 'Base', value: 'bottom' },
-                    ]}
-                  />
-                </div>
+                  {selectedTextLayer.textStyle?.overflowBehavior === 'autoScale' && (
+                    <div className="grid grid-cols-2 gap-3 mt-4 border-t border-white/5 pt-4">
+                      <NumberField
+                        label="Min font"
+                        value={selectedTextLayer.textStyle?.minFontSize ?? 12}
+                        onChange={(value) =>
+                          updateTextLayer((layer) => ({
+                            ...layer,
+                            textStyle: {
+                              ...layer.textStyle,
+                              minFontSize: value,
+                            },
+                          }))
+                        }
+                      />
+                      <NumberField
+                        label="Max font"
+                        value={selectedTextLayer.textStyle?.maxFontSize ?? 100}
+                        onChange={(value) =>
+                          updateTextLayer((layer) => ({
+                            ...layer,
+                            textStyle: {
+                              ...layer.textStyle,
+                              maxFontSize: value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
+                  )}
+                </PanelGroup>
 
-                <ToggleField
-                  label="Ancorar na safe-area"
-                  description="Mantém a caixa de texto presa ao topo, centro ou base da área segura da página."
-                  checked={selectedTextLayer.textStyle?.safeArea?.enabled === true}
-                  onChange={(checked) =>
-                    updateTextLayer((layer) =>
-                      normalizeTextSafeArea(
-                        currentPage,
-                        layer,
-                        checked,
-                        layer.textStyle?.safeArea?.vertical,
-                        layer.textStyle?.safeArea?.horizontal,
-                      ),
-                    )
-                  }
-                />
+                <PanelGroup title="Ancoragem (Safe Area)" icon={Layout} defaultOpen={false}>
+                  <ToggleField
+                    label="Ancorar na safe-area"
+                    description="Mantém o texto sempre dentro da zona de respiro segura."
+                    checked={selectedTextLayer.textStyle?.safeArea?.enabled === true}
+                    onChange={(checked) =>
+                      updateTextLayer((layer) =>
+                        normalizeTextSafeArea(
+                          currentPage,
+                          layer,
+                          checked,
+                          layer.textStyle?.safeArea?.vertical,
+                          layer.textStyle?.safeArea?.horizontal,
+                        ),
+                      )
+                    }
+                  />
 
-                {selectedTextLayer.textStyle?.safeArea?.enabled ? (
-                  <div className="grid grid-cols-2 gap-3">
-                    <SelectField<SafeAreaVertical>
-                      label="Anchor vertical"
-                      value={selectedTextLayer.textStyle?.safeArea?.vertical ?? 'top'}
-                      onChange={(value) =>
-                        updateTextLayer((layer) =>
-                          normalizeTextSafeArea(
-                            currentPage,
-                            layer,
-                            true,
-                            value,
-                            layer.textStyle?.safeArea?.horizontal,
-                          ),
-                        )
-                      }
-                      options={[
-                        { label: 'Topo', value: 'top' },
-                        { label: 'Centro', value: 'center' },
-                        { label: 'Base', value: 'bottom' },
-                      ]}
-                    />
-                    <SelectField<SafeAreaHorizontal>
-                      label="Anchor horizontal"
-                      value={selectedTextLayer.textStyle?.safeArea?.horizontal ?? 'left'}
-                      onChange={(value) =>
-                        updateTextLayer((layer) =>
-                          normalizeTextSafeArea(
-                            currentPage,
-                            layer,
-                            true,
-                            layer.textStyle?.safeArea?.vertical,
-                            value,
-                          ),
-                        )
-                      }
-                      options={[
-                        { label: 'Esquerda', value: 'left' },
-                        { label: 'Centro', value: 'center' },
-                        { label: 'Direita', value: 'right' },
-                      ]}
-                    />
-                  </div>
-                ) : null}
+                  {selectedTextLayer.textStyle?.safeArea?.enabled ? (
+                    <div className="grid grid-cols-2 gap-3 mt-4">
+                      <SelectField<SafeAreaVertical>
+                        label="Âncora vertical"
+                        value={selectedTextLayer.textStyle?.safeArea?.vertical ?? 'top'}
+                        onChange={(value) =>
+                          updateTextLayer((layer) =>
+                            normalizeTextSafeArea(
+                              currentPage,
+                              layer,
+                              true,
+                              value,
+                              layer.textStyle?.safeArea?.horizontal,
+                            ),
+                          )
+                        }
+                        options={[
+                          { label: 'Topo', value: 'top' },
+                          { label: 'Centro', value: 'center' },
+                          { label: 'Base', value: 'bottom' },
+                        ]}
+                      />
+                      <SelectField<SafeAreaHorizontal>
+                        label="Âncora horizontal"
+                        value={selectedTextLayer.textStyle?.safeArea?.horizontal ?? 'left'}
+                        onChange={(value) =>
+                          updateTextLayer((layer) =>
+                            normalizeTextSafeArea(
+                              currentPage,
+                              layer,
+                              true,
+                              layer.textStyle?.safeArea?.vertical,
+                              value,
+                            ),
+                          )
+                        }
+                        options={[
+                          { label: 'Esquerda', value: 'left' },
+                          { label: 'Centro', value: 'center' },
+                          { label: 'Direita', value: 'right' },
+                        ]}
+                      />
+                    </div>
+                  ) : null}
+                </PanelGroup>
               </>
             ) : null}
 
             {(selectedLayer.type === 'image' || selectedLayer.type === 'logo' || selectedLayer.type === 'icon') ? (
-              <>
-                <SectionTitle
-                  title="Imagem"
-                  description="Fonte da layer, encaixe e troca rápida de assets do projeto."
-                />
+              <PanelGroup title="Configurações de Imagem/Logo" icon={ImageIcon}>
 
                 {selectedLogoLayer ? (
                   <SelectField<string>
@@ -827,7 +907,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                     />
                   </>
                 ) : null}
-              </>
+              </PanelGroup>
             ) : null}
 
             {selectedLayer.type === 'shape' ? (
@@ -843,11 +923,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
             ) : null}
 
             {(selectedLayer.type === 'gradient' || selectedLayer.type === 'gradient2') ? (
-              <>
-                <SectionTitle
-                  title="Gradiente"
-                  description="Tipo, ângulo e color stops do gradiente."
-                />
+              <PanelGroup title="Gradiente e Cores" icon={Paintbrush}>
                 <SelectField<'linear' | 'radial'>
                   label="Tipo"
                   value={selectedLayer.gradientType ?? 'linear'}
@@ -999,7 +1075,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                     </button>
                   ) : null}
                 </div>
-              </>
+              </PanelGroup>
             ) : null}
 
             {/* Painel de Efeitos - disponivel para todas as layers */}

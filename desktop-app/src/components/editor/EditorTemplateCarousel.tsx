@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ChevronLeft, ChevronRight, Edit3, ImageOff, Plus, Settings2, Tag, Trash2, X } from 'lucide-react'
 import { useProjectDesigns, getAspectRatioClass, type Design, type DesignFormat } from '@/hooks/use-project-designs'
 import { useTagsStore } from '@/stores/tags.store'
@@ -28,9 +28,9 @@ function CarouselSkeleton() {
       {Array.from({ length: 8 }).map((_, index) => (
         <div
           key={index}
-          className="flex-shrink-0 rounded-xl border border-border bg-card/60 p-1.5"
+          className="flex-shrink-0 rounded-xl border border-white/5 bg-white/5 p-1.5"
         >
-          <div className="aspect-[9/16] w-[80px] animate-pulse rounded-lg bg-input/40" />
+          <div className="aspect-[9/16] w-[80px] animate-pulse rounded-lg bg-white/10" />
         </div>
       ))}
     </div>
@@ -93,15 +93,6 @@ export function EditorTemplateCarousel({
 
   const designs = data?.designs ?? []
 
-  // Available tags from current designs
-  const availableTags = useMemo(() => {
-    const tagSet = new Set<string>()
-    data?.designs?.forEach((design) => {
-      design.tags?.forEach((tag) => tagSet.add(tag))
-    })
-    return Array.from(tagSet).sort()
-  }, [data])
-
   const toggleTag = (tag: string) => {
     setSelectedTags((prev) =>
       prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
@@ -146,10 +137,10 @@ export function EditorTemplateCarousel({
 
   if (isLoading) {
     return (
-      <div className="rounded-2xl border border-border bg-card/60 p-4">
+      <div className="panel-glass rounded-2xl p-4">
         <div className="mb-3 flex items-center justify-between">
-          <div className="h-5 w-32 animate-pulse rounded bg-input/40" />
-          <div className="h-8 w-28 animate-pulse rounded-lg bg-input/40" />
+          <div className="h-5 w-32 animate-pulse rounded bg-white/10" />
+          <div className="h-8 w-28 animate-pulse rounded-lg bg-white/10" />
         </div>
         <CarouselSkeleton />
       </div>
@@ -157,36 +148,39 @@ export function EditorTemplateCarousel({
   }
 
   return (
-    <div className="rounded-2xl border border-border bg-card/60 p-4">
+    <div className="panel-glass rounded-2xl p-4 relative overflow-hidden group/carousel">
+      {/* Glow Backing */}
+      <div className="absolute -inset-4 bg-orange-500/5 blur-2xl -z-10 opacity-0 group-hover/carousel:opacity-100 transition-opacity duration-700 pointer-events-none" />
+
       {/* Header */}
-      <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-text">
-          Templates ({designs.length})
+      <div className="mb-4 flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-white tracking-wide flex items-center gap-2">
+          Templates <span className="flex items-center justify-center bg-white/10 text-white/70 text-[10px] rounded-full h-5 px-2">{designs.length}</span>
         </h2>
         <button
           type="button"
           onClick={onCreateNew}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-text transition-all hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
+          className="flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/80 transition-all hover:border-orange-500/50 hover:bg-orange-500/10 hover:text-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-500/20"
         >
-          <Plus size={14} />
+          <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" />
           Novo Template
         </button>
       </div>
 
       {/* Filters */}
-      <div className="mb-3 flex flex-wrap items-center gap-2">
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         {/* Format filter */}
-        <div className="flex items-center gap-1 rounded-lg border border-border bg-card p-0.5">
+        <div className="flex items-center gap-1 rounded-lg border border-white/10 bg-black/40 p-1 shadow-inner">
           {FORMAT_OPTIONS.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => setSelectedFormat(option.value)}
               className={cn(
-                'rounded-md px-2 py-1 text-[10px] font-medium transition-all',
+                'rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-300',
                 selectedFormat === option.value
-                  ? 'bg-primary text-white'
-                  : 'text-text-muted hover:bg-input hover:text-text',
+                  ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-md'
+                  : 'text-white/40 hover:bg-white/10 hover:text-white/80',
               )}
             >
               {option.label}
@@ -202,13 +196,13 @@ export function EditorTemplateCarousel({
               type="button"
               onClick={() => toggleTag(tag.name)}
               className={cn(
-                'rounded-full px-2 py-0.5 text-[10px] font-medium transition-all',
+                'rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all duration-300',
                 selectedTags.includes(tag.name)
-                  ? 'text-white'
-                  : 'bg-input/60 text-text-muted hover:bg-input',
+                  ? 'bg-orange-500/20 border-orange-500/50 text-orange-400 shadow-[0_0_10px_rgba(234,88,12,0.1)]'
+                  : 'border-white/10 bg-white/5 text-white/40 hover:bg-white/10 hover:text-white/80 hover:border-white/20',
               )}
               style={{
-                backgroundColor: selectedTags.includes(tag.name) ? tag.color : undefined,
+                backgroundColor: selectedTags.includes(tag.name) && tag.color ? tag.color : undefined,
               }}
             >
               {tag.name}
@@ -218,10 +212,10 @@ export function EditorTemplateCarousel({
             <button
               type="button"
               onClick={onManageProjectTags}
-              className="flex items-center gap-1 rounded-full bg-input/60 px-2 py-0.5 text-[10px] font-medium text-text-muted transition-all hover:bg-input hover:text-text"
+              className="flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white/40 transition-all duration-300 hover:bg-white/10 hover:text-white/80"
               title="Gerenciar tags do projeto"
             >
-              <Settings2 size={10} />
+              <Settings2 size={12} />
               Tags
             </button>
           )}
@@ -232,47 +226,47 @@ export function EditorTemplateCarousel({
           <button
             type="button"
             onClick={clearFilters}
-            className="flex items-center gap-1 rounded-full bg-error/10 px-2 py-0.5 text-[10px] font-medium text-error transition-all hover:bg-error/20"
+            className="flex items-center gap-1.5 rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-red-400 transition-all duration-300 hover:bg-red-500/20 hover:text-red-300 ml-2"
           >
-            <X size={10} />
+            <X size={12} />
             Limpar
           </button>
         )}
       </div>
 
       {designs.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-8 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-input/40">
-            <ImageOff size={20} className="text-text-subtle" />
+        <div className="flex flex-col items-center justify-center py-10 text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-white/5 border border-white/10">
+            <ImageOff size={24} className="text-white/20" />
           </div>
-          <p className="text-sm font-medium text-text-muted">
+          <p className="text-sm font-semibold text-white/60 tracking-wide uppercase">
             Nenhum template encontrado
           </p>
-          <p className="mt-1 text-xs text-text-subtle">
-            Crie seu primeiro template clicando no botao acima
+          <p className="mt-1.5 text-xs text-white/40">
+            Crie seu primeiro template clicando no botão novo template
           </p>
         </div>
       ) : (
-        <div className="relative">
+        <div className="relative group/scroll">
           {/* Left scroll button */}
           <button
             type="button"
             onClick={() => scrollTo('left')}
             className={cn(
-              'absolute -left-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg transition-all duration-200',
+              'absolute -left-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/80 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-all duration-300',
               canScrollLeft
-                ? 'opacity-100 hover:bg-input hover:scale-110'
+                ? 'opacity-0 group-hover/scroll:opacity-100 hover:bg-white/10 hover:border-white/20 hover:scale-110 text-white'
                 : 'pointer-events-none opacity-0',
             )}
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={18} />
           </button>
 
           {/* Carousel */}
           <div
             ref={scrollRef}
             onScroll={updateScrollButtons}
-            className="flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-hide"
+            className="flex gap-4 overflow-x-auto px-2 pb-2 scrollbar-hide pt-1"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {designs.map((design) => {
@@ -287,10 +281,10 @@ export function EditorTemplateCarousel({
                   onMouseEnter={() => setHoveredDesignId(design.id)}
                   onMouseLeave={() => setHoveredDesignId(null)}
                   className={cn(
-                    'group relative flex-shrink-0 rounded-xl border-2 p-1.5 transition-all duration-200',
+                    'group relative flex-shrink-0 rounded-[14px] p-2 transition-all duration-300 ring-1 outline-none',
                     isSelected
-                      ? 'border-primary bg-primary/10 ring-2 ring-primary/30 scale-[1.02]'
-                      : 'border-border bg-card/60 hover:border-primary/40 hover:scale-[1.02] hover:shadow-lg',
+                      ? 'bg-white/10 ring-orange-500 shadow-[0_0_20px_rgba(234,88,12,0.15)] scale-[1.03] z-10'
+                      : 'bg-[#121212]/50 ring-white/5 hover:ring-white/20 hover:scale-[1.02] hover:bg-[#1a1a1a]/80 shadow-lg',
                   )}
                 >
                   {/* Thumbnail */}
@@ -357,7 +351,7 @@ export function EditorTemplateCarousel({
 
                     {/* Selected indicator */}
                     {isSelected && (
-                      <div className="absolute inset-x-0 bottom-0 bg-primary/90 py-0.5 text-center text-[8px] font-medium text-white">
+                      <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-orange-600/90 to-orange-500/80 py-1 text-center text-[9px] font-bold uppercase tracking-wider text-white shadow-[0_-4px_10px_rgba(234,88,12,0.3)]">
                         Editando
                       </div>
                     )}
@@ -372,9 +366,9 @@ export function EditorTemplateCarousel({
             type="button"
             onClick={() => scrollTo('right')}
             className={cn(
-              'absolute -right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-card border border-border shadow-lg transition-all duration-200',
+              'absolute -right-3 top-1/2 z-10 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/80 backdrop-blur-md border border-white/10 shadow-[0_0_15px_rgba(0,0,0,0.5)] transition-all duration-300',
               canScrollRight
-                ? 'opacity-100 hover:bg-input hover:scale-110'
+                ? 'opacity-0 group-hover/scroll:opacity-100 hover:bg-white/10 hover:border-white/20 hover:scale-110 text-white'
                 : 'pointer-events-none opacity-0',
             )}
           >

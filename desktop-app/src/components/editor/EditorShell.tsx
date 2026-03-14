@@ -261,7 +261,7 @@ export function EditorShell({
       {/* Main Editor Area with Panel Dividers */}
       <div className="flex h-[calc(100vh-280px)] min-h-[680px] gap-0">
         {/* Layers Panel */}
-        <div className="w-[260px] shrink-0">
+        <div className="w-[300px] shrink-0">
           <LayersPanel />
         </div>
 
@@ -269,12 +269,12 @@ export function EditorShell({
         <PanelDivider beamCount={1} className="mx-2" />
 
         {/* Canvas Area */}
-        <div className="flex-1 min-w-[620px]">
+        <div className="flex-1 min-w-[620px] rounded-2xl overflow-hidden border border-white/5 bg-black/40 shadow-inner">
           {isLoadingFonts ? (
             <div className="flex h-full items-center justify-center panel">
               <div className="text-center">
-                <Loader2 size={22} className="mx-auto animate-spin text-primary" />
-                <p className="mt-3 text-sm text-white/50">
+                <Loader2 size={22} className="mx-auto animate-spin text-orange-500" />
+                <p className="mt-3 text-sm font-medium text-white/50 tracking-wide">
                   Preparando fontes antes da renderizacao do stage.
                 </p>
               </div>
@@ -288,7 +288,7 @@ export function EditorShell({
         <PanelDivider beamCount={1} className="mx-2" />
 
         {/* Properties Panel */}
-        <div className="w-[300px] shrink-0">
+        <div className="w-[340px] shrink-0">
           <PropertiesPanel availableFontFamilies={availableFontFamilies} />
         </div>
       </div>

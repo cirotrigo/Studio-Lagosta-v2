@@ -52,10 +52,10 @@ export function Ruler({
   if (orientation === 'horizontal') {
     return (
       <div
-        className="absolute left-0 top-0 z-20 select-none overflow-hidden border-b border-border bg-card/90 backdrop-blur-sm"
+        className="absolute left-0 top-0 z-20 select-none overflow-hidden border-b border-white/10 bg-[#0a0a0a]/80 backdrop-blur-md"
         style={{ height: rulerSize, width: size, marginLeft: rulerSize }}
       >
-        <svg width={size} height={rulerSize} className="text-text-muted">
+        <svg width={size} height={rulerSize} className="text-white/40">
           {ticks.map((tick) => (
             <g key={tick.position}>
               <line
@@ -87,10 +87,10 @@ export function Ruler({
 
   return (
     <div
-      className="absolute left-0 top-0 z-20 select-none overflow-hidden border-r border-border bg-card/90 backdrop-blur-sm"
+      className="absolute left-0 top-0 z-20 select-none overflow-hidden border-r border-white/10 bg-[#0a0a0a]/80 backdrop-blur-md"
       style={{ width: rulerSize, height: size, marginTop: rulerSize }}
     >
-      <svg width={rulerSize} height={size} className="text-text-muted">
+      <svg width={rulerSize} height={size} className="text-white/40">
         {ticks.map((tick) => (
           <g key={tick.position}>
             <line
@@ -124,7 +124,7 @@ export function Ruler({
 export function RulerCorner({ size = 20 }: { size?: number }) {
   return (
     <div
-      className="absolute left-0 top-0 z-30 border-b border-r border-border bg-card/90 backdrop-blur-sm"
+      className="absolute left-0 top-0 z-30 border-b border-r border-white/10 bg-[#0a0a0a]/80 backdrop-blur-md"
       style={{ width: size, height: size }}
     />
   )
