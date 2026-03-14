@@ -25,6 +25,7 @@ interface EditorState {
   zoom: number
   pan: ViewportState
   cropMode: CropModeState | null
+  clipboard: Layer[]
   setDocument: (document: KonvaTemplateDocument, options?: SetDocumentOptions) => void
   updateDocument: (updater: (document: KonvaTemplateDocument) => KonvaTemplateDocument, recordHistory?: boolean) => void
   setDocumentName: (name: string) => void
@@ -52,6 +53,13 @@ interface EditorState {
   enterCropMode: (layerId: string) => void
   exitCropMode: (confirm: boolean) => void
   updateCropPreview: (crop: { x: number; y: number; width: number; height: number }) => void
+  duplicateSelectedLayers: () => void
+  selectAllLayers: () => void
+  moveSelectedLayers: (dx: number, dy: number) => void
+  toggleSelectedLayersLock: () => void
+  copyLayers: () => void
+  cutLayers: () => void
+  pasteLayers: () => void
 }
 
 function markDocumentDirty(document: KonvaTemplateDocument): KonvaTemplateDocument {
@@ -102,6 +110,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   zoom: 0.45,
   pan: { x: 0, y: 0 },
   cropMode: null,
+  clipboard: [],
 
   setDocument: (document, options) => {
     const nextDocument = cloneKonvaDocument(document)
@@ -416,6 +425,150 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       cropMode: state.cropMode
         ? { ...state.cropMode, previewCrop: crop }
         : null,
+    }))
+  },
+
+  duplicateSelectedLayers: () => {
+    const { document, selectedLayerIds } = get()
+    if (!document || selectedLayerIds.length === 0) return
+
+    const page = getCurrentPage(document)
+    if (!page) return
+
+    const layersToDuplicate = page.layers.filter((l) => selectedLayerIds.includes(l.id))
+    const newLayerIds: string[] = []
+
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (doc) =>
+          updateCurrentPageDocument(doc, (p) => {
+            const newLayers = layersToDuplicate.map((layer) => {
+              const newId = `${layer.id}-copy-${Date.now()}`
+              newLayerIds.push(newId)
+              return {
+                ...layer,
+                id: newId,
+                x: (layer.x ?? 0) + 20,
+                y: (layer.y ?? 0) + 20,
+              }
+            })
+            return {
+              ...p,
+              layers: [...p.layers, ...newLayers],
+            }
+          }),
+        true,
+      ),
+      selectedLayerIds: newLayerIds,
+    }))
+  },
+
+  selectAllLayers: () => {
+    const { document } = get()
+    if (!document) return
+
+    const page = getCurrentPage(document)
+    if (!page) return
+
+    set({ selectedLayerIds: page.layers.map((l) => l.id) })
+  },
+
+  moveSelectedLayers: (dx, dy) => {
+    const { selectedLayerIds } = get()
+    if (selectedLayerIds.length === 0) return
+
+    const selected = new Set(selectedLayerIds)
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (doc) =>
+          updateCurrentPageDocument(doc, (page) => ({
+            ...page,
+            layers: page.layers.map((layer) =>
+              selected.has(layer.id)
+                ? { ...layer, x: (layer.x ?? 0) + dx, y: (layer.y ?? 0) + dy }
+                : layer,
+            ),
+          })),
+        true,
+      ),
+    }))
+  },
+
+  toggleSelectedLayersLock: () => {
+    const { selectedLayerIds, document } = get()
+    if (selectedLayerIds.length === 0 || !document) return
+
+    const page = getCurrentPage(document)
+    if (!page) return
+
+    // Check if any selected layer is unlocked
+    const anyUnlocked = page.layers.some(
+      (l) => selectedLayerIds.includes(l.id) && !l.locked,
+    )
+
+    const selected = new Set(selectedLayerIds)
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (doc) =>
+          updateCurrentPageDocument(doc, (p) => ({
+            ...p,
+            layers: p.layers.map((layer) =>
+              selected.has(layer.id) ? { ...layer, locked: anyUnlocked } : layer,
+            ),
+          })),
+        true,
+      ),
+    }))
+  },
+
+  copyLayers: () => {
+    const { document, selectedLayerIds } = get()
+    if (!document || selectedLayerIds.length === 0) return
+
+    const page = getCurrentPage(document)
+    if (!page) return
+
+    const layersToCopy = page.layers.filter((l) => selectedLayerIds.includes(l.id))
+    set({ clipboard: layersToCopy.map((l) => ({ ...l })) })
+  },
+
+  cutLayers: () => {
+    get().copyLayers()
+    get().removeSelectedLayers()
+  },
+
+  pasteLayers: () => {
+    const { clipboard, document } = get()
+    if (clipboard.length === 0 || !document) return
+
+    const newLayerIds: string[] = []
+
+    set((state) => ({
+      document: applyDocumentMutation(
+        state.document,
+        (doc) =>
+          updateCurrentPageDocument(doc, (page) => {
+            const newLayers = clipboard.map((layer) => {
+              const newId = `${layer.id}-paste-${Date.now()}`
+              newLayerIds.push(newId)
+              return {
+                ...layer,
+                id: newId,
+                x: (layer.x ?? 0) + 20,
+                y: (layer.y ?? 0) + 20,
+              }
+            })
+            return {
+              ...page,
+              layers: [...page.layers, ...newLayers],
+            }
+          }),
+        true,
+      ),
+      selectedLayerIds: newLayerIds,
     }))
   },
 }))

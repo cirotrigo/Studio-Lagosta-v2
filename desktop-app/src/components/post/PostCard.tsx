@@ -73,9 +73,9 @@ export default function PostCard({ post }: PostCardProps) {
   }
 
   return (
-    <div className="group relative overflow-hidden rounded-lg border border-border bg-card">
+    <div className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm">
       {/* Image */}
-      <div className={cn('relative overflow-hidden bg-input', getAspectRatio(post.postType))}>
+      <div className={cn('relative overflow-hidden bg-[#080808]', getAspectRatio(post.postType))}>
         {post.mediaUrls[0] ? (
           <img
             src={post.mediaUrls[0]}
@@ -84,7 +84,7 @@ export default function PostCard({ post }: PostCardProps) {
           />
         ) : (
           <div className="flex h-full items-center justify-center">
-            <ImageIcon size={32} className="text-text-subtle" />
+            <ImageIcon size={32} className="text-white/40" />
           </div>
         )}
 
@@ -116,7 +116,7 @@ export default function PostCard({ post }: PostCardProps) {
       <div className="p-3">
         {/* Type and Status badges */}
         <div className="mb-2 flex items-center gap-2">
-          <span className="inline-flex items-center gap-1 rounded bg-card px-1.5 py-0.5 text-xs text-text-muted">
+          <span className="inline-flex items-center gap-1 rounded bg-white/5 px-1.5 py-0.5 text-xs text-white/60">
             <PostTypeIcon size={12} />
             {POST_TYPE_LABELS[post.postType as PostType]}
           </span>
@@ -131,7 +131,7 @@ export default function PostCard({ post }: PostCardProps) {
         </div>
 
         {/* Date */}
-        <p className="text-xs text-text-subtle mt-1">
+        <p className="text-xs text-white/40 mt-1">
           {post.scheduledDatetime
             ? `Agendado: ${formatDateTime(post.scheduledDatetime)}`
             : `Criado: ${formatDateTime(post.createdAt)}`}
@@ -148,17 +148,17 @@ export default function PostCard({ post }: PostCardProps) {
         </button>
 
         {showMenu && (
-          <div className="absolute right-0 top-full z-10 mt-1 w-32 rounded-lg border border-border bg-card py-1 shadow-xl">
+          <div className="absolute right-0 top-full z-10 mt-1 w-32 rounded-lg border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl py-1 shadow-xl">
             <Link
               to={`/edit-post/${post.id}`}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-text hover:bg-input"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
             >
               <Edit size={14} />
               Editar
             </Link>
             <button
               onClick={handleDelete}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-error hover:bg-input"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-red-400 hover:bg-white/10 transition-colors"
             >
               <Trash2 size={14} />
               Excluir

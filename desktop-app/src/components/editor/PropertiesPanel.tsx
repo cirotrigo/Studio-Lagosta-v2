@@ -34,14 +34,14 @@ function NumberField({
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">{label}</span>
       <input
         type="number"
         step={step}
         value={value ?? 0}
         disabled={disabled}
         onChange={(event) => onChange(Number(event.target.value))}
-        className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        className="input-field h-10 disabled:cursor-not-allowed disabled:opacity-50"
       />
     </label>
   )
@@ -60,13 +60,13 @@ function TextField({
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">{label}</span>
       <input
         type="text"
         value={value ?? ''}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
-        className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        className="input-field h-10 disabled:cursor-not-allowed disabled:opacity-50"
       />
     </label>
   )
@@ -87,12 +87,12 @@ function SelectField<T extends string>({
 }) {
   return (
     <label className="space-y-1">
-      <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">{label}</span>
       <select
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as T)}
-        className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+        className="input-field h-10 disabled:cursor-not-allowed disabled:opacity-50"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -119,15 +119,15 @@ function ToggleField({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex w-full items-center justify-between rounded-2xl border border-border bg-background/40 px-3 py-3 text-left transition-colors hover:border-primary/40"
+      className="flex w-full items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-3 text-left transition-all duration-150 hover:bg-white/10 hover:border-primary/40"
     >
       <div>
-        <p className="text-sm font-medium text-text">{label}</p>
-        <p className="mt-1 text-xs text-text-muted">{description}</p>
+        <p className="text-sm font-medium text-white">{label}</p>
+        <p className="mt-1 text-xs text-white/50">{description}</p>
       </div>
       <span
         className={`inline-flex h-6 w-11 items-center rounded-full px-1 transition-colors ${
-          checked ? 'bg-primary' : 'bg-border'
+          checked ? 'bg-primary' : 'bg-white/20'
         }`}
       >
         <span
@@ -153,10 +153,10 @@ function ColorField({
 }) {
   return (
     <label className="space-y-2">
-      <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">{label}</span>
+      <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">{label}</span>
       {palette.length > 0 ? (
-        <div className="space-y-2 rounded-2xl border border-border bg-background/30 p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-text-subtle">Paleta do projeto</p>
+        <div className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
+          <p className="text-[11px] uppercase tracking-[0.18em] text-white/40">Paleta do projeto</p>
           <div className="flex flex-wrap gap-2">
             {palette.map((color) => (
               <button
@@ -174,7 +174,7 @@ function ColorField({
         </div>
       ) : null}
 
-      <div className="flex items-center gap-2 rounded-xl border border-border bg-input px-3 py-2">
+      <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
         <input
           type="color"
           value={value ?? '#000000'}
@@ -185,7 +185,7 @@ function ColorField({
           type="text"
           value={value ?? '#000000'}
           onChange={(event) => onChange(event.target.value)}
-          className="flex-1 bg-transparent text-sm text-text focus:outline-none"
+          className="flex-1 bg-transparent text-sm text-white focus:outline-none"
         />
       </div>
     </label>
@@ -194,9 +194,9 @@ function ColorField({
 
 function SectionTitle({ title, description }: { title: string; description: string }) {
   return (
-    <div className="space-y-1 rounded-2xl border border-border/70 bg-background/20 px-3 py-3">
-      <p className="text-sm font-semibold text-text">{title}</p>
-      <p className="text-xs text-text-muted">{description}</p>
+    <div className="space-y-1 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-3">
+      <p className="text-sm font-semibold text-white">{title}</p>
+      <p className="text-xs text-white/50">{description}</p>
     </div>
   )
 }
@@ -322,15 +322,15 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col rounded-2xl border border-border bg-card/60">
-      <div className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-text">Propriedades</h2>
-        <p className="mt-1 text-xs text-text-muted">
-          {selectedLayer ? 'Ajuste a layer selecionada.' : 'Sem layer selecionada: ajuste a página.'}
+    <div className="panel-glass flex h-full min-h-0 flex-col">
+      <div className="shrink-0 border-b border-white/[0.06] px-4 py-3">
+        <h2 className="text-sm font-semibold text-white">Propriedades</h2>
+        <p className="mt-1 text-xs text-white/50">
+          {selectedLayer ? 'Ajuste a layer selecionada.' : 'Sem layer selecionada: ajuste a pagina.'}
         </p>
       </div>
 
-      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         {!selectedLayer ? (
           <>
             <SectionTitle
@@ -371,12 +371,12 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
             />
 
             <label className="space-y-1">
-              <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Nome da layer</span>
+              <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">Nome da layer</span>
               <input
                 type="text"
                 value={selectedLayer.name ?? ''}
                 onChange={updateSelectedLayerName}
-                className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+                className="input-field h-10"
               />
             </label>
 
@@ -422,7 +422,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                 />
 
                 <label className="space-y-1">
-                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Conteúdo</span>
+                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">Conteúdo</span>
                   <textarea
                     rows={5}
                     value={selectedTextLayer.text}
@@ -432,7 +432,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                         text: event.target.value,
                       }))
                     }
-                    className="w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-text focus:border-primary focus:outline-none"
+                    className="input-field py-2"
                   />
                 </label>
 
@@ -455,7 +455,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                     }
                   />
                   <label className="space-y-1">
-                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                    <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">
                       Font family
                     </span>
                     <select
@@ -469,7 +469,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                           },
                         }))
                       }
-                      className="h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+                      className="input-field h-10"
                     >
                       <option value="">Selecionar fonte...</option>
                       {availableFontFamilies.map((fontFamily) => (
@@ -478,7 +478,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                         </option>
                       ))}
                     </select>
-                    <p className="text-[11px] text-text-subtle">
+                    <p className="text-[11px] text-white/40">
                       {availableFontFamilies.length > 1
                         ? `${availableFontFamilies.length} fontes do projeto disponiveis.`
                         : 'Nenhuma fonte customizada encontrada.'}
@@ -762,8 +762,8 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                 {selectedLayer.type === 'image' ? (
                   <>
                     {currentProject ? (
-                      <div className="rounded-2xl border border-border bg-background/30 p-3">
-                        <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                      <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                        <p className="mb-3 text-xs font-medium uppercase tracking-[0.18em] text-white/40">
                           Substituir imagem
                         </p>
                         <PhotoSelector
@@ -788,7 +788,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                       <button
                         type="button"
                         onClick={() => applyImageLayerToCanvas()}
-                        className="h-10 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40"
+                        className="btn-secondary h-10"
                       >
                         Ajustar ao canvas
                       </button>
@@ -877,13 +877,13 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                   />
                 ) : null}
                 <div className="space-y-3">
-                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">
+                  <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">
                     Color Stops
                   </span>
                   {selectedLayer.colors.map((color, index) => (
-                    <div key={index} className="space-y-2 rounded-xl border border-border bg-background/30 p-3">
+                    <div key={index} className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-text-muted">Stop {index + 1}</span>
+                        <span className="text-xs text-white/50">Stop {index + 1}</span>
                         {selectedLayer.colors.length > 2 ? (
                           <button
                             type="button"
@@ -930,12 +930,12 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                               return { ...layer, colors: newColors }
                             })
                           }
-                          className="flex-1 rounded-lg border border-border bg-input px-2 py-1 text-xs text-text"
+                          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white"
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <label className="space-y-1">
-                          <span className="text-[10px] text-text-subtle">Posição (%)</span>
+                          <span className="text-[10px] text-white/40">Posição (%)</span>
                           <input
                             type="number"
                             min={0}
@@ -951,11 +951,11 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                                 return { ...layer, stops: newStops }
                               })
                             }
-                            className="h-8 w-full rounded-lg border border-border bg-input px-2 text-xs text-text"
+                            className="h-8 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-white"
                           />
                         </label>
                         <label className="space-y-1">
-                          <span className="text-[10px] text-text-subtle">Opacidade (%)</span>
+                          <span className="text-[10px] text-white/40">Opacidade (%)</span>
                           <input
                             type="number"
                             min={0}
@@ -971,7 +971,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                                 return { ...layer, opacities: newOpacities }
                               })
                             }
-                            className="h-8 w-full rounded-lg border border-border bg-input px-2 text-xs text-text"
+                            className="h-8 w-full rounded-lg border border-white/10 bg-white/5 px-2 text-xs text-white"
                           />
                         </label>
                       </div>
@@ -993,7 +993,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                           return { ...layer, colors: newColors, stops: newStops, opacities: newOpacities }
                         })
                       }
-                      className="w-full rounded-xl border border-dashed border-border py-2 text-xs text-text-muted hover:border-primary/50 hover:text-text"
+                      className="w-full rounded-xl border border-dashed border-white/20 py-2 text-xs text-white/50 hover:border-primary/50 hover:text-white transition-colors"
                     >
                       + Adicionar cor
                     </button>

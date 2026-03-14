@@ -51,7 +51,7 @@ const navItems = [
 
 export default function Sidebar() {
   return (
-    <aside className="flex h-full w-[220px] flex-shrink-0 flex-col border-r border-border bg-sidebar">
+    <aside className="relative flex h-full w-[220px] flex-shrink-0 flex-col bg-white/[0.02] backdrop-blur-xl">
       {/* Logo */}
       <div className="flex h-14 items-center px-4">
         <div className="flex items-center gap-2">
@@ -66,7 +66,7 @@ export default function Sidebar() {
       </div>
 
       {/* Divider */}
-      <div className="mx-3 my-2 h-px bg-border" />
+      <div className="mx-3 my-2 h-px bg-white/[0.06]" />
 
       {/* Navigation */}
       <nav className="flex-1 space-y-1 px-3 py-2">
@@ -76,21 +76,19 @@ export default function Sidebar() {
             to={item.to}
             className={({ isActive }) =>
               cn(
-                'flex items-center gap-3 rounded-lg px-3 py-2 text-sm',
-                'transition-all duration-200',
+                'nav-item',
                 item.disabled
-                  ? 'pointer-events-none opacity-50'
-                  : 'hover:bg-card',
-                isActive && !item.disabled
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-text-muted'
+                  ? 'nav-item-disabled'
+                  : isActive
+                    ? 'nav-item-active'
+                    : 'nav-item-default'
               )
             }
           >
             <item.icon size={18} />
             <span>{item.label}</span>
             {item.disabled && (
-              <span className="ml-auto rounded bg-card px-1.5 py-0.5 text-[10px] text-text-subtle">
+              <span className="ml-auto rounded bg-white/5 px-1.5 py-0.5 text-[10px] text-white/40">
                 Em breve
               </span>
             )}
@@ -99,7 +97,7 @@ export default function Sidebar() {
       </nav>
 
       {/* Divider */}
-      <div className="mx-3 my-2 h-px bg-border" />
+      <div className="mx-3 my-2 h-px bg-white/[0.06]" />
 
       {/* Sync Status */}
       <div className="px-3 py-1">
@@ -112,19 +110,18 @@ export default function Sidebar() {
           to="/settings"
           className={({ isActive }) =>
             cn(
-              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm',
-              'transition-all duration-200 hover:bg-card',
-              isActive ? 'bg-primary/10 text-primary' : 'text-text-muted'
+              'nav-item',
+              isActive ? 'nav-item-active' : 'nav-item-default'
             )
           }
         >
           <Settings size={18} />
-          <span>Configurações</span>
+          <span>Configuracoes</span>
         </NavLink>
       </div>
 
       {/* Version */}
-      <div className="px-4 py-3 text-xs text-text-subtle">
+      <div className="px-4 py-3 text-xs text-white/30">
         v1.0.0
       </div>
     </aside>

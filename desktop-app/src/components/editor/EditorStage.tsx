@@ -11,6 +11,7 @@ import {
   convertAbsoluteTextPositionToOffsets,
 } from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
+import { useEditorShortcuts } from '@/hooks/use-editor-shortcuts'
 import type { Layer } from '@/types/template'
 
 // @ts-expect-error Konva uses this internal flag for text sharpness.
@@ -49,8 +50,10 @@ export function EditorStage() {
   const clearSelection = useEditorStore((state) => state.clearSelection)
   const selectLayer = useEditorStore((state) => state.selectLayer)
   const updateLayer = useEditorStore((state) => state.updateLayer)
-  const removeSelectedLayers = useEditorStore((state) => state.removeSelectedLayers)
   const setZoom = useEditorStore((state) => state.setZoom)
+
+  // Centralized keyboard shortcuts
+  useEditorShortcuts()
   const setPan = useEditorStore((state) => state.setPan)
   const enterCropMode = useEditorStore((state) => state.enterCropMode)
   const exitCropMode = useEditorStore((state) => state.exitCropMode)
@@ -110,36 +113,15 @@ export function EditorStage() {
       const target = event.target as HTMLElement
       const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
-      // Crop mode keyboard handling
-      if (cropMode) {
-        if (event.key === 'Escape') {
-          event.preventDefault()
-          exitCropMode(false) // Cancel
-          return
-        }
-        if (event.key === 'Enter') {
-          event.preventDefault()
-          exitCropMode(true) // Confirm
-          return
-        }
-        return // Block other keys while in crop mode
-      }
-
-      // Delete/Backspace para excluir elementos
-      if ((event.key === 'Delete' || event.key === 'Backspace') && !isTextInput && selectedLayerIds.length > 0) {
-        event.preventDefault()
-        removeSelectedLayers()
-      }
-
-      // R para toggle das réguas
-      if (event.key === 'r' && !isTextInput) {
+      // R para toggle das réguas (não tratado no hook global)
+      if (event.key === 'r' && !isTextInput && !cropMode) {
         setShowRulers((prev) => !prev)
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, removeSelectedLayers, cropMode, exitCropMode])
+  }, [cropMode])
 
   useEffect(() => {
     const stage = stageRef.current
@@ -219,8 +201,8 @@ export function EditorStage() {
 
   if (!currentPage) {
     return (
-      <div ref={containerRef} className="flex h-full items-center justify-center rounded-2xl border border-border bg-card/40">
-        <p className="text-sm text-text-muted">Nenhuma página disponível.</p>
+      <div ref={containerRef} className="flex h-full items-center justify-center panel-glass">
+        <p className="text-sm text-white/50">Nenhuma página disponível.</p>
       </div>
     )
   }
@@ -503,7 +485,7 @@ export function EditorStage() {
   return (
     <div
       ref={containerRef}
-      className={`relative h-full rounded-2xl border border-border bg-[#0c111d] ${isSpacePressed ? 'cursor-grab' : 'cursor-default'}`}
+      className={`relative h-full rounded-2xl border border-white/[0.08] bg-[#0a0a0a]/90 backdrop-blur-sm ${isSpacePressed ? 'cursor-grab' : 'cursor-default'}`}
     >
       {/* Réguas de precisão */}
       {showRulers && (
@@ -550,7 +532,7 @@ export function EditorStage() {
         onWheel={handleWheel}
       >
         <KonvaLayer listening={false}>
-          <Rect width={containerSize.width} height={containerSize.height} fill="#0c111d" />
+          <Rect width={containerSize.width} height={containerSize.height} fill="#080808" />
         </KonvaLayer>
 
         <KonvaLayer>
@@ -653,21 +635,21 @@ export function EditorStage() {
 
       {/* Crop Mode UI */}
       {cropMode && (
-        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 rounded-xl bg-background/95 px-4 py-3 shadow-xl backdrop-blur-sm border border-border">
-          <span className="text-sm text-text-muted">
+        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-3 glass rounded-xl px-4 py-3 shadow-xl border border-white/10">
+          <span className="text-sm text-white/60">
             Arraste para ajustar o enquadramento
           </span>
           <button
             type="button"
             onClick={() => exitCropMode(false)}
-            className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-medium text-text hover:bg-background/80 transition-colors"
+            className="btn-secondary"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={() => exitCropMode(true)}
-            className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 transition-colors"
+            className="btn-primary"
           >
             Concluir
           </button>

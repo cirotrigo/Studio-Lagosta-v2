@@ -83,8 +83,8 @@ export default function ArtsPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
             <ImageIcon size={32} className="text-primary" />
           </div>
-          <h2 className="text-xl font-semibold text-text">Selecione um projeto</h2>
-          <p className="mt-2 text-text-muted">
+          <h2 className="text-xl font-semibold text-white">Selecione um projeto</h2>
+          <p className="mt-2 text-white/50">
             Escolha um projeto na barra lateral para ver as artes geradas.
           </p>
         </div>
@@ -94,10 +94,10 @@ export default function ArtsPage() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border p-4">
+      <div className="flex items-center justify-between border-b border-white/[0.06] p-4">
         <div>
-          <h1 className="text-xl font-semibold text-text">Artes</h1>
-          <p className="text-sm text-text-muted">
+          <h1 className="text-xl font-semibold text-white">Artes</h1>
+          <p className="text-sm text-white/50">
             Criativos salvos no projeto e prontos para baixar, postar ou excluir.
           </p>
         </div>
@@ -110,13 +110,13 @@ export default function ArtsPage() {
           <div className="flex h-full items-center justify-center">
             <div className="flex flex-col items-center gap-3">
               <Loader2 size={28} className="animate-spin text-primary" />
-              <p className="text-sm text-text-muted">Carregando artes...</p>
+              <p className="text-sm text-white/50">Carregando artes...</p>
             </div>
           </div>
         ) : generationsQuery.isError ? (
           <div className="flex h-full items-center justify-center">
-            <div className="rounded-2xl border border-error/30 bg-card/70 p-6 text-center">
-              <p className="text-sm text-error">
+            <div className="rounded-2xl border border-red-500/30 bg-white/5 backdrop-blur-sm p-6 text-center">
+              <p className="text-sm text-red-400">
                 {generationsQuery.error instanceof Error
                   ? generationsQuery.error.message
                   : 'Erro ao carregar artes.'}
@@ -126,11 +126,11 @@ export default function ArtsPage() {
         ) : generations.length === 0 ? (
           <div className="flex h-full flex-col items-center justify-center">
             <div className="text-center">
-              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-card">
-                <ImageIcon size={32} className="text-text-muted" />
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 border border-white/10">
+                <ImageIcon size={32} className="text-white/50" />
               </div>
-              <h3 className="text-lg font-medium text-text">Nenhuma arte gerada ainda</h3>
-              <p className="mt-2 text-text-muted">
+              <h3 className="text-lg font-medium text-white">Nenhuma arte gerada ainda</h3>
+              <p className="mt-2 text-white/50">
                 Gere criativos no editor para que aparecam aqui.
               </p>
             </div>
@@ -145,11 +145,11 @@ export default function ArtsPage() {
               return (
                 <div
                   key={generation.id}
-                  className="overflow-hidden rounded-2xl border border-border bg-card/70"
+                  className="overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm"
                 >
                   <div
                     className={cn(
-                      'flex items-center justify-center overflow-hidden bg-[#0c111d] p-3',
+                      'flex items-center justify-center overflow-hidden bg-[#080808] p-3',
                       getAspectClass(format),
                     )}
                   >
@@ -161,15 +161,15 @@ export default function ArtsPage() {
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center">
-                        <ImageIcon size={28} className="text-text-muted" />
+                        <ImageIcon size={28} className="text-white/50" />
                       </div>
                     )}
                   </div>
 
                   <div className="space-y-3 p-4">
                     <div>
-                      <p className="truncate text-sm font-semibold text-text">{label}</p>
-                      <p className="mt-1 text-xs text-text-muted">
+                      <p className="truncate text-sm font-semibold text-white">{label}</p>
+                      <p className="mt-1 text-xs text-white/50">
                         {formatDateTime(generation.createdAt)}
                       </p>
                     </div>
@@ -209,7 +209,7 @@ export default function ArtsPage() {
                             )
                           }
                         }}
-                        className="flex h-10 items-center justify-center rounded-xl border border-border text-text transition-colors hover:border-primary/40"
+                        className="flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/70 transition-all duration-150 hover:bg-white/10 hover:border-primary/40 hover:text-white"
                         title="Baixar"
                       >
                         <Download size={16} />
@@ -224,7 +224,7 @@ export default function ArtsPage() {
                               postType: 'STORY',
                             },
                           })}
-                        className="flex h-10 items-center justify-center rounded-xl border border-border text-text transition-colors hover:border-primary/40"
+                        className="flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/70 transition-all duration-150 hover:bg-white/10 hover:border-primary/40 hover:text-white"
                         title="Postar"
                       >
                         <Send size={16} />
@@ -243,7 +243,7 @@ export default function ArtsPage() {
                             )
                           }
                         }}
-                        className="flex h-10 items-center justify-center rounded-xl border border-border text-text transition-colors hover:border-error/40 hover:text-error disabled:opacity-50"
+                        className="flex h-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/70 transition-all duration-150 hover:bg-white/10 hover:border-red-500/40 hover:text-red-400 disabled:opacity-50"
                         title="Excluir"
                       >
                         <Trash2 size={16} />

@@ -59,7 +59,7 @@ export function AlignmentQuickMenu({
 
   return (
     <div
-      className="pointer-events-auto absolute z-50 flex items-center gap-1 rounded-xl border border-border bg-card/95 px-2 py-1.5 shadow-lg backdrop-blur-sm transition-opacity duration-150"
+      className="pointer-events-auto absolute z-50 flex items-center gap-1 rounded-xl border border-white/10 bg-[#1a1a1a]/95 px-2 py-1.5 shadow-lg backdrop-blur-xl transition-opacity duration-150"
       style={{
         left: menuX,
         top: Math.max(8, menuY),
@@ -69,7 +69,7 @@ export function AlignmentQuickMenu({
       <button
         type="button"
         onClick={() => onAlign('left')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Alinhar à esquerda"
       >
         <AlignStartVertical size={16} />
@@ -77,7 +77,7 @@ export function AlignmentQuickMenu({
       <button
         type="button"
         onClick={() => onAlign('center-h')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Centralizar horizontalmente"
       >
         <AlignCenterVertical size={16} />
@@ -85,18 +85,18 @@ export function AlignmentQuickMenu({
       <button
         type="button"
         onClick={() => onAlign('right')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Alinhar à direita"
       >
         <AlignEndVertical size={16} />
       </button>
 
-      <div className="mx-1 h-4 w-px bg-border" />
+      <div className="mx-1 h-4 w-px bg-white/10" />
 
       <button
         type="button"
         onClick={() => onAlign('top')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Alinhar ao topo"
       >
         <AlignStartHorizontal size={16} />
@@ -104,7 +104,7 @@ export function AlignmentQuickMenu({
       <button
         type="button"
         onClick={() => onAlign('center-v')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Centralizar verticalmente"
       >
         <AlignCenterHorizontal size={16} />
@@ -112,7 +112,7 @@ export function AlignmentQuickMenu({
       <button
         type="button"
         onClick={() => onAlign('bottom')}
-        className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+        className="rounded-lg p-1.5 text-white/50 transition-colors hover:bg-primary/10 hover:text-primary"
         title="Alinhar à base"
       >
         <AlignEndHorizontal size={16} />

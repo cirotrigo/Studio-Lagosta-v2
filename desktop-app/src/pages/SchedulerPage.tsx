@@ -22,8 +22,8 @@ export default function SchedulerPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-primary/10">
             <Calendar size={32} className="text-primary" />
           </div>
-          <h2 className="text-xl font-semibold text-text">Selecione um projeto</h2>
-          <p className="mt-2 text-text-muted">
+          <h2 className="text-xl font-semibold text-white">Selecione um projeto</h2>
+          <p className="mt-2 text-white/50">
             Escolha um projeto na barra lateral para ver seus posts agendados
           </p>
         </div>
@@ -34,10 +34,10 @@ export default function SchedulerPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border p-4">
+      <div className="flex items-center justify-between border-b border-white/[0.06] p-4">
         <div className="flex items-center gap-3">
           {/* Project Logo */}
-          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-border bg-card">
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-white/5">
             {getProjectLogo(currentProject) ? (
               <img
                 src={getProjectLogo(currentProject)!}
@@ -51,8 +51,8 @@ export default function SchedulerPage() {
             )}
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-text">Agendador</h1>
-            <p className="text-sm text-text-muted">
+            <h1 className="text-xl font-semibold text-white">Agendador</h1>
+            <p className="text-sm text-white/50">
               Gerencie os posts de {currentProject.name}
             </p>
           </div>
@@ -60,14 +60,14 @@ export default function SchedulerPage() {
 
         <div className="flex items-center gap-3">
           {/* View toggle */}
-          <div className="flex rounded-lg border border-border bg-input p-1">
+          <div className="flex rounded-lg border border-white/10 bg-white/5 p-1">
             <button
               onClick={() => setViewMode('list')}
               className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm',
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors',
                 viewMode === 'list'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-text-muted hover:text-text'
+                  ? 'bg-primary text-white'
+                  : 'text-white/50 hover:text-white'
               )}
             >
               <List size={16} />
@@ -76,10 +76,10 @@ export default function SchedulerPage() {
             <button
               onClick={() => setViewMode('calendar')}
               className={cn(
-                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm',
+                'flex items-center gap-2 rounded-md px-3 py-1.5 text-sm transition-colors',
                 viewMode === 'calendar'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-text-muted hover:text-text'
+                  ? 'bg-primary text-white'
+                  : 'text-white/50 hover:text-white'
               )}
             >
               <Calendar size={16} />
@@ -92,8 +92,8 @@ export default function SchedulerPage() {
             onClick={() => refetch()}
             disabled={isRefetching}
             className={cn(
-              'flex items-center gap-2 rounded-lg border border-border bg-input px-3 py-2 text-sm',
-              'text-text-muted hover:text-text',
+              'flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm',
+              'text-white/60 hover:text-white hover:bg-white/10 transition-all duration-150',
               'disabled:cursor-not-allowed disabled:opacity-50'
             )}
           >
@@ -103,12 +103,7 @@ export default function SchedulerPage() {
           {/* New post button */}
           <Link
             to="/new-post"
-            className={cn(
-              'flex items-center gap-2 rounded-lg px-4 py-2 font-medium',
-              'bg-primary text-primary-foreground',
-              'hover:bg-primary-hover',
-              'transition-all duration-200'
-            )}
+            className="btn-primary"
           >
             <Plus size={20} />
             Novo Post
@@ -122,7 +117,7 @@ export default function SchedulerPage() {
           <div className="flex h-full items-center justify-center">
             <div className="flex flex-col items-center gap-4">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-              <p className="text-text-muted">Carregando posts...</p>
+              <p className="text-white/50">Carregando posts...</p>
             </div>
           </div>
         ) : viewMode === 'list' ? (
@@ -152,21 +147,16 @@ function ListView({ posts }: ListViewProps) {
     return (
       <div className="flex h-full flex-col items-center justify-center">
         <div className="text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-card">
-            <Calendar size={32} className="text-text-muted" />
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-white/5 border border-white/10">
+            <Calendar size={32} className="text-white/50" />
           </div>
-          <h3 className="text-lg font-medium text-text">Nenhum post encontrado</h3>
-          <p className="mt-2 text-text-muted">
+          <h3 className="text-lg font-medium text-white">Nenhum post encontrado</h3>
+          <p className="mt-2 text-white/50">
             Crie seu primeiro post clicando no botão "Novo Post"
           </p>
           <Link
             to="/new-post"
-            className={cn(
-              'mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 font-medium',
-              'bg-primary text-primary-foreground',
-              'hover:bg-primary-hover',
-              'transition-all duration-200'
-            )}
+            className="btn-primary mt-4 inline-flex items-center gap-2"
           >
             <Plus size={20} />
             Criar Post

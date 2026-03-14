@@ -429,8 +429,8 @@ export default function EditorPage() {
         <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
           <Layers3 size={30} className="text-primary" />
         </div>
-        <h2 className="text-xl font-semibold text-text">Selecione um projeto para abrir o editor</h2>
-        <p className="mt-2 text-center text-text-muted">
+        <h2 className="text-xl font-semibold text-white">Selecione um projeto para abrir o editor</h2>
+        <p className="mt-2 text-center text-white/50">
           O editor Konva usa o projeto atual como contexto para templates locais.
         </p>
         <Link to="/project" className="mt-4 text-primary hover:underline">
@@ -445,8 +445,8 @@ export default function EditorPage() {
       <div className="flex min-h-full min-w-[1260px] flex-col gap-4 p-4">
         {/* Error message */}
         {error && (
-          <div className="rounded-2xl border border-error/30 bg-card/80 p-4 text-center">
-            <div className="flex items-center justify-center gap-2 text-error">
+          <div className="rounded-2xl border border-red-500/30 bg-white/5 backdrop-blur-sm p-4 text-center">
+            <div className="flex items-center justify-center gap-2 text-red-400">
               <AlertTriangle size={18} />
               <span className="text-sm font-medium">{error}</span>
             </div>
@@ -456,10 +456,10 @@ export default function EditorPage() {
         {/* Template Carousel */}
         <div className="relative">
           {(isAutoSyncing || isLoading) && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-card/80 backdrop-blur-sm">
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-[#0a0a0a]/80 backdrop-blur-sm">
               <div className="flex flex-col items-center gap-3">
                 <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                <p className="text-sm font-medium text-text">
+                <p className="text-sm font-medium text-white">
                   {isAutoSyncing ? 'Sincronizando...' : 'Carregando...'}
                 </p>
               </div>
@@ -486,14 +486,14 @@ export default function EditorPage() {
                       <Sparkles size={16} />
                       Variacao carregada do modo rapido
                     </div>
-                    <p className="mt-2 text-sm text-text">
+                    <p className="mt-2 text-sm text-white/80">
                       Ajuste a arte e salve como novo template local quando terminar.
                     </p>
-                    <p className="mt-1 text-xs text-text-muted">
+                    <p className="mt-1 text-xs text-white/50">
                       Origem: {approvedVariationDraft.sourceTemplateName || 'Template Konva'} •
                       variacao {approvedVariationDraft.variationIndex + 1}
                     </p>
-                    <p className="mt-1 text-xs text-text-muted">
+                    <p className="mt-1 text-xs text-white/50">
                       Prompt: "{approvedVariationDraft.prompt}"
                     </p>
                   </div>
@@ -501,14 +501,14 @@ export default function EditorPage() {
               </div>
             ) : null}
 
-            <div className="shrink-0 rounded-2xl border border-border bg-card/60 px-4 py-3">
+            <div className="shrink-0 rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm px-4 py-3">
               <label className="space-y-1">
-                <span className="text-xs font-medium uppercase tracking-[0.18em] text-text-subtle">Nome do documento</span>
+                <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">Nome do documento</span>
                 <input
                   type="text"
                   value={document.name}
                   onChange={(event) => setDocumentName(event.target.value)}
-                  className="mt-1 h-10 w-full rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+                  className="input-field mt-1 h-10"
                 />
               </label>
             </div>

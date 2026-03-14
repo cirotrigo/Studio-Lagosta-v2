@@ -101,11 +101,11 @@ function LayerItem({
       ref={setNodeRef}
       style={style}
       className={cn(
-        'w-full rounded-xl border px-3 py-3 text-left transition-colors',
+        'layer-item',
         isSelected
-          ? 'border-primary bg-primary/10'
-          : 'border-border bg-background/60 hover:border-primary/40',
-        isDragging && 'shadow-lg',
+          ? 'layer-item-selected'
+          : 'layer-item-default',
+        isDragging && 'shadow-lg shadow-primary/20',
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -113,7 +113,7 @@ function LayerItem({
           {/* Drag Handle */}
           <button
             type="button"
-            className="mt-0.5 cursor-grab rounded p-0.5 text-text-muted hover:bg-card hover:text-text active:cursor-grabbing"
+            className="mt-0.5 cursor-grab rounded p-0.5 text-white/40 hover:bg-white/10 hover:text-white/70 active:cursor-grabbing"
             {...attributes}
             {...listeners}
           >
@@ -134,12 +134,12 @@ function LayerItem({
                 onBlur={handleBlur}
                 onKeyDown={handleKeyDown}
                 onClick={(e) => e.stopPropagation()}
-                className="w-full rounded border border-primary bg-background px-1 py-0.5 text-sm font-medium text-text outline-none"
+                className="input-field py-0.5 px-1 text-sm font-medium"
               />
             ) : (
-              <p className="text-sm font-medium text-text">{layer.name ?? layer.type}</p>
+              <p className="text-sm font-medium text-white">{layer.name ?? layer.type}</p>
             )}
-            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-text-subtle">{layer.type}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.18em] text-white/40">{layer.type}</p>
           </div>
         </div>
 
@@ -150,7 +150,8 @@ function LayerItem({
               e.stopPropagation()
               onToggleVisibility(layer.id)
             }}
-            className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text"
+            className="btn-icon w-7 h-7"
+            title={layer.visible === false ? 'Mostrar camada' : 'Ocultar camada'}
           >
             {layer.visible === false ? <EyeOff size={14} /> : <Eye size={14} />}
           </button>
@@ -160,7 +161,8 @@ function LayerItem({
               e.stopPropagation()
               onToggleLock(layer.id)
             }}
-            className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text"
+            className="btn-icon w-7 h-7"
+            title={layer.locked ? 'Destravar (Cmd/Ctrl+L)' : 'Travar (Cmd/Ctrl+L)'}
           >
             {layer.locked ? <Lock size={14} /> : <Unlock size={14} />}
           </button>
@@ -170,14 +172,15 @@ function LayerItem({
               e.stopPropagation()
               onRemove(layer.id)
             }}
-            className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-error"
+            className="btn-icon w-7 h-7 hover:text-error"
+            title="Excluir (Delete)"
           >
             <Trash2 size={14} />
           </button>
         </div>
       </div>
 
-      <div className="mt-3 flex items-center justify-between text-xs text-text-muted">
+      <div className="mt-3 flex items-center justify-between text-xs text-white/40">
         <span>
           X {Math.round(layer.x)} Y {Math.round(layer.y)}
         </span>
@@ -190,7 +193,7 @@ function LayerItem({
               e.stopPropagation()
               onReorder(layer.id, 'forward')
             }}
-            className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+            className="btn-icon w-6 h-6 disabled:opacity-30"
             title="Mover uma camada acima"
           >
             <MoveUp size={14} />
@@ -202,7 +205,7 @@ function LayerItem({
               e.stopPropagation()
               onReorder(layer.id, 'backward')
             }}
-            className="rounded-lg p-1 text-text-muted hover:bg-card hover:text-text disabled:opacity-30"
+            className="btn-icon w-6 h-6 disabled:opacity-30"
             title="Mover uma camada abaixo"
           >
             <MoveDown size={14} />
@@ -261,13 +264,13 @@ export function LayersPanel() {
   }
 
   return (
-    <div className="flex h-full flex-col rounded-2xl border border-border bg-card/60">
-      <div className="border-b border-border px-4 py-3">
-        <h2 className="text-sm font-semibold text-text">Camadas</h2>
-        <p className="mt-1 text-xs text-text-muted">Arraste para reordenar, duplo clique para renomear</p>
+    <div className="panel-glass flex h-full min-h-0 flex-col">
+      <div className="panel-header shrink-0">
+        <h2 className="text-sm font-semibold text-white">Camadas</h2>
+        <p className="mt-1 text-xs text-white/50">Arraste para reordenar, duplo clique para renomear</p>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto p-3">
+      <div className="panel-content min-h-0 flex-1 space-y-2 overflow-y-auto">
         <DndContext
           sensors={sensors}
           collisionDetection={closestCenter}
@@ -293,8 +296,8 @@ export function LayersPanel() {
         </DndContext>
 
         {!layers.length ? (
-          <div className="rounded-xl border border-dashed border-border px-4 py-6 text-center text-sm text-text-muted">
-            Nenhuma layer nesta página.
+          <div className="rounded-xl border border-dashed border-white/10 px-4 py-6 text-center text-sm text-white/40">
+            Nenhuma layer nesta pagina.
           </div>
         ) : null}
       </div>

@@ -35,11 +35,11 @@ class TabErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
     if (this.state.hasError) {
       return (
         <div className="flex h-full flex-col items-center justify-center p-8">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-error/10">
-            <AlertTriangle size={28} className="text-error" />
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
+            <AlertTriangle size={28} className="text-red-400" />
           </div>
-          <h3 className="text-lg font-semibold text-text">Erro ao carregar</h3>
-          <p className="mt-2 max-w-md text-center text-sm text-text-muted">
+          <h3 className="text-lg font-semibold text-white">Erro ao carregar</h3>
+          <p className="mt-2 max-w-md text-center text-sm text-white/50">
             {this.state.error?.message || 'Ocorreu um erro inesperado'}
           </p>
           <button
@@ -47,7 +47,7 @@ class TabErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState>
               this.setState({ hasError: false, error: null })
               this.props.onReset?.()
             }}
-            className="mt-4 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
+            className="btn-primary mt-4"
           >
             Tentar novamente
           </button>
@@ -71,8 +71,8 @@ export default function ProjectPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <Wand2 size={32} className="text-primary" />
           </div>
-          <h2 className="text-xl font-semibold text-text">Selecione um projeto</h2>
-          <p className="mt-2 text-text-muted">
+          <h2 className="text-xl font-semibold text-white">Selecione um projeto</h2>
+          <p className="mt-2 text-white/50">
             Escolha um projeto na barra lateral para acessar as ferramentas de criacao
           </p>
           <Link
@@ -89,8 +89,8 @@ export default function ProjectPage() {
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-border p-4">
-        <h1 className="text-xl font-semibold text-text">Arte Rapida</h1>
+      <div className="flex items-center justify-between border-b border-white/[0.06] p-4">
+        <h1 className="text-xl font-semibold text-white">Arte Rapida</h1>
         <ProjectBadge project={currentProject} />
       </div>
 

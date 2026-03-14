@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git status:*)"
+      "Bash(git status:*)",
+      "Bash(grep -oE \"#[0-9a-fA-F]{3,8}\" /Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/design-system.html)"
+    ],
+    "additionalDirectories": [
+      "/Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/assets"
     ]
   }
 }

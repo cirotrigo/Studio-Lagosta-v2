@@ -33,7 +33,7 @@ export function PagesBar() {
   const [draggingPageId, setDraggingPageId] = useState<string | null>(null)
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false)
   const compactButtonClass =
-    'h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-primary/40'
+    'h-9 shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white/80 transition-all duration-150 hover:bg-white/10 hover:border-white/20 hover:text-white'
 
   const pages = useMemo(() => (document ? sortPages(document.design.pages) : []), [document])
 
@@ -72,18 +72,18 @@ export function PagesBar() {
   }
 
   return (
-    <div className="shrink-0 rounded-2xl border border-border bg-card/60 px-4 py-4">
+    <div className="panel-glass shrink-0 px-4 py-4">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-text">Páginas e formatos</h2>
-          <p className="mt-1 text-xs text-text-muted">Carrossel, variações e presets Instagram no mesmo documento.</p>
+          <h2 className="text-sm font-semibold text-white">Paginas e formatos</h2>
+          <p className="mt-1 text-xs text-white/50">Carrossel, variacoes e presets Instagram no mesmo documento.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <select
             value={document.format}
             onChange={(event) => applyFormat(event.target.value as ArtFormat)}
-            className="h-9 min-w-[240px] rounded-xl border border-border bg-input px-3 text-sm text-text focus:border-primary focus:outline-none"
+            className="h-9 min-w-[240px] rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white/80 focus:border-primary/50 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-white/10 transition-all duration-150"
           >
             {Object.values(ART_FORMAT_PRESETS).map((preset) => (
               <option key={preset.format} value={preset.format}>
@@ -125,7 +125,7 @@ export function PagesBar() {
             type="button"
             disabled={pages.length <= 1}
             onClick={() => removePage(currentPage.id)}
-            className="h-9 shrink-0 rounded-xl border border-border px-3 text-sm text-text transition-colors hover:border-error/40 hover:text-error disabled:opacity-40"
+            className="h-9 shrink-0 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white/80 transition-all duration-150 hover:border-red-500/40 hover:text-red-400 disabled:opacity-40"
           >
             <span className="inline-flex items-center gap-2">
               <Trash2 size={16} />
@@ -158,25 +158,25 @@ export function PagesBar() {
               }}
               onClick={() => setCurrentPageId(page.id)}
               className={cn(
-                'group min-w-[172px] rounded-2xl border p-3 text-left transition-colors',
+                'group min-w-[172px] rounded-2xl border p-3 text-left transition-all duration-150',
                 isActive
-                  ? 'border-primary bg-primary/10'
-                  : 'border-border bg-background/50 hover:border-primary/35',
+                  ? 'border-primary/40 bg-primary/10'
+                  : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]',
               )}
             >
-              <div className="overflow-hidden rounded-xl border border-border bg-[#0f172a]">
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-[#080808]">
                 {thumbnail ? (
                   <img src={thumbnail} alt={page.name} className="h-[192px] w-full object-cover" />
                 ) : (
-                  <div className="flex h-[192px] items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-amber-600/50">
-                    <span className="text-xs uppercase tracking-[0.2em] text-white/80">Gerando thumb</span>
+                  <div className="flex h-[192px] items-center justify-center bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-primary/30">
+                    <span className="text-xs uppercase tracking-[0.2em] text-white/60">Gerando thumb</span>
                   </div>
                 )}
               </div>
 
               <div className="mt-3">
-                <p className="text-sm font-medium text-text">{page.name}</p>
-                <p className="mt-1 text-xs text-text-muted">
+                <p className="text-sm font-medium text-white">{page.name}</p>
+                <p className="mt-1 text-xs text-white/50">
                   {page.width}x{page.height} • {page.layers.length} layers
                 </p>
                 {page.tags && page.tags.length > 0 && (
@@ -192,7 +192,7 @@ export function PagesBar() {
                     ))}
                   </div>
                 )}
-                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-text-subtle">
+                <p className="mt-1 text-[11px] uppercase tracking-[0.18em] text-white/40">
                   Arraste para reordenar
                 </p>
               </div>
