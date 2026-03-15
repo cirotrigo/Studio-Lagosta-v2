@@ -230,7 +230,7 @@ export default function NewPostPage() {
             type: image.blob.type || 'image/jpeg',
             buffer: arrayBuffer,
           },
-          { type: 'post' }
+          { type: 'post', postType }
         )
 
         if (!response.ok) {

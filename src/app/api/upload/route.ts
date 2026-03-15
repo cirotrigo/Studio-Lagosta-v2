@@ -67,6 +67,7 @@ export async function POST(request: Request) {
     const formData = await request.formData()
     const file = formData.get('file') as File
     const uploadType = formData.get('type') as string | null // 'reference' or 'post'
+    const postType = formData.get('postType') as string | null // 'STORY', 'POST', 'CAROUSEL', 'REEL'
 
     if (!file) {
       console.warn('[Upload] No file provided in request')
@@ -133,7 +134,9 @@ export async function POST(request: Request) {
 
     // Auto-crop only raw "post" uploads to Instagram feed format (4:5 - 1080x1350)
     // Keep reference/approved renders untouched to preserve original format (Story/Square/etc)
-    const shouldCrop = isImage && uploadType === 'post'
+    // Skip crop for STORY and REEL which use 9:16 aspect ratio (1080x1920)
+    const isVerticalFormat = postType === 'STORY' || postType === 'REEL'
+    const shouldCrop = isImage && uploadType === 'post' && !isVerticalFormat
     if (shouldCrop) {
       try {
         const imageInfo = await getImageInfo(buffer)
@@ -148,6 +151,8 @@ export async function POST(request: Request) {
         // Continue with original buffer if crop fails
         console.warn('⚠️ Using original image (crop failed)')
       }
+    } else if (isVerticalFormat) {
+      console.log('📷 Skipping crop for vertical format:', postType)
     } else if (uploadType === 'reference' || uploadType === 'approved_art') {
       console.log('📷 Skipping crop for non-post image type:', uploadType)
     }
