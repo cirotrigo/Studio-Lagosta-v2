@@ -11,6 +11,7 @@ import type {
 } from '@/types/google-drive'
 
 const ARTES_FOLDER_NAME = 'ARTES LAGOSTA'
+const AI_IMAGES_FOLDER_NAME = 'IA'
 const MIME_TYPE_FOLDER = 'application/vnd.google-apps.folder'
 const MIME_TYPE_IMAGE_PREFIX = 'image/'
 const MIME_TYPE_VIDEO_PREFIX = 'video/'
@@ -79,6 +80,7 @@ export class GoogleDriveService {
   private readonly oauth2Client: OAuth2Client
   private readonly drive: drive_v3.Drive
   private readonly artesFolderCache = new Map<string, ArtesFolderCacheEntry>()
+  private readonly aiImagesFolderCache = new Map<string, ArtesFolderCacheEntry>()
 
   private constructor() {
     this.enabled = Boolean(this.clientId && this.clientSecret && this.refreshToken)
@@ -421,6 +423,19 @@ export class GoogleDriveService {
     })
   }
 
+  async uploadAIGeneratedImage(buffer: Buffer, imagesFolderId: string, projectName?: string | null): Promise<GoogleDriveUploadResult> {
+    this.ensureEnabled()
+
+    const aiFolderId = await this.ensureAIImagesFolder(imagesFolderId)
+    return this.uploadFileToFolder({
+      buffer,
+      folderId: aiFolderId,
+      fileName: buildFileName(projectName),
+      mimeType: 'image/jpeg',
+      makePublic: true,
+    })
+  }
+
   async uploadFileToFolder({
     buffer,
     folderId,
@@ -614,6 +629,30 @@ export class GoogleDriveService {
 
     const created = await this.createFolderInternal(ARTES_FOLDER_NAME, projectFolderId)
     this.artesFolderCache.set(projectFolderId, {
+      folderId: created,
+      expiresAt: now + CACHE_TTL_MS,
+    })
+    return created
+  }
+
+  private async ensureAIImagesFolder(imagesFolderId: string): Promise<string> {
+    const cached = this.aiImagesFolderCache.get(imagesFolderId)
+    const now = Date.now()
+    if (cached && cached.expiresAt > now) {
+      return cached.folderId
+    }
+
+    const existing = await this.findFolderByName(AI_IMAGES_FOLDER_NAME, imagesFolderId)
+    if (existing) {
+      this.aiImagesFolderCache.set(imagesFolderId, {
+        folderId: existing,
+        expiresAt: now + CACHE_TTL_MS,
+      })
+      return existing
+    }
+
+    const created = await this.createFolderInternal(AI_IMAGES_FOLDER_NAME, imagesFolderId)
+    this.aiImagesFolderCache.set(imagesFolderId, {
       folderId: created,
       expiresAt: now + CACHE_TTL_MS,
     })

@@ -1,9 +1,8 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Database, Download, ImagePlus, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
+import { Database, Download, Loader2, Sparkles, Trash2, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
-import { ACCEPTED_IMAGE_TYPES, MAX_FILE_SIZE } from '@/lib/constants'
 import { useBrandAssets } from '@/hooks/use-brand-assets'
 import { useKonvaProjectCreativeExport } from '@/hooks/use-project-generations'
 import { generateBackgroundAsset } from '@/lib/automation/background-service'
@@ -33,6 +32,7 @@ import TonePresets from '@/components/project/generate/TonePresets'
 import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
 import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
 import { TemplateCarousel } from '@/components/project/generate/TemplateCarousel'
+import ReferenceSelector, { type SelectedReference } from '@/components/project/generate/ReferenceSelector'
 import type { Design } from '@/hooks/use-project-designs'
 import { useProjectStore } from '@/stores/project.store'
 import {
@@ -66,11 +66,6 @@ interface SelectedPhotoRef {
   aspectRatio?: string
   width?: number
   height?: number
-}
-
-interface ReferenceUploaderProps {
-  files: File[]
-  onChange: (files: File[]) => void
 }
 
 function deriveJobStatus(job: GenerationJob): GenerationJob['status'] {
@@ -149,69 +144,6 @@ function createApprovedVariationEditorDraft(
   }
 }
 
-function ReferenceUploader({ files, onChange }: ReferenceUploaderProps) {
-  const [previewUrls, setPreviewUrls] = useState<string[]>([])
-
-  useEffect(() => {
-    const urls = files.map((file) => URL.createObjectURL(file))
-    setPreviewUrls(urls)
-    return () => {
-      urls.forEach((url) => URL.revokeObjectURL(url))
-    }
-  }, [files])
-
-  const handleFileInput = (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || []).filter(
-      (file) => ACCEPTED_IMAGE_TYPES.includes(file.type) && file.size <= MAX_FILE_SIZE,
-    )
-    const nextFiles = [...files, ...selectedFiles]
-    if (nextFiles.length > 5) {
-      toast.error('Voce pode enviar ate 5 referencias visuais.')
-    }
-    onChange(nextFiles.slice(0, 5))
-    event.target.value = ''
-  }
-
-  return (
-    <div className="space-y-3 rounded-xl border border-border bg-card/50 p-4">
-      <div>
-        <p className="text-sm font-medium text-text">Referencias visuais</p>
-        <p className="mt-1 text-xs text-text-muted">
-          Ate 5 imagens. O fundo IA usa essas referencias diretamente e salva o resultado em Geradas com IA.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        {previewUrls.map((url, index) => (
-          <div key={`${url}-${index}`} className="group relative h-16 w-16 overflow-hidden rounded-lg border border-border bg-card">
-            <img src={url} alt="" className="h-full w-full object-cover" />
-            <button
-              type="button"
-              onClick={() => onChange(files.filter((_file, fileIndex) => fileIndex !== index))}
-              className="absolute right-1 top-1 hidden rounded-full bg-black/70 px-1.5 py-0.5 text-[10px] text-white group-hover:block"
-            >
-              x
-            </button>
-          </div>
-        ))}
-
-        {files.length < 5 && (
-          <label className="flex h-16 w-16 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border bg-input text-text-muted transition-colors hover:border-primary/40 hover:text-primary">
-            <input
-              type="file"
-              accept={ACCEPTED_IMAGE_TYPES.join(',')}
-              multiple
-              onChange={handleFileInput}
-              className="hidden"
-            />
-            <ImagePlus size={18} />
-          </label>
-        )}
-      </div>
-    </div>
-  )
-}
-
 export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: GenerateArtTabProps) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -235,7 +167,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [prompt, setPrompt] = useState('')
   const [backgroundMode, setBackgroundMode] = useState<'photo' | 'ai'>('photo')
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
-  const [referenceFiles, setReferenceFiles] = useState<File[]>([])
+  const [selectedReferences, setSelectedReferences] = useState<SelectedReference[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
   const [selectedCarouselDesign, setSelectedCarouselDesign] = useState<Design | null>(null)
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
@@ -714,14 +646,26 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       return
     }
 
-    if (backgroundMode === 'ai' && analyzeImageForContext && referenceFiles.length === 0) {
+    if (backgroundMode === 'ai' && analyzeImageForContext && selectedReferences.length === 0) {
       toast.info('Sem referencia visual para analisar. O job segue sem contexto de imagem.')
     }
 
     let referenceUrls: string[] | undefined
-    if (backgroundMode === 'ai' && referenceFiles.length > 0) {
+    if (backgroundMode === 'ai' && selectedReferences.length > 0) {
       try {
-        referenceUrls = await uploadReferenceImages(referenceFiles)
+        // References from Drive or AI already have URLs, only upload local files
+        const localRefs = selectedReferences.filter((ref) => ref.source === 'upload' && ref.file)
+        const existingUrls = selectedReferences
+          .filter((ref) => ref.source !== 'upload' || !ref.file)
+          .map((ref) => ref.url)
+
+        let uploadedUrls: string[] = []
+        if (localRefs.length > 0) {
+          const files = localRefs.map((ref) => ref.file!).filter(Boolean)
+          uploadedUrls = await uploadReferenceImages(files)
+        }
+
+        referenceUrls = [...existingUrls, ...uploadedUrls]
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Falha ao enviar referencias.')
         return
@@ -759,7 +703,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     selectedCarouselDesign,
     projectId,
     prompt,
-    referenceFiles,
+    selectedReferences,
     runQueue,
     analyzeImageForContext,
     selectedPhoto?.url,
@@ -869,7 +813,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
               />
             </div>
           ) : (
-            <ReferenceUploader files={referenceFiles} onChange={setReferenceFiles} />
+            <ReferenceSelector
+              projectId={projectId}
+              selectedReferences={selectedReferences}
+              onReferencesChange={setSelectedReferences}
+            />
           )}
 
           <ProjectContextIndicator

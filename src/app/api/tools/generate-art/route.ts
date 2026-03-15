@@ -11,6 +11,7 @@ import { processTextForTemplate, type TextProcessingMode } from '@/lib/text-proc
 import { densityCheckAndMaybeCompress, TextOverflowError } from '@/lib/density-control'
 import { normalizeTemplate } from '@/lib/template-normalize'
 import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
@@ -858,6 +859,32 @@ async function persistGeneratedAIImage(params: {
   })
 
   const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
+
+  // Also upload to Google Drive "IA" folder if configured
+  try {
+    const project = await db.project.findUnique({
+      where: { id: projectId },
+      select: {
+        name: true,
+        googleDriveImagesFolderId: true,
+        googleDriveFolderId: true,
+      },
+    })
+
+    const imagesFolderId = project?.googleDriveImagesFolderId || project?.googleDriveFolderId
+    if (imagesFolderId && googleDriveService.isEnabled()) {
+      const uploadResult = await googleDriveService.uploadAIGeneratedImage(
+        imageBuffer,
+        imagesFolderId,
+        project?.name,
+      )
+      console.log(`[persistGeneratedAIImage] Saved to Google Drive: ${uploadResult.publicUrl}`)
+    }
+  } catch (driveError) {
+    // Log but don't fail the operation - Vercel Blob is the primary storage
+    console.warn('[persistGeneratedAIImage] Failed to upload to Google Drive:', driveError)
+  }
+
   await db.aIGeneratedImage.create({
     data: {
       projectId,
