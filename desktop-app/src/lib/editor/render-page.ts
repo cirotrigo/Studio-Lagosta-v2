@@ -1,6 +1,6 @@
 import { buildTextFontString, resolveTextRenderState } from './text-layout'
 import { resolveContainPlacement, resolveImageCrop } from './image-fit'
-import type { KonvaPage, KonvaTextLayer, Layer } from '@/types/template'
+import type { KonvaPage, KonvaTextLayer, Layer, LayerEffects } from '@/types/template'
 
 interface RenderPageOptions {
   maxWidth?: number
@@ -198,6 +198,131 @@ async function drawImageLayer(
   context.strokeRect(x, y, width, height)
 }
 
+function applyTextEffects(
+  context: CanvasRenderingContext2D,
+  effects: LayerEffects | undefined,
+  scale: number,
+) {
+  // Apply drop shadow if enabled
+  if (effects?.dropShadow?.enabled) {
+    const shadow = effects.dropShadow
+    // Opacity is stored as 0-100, convert to 0-1
+    const opacity = (shadow.opacity ?? 50) / 100
+    const color = shadow.color ?? '#000000'
+    // Convert hex color to rgba with opacity
+    const shadowColor = hexToRgbaForCanvas(color, opacity)
+    context.shadowColor = shadowColor
+    context.shadowBlur = (shadow.blur ?? 10) * scale
+    context.shadowOffsetX = (shadow.offsetX ?? 4) * scale
+    context.shadowOffsetY = (shadow.offsetY ?? 4) * scale
+  }
+}
+
+function clearTextEffects(context: CanvasRenderingContext2D) {
+  context.shadowColor = 'transparent'
+  context.shadowBlur = 0
+  context.shadowOffsetX = 0
+  context.shadowOffsetY = 0
+}
+
+function drawTextBackground(
+  context: CanvasRenderingContext2D,
+  effects: LayerEffects | undefined,
+  lines: string[],
+  layer: KonvaTextLayer,
+  frameX: number,
+  frameY: number,
+  frameWidth: number,
+  offsetY: number,
+  fontSize: number,
+  lineHeight: number,
+  scale: number,
+  align: string,
+) {
+  if (!effects?.textBackground?.enabled) return
+
+  const bg = effects.textBackground
+  const padding = (bg.padding ?? 8) * scale
+  const cornerRadius = (bg.cornerRadius ?? 4) * scale
+  const bgColor = bg.color ?? '#000000'
+  // Opacity is stored as 0-100, convert to 0-1
+  const bgOpacity = (bg.opacity ?? 50) / 100
+
+  context.save()
+  context.globalAlpha = bgOpacity
+
+  lines.forEach((line, index) => {
+    if (!line.trim()) return
+
+    const lineWidth = measureLineWidth(context, line, layer, fontSize)
+    const offsetX =
+      align === 'center'
+        ? (frameWidth - lineWidth) / 2
+        : align === 'right'
+          ? frameWidth - lineWidth
+          : 0
+
+    const bgX = frameX + offsetX - padding
+    const bgY = frameY + offsetY + index * lineHeight - padding * 0.5
+    const bgWidth = lineWidth + padding * 2
+    const bgHeight = lineHeight + padding
+
+    context.fillStyle = bgColor
+    if (cornerRadius > 0) {
+      createRoundedRectPath(context, bgX, bgY, bgWidth, bgHeight, cornerRadius)
+      context.fill()
+    } else {
+      context.fillRect(bgX, bgY, bgWidth, bgHeight)
+    }
+  })
+
+  context.restore()
+}
+
+function drawTextWithStroke(
+  context: CanvasRenderingContext2D,
+  line: string,
+  x: number,
+  y: number,
+  letterSpacing: number,
+  extraSpacePerGap: number,
+  effects: LayerEffects | undefined,
+  fillColor: string,
+  scale: number,
+) {
+  const hasStroke = effects?.textStroke?.enabled && (effects.textStroke.width ?? 0) > 0
+
+  if (hasStroke) {
+    const stroke = effects.textStroke!
+    context.save()
+
+    // Draw stroke first (behind fill)
+    context.strokeStyle = stroke.color ?? '#000000'
+    context.lineWidth = (stroke.width ?? 2) * scale * 2 // Double width because stroke is centered
+    context.lineJoin = 'round'
+    context.miterLimit = 2
+
+    if (letterSpacing === 0 && extraSpacePerGap === 0) {
+      context.strokeText(line, x, y)
+    } else {
+      let cursorX = x
+      for (const character of line) {
+        context.strokeText(character, cursorX, y)
+        cursorX += context.measureText(character).width + letterSpacing
+        if (character === ' ') {
+          cursorX += extraSpacePerGap
+        }
+      }
+    }
+
+    context.restore()
+  }
+
+  // Draw fill text
+  context.fillStyle = fillColor
+  drawTextLine(context, line, x, y, letterSpacing, extraSpacePerGap)
+}
+
 function drawTextLayer(
   context: CanvasRenderingContext2D,
   layer: KonvaTextLayer,
@@ -215,6 +340,8 @@ function drawTextLayer(
   const lineHeight = fontSize * (layer.textStyle?.lineHeight ?? 1.2)
   const letterSpacing = (layer.textStyle?.letterSpacing ?? 0) * scale
   const totalTextHeight = lines.length * lineHeight
+  const effects = layer.effects
+  const fillColor = layer.textStyle?.fill ?? '#111827'
 
   const offsetY =
     verticalAlign === 'middle'
@@ -224,8 +351,26 @@ function drawTextLayer(
         : 0
 
   context.font = buildTextFontString(fontSize, layer)
-  context.fillStyle = layer.textStyle?.fill ?? '#111827'
   context.textBaseline = 'top'
+
+  // Draw text background if enabled
+  drawTextBackground(
+    context,
+    effects,
+    lines,
+    layer,
+    frameX,
+    frameY,
+    frameWidth,
+    offsetY,
+    fontSize,
+    lineHeight,
+    scale,
+    align,
+  )
+
+  // Apply drop shadow effect
+  applyTextEffects(context, effects, scale)
 
   lines.forEach((line, index) => {
     const lineWidth = measureLineWidth(context, line, layer, fontSize)
@@ -241,15 +386,21 @@ function drawTextLayer(
           ? frameWidth - lineWidth
           : 0
 
-    drawTextLine(
+    drawTextWithStroke(
       context,
       line,
       frameX + Math.max(0, offsetX),
       frameY + Math.max(0, offsetY) + index * lineHeight,
       letterSpacing,
       extraSpacePerGap,
+      effects,
+      fillColor,
+      scale,
     )
   })
+
+  // Clear shadow effects
+  clearTextEffects(context)
 }
 
 function drawShapeLayer(
