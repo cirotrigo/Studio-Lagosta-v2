@@ -50,8 +50,8 @@ export const api = {
   patch: <T>(endpoint: string, body?: unknown, options?: RequestOptions) =>
     request<T>(endpoint, { ...options, method: 'PATCH', body }),
 
-  delete: <T>(endpoint: string, options?: RequestOptions) =>
-    request<T>(endpoint, { ...options, method: 'DELETE' }),
+  delete: <T>(endpoint: string, body?: unknown, options?: RequestOptions) =>
+    request<T>(endpoint, { ...options, method: 'DELETE', body }),
 
   // For file uploads
   upload: async <T>(endpoint: string, formData: FormData): Promise<T> => {

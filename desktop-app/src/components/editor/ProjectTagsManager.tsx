@@ -101,35 +101,20 @@ export function ProjectTagsManager({ projectId, isOpen, onClose }: ProjectTagsMa
       forceDelete?: boolean
     }): Promise<DeleteTagResponse> => {
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL || ''}/api/projects/${projectId}/tags/${tagId}`,
-          {
-            method: 'DELETE',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${useAuthStore.getState().cookies}`,
-            },
-            body: JSON.stringify({ transferToTagId, forceDelete }),
-          },
+        return await api.delete<DeleteTagResponse>(
+          `/api/projects/${projectId}/tags/${tagId}`,
+          { transferToTagId, forceDelete },
         )
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          if (response.status === 401) {
+      } catch (error) {
+        if (error instanceof ApiError) {
+          if (error.status === 401) {
             await logout()
           }
           // Return TAG_HAS_PAGES response for handling
-          if (data.code === 'TAG_HAS_PAGES') {
-            return data as DeleteTagResponse
+          const errorData = error.data as DeleteTagResponse
+          if (errorData?.code === 'TAG_HAS_PAGES') {
+            return errorData
           }
-          throw new Error(data.error || 'Erro ao remover tag')
-        }
-
-        return data as DeleteTagResponse
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          await logout()
         }
         throw error
       }
