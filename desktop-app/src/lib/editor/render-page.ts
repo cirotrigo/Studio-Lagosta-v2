@@ -116,33 +116,32 @@ async function loadRenderableImage(
   }
 
   const isRelativeAsset = src.startsWith('/')
-  if (
-    !preferBlobDownload ||
-    !window.electronAPI?.downloadBlob ||
-    src.startsWith('data:') ||
-    src.startsWith('blob:') ||
-    isRelativeAsset
-  ) {
-    return await loadImageFromSource(src)
+  const isDataUrl = src.startsWith('data:')
+  const isBlobUrl = src.startsWith('blob:')
+
+  // For data/blob URLs or relative assets, use direct loading
+  if (isDataUrl || isBlobUrl || isRelativeAsset) {
+    return await loadImageFromSource(src, false) // No crossOrigin for local sources
   }
 
-  try {
-    const downloaded = await window.electronAPI.downloadBlob(src)
-    if (!downloaded.ok || !downloaded.buffer) {
-      return await loadImageFromSource(src)
-    }
-
-    const blob = new Blob([downloaded.buffer], { type: downloaded.contentType || 'image/png' })
-    const objectUrl = URL.createObjectURL(blob)
-
+  // For external URLs, try blob download first (bypasses CORS)
+  if (preferBlobDownload && window.electronAPI?.downloadBlob) {
     try {
-      return await loadImageFromSource(objectUrl, false)
-    } finally {
-      URL.revokeObjectURL(objectUrl)
+      const downloaded = await window.electronAPI.downloadBlob(src)
+      if (downloaded.ok && downloaded.buffer) {
+        const blob = new Blob([downloaded.buffer], { type: downloaded.contentType || 'image/png' })
+        const objectUrl = URL.createObjectURL(blob)
+        const image = await loadImageFromSource(objectUrl, false)
+        URL.revokeObjectURL(objectUrl)
+        return image
+      }
+    } catch (error) {
+      console.warn('[RenderPage] Blob download failed for:', src, error)
     }
-  } catch (_error) {
-    return await loadImageFromSource(src)
   }
+
+  // Fallback to direct loading (may cause CORS issues)
+  return await loadImageFromSource(src, false) // Try without crossOrigin to avoid tainting
 }
 
 async function drawImageLayer(
@@ -480,8 +479,10 @@ export async function renderPageToDataUrl(
   }
 
   try {
-    return canvas.toDataURL(mimeType, quality)
-  } catch (_error) {
+    const dataUrl = canvas.toDataURL(mimeType, quality)
+    return dataUrl
+  } catch (error) {
+    console.error('[RenderPage] toDataURL failed (canvas may be tainted):', error)
     return ''
   }
 }

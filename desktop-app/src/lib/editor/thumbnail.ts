@@ -19,5 +19,15 @@ export async function renderPageThumbnail(
   const mimeType = size === 'small' ? 'image/png' : 'image/jpeg'
   const quality = size === 'small' ? 0.92 : 0.85
 
-  return await renderPageToDataUrl(page, { maxWidth, mimeType, quality })
+  try {
+    // Use blob download in Electron to avoid CORS issues with external images
+    const result = await renderPageToDataUrl(page, { maxWidth, mimeType, quality, preferBlobDownload: true })
+    if (!result) {
+      console.warn(`[Thumbnail] Empty result for page ${page.id} (${page.name})`)
+    }
+    return result
+  } catch (error) {
+    console.error(`[Thumbnail] Failed to render page ${page.id}:`, error)
+    return ''
+  }
 }

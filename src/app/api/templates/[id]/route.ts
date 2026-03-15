@@ -129,27 +129,53 @@ export async function PUT(
       // If designData.pages is provided, update the Page records
       const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null; tags?: string[] }> } | undefined
       if (designData?.pages && Array.isArray(designData.pages)) {
-        // Delete existing pages
-        await tx.page.deleteMany({
+        // Get existing page IDs to know which to update vs delete
+        const existingPages = await tx.page.findMany({
           where: { templateId },
+          select: { id: true },
         })
+        const existingPageIds = new Set(existingPages.map(p => p.id))
+        const incomingPageIds = new Set(designData.pages.filter(p => p.id).map(p => p.id!))
 
-        // Create new pages from designData.pages
+        // Delete pages that no longer exist
+        const pagesToDelete = [...existingPageIds].filter(id => !incomingPageIds.has(id))
+        if (pagesToDelete.length > 0) {
+          await tx.page.deleteMany({
+            where: { id: { in: pagesToDelete } },
+          })
+        }
+
+        // Upsert pages - update if exists, create with provided ID if not
         for (let i = 0; i < designData.pages.length; i++) {
           const page = designData.pages[i]
-          await tx.page.create({
-            data: {
-              name: page.name ?? `Página ${i + 1}`,
-              width: page.width ?? 1080,
-              height: page.height ?? 1920,
-              layers: typeof page.layers === 'string' ? page.layers : JSON.stringify(page.layers ?? []),
-              background: page.background ?? '#ffffff',
-              order: page.order ?? i,
-              thumbnail: page.thumbnail ?? null,
-              tags: Array.isArray(page.tags) ? page.tags : [],
-              templateId,
-            },
-          })
+          const pageId = page.id ?? crypto.randomUUID()
+          const pageData = {
+            name: page.name ?? `Página ${i + 1}`,
+            width: page.width ?? 1080,
+            height: page.height ?? 1920,
+            layers: typeof page.layers === 'string' ? page.layers : JSON.stringify(page.layers ?? []),
+            background: page.background ?? '#ffffff',
+            order: page.order ?? i,
+            thumbnail: page.thumbnail ?? null,
+            tags: Array.isArray(page.tags) ? page.tags : [],
+          }
+
+          if (existingPageIds.has(pageId)) {
+            // Update existing page
+            await tx.page.update({
+              where: { id: pageId },
+              data: pageData,
+            })
+          } else {
+            // Create new page with the provided ID
+            await tx.page.create({
+              data: {
+                id: pageId,
+                ...pageData,
+                templateId,
+              },
+            })
+          }
         }
       }
 

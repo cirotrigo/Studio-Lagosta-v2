@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Copy, Plus, Tag, Trash2 } from 'lucide-react'
 import { renderPageThumbnail } from '@/lib/editor/thumbnail'
 import { ART_FORMAT_PRESETS } from '@/lib/editor/formats'
@@ -37,25 +37,44 @@ export function PagesBar() {
 
   const pages = useMemo(() => (document ? sortPages(document.design.pages) : []), [document])
 
+  // Generate thumbnails for pages - use ref to avoid infinite loop
+  const thumbnailsRef = useRef(thumbnails)
+  thumbnailsRef.current = thumbnails
+
   useEffect(() => {
     if (!pages.length) {
       return
     }
 
     let cancelled = false
-    const timeoutId = window.setTimeout(() => {
-      void Promise.all(
-        pages.map(async (page) => {
+    const timeoutId = window.setTimeout(async () => {
+      // Filter pages that don't have thumbnails yet
+      const pagesToRender = pages.filter((page) => !thumbnailsRef.current[page.id])
+      if (pagesToRender.length === 0) {
+        return
+      }
+
+      console.log('[PagesBar] Generating thumbnails for', pagesToRender.length, 'of', pages.length, 'pages')
+
+      for (const page of pagesToRender) {
+        if (cancelled) break
+        try {
           const thumbnail = await renderPageThumbnail(page)
           if (!cancelled && thumbnail) {
+            console.log('[PagesBar] Thumbnail generated for page:', page.id)
             setThumbnail(page.id, thumbnail)
+          } else if (!thumbnail) {
+            console.warn('[PagesBar] Empty thumbnail for page:', page.id, page.name)
           }
-        }),
-      )
+        } catch (error) {
+          console.error('[PagesBar] Error generating thumbnail for page:', page.id, error)
+        }
+      }
     }, 180)
 
+    // Cleanup stale thumbnails
     const validIds = new Set(pages.map((page) => page.id))
-    Object.keys(thumbnails).forEach((pageId) => {
+    Object.keys(thumbnailsRef.current).forEach((pageId) => {
       if (!validIds.has(pageId)) {
         removeThumbnail(pageId)
       }
@@ -65,7 +84,7 @@ export function PagesBar() {
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [pages, removeThumbnail, setThumbnail, thumbnails])
+  }, [pages, removeThumbnail, setThumbnail])
 
   if (!document || !pages.length || !currentPage) {
     return null
@@ -158,7 +177,9 @@ export function PagesBar() {
               }}
               onClick={() => setCurrentPageId(page.id)}
               className={cn(
-                'group min-w-[172px] rounded-2xl border p-3 text-left transition-all duration-150',
+                'group shrink-0 rounded-2xl border p-3 text-left transition-all duration-150',
+                // Adjust width based on aspect ratio
+                page.height > page.width ? 'w-[140px]' : 'w-[200px]',
                 isActive
                   ? 'border-primary/40 bg-primary/10'
                   : 'border-white/[0.08] bg-white/[0.03] hover:border-white/20 hover:bg-white/[0.06]',
@@ -166,9 +187,23 @@ export function PagesBar() {
             >
               <div className="overflow-hidden rounded-xl border border-white/10 bg-[#080808]">
                 {thumbnail ? (
-                  <img src={thumbnail} alt={page.name} className="h-[192px] w-full object-cover" />
+                  <img
+                    src={thumbnail}
+                    alt={page.name}
+                    className="w-full object-contain"
+                    style={{
+                      aspectRatio: `${page.width} / ${page.height}`,
+                      maxHeight: '240px',
+                    }}
+                  />
                 ) : (
-                  <div className="flex h-[192px] items-center justify-center bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-primary/30">
+                  <div
+                    className="flex items-center justify-center bg-gradient-to-br from-[#0a0a0a] via-[#1a1a1a] to-primary/30"
+                    style={{
+                      aspectRatio: `${page.width} / ${page.height}`,
+                      maxHeight: '240px',
+                    }}
+                  >
                     <span className="text-xs uppercase tracking-[0.2em] text-white/60">Gerando thumb</span>
                   </div>
                 )}
