@@ -82,7 +82,7 @@ export default function EditorPage() {
   useProjectTags(currentProject?.id)
 
   // Sync status for auto-syncing templates
-  const { pull: syncPull } = useSyncStatus()
+  const { pull: syncPull, push: syncPush } = useSyncStatus()
 
   const document = useEditorStore((state) => state.document)
   const setDocument = useEditorStore((state) => state.setDocument)
@@ -414,11 +414,23 @@ export default function EditorPage() {
       setTemplates(list)
       setSelectedTemplateId(payload.id)
       setApprovedVariationDraft(null)
-      toast.success(
-        approvedVariationDraft
-          ? 'Novo template salvo a partir da variacao do modo rapido.'
-          : 'Template salvo no storage local.',
-      )
+
+      // Auto-sync to server after local save
+      try {
+        await syncPush()
+        toast.success(
+          approvedVariationDraft
+            ? 'Novo template salvo e sincronizado.'
+            : 'Template salvo e sincronizado com o servidor.',
+        )
+      } catch (syncError) {
+        console.warn('[EditorPage] Sync failed after save:', syncError)
+        toast.success(
+          approvedVariationDraft
+            ? 'Novo template salvo localmente. Sincronize manualmente.'
+            : 'Template salvo localmente. Sincronize manualmente.',
+        )
+      }
     } catch (saveError) {
       console.error('[EditorPage] Falha ao salvar template:', saveError)
       toast.error('Falha ao salvar template Konva.')
