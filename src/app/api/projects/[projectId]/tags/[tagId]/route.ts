@@ -157,50 +157,61 @@ export async function DELETE(
     )
   }
 
-  // If transfer is requested, validate and perform transfer
-  if (transferToTagId) {
-    const targetTag = await db.projectTag.findFirst({
-      where: { id: transferToTagId, projectId: projectIdNum },
-    })
+  try {
+    // If transfer is requested, validate and perform transfer
+    if (transferToTagId) {
+      const targetTag = await db.projectTag.findFirst({
+        where: { id: transferToTagId, projectId: projectIdNum },
+      })
 
-    if (!targetTag) {
-      return NextResponse.json({ error: 'Target tag not found' }, { status: 404 })
+      if (!targetTag) {
+        return NextResponse.json({ error: 'Target tag not found' }, { status: 404 })
+      }
+
+      // Transfer: replace old tag with new tag in all pages
+      // Use COALESCE to handle empty arrays properly
+      await db.$executeRaw`
+        UPDATE "Page" p
+        SET tags = COALESCE(
+          (
+            SELECT array_agg(DISTINCT t)
+            FROM (
+              SELECT unnest(array_remove(p.tags, ${tagName})) AS t
+              UNION
+              SELECT ${targetTag.name}
+            ) sub
+            WHERE t IS NOT NULL
+          ),
+          ARRAY[${targetTag.name}]
+        )
+        FROM "Template" tpl
+        WHERE p."templateId" = tpl.id
+          AND tpl."projectId" = ${projectIdNum}
+          AND ${tagName} = ANY(p.tags)
+      `
+    } else if (forceDelete || pageCount === 0) {
+      // Just remove the tag from all pages without transfer
+      await db.$executeRaw`
+        UPDATE "Page" p
+        SET tags = array_remove(p.tags, ${tagName})
+        FROM "Template" tpl
+        WHERE p."templateId" = tpl.id
+          AND tpl."projectId" = ${projectIdNum}
+          AND ${tagName} = ANY(p.tags)
+      `
     }
 
-    // Transfer: replace old tag with new tag in all pages
-    // First, remove old tag and add new tag (avoiding duplicates)
-    await db.$executeRaw`
-      UPDATE "Page" p
-      SET tags = (
-        SELECT array_agg(DISTINCT t)
-        FROM (
-          SELECT unnest(array_remove(tags, ${tagName})) AS t
-          UNION
-          SELECT ${targetTag.name}
-        ) sub
-        WHERE t IS NOT NULL
-      )
-      FROM "Template" tpl
-      WHERE p."templateId" = tpl.id
-        AND tpl."projectId" = ${projectIdNum}
-        AND ${tagName} = ANY(p.tags)
-    `
-  } else if (forceDelete || pageCount === 0) {
-    // Just remove the tag from all pages without transfer
-    await db.$executeRaw`
-      UPDATE "Page" p
-      SET tags = array_remove(tags, ${tagName})
-      FROM "Template" tpl
-      WHERE p."templateId" = tpl.id
-        AND tpl."projectId" = ${projectIdNum}
-        AND ${tagName} = ANY(p.tags)
-    `
+    // Delete the tag
+    await db.projectTag.delete({
+      where: { id: tagId },
+    })
+
+    return NextResponse.json({ success: true, pagesUpdated: pageCount })
+  } catch (error) {
+    console.error('Failed to delete tag:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete tag', details: error instanceof Error ? error.message : 'Unknown error' },
+      { status: 500 },
+    )
   }
-
-  // Delete the tag
-  await db.projectTag.delete({
-    where: { id: tagId },
-  })
-
-  return NextResponse.json({ success: true, pagesUpdated: pageCount })
 }
