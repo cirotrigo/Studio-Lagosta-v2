@@ -475,13 +475,25 @@ function selectTemplate(input: PromptOrchestratorInput, copies: StructuredCopyVa
     }
   }
 
-  // Strategy 2: Find by template ID (legacy)
+  // Strategy 2: Find by template ID (local ID)
   if (input.manualTemplateId) {
     const manual = formatTemplates.find((template) => template.id === input.manualTemplateId)
     if (manual) {
       return {
         mode: selectionMode,
         template: manual,
+      }
+    }
+
+    // Strategy 3: Find by server template ID (remoteId)
+    const serverTemplateId = Number(input.manualTemplateId)
+    if (!isNaN(serverTemplateId)) {
+      const byRemoteId = formatTemplates.find((template) => template.meta.remoteId === serverTemplateId)
+      if (byRemoteId) {
+        return {
+          mode: selectionMode,
+          template: byRemoteId,
+        }
       }
     }
   }
@@ -521,6 +533,8 @@ function toReviewFields(copy: StructuredCopyVariation): ReviewField[] {
 export async function preparePromptBatch(
   input: PromptOrchestratorInput,
 ): Promise<PreparedPromptBatch> {
+  console.log('='.repeat(60))
+  console.log('[PromptOrchestrator] ===== PREPARE PROMPT BATCH =====')
   console.log('[PromptOrchestrator] preparePromptBatch called with:', {
     selectedPageId: input.selectedPageId,
     manualTemplateId: input.manualTemplateId,
@@ -555,6 +569,29 @@ export async function preparePromptBatch(
         break
       }
     }
+
+    // Fallback: page ID from server doesn't match local page IDs
+    // Try to find template by remoteId (server template ID)
+    if (!manualTemplate && input.manualTemplateId) {
+      const serverTemplateId = Number(input.manualTemplateId)
+      console.log('[PromptOrchestrator] Page not found, trying remoteId fallback:', serverTemplateId)
+      if (!isNaN(serverTemplateId)) {
+        const found = input.templates.find((t) => t.meta.remoteId === serverTemplateId)
+        if (found) {
+          console.log('[PromptOrchestrator] Found template by remoteId:', {
+            templateId: found.id,
+            templateName: found.name,
+            remoteId: found.meta.remoteId,
+          })
+          manualTemplate = found
+        } else {
+          console.warn('[PromptOrchestrator] Template not found by remoteId! Available remoteIds:',
+            input.templates.map((t) => ({ id: t.id, name: t.name, remoteId: t.meta.remoteId })).slice(0, 10)
+          )
+        }
+      }
+    }
+
     if (!manualTemplate) {
       console.warn('[PromptOrchestrator] Page not found in any template! Available pages:',
         input.templates.flatMap((t) => t.design.pages.map((p) => ({ templateId: t.id, pageId: p.id, pageName: p.name }))).slice(0, 10)
