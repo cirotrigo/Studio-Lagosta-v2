@@ -606,6 +606,7 @@ The root object MUST have "elements", "shadow", and "overlay" as direct top-leve
 // --- Reference Image Preparation ---
 
 interface PreparedRefImage {
+  url: string
   base64: string
   mimeType: string
 }
@@ -630,6 +631,7 @@ async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[
         .toBuffer())
 
       return {
+        url, // Keep original URL for Replicate
         base64: buffer.toString('base64'),
         mimeType: 'image/jpeg',
       }
@@ -748,15 +750,18 @@ async function callNanoBanana2(
     ? 'Expert food photographer composition. Photorealistic, professionally-styled scene with the product as hero subject.'
     : 'Expert graphic designer composition. Professionally-designed, visually stunning social media art.'
 
-  // Build reference image URLs for Replicate
+  // Build reference image URLs for Replicate (up to 5 references)
   const refUrls: string[] = []
+
+  // Add reference images URLs
   if (referenceImages && referenceImages.length > 0) {
-    // For Replicate, we need URLs, not base64. Convert or use original URLs
-    // Note: Replicate models may have different reference image handling
-    console.log(`[generate-art] ${referenceImages.length} reference images available for style matching`)
+    for (const ref of referenceImages) {
+      refUrls.push(ref.url)
+    }
+    console.log(`[generate-art] Added ${referenceImages.length} reference image URLs for Replicate`)
   }
 
-  // Add photo URL as reference if provided
+  // Add photo URL as additional reference if provided
   if (photoUrl) {
     refUrls.push(photoUrl)
     console.log('[generate-art] Added photo URL as reference for Replicate')
