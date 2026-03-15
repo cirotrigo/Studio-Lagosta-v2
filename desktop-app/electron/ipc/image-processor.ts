@@ -23,9 +23,15 @@ export async function processImage(
   const dimensions = DIMENSIONS[postType] || DIMENSIONS.POST
   const { width, height } = dimensions
 
+  // Get original image metadata first
+  const originalMetadata = await sharp(inputBuffer).metadata()
+  const originalWidth = originalMetadata.width || 0
+  const originalHeight = originalMetadata.height || 0
+
   console.log('[ImageProcessor] Processing image:', {
     postType,
     targetDimensions: dimensions,
+    originalDimensions: { width: originalWidth, height: originalHeight },
     cropRegion,
     inputBufferSize: inputBuffer.length
   })
@@ -35,22 +41,15 @@ export async function processImage(
   // If custom crop region provided, extract and resize to target
   if (cropRegion) {
     console.log('[ImageProcessor] Applying custom crop:', cropRegion)
-    
-    // Validate crop region
-    const metadata = await sharp(inputBuffer).metadata()
-    console.log('[ImageProcessor] Original image metadata:', {
-      width: metadata.width,
-      height: metadata.height
-    })
-    
+
     // Ensure crop region is within bounds
-    const safeLeft = Math.max(0, Math.min(cropRegion.left, (metadata.width || 0) - 1))
-    const safeTop = Math.max(0, Math.min(cropRegion.top, (metadata.height || 0) - 1))
-    const safeWidth = Math.min(cropRegion.width, (metadata.width || 0) - safeLeft)
-    const safeHeight = Math.min(cropRegion.height, (metadata.height || 0) - safeTop)
-    
+    const safeLeft = Math.max(0, Math.min(cropRegion.left, originalWidth - 1))
+    const safeTop = Math.max(0, Math.min(cropRegion.top, originalHeight - 1))
+    const safeWidth = Math.min(cropRegion.width, originalWidth - safeLeft)
+    const safeHeight = Math.min(cropRegion.height, originalHeight - safeTop)
+
     console.log('[ImageProcessor] Safe crop region:', { safeLeft, safeTop, safeWidth, safeHeight })
-    
+
     // Extract the selected region
     pipeline = pipeline.extract({
       left: safeLeft,
@@ -58,7 +57,7 @@ export async function processImage(
       width: safeWidth,
       height: safeHeight,
     })
-    
+
     // Resize to target dimensions maintaining aspect ratio (cover)
     // This ensures the final image has exact target dimensions
     pipeline = pipeline.resize(width, height, {
@@ -66,11 +65,39 @@ export async function processImage(
       position: 'center',
     })
   } else {
-    // No custom crop - use smart crop
-    pipeline = pipeline.resize(width, height, {
-      fit: 'cover',
-      position: 'attention',
+    // Check if image already has the exact target dimensions
+    const isExactMatch = originalWidth === width && originalHeight === height
+
+    // Check if image has the same aspect ratio (within tolerance)
+    const originalAspect = originalWidth / originalHeight
+    const targetAspect = width / height
+    const aspectTolerance = 0.001 // 0.1% tolerance
+    const isSameAspectRatio = Math.abs(originalAspect - targetAspect) < aspectTolerance
+
+    console.log('[ImageProcessor] Dimension check:', {
+      isExactMatch,
+      isSameAspectRatio,
+      originalAspect: originalAspect.toFixed(4),
+      targetAspect: targetAspect.toFixed(4)
     })
+
+    if (isExactMatch) {
+      // Image already has exact dimensions - no resize needed
+      console.log('[ImageProcessor] Image already at target dimensions, skipping resize')
+    } else if (isSameAspectRatio) {
+      // Same aspect ratio - just resize without cropping
+      console.log('[ImageProcessor] Same aspect ratio, resizing without crop')
+      pipeline = pipeline.resize(width, height, {
+        fit: 'fill', // Fill exact dimensions since aspect ratio matches
+      })
+    } else {
+      // Different aspect ratio - use smart crop
+      console.log('[ImageProcessor] Different aspect ratio, using smart crop')
+      pipeline = pipeline.resize(width, height, {
+        fit: 'cover',
+        position: 'attention',
+      })
+    }
   }
 
   // Output as JPEG
