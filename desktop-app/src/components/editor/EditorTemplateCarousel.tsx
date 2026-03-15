@@ -190,7 +190,7 @@ export function EditorTemplateCarousel({
 
         {/* Tag chips */}
         <div className="flex flex-wrap items-center gap-1">
-          {projectTags.slice(0, 8).map((tag) => (
+          {projectTags.map((tag) => (
             <button
               key={tag.id}
               type="button"

@@ -1,7 +1,11 @@
 import { useState, useEffect } from 'react'
-import { X, Tag } from 'lucide-react'
+import { X, Tag, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTagsStore } from '@/stores/tags.store'
 import { useEditorStore, selectCurrentPageState } from '@/stores/editor.store'
+import { useProjectStore } from '@/stores/project.store'
+import { api, ApiError } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
 interface PageTagsModalProps {
@@ -10,11 +14,15 @@ interface PageTagsModalProps {
 }
 
 export function PageTagsModal({ isOpen, onClose }: PageTagsModalProps) {
+  const queryClient = useQueryClient()
   const projectTags = useTagsStore((state) => state.tags)
   const currentPage = useEditorStore(selectCurrentPageState)
+  const document = useEditorStore((state) => state.document)
   const updatePage = useEditorStore((state) => state.updatePage)
+  const currentProject = useProjectStore((state) => state.currentProject)
 
   const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [isSaving, setIsSaving] = useState(false)
 
   // Initialize selected tags from current page
   useEffect(() => {
@@ -36,8 +44,33 @@ export function PageTagsModal({ isOpen, onClose }: PageTagsModalProps) {
     }
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    // Update locally first
     updatePage(currentPage.id, { tags: selectedTags })
+
+    // Also sync to server if template has a remote ID
+    const remoteId = document?.meta?.remoteId
+    if (remoteId && currentProject?.id) {
+      setIsSaving(true)
+      try {
+        // Try to sync tags to server
+        await api.patch(`/api/projects/${currentProject.id}/designs/${currentPage.id}/tags`, {
+          tags: selectedTags,
+        })
+        // Invalidate queries to refresh the carousel
+        await queryClient.invalidateQueries({ queryKey: ['project-designs', currentProject.id] })
+        toast.success('Tags atualizadas')
+      } catch (error) {
+        // If page doesn't exist on server yet, that's OK - it will sync when template is saved
+        if (error instanceof ApiError && error.status !== 404) {
+          console.warn('[PageTagsModal] Failed to sync tags to server:', error)
+          toast.info('Tags salvas localmente. Sincronize o template para atualizar no servidor.')
+        }
+      } finally {
+        setIsSaving(false)
+      }
+    }
+
     onClose()
   }
 
@@ -140,16 +173,19 @@ export function PageTagsModal({ isOpen, onClose }: PageTagsModalProps) {
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-muted hover:border-primary/40 hover:text-text"
+            disabled={isSaving}
+            className="rounded-xl border border-border px-4 py-2 text-sm font-medium text-text-muted hover:border-primary/40 hover:text-text disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
           >
-            Salvar
+            {isSaving && <Loader2 size={14} className="animate-spin" />}
+            {isSaving ? 'Salvando...' : 'Salvar'}
           </button>
         </div>
       </div>

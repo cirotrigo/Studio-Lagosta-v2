@@ -209,10 +209,13 @@ export default function EditorPage() {
 
   // Helper to find and load a template for a design
   const loadTemplateForDesign = (templateList: KonvaTemplateDocument[], design: Design) => {
+    console.log(`[EditorPage] Looking for design: id="${design.id}", name="${design.name}", templateId=${design.templateId}`)
+
     // Strategy 1: Match by exact page ID
     for (const template of templateList) {
       const page = template.design.pages.find((p) => p.id === design.id)
       if (page) {
+        console.log(`[EditorPage] Matched by exact page ID: "${page.id}" in template "${template.name}"`)
         const templateWithCurrentPage: KonvaTemplateDocument = {
           ...template,
           design: {
@@ -228,14 +231,41 @@ export default function EditorPage() {
       }
     }
 
-    // Strategy 2: Match by templateId (meta.remoteId) and use first page
+    // Strategy 2: Match by templateId (meta.remoteId) and page name
     // This handles cases where local page IDs differ from server page IDs
     for (const template of templateList) {
-      if (template.meta.remoteId === design.templateId) {
-        // Find by name or use first page
-        const page = template.design.pages.find((p) => p.name === design.name)
-          ?? template.design.pages[0]
-        if (page) {
+      // Compare as strings to handle number/string mismatch
+      const remoteIdMatch = String(template.meta.remoteId) === String(design.templateId)
+      if (remoteIdMatch) {
+        // Find by exact name match first
+        const pageByName = template.design.pages.find((p) => p.name === design.name)
+        if (pageByName) {
+          console.log(`[EditorPage] Matched by templateId=${design.templateId} and page name="${pageByName.name}"`)
+          const templateWithCurrentPage: KonvaTemplateDocument = {
+            ...template,
+            design: {
+              ...template.design,
+              currentPageId: pageByName.id,
+            },
+          }
+          resetPagesState()
+          setDocument(templateWithCurrentPage)
+          setSelectedTemplateId(template.id)
+          setApprovedVariationDraft(null)
+          return true
+        }
+
+        // If no name match and template has multiple pages, log warning and don't auto-select
+        if (template.design.pages.length > 1) {
+          console.warn(`[EditorPage] Template "${template.name}" has ${template.design.pages.length} pages but no name match for "${design.name}"`)
+          // List available pages for debugging
+          console.log('[EditorPage] Available pages:', template.design.pages.map(p => p.name).join(', '))
+        }
+
+        // Fallback to first page only if template has single page
+        if (template.design.pages.length === 1) {
+          const page = template.design.pages[0]
+          console.log(`[EditorPage] Single-page template, using page="${page.name}"`)
           const templateWithCurrentPage: KonvaTemplateDocument = {
             ...template,
             design: {
@@ -247,12 +277,12 @@ export default function EditorPage() {
           setDocument(templateWithCurrentPage)
           setSelectedTemplateId(template.id)
           setApprovedVariationDraft(null)
-          console.log(`[EditorPage] Matched by templateId=${design.templateId}, page="${page.name}"`)
           return true
         }
       }
     }
 
+    console.log('[EditorPage] No match found in local templates')
     return false
   }
 
