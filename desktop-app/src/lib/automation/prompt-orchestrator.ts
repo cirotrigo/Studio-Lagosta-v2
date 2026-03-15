@@ -521,14 +521,29 @@ function toReviewFields(copy: StructuredCopyVariation): ReviewField[] {
 export async function preparePromptBatch(
   input: PromptOrchestratorInput,
 ): Promise<PreparedPromptBatch> {
+  console.log('[PromptOrchestrator] preparePromptBatch called with:', {
+    selectedPageId: input.selectedPageId,
+    manualTemplateId: input.manualTemplateId,
+    format: input.format,
+    templatesCount: input.templates.length,
+    templateIds: input.templates.map((t) => t.id).slice(0, 5),
+  })
+
   // Try to find the manually selected template first
   let manualTemplate: KonvaTemplateDocument | null = null
 
   if (input.selectedPageId) {
+    console.log('[PromptOrchestrator] Looking for page:', input.selectedPageId)
     // Find template containing the selected page
     for (const template of input.templates) {
       const page = template.design.pages.find((p) => p.id === input.selectedPageId)
       if (page) {
+        console.log('[PromptOrchestrator] Found page in template:', {
+          templateId: template.id,
+          templateName: template.name,
+          pageId: page.id,
+          pageName: page.name,
+        })
         // Set currentPageId to the selected page
         manualTemplate = {
           ...template,
@@ -540,12 +555,23 @@ export async function preparePromptBatch(
         break
       }
     }
+    if (!manualTemplate) {
+      console.warn('[PromptOrchestrator] Page not found in any template! Available pages:',
+        input.templates.flatMap((t) => t.design.pages.map((p) => ({ templateId: t.id, pageId: p.id, pageName: p.name }))).slice(0, 10)
+      )
+    }
   } else if (input.manualTemplateId) {
+    console.log('[PromptOrchestrator] Looking for template:', input.manualTemplateId)
     // Find template by ID
     const found = input.templates.find((t) => t.id === input.manualTemplateId)
     if (found) {
+      console.log('[PromptOrchestrator] Found template:', found.name)
       manualTemplate = found
+    } else {
+      console.warn('[PromptOrchestrator] Template not found!')
     }
+  } else {
+    console.log('[PromptOrchestrator] No manual selection, will auto-select')
   }
 
   // Extract template context for smarter prompts (only if manual template found)
@@ -626,6 +652,14 @@ export async function renderPromptVariation(
   variation: PreparedPromptVariation,
   options?: RenderPromptVariationOptions,
 ): Promise<RenderedPromptVariation> {
+  console.log('[PromptOrchestrator] renderPromptVariation called:', {
+    templateId: template.id,
+    templateName: template.name,
+    currentPageId: template.design.currentPageId,
+    pagesCount: template.design.pages.length,
+    fieldValues: variation.fieldValues,
+  })
+
   const binderInput: SlotBinderInput = {
     fieldValues: variation.fieldValues,
     backgroundMode: input.backgroundMode,
@@ -636,6 +670,13 @@ export async function renderPromptVariation(
   }
 
   const bound = applyCopyToKonvaTemplate(template, binderInput)
+  console.log('[PromptOrchestrator] applyCopyToKonvaTemplate result:', {
+    slotBindingsCount: bound.slotBindings.length,
+    slotBindings: bound.slotBindings.map((b) => ({ fieldKey: b.fieldKey, layerId: b.layerId })),
+    fieldsApplied: bound.fields.map((f) => ({ key: f.key, value: f.value.substring(0, 30) })),
+    warnings: bound.warnings,
+  })
+
   const currentPage = bound.document.design.pages.find(
     (page) => page.id === bound.document.design.currentPageId,
   ) ?? bound.document.design.pages[0]
