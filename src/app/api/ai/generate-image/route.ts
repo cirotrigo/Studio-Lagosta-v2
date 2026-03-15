@@ -29,17 +29,11 @@ const generateImageSchema = z.object({
   aspectRatio: z.string().default('1:1'),
   referenceImages: z.array(z.string().url('URL de imagem de referência inválida')).optional(),
   model: z.enum([
-    'flux-1.1-pro',
-    'flux-schnell',
+    'nano-banana-2',
     'nano-banana-pro',
-    'nano-banana',
-    'seedream-4',
-    'ideogram-v3-turbo',
-    'recraft-v3',
-    'stable-diffusion-3'
   ], {
-    errorMap: () => ({ message: 'Modelo de IA inválido. Escolha um dos modelos disponíveis.' })
-  }).default('flux-1.1-pro'),
+    errorMap: () => ({ message: 'Modelo de IA inválido. Escolha nano-banana-2 ou nano-banana-pro.' })
+  }).default('nano-banana-2'),
   resolution: z.enum(['1K', '2K', '4K'], {
     errorMap: () => ({ message: 'Resolução inválida. Use 1K, 2K ou 4K.' })
   }).optional(),
@@ -51,21 +45,6 @@ const generateImageSchema = z.object({
   baseImage: z.string().url('URL da imagem base inválida').optional(),
   // Máscara para inpainting (opcional, só para mode = inpaint)
   maskImage: z.string().url('URL da máscara inválida').optional(),
-  // Parâmetros específicos do FLUX
-  seed: z.number().int('Seed deve ser um número inteiro').optional(),
-  promptUpsampling: z.boolean().optional(),
-  safetyTolerance: z.number().min(1, 'Safety tolerance deve ser entre 1 e 6').max(6, 'Safety tolerance deve ser entre 1 e 6').optional(),
-  outputQuality: z.number().min(0, 'Qualidade deve ser entre 0 e 100').max(100, 'Qualidade deve ser entre 0 e 100').optional(),
-  // Parâmetros específicos do Ideogram
-  styleType: z.enum(['auto', 'general', 'realistic', 'design'], {
-    errorMap: () => ({ message: 'Tipo de estilo inválido' })
-  }).optional(),
-  magicPrompt: z.boolean().optional(),
-  // Parâmetros específicos do Seedream
-  enhancePrompt: z.boolean().optional(),
-  // Parâmetros específicos do Stable Diffusion
-  cfgScale: z.number().min(0, 'CFG Scale deve ser entre 0 e 20').max(20, 'CFG Scale deve ser entre 0 e 20').optional(),
-  steps: z.number().min(1, 'Steps deve ser entre 1 e 50').max(50, 'Steps deve ser entre 1 e 50').optional(),
 }).refine((data) => {
   // Se mode = edit ou inpaint, baseImage é obrigatória
   if ((data.mode === 'edit' || data.mode === 'inpaint') && !data.baseImage) {
@@ -135,7 +114,7 @@ export async function POST(request: Request) {
             `Faltam: ${parseInt(required) - parseInt(available)} créditos\n\n` +
             `💡 Dica: Use modelos mais econômicos:\n` +
             `• FLUX Schnell: 1 crédito\n` +
-            `• Seedream 4: 3 créditos\n` +
+            `• Nano Banana Pro: 3 créditos\n` +
             `• FLUX 1.1 Pro: 4 créditos`
           )
         }
@@ -284,8 +263,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Determinar provider (Gemini direto ou Replicate)
-    const isGeminiModel = modelConfig.apiProvider === 'gemini-direct'
+    // 5. Todos os modelos usam Replicate
+    const isGeminiModel = false // Deprecated: all models now use Replicate
 
     console.log('[AI Generate] Creating prediction with:', {
       model: body.model,
@@ -355,7 +334,7 @@ export async function POST(request: Request) {
         baseImageBufferType = response.headers.get('content-type') || 'image/jpeg'
       }
 
-      // Executar geração com retry (1 retry com Gemini, depois fallback para Seedream 4 via Replicate)
+      // Executar geração com retry (1 retry com Gemini, depois fallback para Nano Banana Pro via Replicate)
       const MAX_GEMINI_RETRIES = 2
       const RETRY_DELAY_MS = 5000
       const startTime = Date.now()
@@ -367,7 +346,7 @@ export async function POST(request: Request) {
       let geminiSuccess = false
 
       for (let attempt = 1; attempt <= MAX_GEMINI_RETRIES; attempt++) {
-        // Na 2ª tentativa, fallback para Seedream 4 via Replicate
+        // Na 2ª tentativa, fallback para Nano Banana Pro via Replicate
         if (attempt === 2) {
           const remainingTime = getRemainingTime()
           if (remainingTime < MIN_TIME_FOR_RETRY_MS) {
@@ -375,8 +354,8 @@ export async function POST(request: Request) {
             break
           }
 
-          console.log(`[AI Generate] Gemini failed, falling back to Seedream 4 via Replicate`)
-          const FALLBACK_MODEL: AIImageModel = 'seedream-4'
+          console.log(`[AI Generate] Gemini failed, falling back to Nano Banana Pro via Replicate`)
+          const FALLBACK_MODEL: AIImageModel = 'nano-banana-pro'
           actualModel = FALLBACK_MODEL
           currentModelConfig = AI_IMAGE_MODELS[FALLBACK_MODEL]
           usedFallbackModel = true
@@ -397,11 +376,10 @@ export async function POST(request: Request) {
               mode: body.mode,
               baseImage: publicBaseImageUrl,
               maskImage: body.maskImage,
-              enhancePrompt: body.enhancePrompt,
             }
 
             const pollingTimeout = Math.min(Math.floor(getRemainingTime() / 1000) - 10, 120)
-            console.log(`[AI Generate] Fallback attempt with Seedream 4 (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
+            console.log(`[AI Generate] Fallback attempt with Nano Banana Pro (${pollingTimeout}s timeout, ${getElapsedTime()}s elapsed)`)
 
             const prediction = await createReplicatePrediction(fallbackParams)
             const result = await waitForPrediction(prediction.id, pollingTimeout)
@@ -414,12 +392,12 @@ export async function POST(request: Request) {
               blobUrl = await uploadToVercelBlob(imageUrl, fileName)
               predictionId = result.id
               geminiSuccess = true
-              console.log(`[AI Generate] Fallback to Seedream 4 succeeded after ${getElapsedTime()}s`)
+              console.log(`[AI Generate] Fallback to Nano Banana Pro succeeded after ${getElapsedTime()}s`)
             } else {
-              throw new Error(result.error || 'Fallback para Seedream 4 também falhou')
+              throw new Error(result.error || 'Fallback para Nano Banana Pro também falhou')
             }
           } catch (fallbackError) {
-            console.error('[AI Generate] Fallback to Seedream 4 failed:', fallbackError)
+            console.error('[AI Generate] Fallback to Nano Banana Pro failed:', fallbackError)
             throw fallbackError
           }
           break
@@ -429,7 +407,7 @@ export async function POST(request: Request) {
           console.log(`[AI Generate] Gemini attempt ${attempt}/${MAX_GEMINI_RETRIES} (${getElapsedTime()}s elapsed)`)
 
           const geminiResult = await generateImageWithGemini({
-            model: body.model as 'nano-banana-pro' | 'nano-banana',
+            model: body.model as 'nano-banana-2' | 'nano-banana-pro',
             prompt: body.prompt,
             aspectRatio: body.aspectRatio,
             resolution: body.resolution,
@@ -476,7 +454,7 @@ export async function POST(request: Request) {
           `🔄 Falha ao gerar imagem com ${modelConfig.displayName}\n\n` +
           `O modelo está temporariamente indisponível.\n\n` +
           `💡 Soluções:\n` +
-          `• Tente outro modelo (FLUX 1.1 Pro ou Seedream 4)\n` +
+          `• Tente outro modelo (FLUX 1.1 Pro ou Nano Banana Pro)\n` +
           `• Aguarde alguns minutos e tente novamente`
         )
       }
@@ -505,19 +483,6 @@ export async function POST(request: Request) {
         mode: body.mode,
         baseImage: publicBaseImageUrl,
         maskImage: body.maskImage,
-        // Parâmetros opcionais do FLUX
-        seed: body.seed,
-        promptUpsampling: body.promptUpsampling,
-        safetyTolerance: body.safetyTolerance,
-        outputQuality: body.outputQuality,
-        // Parâmetros opcionais do Ideogram
-        styleType: body.styleType,
-        magicPrompt: body.magicPrompt,
-        // Parâmetros opcionais do Seedream
-        enhancePrompt: body.enhancePrompt,
-        // Parâmetros opcionais do Stable Diffusion
-        cfgScale: body.cfgScale,
-        steps: body.steps,
       }
 
       // Executar geração com retry automático (máximo 2 tentativas devido ao limite de 300s do Vercel)
@@ -531,9 +496,9 @@ export async function POST(request: Request) {
       let lastError: Error | null = null
       let currentParams = { ...predictionParams }
 
-      // Modelos que suportam fallback para Seedream 4
-      const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-pro', 'nano-banana']
-      const FALLBACK_MODEL: AIImageModel = 'seedream-4'
+      // Modelos que suportam fallback
+      const FALLBACK_ELIGIBLE_MODELS: AIImageModel[] = ['nano-banana-2', 'nano-banana-pro']
+      const FALLBACK_MODEL: AIImageModel = 'nano-banana-pro'
 
       const getRemainingTime = () => VERCEL_TIME_BUDGET_MS - (Date.now() - startTime)
       const getElapsedTime = () => Math.round((Date.now() - startTime) / 1000)
@@ -646,7 +611,7 @@ export async function POST(request: Request) {
             `O modelo não conseguiu processar ${refCount} imagem${refCount > 1 ? 'ns' : ''} de referência a tempo.\n\n` +
             `💡 Soluções:\n` +
             `• Reduza para no máximo 3 imagens de referência\n` +
-            `• Use FLUX 1.1 Pro (1 imagem) ou Seedream 4 (10 imagens)\n` +
+            `• Use FLUX 1.1 Pro (1 imagem) ou Nano Banana Pro (10 imagens)\n` +
             `• Aguarde alguns minutos e tente novamente`
         } else if (errorMessage.includes('NSFW') || errorMessage.includes('safety')) {
           errorMessage = '🚫 Conteúdo bloqueado pelo filtro de segurança.\n\nPor favor, ajuste o prompt e tente novamente com conteúdo apropriado.'
@@ -797,148 +762,34 @@ async function createReplicatePrediction(params: {
   mode?: 'generate' | 'edit' | 'inpaint'
   baseImage?: string
   maskImage?: string
-  // FLUX-specific params
-  seed?: number
-  promptUpsampling?: boolean
-  safetyTolerance?: number
-  outputQuality?: number
-  // Ideogram-specific params
-  styleType?: string
-  magicPrompt?: boolean
-  // Seedream-specific params
-  enhancePrompt?: boolean
-  // Stable Diffusion-specific params
-  cfgScale?: number
-  steps?: number
 }) {
   const modelConfig = AI_IMAGE_MODELS[params.model]
   const inputData: Record<string, unknown> = {
     prompt: params.prompt,
   }
 
-  // Configuração específica por modelo
-  if (params.model === 'flux-1.1-pro' || params.model === 'flux-schnell') {
-    // FLUX 1.1 Pro e FLUX Schnell
-    inputData.aspect_ratio = params.aspectRatio === 'custom' ? undefined : params.aspectRatio
-    inputData.output_format = 'png'
-    inputData.output_quality = params.outputQuality ?? 80
+  // Configuração para Nano Banana 2 e Nano Banana Pro
+  inputData.aspect_ratio = params.aspectRatio
+  inputData.output_format = 'png'
 
-    if (params.model === 'flux-1.1-pro') {
-      // Parâmetros específicos do Pro
-      inputData.safety_tolerance = params.safetyTolerance ?? 2
-      inputData.prompt_upsampling = params.promptUpsampling ?? false
-    }
+  // Resolução (apenas Pro)
+  if (params.model === 'nano-banana-pro' && params.resolution) {
+    inputData.resolution = params.resolution
+  }
 
-    if (params.seed !== undefined) {
-      inputData.seed = params.seed
-    }
+  // Modo de edição: usar baseImage como imagem principal
+  if (params.mode === 'edit' && params.baseImage) {
+    console.log(`[AI Generate] ${params.model} edit mode: using baseImage as primary input`)
+    inputData.image_input = [params.baseImage]
+  }
+  // Modo geração: usar referenceImages (até 5 imagens)
+  else if (params.referenceImages && params.referenceImages.length > 0) {
+    inputData.image_input = params.referenceImages.slice(0, 5)
+  }
 
-    // FLUX usa image_prompt para referência (apenas 1 imagem)
-    if (params.referenceImages && params.referenceImages.length > 0) {
-      inputData.image_prompt = params.referenceImages[0]
-    }
-
-  } else if (params.model === 'seedream-4') {
-    // Seedream 4
-    // O parâmetro size aceita: "1K", "2K", "4K", ou "custom"
-    inputData.size = params.resolution || '2K'
-    inputData.aspect_ratio = params.aspectRatio
-    inputData.enhance_prompt = params.enhancePrompt ?? true // Default do Seedream é true
-
-    // Modo de edição: usar baseImage como imagem principal
-    if (params.mode === 'edit' && params.baseImage) {
-      console.log('[AI Generate] Seedream 4 edit mode: using baseImage as primary input')
-      inputData.image_input = [params.baseImage]
-      // Prompt deve descrever as mudanças (ex: "remove a garrafa verde")
-    }
-    // Modo geração: usar referenceImages (se houver)
-    else if (params.referenceImages && params.referenceImages.length > 0) {
-      inputData.image_input = params.referenceImages
-    }
-
-  } else if (params.model === 'ideogram-v3-turbo') {
-    // Ideogram v3 Turbo
-
-    // Modo inpainting: usar baseImage + maskImage
-    if ((params.mode === 'inpaint' || params.mode === 'edit') && params.baseImage) {
-      console.log('[AI Generate] Ideogram v3 inpainting mode: using baseImage and mask')
-
-      // IMPORTANTE: Ideogram v3 NÃO suporta edição direta de imagens via API
-      // O modelo só suporta: geração normal ou inpainting com máscara
-      // Para "editar" uma imagem, precisamos usar o prompt descrevendo o que queremos
-      throw new Error(
-        'O modelo Ideogram v3 Turbo não suporta edição direta de imagens.\n\n' +
-        '💡 Use um destes modelos para edição:\n' +
-        '• Seedream 4 - Edição profissional (3-6 créditos)\n' +
-        '• Nano Banana Pro - Edição 4K (15-30 créditos)\n\n' +
-        'ℹ️ O Ideogram é excelente para gerar imagens com texto perfeito.'
-      )
-    } else {
-      // Modo geração normal
-      inputData.aspect_ratio = params.aspectRatio
-    }
-
-    // Capitalizar corretamente: "Auto", "General", "Realistic", "Design"
-    const styleTypeMap: Record<string, string> = {
-      'auto': 'Auto',
-      'general': 'General',
-      'realistic': 'Realistic',
-      'design': 'Design'
-    }
-    inputData.style_type = styleTypeMap[params.styleType ?? 'auto'] || 'Auto'
-
-    // magic_prompt_option: "Auto", "On", "Off"
-    inputData.magic_prompt_option = params.magicPrompt ?? true ? 'Auto' : 'Off'
-
-    // Style reference (primeira imagem de referência) - só em modo geração
-    if (!params.baseImage && params.referenceImages && params.referenceImages.length > 0) {
-      inputData.style_reference_image = params.referenceImages[0]
-    }
-
-  } else if (params.model === 'recraft-v3') {
-    // Recraft V3
-    inputData.aspect_ratio = params.aspectRatio
-    inputData.output_format = 'png'
-    // Style será 'realistic_image' por padrão
-    inputData.style = 'realistic_image'
-
-  } else if (params.model === 'stable-diffusion-3') {
-    // Stable Diffusion 3
-    inputData.aspect_ratio = params.aspectRatio
-    inputData.output_format = 'png'
-    inputData.output_quality = params.outputQuality ?? 90
-    inputData.cfg = params.cfgScale ?? 3.5
-    inputData.steps = params.steps ?? 28
-
-    if (params.seed !== undefined) {
-      inputData.seed = params.seed
-    }
-
-  } else if (params.model === 'nano-banana-pro' || params.model === 'nano-banana') {
-    // Nano Banana e Nano Banana Pro
-    inputData.aspect_ratio = params.aspectRatio
-    inputData.output_format = 'png'
-
-    // Resolução (apenas Pro)
-    if (params.model === 'nano-banana-pro' && params.resolution) {
-      inputData.resolution = params.resolution
-    }
-
-    // Modo de edição: usar baseImage como imagem principal
-    if (params.mode === 'edit' && params.baseImage) {
-      console.log('[AI Generate] Nano Banana Pro edit mode: using baseImage as primary input')
-      inputData.image_input = [params.baseImage]
-      // Prompt deve descrever as mudanças (ex: "remove a garrafa verde, blur background")
-    }
-    // Modo geração: usar referenceImages (se houver)
-    else if (params.referenceImages && params.referenceImages.length > 0) {
-      inputData.image_input = params.referenceImages
-    }
-
-    // Safety filter (apenas Pro)
-    if (params.model === 'nano-banana-pro') {
-      inputData.safety_filter_level = 'block_only_high'
-    }
+  // Safety filter (apenas Pro)
+  if (params.model === 'nano-banana-pro') {
+    inputData.safety_filter_level = 'block_only_high'
   }
 
   const payload = {

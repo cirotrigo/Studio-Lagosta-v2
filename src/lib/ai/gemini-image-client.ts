@@ -22,13 +22,14 @@ function getGeminiClient(): GoogleGenAI {
 }
 
 // Mapeamento dos nomes internos para model IDs da API Gemini
+// Note: This is deprecated - all models now use Replicate
 const GEMINI_MODEL_MAP: Record<string, string> = {
+  'nano-banana-2': 'gemini-2.5-flash-image',
   'nano-banana-pro': 'gemini-3-pro-image-preview',
-  'nano-banana': 'gemini-2.5-flash-image',
 }
 
 export interface GeminiImageParams {
-  model: 'nano-banana-pro' | 'nano-banana'
+  model: 'nano-banana-2' | 'nano-banana-pro'
   prompt: string
   aspectRatio?: string
   resolution?: '1K' | '2K' | '4K'

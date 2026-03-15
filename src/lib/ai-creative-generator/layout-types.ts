@@ -57,7 +57,7 @@ export interface ImageSource {
   // Campos específicos por tipo
   prompt?: string
   references?: string[]
-  model?: 'nano-banana' | 'nano-banana-pro' | 'flux-schnell' | 'flux-1.1-pro' | string
+  model?: 'nano-banana-2' | 'nano-banana-pro' | string
   driveFileId?: string
   aiImageId?: string
   pathname?: string // Para upload local (Vercel Blob pathname)

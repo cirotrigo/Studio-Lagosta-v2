@@ -195,7 +195,7 @@ export function AIImagesPanel() {
         width: 1080,
         height: 1920,
         aspectRatio: '9:16',
-        model: 'seedream-4', // Modelo padrão para edição
+        model: 'nano-banana-pro', // Modelo padrão para edição
         createdAt: new Date().toISOString()
       }
 
@@ -346,7 +346,7 @@ function GenerateImageForm({
   const [prompt, setPrompt] = React.useState('') // Portuguese version for display
   const [promptEn, setPromptEn] = React.useState<string | null>(null) // English version for generation
   const [aspectRatio, setAspectRatio] = React.useState('9:16')
-  const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('flux-1.1-pro')
+  const [selectedModel, setSelectedModel] = React.useState<AIImageModel>('nano-banana-2')
   const [resolution, setResolution] = React.useState<'1K' | '2K' | '4K' | undefined>('2K')
   const [referenceImages, setReferenceImages] = React.useState<GoogleDriveItem[]>([])
   const [localFiles, setLocalFiles] = React.useState<File[]>([])
@@ -465,8 +465,8 @@ function GenerateImageForm({
           setSelectedModel(model)
         } else {
           // Se não suporta edição, usar Seedream 4 como padrão
-          console.log('[GenerateImageForm] Model does not support editing, using seedream-4')
-          setSelectedModel('seedream-4')
+          console.log('[GenerateImageForm] Model does not support editing, using nano-banana-pro')
+          setSelectedModel('nano-banana-pro')
           toast({
             description: `Modelo original não suporta edição. Usando Seedream 4.`
           })
@@ -749,8 +749,8 @@ function GenerateImageForm({
   // Auto-switch para modelo que suporte edição se estiver em modo edit
   React.useEffect(() => {
     if (mode === 'edit' && !modelSupportsEditing) {
-      console.warn(`[GenerateImageForm] Model ${selectedModel} does not support editing. Switching to seedream-4.`)
-      setSelectedModel('seedream-4')
+      console.warn(`[GenerateImageForm] Model ${selectedModel} does not support editing. Switching to nano-banana-pro.`)
+      setSelectedModel('nano-banana-pro')
       toast({
         description: `⚠️ ${AI_IMAGE_MODELS[selectedModel].displayName} não suporta edição.\n\nMudando para Seedream 4 automaticamente.`,
         duration: 5000
@@ -1270,9 +1270,7 @@ function GenerateImageForm({
           <label className="text-sm font-medium">Imagem para Editar</label>
 
           <p className="text-xs text-muted-foreground">
-            {selectedModel === 'ideogram-v3-turbo'
-              ? 'Carregue a imagem e (opcionalmente) uma máscara para inpainting. Preto = editar, Branco = preservar.'
-              : 'Carregue a imagem que deseja modificar. O prompt deve descrever as mudanças (ex: "remova a garrafa verde").'}
+            Carregue a imagem que deseja modificar. O prompt deve descrever as mudanças (ex: &quot;remova a garrafa verde&quot;).
           </p>
 
           {baseImagePreview ? (

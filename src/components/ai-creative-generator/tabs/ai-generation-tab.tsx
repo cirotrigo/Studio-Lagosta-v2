@@ -17,7 +17,7 @@ interface AIGenerationTabProps {
   onImageGenerated: (image: ImageSource) => void
 }
 
-type AIImageModel = 'nano-banana' | 'nano-banana-pro' | 'flux-schnell'
+type AIImageModel = 'nano-banana-2' | 'nano-banana-pro'
 
 export function AIGenerationTab({
   projectId,
@@ -31,7 +31,7 @@ export function AIGenerationTab({
     project?.googleDriveImagesFolderName ?? project?.googleDriveFolderName ?? null
 
   const [prompt, setPrompt] = useState('')
-  const [model, setModel] = useState<AIImageModel>('nano-banana')
+  const [model, setModel] = useState<AIImageModel>('nano-banana-2')
   const [isGenerating, setIsGenerating] = useState(false)
   const [generatedImage, setGeneratedImage] = useState<{
     url: string
@@ -198,8 +198,7 @@ export function AIGenerationTab({
     label: string
     credits: number
   }[] = [
-    { value: 'flux-schnell', label: 'FLUX Schnell', credits: 1 },
-    { value: 'nano-banana', label: 'Nano Banana', credits: 10 },
+    { value: 'nano-banana-2', label: 'Nano Banana 2', credits: 10 },
     { value: 'nano-banana-pro', label: 'Nano Banana Pro', credits: 15 },
   ]
 
