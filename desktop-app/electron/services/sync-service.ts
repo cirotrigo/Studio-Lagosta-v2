@@ -687,6 +687,11 @@ export class SyncService {
       // Continue anyway, the server will validate
     }
 
+    // Log page tags for debugging - show actual tag values
+    const pagesWithTags = result.data.designData.pages
+      .filter((p: { tags?: string[] }) => p.tags && p.tags.length > 0)
+      .map((p: { name: string; tags?: string[] }) => `${p.name}: [${(p.tags ?? []).join(', ')}]`)
+
     console.log('[SyncService] Push payload (normalized):', {
       name: result.data.name,
       type: result.data.type,
@@ -694,8 +699,14 @@ export class SyncService {
       projectId: result.data.projectId,
       hasDesignData: !!result.data.designData,
       pagesCount: result.data.designData.pages.length,
+      pagesWithTags: pagesWithTags.length,
       warnings: result.warnings.length,
     })
+    if (pagesWithTags.length > 0) {
+      console.log('[SyncService] Pages with tags:', pagesWithTags)
+    } else {
+      console.warn('[SyncService] WARNING: No pages have tags!')
+    }
 
     return result.data as unknown as Record<string, unknown>
   }

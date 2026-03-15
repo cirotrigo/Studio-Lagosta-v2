@@ -140,6 +140,7 @@ export const syncDesignDataSchema = z.object({
     background: z.string().optional(),
     order: z.number().optional(),
     thumbnail: z.string().nullable().optional(),
+    tags: z.array(z.string()).optional(), // Page tags for filtering
   })).optional(),
   layers: z.array(layerSchema).optional(), // Legacy single-page format
 })
