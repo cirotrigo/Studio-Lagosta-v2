@@ -28,6 +28,45 @@ const VISUAL_KNOWLEDGE_CATEGORIES: VisualKnowledgeCategory[] = [
 const objectivePresetSchema = z.enum(['promocao', 'institucional', 'agenda', 'oferta']).nullable().optional()
 const tonePresetSchema = z.enum(['casual', 'profissional', 'urgente', 'inspirador']).nullable().optional()
 
+// Template context schema for smart prompts
+const slotPrioritySchema = z.enum(['primary', 'secondary', 'tertiary'])
+const layoutStyleSchema = z.enum(['hero-title', 'balanced', 'info-dense', 'minimal'])
+const templatePurposeSchema = z.enum(['promotional', 'informational', 'menu', 'event', 'generic'])
+
+const extractedSlotSchema = z.object({
+  fieldKey: z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']),
+  layerName: z.string(),
+  currentText: z.string(),
+  fontSize: z.number(),
+  maxLines: z.number(),
+  priority: slotPrioritySchema,
+  textLength: z.number(),
+  wordCount: z.number(),
+})
+
+const templateContextSchema = z.object({
+  templateId: z.string(),
+  templateName: z.string(),
+  format: z.enum(['STORY', 'FEED_PORTRAIT', 'SQUARE']),
+  pageId: z.string(),
+  pageName: z.string(),
+  slots: z.array(extractedSlotSchema),
+  visualHierarchy: z.object({
+    primarySlot: z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']).nullable(),
+    secondarySlots: z.array(z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2'])),
+    slotOrder: z.array(z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2'])),
+    layoutStyle: layoutStyleSchema,
+  }),
+  inferredPurpose: templatePurposeSchema,
+  stats: z.object({
+    totalSlots: z.number(),
+    filledSlots: z.number(),
+    totalWordCount: z.number(),
+    averageTextLength: z.number(),
+    textDensity: z.enum(['low', 'medium', 'high']),
+  }),
+}).optional()
+
 const requestSchema = z.object({
   projectId: z.number().int().positive(),
   prompt: z.string().trim().min(1).max(500),
@@ -45,6 +84,7 @@ const requestSchema = z.object({
   analysisImageUrl: z.string().url().optional(),
   objective: objectivePresetSchema,
   tone: tonePresetSchema,
+  templateContext: templateContextSchema,
 }).superRefine((value, ctx) => {
   if (value.usePhoto && !value.photoUrl) {
     ctx.addIssue({
@@ -831,6 +871,134 @@ function buildKnowledgePromptSection(knowledge: {
   return `${knowledgeBlock}${warningsBlock}${conflictsBlock}`
 }
 
+type TemplateContext = z.infer<typeof templateContextSchema>
+
+function translateTemplatePurpose(purpose: string): string {
+  const map: Record<string, string> = {
+    promotional: 'Promocional/Vendas',
+    informational: 'Institucional',
+    menu: 'Cardapio/Menu',
+    event: 'Evento/Agenda',
+    generic: 'Generico',
+  }
+  return map[purpose] || purpose
+}
+
+function translateLayoutStyle(style: string): string {
+  const map: Record<string, string> = {
+    'hero-title': 'Titulo destaque (hero)',
+    balanced: 'Balanceado',
+    'info-dense': 'Rico em informacao',
+    minimal: 'Minimalista',
+  }
+  return map[style] || style
+}
+
+function translateTextDensity(density: string): string {
+  const map: Record<string, string> = {
+    low: 'Baixa (textos curtos)',
+    medium: 'Media',
+    high: 'Alta (textos detalhados)',
+  }
+  return map[density] || density
+}
+
+function buildTemplateContextPromptSection(context: TemplateContext | undefined): string {
+  if (!context || context.slots.length === 0) {
+    return ''
+  }
+
+  const lines: string[] = []
+
+  // Template metadata
+  lines.push('CONTEXTO DO TEMPLATE SELECIONADO:')
+  lines.push(`- Nome: ${context.templateName}`)
+  lines.push(`- Formato: ${context.format}`)
+  lines.push(`- Proposito inferido: ${translateTemplatePurpose(context.inferredPurpose)}`)
+  lines.push(`- Estilo de layout: ${translateLayoutStyle(context.visualHierarchy.layoutStyle)}`)
+  lines.push(`- Densidade de texto: ${translateTextDensity(context.stats.textDensity)}`)
+  lines.push('')
+
+  // Current content
+  const filledSlots = context.slots.filter((s) => s.currentText.length > 0)
+  if (filledSlots.length > 0) {
+    lines.push('CONTEUDO ATUAL (use como referencia de tom e densidade):')
+    for (const slot of filledSlots) {
+      const priorityLabel = slot.priority === 'primary' ? '(principal)' : slot.priority === 'secondary' ? '(secundario)' : '(terciario)'
+      lines.push(`- ${slot.fieldKey} ${priorityLabel}: "${slot.currentText}"`)
+    }
+    lines.push('')
+  }
+
+  // Slot constraints
+  lines.push('RESTRICOES DOS CAMPOS:')
+  for (const slot of context.slots) {
+    lines.push(`- ${slot.fieldKey}: max ${slot.maxLines} linha(s), fonte ${slot.fontSize}px`)
+  }
+  lines.push('')
+
+  // Adaptation rules based on context
+  lines.push('REGRAS DE ADAPTACAO:')
+
+  // Density rules
+  if (context.stats.textDensity === 'low') {
+    lines.push('1. Mantenha textos curtos e impactantes - este template e minimalista')
+  } else if (context.stats.textDensity === 'high') {
+    lines.push('1. Este template suporta textos mais detalhados - aproveite o espaco disponivel')
+  } else {
+    lines.push('1. Mantenha densidade similar ao conteudo atual')
+  }
+
+  // Layout-specific rules
+  switch (context.visualHierarchy.layoutStyle) {
+    case 'hero-title':
+      lines.push('2. Priorize um titulo forte e memoravel - ele e o elemento central')
+      break
+    case 'info-dense':
+      lines.push('2. Distribua as informacoes entre os campos disponiveis de forma equilibrada')
+      break
+    case 'minimal':
+      lines.push('2. Use apenas as palavras essenciais - menos e mais neste layout')
+      break
+    default:
+      lines.push('2. Mantenha equilibrio entre titulo chamativo e descricao informativa')
+  }
+
+  // Purpose-specific rules
+  switch (context.inferredPurpose) {
+    case 'promotional':
+      lines.push('3. Use linguagem persuasiva e urgente para maximizar conversao')
+      break
+    case 'menu':
+      lines.push('3. Seja descritivo nos itens, destaque ingredientes ou diferenciais')
+      break
+    case 'event':
+      lines.push('3. Inclua informacoes praticas: data, horario, local quando relevante')
+      break
+    case 'informational':
+      lines.push('3. Mantenha tom profissional e credivel')
+      break
+    default:
+      lines.push('3. Adapte o tom ao contexto do prompt do usuario')
+  }
+
+  // Content consistency rules
+  if (filledSlots.length > 0) {
+    const avgWords = Math.round(
+      filledSlots.reduce((sum, s) => sum + s.wordCount, 0) / filledSlots.length,
+    )
+    if (avgWords <= 3) {
+      lines.push('4. Siga o padrao existente: textos com 1-3 palavras por campo')
+    } else if (avgWords <= 6) {
+      lines.push('4. Siga o padrao existente: textos com 3-6 palavras por campo')
+    } else {
+      lines.push('4. Siga o padrao existente: textos mais descritivos sao permitidos')
+    }
+  }
+
+  return lines.join('\n')
+}
+
 function buildImageAnalysisPromptSection(
   imageAnalysis: GenerateAiTextImageAnalysisPayload,
 ): string {
@@ -881,6 +1049,9 @@ function buildUserPrompt(
     : ''
   const knowledgeSection = `\n${buildKnowledgePromptSection(knowledge)}\n`
   const imageAnalysisSection = `\n${buildImageAnalysisPromptSection(imageAnalysis)}\n`
+  const templateContextSection = input.templateContext
+    ? `\n${buildTemplateContextPromptSection(input.templateContext)}\n`
+    : ''
 
   return [
     'Gerar variacoes de copy para arte no Instagram com base no prompt abaixo.',
@@ -895,8 +1066,10 @@ function buildUserPrompt(
     `Quantidade de referencias: ${input.compositionReferenceUrls?.length || 0}`,
     `Analise de imagem para contexto: ${input.analyzeImageForContext ? 'sim' : 'nao'}`,
     `Templates selecionados: ${input.templateIds?.length || 0}`,
+    `Template com contexto: ${input.templateContext ? 'sim' : 'nao'}`,
     knowledgeSection,
     imageAnalysisSection,
+    templateContextSection,
     templateSection,
     '',
     'Regras obrigatorias:',
@@ -911,6 +1084,8 @@ function buildUserPrompt(
     '9. Em conflito entre prompt e base, priorize o prompt do usuario.',
     '10. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
     '11. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
+    '12. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
+    '13. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
   ].join('\n')
 }
 

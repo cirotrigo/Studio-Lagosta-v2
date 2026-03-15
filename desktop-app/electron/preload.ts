@@ -39,6 +39,44 @@ export interface ApiResponse {
 }
 
 export type ArtFormat = 'STORY' | 'FEED_PORTRAIT' | 'SQUARE'
+export type SlotFieldKey = 'pre_title' | 'title' | 'description' | 'cta' | 'badge' | 'footer_info_1' | 'footer_info_2'
+export type SlotPriority = 'primary' | 'secondary' | 'tertiary'
+export type LayoutStyle = 'hero-title' | 'balanced' | 'info-dense' | 'minimal'
+export type TemplatePurpose = 'promotional' | 'informational' | 'menu' | 'event' | 'generic'
+
+export interface ExtractedSlot {
+  fieldKey: SlotFieldKey
+  layerName: string
+  currentText: string
+  fontSize: number
+  maxLines: number
+  priority: SlotPriority
+  textLength: number
+  wordCount: number
+}
+
+export interface TemplateContextExtraction {
+  templateId: string
+  templateName: string
+  format: ArtFormat
+  pageId: string
+  pageName: string
+  slots: ExtractedSlot[]
+  visualHierarchy: {
+    primarySlot: SlotFieldKey | null
+    secondarySlots: SlotFieldKey[]
+    slotOrder: SlotFieldKey[]
+    layoutStyle: LayoutStyle
+  }
+  inferredPurpose: TemplatePurpose
+  stats: {
+    totalSlots: number
+    filledSlots: number
+    totalWordCount: number
+    averageTextLength: number
+    textDensity: 'low' | 'medium' | 'high'
+  }
+}
 
 export interface GenerateAiTextPayload {
   projectId: number
@@ -54,6 +92,9 @@ export interface GenerateAiTextPayload {
   compositionReferenceUrls?: string[]
   analyzeImageForContext?: boolean
   analysisImageUrl?: string
+  objective?: 'promocao' | 'institucional' | 'agenda' | 'oferta' | null
+  tone?: 'casual' | 'profissional' | 'urgente' | 'inspirador' | null
+  templateContext?: TemplateContextExtraction
 }
 
 export interface GenerateAiTextVariation {

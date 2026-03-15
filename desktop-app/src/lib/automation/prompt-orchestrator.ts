@@ -16,6 +16,10 @@ import {
   applyCopyToKonvaTemplate,
   type SlotBinderInput,
 } from './slot-binder'
+import {
+  extractTemplateContext,
+  type TemplateContextExtraction,
+} from './template-context-extractor'
 
 type StructuredCopyVariation = Record<SlotFieldKey, string>
 
@@ -517,6 +521,49 @@ function toReviewFields(copy: StructuredCopyVariation): ReviewField[] {
 export async function preparePromptBatch(
   input: PromptOrchestratorInput,
 ): Promise<PreparedPromptBatch> {
+  // Try to find the manually selected template first
+  let manualTemplate: KonvaTemplateDocument | null = null
+
+  if (input.selectedPageId) {
+    // Find template containing the selected page
+    for (const template of input.templates) {
+      const page = template.design.pages.find((p) => p.id === input.selectedPageId)
+      if (page) {
+        // Set currentPageId to the selected page
+        manualTemplate = {
+          ...template,
+          design: {
+            ...template.design,
+            currentPageId: page.id,
+          },
+        }
+        break
+      }
+    }
+  } else if (input.manualTemplateId) {
+    // Find template by ID
+    const found = input.templates.find((t) => t.id === input.manualTemplateId)
+    if (found) {
+      manualTemplate = found
+    }
+  }
+
+  // Extract template context for smarter prompts (only if manual template found)
+  let templateContext: TemplateContextExtraction | undefined
+  if (manualTemplate) {
+    templateContext = extractTemplateContext(
+      manualTemplate,
+      input.selectedPageId,
+    )
+    console.log('[PromptOrchestrator] Template context extracted:', {
+      templateId: manualTemplate.id,
+      templateName: manualTemplate.name,
+      selectedPageId: input.selectedPageId,
+      slotsFound: templateContext.slots.length,
+      inferredPurpose: templateContext.inferredPurpose,
+    })
+  }
+
   const copyResponse = await window.electronAPI.generateAIText({
     projectId: input.projectId,
     prompt: input.prompt,
@@ -532,10 +579,15 @@ export async function preparePromptBatch(
     analysisImageUrl: input.photoUrl || input.referenceUrls?.[0],
     objective: input.objective ?? undefined,
     tone: input.tone ?? undefined,
+    templateContext: templateContext,
   }) as GenerateAiTextResponse
 
   const copies = copyResponse.variacoes.map((variation) => normalizeVariation(variation))
-  const selection = selectTemplate(input, copies)
+
+  // Use manual template if found, otherwise auto-select
+  const selection = manualTemplate
+    ? { mode: 'manual' as const, template: manualTemplate }
+    : selectTemplate(input, copies)
   const warnings = [
     ...(copyResponse.warnings ?? []),
   ]
