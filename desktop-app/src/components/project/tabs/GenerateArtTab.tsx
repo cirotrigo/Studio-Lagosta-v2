@@ -166,6 +166,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [format, setFormat] = useState<ArtFormat>('STORY')
   const [prompt, setPrompt] = useState('')
   const [backgroundMode, setBackgroundMode] = useState<'photo' | 'ai'>('photo')
+  const [backgroundPrompt, setBackgroundPrompt] = useState('')
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
   const [selectedReferences, setSelectedReferences] = useState<SelectedReference[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
@@ -416,6 +417,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: job.params.photoUrl,
       referenceUrls: job.params.referenceUrls,
       manualTemplateId: job.params.manualTemplateId,
+      selectedPageId: job.params.selectedPageId,
       analyzeImageForContext: job.params.analyzeImageForContext,
       objective: job.params.objective,
       tone: job.params.tone,
@@ -446,6 +448,55 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         conflicts: preparedBatch.conflicts,
       })
 
+      // Generate AI background ONCE before processing variations
+      let sharedBackgroundImageUrl: string | undefined
+      let sharedBackgroundWarnings: string[] = []
+      let sharedBackground: BackgroundGenerationInfo | undefined
+
+      if (job.params.backgroundMode === 'ai') {
+        try {
+          const generatedBackground = await generateBackgroundAsset({
+            projectId: job.params.projectId,
+            prompt: job.params.backgroundPrompt || job.params.text,
+            format: job.params.format,
+            referenceUrls: job.params.referenceUrls,
+          })
+
+          sharedBackgroundImageUrl = generatedBackground.imageUrl
+          sharedBackgroundWarnings = generatedBackground.warnings
+          sharedBackground = {
+            mode: 'ai',
+            provider: generatedBackground.provider,
+            model: generatedBackground.modelUsed,
+            modelLabel: generatedBackground.modelLabel,
+            fallbackModel: generatedBackground.fallbackModel,
+            fallbackLabel: generatedBackground.fallbackLabel,
+            fallbackUsed: generatedBackground.fallbackUsed,
+            persisted: generatedBackground.persisted,
+            persistedImageUrl: generatedBackground.persistedImageUrl,
+            referenceCount: generatedBackground.referenceCount,
+          }
+
+          backgroundPipelineWarnings.push(...sharedBackgroundWarnings)
+          shouldInvalidateAiGallery = generatedBackground.persisted === true
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'Falha ao gerar o fundo com IA.'
+          // If background generation fails, mark all variations as error
+          for (const variation of job.variations) {
+            updateVariation(jobId, variation.id, {
+              status: 'error',
+              error: message,
+              warnings: [...preparedBatch.warnings, ...preparedBatch.conflicts],
+            })
+          }
+          updateJob(jobId, { status: 'error', error: message })
+          return
+        }
+      } else if (job.params.photoUrl) {
+        sharedBackground = { mode: 'photo', persisted: false }
+      }
+
+      // Process each variation with the shared background
       for (const preparedVariation of preparedBatch.variations) {
         const liveJob = useGenerationStore.getState().jobs.find((entry) => entry.id === jobId)
         const targetVariation = liveJob?.variations[preparedVariation.index]
@@ -462,55 +513,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           error: undefined,
         })
 
-        let currentStage: 'background' | 'render' =
-          job.params.backgroundMode === 'ai' ? 'background' : 'render'
-
         try {
-          let backgroundImageUrl: string | undefined
-          let backgroundWarnings: string[] = []
-          let background: BackgroundGenerationInfo | undefined
-
-          if (job.params.backgroundMode === 'ai') {
-            const generatedBackground = await generateBackgroundAsset({
-              projectId: job.params.projectId,
-              prompt: job.params.text,
-              format: job.params.format,
-              variationIndex: preparedVariation.index,
-              fields: preparedVariation.fields,
-              referenceUrls: job.params.referenceUrls,
-            })
-
-            backgroundImageUrl = generatedBackground.imageUrl
-            backgroundWarnings = generatedBackground.warnings
-            background = {
-              mode: 'ai',
-              provider: generatedBackground.provider,
-              model: generatedBackground.modelUsed,
-              modelLabel: generatedBackground.modelLabel,
-              fallbackModel: generatedBackground.fallbackModel,
-              fallbackLabel: generatedBackground.fallbackLabel,
-              fallbackUsed: generatedBackground.fallbackUsed,
-              persisted: generatedBackground.persisted,
-              persistedImageUrl: generatedBackground.persistedImageUrl,
-              referenceCount: generatedBackground.referenceCount,
-            }
-
-            backgroundPipelineWarnings.push(...backgroundWarnings)
-            shouldInvalidateAiGallery =
-              shouldInvalidateAiGallery || generatedBackground.persisted === true
-            currentStage = 'render'
-          } else if (job.params.photoUrl) {
-            background = {
-              mode: 'photo',
-              persisted: false,
-            }
-          }
-
           const renderedVariation = await renderPromptVariation(
             orchestratorInput,
             preparedBatch.selectedTemplate,
             preparedVariation,
-            { backgroundImageUrl },
+            { backgroundImageUrl: sharedBackgroundImageUrl },
           )
 
           updateVariation(jobId, targetVariation.id, {
@@ -521,21 +529,16 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             warnings: [
               ...preparedBatch.warnings,
               ...preparedBatch.conflicts,
-              ...backgroundWarnings,
+              ...sharedBackgroundWarnings,
               ...renderedVariation.warnings,
             ],
             templateId: renderedVariation.templateId,
             templateName: renderedVariation.templateName,
-            background,
+            background: sharedBackground,
             error: undefined,
           })
         } catch (error) {
-          const message =
-            error instanceof Error
-              ? error.message
-              : currentStage === 'background'
-                ? 'Falha ao gerar o fundo com IA.'
-                : 'Falha ao renderizar a variacao Konva.'
+          const message = error instanceof Error ? error.message : 'Falha ao renderizar a variacao Konva.'
 
           updateVariation(jobId, targetVariation.id, {
             status: 'error',
@@ -646,6 +649,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       return
     }
 
+    if (backgroundMode === 'ai' && !backgroundPrompt.trim()) {
+      toast.error('Digite o prompt para gerar a imagem de fundo.')
+      return
+    }
+
     if (backgroundMode === 'ai' && analyzeImageForContext && selectedReferences.length === 0) {
       toast.info('Sem referencia visual para analisar. O job segue sem contexto de imagem.')
     }
@@ -684,6 +692,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       variations,
       backgroundMode,
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
+      backgroundPrompt: backgroundMode === 'ai' ? backgroundPrompt.trim() : undefined,
       referenceUrls,
       manualTemplateId: effectiveTemplateId,
       selectedPageId: selectedCarouselDesign?.id,
@@ -699,6 +708,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }, [
     addJob,
     backgroundMode,
+    backgroundPrompt,
     format,
     selectedCarouselDesign,
     projectId,
@@ -713,7 +723,9 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     tone,
   ])
 
-  const canGenerate = prompt.trim().length > 0
+  const canGenerate =
+    prompt.trim().length > 0 &&
+    (backgroundMode === 'photo' ? !!selectedPhoto?.url : backgroundPrompt.trim().length > 0)
 
   const handlePromptSuggestion = useCallback((suggestion: string) => {
     if (!prompt.trim()) {
@@ -813,11 +825,26 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
               />
             </div>
           ) : (
-            <ReferenceSelector
-              projectId={projectId}
-              selectedReferences={selectedReferences}
-              onReferencesChange={setSelectedReferences}
-            />
+            <>
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-text">Prompt da imagem de fundo</label>
+                <textarea
+                  value={backgroundPrompt}
+                  onChange={(event) => setBackgroundPrompt(event.target.value)}
+                  placeholder='Ex: mesa de madeira rustica com luz natural, ambiente aconchegante de cafeteria'
+                  rows={2}
+                  className="w-full resize-none rounded-lg border border-border bg-input px-3 py-2 text-sm text-text placeholder:text-text-subtle focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+                <p className="text-xs text-text-muted">
+                  Uma unica imagem sera gerada e aplicada em todas as variacoes.
+                </p>
+              </div>
+              <ReferenceSelector
+                projectId={projectId}
+                selectedReferences={selectedReferences}
+                onReferencesChange={setSelectedReferences}
+              />
+            </>
           )}
 
           <ProjectContextIndicator

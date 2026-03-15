@@ -1,4 +1,4 @@
-import type { ArtFormat, ReviewField } from '@/stores/generation.store'
+import type { ArtFormat } from '@/stores/generation.store'
 
 const MODEL_LABELS: Record<string, string> = {
   'gemini-3.1-flash-image-preview': 'Nano Banana 2',
@@ -9,8 +9,6 @@ export interface GenerateBackgroundInput {
   projectId: number
   prompt: string
   format: ArtFormat
-  variationIndex: number
-  fields?: ReviewField[]
   referenceUrls?: string[]
 }
 
@@ -37,38 +35,16 @@ function clampBackgroundPrompt(value: string): string {
   return value.trim().slice(0, 500)
 }
 
-export function buildBackgroundPrompt(
-  prompt: string,
-  fields: ReviewField[] = [],
-  variationIndex: number,
-): string {
-  const contextualFields = fields
-    .filter((field) => field.value.trim().length > 0)
-    .slice(0, 5)
-    .map((field) => `${field.label}: ${field.value}`)
-
-  if (contextualFields.length === 0) {
-    return clampBackgroundPrompt(
-      `${prompt}\n\nVariation ${variationIndex + 1}: preserve clean space for the applied copy.`,
-    )
-  }
-
-  return clampBackgroundPrompt(
-    [
-      prompt,
-      `Variation ${variationIndex + 1}: preserve clean space for the applied copy.`,
-      'Copy context to respect in the background composition:',
-      ...contextualFields,
-    ].join('\n'),
-  )
-}
-
 export async function generateBackgroundAsset(
   input: GenerateBackgroundInput,
 ): Promise<GeneratedBackgroundResult> {
+  const prompt = clampBackgroundPrompt(
+    `${input.prompt}\n\nPreserve clean space for the applied copy.`,
+  )
+
   const response = await window.electronAPI.generateAIBackground({
     projectId: input.projectId,
-    prompt: buildBackgroundPrompt(input.prompt, input.fields, input.variationIndex),
+    prompt,
     format: input.format,
     referenceUrls: input.referenceUrls,
   })

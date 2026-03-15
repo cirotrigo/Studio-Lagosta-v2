@@ -66,6 +66,7 @@ export interface GenerationParams {
   variations: 1 | 2 | 4
   backgroundMode: 'photo' | 'ai'
   photoUrl?: string
+  backgroundPrompt?: string // Prompt for AI background generation (separate from text prompt)
   referenceUrls?: string[]
   manualTemplateId?: string
   selectedPageId?: string // Specific page from carousel selection

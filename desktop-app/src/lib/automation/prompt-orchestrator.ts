@@ -47,6 +47,7 @@ export interface PromptOrchestratorInput {
   photoUrl?: string
   referenceUrls?: string[]
   manualTemplateId?: string
+  selectedPageId?: string // ID of the specific page within the template
   analyzeImageForContext?: boolean
   objective?: ObjectivePreset
   tone?: TonePreset
@@ -447,8 +448,30 @@ function scoreTemplate(template: KonvaTemplateDocument, copies: StructuredCopyVa
 
 function selectTemplate(input: PromptOrchestratorInput, copies: StructuredCopyVariation[]) {
   const formatTemplates = input.templates.filter((template) => template.format === input.format)
-  const selectionMode: 'auto' | 'manual' = input.manualTemplateId ? 'manual' : 'auto'
+  const isManualSelection = Boolean(input.selectedPageId || input.manualTemplateId)
+  const selectionMode: 'auto' | 'manual' = isManualSelection ? 'manual' : 'auto'
 
+  // Strategy 1: Find by page ID (Design.id maps to Page.id)
+  if (input.selectedPageId) {
+    for (const template of formatTemplates) {
+      const page = template.design.pages.find((p) => p.id === input.selectedPageId)
+      if (page) {
+        // Return template with currentPageId set to the selected page
+        return {
+          mode: selectionMode,
+          template: {
+            ...template,
+            design: {
+              ...template.design,
+              currentPageId: page.id,
+            },
+          },
+        }
+      }
+    }
+  }
+
+  // Strategy 2: Find by template ID (legacy)
   if (input.manualTemplateId) {
     const manual = formatTemplates.find((template) => template.id === input.manualTemplateId)
     if (manual) {
