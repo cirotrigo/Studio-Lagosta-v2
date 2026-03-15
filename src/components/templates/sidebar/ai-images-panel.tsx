@@ -686,9 +686,9 @@ function GenerateImageForm({
       return
     }
 
-    // Validar tamanho (max 10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 10MB)' })
+    // Validar tamanho (max 12MB)
+    if (file.size > 12 * 1024 * 1024) {
+      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 12MB)' })
       return
     }
 
@@ -710,8 +710,8 @@ function GenerateImageForm({
       return
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 10MB)' })
+    if (file.size > 12 * 1024 * 1024) {
+      toast({ variant: 'destructive', description: 'Imagem muito grande (máx 12MB)' })
       return
     }
 

@@ -58,7 +58,7 @@ export function UploadMediaDialog({
       'application/pdf': ['.pdf'],
     },
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10MB
+    maxSize: 12 * 1024 * 1024, // 12MB
   })
 
   const handleUpload = async () => {

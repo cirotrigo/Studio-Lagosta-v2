@@ -31,14 +31,14 @@ export async function validateImageFile(file: File): Promise<ValidationResult> {
 
   // 2. Validar tamanho
   const minSize = 100 * 1024 // 100KB
-  const maxSize = 10 * 1024 * 1024 // 10MB
+  const maxSize = 12 * 1024 * 1024 // 12MB
 
   if (file.size < minSize) {
     return { valid: false, error: 'Arquivo muito pequeno (mínimo 100KB)' }
   }
 
   if (file.size > maxSize) {
-    return { valid: false, error: 'Arquivo muito grande (máximo 10MB)' }
+    return { valid: false, error: 'Arquivo muito grande (máximo 12MB)' }
   }
 
   // 3. Validar magic bytes

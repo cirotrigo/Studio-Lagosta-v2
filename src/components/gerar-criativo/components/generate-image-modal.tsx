@@ -124,8 +124,8 @@ export function GenerateImageModal({
           continue
         }
 
-        if (file.size > 10 * 1024 * 1024) {
-          toast.error(`${file.name} e muito grande (max 10MB)`)
+        if (file.size > 12 * 1024 * 1024) {
+          toast.error(`${file.name} e muito grande (max 12MB)`)
           continue
         }
 

@@ -229,8 +229,8 @@ export async function POST(request: Request) {
               const sizeInMb = (imageBuffer.length / (1024 * 1024)).toFixed(2)
               console.log(`[AI Generate] Base image size: ${sizeInMb}MB, content-type: ${contentType}`)
 
-              if (imageBuffer.length > 10 * 1024 * 1024) {
-                throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 10MB.`)
+              if (imageBuffer.length > 12 * 1024 * 1024) {
+                throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 12MB.`)
               }
 
               if (imageBuffer.length === 0) {

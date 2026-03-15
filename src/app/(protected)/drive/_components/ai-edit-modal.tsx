@@ -152,8 +152,8 @@ export function AIEditModal({
       return
     }
 
-    if (file.size > 10 * 1024 * 1024) {
-      toast.error('Imagem muito grande (máx 10MB)')
+    if (file.size > 12 * 1024 * 1024) {
+      toast.error('Imagem muito grande (máx 12MB)')
       return
     }
 
