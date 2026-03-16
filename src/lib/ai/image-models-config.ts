@@ -61,17 +61,17 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     name: 'Nano Banana 2',
     provider: 'Google',
     displayName: 'Nano Banana 2',
-    description: 'Modelo mais recente e estável para geração de imagens com referências',
-    version: 'imagen-3.0-generate-001',
+    description: 'Modelo mais recente e rápido para geração de imagens com referências',
+    version: 'gemini-3.1-flash-image-preview',
     apiProvider: 'gemini',
 
     capabilities: {
-      maxResolution: '1024x1024',
-      minResolution: '256x256',
+      maxResolution: '2048x2048',
+      minResolution: '512x512',
       maxReferenceImages: 5,
       supportsCustomDimensions: false,
       supports4K: false,
-      averageSpeed: '10-20',
+      averageSpeed: '5-15',
     },
 
     pricing: {
@@ -97,8 +97,8 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     name: 'Nano Banana Pro',
     provider: 'Google',
     displayName: 'Nano Banana Pro',
-    description: 'Modelo avançado com suporte a edição e resolução 4K',
-    version: 'imagen-3.0-generate-002',
+    description: 'Modelo profissional com qualidade 4K e texto preciso',
+    version: 'gemini-3-pro-image-preview',
     apiProvider: 'gemini',
 
     capabilities: {

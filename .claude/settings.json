@@ -10,7 +10,8 @@
       "Bash(ls -la /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.zip)",
       "Bash(ls -lah /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.dmg /Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/release/*.zip)",
       "Bash(npx asar:*)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "WebSearch"
     ],
     "additionalDirectories": [
       "/Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/assets",
