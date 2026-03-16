@@ -12,10 +12,10 @@ import { densityCheckAndMaybeCompress, TextOverflowError } from '@/lib/density-c
 import { normalizeTemplate } from '@/lib/template-normalize'
 import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
 import { googleDriveService } from '@/server/google-drive-service'
-import Replicate from 'replicate'
+import { generateImageWithGemini } from '@/lib/ai/gemini-image-client'
 
 export const runtime = 'nodejs'
-export const maxDuration = 240 // 4 minutes for Replicate + Vision sequential operations
+export const maxDuration = 240 // 4 minutes for Gemini + Vision sequential operations
 
 // --- Constants ---
 
@@ -25,17 +25,11 @@ const FORMAT_DIMENSIONS: Record<string, { width: number; height: number; label: 
   SQUARE: { width: 1080, height: 1080, label: 'quadrado (1080x1080)' },
 }
 
-// Replicate model versions for Nano Banana 2 and Nano Banana Pro
-const REPLICATE_PRIMARY_MODEL = process.env.REPLICATE_PRIMARY_MODEL || 'nano-banana-2'
-const REPLICATE_FALLBACK_MODEL = process.env.REPLICATE_FALLBACK_MODEL || 'nano-banana-pro'
+// Gemini model names for Nano Banana 2 and Nano Banana Pro
+const GEMINI_PRIMARY_MODEL: 'nano-banana-2' | 'nano-banana-pro' = 'nano-banana-2'
+const GEMINI_FALLBACK_MODEL: 'nano-banana-2' | 'nano-banana-pro' = 'nano-banana-pro'
 
-// Replicate model versions (from image-models-config.ts)
-const REPLICATE_MODEL_VERSIONS: Record<string, string> = {
-  'nano-banana-2': 'd05a591283da31be3eea28d5634ef9e26989b351718b6489bd308426ebd0a3e8',
-  'nano-banana-pro': '81a5073adeced23b51ae9f85cd86c88954e7f25d7894eea0c7ebbc0c24d6831a',
-}
-
-const REPLICATE_ASPECT_RATIOS: Record<string, string> = {
+const GEMINI_ASPECT_RATIOS: Record<string, string> = {
   FEED_PORTRAIT: '4:5',
   STORY: '9:16',
   SQUARE: '1:1',
@@ -179,7 +173,7 @@ interface GeneratedImage {
 interface BackgroundGenerationMeta {
   variationIndex: number
   engine: 'nano-banana-2' | 'nano-banana-pro'
-  provider: 'replicate'
+  provider: 'gemini' | 'gemini-direct'
   requestedModel: string
   fallbackModel: string
   modelUsed: string
@@ -608,6 +602,7 @@ The root object MUST have "elements", "shadow", and "overlay" as direct top-leve
 interface PreparedRefImage {
   url: string
   base64: string
+  buffer: Buffer
   mimeType: string
 }
 
@@ -631,109 +626,54 @@ async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[
         .toBuffer())
 
       return {
-        url, // Keep original URL for Replicate
+        url, // Keep original URL for reference
         base64: buffer.toString('base64'),
+        buffer,
         mimeType: 'image/jpeg',
       }
     })
   )
 
-  const prepared = results
-    .filter((r): r is PromiseFulfilledResult<PreparedRefImage> => r.status === 'fulfilled')
-    .map((r) => r.value)
+  const prepared: PreparedRefImage[] = []
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      prepared.push(r.value)
+    }
+  }
 
   const totalSizeKB = prepared.reduce((acc, r) => acc + Math.round(r.base64.length / 1024), 0)
   console.log(`[generate-art] Prepared ${prepared.length}/${toFetch.length} reference images (total ~${totalSizeKB}KB base64)`)
   return prepared
 }
 
-// --- Nano Banana 2 / Nano Banana Pro (Replicate) ---
+// --- Nano Banana 2 / Nano Banana Pro (Gemini) ---
 
-async function callReplicateImageGeneration(
-  modelName: string,
+async function callGeminiImageGeneration(
+  modelName: 'nano-banana-2' | 'nano-banana-pro',
   prompt: string,
   aspectRatio: string,
-  referenceImages?: string[],
+  referenceBuffers?: Buffer[],
+  referenceTypes?: string[],
 ): Promise<{ buffer: Buffer; mimeType: string }> {
-  const apiToken = process.env.REPLICATE_API_TOKEN
-  if (!apiToken) throw new Error('REPLICATE_API_TOKEN not configured')
+  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY
+  if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY not configured')
 
-  const modelVersion = REPLICATE_MODEL_VERSIONS[modelName]
-  if (!modelVersion) throw new Error(`Unknown Replicate model: ${modelName}`)
+  console.log(`[generate-art] Calling Gemini model: ${modelName}, aspectRatio: ${aspectRatio}, refs: ${referenceBuffers?.length || 0}`)
 
-  console.log(`[generate-art] Trying Replicate model: ${modelName}, aspectRatio: ${aspectRatio}`)
-
-  const replicate = new Replicate({ auth: apiToken })
-
-  const input: Record<string, any> = {
+  const result = await generateImageWithGemini({
+    model: modelName,
     prompt,
-    aspect_ratio: aspectRatio,
-    output_format: 'png',
-  }
-
-  // Add reference images if provided
-  if (referenceImages && referenceImages.length > 0) {
-    input.image_input = referenceImages
-  }
-
-  console.log(`[generate-art] Creating Replicate prediction with ${referenceImages?.length || 0} reference images...`)
-
-  const prediction = await replicate.predictions.create({
-    version: modelVersion,
-    input,
+    aspectRatio,
+    referenceImages: referenceBuffers,
+    referenceImageTypes: referenceTypes,
   })
 
-  // Poll for completion (max 120 seconds)
-  let finalPrediction = prediction
-  const maxAttempts = 120
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 1000))
-    finalPrediction = await replicate.predictions.get(prediction.id)
+  console.log(`[generate-art] Gemini (${modelName}) image generated successfully (${result.imageBuffer.length} bytes)`)
 
-    if (finalPrediction.status === 'succeeded') {
-      console.log(`[generate-art] Replicate (${modelName}) prediction succeeded after ${i + 1}s`)
-      break
-    }
-
-    if (finalPrediction.status === 'failed' || finalPrediction.status === 'canceled') {
-      const errorMsg = finalPrediction.error || 'Unknown error'
-      console.error(`[generate-art] Replicate (${modelName}) prediction failed:`, errorMsg)
-      throw new Error(`Replicate ${modelName} error: ${errorMsg}`)
-    }
-
-    // Log progress every 10 seconds
-    if (i > 0 && i % 10 === 0) {
-      console.log(`[generate-art] Replicate (${modelName}) still processing... (${i}s elapsed, status: ${finalPrediction.status})`)
-    }
+  return {
+    buffer: result.imageBuffer,
+    mimeType: result.mimeType,
   }
-
-  if (finalPrediction.status !== 'succeeded' || !finalPrediction.output) {
-    throw new Error(`Replicate (${modelName}) did not return an image (status: ${finalPrediction.status})`)
-  }
-
-  // Get the output URL
-  const outputUrl = Array.isArray(finalPrediction.output)
-    ? finalPrediction.output[0]
-    : finalPrediction.output
-
-  if (!outputUrl || typeof outputUrl !== 'string') {
-    throw new Error(`Replicate (${modelName}) returned invalid output`)
-  }
-
-  console.log(`[generate-art] Fetching generated image from Replicate...`)
-
-  // Fetch the image
-  const imageResponse = await fetch(outputUrl)
-  if (!imageResponse.ok) {
-    throw new Error(`Failed to fetch Replicate image: ${imageResponse.status}`)
-  }
-
-  const buffer = Buffer.from(await imageResponse.arrayBuffer())
-  const mimeType = imageResponse.headers.get('content-type') || 'image/png'
-
-  console.log(`[generate-art] Replicate (${modelName}) image generated successfully (${buffer.length} bytes)`)
-
-  return { buffer, mimeType }
 }
 
 async function callNanoBanana2(
@@ -743,28 +683,39 @@ async function callNanoBanana2(
   referenceImages?: PreparedRefImage[],
 ): Promise<{ buffer: Buffer; mimeType: string; modelUsed: string; fallbackUsed: boolean }> {
   const formatInfo = FORMAT_DIMENSIONS[format] || FORMAT_DIMENSIONS.FEED_PORTRAIT
-  const aspectRatio = REPLICATE_ASPECT_RATIOS[format] || '4:5'
+  const aspectRatio = GEMINI_ASPECT_RATIOS[format] || '4:5'
 
   // Build enhanced prompt with style instructions
   const roleInstruction = photoUrl
     ? 'Expert food photographer composition. Photorealistic, professionally-styled scene with the product as hero subject.'
     : 'Expert graphic designer composition. Professionally-designed, visually stunning social media art.'
 
-  // Build reference image URLs for Replicate (up to 5 references)
-  const refUrls: string[] = []
+  // Collect reference image buffers for Gemini (up to 5 references)
+  const refBuffers: Buffer[] = []
+  const refTypes: string[] = []
 
-  // Add reference images URLs
+  // Add reference images buffers
   if (referenceImages && referenceImages.length > 0) {
     for (const ref of referenceImages) {
-      refUrls.push(ref.url)
+      refBuffers.push(ref.buffer)
+      refTypes.push(ref.mimeType || 'image/jpeg')
     }
-    console.log(`[generate-art] Added ${referenceImages.length} reference image URLs for Replicate`)
+    console.log(`[generate-art] Added ${referenceImages.length} reference image buffers for Gemini`)
   }
 
   // Add photo URL as additional reference if provided
   if (photoUrl) {
-    refUrls.push(photoUrl)
-    console.log('[generate-art] Added photo URL as reference for Replicate')
+    try {
+      const photoResponse = await fetch(photoUrl)
+      if (photoResponse.ok) {
+        const photoBuffer = Buffer.from(await photoResponse.arrayBuffer())
+        refBuffers.push(photoBuffer)
+        refTypes.push(photoResponse.headers.get('content-type') || 'image/jpeg')
+        console.log('[generate-art] Added photo as reference buffer for Gemini')
+      }
+    } catch (e) {
+      console.warn('[generate-art] Failed to fetch photo for reference:', e)
+    }
   }
 
   // Build the full prompt
@@ -776,32 +727,34 @@ ${prompt}
 
 Generate an image with ${aspectRatio} aspect ratio for ${formatInfo.label}. Leave clean space for text overlay.`
 
-  console.log(`[generate-art] Calling Replicate (refs=${refUrls.length}, photo=${photoUrl ? 'yes' : 'no'})...`)
+  console.log(`[generate-art] Calling Gemini (refs=${refBuffers.length}, photo=${photoUrl ? 'yes' : 'no'})...`)
 
   // Try primary model (Nano Banana 2), fallback to Nano Banana Pro
   try {
-    const primary = await callReplicateImageGeneration(
-      REPLICATE_PRIMARY_MODEL,
+    const primary = await callGeminiImageGeneration(
+      GEMINI_PRIMARY_MODEL,
       fullPrompt,
       aspectRatio,
-      refUrls.length > 0 ? refUrls : undefined,
+      refBuffers.length > 0 ? refBuffers : undefined,
+      refTypes.length > 0 ? refTypes : undefined,
     )
     return {
       ...primary,
-      modelUsed: REPLICATE_PRIMARY_MODEL,
+      modelUsed: GEMINI_PRIMARY_MODEL,
       fallbackUsed: false,
     }
   } catch (primaryError: any) {
-    console.warn(`[generate-art] Primary model (${REPLICATE_PRIMARY_MODEL}) failed: ${primaryError.message}. Falling back to ${REPLICATE_FALLBACK_MODEL}...`)
-    const fallback = await callReplicateImageGeneration(
-      REPLICATE_FALLBACK_MODEL,
+    console.warn(`[generate-art] Primary model (${GEMINI_PRIMARY_MODEL}) failed: ${primaryError.message}. Falling back to ${GEMINI_FALLBACK_MODEL}...`)
+    const fallback = await callGeminiImageGeneration(
+      GEMINI_FALLBACK_MODEL,
       fullPrompt,
       aspectRatio,
-      refUrls.length > 0 ? refUrls : undefined,
+      refBuffers.length > 0 ? refBuffers : undefined,
+      refTypes.length > 0 ? refTypes : undefined,
     )
     return {
       ...fallback,
-      modelUsed: REPLICATE_FALLBACK_MODEL,
+      modelUsed: GEMINI_FALLBACK_MODEL,
       fallbackUsed: true,
     }
   }
@@ -900,7 +853,7 @@ async function persistGeneratedAIImage(params: {
   return blob.url
 }
 
-function describeReplicateImageModel(model: string): string {
+function describeGeminiImageModel(model: string): string {
   if (model === 'nano-banana-2') return 'Nano Banana 2'
   if (model === 'nano-banana-pro') return 'Nano Banana Pro'
   return model
@@ -915,16 +868,16 @@ function buildBackgroundGenerationMeta(params: {
 }): BackgroundGenerationMeta {
   const warnings = params.fallbackUsed
     ? [
-        `Nano Banana 2 indisponível nesta tentativa. Fallback automático aplicado com ${describeReplicateImageModel(params.modelUsed)}.`,
+        `Nano Banana 2 indisponível nesta tentativa. Fallback automático aplicado com ${describeGeminiImageModel(params.modelUsed)}.`,
       ]
     : []
 
   return {
     variationIndex: params.variationIndex,
     engine: 'nano-banana-2',
-    provider: 'replicate',
-    requestedModel: REPLICATE_PRIMARY_MODEL,
-    fallbackModel: REPLICATE_FALLBACK_MODEL,
+    provider: 'gemini',
+    requestedModel: GEMINI_PRIMARY_MODEL,
+    fallbackModel: GEMINI_FALLBACK_MODEL,
     modelUsed: params.modelUsed,
     fallbackUsed: params.fallbackUsed,
     referenceCount: params.referenceCount,
@@ -1488,9 +1441,9 @@ export async function POST(request: Request) {
       { status: 503 }
     )
   }
-  if (!process.env.REPLICATE_API_TOKEN) {
+  if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return NextResponse.json(
-      { error: 'Configuração de IA incompleta (Replicate). Contate o administrador.' },
+      { error: 'Configuração de IA incompleta (Gemini). Contate o administrador.' },
       { status: 503 }
     )
   }
@@ -1606,7 +1559,7 @@ export async function POST(request: Request) {
         })
       }
     } else {
-      // --- Mode B: Generate image(s) with Replicate (Nano Banana) ---
+      // --- Mode B: Generate image(s) with Gemini (Nano Banana) ---
       console.log('[generate-art] Step 2: Generating visual prompt with GPT-4o...')
 
       // Pre-fetch reference images ONCE before prompt generation and image generation
@@ -1654,7 +1607,7 @@ export async function POST(request: Request) {
       technicalPrompt = prompt
 
       console.log('[generate-art] Technical prompt (full):', technicalPrompt)
-      console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Replicate (${refImages.length} style refs)...`)
+      console.log(`[generate-art] Step 3: Generating ${body.variations} image(s) with Gemini (${refImages.length} style refs)...`)
 
       for (let i = 0; i < body.variations; i++) {
         console.log(`[generate-art] Generating variation ${i + 1}/${body.variations}...`)
@@ -1758,7 +1711,7 @@ export async function POST(request: Request) {
       console.log(`[generate-art] Resolved fontUrls: title=${!!fontUrls.title}, body=${!!fontUrls.body}`)
     }
 
-    console.log(`[generate-art] Done! Generated ${results.length} images with Replicate`)
+    console.log(`[generate-art] Done! Generated ${results.length} images with Gemini`)
 
     return NextResponse.json({
       images: results,
