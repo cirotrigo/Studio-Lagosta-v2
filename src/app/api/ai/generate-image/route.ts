@@ -642,6 +642,35 @@ export async function POST(request: Request) {
     // 6. Calcular dimensões baseado no aspect ratio
     const dimensions = calculateDimensions(body.aspectRatio)
 
+    // 6.5. Salvar no Google Drive (pasta IA) se o projeto tiver uma pasta configurada
+    let googleDriveUrl: string | null = null
+    try {
+      const projectWithFolder = await db.project.findUnique({
+        where: { id: body.projectId },
+        select: { googleDriveFolderId: true, name: true },
+      })
+
+      if (projectWithFolder?.googleDriveFolderId) {
+        console.log('[AI Generate] Uploading to Google Drive IA folder...')
+
+        // Baixar a imagem do blob para buffer
+        const imageResponse = await fetch(blobUrl)
+        const imageBuffer = Buffer.from(await imageResponse.arrayBuffer())
+
+        const driveResult = await googleDriveService.uploadAIGeneratedImage(
+          imageBuffer,
+          projectWithFolder.googleDriveFolderId,
+          projectWithFolder.name
+        )
+
+        googleDriveUrl = driveResult.publicUrl
+        console.log('[AI Generate] Uploaded to Google Drive:', googleDriveUrl)
+      }
+    } catch (driveError) {
+      // Não falhar se o upload do Drive falhar, apenas logar
+      console.error('[AI Generate] Failed to upload to Google Drive:', driveError)
+    }
+
     // 7. Salvar no banco de dados (usando o modelo que realmente foi usado, pode ser fallback)
     const aiImage = await db.aIGeneratedImage.create({
       data: {
@@ -649,7 +678,7 @@ export async function POST(request: Request) {
         name: `${currentModelConfig.displayName} - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
         prompt: body.prompt,
         mode: 'GENERATE',
-        fileUrl: blobUrl,
+        fileUrl: googleDriveUrl || blobUrl,
         thumbnailUrl: blobUrl,
         width: dimensions.width,
         height: dimensions.height,
