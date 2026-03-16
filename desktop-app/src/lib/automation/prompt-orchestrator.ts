@@ -623,6 +623,7 @@ export async function preparePromptBatch(
       templateName: manualTemplate.name,
       selectedPageId: input.selectedPageId,
       slotsFound: templateContext.slots.length,
+      slotFieldKeys: templateContext.slots.map((s) => s.fieldKey),
       inferredPurpose: templateContext.inferredPurpose,
     })
   }

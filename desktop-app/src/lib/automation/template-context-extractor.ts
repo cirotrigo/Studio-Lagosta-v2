@@ -296,8 +296,8 @@ export function extractTemplateContext(
     }
   }
 
-  // Get slot bindings (either explicit or inferred)
-  const bindings = document.slots.length > 0 ? document.slots : inferSlotBindings(document)
+  // Get slot bindings (either explicit or inferred) for the specific page
+  const bindings = document.slots.length > 0 ? document.slots : inferSlotBindings(document, page.id)
 
   // Get all text layers for comparison
   const textLayers = page.layers.filter(isTextLayer)

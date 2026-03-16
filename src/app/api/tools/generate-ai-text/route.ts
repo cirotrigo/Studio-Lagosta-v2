@@ -910,6 +910,20 @@ function buildTemplateContextPromptSection(context: TemplateContext | undefined)
 
   const lines: string[] = []
 
+  // Get available field keys from the template
+  const availableFields = context.slots.map((s) => s.fieldKey)
+  const allFields = ['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']
+  const unavailableFields = allFields.filter((f) => !availableFields.includes(f as typeof availableFields[number]))
+
+  // CRITICAL: Tell AI which fields to generate
+  lines.push('CAMPOS DISPONIVEIS NO TEMPLATE (OBRIGATORIO gerar TODOS):')
+  lines.push(`- Campos para preencher (TODOS devem ter conteudo): ${availableFields.join(', ')}`)
+  if (unavailableFields.length > 0) {
+    lines.push(`- Campos que NAO existem neste template (deixe VAZIO ""): ${unavailableFields.join(', ')}`)
+  }
+  lines.push('IMPORTANTE: Cada campo disponivel DEVE receber texto relevante. Nao deixe campos vazios.')
+  lines.push('')
+
   // Template metadata
   lines.push('CONTEXTO DO TEMPLATE SELECIONADO:')
   lines.push(`- Nome: ${context.templateName}`)
@@ -930,8 +944,8 @@ function buildTemplateContextPromptSection(context: TemplateContext | undefined)
     lines.push('')
   }
 
-  // Slot constraints
-  lines.push('RESTRICOES DOS CAMPOS:')
+  // Slot constraints - only for available fields
+  lines.push('RESTRICOES DOS CAMPOS DISPONIVEIS:')
   for (const slot of context.slots) {
     lines.push(`- ${slot.fieldKey}: max ${slot.maxLines} linha(s), fonte ${slot.fontSize}px`)
   }
@@ -994,6 +1008,11 @@ function buildTemplateContextPromptSection(context: TemplateContext | undefined)
     } else {
       lines.push('4. Siga o padrao existente: textos mais descritivos sao permitidos')
     }
+  }
+
+  // Critical rule: only generate available fields
+  if (unavailableFields.length > 0) {
+    lines.push(`5. IMPORTANTE: Os campos ${unavailableFields.join(', ')} NAO existem neste template - retorne string vazia "" para eles`)
   }
 
   return lines.join('\n')
@@ -1075,17 +1094,18 @@ function buildUserPrompt(
     'Regras obrigatorias:',
     '1. Preserve o sentido principal do prompt base.',
     '2. Gere exatamente o numero de variacoes solicitado.',
-    '3. Nao invente telefone/endereco se nao houver no prompt ou na base: deixe footer_info_1 e footer_info_2 vazios.',
-    '4. CTA deve ser objetivo e acionavel.',
-    '5. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
-    '6. Respeite os slots, prioridade e densidade quando houver guia de template.',
-    '7. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
-    '8. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
-    '9. Em conflito entre prompt e base, priorize o prompt do usuario.',
-    '10. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
-    '11. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
-    '12. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
-    '13. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
+    '3. TODOS os campos listados em "Campos para preencher" DEVEM ter conteudo - nao deixe nenhum vazio.',
+    '4. footer_info_1 e footer_info_2: se o template tiver esses campos, gere texto promocional ou complementar (ex: frase de impacto, slogan, informacao adicional). Nao invente telefone/endereco se nao houver no prompt.',
+    '5. CTA deve ser objetivo e acionavel.',
+    '6. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
+    '7. Respeite os slots, prioridade e densidade quando houver guia de template.',
+    '8. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
+    '9. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
+    '10. Em conflito entre prompt e base, priorize o prompt do usuario.',
+    '11. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
+    '12. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
+    '13. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
+    '14. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
   ].join('\n')
 }
 

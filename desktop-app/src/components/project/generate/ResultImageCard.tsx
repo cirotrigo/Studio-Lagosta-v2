@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Clock3, Download, Loader2, TriangleAlert } from 'lucide-react'
+import { Clock3, Download, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { ApprovalPanel } from '@/components/project/generate/ApprovalPanel'
 import { exportSingle } from '@/lib/export/konva-exporter'
 import { cn } from '@/lib/utils'
-import type { GenerationVariationJob } from '@/stores/generation.store'
+import type { GenerationVariationJob, ReviewField } from '@/stores/generation.store'
 import type { ArtFormat, KonvaPage } from '@/types/template'
 import type { EditorFontSource } from '@/lib/editor/font-utils'
 
@@ -19,6 +19,8 @@ interface ResultImageCardProps {
   onApprove: () => void
   onOpenInEditor: () => void
   onOpenArts: () => void
+  onFieldsChange?: (fields: ReviewField[]) => void
+  onRegenerate?: () => void
 }
 
 function getAspectClass(format: ArtFormat) {
@@ -49,8 +51,61 @@ export function ResultImageCard({
   onApprove,
   onOpenInEditor,
   onOpenArts,
+  onFieldsChange,
+  onRegenerate,
 }: ResultImageCardProps) {
   const [isExporting, setIsExporting] = useState(false)
+  const [editedFields, setEditedFields] = useState<ReviewField[]>([])
+  const [isEditing, setIsEditing] = useState(false)
+
+  // Check if fields have been edited
+  const hasEdits = editedFields.length > 0 && editedFields.some(
+    (ef) => {
+      const original = variation.fields.find((f) => f.key === ef.key)
+      return original && original.value !== ef.value
+    }
+  )
+
+  // Get current field value (edited or original)
+  const getFieldValue = (fieldKey: string): string => {
+    const edited = editedFields.find((f) => f.key === fieldKey)
+    if (edited) return edited.value
+    const original = variation.fields.find((f) => f.key === fieldKey)
+    return original?.value ?? ''
+  }
+
+  // Handle field edit
+  const handleFieldChange = (fieldKey: string, newValue: string) => {
+    setEditedFields((prev) => {
+      const existing = prev.find((f) => f.key === fieldKey)
+      const original = variation.fields.find((f) => f.key === fieldKey)
+      if (existing) {
+        return prev.map((f) => f.key === fieldKey ? { ...f, value: newValue } : f)
+      }
+      return [...prev, { key: fieldKey, label: original?.label ?? fieldKey, value: newValue }]
+    })
+  }
+
+  // Apply edits
+  const handleApplyEdits = () => {
+    if (!hasEdits || !onFieldsChange) return
+    const mergedFields = variation.fields.map((f) => {
+      const edited = editedFields.find((ef) => ef.key === f.key)
+      return edited ? { ...f, value: edited.value } : f
+    })
+    onFieldsChange(mergedFields)
+    setEditedFields([])
+    setIsEditing(false)
+    if (onRegenerate) {
+      onRegenerate()
+    }
+  }
+
+  // Cancel edits
+  const handleCancelEdits = () => {
+    setEditedFields([])
+    setIsEditing(false)
+  }
 
   async function handleExport() {
     const page = getCurrentPage(variation)
@@ -155,6 +210,15 @@ export function ResultImageCard({
 
         {variation.fields.length > 0 ? (
           <div className="space-y-2">
+            {!isEditing && onFieldsChange && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(true)}
+                className="mb-2 text-xs text-primary hover:underline"
+              >
+                Editar textos
+              </button>
+            )}
             {variation.fields.map((field) => (
               <div
                 key={`${variation.id}-${field.key}`}
@@ -163,9 +227,38 @@ export function ResultImageCard({
                 <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
                   {field.label}
                 </p>
-                <p className="mt-1 text-sm text-text">{field.value}</p>
+                {isEditing ? (
+                  <textarea
+                    value={getFieldValue(field.key)}
+                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full resize-none rounded border border-border bg-input px-2 py-1 text-sm text-text focus:border-primary focus:outline-none"
+                  />
+                ) : (
+                  <p className="mt-1 text-sm text-text">{field.value}</p>
+                )}
               </div>
             ))}
+            {isEditing && (
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleApplyEdits}
+                  disabled={!hasEdits}
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                >
+                  <RefreshCw size={12} />
+                  Aplicar e Regenerar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCancelEdits}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-text-muted hover:text-text"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
           </div>
         ) : null}
 

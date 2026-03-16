@@ -32,13 +32,13 @@ const SLOT_PRIORITY: SlotFieldKey[] = [
 ]
 
 const BINDING_PATTERNS: Array<{ fieldKey: SlotFieldKey; pattern: RegExp }> = [
-  { fieldKey: 'pre_title', pattern: /(pre|eyebrow|kicker|superti)/i },
-  { fieldKey: 'title', pattern: /(title|titulo|headline|hero)/i },
-  { fieldKey: 'description', pattern: /(desc|descricao|descri|texto|copy|body|sub)/i },
-  { fieldKey: 'cta', pattern: /(cta|call|botao|acao|action|button)/i },
-  { fieldKey: 'badge', pattern: /(badge|selo|tag|chip|sticker|price|preco)/i },
-  { fieldKey: 'footer_info_1', pattern: /(footer|rodape|info|contato|local|horario)/i },
-  { fieldKey: 'footer_info_2', pattern: /(footer|rodape|info|contato|local|horario)/i },
+  { fieldKey: 'pre_title', pattern: /(pre|eyebrow|kicker|superti|assunto|tema|categoria)/i },
+  { fieldKey: 'title', pattern: /(title|titulo|headline|hero|manchete)/i },
+  { fieldKey: 'description', pattern: /(desc|descricao|descri|texto|copy|body|sub|legenda)/i },
+  { fieldKey: 'cta', pattern: /(cta|call|botao|acao|action|button|saiba|confira|reserve)/i },
+  { fieldKey: 'badge', pattern: /(badge|selo|tag|chip|sticker|price|preco|destaque|promo)/i },
+  { fieldKey: 'footer_info_1', pattern: /(footer|rodape|info|contato|local|horario|endereco)/i },
+  { fieldKey: 'footer_info_2', pattern: /(footer|rodape|info|contato|local|horario|endereco)/i },
 ]
 
 const PLACEHOLDER_IMAGE_SOURCES = new Set(['', '/logo.png', '/icon.png'])
@@ -123,19 +123,6 @@ function getTextLayers(page: KonvaPage): KonvaTextLayer[] {
   return page.layers.filter(isTextLayer)
 }
 
-function sortTextLayers(page: KonvaPage): KonvaTextLayer[] {
-  return getTextLayers(page).slice().sort((left, right) => {
-    const fontDiff = (right.textStyle?.fontSize ?? 0) - (left.textStyle?.fontSize ?? 0)
-    if (fontDiff !== 0) return fontDiff
-
-    const areaDiff =
-      ((right.width ?? 0) * (right.height ?? 0)) - ((left.width ?? 0) * (left.height ?? 0))
-    if (areaDiff !== 0) return areaDiff
-
-    return left.y - right.y
-  })
-}
-
 function findLayerPage(document: KonvaTemplateDocument, layerId: string): KonvaPage | null {
   for (const page of document.design.pages) {
     if (page.layers.some((layer) => layer.id === layerId)) {
@@ -152,62 +139,167 @@ function findTextLayer(document: KonvaTemplateDocument, layerId: string): KonvaT
   return layer && isTextLayer(layer) ? layer : null
 }
 
-function claimLayer(
-  claimed: Map<SlotFieldKey, KonvaTextLayer>,
-  available: KonvaTextLayer[],
-  fieldKey: SlotFieldKey,
-  predicate: (layer: KonvaTextLayer) => boolean,
-) {
-  if (claimed.has(fieldKey)) return
+export function inferSlotBindings(document: KonvaTemplateDocument, pageId?: string): SlotBinding[] {
+  // Determine target page
+  const targetPageId = pageId || document.design.currentPageId
+  const targetPage = targetPageId
+    ? document.design.pages.find((p) => p.id === targetPageId)
+    : getPrimaryPage(document)
 
-  const nextLayer = available.find((layer) => !Array.from(claimed.values()).some((item) => item.id === layer.id) && predicate(layer))
-  if (nextLayer) {
-    claimed.set(fieldKey, nextLayer)
+  if (!targetPage) {
+    // Fallback to original behavior
+    const page = getPrimaryPage(document)
+    if (!page) return []
+    return inferBindingsFromPage(document, page)
   }
-}
 
-export function inferSlotBindings(document: KonvaTemplateDocument): SlotBinding[] {
-  const explicit = document.slots.filter((binding) => Boolean(findTextLayer(document, binding.layerId)))
+  // Filter explicit slots to only include layers from the target page
+  const targetLayerIds = new Set(targetPage.layers.map((l) => l.id))
+  const explicit = document.slots.filter((binding) =>
+    targetLayerIds.has(binding.layerId) && Boolean(findTextLayer(document, binding.layerId))
+  )
   if (explicit.length > 0) {
     return explicit
   }
 
-  const page = getPrimaryPage(document)
-  if (!page) return []
+  // Infer from target page
+  return inferBindingsFromPage(document, targetPage)
+}
 
-  const sortedLayers = sortTextLayers(page)
-  if (sortedLayers.length === 0) return []
+function inferBindingsFromPage(_document: KonvaTemplateDocument, page: KonvaPage): SlotBinding[] {
+  const textLayers = getTextLayers(page)
+  if (textLayers.length === 0) return []
+
+  console.log('[SlotBinder] inferBindingsFromPage - text layers found:', {
+    pageId: page.id,
+    pageName: page.name,
+    textLayersCount: textLayers.length,
+    textLayers: textLayers.map((l) => ({
+      id: l.id,
+      name: l.name,
+      fontSize: l.textStyle?.fontSize,
+      y: l.y,
+      height: l.height,
+    })),
+  })
+
+  // Sort layers by Y position (top to bottom)
+  const layersByY = [...textLayers].sort((a, b) => a.y - b.y)
+
+  // Find the layer with largest font (likely the title)
+  const largestFontLayer = [...textLayers].sort(
+    (a, b) => (b.textStyle?.fontSize ?? 0) - (a.textStyle?.fontSize ?? 0),
+  )[0]
+
+  // Classify layers by their role based on position and size
+  const pageMiddleY = page.height * 0.6
 
   const claimed = new Map<SlotFieldKey, KonvaTextLayer>()
+  const usedLayers = new Set<string>()
 
-  for (const pattern of BINDING_PATTERNS) {
-    claimLayer(claimed, sortedLayers, pattern.fieldKey, (layer) => pattern.pattern.test(layer.name ?? ''))
+  // Helper to claim a layer
+  const claim = (fieldKey: SlotFieldKey, layer: KonvaTextLayer) => {
+    if (!claimed.has(fieldKey) && !usedLayers.has(layer.id)) {
+      claimed.set(fieldKey, layer)
+      usedLayers.add(layer.id)
+      return true
+    }
+    return false
   }
 
-  claimLayer(claimed, sortedLayers, 'title', (layer) => (layer.textStyle?.fontSize ?? 0) >= 28)
-  claimLayer(claimed, sortedLayers, 'description', () => true)
+  // Step 1: Try to match by name patterns first (user-defined names take priority)
+  for (const layer of textLayers) {
+    for (const pattern of BINDING_PATTERNS) {
+      if (pattern.pattern.test(layer.name ?? '')) {
+        // Only break if claim succeeds - otherwise try next matching pattern
+        if (claim(pattern.fieldKey, layer)) {
+          break
+        }
+      }
+    }
+  }
 
+  // Step 2: Identify title (largest font or first unclaimed large font)
+  if (!claimed.has('title') && largestFontLayer && !usedLayers.has(largestFontLayer.id)) {
+    claim('title', largestFontLayer)
+  }
+
+  // Step 3: Identify pre_title (small text ABOVE the title)
   const titleLayer = claimed.get('title')
-  if (titleLayer) {
-    claimLayer(
-      claimed,
-      sortedLayers,
-      'pre_title',
-      (layer) => layer.y <= titleLayer.y && (layer.textStyle?.fontSize ?? 0) < (titleLayer.textStyle?.fontSize ?? 0),
+  if (!claimed.has('pre_title') && titleLayer) {
+    const preTitle = layersByY.find(
+      (l) =>
+        !usedLayers.has(l.id) &&
+        l.y < titleLayer.y &&
+        (l.textStyle?.fontSize ?? 0) < (titleLayer.textStyle?.fontSize ?? 0),
     )
+    if (preTitle) claim('pre_title', preTitle)
   }
 
-  const bottomLayers = sortedLayers.slice().sort((left, right) => right.y - left.y)
-  claimLayer(claimed, bottomLayers, 'footer_info_1', () => true)
-  claimLayer(claimed, bottomLayers, 'footer_info_2', () => true)
-  claimLayer(claimed, sortedLayers, 'cta', (layer) => (layer.width ?? page.width) <= page.width * 0.75)
-  claimLayer(claimed, sortedLayers, 'badge', (layer) => (layer.height ?? 0) <= page.height * 0.12)
-
-  for (const fieldKey of SLOT_PRIORITY) {
-    claimLayer(claimed, sortedLayers, fieldKey, () => true)
+  // Step 4: Identify description (text below title, before footer zone)
+  if (!claimed.has('description') && titleLayer) {
+    const desc = layersByY.find(
+      (l) =>
+        !usedLayers.has(l.id) &&
+        l.y > titleLayer.y &&
+        l.y < pageMiddleY + page.height * 0.2,
+    )
+    if (desc) claim('description', desc)
   }
 
-  return Array.from(claimed.entries()).map(([fieldKey, layer]) => buildBinding(page, layer, fieldKey))
+  // Step 5: Identify footer layers (bottom 25% of page)
+  const footerThreshold = page.height * 0.75
+  const footerLayers = layersByY.filter(
+    (l) => !usedLayers.has(l.id) && l.y >= footerThreshold,
+  )
+
+  if (footerLayers.length >= 1 && !claimed.has('footer_info_1')) {
+    claim('footer_info_1', footerLayers[0])
+  }
+  if (footerLayers.length >= 2 && !claimed.has('footer_info_2')) {
+    claim('footer_info_2', footerLayers[1])
+  }
+
+  // Step 6: Identify badge (small height layer in top area)
+  if (!claimed.has('badge')) {
+    const badge = textLayers.find(
+      (l) =>
+        !usedLayers.has(l.id) &&
+        l.y < page.height * 0.4 &&
+        (l.height ?? 100) < page.height * 0.08,
+    )
+    if (badge) claim('badge', badge)
+  }
+
+  // Step 7: Identify CTA (remaining layer, often smaller width)
+  if (!claimed.has('cta')) {
+    const cta = textLayers.find(
+      (l) => !usedLayers.has(l.id) && (l.width ?? page.width) < page.width * 0.6,
+    )
+    if (cta) claim('cta', cta)
+  }
+
+  // Step 8: Map remaining unclaimed layers to available field keys
+  const remainingLayers = layersByY.filter((l) => !usedLayers.has(l.id))
+  const availableFieldKeys = SLOT_PRIORITY.filter((fk) => !claimed.has(fk))
+
+  for (let i = 0; i < Math.min(remainingLayers.length, availableFieldKeys.length); i++) {
+    claim(availableFieldKeys[i], remainingLayers[i])
+  }
+
+  const bindings = Array.from(claimed.entries()).map(([fieldKey, layer]) =>
+    buildBinding(page, layer, fieldKey),
+  )
+
+  console.log('[SlotBinder] inferBindingsFromPage - final bindings:', {
+    bindingsCount: bindings.length,
+    bindings: bindings.map((b) => ({ fieldKey: b.fieldKey, layerId: b.layerId })),
+    unmappedLayers: textLayers
+      .filter((l) => !usedLayers.has(l.id))
+      .map((l) => ({ id: l.id, name: l.name })),
+  })
+
+  return bindings
 }
 
 function toOverflowBehavior(
@@ -407,22 +499,54 @@ export function applyCopyToKonvaTemplate(
 ): SlotBinderResult {
   const document = cloneKonvaDocument(template)
   const warnings: string[] = []
-  const slotBindings = inferSlotBindings(document)
+
+  // Get current page - this is the page we will modify
+  const currentPageId = document.design.currentPageId
+  const currentPage = document.design.pages.find((p) => p.id === currentPageId)
+    ?? document.design.pages[0]
+
+  if (!currentPage) {
+    return {
+      document,
+      slotBindings: [],
+      fields: [],
+      warnings: ['Template sem página para aplicar conteúdo.'],
+    }
+  }
+
+  // Infer slots ONLY from the current page
+  const slotBindings = inferSlotBindings(document, currentPage.id)
   document.slots = slotBindings
   const sanitizedFieldValues = sanitizeFieldValues(input.fieldValues)
 
+  console.log('[SlotBinder] applyCopyToKonvaTemplate:', {
+    currentPageId: currentPage.id,
+    currentPageName: currentPage.name,
+    slotBindingsCount: slotBindings.length,
+    slotBindings: slotBindings.map((b) => ({ fieldKey: b.fieldKey, layerId: b.layerId })),
+  })
+
   const assignedValues = buildLayerAssignments(slotBindings, sanitizedFieldValues)
 
+  // Apply text to layers IN THE CURRENT PAGE ONLY
   for (const binding of slotBindings) {
-    const page = findLayerPage(document, binding.layerId)
-    const layer = findTextLayer(document, binding.layerId)
+    // Find layer directly in the current page (not searching all pages)
+    const layer = currentPage.layers.find((l) => l.id === binding.layerId)
 
-    if (!page || !layer) {
-      warnings.push(`Binding ${binding.fieldKey} sem layer valida no template.`)
+    if (!layer || !isTextLayer(layer)) {
+      warnings.push(`Binding ${binding.fieldKey} sem layer valida na página atual.`)
       continue
     }
 
     const nextValue = assignedValues[binding.fieldKey] ?? sanitizedFieldValues[binding.fieldKey] ?? ''
+    console.log('[SlotBinder] Applying text to layer:', {
+      fieldKey: binding.fieldKey,
+      layerId: binding.layerId,
+      layerName: layer.name,
+      pageId: currentPage.id,
+      oldText: layer.text?.substring(0, 30),
+      newText: nextValue.substring(0, 30),
+    })
     layer.text = nextValue
     layer.textStyle = {
       ...layer.textStyle,
@@ -437,9 +561,8 @@ export function applyCopyToKonvaTemplate(
     }
   }
 
-  for (const page of document.design.pages) {
-    applyMediaToPage(page, input, warnings)
-  }
+  // Apply media to the current page
+  applyMediaToPage(currentPage, input, warnings)
 
   if (input.brandLogoUrl) {
     document.identity.logoUrl = input.brandLogoUrl

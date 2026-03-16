@@ -20,6 +20,7 @@ import {
   renderPromptVariation,
   type PreparedPromptBatch,
 } from '@/lib/automation/prompt-orchestrator'
+import { applyCopyToKonvaTemplate, type SlotBinderInput } from '@/lib/automation/slot-binder'
 import { cn } from '@/lib/utils'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
@@ -47,6 +48,7 @@ import {
   type BackgroundGenerationInfo,
   type ObjectivePreset,
   type TonePreset,
+  type ReviewField,
 } from '@/stores/generation.store'
 import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
@@ -401,6 +403,86 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       toast.error(message)
     }
   }, [brandAssets, exportCreative, updateVariation])
+
+  // Handler to regenerate a variation after editing text fields
+  const handleRegenerateVariation = useCallback(async (job: GenerationJob, variation: GenerationVariationJob) => {
+    if (!variation.document) {
+      toast.error('Documento nao disponivel para regeneracao.')
+      return
+    }
+
+    updateVariation(job.id, variation.id, {
+      status: 'processing',
+      error: undefined,
+    })
+
+    try {
+      // Build field values from the variation's current fields
+      const fieldValues: Record<string, string> = {}
+      for (const field of variation.fields) {
+        fieldValues[field.key] = field.value
+      }
+
+      // Re-apply text to the document
+      const binderInput: SlotBinderInput = {
+        fieldValues,
+        backgroundMode: job.params.backgroundMode,
+        photoUrl: job.params.photoUrl,
+        backgroundImageUrl: undefined, // Keep existing background
+        brandLogoUrl: brandAssets?.logo?.url || currentProject?.logoUrl || null,
+        brandColors: brandAssets?.colors,
+      }
+
+      const bound = applyCopyToKonvaTemplate(variation.document, binderInput)
+
+      // Get current page and render
+      const currentPage = bound.document.design.pages.find(
+        (page) => page.id === bound.document.design.currentPageId,
+      ) ?? bound.document.design.pages[0]
+
+      if (!currentPage) {
+        throw new Error('Documento sem pagina valida.')
+      }
+
+      // Preload fonts
+      const preloadResult = await preloadKonvaDocumentFonts({
+        document: bound.document,
+        brandFonts: brandAssets?.fonts,
+      })
+      if (preloadResult.warnings.length > 0) {
+        console.warn('[GenerateArtTab] Font preload warnings:', preloadResult.warnings)
+      }
+
+      // Render page to image
+      const imageUrl = await renderPageToDataUrl(currentPage, {
+        mimeType: 'image/png',
+        quality: 0.94,
+        preferBlobDownload: true,
+      })
+
+      if (!imageUrl) {
+        throw new Error('Falha ao renderizar a variacao.')
+      }
+
+      updateVariation(job.id, variation.id, {
+        status: 'ready',
+        imageUrl,
+        document: bound.document,
+        fields: bound.fields.length > 0 ? bound.fields : variation.fields,
+        warnings: [...variation.warnings, ...bound.warnings],
+        error: undefined,
+      })
+
+      toast.success(`Variacao ${variation.index + 1} regenerada com os novos textos.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Falha ao regenerar a variacao.'
+      updateVariation(job.id, variation.id, {
+        status: 'error',
+        error: message,
+      })
+      toast.error(message)
+    }
+  }, [brandAssets, currentProject, updateVariation])
 
   const processQueuedJob = useCallback(async (jobId: string) => {
     const job = useGenerationStore.getState().jobs.find((entry) => entry.id === jobId)
@@ -1081,6 +1163,10 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                       onApprove={() => void handleApproveVariation(job, variation)}
                       onOpenInEditor={() => handleOpenVariationInEditor(job, variation)}
                       onOpenArts={handleOpenArts}
+                      onFieldsChange={(fields: ReviewField[]) => {
+                        updateVariation(job.id, variation.id, { fields })
+                      }}
+                      onRegenerate={() => void handleRegenerateVariation(job, variation)}
                     />
                   ))}
                 </div>
