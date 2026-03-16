@@ -25,9 +25,27 @@ function calculateGradientPoints(width: number, height: number, angle = 180) {
   }
 }
 
-function hexToRgbaForCanvas(hex: string, opacity: number): string {
-  if (opacity >= 1) return hex
-  const cleanHex = hex.replace('#', '')
+function hexToRgbaForCanvas(color: string, opacity: number): string {
+  if (opacity >= 1) return color
+
+  // Handle rgba() format - replace alpha
+  if (color.startsWith('rgba(')) {
+    const match = color.match(/rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*[\d.]+\s*\)/)
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`
+    }
+  }
+
+  // Handle rgb() format - add alpha
+  if (color.startsWith('rgb(')) {
+    const match = color.match(/rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)/)
+    if (match) {
+      return `rgba(${match[1]}, ${match[2]}, ${match[3]}, ${opacity})`
+    }
+  }
+
+  // Handle hex format
+  const cleanHex = color.replace('#', '')
   const r = parseInt(cleanHex.substring(0, 2), 16)
   const g = parseInt(cleanHex.substring(2, 4), 16)
   const b = parseInt(cleanHex.substring(4, 6), 16)
@@ -410,8 +428,15 @@ function drawShapeLayer(
   height: number,
   scale: number,
 ) {
-  context.fillStyle = layer.fill ?? '#F59E0B'
-  context.strokeStyle = layer.stroke ?? '#111827'
+  // Apply fill with opacity
+  const fillColor = layer.fill ?? '#F59E0B'
+  const fillOpacity = layer.fillOpacity ?? 1
+  context.fillStyle = fillOpacity < 1 ? hexToRgbaForCanvas(fillColor, fillOpacity) : fillColor
+
+  // Apply stroke with opacity
+  const strokeColor = layer.stroke ?? '#111827'
+  const strokeOpacity = layer.strokeOpacity ?? 1
+  context.strokeStyle = strokeOpacity < 1 ? hexToRgbaForCanvas(strokeColor, strokeOpacity) : strokeColor
   context.lineWidth = (layer.strokeWidth ?? 0) * scale
 
   switch (layer.shape) {

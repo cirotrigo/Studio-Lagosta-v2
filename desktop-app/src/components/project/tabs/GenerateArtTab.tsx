@@ -411,19 +411,32 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       return
     }
 
+    // Get fresh variation data from store (props may be stale after field edit)
+    const freshJob = useGenerationStore.getState().jobs.find((j) => j.id === job.id)
+    const freshVariation = freshJob?.variations.find((v) => v.id === variation.id)
+    if (!freshVariation) {
+      toast.error('Variacao nao encontrada.')
+      return
+    }
+
     updateVariation(job.id, variation.id, {
       status: 'processing',
       error: undefined,
     })
 
     try {
-      // Build field values from the variation's current fields
+      // Build field values from the FRESH variation fields
       const fieldValues: Record<string, string> = {}
-      for (const field of variation.fields) {
+      for (const field of freshVariation.fields) {
         fieldValues[field.key] = field.value
       }
 
-      // Re-apply text to the document
+      console.log('[GenerateArtTab] Regenerating with fresh fields:', {
+        variationId: variation.id,
+        fieldValues,
+      })
+
+      // Re-apply text to the document (use fresh document from store)
       const binderInput: SlotBinderInput = {
         fieldValues,
         backgroundMode: job.params.backgroundMode,
@@ -433,7 +446,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         brandColors: brandAssets?.colors,
       }
 
-      const bound = applyCopyToKonvaTemplate(variation.document, binderInput)
+      const bound = applyCopyToKonvaTemplate(freshVariation.document!, binderInput)
 
       // Get current page and render
       const currentPage = bound.document.design.pages.find(
@@ -468,12 +481,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
         status: 'ready',
         imageUrl,
         document: bound.document,
-        fields: bound.fields.length > 0 ? bound.fields : variation.fields,
-        warnings: [...variation.warnings, ...bound.warnings],
+        fields: bound.fields.length > 0 ? bound.fields : freshVariation.fields,
+        warnings: [...(freshVariation.warnings || []), ...bound.warnings],
         error: undefined,
       })
 
-      toast.success(`Variacao ${variation.index + 1} regenerada com os novos textos.`)
+      toast.success(`Variacao ${freshVariation.index + 1} regenerada com os novos textos.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha ao regenerar a variacao.'
       updateVariation(job.id, variation.id, {
