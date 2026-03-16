@@ -32,7 +32,7 @@ interface GenerateImageResult {
   prompt: string
 }
 
-const MAX_REFERENCE_IMAGES = 3
+const MAX_REFERENCE_IMAGES = 5
 
 export function GenerateImageModal({
   open,

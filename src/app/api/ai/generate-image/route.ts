@@ -263,8 +263,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // 5. Todos os modelos usam Replicate
-    const isGeminiModel = false // Deprecated: all models now use Replicate
+    // 5. Todos os modelos usam Gemini (Imagen 3)
+    const isGeminiModel = true // All models use Gemini Imagen 3 API directly
 
     console.log('[AI Generate] Creating prediction with:', {
       model: body.model,

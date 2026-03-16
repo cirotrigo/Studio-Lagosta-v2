@@ -47,8 +47,8 @@ export function AIGenerationTab({
   const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Máximo de 3 imagens de referência
-  const maxReferenceImages = 3
+  // Máximo de 5 imagens de referência
+  const maxReferenceImages = 5
 
   async function handleGenerate() {
     if (!prompt.trim()) {

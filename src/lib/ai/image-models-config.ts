@@ -8,7 +8,7 @@ export type AIImageModel = 'nano-banana-2' | 'nano-banana-pro'
 
 export type AIImageMode = 'generate' | 'edit' | 'inpaint'
 
-export type AIImageApiProvider = 'replicate'
+export type AIImageApiProvider = 'gemini' | 'replicate'
 
 export interface AIImageModelConfig {
   id: AIImageModel
@@ -59,11 +59,11 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
   'nano-banana-2': {
     id: 'nano-banana-2',
     name: 'Nano Banana 2',
-    provider: 'Replicate',
+    provider: 'Google',
     displayName: 'Nano Banana 2',
     description: 'Modelo mais recente e estável para geração de imagens com referências',
-    version: 'd05a591283da31be3eea28d5634ef9e26989b351718b6489bd308426ebd0a3e8',
-    apiProvider: 'replicate',
+    version: 'imagen-3.0-generate-001',
+    apiProvider: 'gemini',
 
     capabilities: {
       maxResolution: '1024x1024',
@@ -95,11 +95,11 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
   'nano-banana-pro': {
     id: 'nano-banana-pro',
     name: 'Nano Banana Pro',
-    provider: 'Replicate',
+    provider: 'Google',
     displayName: 'Nano Banana Pro',
     description: 'Modelo avançado com suporte a edição e resolução 4K',
-    version: '81a5073adeced23b51ae9f85cd86c88954e7f25d7894eea0c7ebbc0c24d6831a',
-    apiProvider: 'replicate',
+    version: 'imagen-3.0-generate-002',
+    apiProvider: 'gemini',
 
     capabilities: {
       maxResolution: '4096x4096',
