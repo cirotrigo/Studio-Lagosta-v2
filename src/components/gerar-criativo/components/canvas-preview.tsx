@@ -212,6 +212,35 @@ function TextLayer({
   )
 }
 
+function normalizeOpacityValue(value: unknown): number | undefined {
+  const numeric = typeof value === 'string'
+    ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
+    : value
+  if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
+  if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
+  return Math.max(0, Math.min(1, numeric))
+}
+
+function getShapeChannelOpacity(
+  layer: Layer,
+  channel: 'fill' | 'stroke',
+): number {
+  const style = layer.style as Record<string, unknown> | undefined
+  const border = (layer.style?.border ?? {}) as Record<string, unknown>
+  const keys = channel === 'fill'
+    ? ['fillOpacity', 'fillAlpha']
+    : ['strokeOpacity', 'strokeAlpha', 'borderOpacity', 'borderAlpha']
+
+  for (const key of keys) {
+    const fromStyle = normalizeOpacityValue(style?.[key])
+    if (fromStyle !== undefined) return fromStyle
+    const fromBorder = normalizeOpacityValue(border[key])
+    if (fromBorder !== undefined) return fromBorder
+  }
+
+  return 1
+}
+
 function ShapeLayer({
   layer,
   isSelected,
@@ -236,8 +265,10 @@ function ShapeLayer({
   const strokeWidth = layer.style?.strokeWidth ?? layer.style?.border?.width ?? 0
   const cornerRadius = layer.style?.border?.radius ?? 0
   const opacity = layer.style?.opacity ?? 1
-  const resolvedFill = applyOpacityToColor(fill, opacity)
-  const resolvedStroke = stroke ? applyOpacityToColor(stroke, opacity) : undefined
+  const resolvedFill = applyOpacityToColor(fill, opacity * getShapeChannelOpacity(layer, 'fill'))
+  const resolvedStroke = stroke
+    ? applyOpacityToColor(stroke, opacity * getShapeChannelOpacity(layer, 'stroke'))
+    : undefined
 
   return (
     <Rect

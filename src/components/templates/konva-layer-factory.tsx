@@ -44,10 +44,76 @@ function calculateGradientFromAngle(
  * Converte hex para rgba
  */
 function hexToRgba(hex: string, opacity: number): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
+  const normalized = hex.replace('#', '')
+
+  if (normalized.length === 8) {
+    const r = parseInt(normalized.slice(0, 2), 16)
+    const g = parseInt(normalized.slice(2, 4), 16)
+    const b = parseInt(normalized.slice(4, 6), 16)
+    const a = parseInt(normalized.slice(6, 8), 16) / 255
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
+  }
+
+  if (normalized.length === 4) {
+    const r = parseInt(`${normalized[0]}${normalized[0]}`, 16)
+    const g = parseInt(`${normalized[1]}${normalized[1]}`, 16)
+    const b = parseInt(`${normalized[2]}${normalized[2]}`, 16)
+    const a = parseInt(`${normalized[3]}${normalized[3]}`, 16) / 255
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
+  }
+
+  const expanded = normalized.length === 3
+    ? `${normalized[0]}${normalized[0]}${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}`
+    : normalized
+
+  const r = parseInt(expanded.slice(0, 2), 16)
+  const g = parseInt(expanded.slice(2, 4), 16)
+  const b = parseInt(expanded.slice(4, 6), 16)
   return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
+function applyOpacityToColor(color: string, opacity: number): string {
+  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+
+  if (color.startsWith('#') && [4, 5, 7, 9].includes(color.length)) {
+    return hexToRgba(color, normalizedOpacity)
+  }
+
+  const rgbaMatch = color.match(/rgba?\(([^)]+)\)/i)
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(',').map((part) => part.trim())
+    const [r = '0', g = '0', b = '0', a = '1'] = parts
+    const alpha = Math.max(0, Math.min(1, Number(a) * normalizedOpacity))
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+
+  return color
+}
+
+function normalizeOpacityValue(value: unknown): number | undefined {
+  const numeric = typeof value === 'string'
+    ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
+    : value
+  if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
+  if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
+  return Math.max(0, Math.min(1, numeric))
+}
+
+function getShapeChannelOpacity(layer: Layer, channel: 'fill' | 'stroke'): number {
+  const style = (layer.style ?? {}) as Record<string, unknown>
+  const border = ((layer.style?.border ?? {}) as Record<string, unknown>)
+  const keys = channel === 'fill'
+    ? ['fillOpacity', 'fillAlpha']
+    : ['strokeOpacity', 'strokeAlpha', 'borderOpacity', 'borderAlpha']
+
+  for (const key of keys) {
+    const fromStyle = normalizeOpacityValue(style[key])
+    if (fromStyle !== undefined) return fromStyle
+    const fromBorder = normalizeOpacityValue(border[key])
+    if (fromBorder !== undefined) return fromBorder
+  }
+
+  return 1
 }
 
 /**
@@ -930,8 +996,15 @@ type ShapeNodeProps = {
 
 function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, borderRadius }: ShapeNodeProps) {
   const shapeType = layer.style?.shapeType ?? 'rectangle'
-  const fill = layer.style?.fill ?? '#2563eb'
-  const stroke = layer.style?.strokeColor ?? (borderWidth > 0 ? borderColor : undefined)
+  const fill = applyOpacityToColor(
+    layer.style?.fill ?? '#2563eb',
+    getShapeChannelOpacity(layer, 'fill'),
+  )
+  const stroke = layer.style?.strokeColor
+    ? applyOpacityToColor(layer.style.strokeColor, getShapeChannelOpacity(layer, 'stroke'))
+    : borderWidth > 0
+      ? applyOpacityToColor(borderColor, getShapeChannelOpacity(layer, 'stroke'))
+      : undefined
   const strokeWidth = layer.style?.strokeWidth ?? borderWidth ?? 0
   const width = Math.max(10, layer.size?.width ?? 0)
   const height = Math.max(10, layer.size?.height ?? 0)

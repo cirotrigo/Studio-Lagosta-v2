@@ -82,12 +82,23 @@ export interface QuickGenerateResponse {
     imageAnalysis: {
       requested: boolean
       applied: boolean
+      sourceImageUrl?: string
       warnings: string[]
       confidence: number
       summary: string
       sceneType: string
+      beverageFamily: string
       dishNameCandidates: string[]
+      labelTextHints: string[]
+      productClues: string[]
       ingredientsHints: string[]
+      matchedKnowledge?: {
+        entryId: string
+        title: string
+        category: string
+        score: number
+        reason: string
+      }
     }
     warnings: string[]
     conflicts: string[]

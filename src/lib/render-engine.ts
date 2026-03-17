@@ -151,6 +151,32 @@ export class RenderEngine {
     }
   }
 
+  private static normalizeOpacityValue(value: unknown): number | undefined {
+    const numeric = typeof value === 'string'
+      ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
+      : value
+    if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
+    if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
+    return Math.max(0, Math.min(1, numeric))
+  }
+
+  private static getShapeChannelOpacity(layer: Layer, channel: 'fill' | 'stroke'): number {
+    const style = (layer.style ?? {}) as Record<string, unknown>
+    const border = ((layer.style?.border ?? {}) as Record<string, unknown>)
+    const keys = channel === 'fill'
+      ? ['fillOpacity', 'fillAlpha']
+      : ['strokeOpacity', 'strokeAlpha', 'borderOpacity', 'borderAlpha']
+
+    for (const key of keys) {
+      const fromStyle = this.normalizeOpacityValue(style[key])
+      if (fromStyle !== undefined) return fromStyle
+      const fromBorder = this.normalizeOpacityValue(border[key])
+      if (fromBorder !== undefined) return fromBorder
+    }
+
+    return 1
+  }
+
   private static applyOpacityToColor(color: string, opacity = 1): string {
     const normalizedOpacity = Math.max(0, Math.min(1, opacity))
 
@@ -658,11 +684,14 @@ export class RenderEngine {
   ): void {
     const style = layer.style ?? {}
     const shapeType = style.shapeType ?? 'rectangle'
-    const fill = this.applyOpacityToColor(style.fill ?? '#2563eb')
+    const fill = this.applyOpacityToColor(
+      style.fill ?? '#2563eb',
+      this.getShapeChannelOpacity(layer, 'fill'),
+    )
     const stroke = style.strokeColor
-      ? this.applyOpacityToColor(style.strokeColor)
+      ? this.applyOpacityToColor(style.strokeColor, this.getShapeChannelOpacity(layer, 'stroke'))
       : style.border?.color
-        ? this.applyOpacityToColor(style.border.color)
+        ? this.applyOpacityToColor(style.border.color, this.getShapeChannelOpacity(layer, 'stroke'))
         : undefined
     const strokeWidth = style.strokeWidth ?? style.border?.width ?? 0
     const cornerRadius = style.border?.radius ?? 0

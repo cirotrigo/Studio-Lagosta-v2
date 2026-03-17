@@ -23,7 +23,10 @@ import { ImageGalleryTab } from '../components/image-gallery-tab'
 import { ImageUploadTab } from '../components/image-upload-tab'
 import { GoogleDriveTab } from '@/components/ai-creative-generator/tabs/google-drive-tab'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
-import { useGerarCriativoQuickGenerate } from '@/hooks/use-gerar-criativo-quick-generate'
+import {
+  useGerarCriativoQuickGenerate,
+  type QuickGenerateResponse,
+} from '@/hooks/use-gerar-criativo-quick-generate'
 import { toast } from 'sonner'
 
 export function ImageSelectionStep() {
@@ -46,6 +49,7 @@ export function ImageSelectionStep() {
   const [analyzeImageForContext, setAnalyzeImageForContext] = useState(true)
   const [tone, setTone] = useState<'casual' | 'profissional' | 'urgente' | 'inspirador' | 'none'>('none')
   const [objective, setObjective] = useState<'promocao' | 'institucional' | 'agenda' | 'oferta' | 'none'>('none')
+  const [lastQuickGenerateResult, setLastQuickGenerateResult] = useState<QuickGenerateResponse | null>(null)
   const quickGenerate = useGerarCriativoQuickGenerate()
 
   const dynamicImageLayers = layers.filter(
@@ -105,6 +109,7 @@ export function ImageSelectionStep() {
         tone: tone === 'none' ? null : tone,
         objective: objective === 'none' ? null : objective,
       })
+      setLastQuickGenerateResult(result)
 
       if (Object.keys(result.textValues).length > 0) {
         setTextValuesBulk(result.textValues)
@@ -251,6 +256,40 @@ export function ImageSelectionStep() {
               </Select>
             </div>
           </div>
+
+          {lastQuickGenerateResult && 'variacoes' in lastQuickGenerateResult.copyResult && (
+            <details className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm">
+              <summary className="cursor-pointer font-medium">Ver dados usados</summary>
+              <div className="mt-3 space-y-3 text-xs text-muted-foreground">
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Prompt</p>
+                  <p>{copyPrompt || '-'}</p>
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Analise da imagem</p>
+                  <p>Ativada: {lastQuickGenerateResult.copyResult.imageAnalysis.requested ? 'sim' : 'nao'}</p>
+                  <p>Aplicada: {lastQuickGenerateResult.copyResult.imageAnalysis.applied ? 'sim' : 'nao'}</p>
+                  <p>Imagem usada: {lastQuickGenerateResult.copyResult.imageAnalysis.sourceImageUrl || 'nenhuma'}</p>
+                  <p>Descricao da imagem: {lastQuickGenerateResult.copyResult.imageAnalysis.summary || 'sem descricao'}</p>
+                  <p>Cena: {lastQuickGenerateResult.copyResult.imageAnalysis.sceneType || 'nao identificada'}</p>
+                  <p>Familia da bebida/produto: {lastQuickGenerateResult.copyResult.imageAnalysis.beverageFamily || 'nao identificada'}</p>
+                  <p>Rotulo visivel: {lastQuickGenerateResult.copyResult.imageAnalysis.labelTextHints.join(', ') || 'nenhum'}</p>
+                  <p>Pistas do produto: {lastQuickGenerateResult.copyResult.imageAnalysis.productClues.join(', ') || 'nenhuma'}</p>
+                  <p>Confianca: {lastQuickGenerateResult.copyResult.imageAnalysis.confidence}</p>
+                  {lastQuickGenerateResult.copyResult.imageAnalysis.warnings.length > 0 && (
+                    <p>Avisos: {lastQuickGenerateResult.copyResult.imageAnalysis.warnings.join(' | ')}</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <p className="font-medium text-foreground">Base de conhecimento</p>
+                  <p>Aplicada: {lastQuickGenerateResult.copyResult.knowledge.applied ? 'sim' : 'nao'}</p>
+                  <p>Entradas usadas: {lastQuickGenerateResult.copyResult.knowledge.hits.length}</p>
+                </div>
+              </div>
+            </details>
+          )}
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="text-xs text-muted-foreground">

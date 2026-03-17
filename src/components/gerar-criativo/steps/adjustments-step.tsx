@@ -40,12 +40,45 @@ function colorHasTransparency(color?: string): boolean {
   return false
 }
 
+function normalizeOpacityValue(value: unknown): number | undefined {
+  const numeric = typeof value === 'string'
+    ? (value.trim().endsWith('%') ? Number.parseFloat(value) / 100 : Number(value))
+    : value
+  if (typeof numeric !== 'number' || Number.isNaN(numeric)) return undefined
+  if (numeric > 1 && numeric <= 100) return Math.max(0, Math.min(1, numeric / 100))
+  return Math.max(0, Math.min(1, numeric))
+}
+
+function layerUsesChannelOpacity(layer: Layer): boolean {
+  const style = layer.style as Record<string, unknown> | undefined
+  const border = (layer.style?.border ?? {}) as Record<string, unknown>
+  const candidates = [
+    style?.fillOpacity,
+    style?.fillAlpha,
+    style?.strokeOpacity,
+    style?.strokeAlpha,
+    style?.borderOpacity,
+    style?.borderAlpha,
+    border.opacity,
+    border.alpha,
+  ]
+
+  return candidates.some((value) => {
+    const normalized = normalizeOpacityValue(value)
+    return normalized !== undefined && normalized < 1
+  })
+}
+
 function needsLosslessExport(layers: Layer[]): boolean {
   return layers.some((layer) => {
     if (layer.visible === false) return false
 
     const opacity = layer.style?.opacity
     if (typeof opacity === 'number' && opacity < 1) {
+      return true
+    }
+
+    if (layerUsesChannelOpacity(layer)) {
       return true
     }
 

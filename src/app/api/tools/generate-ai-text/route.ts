@@ -854,6 +854,25 @@ function inferSemanticTopic(prompt: string, knowledgeContext?: string): string {
   return ''
 }
 
+function buildImageAnalysisContextSnippet(
+  imageAnalysis?: GenerateAiTextImageAnalysisPayload | null,
+): string {
+  if (!imageAnalysis?.applied) return ''
+
+  return dedupeStrings(
+    [
+      imageAnalysis.summary,
+      imageAnalysis.sceneType,
+      imageAnalysis.beverageFamily,
+      ...imageAnalysis.labelTextHints,
+      ...imageAnalysis.productClues,
+      ...imageAnalysis.dishNameCandidates,
+      ...imageAnalysis.ingredientsHints,
+    ].filter(Boolean),
+    12,
+  ).join('\n')
+}
+
 function extractHeadlineLead(value: string): string {
   const cleaned = stripTemplateBreaks(value)
   if (!cleaned) return ''
@@ -951,6 +970,7 @@ function fillMissingFieldsForTemplate(
   options: {
     prompt: string
     knowledgeContext?: string
+    imageAnalysisContext?: string
     objective?: string | null
   },
 ): { variation: Variation; filledFields: VariationFieldKey[] } {
@@ -964,7 +984,14 @@ function fillMissingFieldsForTemplate(
   }
 
   if (availableFields.has('description') && !next.description.trim()) {
-    next.description = limitText(options.prompt.replace(/\s+/g, ' ').trim(), 180)
+    next.description = limitText(
+      [options.imageAnalysisContext, options.prompt]
+        .filter(Boolean)
+        .join(' ')
+        .replace(/\s+/g, ' ')
+        .trim(),
+      180,
+    )
     if (next.description) {
       filledFields.push('description')
     }
@@ -992,6 +1019,7 @@ function fillMissingFieldsForTemplate(
     const practicalCandidates = extractPracticalFooterCandidates(
       options.prompt,
       options.knowledgeContext || '',
+      options.imageAnalysisContext || '',
       next.description,
     )
     const semanticTopic = buildFooterTopicCandidate(next, options.prompt, options.knowledgeContext)
@@ -1153,6 +1181,7 @@ async function fitVariationsToTemplateContext(
   options?: {
     prompt: string
     knowledgeContext?: string
+    imageAnalysisContext?: string
     objective?: string | null
   },
 ): Promise<{ variations: Variation[]; warnings: string[] }> {
@@ -1773,6 +1802,9 @@ function buildUserPrompt(
     '11. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
     '12. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
     '12b. Se houver texto legivel de rotulo ou pistas claras do produto, use isso como apoio contextual sem transformar inferencia em fato nao confirmado.',
+    input.analyzeImageForContext
+      ? '12c. Como a analise visual foi solicitada, trate a descricao da imagem, familia da bebida/produto, texto visivel de rotulo e pistas do produto como insumos prioritarios para contextualizar a copy.'
+      : '',
     '13. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
     '14. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
     '15. Se um campo for pequeno, prefira menos palavras e mais clareza, nunca textos no limite visual.',
@@ -1910,6 +1942,7 @@ export async function generateAiTextPayload(
     visualWarnings,
     body.prompt,
   )
+  const imageAnalysisContext = buildImageAnalysisContextSnippet(imageAnalysisPayload)
   const knowledgePayload: GenerateAiTextKnowledgePayload = {
     applied: knowledgeContext.hits.length > 0,
     context: knowledgeContext.context,
@@ -1967,6 +2000,7 @@ export async function generateAiTextPayload(
     const constrained = await fitVariationsToTemplateContext(variacoes, body.templateContext, {
       prompt: body.prompt,
       knowledgeContext: knowledgeContext.context,
+      imageAnalysisContext,
       objective: body.objective ?? null,
     })
 
@@ -1987,6 +2021,7 @@ export async function generateAiTextPayload(
     const constrained = await fitVariationsToTemplateContext(variacoes, body.templateContext, {
       prompt: body.prompt,
       knowledgeContext: knowledgeContext.context,
+      imageAnalysisContext,
       objective: body.objective ?? null,
     })
     return {
