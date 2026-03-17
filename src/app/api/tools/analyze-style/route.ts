@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import { z } from 'zod'
-import OpenAI from 'openai'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60 // 1 minute for vision analysis
@@ -22,6 +21,19 @@ interface StyleAnalysisResponse {
     mood: string
   }
   recommendations: string
+}
+
+interface OpenAIChatCompletionResponse {
+  choices?: Array<{
+    message?: {
+      content?: string | Array<{ type?: string; text?: string }>
+    }
+  }>
+  error?: {
+    message?: string
+    type?: string
+    code?: string
+  }
 }
 
 const VISION_SYSTEM_PROMPT = `Você é um especialista em design gráfico e identidade visual, especializado em analisar artes para restaurantes e estabelecimentos gastronômicos.
@@ -168,17 +180,13 @@ export async function POST(request: Request) {
     }
     console.log(`[analyze-style] ${validUrls.length}/${body.imageUrls.length} URLs validated as accessible`)
 
-    const openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    })
-
     // Build content array with validated images
-    const content: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [
+    const content = [
       {
         type: 'text',
         text: `Analise as seguintes ${validUrls.length} imagens de referência para o projeto "${project.name}" e extraia o estilo visual:`,
       },
-      ...validUrls.map((url): OpenAI.Chat.Completions.ChatCompletionContentPartImage => ({
+      ...validUrls.map((url) => ({
         type: 'image_url',
         image_url: {
           url,
@@ -187,23 +195,59 @@ export async function POST(request: Request) {
       })),
     ]
 
-    const response = await openaiClient.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: VISION_SYSTEM_PROMPT,
-        },
-        {
-          role: 'user',
-          content,
-        },
-      ],
-      max_tokens: 1500,
-      temperature: 0.3,
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          {
+            role: 'system',
+            content: VISION_SYSTEM_PROMPT,
+          },
+          {
+            role: 'user',
+            content,
+          },
+        ],
+        max_tokens: 1500,
+        temperature: 0.3,
+      }),
     })
 
-    const responseText = response.choices[0]?.message?.content
+    const rawResponse = (await response.json()) as OpenAIChatCompletionResponse
+
+    if (!response.ok) {
+      const message = rawResponse.error?.message || 'Erro ao comunicar com OpenAI.'
+      if (response.status === 400) {
+        return NextResponse.json(
+          { error: `Não foi possível analisar as imagens: ${message}` },
+          { status: 400 }
+        )
+      }
+      if (response.status === 429) {
+        return NextResponse.json(
+          { error: 'Limite de requisições atingido. Tente novamente em alguns minutos.' },
+          { status: 429 }
+        )
+      }
+
+      throw new Error(message)
+    }
+
+    const contentValue = rawResponse.choices?.[0]?.message?.content
+    const responseText = typeof contentValue === 'string'
+      ? contentValue
+      : Array.isArray(contentValue)
+        ? contentValue
+            .map((part) => part.text || '')
+            .join(' ')
+            .trim()
+        : ''
+
     if (!responseText) {
       throw new Error('GPT-4o Vision não retornou resposta')
     }
@@ -246,28 +290,6 @@ export async function POST(request: Request) {
     return NextResponse.json(analysisResult)
   } catch (error) {
     console.error('[analyze-style] Error:', error)
-
-    // Handle specific OpenAI errors
-    if (error instanceof OpenAI.APIError) {
-      console.error('[analyze-style] OpenAI API error details:', {
-        status: error.status,
-        message: error.message,
-        code: error.code,
-        type: error.type,
-      })
-      if (error.status === 400) {
-        return NextResponse.json(
-          { error: `Não foi possível analisar as imagens: ${error.message}` },
-          { status: 400 }
-        )
-      }
-      if (error.status === 429) {
-        return NextResponse.json(
-          { error: 'Limite de requisições atingido. Tente novamente em alguns minutos.' },
-          { status: 429 }
-        )
-      }
-    }
 
     return NextResponse.json(
       { error: 'Erro ao analisar estilo. Tente novamente.' },

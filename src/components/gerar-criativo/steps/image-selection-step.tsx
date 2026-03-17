@@ -7,26 +7,57 @@ import { useStepper } from '../stepper'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
+import { Switch } from '@/components/ui/switch'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ChevronLeft, ChevronRight, X, Sparkles, Upload, FolderOpen, ImageIcon } from 'lucide-react'
+import { ChevronLeft, ChevronRight, X, Sparkles, Upload, FolderOpen, ImageIcon, Loader2 } from 'lucide-react'
 import { GenerateImageModal } from '../components/generate-image-modal'
 import { ImageGalleryTab } from '../components/image-gallery-tab'
 import { ImageUploadTab } from '../components/image-upload-tab'
 import { GoogleDriveTab } from '@/components/ai-creative-generator/tabs/google-drive-tab'
 import type { ImageSource } from '@/lib/ai-creative-generator/layout-types'
+import { useGerarCriativoQuickGenerate } from '@/hooks/use-gerar-criativo-quick-generate'
+import { toast } from 'sonner'
 
 export function ImageSelectionStep() {
-  const { selectedProjectId, layers, imageValues, setImageValue } = useGerarCriativo()
+  const {
+    selectedProjectId,
+    selectedModelPageId,
+    layers,
+    imageValues,
+    textValues,
+    setImageValue,
+    setImageValuesBulk,
+    setTextValuesBulk,
+  } = useGerarCriativo()
   const stepper = useStepper()
   const queryClient = useQueryClient()
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [activeLayerId, setActiveLayerId] = useState<string | null>(null)
+  const [copyPrompt, setCopyPrompt] = useState('')
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(true)
+  const [analyzeImageForContext, setAnalyzeImageForContext] = useState(true)
+  const [tone, setTone] = useState<'casual' | 'profissional' | 'urgente' | 'inspirador' | 'none'>('none')
+  const [objective, setObjective] = useState<'promocao' | 'institucional' | 'agenda' | 'oferta' | 'none'>('none')
+  const quickGenerate = useGerarCriativoQuickGenerate()
 
   const dynamicImageLayers = layers.filter(
     (layer) => layer.type === 'image' && layer.isDynamic === true
   )
+  const dynamicTextLayers = layers.filter(
+    (layer) => (layer.type === 'text' || layer.type === 'rich-text') && layer.isDynamic === true
+  )
 
   const allLayersHaveImages = dynamicImageLayers.every((layer) => imageValues[layer.id])
+  const firstSelectedImageUrl = Object.values(imageValues)[0]?.url
+  const hasPrefilledTexts = dynamicTextLayers.some((layer) => Boolean(textValues[layer.id]?.trim()))
 
   const handleGenerateComplete = async (aiImage: { id: string; fileUrl: string }) => {
     await queryClient.invalidateQueries({
@@ -49,6 +80,81 @@ export function ImageSelectionStep() {
     setImageValue(layerId, imageSource)
   }
 
+  const handleQuickGenerateCreative = async () => {
+    if (!selectedModelPageId) {
+      toast.error('Selecione uma pagina modelo antes de gerar a arte')
+      return
+    }
+
+    if (!copyPrompt.trim()) {
+      toast.error('Digite um brief para gerar a arte')
+      return
+    }
+
+    if (analyzeImageForContext && !firstSelectedImageUrl) {
+      toast.info('Nenhuma imagem selecionada ainda. A copy sera gerada sem analise visual contextual.')
+    }
+
+    try {
+      const result = await quickGenerate.mutateAsync({
+        modelPageId: selectedModelPageId,
+        prompt: copyPrompt.trim(),
+        useKnowledgeBase,
+        analyzeImageForContext: analyzeImageForContext && Boolean(firstSelectedImageUrl),
+        photoUrl: analyzeImageForContext ? firstSelectedImageUrl : undefined,
+        tone: tone === 'none' ? null : tone,
+        objective: objective === 'none' ? null : objective,
+      })
+
+      if (Object.keys(result.textValues).length > 0) {
+        setTextValuesBulk(result.textValues)
+      }
+
+      if (Object.keys(result.imageValues).length > 0) {
+        setImageValuesBulk(result.imageValues)
+      }
+
+      if (result.generatedImage && selectedProjectId) {
+        await queryClient.invalidateQueries({
+          queryKey: ['project-images', selectedProjectId],
+        })
+      }
+
+      const mergedImageValues = {
+        ...imageValues,
+        ...result.imageValues,
+      }
+      const quickGenerateWarnings = [...result.warnings]
+      const copyWarnings = 'warnings' in result.copyResult ? result.copyResult.warnings : []
+      const warningMessages = [...quickGenerateWarnings, ...copyWarnings]
+
+      const allImagesReadyAfterQuickGenerate = dynamicImageLayers.every(
+        (layer) => Boolean(mergedImageValues[layer.id]),
+      )
+
+      if (warningMessages.length > 0) {
+        toast.success('Arte preenchida com avisos. Revise em Ajustes.')
+        if (allImagesReadyAfterQuickGenerate) {
+          stepper.next()
+        }
+        return
+      }
+
+      toast.success(
+        result.generatedImage
+          ? 'Arte rapida preenchida com copy e imagem.'
+          : 'Copy preenchida automaticamente no template.',
+      )
+
+      if (allImagesReadyAfterQuickGenerate) {
+        stepper.next()
+      }
+    } catch (error) {
+      console.error('[ImageSelectionStep] Quick generate error:', error)
+      toast.error(error instanceof Error ? error.message : 'Erro ao gerar arte rapida')
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between gap-2">
@@ -68,6 +174,109 @@ export function ImageSelectionStep() {
           <ChevronRight className="w-4 h-4 ml-1" />
         </Button>
       </div>
+
+      {dynamicTextLayers.length > 0 && (
+        <Card className="p-4 space-y-4">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold">Preencher textos com IA</h3>
+            <p className="text-sm text-muted-foreground">
+              Gere uma primeira versao da copy e uma imagem IA para o template. Depois voce revisa tudo em Ajustes.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="quick-copy-prompt">Brief da arte</Label>
+            <Textarea
+              id="quick-copy-prompt"
+              value={copyPrompt}
+              onChange={(event) => setCopyPrompt(event.target.value)}
+              placeholder="Ex: destaque o hamburguer artesanal com cheddar e uma chamada para pedir hoje"
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-1 pr-4">
+                <p className="text-sm font-medium">Usar base de conhecimento</p>
+                <p className="text-xs text-muted-foreground">
+                  Busca contexto do projeto antes de escrever a copy.
+                </p>
+              </div>
+              <Switch checked={useKnowledgeBase} onCheckedChange={setUseKnowledgeBase} />
+            </div>
+
+            <div className="flex items-center justify-between rounded-lg border p-3">
+              <div className="space-y-1 pr-4">
+                <p className="text-sm font-medium">Analisar imagem para contexto</p>
+                <p className="text-xs text-muted-foreground">
+                  Usa a primeira imagem selecionada para enriquecer a copy quando disponivel.
+                </p>
+              </div>
+              <Switch checked={analyzeImageForContext} onCheckedChange={setAnalyzeImageForContext} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>Tom</Label>
+              <Select value={tone} onValueChange={(value) => setTone(value as typeof tone)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar tom" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem preferencia</SelectItem>
+                  <SelectItem value="casual">Casual</SelectItem>
+                  <SelectItem value="profissional">Profissional</SelectItem>
+                  <SelectItem value="urgente">Urgente</SelectItem>
+                  <SelectItem value="inspirador">Inspirador</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Objetivo</Label>
+              <Select value={objective} onValueChange={(value) => setObjective(value as typeof objective)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecionar objetivo" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Sem preferencia</SelectItem>
+                  <SelectItem value="promocao">Promocao</SelectItem>
+                  <SelectItem value="institucional">Institucional</SelectItem>
+                  <SelectItem value="agenda">Agenda</SelectItem>
+                  <SelectItem value="oferta">Oferta</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="text-xs text-muted-foreground">
+              {hasPrefilledTexts
+                ? 'Ha textos preenchidos no template. Uma nova geracao ira sobrescrever os campos mapeados.'
+                : `A IA vai preencher ${dynamicTextLayers.length} campo(s) de texto dinamico(s).`}
+            </div>
+            <Button
+              onClick={handleQuickGenerateCreative}
+              disabled={quickGenerate.isPending || !copyPrompt.trim()}
+            >
+              {quickGenerate.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Gerando arte...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Gerar arte rapida
+                </>
+              )}
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <div className="space-y-6">
         {dynamicImageLayers.map((layer) => (

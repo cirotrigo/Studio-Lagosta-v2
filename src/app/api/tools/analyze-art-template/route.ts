@@ -5,7 +5,6 @@ import { generateText } from 'ai'
 import { openai } from '@ai-sdk/openai'
 import sharp from 'sharp'
 import { normalizeTemplate, TemplateValidationError } from '@/lib/template-normalize'
-import stableStringify from 'json-stable-stringify'
 import { createHash } from 'crypto'
 
 export const runtime = 'nodejs'
@@ -152,6 +151,22 @@ function calculateOverlap(
   return minWidth > 0 ? (overlapWidth / minWidth) * 100 : 0
 }
 
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value)
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerialize(item)).join(',')}]`
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, nestedValue]) => `${JSON.stringify(key)}:${stableSerialize(nestedValue)}`)
+
+  return `{${entries.join(',')}}`
+}
+
 // --- Main Handler ---
 
 export async function POST(request: Request) {
@@ -236,7 +251,7 @@ export async function POST(request: Request) {
 
     // Generate fingerprint (C13) — stable stringify for canonical key ordering
     const fingerprint = createHash('sha256')
-      .update(stableStringify(templateData))
+      .update(stableSerialize(templateData))
       .digest('hex')
       .substring(0, 8)
 

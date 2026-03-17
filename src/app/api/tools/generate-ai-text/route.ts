@@ -35,10 +35,13 @@ const templatePurposeSchema = z.enum(['promotional', 'informational', 'menu', 'e
 
 const extractedSlotSchema = z.object({
   fieldKey: z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']),
+  layerId: z.string().optional(),
   layerName: z.string(),
   currentText: z.string(),
   fontSize: z.number(),
   maxLines: z.number(),
+  maxWords: z.number().optional(),
+  maxCharactersPerLine: z.number().optional(),
   priority: slotPrioritySchema,
   textLength: z.number(),
   wordCount: z.number(),
@@ -73,6 +76,7 @@ const requestSchema = z.object({
   format: z.enum(['STORY', 'FEED_PORTRAIT', 'SQUARE']).default('STORY'),
   variations: z.union([z.literal(1), z.literal(2), z.literal(4)]).default(1),
   dryRun: z.boolean().default(false),
+  useKnowledgeBase: z.boolean().default(true),
   templateIds: z.array(z.string().min(1)).max(3).optional(),
   includeLogo: z.boolean().default(true),
   usePhoto: z.boolean().default(true),
@@ -94,6 +98,15 @@ const requestSchema = z.object({
     })
   }
 })
+
+export type GenerateAiTextRequest = z.infer<typeof requestSchema>
+export type GenerateAiTextResponse = {
+  variacoes: Variation[]
+  knowledge: GenerateAiTextKnowledgePayload
+  imageAnalysis: GenerateAiTextImageAnalysisPayload
+  warnings: string[]
+  conflicts: string[]
+}
 
 const variationSchema = z.object({
   pre_title: z.string().max(80).default(''),
@@ -119,6 +132,7 @@ const imageContextSchema = z.object({
 
 type Variation = z.infer<typeof variationSchema>
 type ImageContextModelOutput = z.infer<typeof imageContextSchema>
+type VariationFieldKey = keyof Variation
 
 interface TemplateSummary {
   id: string
@@ -443,7 +457,7 @@ async function analyzeImageContext(
   const { object } = await generateObject({
     model: google(IMAGE_ANALYSIS_MODEL),
     temperature: 0.2,
-    maxTokens: 500,
+    maxOutputTokens: 500,
     schema: imageContextSchema,
     messages: [
       {
@@ -452,7 +466,6 @@ async function analyzeImageContext(
           {
             type: 'image',
             image: image.buffer,
-            mimeType: image.mimeType,
           },
           {
             type: 'text',
@@ -605,6 +618,602 @@ function normalizeVariation(raw: Partial<Variation> | undefined): Variation {
     badge: limitText(raw?.badge, 90),
     footer_info_1: limitText(raw?.footer_info_1, 120),
     footer_info_2: limitText(raw?.footer_info_2, 120),
+  }
+}
+
+function countWordsInText(value: string): number {
+  return value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean).length
+}
+
+function splitTemplateLines(value: string): string[] {
+  const normalized = value
+    .replace(/<br\s*\/?>/gi, '<br>')
+    .replace(/\s*<br>\s*/g, '<br>')
+    .trim()
+
+  if (!normalized) return []
+
+  return normalized
+    .split('<br>')
+    .map((line) => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function clampLineToLength(line: string, maxCharactersPerLine: number): string {
+  if (line.length <= maxCharactersPerLine) return line
+
+  const sliced = line.slice(0, maxCharactersPerLine + 1)
+  const lastSpace = sliced.lastIndexOf(' ')
+  if (lastSpace >= Math.max(3, Math.floor(maxCharactersPerLine * 0.45))) {
+    return sliced.slice(0, lastSpace).trim()
+  }
+
+  return sliced.slice(0, maxCharactersPerLine).trim()
+}
+
+function fitWordsIntoLines(
+  words: string[],
+  maxLines: number,
+  maxCharactersPerLine?: number,
+): string[] {
+  if (words.length === 0) return []
+
+  if (!maxCharactersPerLine || maxCharactersPerLine <= 0) {
+    return [words.join(' ')]
+  }
+
+  const lines: string[] = []
+  let currentLine = ''
+
+  for (const word of words) {
+    const candidate = currentLine ? `${currentLine} ${word}` : word
+    if (candidate.length <= maxCharactersPerLine) {
+      currentLine = candidate
+      continue
+    }
+
+    if (currentLine) {
+      lines.push(currentLine)
+      currentLine = ''
+    }
+
+    const fittedWord = clampLineToLength(word, maxCharactersPerLine)
+    if (fittedWord.length > 0) {
+      lines.push(fittedWord)
+    }
+
+    if (lines.length >= maxLines) {
+      return lines.slice(0, maxLines)
+    }
+  }
+
+  if (currentLine) {
+    lines.push(currentLine)
+  }
+
+  return lines.slice(0, maxLines)
+}
+
+function hardFitTextToSlot(
+  value: string,
+  slot: z.infer<typeof extractedSlotSchema>,
+): string {
+  const compact = value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!compact) return ''
+
+  const words = compact
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+
+  const limitedWords = typeof slot.maxWords === 'number'
+    ? words.slice(0, slot.maxWords)
+    : words
+
+  let lines = fitWordsIntoLines(
+    limitedWords,
+    Math.max(1, slot.maxLines),
+    slot.maxCharactersPerLine,
+  )
+
+  if (lines.length === 0) return ''
+
+  if (typeof slot.maxCharactersPerLine === 'number') {
+    lines = lines.map((line) => clampLineToLength(line, slot.maxCharactersPerLine!))
+  }
+
+  if (lines.length > slot.maxLines) {
+    lines = lines.slice(0, slot.maxLines)
+  }
+
+  const joined = lines.join('<br>')
+  return slot.fieldKey === 'title'
+    ? normalizeTitle(joined)
+    : joined.replace(/<br>/g, ' ').trim()
+}
+
+const DEFAULT_CTA_BY_OBJECTIVE: Record<string, string> = {
+  promocao: 'APROVEITE HOJE',
+  institucional: 'SAIBA MAIS',
+  agenda: 'RESERVE JA',
+  oferta: 'PECA AGORA',
+}
+
+const DEFAULT_PRE_TITLE_BY_OBJECTIVE: Record<string, string> = {
+  promocao: 'OFERTA ESPECIAL',
+  institucional: 'SEU DESTAQUE',
+  agenda: 'PROGRAME-SE',
+  oferta: 'DESTAQUE DO DIA',
+}
+
+const DEFAULT_BADGE_BY_OBJECTIVE: Record<string, string> = {
+  promocao: 'HOJE',
+  institucional: 'OFICIAL',
+  agenda: 'AGENDA',
+  oferta: 'IMPERDIVEL',
+}
+
+const FOOTER_SIGNAL_PATTERN = /(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo|todos os dias|funcionamento|aberto|das\s+\d{1,2}|às\s+\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:as|às|-)\s*\d{1,2}(?::\d{2})?|rua|r\.|avenida|av\.|alameda|travessa|praca|praça|bairro|centro|shopping|whats|whatsapp|telefone|fone|delivery|retirada|reserve|reserva|pedido|direct|link na bio|ifood)/i
+const WEEKDAY_PATTERN = /(segunda|terca|terça|quarta|quinta|sexta|sabado|sábado|domingo|seg a sex|seg-sex|todos os dias|hoje|amanha|amanhã)/i
+const HOURS_PATTERN = /(das\s+\d{1,2}|às\s+\d{1,2}|\d{1,2}(?::\d{2})?\s*(?:as|às|-)\s*\d{1,2}(?::\d{2})?|funcionamento|aberto até|aberto ate)/i
+const ADDRESS_PATTERN = /(rua|r\.|avenida|av\.|alameda|travessa|praca|praça|bairro|centro|shopping)/i
+const ACTION_PATTERN = /(whats|whatsapp|telefone|fone|delivery|retirada|reserve|reserva|pedido|direct|link na bio|ifood|peca|peça|chame)/i
+
+const SEMANTIC_TOPIC_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
+  { pattern: /almoco executivo|almoço executivo/i, label: 'ALMOCO EXECUTIVO' },
+  { pattern: /happy hour/i, label: 'HAPPY HOUR' },
+  { pattern: /jantar/i, label: 'JANTAR' },
+  { pattern: /almoco|almoço/i, label: 'ALMOCO' },
+  { pattern: /cafe da manha|café da manhã/i, label: 'CAFE DA MANHA' },
+  { pattern: /brunch/i, label: 'BRUNCH' },
+  { pattern: /comunicado|aviso/i, label: 'COMUNICADO' },
+  { pattern: /menu|cardapio|cardápio/i, label: 'MENU' },
+  { pattern: /delivery/i, label: 'DELIVERY' },
+  { pattern: /rodizio|rodízio/i, label: 'RODIZIO' },
+  { pattern: /promocao|promoção|oferta|desconto|combo/i, label: 'OFERTA' },
+  { pattern: /evento|agenda/i, label: 'EVENTO' },
+]
+
+function stripTemplateBreaks(value: string): string {
+  return value
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function buildDefaultCta(objective?: string | null): string {
+  return objective && DEFAULT_CTA_BY_OBJECTIVE[objective]
+    ? DEFAULT_CTA_BY_OBJECTIVE[objective]
+    : 'SAIBA MAIS'
+}
+
+function buildDefaultPreTitle(objective?: string | null): string {
+  return objective && DEFAULT_PRE_TITLE_BY_OBJECTIVE[objective]
+    ? DEFAULT_PRE_TITLE_BY_OBJECTIVE[objective]
+    : 'DESTAQUE'
+}
+
+function buildDefaultBadge(objective?: string | null): string {
+  return objective && DEFAULT_BADGE_BY_OBJECTIVE[objective]
+    ? DEFAULT_BADGE_BY_OBJECTIVE[objective]
+    : 'AGORA'
+}
+
+function splitCandidateSegments(text: string): string[] {
+  return text
+    .split(/\n|\|/)
+    .flatMap((segment) => segment.split(/(?<=[.!?;])/))
+    .map((segment) => segment.replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+}
+
+function inferSemanticTopic(prompt: string, knowledgeContext?: string): string {
+  const haystack = `${prompt}\n${knowledgeContext || ''}`
+  const normalized = haystack.replace(/\s+/g, ' ').trim()
+
+  for (const candidate of SEMANTIC_TOPIC_PATTERNS) {
+    if (candidate.pattern.test(normalized)) {
+      return candidate.label
+    }
+  }
+
+  return ''
+}
+
+function extractHeadlineLead(value: string): string {
+  const cleaned = stripTemplateBreaks(value)
+  if (!cleaned) return ''
+  const words = cleaned.split(/\s+/).filter(Boolean)
+  return limitText(words.slice(0, 5).join(' '), 60)
+}
+
+function classifyFooterCandidates(candidates: string[]): {
+  dayOrTopic: string[]
+  hours: string[]
+  address: string[]
+  action: string[]
+  generic: string[]
+} {
+  const dayOrTopic: string[] = []
+  const hours: string[] = []
+  const address: string[] = []
+  const action: string[] = []
+  const generic: string[] = []
+
+  for (const candidate of candidates) {
+    if (WEEKDAY_PATTERN.test(candidate)) {
+      dayOrTopic.push(candidate)
+      continue
+    }
+    if (HOURS_PATTERN.test(candidate)) {
+      hours.push(candidate)
+      continue
+    }
+    if (ADDRESS_PATTERN.test(candidate)) {
+      address.push(candidate)
+      continue
+    }
+    if (ACTION_PATTERN.test(candidate)) {
+      action.push(candidate)
+      continue
+    }
+    generic.push(candidate)
+  }
+
+  return {
+    dayOrTopic: dedupeStrings(dayOrTopic, 6),
+    hours: dedupeStrings(hours, 6),
+    address: dedupeStrings(address, 6),
+    action: dedupeStrings(action, 6),
+    generic: dedupeStrings(generic, 6),
+  }
+}
+
+function extractPracticalFooterCandidates(...sources: string[]): string[] {
+  const candidates = sources
+    .flatMap((source) => splitCandidateSegments(source))
+    .filter((segment) => FOOTER_SIGNAL_PATTERN.test(segment))
+    .map((segment) => limitText(segment, 120))
+
+  return dedupeStrings(candidates, 8)
+}
+
+function buildDescriptionSupportCandidate(variation: Variation, prompt: string): string {
+  const description = stripTemplateBreaks(variation.description)
+  if (description) {
+    const words = description.split(/\s+/).filter(Boolean)
+    return limitText(words.slice(0, 8).join(' ') || description, 120)
+  }
+
+  const title = stripTemplateBreaks(variation.title)
+  if (title) {
+    return limitText(title, 120)
+  }
+
+  return limitText(prompt.replace(/\s+/g, ' ').trim(), 120)
+}
+
+function buildFooterTopicCandidate(
+  variation: Variation,
+  prompt: string,
+  knowledgeContext?: string,
+): string {
+  const semanticTopic = inferSemanticTopic(prompt, knowledgeContext)
+  if (semanticTopic) {
+    return semanticTopic
+  }
+
+  const descriptionLead = extractHeadlineLead(variation.description)
+  if (descriptionLead) {
+    return descriptionLead
+  }
+
+  return extractHeadlineLead(variation.title)
+}
+
+function fillMissingFieldsForTemplate(
+  variation: Variation,
+  context: TemplateContext,
+  options: {
+    prompt: string
+    knowledgeContext?: string
+    objective?: string | null
+  },
+): { variation: Variation; filledFields: VariationFieldKey[] } {
+  const availableFields = new Set(context.slots.map((slot) => slot.fieldKey as VariationFieldKey))
+  const filledFields: VariationFieldKey[] = []
+  const next = normalizeVariation(variation)
+
+  if (availableFields.has('title') && !next.title.trim()) {
+    next.title = buildFallbackVariation(options.prompt).title
+    filledFields.push('title')
+  }
+
+  if (availableFields.has('description') && !next.description.trim()) {
+    next.description = limitText(options.prompt.replace(/\s+/g, ' ').trim(), 180)
+    if (next.description) {
+      filledFields.push('description')
+    }
+  }
+
+  if (availableFields.has('cta') && !next.cta.trim()) {
+    next.cta = buildDefaultCta(options.objective)
+    filledFields.push('cta')
+  }
+
+  if (availableFields.has('pre_title') && !next.pre_title.trim()) {
+    next.pre_title = buildFooterTopicCandidate(next, options.prompt, options.knowledgeContext)
+      || buildDefaultPreTitle(options.objective)
+    filledFields.push('pre_title')
+  }
+
+  if (availableFields.has('badge') && !next.badge.trim()) {
+    next.badge = buildDefaultBadge(options.objective)
+    filledFields.push('badge')
+  }
+
+  const footerFields = (['footer_info_1', 'footer_info_2'] as VariationFieldKey[])
+    .filter((field) => availableFields.has(field))
+  if (footerFields.length > 0) {
+    const practicalCandidates = extractPracticalFooterCandidates(
+      options.prompt,
+      options.knowledgeContext || '',
+      next.description,
+    )
+    const semanticTopic = buildFooterTopicCandidate(next, options.prompt, options.knowledgeContext)
+    const classifiedCandidates = classifyFooterCandidates(practicalCandidates)
+    const supportCandidates = dedupeStrings([
+      ...classifiedCandidates.dayOrTopic,
+      ...classifiedCandidates.hours,
+      ...classifiedCandidates.address,
+      ...classifiedCandidates.action,
+      ...classifiedCandidates.generic,
+      semanticTopic,
+      buildDescriptionSupportCandidate(next, options.prompt),
+      next.cta || buildDefaultCta(options.objective),
+    ].filter(Boolean), 10)
+    const existingFooterValues = new Set(
+      footerFields
+        .map((field) => next[field])
+        .filter(Boolean)
+        .map((value) => normalizeLooseText(stripTemplateBreaks(value))),
+    )
+
+    for (const field of footerFields) {
+      if (next[field].trim()) continue
+
+      const preferredCandidates = field === 'footer_info_1'
+        ? [
+            ...classifiedCandidates.dayOrTopic,
+            semanticTopic,
+            ...classifiedCandidates.generic,
+            buildDescriptionSupportCandidate(next, options.prompt),
+          ]
+        : [
+            ...classifiedCandidates.hours,
+            ...classifiedCandidates.address,
+            ...classifiedCandidates.action,
+            next.cta || buildDefaultCta(options.objective),
+            buildDescriptionSupportCandidate(next, options.prompt),
+          ]
+
+      const candidate = [...preferredCandidates, ...supportCandidates].find((value) => {
+        const normalized = normalizeLooseText(stripTemplateBreaks(value))
+        if (!normalized) return false
+        if (existingFooterValues.has(normalized)) return false
+        if (normalizeLooseText(stripTemplateBreaks(next.title)) === normalized) return false
+        if (field === 'footer_info_2' && normalizeLooseText(stripTemplateBreaks(next.footer_info_1)) === normalized) return false
+        return true
+      })
+
+      if (!candidate) continue
+
+      next[field] = candidate
+      existingFooterValues.add(normalizeLooseText(stripTemplateBreaks(candidate)))
+      filledFields.push(field)
+    }
+  }
+
+  return { variation: normalizeVariation(next), filledFields }
+}
+
+function getOverflowReasons(
+  value: string,
+  slot: z.infer<typeof extractedSlotSchema>,
+): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim()
+  if (!compact) return []
+
+  const reasons: string[] = []
+  const lines = splitTemplateLines(compact)
+  const safeLines = lines.length > 0 ? lines : [compact]
+  const wordCount = countWordsInText(compact)
+
+  if (typeof slot.maxWords === 'number' && wordCount > slot.maxWords) {
+    reasons.push(`maxWords ${wordCount}/${slot.maxWords}`)
+  }
+
+  if (safeLines.length > slot.maxLines) {
+    reasons.push(`maxLines ${safeLines.length}/${slot.maxLines}`)
+  }
+
+  if (typeof slot.maxCharactersPerLine === 'number') {
+    const longestLine = safeLines.reduce((max, line) => Math.max(max, line.length), 0)
+    if (longestLine > slot.maxCharactersPerLine) {
+      reasons.push(`maxCharsPerLine ${longestLine}/${slot.maxCharactersPerLine}`)
+    }
+  }
+
+  return reasons
+}
+
+function listOverflowingFields(
+  variation: Variation,
+  context: TemplateContext,
+): Array<{ fieldKey: VariationFieldKey; reasons: string[] }> {
+  return context.slots
+    .map((slot) => {
+      const fieldKey = slot.fieldKey as VariationFieldKey
+      return {
+        fieldKey,
+        reasons: getOverflowReasons(variation[fieldKey], slot),
+      }
+    })
+    .filter((item) => item.reasons.length > 0)
+}
+
+async function rewriteVariationToFitTemplate(
+  variation: Variation,
+  context: TemplateContext,
+): Promise<Variation> {
+  const availableFields = Array.from(new Set(context.slots.map((slot) => slot.fieldKey as VariationFieldKey)))
+  const unavailableFields = (Object.keys(variation) as VariationFieldKey[])
+    .filter((field) => !availableFields.includes(field))
+  const slotRules = context.slots.map((slot) => {
+    const constraints = [`maxLines=${slot.maxLines}`]
+    if (typeof slot.maxWords === 'number') constraints.push(`maxWords=${slot.maxWords}`)
+    if (typeof slot.maxCharactersPerLine === 'number') {
+      constraints.push(`maxCharsPerLine=${slot.maxCharactersPerLine}`)
+    }
+    return `- ${slot.fieldKey}: ${constraints.join(', ')}`
+  }).join('\n')
+
+  const currentCopy = (Object.keys(variation) as VariationFieldKey[])
+    .map((field) => `- ${field}: "${variation[field] || ''}"`)
+    .join('\n')
+
+  const { object } = await generateObject({
+    model: openai('gpt-4o-mini'),
+    schema: responseSchema,
+    temperature: 0.2,
+    maxOutputTokens: 600,
+    prompt: [
+      'Reescreva a copy abaixo para caber nos campos de um template de arte.',
+      'Retorne somente JSON valido no schema solicitado.',
+      'Preserve a intencao comercial, o tom e o significado principal.',
+      'Nao invente dados novos.',
+      'Campos disponiveis devem continuar preenchidos.',
+      unavailableFields.length > 0
+        ? `Campos indisponiveis devem ficar vazios: ${unavailableFields.join(', ')}.`
+        : '',
+      buildFieldSemanticsPromptSection(),
+      'Limites obrigatorios por campo:',
+      slotRules,
+      '',
+      'Copy atual:',
+      currentCopy,
+      '',
+      'Regras extras:',
+      '- Se faltar espaco, simplifique primeiro description e footer.',
+      '- Use <br> apenas quando isso ajudar title a caber em duas linhas.',
+      '- CTA deve continuar curto e acionavel.',
+    ].filter(Boolean).join('\n'),
+  })
+
+  return normalizeVariation(object.variacoes[0])
+}
+
+async function fitVariationsToTemplateContext(
+  variations: Variation[],
+  context: TemplateContext | undefined,
+  options?: {
+    prompt: string
+    knowledgeContext?: string
+    objective?: string | null
+  },
+): Promise<{ variations: Variation[]; warnings: string[] }> {
+  if (!context || context.slots.length === 0) {
+    return { variations, warnings: [] }
+  }
+
+  const availableFields = new Set(context.slots.map((slot) => slot.fieldKey as VariationFieldKey))
+  const warnings: string[] = []
+  const fittedVariations: Variation[] = []
+
+  for (let index = 0; index < variations.length; index++) {
+    const base = normalizeVariation(variations[index])
+    const sanitizedBase = (Object.keys(base) as VariationFieldKey[]).reduce<Variation>((acc, field) => {
+      acc[field] = availableFields.has(field)
+        ? base[field]
+        : ''
+      return acc
+    }, {
+      pre_title: '',
+      title: '',
+      description: '',
+      cta: '',
+      badge: '',
+      footer_info_1: '',
+      footer_info_2: '',
+    })
+    const enrichedBase = options
+      ? fillMissingFieldsForTemplate(sanitizedBase, context, options)
+      : { variation: sanitizedBase, filledFields: [] }
+
+    if (enrichedBase.filledFields.length > 0) {
+      warnings.push(
+        `Variacao ${index + 1}: campos vazios preenchidos automaticamente (${enrichedBase.filledFields.join(', ')}).`,
+      )
+    }
+
+    const initialOverflow = listOverflowingFields(enrichedBase.variation, context)
+    if (initialOverflow.length === 0) {
+      fittedVariations.push(enrichedBase.variation)
+      continue
+    }
+
+    let candidate = enrichedBase.variation
+    try {
+      candidate = await rewriteVariationToFitTemplate(enrichedBase.variation, context)
+    } catch (error) {
+      console.warn('[generate-ai-text] Rewrite to fit template failed:', error)
+      warnings.push(`Variacao ${index + 1}: reescrita de ajuste falhou; aplicado ajuste deterministico.`)
+    }
+
+    if (options) {
+      candidate = fillMissingFieldsForTemplate(candidate, context, options).variation
+    }
+
+    const hardFitted = context.slots.reduce<Variation>((acc, slot) => {
+      const fieldKey = slot.fieldKey as VariationFieldKey
+      acc[fieldKey] = hardFitTextToSlot(candidate[fieldKey], slot)
+      return acc
+    }, {
+      pre_title: '',
+      title: '',
+      description: '',
+      cta: '',
+      badge: '',
+      footer_info_1: '',
+      footer_info_2: '',
+    })
+
+    const remainingOverflow = listOverflowingFields(hardFitted, context)
+    if (remainingOverflow.length > 0) {
+      warnings.push(
+        `Variacao ${index + 1}: alguns campos ainda ficaram no limite apos ajuste (${remainingOverflow.map((item) => item.fieldKey).join(', ')}).`,
+      )
+    } else {
+      warnings.push(
+        `Variacao ${index + 1}: copy ajustada para respeitar os limites do template (${initialOverflow.map((item) => item.fieldKey).join(', ')}).`,
+      )
+    }
+
+    fittedVariations.push(hardFitted)
+  }
+
+  return {
+    variations: fittedVariations,
+    warnings: dedupeStrings(warnings, 12),
   }
 }
 
@@ -903,6 +1512,20 @@ function translateTextDensity(density: string): string {
   return map[density] || density
 }
 
+function buildFieldSemanticsPromptSection(): string {
+  return [
+    'SEMANTICA DOS CAMPOS:',
+    '- pre_title: assunto macro da arte. Exemplos: almoco executivo, happy hour, jantar, comunicado, menu.',
+    '- title: headline principal chamativa, nome do prato ou inicio da headline.',
+    '- description: descricao do prato, complemento do title ou informacoes adicionais sobre a headline.',
+    '- cta: chamada para acao curta e direta.',
+    '- badge: selo curtissimo de destaque.',
+    '- footer_info_1: priorize dia da semana, periodo, horario de funcionamento, assunto complementar ou contexto pratico.',
+    '- footer_info_2: complemente o footer_info_1 com horario, endereco, canal de contato, CTA curto ou apoio contextual.',
+    '- Evite repetir o mesmo texto entre title, description e footers.',
+  ].join('\n')
+}
+
 function buildTemplateContextPromptSection(context: TemplateContext | undefined): string {
   if (!context || context.slots.length === 0) {
     return ''
@@ -947,7 +1570,14 @@ function buildTemplateContextPromptSection(context: TemplateContext | undefined)
   // Slot constraints - only for available fields
   lines.push('RESTRICOES DOS CAMPOS DISPONIVEIS:')
   for (const slot of context.slots) {
-    lines.push(`- ${slot.fieldKey}: max ${slot.maxLines} linha(s), fonte ${slot.fontSize}px`)
+    const constraints = [`max ${slot.maxLines} linha(s)`, `fonte ${slot.fontSize}px`]
+    if (typeof slot.maxWords === 'number') {
+      constraints.push(`max ${slot.maxWords} palavra(s)`)
+    }
+    if (typeof slot.maxCharactersPerLine === 'number') {
+      constraints.push(`max ${slot.maxCharactersPerLine} caractere(s) por linha`)
+    }
+    lines.push(`- ${slot.fieldKey}: ${constraints.join(', ')}`)
   }
   lines.push('')
 
@@ -1015,6 +1645,14 @@ function buildTemplateContextPromptSection(context: TemplateContext | undefined)
     lines.push(`5. IMPORTANTE: Os campos ${unavailableFields.join(', ')} NAO existem neste template - retorne string vazia "" para eles`)
   }
 
+  lines.push('6. TRATE os limites acima como restricoes duras: se o texto nao couber, simplifique, encurte e remova floreios antes de responder')
+  lines.push('7. Nao gere frases que dependam de truncamento posterior para caber no layout')
+  if (availableFields.includes('footer_info_1') || availableFields.includes('footer_info_2')) {
+    lines.push('8. footer_info_* deve priorizar utilidade: horario de funcionamento, endereco, canal de pedido/reserva, CTA curto ou complemento objetivo do titulo/descricao')
+  }
+  lines.push('')
+  lines.push(buildFieldSemanticsPromptSection())
+
   return lines.join('\n')
 }
 
@@ -1054,7 +1692,7 @@ function buildImageAnalysisPromptSection(
 }
 
 function buildUserPrompt(
-  input: z.infer<typeof requestSchema>,
+  input: GenerateAiTextRequest,
   templateGuidance: string,
   knowledge: {
     context: string
@@ -1090,15 +1728,17 @@ function buildUserPrompt(
     imageAnalysisSection,
     templateContextSection,
     templateSection,
+    `\n${buildFieldSemanticsPromptSection()}\n`,
     '',
     'Regras obrigatorias:',
     '1. Preserve o sentido principal do prompt base.',
     '2. Gere exatamente o numero de variacoes solicitado.',
     '3. TODOS os campos listados em "Campos para preencher" DEVEM ter conteudo - nao deixe nenhum vazio.',
-    '4. footer_info_1 e footer_info_2: se o template tiver esses campos, gere texto promocional ou complementar (ex: frase de impacto, slogan, informacao adicional). Nao invente telefone/endereco se nao houver no prompt.',
+    '4. footer_info_1 e footer_info_2: se o template tiver esses campos, priorize horario de funcionamento, endereco, canal de pedido/reserva, CTA curto ou complemento objetivo do title/description. Nao invente dados praticos que nao estejam no prompt ou na base.',
     '5. CTA deve ser objetivo e acionavel.',
     '6. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
     '7. Respeite os slots, prioridade e densidade quando houver guia de template.',
+    '7b. Quando houver limites por campo (linhas, palavras, caracteres por linha), trate esses limites como obrigatorios.',
     '8. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
     '9. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
     '10. Em conflito entre prompt e base, priorize o prompt do usuario.',
@@ -1106,38 +1746,34 @@ function buildUserPrompt(
     '12. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
     '13. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
     '14. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
+    '15. Se um campo for pequeno, prefira menos palavras e mais clareza, nunca textos no limite visual.',
   ].join('\n')
 }
 
-export async function POST(request: Request) {
-  const { userId, orgId } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 })
-  }
+export async function generateAiTextPayload(
+  body: GenerateAiTextRequest,
+  authContext: { userId: string; orgId?: string | null },
+): Promise<GenerateAiTextResponse | {
+  ok: true
+  dryRun: true
+  format: GenerateAiTextRequest['format']
+  variations: GenerateAiTextRequest['variations']
+  templatesRequested: string[]
+  templatesResolved: Array<{ id: string; name: string; format: string }>
+  knowledge: GenerateAiTextKnowledgePayload
+  imageAnalysis: GenerateAiTextImageAnalysisPayload
+  warnings: string[]
+  conflicts: string[]
+}> {
+  const { userId, orgId } = authContext
 
   if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json(
-      { error: 'Configuracao de IA incompleta (OpenAI)' },
-      { status: 503 }
-    )
-  }
-
-  let body: z.infer<typeof requestSchema>
-  try {
-    body = requestSchema.parse(await request.json())
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: 'Dados invalidos', details: error.errors },
-        { status: 400 }
-      )
-    }
-    return NextResponse.json({ error: 'Erro ao processar requisicao' }, { status: 400 })
+    throw new Error('Configuracao de IA incompleta (OpenAI)')
   }
 
   const project = await fetchProjectWithShares(body.projectId)
   if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
-    return NextResponse.json({ error: 'Projeto nao encontrado' }, { status: 404 })
+    throw new Error('Projeto nao encontrado')
   }
 
   const [projectMeta, colors] = await Promise.all([
@@ -1190,11 +1826,19 @@ export async function POST(request: Request) {
     })
     .filter((template): template is TemplateSummary => Boolean(template))
   const templateGuidance = buildTemplateGuidance(selectedTemplates)
-  const knowledgeContext = await getProjectPromptKnowledgeContext(
-    body.prompt,
-    { projectId: body.projectId },
-    { topKPerCategory: 2, maxTokens: 1200, minScore: 0.6 },
-  )
+  const knowledgeContext = body.useKnowledgeBase
+    ? await getProjectPromptKnowledgeContext(
+        body.prompt,
+        { projectId: body.projectId },
+        { topKPerCategory: 2, maxTokens: 1200, minScore: 0.6 },
+      )
+    : {
+        context: '',
+        warnings: ['Base de conhecimento desativada nesta solicitacao.'],
+        conflicts: [],
+        hits: [],
+        categoriesUsed: [],
+      }
   const sourceImageUrl =
     body.analysisImageUrl ||
     body.photoUrl ||
@@ -1258,7 +1902,7 @@ export async function POST(request: Request) {
   knowledgePayload.applied = knowledgePayload.hits.length > 0
 
   if (body.dryRun) {
-    return NextResponse.json({
+    return {
       ok: true,
       dryRun: true,
       format: body.format,
@@ -1273,7 +1917,7 @@ export async function POST(request: Request) {
       imageAnalysis: imageAnalysisPayload,
       warnings: dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
       conflicts: knowledgeContext.conflicts,
-    })
+    }
   }
 
   try {
@@ -1291,27 +1935,78 @@ export async function POST(request: Request) {
       body.variations,
       body.prompt,
     )
+    const constrained = await fitVariationsToTemplateContext(variacoes, body.templateContext, {
+      prompt: body.prompt,
+      knowledgeContext: knowledgeContext.context,
+      objective: body.objective ?? null,
+    })
 
-    return NextResponse.json({
-      variacoes,
+    return {
+      variacoes: constrained.variations,
       knowledge: knowledgePayload,
       imageAnalysis: imageAnalysisPayload,
-      warnings: dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
+      warnings: dedupeStrings(
+        [...knowledgeContext.warnings, ...imageAnalysisPayload.warnings, ...constrained.warnings],
+        12,
+      ),
       conflicts: knowledgeContext.conflicts,
-    })
+    }
   } catch (error) {
     console.error('[generate-ai-text] Error:', error)
 
     const variacoes = ensureVariationCount(undefined, body.variations, body.prompt)
-    return NextResponse.json({
-      variacoes,
+    const constrained = await fitVariationsToTemplateContext(variacoes, body.templateContext, {
+      prompt: body.prompt,
+      knowledgeContext: knowledgeContext.context,
+      objective: body.objective ?? null,
+    })
+    return {
+      variacoes: constrained.variations,
       knowledge: knowledgePayload,
       imageAnalysis: imageAnalysisPayload,
       warnings: [
-        ...dedupeStrings([...knowledgeContext.warnings, ...imageAnalysisPayload.warnings], 10),
+        ...dedupeStrings(
+          [...knowledgeContext.warnings, ...imageAnalysisPayload.warnings, ...constrained.warnings],
+          12,
+        ),
         'Falha ao gerar copy estruturada com IA; fallback local aplicado.',
       ],
       conflicts: knowledgeContext.conflicts,
-    })
+    }
+  }
+}
+
+export async function POST(request: Request) {
+  const { userId, orgId } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 })
+  }
+
+  let body: GenerateAiTextRequest
+  try {
+    body = requestSchema.parse(await request.json())
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { error: 'Dados invalidos', details: error.errors },
+        { status: 400 }
+      )
+    }
+    return NextResponse.json({ error: 'Erro ao processar requisicao' }, { status: 400 })
+  }
+
+  try {
+    const payload = await generateAiTextPayload(body, { userId, orgId })
+    return NextResponse.json(payload)
+  } catch (error) {
+    console.error('[generate-ai-text] Request error:', error)
+    const message = error instanceof Error ? error.message : 'Erro ao processar requisicao'
+    const status = message === 'Projeto nao encontrado'
+      ? 404
+      : message.includes('Configuracao de IA')
+        ? 503
+        : 500
+
+    return NextResponse.json({ error: message }, { status })
   }
 }

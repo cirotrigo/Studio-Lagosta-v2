@@ -1,13 +1,16 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useDeferredValue, useMemo, useState } from 'react'
 import { useGerarCriativoModelPages } from '@/hooks/use-gerar-criativo-model-pages'
 import { useGerarCriativo } from '../gerar-criativo-context'
 import { useStepper } from '../stepper'
 import { Card } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { ImageIcon, FolderOpen } from 'lucide-react'
+import { rankModelPagesForBrief } from '@/lib/gerar-criativo/model-page-ranking'
+import { ImageIcon, FolderOpen, Sparkles } from 'lucide-react'
 
 function ModelPageSelectionSkeleton() {
   return (
@@ -44,6 +47,8 @@ export function ModelPageSelectionStep() {
   const stepper = useStepper()
   const { data: modelPages, isLoading } = useGerarCriativoModelPages()
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<number | null>(null)
+  const [rankingBrief, setRankingBrief] = useState('')
+  const deferredRankingBrief = useDeferredValue(rankingBrief)
 
   // Extract unique projects from model pages
   const projects = useMemo(() => {
@@ -67,6 +72,20 @@ export function ModelPageSelectionStep() {
     if (selectedProjectFilter === null) return modelPages
     return modelPages.filter((page) => page.project.id === selectedProjectFilter)
   }, [modelPages, selectedProjectFilter])
+
+  const rankedModelPages = useMemo(() => {
+    if (!deferredRankingBrief.trim()) {
+      return filteredModelPages.map((page) => ({
+        page,
+        score: 0,
+        reasons: [],
+        label: 'Neutro' as const,
+        templateContext: null,
+      }))
+    }
+
+    return rankModelPagesForBrief(filteredModelPages, deferredRankingBrief)
+  }, [deferredRankingBrief, filteredModelPages])
 
   const handleSelect = (page: (typeof modelPages)[number]) => {
     selectModelPageWithContext(
@@ -93,6 +112,30 @@ export function ModelPageSelectionStep() {
           Selecione uma pagina modelo para criar seu criativo
         </p>
       </div>
+
+      <Card className="p-4 space-y-3">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <Sparkles className="w-4 h-4" />
+            Recomendar modelos pelo brief
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Opcional. Descreva rapidamente a arte para priorizar os modelos com a estrutura mais compativel.
+          </p>
+        </div>
+        <Textarea
+          value={rankingBrief}
+          onChange={(event) => setRankingBrief(event.target.value)}
+          placeholder="Ex: almoco executivo com horario de segunda a sexta e CTA para pedir no WhatsApp"
+          rows={3}
+          className="resize-none"
+        />
+        {deferredRankingBrief.trim() && (
+          <p className="text-xs text-muted-foreground">
+            Os modelos abaixo foram reordenados para favorecer assunto, headline, descricao e rodape conforme o brief.
+          </p>
+        )}
+      </Card>
 
       {/* Project logo filter carousel */}
       {projects.length > 1 && (
@@ -137,15 +180,22 @@ export function ModelPageSelectionStep() {
         </div>
       )}
 
-      {filteredModelPages && filteredModelPages.length > 0 ? (
+      {rankedModelPages && rankedModelPages.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-          {filteredModelPages.map((page) => (
+          {rankedModelPages.map(({ page, label, reasons }, index) => (
             <Card
               key={page.id}
               className="cursor-pointer hover:border-primary hover:shadow-md transition-all overflow-hidden group"
               onClick={() => handleSelect(page)}
             >
               <div className="aspect-[9/16] relative bg-muted">
+                {deferredRankingBrief.trim() && index < 3 && label !== 'Neutro' && (
+                  <div className="absolute top-2 left-2 z-10">
+                    <Badge variant={label === 'Mais indicado' ? 'default' : 'secondary'}>
+                      {label}
+                    </Badge>
+                  </div>
+                )}
                 {page.thumbnail ? (
                   <img
                     src={page.thumbnail}
@@ -162,6 +212,11 @@ export function ModelPageSelectionStep() {
                 <p className="text-sm font-medium truncate">
                   {page.templateName || page.template.name}
                 </p>
+                {deferredRankingBrief.trim() && reasons.length > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                    {reasons.join(' • ')}
+                  </p>
+                )}
               </div>
             </Card>
           ))}

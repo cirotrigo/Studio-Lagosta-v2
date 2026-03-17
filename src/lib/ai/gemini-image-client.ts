@@ -1,8 +1,8 @@
 /**
- * Client para geração de imagens via API do Google Gemini
+ * Client para geração de imagens via API do Google Gemini.
  *
- * Usa o SDK @google/genai com Gemini 2.0 Flash para geração de imagens
- * com suporte a referências visuais
+ * Usa o SDK oficial @google/genai com os modelos atuais da família
+ * Nano Banana para geração e edição de imagens com referências visuais.
  */
 
 import { GoogleGenAI } from '@google/genai'
@@ -45,7 +45,26 @@ export interface GeminiImageResult {
 }
 
 /**
- * Gera uma imagem usando Gemini 2.0 Flash
+ * Monta a configuração nativa de imagem da Gemini API.
+ */
+function buildImageConfig(
+  params: GeminiImageParams,
+): { aspectRatio?: string; imageSize?: '1K' | '2K' | '4K' } | undefined {
+  const imageConfig: { aspectRatio?: string; imageSize?: '1K' | '2K' | '4K' } = {}
+
+  if (params.aspectRatio) {
+    imageConfig.aspectRatio = params.aspectRatio
+  }
+
+  if (params.resolution) {
+    imageConfig.imageSize = params.resolution
+  }
+
+  return Object.keys(imageConfig).length > 0 ? imageConfig : undefined
+}
+
+/**
+ * Gera uma imagem usando Gemini Image Generation.
  */
 export async function generateImageWithGemini(
   params: GeminiImageParams
@@ -93,21 +112,18 @@ export async function generateImageWithGemini(
     }
   }
 
-  // Construir prompt com instruções de aspect ratio se necessário
-  let finalPrompt = params.prompt
-  if (params.aspectRatio && params.aspectRatio !== '1:1') {
-    finalPrompt = `Generate an image with aspect ratio ${params.aspectRatio}. ${params.prompt}`
-  }
-
   // Adicionar o prompt de texto
-  contents.push({ text: finalPrompt })
+  contents.push({ text: params.prompt })
 
   try {
+    const imageConfig = buildImageConfig(params)
+
     const response = await client.models.generateContent({
       model: modelId,
       contents,
       config: {
         responseModalities: ['IMAGE'],
+        ...(imageConfig ? { imageConfig } : {}),
       },
     })
 

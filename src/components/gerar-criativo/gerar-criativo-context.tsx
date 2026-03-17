@@ -59,8 +59,10 @@ interface GerarCriativoContextValue extends GerarCriativoState {
   selectModelPage: (pageId: string, layers: Layer[], width?: number, height?: number) => void
   // Step 4
   setImageValue: (layerId: string, imageSource: ImageSource | null) => void
+  setImageValuesBulk: (images: Record<string, ImageSource>) => void
   // Step 5
   setTextValue: (layerId: string, text: string) => void
+  setTextValuesBulk: (texts: Record<string, string>) => void
   selectLayer: (layerId: string | null) => void
   reorderLayers: (newOrder: string[]) => void
   addBgRemovedLayer: (originalLayerId: string, newImageUrl: string) => void
@@ -177,10 +179,30 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setImageValuesBulk = useCallback((images: Record<string, ImageSource>) => {
+    setState((prev) => ({
+      ...prev,
+      imageValues: {
+        ...prev.imageValues,
+        ...images,
+      },
+    }))
+  }, [])
+
   const setTextValue = useCallback((layerId: string, text: string) => {
     setState((prev) => ({
       ...prev,
       textValues: { ...prev.textValues, [layerId]: text },
+    }))
+  }, [])
+
+  const setTextValuesBulk = useCallback((texts: Record<string, string>) => {
+    setState((prev) => ({
+      ...prev,
+      textValues: {
+        ...prev.textValues,
+        ...texts,
+      },
     }))
   }, [])
 
@@ -302,7 +324,9 @@ export function GerarCriativoProvider({ children }: { children: ReactNode }) {
     selectTemplate,
     selectModelPage,
     setImageValue,
+    setImageValuesBulk,
     setTextValue,
+    setTextValuesBulk,
     selectLayer,
     reorderLayers,
     addBgRemovedLayer,
