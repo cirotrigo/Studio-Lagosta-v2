@@ -469,42 +469,73 @@ async function analyzeImageContext(
     throw new Error('Nao foi possivel carregar a imagem para analise contextual.')
   }
 
-  const { object } = await generateObject({
-    model: google(IMAGE_ANALYSIS_MODEL),
-    temperature: 0.2,
-    maxOutputTokens: 500,
-    schema: imageContextSchema,
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image',
-            image: image.buffer,
-          },
-          {
-            type: 'text',
-            text: [
-              'Analise esta imagem de restaurante/comida para enriquecer a geracao de copy.',
-              `Prompt do usuario: "${prompt}"`,
-              'Regras:',
-              '- Nao invente nome especifico de prato se a imagem nao permitir alta confianca.',
-              '- Se a imagem mostrar vinho, bebida ou garrafa, identifique a familia visual da bebida em beverageFamily (ex: vinho tinto, vinho branco, espumante, rose).',
-              '- labelTextHints deve listar apenas fragmentos realmente legiveis do rotulo ou embalagem, preservando a grafia visivel quando possivel.',
-              '- productClues deve listar pistas praticas do produto observadas na imagem ou no rotulo, como safra, origem, varietal, tipo da bebida, ocasiacao de consumo ou formato da garrafa.',
-              '- Nunca invente marca, rotulo, safra, origem ou nome do produto se isso nao estiver claramente legivel.',
-              '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
-              '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
-              '- sceneType deve descrever o contexto da cena em poucas palavras.',
-              '- confidence mede a confianca da identificacao do prato principal/contexto (0 a 1).',
-            ].join('\n'),
-          },
-        ],
-      },
-    ],
-  })
+  const messages = [
+    {
+      role: 'user' as const,
+      content: [
+        {
+          type: 'image' as const,
+          image: image.buffer,
+        },
+        {
+          type: 'text' as const,
+          text: [
+            'Analise esta imagem de restaurante/comida para enriquecer a geracao de copy.',
+            `Prompt do usuario: "${prompt}"`,
+            'Regras:',
+            '- Nao invente nome especifico de prato se a imagem nao permitir alta confianca.',
+            '- Se a imagem mostrar vinho, bebida ou garrafa, identifique a familia visual da bebida em beverageFamily (ex: vinho tinto, vinho branco, espumante, rose).',
+            '- labelTextHints deve listar apenas fragmentos realmente legiveis do rotulo ou embalagem, preservando a grafia visivel quando possivel.',
+            '- productClues deve listar pistas praticas do produto observadas na imagem ou no rotulo, como safra, origem, varietal, tipo da bebida, ocasiacao de consumo ou formato da garrafa.',
+            '- Nunca invente marca, rotulo, safra, origem ou nome do produto se isso nao estiver claramente legivel.',
+            '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
+            '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
+            '- sceneType deve descrever o contexto da cena em poucas palavras.',
+            '- confidence mede a confianca da identificacao do prato principal/contexto (0 a 1).',
+          ].join('\n'),
+        },
+      ],
+    },
+  ]
 
-  return object
+  try {
+    const { object } = await generateObject({
+      model: google(IMAGE_ANALYSIS_MODEL),
+      temperature: 0.2,
+      maxOutputTokens: 500,
+      schema: imageContextSchema,
+      messages,
+    })
+
+    return object
+  } catch (error) {
+    console.warn('[generate-ai-text] Falha no generateObject da analise visual, tentando fallback textual:', error)
+
+    const { text } = await generateText({
+      model: google(IMAGE_ANALYSIS_MODEL),
+      temperature: 0.2,
+      maxOutputTokens: 600,
+      messages: [
+        ...messages,
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: [
+                'Retorne somente JSON valido.',
+                'Nao use markdown, nao use bloco ```json, nao explique nada fora do JSON.',
+                'Estrutura obrigatoria:',
+                '{"summary":"","dishNameCandidates":[],"sceneType":"","beverageFamily":"","labelTextHints":[],"productClues":[],"ingredientsHints":[],"confidence":0}',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    })
+
+    return imageContextSchema.parse(JSON.parse(extractJsonObject(text)))
+  }
 }
 
 function buildImageAnalysisPayload(

@@ -214,12 +214,48 @@ export class RenderEngine {
       }
     }
 
-    const rgbaMatch = color.match(/rgba?\(([^)]+)\)/i)
-    if (rgbaMatch) {
-      const parts = rgbaMatch[1].split(',').map((part) => part.trim())
-      const [r = '0', g = '0', b = '0', a = '1'] = parts
-      const alpha = Math.max(0, Math.min(1, Number(a) * normalizedOpacity))
-      return `rgba(${r},${g},${b},${alpha})`
+    const parseAlphaValue = (value: string): number => {
+      const normalized = value.trim()
+      if (normalized.endsWith('%')) {
+        return Number.parseFloat(normalized) / 100
+      }
+      return Number(normalized)
+    }
+
+    const withAdjustedFunctionalColor = (
+      family: 'rgb' | 'hsl',
+      content: string,
+    ): string => {
+      const normalized = content.trim()
+
+      if (normalized.includes('/')) {
+        const [base, alphaValue = '1'] = normalized.split('/').map((part) => part.trim())
+        const alpha = Math.max(0, Math.min(1, parseAlphaValue(alphaValue) * normalizedOpacity))
+        return `${family}(${base} / ${alpha})`
+      }
+
+      const commaParts = normalized.split(',').map((part) => part.trim())
+      if (commaParts.length >= 4) {
+        const base = commaParts.slice(0, 3).join(',')
+        const alpha = Math.max(0, Math.min(1, parseAlphaValue(commaParts[3]) * normalizedOpacity))
+        return `${family}a(${base},${alpha})`
+      }
+
+      if (commaParts.length === 3) {
+        return `${family}a(${commaParts.join(',')},${normalizedOpacity})`
+      }
+
+      return `${family}(${normalized} / ${normalizedOpacity})`
+    }
+
+    const rgbMatch = color.match(/rgba?\(([^)]+)\)/i)
+    if (rgbMatch) {
+      return withAdjustedFunctionalColor('rgb', rgbMatch[1])
+    }
+
+    const hslMatch = color.match(/hsla?\(([^)]+)\)/i)
+    if (hslMatch) {
+      return withAdjustedFunctionalColor('hsl', hslMatch[1])
     }
 
     return color

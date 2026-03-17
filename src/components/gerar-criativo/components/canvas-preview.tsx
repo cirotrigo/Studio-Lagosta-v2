@@ -357,6 +357,41 @@ function hexToRgba(hex: string, opacity: number): string {
   return `rgba(${r}, ${g}, ${b}, ${opacity})`
 }
 
+function parseAlphaValue(value: string): number {
+  const normalized = value.trim()
+  if (normalized.endsWith('%')) {
+    return Number.parseFloat(normalized) / 100
+  }
+  return Number(normalized)
+}
+
+function withAdjustedFunctionalColor(
+  family: 'rgb' | 'hsl',
+  content: string,
+  opacity: number,
+): string {
+  const normalized = content.trim()
+
+  if (normalized.includes('/')) {
+    const [base, alphaValue = '1'] = normalized.split('/').map((part) => part.trim())
+    const alpha = Math.max(0, Math.min(1, parseAlphaValue(alphaValue) * opacity))
+    return `${family}(${base} / ${alpha})`
+  }
+
+  const commaParts = normalized.split(',').map((part) => part.trim())
+  if (commaParts.length >= 4) {
+    const base = commaParts.slice(0, 3).join(', ')
+    const alpha = Math.max(0, Math.min(1, parseAlphaValue(commaParts[3]) * opacity))
+    return `${family}a(${base}, ${alpha})`
+  }
+
+  if (commaParts.length === 3) {
+    return `${family}a(${commaParts.join(', ')}, ${opacity})`
+  }
+
+  return `${family}(${normalized} / ${opacity})`
+}
+
 function applyOpacityToColor(color: string, opacity: number): string {
   const normalizedOpacity = Math.max(0, Math.min(1, opacity))
 
@@ -364,12 +399,14 @@ function applyOpacityToColor(color: string, opacity: number): string {
     return hexToRgba(color, normalizedOpacity)
   }
 
-  const rgbaMatch = color.match(/rgba?\(([^)]+)\)/i)
-  if (rgbaMatch) {
-    const parts = rgbaMatch[1].split(',').map((part) => part.trim())
-    const [r = '0', g = '0', b = '0', a = '1'] = parts
-    const alpha = Math.max(0, Math.min(1, Number(a) * normalizedOpacity))
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  const rgbMatch = color.match(/rgba?\(([^)]+)\)/i)
+  if (rgbMatch) {
+    return withAdjustedFunctionalColor('rgb', rgbMatch[1], normalizedOpacity)
+  }
+
+  const hslMatch = color.match(/hsla?\(([^)]+)\)/i)
+  if (hslMatch) {
+    return withAdjustedFunctionalColor('hsl', hslMatch[1], normalizedOpacity)
   }
 
   return color

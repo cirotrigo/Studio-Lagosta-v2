@@ -30,10 +30,27 @@ function colorHasTransparency(color?: string): boolean {
   }
 
   const rgbaMatch = normalized.match(/rgba?\(([^)]+)\)/i)
-  if (rgbaMatch) {
-    const parts = rgbaMatch[1].split(',').map((part) => part.trim())
+  const hslMatch = normalized.match(/hsla?\(([^)]+)\)/i)
+  const functionalColor = rgbaMatch ?? hslMatch
+  if (functionalColor) {
+    const content = functionalColor[1].trim()
+    if (content.includes('/')) {
+      const alpha = content.split('/').at(-1)?.trim()
+      if (alpha) {
+        const normalizedAlpha = alpha.endsWith('%')
+          ? Number.parseFloat(alpha) / 100
+          : Number(alpha)
+        return normalizedAlpha < 1
+      }
+    }
+
+    const parts = content.split(',').map((part) => part.trim())
     if (parts.length >= 4) {
-      return Number(parts[3]) < 1
+      const alpha = parts[3]
+      const normalizedAlpha = alpha.endsWith('%')
+        ? Number.parseFloat(alpha) / 100
+        : Number(alpha)
+      return normalizedAlpha < 1
     }
   }
 
