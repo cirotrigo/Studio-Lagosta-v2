@@ -534,7 +534,53 @@ async function analyzeImageContext(
       ],
     })
 
-    return imageContextSchema.parse(JSON.parse(extractJsonObject(text)))
+    try {
+      return imageContextSchema.parse(JSON.parse(extractJsonObject(text)))
+    } catch {
+      const cleaned = text
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/i, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+      const firstSentence = cleaned.split(/(?<=[.!?])\s+/)[0] ?? ''
+      const normalized = normalizeLooseText(cleaned)
+      const beverageFamily = normalized.includes('espumante')
+        ? 'espumante'
+        : normalized.includes('vinho branco')
+          ? 'vinho branco'
+          : normalized.includes('vinho tinto')
+            ? 'vinho tinto'
+            : normalized.includes('vinho rose') || normalized.includes('vinho rosé')
+              ? 'vinho rose'
+              : normalized.includes('vinho')
+                ? 'vinho'
+                : ''
+
+      const quotedHints = Array.from(
+        cleaned.matchAll(/["“”']([^"“”']{2,80})["“”']/g),
+        (match) => match[1],
+      )
+
+      return imageContextSchema.parse({
+        summary: limitText(cleaned || 'Analise visual em texto livre sem JSON estruturado.', 280),
+        dishNameCandidates: dedupeStrings(
+          beverageFamily ? [beverageFamily] : [],
+          5,
+        ),
+        sceneType: limitText(firstSentence || cleaned, 120),
+        beverageFamily,
+        labelTextHints: dedupeStrings(quotedHints, 8),
+        productClues: dedupeStrings(
+          [beverageFamily, firstSentence]
+            .filter(Boolean)
+            .map((value) => limitText(value, 80)),
+          8,
+        ),
+        ingredientsHints: [],
+        confidence: 0.35,
+      })
+    }
   }
 }
 

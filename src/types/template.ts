@@ -89,7 +89,9 @@ export interface LayerStyle {
   shadow?: ShadowStyle
   border?: BorderStyle
   fill?: string
+  fillOpacity?: number
   strokeColor?: string
+  strokeOpacity?: number
   strokeWidth?: number
   shapeType?: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line'
   iconId?: string

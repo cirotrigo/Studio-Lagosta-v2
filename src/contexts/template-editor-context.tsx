@@ -1440,7 +1440,9 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         size: { width: 240, height: 240 },
         style: {
           fill: '#2563eb',
+          fillOpacity: 1,
           strokeColor: '#1e3a8a',
+          strokeOpacity: 1,
           strokeWidth: 2,
           shapeType: 'rectangle',
         },

@@ -1419,7 +1419,30 @@ interface ShapeControlsProps {
   setStyleValue: (layer: Layer, style: Partial<LayerStyle>) => void
 }
 
+function toColorInputValue(color: string | undefined, fallback: string): string {
+  if (!color) return fallback
+
+  const normalized = color.trim()
+  if (/^#[0-9a-f]{6}$/i.test(normalized)) {
+    return normalized
+  }
+  if (/^#[0-9a-f]{3}$/i.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+  }
+  if (/^#[0-9a-f]{8}$/i.test(normalized)) {
+    return `#${normalized.slice(1, 7)}`
+  }
+  if (/^#[0-9a-f]{4}$/i.test(normalized)) {
+    return `#${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}${normalized[3]}${normalized[3]}`
+  }
+
+  return fallback
+}
+
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
+  const fillOpacity = Math.round((layer.style?.fillOpacity ?? 1) * 100)
+  const strokeOpacity = Math.round((layer.style?.strokeOpacity ?? 1) * 100)
+
   return (
     <div className="space-y-3 text-xs">
       <div className="space-y-1">
@@ -1432,18 +1455,42 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           <input
             type="color"
             className="h-9 w-9 rounded-md border border-border/30"
-            value={layer.style?.fill ?? '#2563eb'}
+            value={toColorInputValue(layer.style?.fill, '#2563eb')}
             onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+          />
+        </div>
+        <div className="space-y-1 pt-2">
+          <div className="flex items-center justify-between">
+            <Label className="text-[10px]">Transparência do preenchimento</Label>
+            <span className="text-[10px] text-muted-foreground">{fillOpacity}%</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            className="w-full"
+            value={fillOpacity}
+            onChange={(event) => setStyleValue(layer, {
+              fillOpacity: Number(event.target.value) / 100,
+            })}
           />
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
           <Label>Cor da borda</Label>
-          <Input
-            value={layer.style?.strokeColor ?? '#1e3a8a'}
-            onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
-          />
+          <div className="flex items-center gap-2">
+            <Input
+              value={layer.style?.strokeColor ?? '#1e3a8a'}
+              onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
+            />
+            <input
+              type="color"
+              className="h-9 w-9 rounded-md border border-border/30"
+              value={toColorInputValue(layer.style?.strokeColor, '#1e3a8a')}
+              onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
+            />
+          </div>
         </div>
         <div className="space-y-1">
           <Label>Espessura</Label>
@@ -1454,6 +1501,22 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             onChange={(event) => setStyleValue(layer, { strokeWidth: Number(event.target.value) })}
           />
         </div>
+      </div>
+      <div className="space-y-1">
+        <div className="flex items-center justify-between">
+          <Label className="text-[10px]">Transparência da borda</Label>
+          <span className="text-[10px] text-muted-foreground">{strokeOpacity}%</span>
+        </div>
+        <input
+          type="range"
+          min={0}
+          max={100}
+          className="w-full"
+          value={strokeOpacity}
+          onChange={(event) => setStyleValue(layer, {
+            strokeOpacity: Number(event.target.value) / 100,
+          })}
+        />
       </div>
     </div>
   )
