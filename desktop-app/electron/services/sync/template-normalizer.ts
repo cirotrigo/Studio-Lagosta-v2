@@ -120,6 +120,19 @@ const DEFAULT_CONFIG: NormalizationConfig = {
   applyDefaults: true,
 }
 
+function toRemoteUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string' || value.trim().length === 0) return undefined
+  try {
+    const url = new URL(value)
+    if (url.protocol === 'http:' || url.protocol === 'https:') {
+      return value
+    }
+  } catch {
+    return undefined
+  }
+  return undefined
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Format conversion helpers
 // ─────────────────────────────────────────────────────────────────
@@ -548,7 +561,7 @@ export function normalizeForWeb(
       },
       localId: template.id,
       projectId: template.projectId,
-      thumbnailUrl: template.meta?.thumbnailPath,
+      thumbnailUrl: toRemoteUrl(template.meta?.thumbnailPath),
     }
 
     // Log warnings for fields that exist only locally

@@ -9,6 +9,12 @@ interface RenderPageOptions {
   preferBlobDownload?: boolean
 }
 
+function normalizePercentageOpacity(value: number | undefined, fallback = 1): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) return fallback
+  if (value > 1) return Math.max(0, Math.min(1, value / 100))
+  return Math.max(0, Math.min(1, value))
+}
+
 function calculateGradientPoints(width: number, height: number, angle = 180) {
   const radians = ((180 - angle) / 180) * Math.PI
   const length = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians))
@@ -430,12 +436,12 @@ function drawShapeLayer(
 ) {
   // Apply fill with opacity
   const fillColor = layer.fill ?? '#F59E0B'
-  const fillOpacity = layer.fillOpacity ?? 1
+  const fillOpacity = normalizePercentageOpacity(layer.fillOpacity, 1)
   context.fillStyle = fillOpacity < 1 ? hexToRgbaForCanvas(fillColor, fillOpacity) : fillColor
 
   // Apply stroke with opacity
   const strokeColor = layer.stroke ?? '#111827'
-  const strokeOpacity = layer.strokeOpacity ?? 1
+  const strokeOpacity = normalizePercentageOpacity(layer.strokeOpacity, 1)
   context.strokeStyle = strokeOpacity < 1 ? hexToRgbaForCanvas(strokeColor, strokeOpacity) : strokeColor
   context.lineWidth = (layer.strokeWidth ?? 0) * scale
 

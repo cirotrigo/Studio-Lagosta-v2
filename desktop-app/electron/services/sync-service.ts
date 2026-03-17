@@ -36,6 +36,18 @@ interface AuthHtmlResult {
   responseUrl?: string
 }
 
+interface RemotePageDescriptor {
+  id?: string
+  name?: string
+  order?: number
+  width?: number
+  height?: number
+  layers?: unknown
+  background?: string
+  thumbnail?: string | null
+  tags?: string[]
+}
+
 export interface SyncServiceDeps {
   webAppBaseUrl: string
   getFreshCookies: () => Promise<string | null>
@@ -580,7 +592,14 @@ export class SyncService {
 
     const endpoint = this.getEndpointForOperation(op, remoteId)
     const method = this.getMethodForOperation(op)
-    const payload = op.op === 'delete' ? null : this.localToRemotePayload(op)
+    let payload = op.op === 'delete' ? null : this.localToRemotePayload(op)
+    if (op.op === 'update' && payload && remoteId) {
+      const remoteTemplate = await this.fetchRemoteTemplateById(remoteId)
+      if (remoteTemplate) {
+        payload = this.alignPayloadPageIdsWithRemoteTemplate(payload, remoteTemplate)
+      }
+      payload = this.makeCompatibleUpdatePayload(payload)
+    }
     const body = payload ? JSON.stringify(payload) : undefined
 
     console.log(`[SyncService] Push ${op.op} to ${endpoint}`)
@@ -612,7 +631,9 @@ export class SyncService {
     // Log failures for debugging
     if (!result.ok) {
       console.error(`[SyncService] Push failed: ${result.status} ${result.statusText}`)
-      console.error('[SyncService] Response:', result.text.slice(0, 500))
+      console.error('[SyncService] Response:', result.text)
+      // Log the payload that was sent for debugging
+      console.error('[SyncService] Payload sent:', JSON.stringify(payload, null, 2).slice(0, 2000))
     }
 
     // On successful create, save the remoteId to local template
@@ -655,6 +676,141 @@ export class SyncService {
         return 'DELETE'
       default:
         return 'POST'
+    }
+  }
+
+  private async fetchRemoteTemplateById(remoteId: number): Promise<RemoteTemplateMetadata | null> {
+    const endpoint = `${this.deps.webAppBaseUrl}/api/templates/${remoteId}`
+
+    let cookies = await this.deps.getFreshCookies()
+    let result = await this.deps.executeRequest(endpoint, { method: 'GET' }, cookies)
+
+    if (result.isHtml && this.deps.isAuthHtmlResponse(result)) {
+      const refreshed = await this.deps.refreshClerkSession()
+      if (refreshed) {
+        cookies = await this.deps.getFreshCookies()
+        result = await this.deps.executeRequest(endpoint, { method: 'GET' }, cookies)
+      }
+    }
+
+    if (result.isHtml && this.deps.isAuthHtmlResponse(result)) {
+      throw new Error('auth_expired')
+    }
+
+    if (!result.ok) {
+      console.warn(`[SyncService] Could not fetch remote template ${remoteId}: ${result.status} ${result.statusText}`)
+      return null
+    }
+
+    try {
+      return this.normalizeRemoteTemplate(JSON.parse(result.text))
+    } catch {
+      console.warn(`[SyncService] Could not parse remote template ${remoteId}`)
+      return null
+    }
+  }
+
+  private alignPayloadPageIdsWithRemoteTemplate(
+    payload: Record<string, unknown>,
+    remoteTemplate: RemoteTemplateMetadata,
+  ): Record<string, unknown> {
+    const designData = asObject(payload.designData)
+    const incomingPages = Array.isArray(designData.pages) ? designData.pages : []
+    const remoteDesignData = asObject(remoteTemplate.designData)
+    const remotePages = Array.isArray(remoteDesignData.pages) ? remoteDesignData.pages : []
+
+    if (incomingPages.length === 0 || remotePages.length === 0) {
+      return payload
+    }
+
+    const usedRemotePageIds = new Set<string>()
+    const alignedPages = incomingPages.map((page, index) => {
+      const incomingPage = asObject(page)
+      const incomingName = typeof incomingPage.name === 'string' ? incomingPage.name : undefined
+      const incomingOrder = typeof incomingPage.order === 'number' ? incomingPage.order : index
+
+      const candidates = remotePages
+        .map((remotePage) => asObject(remotePage) as RemotePageDescriptor)
+        .filter((remotePage) => typeof remotePage.id === 'string' && !usedRemotePageIds.has(remotePage.id))
+
+      const byOrder = candidates.find((remotePage) => remotePage.order === incomingOrder)
+      const byName = candidates.find((remotePage) => remotePage.name === incomingName)
+      const fallback = candidates[index]
+      const matchedRemotePage = byOrder ?? byName ?? fallback
+
+      if (!matchedRemotePage?.id) {
+        return incomingPage
+      }
+
+      usedRemotePageIds.add(matchedRemotePage.id)
+      if (incomingPage.id !== matchedRemotePage.id) {
+        console.log(
+          `[SyncService] Aligning page ID for template ${remoteTemplate.id}: ${String(incomingPage.id ?? 'undefined')} -> ${matchedRemotePage.id}`
+        )
+      }
+
+      return {
+        ...incomingPage,
+        id: matchedRemotePage.id,
+      }
+    })
+
+    return {
+      ...payload,
+      designData: {
+        ...designData,
+        pages: alignedPages,
+      },
+    }
+  }
+
+  private makeCompatibleUpdatePayload(payload: Record<string, unknown>): Record<string, unknown> {
+    const designData = asObject(payload.designData)
+    const canvas = asObject(designData.canvas)
+    const incomingPages = Array.isArray(designData.pages) ? designData.pages : []
+
+    const sanitizedPages = incomingPages.map((page, index) => {
+      const pageObject = asObject(page)
+      const sanitized: RemotePageDescriptor = {
+        id: typeof pageObject.id === 'string' ? pageObject.id : undefined,
+        name: typeof pageObject.name === 'string' ? pageObject.name : `Página ${index + 1}`,
+        width: typeof pageObject.width === 'number' ? pageObject.width : undefined,
+        height: typeof pageObject.height === 'number' ? pageObject.height : undefined,
+        layers: pageObject.layers,
+        background: typeof pageObject.background === 'string' ? pageObject.background : undefined,
+        order: typeof pageObject.order === 'number' ? pageObject.order : index,
+        thumbnail: typeof pageObject.thumbnail === 'string' || pageObject.thumbnail === null
+          ? (pageObject.thumbnail as string | null)
+          : undefined,
+        tags: Array.isArray(pageObject.tags)
+          ? pageObject.tags.filter((tag): tag is string => typeof tag === 'string')
+          : undefined,
+      }
+
+      return sanitized
+    })
+
+    // Ensure canvas has valid width and height (required by server validation)
+    const canvasWidth = typeof canvas.width === 'number' && canvas.width > 0 ? canvas.width : 1080
+    const canvasHeight = typeof canvas.height === 'number' && canvas.height > 0 ? canvas.height : 1920
+    const canvasBg = typeof canvas.backgroundColor === 'string' ? canvas.backgroundColor : '#ffffff'
+
+    const sanitizedDesignData = {
+      canvas: {
+        width: canvasWidth,
+        height: canvasHeight,
+        backgroundColor: canvasBg,
+      },
+      pages: sanitizedPages,
+    }
+
+    console.log('[SyncService] makeCompatibleUpdatePayload canvas:', sanitizedDesignData.canvas)
+
+    return {
+      name: typeof payload.name === 'string' ? payload.name : undefined,
+      designData: sanitizedDesignData,
+      localId: typeof payload.localId === 'string' ? payload.localId : undefined,
+      thumbnailUrl: typeof payload.thumbnailUrl === 'string' ? payload.thumbnailUrl : undefined,
     }
   }
 

@@ -6,6 +6,7 @@ import type Konva from 'konva'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { createId } from '@/lib/id'
 import { useQueryClient } from '@tanstack/react-query'
+import { canonicalizeShapeStyleForPersistence } from '@/lib/shape-style'
 
 export interface TemplateResource {
   id: number
@@ -291,7 +292,15 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
   const updateLayerStyle = React.useCallback(
     (id: string, style: Layer['style']) => {
-      updateLayer(id, (layer) => ({ ...layer, style: { ...layer.style, ...style } }))
+      updateLayer(id, (layer) => {
+        const nextStyle = { ...layer.style, ...style }
+        return {
+          ...layer,
+          style: layer.type === 'shape'
+            ? canonicalizeShapeStyleForPersistence(nextStyle)
+            : nextStyle,
+        }
+      })
     },
     [updateLayer],
   )

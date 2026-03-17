@@ -7,6 +7,7 @@ import {
   hasTemplateReadAccess,
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
+import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 
 const updatePageSchema = z.object({
   name: z.string().min(1).optional(),
@@ -107,7 +108,7 @@ export async function PATCH(
     // Preparar dados com layers serializados se fornecidos
     const updateData: Record<string, unknown> = { ...validatedData }
     if (validatedData.layers !== undefined) {
-      updateData.layers = JSON.stringify(validatedData.layers)
+      updateData.layers = JSON.stringify(canonicalizeLayersForPersistence(validatedData.layers))
     }
 
     // Atualizar página

@@ -102,6 +102,16 @@ export async function PUT(
 
   try {
     const payload = await req.json()
+
+    // Log payload for debugging sync issues
+    console.log('[API] Template update payload:', {
+      name: payload?.name,
+      hasDesignData: !!payload?.designData,
+      canvas: payload?.designData?.canvas,
+      pagesCount: payload?.designData?.pages?.length,
+      localId: payload?.localId,
+    })
+
     const parsed = updateTemplateSchema.parse(payload)
 
     const data: Prisma.TemplateUpdateInput = {}
@@ -129,26 +139,50 @@ export async function PUT(
       // If designData.pages is provided, update the Page records
       const designData = parsed.designData as { pages?: Array<{ id?: string; name?: string; width?: number; height?: number; layers?: unknown; background?: string; order?: number; thumbnail?: string | null; tags?: string[] }> } | undefined
       if (designData?.pages && Array.isArray(designData.pages)) {
-        // Get existing page IDs to know which to update vs delete
+        // Get existing pages to know which to update vs delete.
+        // Desktop sync can send page IDs that belong to another template; in that case
+        // fall back to matching the current template page by order/name.
         const existingPages = await tx.page.findMany({
           where: { templateId },
-          select: { id: true },
+          select: { id: true, name: true, order: true },
         })
-        const existingPageIds = new Set(existingPages.map(p => p.id))
-        const incomingPageIds = new Set(designData.pages.filter(p => p.id).map(p => p.id!))
+        const existingPageIds = new Set(existingPages.map((p) => p.id))
+        const incomingPageIds = Array.from(
+          new Set(designData.pages.map((p) => p.id).filter((pageId): pageId is string => typeof pageId === 'string' && pageId.length > 0))
+        )
+        const foreignPages = incomingPageIds.length > 0
+          ? await tx.page.findMany({
+              where: {
+                id: { in: incomingPageIds },
+                templateId: { not: templateId },
+              },
+              select: { id: true, templateId: true },
+            })
+          : []
+        const foreignPageIds = new Set(foreignPages.map((page) => page.id))
+        const matchedExistingPageIds = new Set<string>()
+        const resolvedCurrentPageIds = new Set<string>()
 
-        // Delete pages that no longer exist
-        const pagesToDelete = [...existingPageIds].filter(id => !incomingPageIds.has(id))
-        if (pagesToDelete.length > 0) {
-          await tx.page.deleteMany({
-            where: { id: { in: pagesToDelete } },
-          })
+        const findFallbackPage = (page: { name?: string; order?: number }) => {
+          const byOrder = existingPages.find((existingPage) => (
+            !matchedExistingPageIds.has(existingPage.id) &&
+            existingPage.order === (page.order ?? 0)
+          ))
+          if (byOrder) return byOrder
+
+          const byName = existingPages.find((existingPage) => (
+            !matchedExistingPageIds.has(existingPage.id) &&
+            existingPage.name === (page.name ?? '')
+          ))
+          if (byName) return byName
+
+          return undefined
         }
 
         // Upsert pages - update if exists, create with provided ID if not
         for (let i = 0; i < designData.pages.length; i++) {
           const page = designData.pages[i]
-          const pageId = page.id ?? crypto.randomUUID()
+          const requestedPageId = page.id
           const pageData = {
             name: page.name ?? `Página ${i + 1}`,
             width: page.width ?? 1080,
@@ -160,22 +194,44 @@ export async function PUT(
             tags: Array.isArray(page.tags) ? page.tags : [],
           }
 
-          if (existingPageIds.has(pageId)) {
-            // Update existing page
+          if (requestedPageId && existingPageIds.has(requestedPageId)) {
             await tx.page.update({
-              where: { id: pageId },
+              where: { id: requestedPageId },
               data: pageData,
             })
+            matchedExistingPageIds.add(requestedPageId)
+            resolvedCurrentPageIds.add(requestedPageId)
           } else {
-            // Create new page with the provided ID
-            await tx.page.create({
-              data: {
-                id: pageId,
-                ...pageData,
-                templateId,
-              },
-            })
+            const fallbackPage = findFallbackPage(page)
+            const hasForeignIdConflict = requestedPageId ? foreignPageIds.has(requestedPageId) : false
+
+            if (fallbackPage) {
+              await tx.page.update({
+                where: { id: fallbackPage.id },
+                data: pageData,
+              })
+              matchedExistingPageIds.add(fallbackPage.id)
+              resolvedCurrentPageIds.add(fallbackPage.id)
+            } else {
+              await tx.page.create({
+                data: {
+                  id: hasForeignIdConflict ? crypto.randomUUID() : (requestedPageId ?? crypto.randomUUID()),
+                  ...pageData,
+                  templateId,
+                },
+              })
+            }
           }
+        }
+
+        const pagesToDelete = existingPages
+          .map((page) => page.id)
+          .filter((pageId) => !resolvedCurrentPageIds.has(pageId))
+
+        if (pagesToDelete.length > 0) {
+          await tx.page.deleteMany({
+            where: { id: { in: pagesToDelete } },
+          })
         }
       }
 
@@ -184,19 +240,27 @@ export async function PUT(
 
     return NextResponse.json(updated)
   } catch (error) {
-    console.error('Failed to update template:', error)
+    console.error('[API] Failed to update template:', error)
 
     // Se for erro do Zod, retornar detalhes
     if (error && typeof error === 'object' && 'issues' in error) {
       const zodError = error as { issues: Array<{ path: string[]; message: string }> }
-      console.error('Validation errors:', JSON.stringify(zodError.issues, null, 2))
+      console.error('[API] Validation errors:', JSON.stringify(zodError.issues, null, 2))
       return NextResponse.json({
         error: 'Dados inválidos',
-        details: zodError.issues
+        details: zodError.issues.map(issue => ({
+          path: issue.path.join('.'),
+          message: issue.message
+        }))
       }, { status: 400 })
     }
 
-    return NextResponse.json({ error: 'Dados inválidos' }, { status: 400 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    console.error('[API] Non-Zod error:', errorMessage)
+    return NextResponse.json(
+      { error: 'Dados inválidos', details: errorMessage },
+      { status: 400 }
+    )
   }
 }
 

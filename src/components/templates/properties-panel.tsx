@@ -31,6 +31,10 @@ import type { Layer, LayerStyle } from '@/types/template'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
 import { VideoProperties } from './video-properties'
+import {
+  applyOpacityToEditableColor,
+  parseColorOpacity,
+} from '@/lib/shape-style'
 
 const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
 
@@ -531,9 +535,23 @@ function PropertiesContent({
                   max={100}
                   className="w-full"
                   value={Math.round((selectedLayer.style?.opacity ?? 1) * 100)}
-                  onChange={(event) =>
-                    editor.updateLayerStyle(selectedLayer.id, { opacity: Number(event.target.value) / 100 })
-                  }
+                  onChange={(event) => {
+                    const nextOpacity = Number(event.target.value) / 100
+                    if (selectedLayer.type === 'shape') {
+                      editor.updateLayerStyle(selectedLayer.id, {
+                        fill: applyOpacityToEditableColor(selectedLayer.style?.fill, nextOpacity, '#2563eb'),
+                        strokeColor: selectedLayer.style?.strokeColor
+                          ? applyOpacityToEditableColor(selectedLayer.style.strokeColor, nextOpacity, '#1e3a8a')
+                          : selectedLayer.style?.strokeColor,
+                        opacity: 1,
+                        fillOpacity: 1,
+                        strokeOpacity: 1,
+                      })
+                      return
+                    }
+
+                    editor.updateLayerStyle(selectedLayer.id, { opacity: nextOpacity })
+                  }}
                 />
               </div>
             </div>
@@ -1439,87 +1457,6 @@ function toColorInputValue(color: string | undefined, fallback: string): string 
   return fallback
 }
 
-function parseColorOpacity(color: string | undefined, fallback = 1): number {
-  if (!color) return fallback
-  const normalized = color.trim()
-
-  if (/^#[0-9a-f]{8}$/i.test(normalized)) {
-    return parseInt(normalized.slice(7, 9), 16) / 255
-  }
-  if (/^#[0-9a-f]{4}$/i.test(normalized)) {
-    return parseInt(`${normalized[4]}${normalized[4]}`, 16) / 255
-  }
-
-  const functional = normalized.match(/^(rgba?|hsla?)\(([^)]+)\)$/i)
-  if (!functional) return fallback
-
-  const content = functional[2].trim()
-  if (content.includes('/')) {
-    const alphaPart = content.split('/').at(-1)?.trim()
-    if (!alphaPart) return fallback
-    return alphaPart.endsWith('%')
-      ? Number.parseFloat(alphaPart) / 100
-      : Number(alphaPart)
-  }
-
-  const parts = content.split(',').map((part) => part.trim())
-  if (parts.length >= 4) {
-    const alphaPart = parts[3]
-    return alphaPart.endsWith('%')
-      ? Number.parseFloat(alphaPart) / 100
-      : Number(alphaPart)
-  }
-
-  return fallback
-}
-
-function applyOpacityToEditableColor(color: string | undefined, opacity: number, fallback: string): string {
-  const baseColor = (color ?? fallback).trim()
-  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
-
-  if (/^#[0-9a-f]{3}$/i.test(baseColor)) {
-    const expanded = `#${baseColor[1]}${baseColor[1]}${baseColor[2]}${baseColor[2]}${baseColor[3]}${baseColor[3]}`
-    return applyOpacityToEditableColor(expanded, normalizedOpacity, fallback)
-  }
-
-  if (/^#[0-9a-f]{4}$/i.test(baseColor)) {
-    const expanded = `#${baseColor[1]}${baseColor[1]}${baseColor[2]}${baseColor[2]}${baseColor[3]}${baseColor[3]}`
-    return applyOpacityToEditableColor(expanded, normalizedOpacity, fallback)
-  }
-
-  if (/^#[0-9a-f]{6}$/i.test(baseColor) || /^#[0-9a-f]{8}$/i.test(baseColor)) {
-    const hex = baseColor.slice(1, 7)
-    const r = parseInt(hex.slice(0, 2), 16)
-    const g = parseInt(hex.slice(2, 4), 16)
-    const b = parseInt(hex.slice(4, 6), 16)
-    return `rgba(${r}, ${g}, ${b}, ${normalizedOpacity})`
-  }
-
-  const rgbMatch = baseColor.match(/^rgba?\(([^)]+)\)$/i)
-  if (rgbMatch) {
-    const content = rgbMatch[1].trim()
-    if (content.includes('/')) {
-      const [base] = content.split('/').map((part) => part.trim())
-      return `rgb(${base} / ${normalizedOpacity})`
-    }
-    const parts = content.split(',').map((part) => part.trim()).slice(0, 3)
-    return `rgba(${parts.join(', ')}, ${normalizedOpacity})`
-  }
-
-  const hslMatch = baseColor.match(/^hsla?\(([^)]+)\)$/i)
-  if (hslMatch) {
-    const content = hslMatch[1].trim()
-    if (content.includes('/')) {
-      const [base] = content.split('/').map((part) => part.trim())
-      return `hsl(${base} / ${normalizedOpacity})`
-    }
-    const parts = content.split(',').map((part) => part.trim()).slice(0, 3)
-    return `hsla(${parts.join(', ')}, ${normalizedOpacity})`
-  }
-
-  return baseColor
-}
-
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
   const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
   const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
@@ -1546,6 +1483,9 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             })}
           />
         </div>
+        <p className="text-[10px] text-muted-foreground break-all">
+          Valor salvo: {layer.style?.fill ?? '#2563eb'}
+        </p>
         <div className="space-y-1 pt-2">
           <div className="flex items-center justify-between">
             <Label className="text-[10px]">Transparência do preenchimento</Label>
@@ -1588,6 +1528,9 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               })}
             />
           </div>
+          <p className="text-[10px] text-muted-foreground break-all">
+            Valor salvo: {layer.style?.strokeColor ?? '#1e3a8a'}
+          </p>
         </div>
         <div className="space-y-1">
           <Label>Espessura</Label>

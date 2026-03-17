@@ -5,6 +5,7 @@ import {
   fetchTemplateWithProject,
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
+import { canonicalizeShapeLayerForPersistence } from '@/lib/shape-style'
 
 // PATCH - Atualizar uma layer específica em uma página
 export async function PATCH(
@@ -55,7 +56,7 @@ export async function PATCH(
     }
 
     // Atualizar a layer com os novos valores
-    const updatedLayer = {
+    const updatedLayer = canonicalizeShapeLayerForPersistence({
       ...(layers as any[])[layerIndex],
       ...updates,
       // Manter text e content sincronizados para layers de texto
@@ -67,7 +68,7 @@ export async function PATCH(
         text: updates.text,
         content: updates.text,
       }),
-    }
+    })
 
     // Substituir a layer atualizada no array
     ;(layers as any[])[layerIndex] = updatedLayer

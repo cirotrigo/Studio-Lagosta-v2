@@ -4,6 +4,7 @@ import * as React from 'react'
 import { useMultiPage } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
+import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 
 /**
  * Componente que sincroniza o estado entre MultiPageContext e TemplateEditorContext
@@ -17,6 +18,29 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
   const lastPageIdRef = React.useRef<string | null>(currentPageId)
   const isSyncingRef = React.useRef(false)
   const lastSavedLayersRef = React.useRef<string>('')
+
+  const serializeLayersForPersistence = React.useCallback((layers: Layer[]) => {
+    return JSON.stringify(canonicalizeLayersForPersistence(layers as unknown[]))
+  }, [])
+
+  const flushPendingSave = React.useCallback(() => {
+    if (!currentPageId || isSyncingRef.current) {
+      return
+    }
+
+    const layersToSave = serializeLayersForPersistence(design.layers)
+    if (layersToSave === lastSavedLayersRef.current) {
+      return
+    }
+
+    void savePageLayers(currentPageId, design.layers)
+      .then(() => {
+        lastSavedLayersRef.current = layersToSave
+      })
+      .catch((error) => {
+        console.error('[PageSync] Erro ao salvar layers no flush:', error)
+      })
+  }, [currentPageId, design.layers, savePageLayers, serializeLayersForPersistence])
 
   // 1. Carregar layers quando a página atual muda
   React.useEffect(() => {
@@ -45,6 +69,8 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         // name: currentPage.name, // ❌ NÃO PASSAR - isso sobrescreve o nome do template
       })
 
+      lastSavedLayersRef.current = serializeLayersForPersistence((currentPage.layers as Layer[]) || [])
+
       lastPageIdRef.current = currentPageId
 
       // Reset flag após um frame
@@ -65,7 +91,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         }, 1000) // Aguardar 1 segundo para garantir que o canvas foi renderizado
       }
     }
-  }, [currentPage, currentPageId, loadTemplate, generateThumbnail, updatePageThumbnail])
+  }, [currentPage, currentPageId, loadTemplate, generateThumbnail, serializeLayersForPersistence, updatePageThumbnail])
 
   // 2. Salvar layers da página atual quando o design muda (debounced e otimizado)
   React.useEffect(() => {
@@ -74,7 +100,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     }
 
     // Verificar se os layers realmente mudaram (evitar saves desnecessários)
-    const currentLayersString = JSON.stringify(design.layers)
+    const currentLayersString = serializeLayersForPersistence(design.layers)
     if (currentLayersString === lastSavedLayersRef.current) {
       return
     }
@@ -82,7 +108,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     const timeoutId = setTimeout(async () => {
       try {
         // Verificar novamente se ainda é diferente (pode ter mudado durante debounce)
-        const layersToSave = JSON.stringify(design.layers)
+        const layersToSave = serializeLayersForPersistence(design.layers)
         if (layersToSave === lastSavedLayersRef.current) {
           return
         }
@@ -105,10 +131,30 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       } catch (_error) {
         console.error('[PageSync] Erro ao salvar layers:', _error)
       }
-    }, 3000) // Aumentado para 3 segundos (menos salvamentos)
+    }, 800)
 
     return () => clearTimeout(timeoutId)
-  }, [design.layers, currentPageId, savePageLayers, generateThumbnail, updatePageThumbnail])
+  }, [design.layers, currentPageId, savePageLayers, generateThumbnail, serializeLayersForPersistence, updatePageThumbnail])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingSave()
+      }
+    }
+
+    window.addEventListener('beforeunload', flushPendingSave)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingSave)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [flushPendingSave])
 
   return <>{children}</>
 }
