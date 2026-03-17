@@ -1439,9 +1439,90 @@ function toColorInputValue(color: string | undefined, fallback: string): string 
   return fallback
 }
 
+function parseColorOpacity(color: string | undefined, fallback = 1): number {
+  if (!color) return fallback
+  const normalized = color.trim()
+
+  if (/^#[0-9a-f]{8}$/i.test(normalized)) {
+    return parseInt(normalized.slice(7, 9), 16) / 255
+  }
+  if (/^#[0-9a-f]{4}$/i.test(normalized)) {
+    return parseInt(`${normalized[4]}${normalized[4]}`, 16) / 255
+  }
+
+  const functional = normalized.match(/^(rgba?|hsla?)\(([^)]+)\)$/i)
+  if (!functional) return fallback
+
+  const content = functional[2].trim()
+  if (content.includes('/')) {
+    const alphaPart = content.split('/').at(-1)?.trim()
+    if (!alphaPart) return fallback
+    return alphaPart.endsWith('%')
+      ? Number.parseFloat(alphaPart) / 100
+      : Number(alphaPart)
+  }
+
+  const parts = content.split(',').map((part) => part.trim())
+  if (parts.length >= 4) {
+    const alphaPart = parts[3]
+    return alphaPart.endsWith('%')
+      ? Number.parseFloat(alphaPart) / 100
+      : Number(alphaPart)
+  }
+
+  return fallback
+}
+
+function applyOpacityToEditableColor(color: string | undefined, opacity: number, fallback: string): string {
+  const baseColor = (color ?? fallback).trim()
+  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+
+  if (/^#[0-9a-f]{3}$/i.test(baseColor)) {
+    const expanded = `#${baseColor[1]}${baseColor[1]}${baseColor[2]}${baseColor[2]}${baseColor[3]}${baseColor[3]}`
+    return applyOpacityToEditableColor(expanded, normalizedOpacity, fallback)
+  }
+
+  if (/^#[0-9a-f]{4}$/i.test(baseColor)) {
+    const expanded = `#${baseColor[1]}${baseColor[1]}${baseColor[2]}${baseColor[2]}${baseColor[3]}${baseColor[3]}`
+    return applyOpacityToEditableColor(expanded, normalizedOpacity, fallback)
+  }
+
+  if (/^#[0-9a-f]{6}$/i.test(baseColor) || /^#[0-9a-f]{8}$/i.test(baseColor)) {
+    const hex = baseColor.slice(1, 7)
+    const r = parseInt(hex.slice(0, 2), 16)
+    const g = parseInt(hex.slice(2, 4), 16)
+    const b = parseInt(hex.slice(4, 6), 16)
+    return `rgba(${r}, ${g}, ${b}, ${normalizedOpacity})`
+  }
+
+  const rgbMatch = baseColor.match(/^rgba?\(([^)]+)\)$/i)
+  if (rgbMatch) {
+    const content = rgbMatch[1].trim()
+    if (content.includes('/')) {
+      const [base] = content.split('/').map((part) => part.trim())
+      return `rgb(${base} / ${normalizedOpacity})`
+    }
+    const parts = content.split(',').map((part) => part.trim()).slice(0, 3)
+    return `rgba(${parts.join(', ')}, ${normalizedOpacity})`
+  }
+
+  const hslMatch = baseColor.match(/^hsla?\(([^)]+)\)$/i)
+  if (hslMatch) {
+    const content = hslMatch[1].trim()
+    if (content.includes('/')) {
+      const [base] = content.split('/').map((part) => part.trim())
+      return `hsl(${base} / ${normalizedOpacity})`
+    }
+    const parts = content.split(',').map((part) => part.trim()).slice(0, 3)
+    return `hsla(${parts.join(', ')}, ${normalizedOpacity})`
+  }
+
+  return baseColor
+}
+
 function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
-  const fillOpacity = Math.round((layer.style?.fillOpacity ?? 1) * 100)
-  const strokeOpacity = Math.round((layer.style?.strokeOpacity ?? 1) * 100)
+  const fillOpacity = Math.round(parseColorOpacity(layer.style?.fill, layer.style?.fillOpacity ?? 1) * 100)
+  const strokeOpacity = Math.round(parseColorOpacity(layer.style?.strokeColor, layer.style?.strokeOpacity ?? 1) * 100)
 
   return (
     <div className="space-y-3 text-xs">
@@ -1450,13 +1531,19 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
         <div className="flex items-center gap-2">
           <Input
             value={layer.style?.fill ?? '#2563eb'}
-            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+            onChange={(event) => setStyleValue(layer, {
+              fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
+              fillOpacity: 1,
+            })}
           />
           <input
             type="color"
             className="h-9 w-9 rounded-md border border-border/30"
             value={toColorInputValue(layer.style?.fill, '#2563eb')}
-            onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
+            onChange={(event) => setStyleValue(layer, {
+              fill: applyOpacityToEditableColor(event.target.value, fillOpacity / 100, '#2563eb'),
+              fillOpacity: 1,
+            })}
           />
         </div>
         <div className="space-y-1 pt-2">
@@ -1470,9 +1557,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             max={100}
             className="w-full"
             value={fillOpacity}
-            onChange={(event) => setStyleValue(layer, {
-              fillOpacity: Number(event.target.value) / 100,
-            })}
+            onChange={(event) => {
+              const nextOpacity = Number(event.target.value) / 100
+              setStyleValue(layer, {
+                fill: applyOpacityToEditableColor(layer.style?.fill, nextOpacity, '#2563eb'),
+                fillOpacity: 1,
+              })
+            }}
           />
         </div>
       </div>
@@ -1482,13 +1573,19 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           <div className="flex items-center gap-2">
             <Input
               value={layer.style?.strokeColor ?? '#1e3a8a'}
-              onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
+              onChange={(event) => setStyleValue(layer, {
+                strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
+                strokeOpacity: 1,
+              })}
             />
             <input
               type="color"
               className="h-9 w-9 rounded-md border border-border/30"
               value={toColorInputValue(layer.style?.strokeColor, '#1e3a8a')}
-              onChange={(event) => setStyleValue(layer, { strokeColor: event.target.value })}
+              onChange={(event) => setStyleValue(layer, {
+                strokeColor: applyOpacityToEditableColor(event.target.value, strokeOpacity / 100, '#1e3a8a'),
+                strokeOpacity: 1,
+              })}
             />
           </div>
         </div>
@@ -1513,9 +1610,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
           max={100}
           className="w-full"
           value={strokeOpacity}
-          onChange={(event) => setStyleValue(layer, {
-            strokeOpacity: Number(event.target.value) / 100,
-          })}
+          onChange={(event) => {
+            const nextOpacity = Number(event.target.value) / 100
+            setStyleValue(layer, {
+              strokeColor: applyOpacityToEditableColor(layer.style?.strokeColor, nextOpacity, '#1e3a8a'),
+              strokeOpacity: 1,
+            })
+          }}
         />
       </div>
     </div>
