@@ -1,16 +1,10 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, Settings, Image, MessageSquare, Palette, Wand2, Layers3, Images } from 'lucide-react'
+import { Calendar, Settings, Wand2, Layers3, Images } from 'lucide-react'
 import ProjectSelector from './ProjectSelector'
 import SyncStatusIndicator from './SyncStatusIndicator'
 import { cn } from '@/lib/utils'
 
 const navItems = [
-  {
-    to: '/scheduler',
-    icon: Calendar,
-    label: 'Agendador',
-    disabled: false,
-  },
   {
     to: '/project',
     icon: Wand2,
@@ -24,28 +18,16 @@ const navItems = [
     disabled: false,
   },
   {
+    to: '/scheduler',
+    icon: Calendar,
+    label: 'Agendador',
+    disabled: false,
+  },
+  {
     to: '/arts',
     icon: Images,
     label: 'Artes',
     disabled: false,
-  },
-  {
-    to: '/templates',
-    icon: Palette,
-    label: 'Templates',
-    disabled: true,
-  },
-  {
-    to: '/chat',
-    icon: MessageSquare,
-    label: 'Chat IA',
-    disabled: true,
-  },
-  {
-    to: '/images',
-    icon: Image,
-    label: 'Imagens IA',
-    disabled: true,
   },
 ]
 

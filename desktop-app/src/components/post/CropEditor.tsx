@@ -366,7 +366,7 @@ export default function CropEditor({ imageUrl, originalWidth, originalHeight, po
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-      <div className="flex max-h-[95vh] w-full max-w-5xl flex-col rounded-xl border border-border bg-card shadow-2xl">
+      <div className="flex max-h-[95vh] w-full max-w-5xl flex-col rounded-xl border border-border bg-[#0a0a0a] shadow-2xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border p-4">
           <div className="flex items-center gap-3">

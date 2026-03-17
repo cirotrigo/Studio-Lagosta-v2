@@ -244,7 +244,7 @@ export function ProjectTagsManager({ projectId, isOpen, onClose }: ProjectTagsMa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-[#0a0a0a] p-6 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Settings2 size={20} className="text-primary" />
@@ -307,7 +307,7 @@ export function ProjectTagsManager({ projectId, isOpen, onClose }: ProjectTagsMa
               tags.map((tag) => (
                 <div
                   key={tag.id}
-                  className="flex items-center gap-3 rounded-lg border border-border bg-background/50 p-3"
+                  className="flex items-center gap-3 rounded-lg border border-border bg-white/[0.03] p-3"
                 >
                   {/* Color indicator */}
                   <span
@@ -415,7 +415,7 @@ export function ProjectTagsManager({ projectId, isOpen, onClose }: ProjectTagsMa
       {/* Delete confirmation dialog with transfer option */}
       {deleteDialog.isOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-card p-6 shadow-xl">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-[#0a0a0a] p-6 shadow-xl">
             <div className="flex items-center gap-2 text-amber-500">
               <AlertTriangle size={20} />
               <h3 className="text-base font-semibold text-text">Tag com paginas associadas</h3>

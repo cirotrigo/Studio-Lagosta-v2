@@ -222,7 +222,7 @@ export function ResultImageCard({
             {variation.fields.map((field) => (
               <div
                 key={`${variation.id}-${field.key}`}
-                className="rounded-lg border border-border bg-background/30 px-3 py-2"
+                className="rounded-lg border border-border bg-white/[0.03] px-3 py-2"
               >
                 <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
                   {field.label}
@@ -263,7 +263,7 @@ export function ResultImageCard({
         ) : null}
 
         {variation.background ? (
-          <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+          <div className="rounded-lg border border-border bg-white/[0.03] px-3 py-2">
             <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
               Fundo
             </p>
@@ -286,7 +286,7 @@ export function ResultImageCard({
         ) : null}
 
         {variation.warnings.length > 0 ? (
-          <div className="rounded-lg border border-border bg-background/40 px-3 py-2">
+          <div className="rounded-lg border border-border bg-white/[0.03] px-3 py-2">
             <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
               Observacoes
             </p>

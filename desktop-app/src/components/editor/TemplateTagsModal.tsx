@@ -99,7 +99,7 @@ export function TemplateTagsModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 shadow-xl">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-[#0a0a0a] p-6 shadow-xl">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Tag size={20} className="text-primary" />
@@ -175,7 +175,7 @@ export function TemplateTagsModal({
         </div>
 
         {selectedTags.length > 0 && (
-          <div className="mt-4 rounded-lg border border-border bg-input/50 p-3">
+          <div className="mt-4 rounded-lg border border-border bg-white/[0.03] p-3">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-text-subtle">
               Tags selecionadas ({selectedTags.length})
             </p>

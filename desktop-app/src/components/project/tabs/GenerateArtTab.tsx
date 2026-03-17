@@ -1020,7 +1020,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             {queuedJobs.length > 0 ? <GenerationQueue jobs={queuedJobs} /> : null}
 
             {[...readyJobs, ...erroredJobs].map((job) => (
-              <div key={job.id} className="space-y-4 rounded-2xl border border-border bg-card/60 p-4">
+              <div key={job.id} className="space-y-4 rounded-2xl border border-border bg-white/[0.02] p-4 text-text">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
@@ -1098,7 +1098,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                 ) : null}
 
                 {job.warnings.length > 0 ? (
-                  <div className="rounded-xl border border-border bg-background/40 p-3">
+                  <div className="rounded-xl border border-border bg-white/[0.03] p-3">
                     <p className="text-xs font-medium uppercase tracking-[0.16em] text-text-subtle">
                       Avisos do pipeline
                     </p>
@@ -1113,13 +1113,13 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                 ) : null}
 
                 {job.knowledge?.hits?.length ? (
-                  <details className="rounded-xl border border-border bg-background/30 p-3">
+                  <details className="rounded-xl border border-border bg-white/[0.03] p-3">
                     <summary className="cursor-pointer text-sm font-medium text-text">
                       Ver dados usados ({job.knowledge.hits.length})
                     </summary>
                     <div className="mt-3 space-y-3">
                       {job.knowledge.hits.map((hit) => (
-                        <div key={`${hit.entryId}-${hit.category}`} className="rounded-lg border border-border bg-card/70 p-3">
+                        <div key={`${hit.entryId}-${hit.category}`} className="rounded-lg border border-border bg-white/[0.05] p-3">
                           <div className="flex items-center gap-2">
                             <Database size={14} className="text-primary" />
                             <span className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">

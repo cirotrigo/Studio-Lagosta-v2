@@ -127,7 +127,7 @@ export default function CaptionEditor({
       {/* AI Modal */}
       {showAIModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-lg rounded-lg border border-border bg-card p-6">
+          <div className="w-full max-w-lg rounded-lg border border-border bg-[#0a0a0a] p-6">
             <h3 className="mb-4 text-lg font-semibold text-text">
               Gerar Legenda com IA
             </h3>

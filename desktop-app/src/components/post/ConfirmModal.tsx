@@ -31,7 +31,7 @@ export default function ConfirmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-lg border border-border bg-card">
+      <div className="w-full max-w-md rounded-lg border border-border bg-[#0a0a0a]">
         {/* Header */}
         <div className="border-b border-border p-4">
           <h3 className="text-lg font-semibold text-text">Confirmar Agendamento</h3>
