@@ -235,6 +235,9 @@ function ShapeLayer({
   const stroke = layer.style?.strokeColor ?? (layer.style?.border?.width && layer.style.border.width > 0 ? layer.style.border.color : undefined)
   const strokeWidth = layer.style?.strokeWidth ?? layer.style?.border?.width ?? 0
   const cornerRadius = layer.style?.border?.radius ?? 0
+  const opacity = layer.style?.opacity ?? 1
+  const resolvedFill = applyOpacityToColor(fill, opacity)
+  const resolvedStroke = stroke ? applyOpacityToColor(stroke, opacity) : undefined
 
   return (
     <Rect
@@ -245,11 +248,11 @@ function ShapeLayer({
       width={width}
       height={height}
       rotation={layer.rotation ?? 0}
-      fill={fill}
+      fill={resolvedFill}
       cornerRadius={cornerRadius}
-      stroke={stroke}
+      stroke={resolvedStroke}
       strokeWidth={strokeWidth}
-      opacity={layer.style?.opacity ?? 1}
+      opacity={1}
       onClick={onSelect}
       onTap={onSelect}
       draggable={!!onDragEnd}
@@ -295,10 +298,50 @@ function calculateGradientFromAngle(
  * Convert hex color to rgba string
  */
 function hexToRgba(hex: string, opacity: number): string {
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
+  const normalized = hex.replace('#', '')
+
+  if (normalized.length === 8) {
+    const r = parseInt(normalized.slice(0, 2), 16)
+    const g = parseInt(normalized.slice(2, 4), 16)
+    const b = parseInt(normalized.slice(4, 6), 16)
+    const a = parseInt(normalized.slice(6, 8), 16) / 255
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
+  }
+
+  if (normalized.length === 4) {
+    const r = parseInt(`${normalized[0]}${normalized[0]}`, 16)
+    const g = parseInt(`${normalized[1]}${normalized[1]}`, 16)
+    const b = parseInt(`${normalized[2]}${normalized[2]}`, 16)
+    const a = parseInt(`${normalized[3]}${normalized[3]}`, 16) / 255
+    return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, a * opacity))})`
+  }
+
+  const expanded = normalized.length === 3
+    ? `${normalized[0]}${normalized[0]}${normalized[1]}${normalized[1]}${normalized[2]}${normalized[2]}`
+    : normalized
+
+  const r = parseInt(expanded.slice(0, 2), 16)
+  const g = parseInt(expanded.slice(2, 4), 16)
+  const b = parseInt(expanded.slice(4, 6), 16)
   return `rgba(${r}, ${g}, ${b}, ${opacity})`
+}
+
+function applyOpacityToColor(color: string, opacity: number): string {
+  const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+
+  if (color.startsWith('#') && [4, 5, 7, 9].includes(color.length)) {
+    return hexToRgba(color, normalizedOpacity)
+  }
+
+  const rgbaMatch = color.match(/rgba?\(([^)]+)\)/i)
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(',').map((part) => part.trim())
+    const [r = '0', g = '0', b = '0', a = '1'] = parts
+    const alpha = Math.max(0, Math.min(1, Number(a) * normalizedOpacity))
+    return `rgba(${r}, ${g}, ${b}, ${alpha})`
+  }
+
+  return color
 }
 
 function GradientLayer({
@@ -341,7 +384,7 @@ function GradientLayer({
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
       .flatMap((stop) => [
         stop.position ?? 0,
-        hexToRgba(stop.color ?? '#000000', stop.opacity ?? 1)
+        applyOpacityToColor(stop.color ?? '#000000', stop.opacity ?? 1)
       ])
   }, [gradientStops])
 

@@ -17,6 +17,29 @@ import { LayerActionsToolbar } from '../components/layer-actions-toolbar'
 import { LayerControls } from '../components/layer-controls'
 import type { Layer } from '@/types/template'
 
+function colorHasTransparency(color?: string): boolean {
+  if (!color) return false
+
+  const normalized = color.trim()
+
+  if (/^#([0-9a-f]{8}|[0-9a-f]{4})$/i.test(normalized)) {
+    const alphaHex = normalized.length === 9
+      ? normalized.slice(7, 9)
+      : `${normalized[4]}${normalized[4]}`
+    return parseInt(alphaHex, 16) < 255
+  }
+
+  const rgbaMatch = normalized.match(/rgba?\(([^)]+)\)/i)
+  if (rgbaMatch) {
+    const parts = rgbaMatch[1].split(',').map((part) => part.trim())
+    if (parts.length >= 4) {
+      return Number(parts[3]) < 1
+    }
+  }
+
+  return false
+}
+
 function needsLosslessExport(layers: Layer[]): boolean {
   return layers.some((layer) => {
     if (layer.visible === false) return false
@@ -27,12 +50,20 @@ function needsLosslessExport(layers: Layer[]): boolean {
     }
 
     const fill = layer.style?.fill
-    if (typeof fill === 'string' && fill.startsWith('rgba(')) {
+    if (typeof fill === 'string' && colorHasTransparency(fill)) {
+      return true
+    }
+
+    const strokeColor = layer.style?.strokeColor ?? layer.style?.border?.color
+    if (typeof strokeColor === 'string' && colorHasTransparency(strokeColor)) {
       return true
     }
 
     const gradientStops = layer.style?.gradientStops
-    if (Array.isArray(gradientStops) && gradientStops.some((stop) => typeof stop.opacity === 'number' && stop.opacity < 1)) {
+    if (Array.isArray(gradientStops) && gradientStops.some((stop) => (
+      (typeof stop.opacity === 'number' && stop.opacity < 1) ||
+      colorHasTransparency(stop.color)
+    ))) {
       return true
     }
 

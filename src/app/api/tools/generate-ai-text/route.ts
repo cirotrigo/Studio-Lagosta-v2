@@ -126,6 +126,9 @@ const imageContextSchema = z.object({
   summary: z.string().trim().max(280).default(''),
   dishNameCandidates: z.array(z.string().trim().min(1).max(80)).max(5).default([]),
   sceneType: z.string().trim().max(120).default(''),
+  beverageFamily: z.string().trim().max(80).default(''),
+  labelTextHints: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
+  productClues: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
   ingredientsHints: z.array(z.string().trim().min(1).max(80)).max(8).default([]),
   confidence: z.number().min(0).max(1).default(0),
 })
@@ -170,8 +173,11 @@ interface GenerateAiTextImageAnalysisPayload {
   sourceImageUrl?: string
   summary: string
   sceneType: string
+  beverageFamily: string
   confidence: number
   dishNameCandidates: string[]
+  labelTextHints: string[]
+  productClues: string[]
   ingredientsHints: string[]
   matchedKnowledge?: {
     entryId: string
@@ -279,7 +285,10 @@ function composeVisualKnowledgeQuery(
       prompt,
       analysis.sceneType,
       analysis.summary,
+      analysis.beverageFamily,
       ...analysis.dishNameCandidates,
+      ...analysis.labelTextHints,
+      ...analysis.productClues,
       ...analysis.ingredientsHints,
     ],
     14,
@@ -301,10 +310,16 @@ function computeVisualKnowledgeScore(
   const haystack = `${hit.title}\n${hit.content}`
   let score = hit.score
   score += keywordPresenceScore(haystack, analysis.dishNameCandidates)
+  score += keywordPresenceScore(haystack, analysis.labelTextHints)
+  score += keywordPresenceScore(haystack, analysis.productClues)
   score += keywordPresenceScore(haystack, analysis.ingredientsHints)
 
   if (analysis.sceneType) {
     score += keywordPresenceScore(haystack, [analysis.sceneType])
+  }
+
+  if (analysis.beverageFamily) {
+    score += keywordPresenceScore(haystack, [analysis.beverageFamily])
   }
 
   if (normalizeLooseText(prompt).includes('almoco executivo')) {
@@ -474,6 +489,10 @@ async function analyzeImageContext(
               `Prompt do usuario: "${prompt}"`,
               'Regras:',
               '- Nao invente nome especifico de prato se a imagem nao permitir alta confianca.',
+              '- Se a imagem mostrar vinho, bebida ou garrafa, identifique a familia visual da bebida em beverageFamily (ex: vinho tinto, vinho branco, espumante, rose).',
+              '- labelTextHints deve listar apenas fragmentos realmente legiveis do rotulo ou embalagem, preservando a grafia visivel quando possivel.',
+              '- productClues deve listar pistas praticas do produto observadas na imagem ou no rotulo, como safra, origem, varietal, tipo da bebida, ocasiacao de consumo ou formato da garrafa.',
+              '- Nunca invente marca, rotulo, safra, origem ou nome do produto se isso nao estiver claramente legivel.',
               '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
               '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
               '- sceneType deve descrever o contexto da cena em poucas palavras.',
@@ -503,8 +522,11 @@ function buildImageAnalysisPayload(
       sourceImageUrl,
       summary: '',
       sceneType: '',
+      beverageFamily: '',
       confidence: 0,
       dishNameCandidates: [],
+      labelTextHints: [],
+      productClues: [],
       ingredientsHints: [],
       warnings,
     }
@@ -538,8 +560,11 @@ function buildImageAnalysisPayload(
     sourceImageUrl,
     summary: limitText(analysis.summary, 280),
     sceneType: limitText(analysis.sceneType, 120),
+    beverageFamily: limitText(analysis.beverageFamily, 80),
     confidence: Number(Math.max(0, Math.min(1, analysis.confidence)).toFixed(4)),
     dishNameCandidates: dedupeStrings(analysis.dishNameCandidates, 5),
+    labelTextHints: dedupeStrings(analysis.labelTextHints, 8),
+    productClues: dedupeStrings(analysis.productClues, 8),
     ingredientsHints: dedupeStrings(analysis.ingredientsHints, 8),
     matchedKnowledge,
     warnings: dedupeStrings(warnings, 6),
@@ -1667,8 +1692,11 @@ function buildImageAnalysisPromptSection(
     'ANALISE VISUAL DA IMAGEM (apoio, nunca sobrepor o prompt do usuario):',
     `- resumo: ${imageAnalysis.summary || 'sem resumo'}`,
     `- cena: ${imageAnalysis.sceneType || 'nao identificada'}`,
+    `- familia da bebida/produto: ${imageAnalysis.beverageFamily || 'nao identificada'}`,
     `- confianca: ${imageAnalysis.confidence}`,
     `- candidatos: ${imageAnalysis.dishNameCandidates.join(', ') || 'nenhum'}`,
+    `- texto visivel no rotulo: ${imageAnalysis.labelTextHints.join(', ') || 'nenhum'}`,
+    `- pistas do produto/rotulo: ${imageAnalysis.productClues.join(', ') || 'nenhum'}`,
     `- ingredientes/pistas: ${imageAnalysis.ingredientsHints.join(', ') || 'nenhum'}`,
   ]
 
@@ -1744,6 +1772,7 @@ function buildUserPrompt(
     '10. Em conflito entre prompt e base, priorize o prompt do usuario.',
     '11. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
     '12. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
+    '12b. Se houver texto legivel de rotulo ou pistas claras do produto, use isso como apoio contextual sem transformar inferencia em fato nao confirmado.',
     '13. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
     '14. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
     '15. Se um campo for pequeno, prefira menos palavras e mais clareza, nunca textos no limite visual.',

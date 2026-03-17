@@ -151,6 +151,54 @@ export class RenderEngine {
     }
   }
 
+  private static applyOpacityToColor(color: string, opacity = 1): string {
+    const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+
+    if (color.startsWith('#')) {
+      const hex = color.slice(1)
+
+      if (hex.length === 8) {
+        const r = parseInt(hex.slice(0, 2), 16)
+        const g = parseInt(hex.slice(2, 4), 16)
+        const b = parseInt(hex.slice(4, 6), 16)
+        const a = parseInt(hex.slice(6, 8), 16) / 255
+        return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a * normalizedOpacity))})`
+      }
+
+      if (hex.length === 4) {
+        const r = parseInt(`${hex[0]}${hex[0]}`, 16)
+        const g = parseInt(`${hex[1]}${hex[1]}`, 16)
+        const b = parseInt(`${hex[2]}${hex[2]}`, 16)
+        const a = parseInt(`${hex[3]}${hex[3]}`, 16) / 255
+        return `rgba(${r},${g},${b},${Math.max(0, Math.min(1, a * normalizedOpacity))})`
+      }
+
+      if (hex.length === 6) {
+        const r = parseInt(hex.slice(0, 2), 16)
+        const g = parseInt(hex.slice(2, 4), 16)
+        const b = parseInt(hex.slice(4, 6), 16)
+        return `rgba(${r},${g},${b},${normalizedOpacity})`
+      }
+
+      if (hex.length === 3) {
+        const r = parseInt(`${hex[0]}${hex[0]}`, 16)
+        const g = parseInt(`${hex[1]}${hex[1]}`, 16)
+        const b = parseInt(`${hex[2]}${hex[2]}`, 16)
+        return `rgba(${r},${g},${b},${normalizedOpacity})`
+      }
+    }
+
+    const rgbaMatch = color.match(/rgba?\(([^)]+)\)/i)
+    if (rgbaMatch) {
+      const parts = rgbaMatch[1].split(',').map((part) => part.trim())
+      const [r = '0', g = '0', b = '0', a = '1'] = parts
+      const alpha = Math.max(0, Math.min(1, Number(a) * normalizedOpacity))
+      return `rgba(${r},${g},${b},${alpha})`
+    }
+
+    return color
+  }
+
   private static applyShadow(ctx: CanvasRenderingContext2D, style?: LayerStyle): void {
     if (!style?.shadow) return
     const { offsetX, offsetY, blur, color } = style.shadow
@@ -593,12 +641,7 @@ export class RenderEngine {
       // Apply opacity to color if present
       let color = stop.color
       if (stop.opacity !== undefined && stop.opacity < 1) {
-        // Convert hex to rgba with opacity
-        const hex = stop.color.replace('#', '')
-        const r = parseInt(hex.substring(0, 2), 16)
-        const g = parseInt(hex.substring(2, 4), 16)
-        const b = parseInt(hex.substring(4, 6), 16)
-        color = `rgba(${r},${g},${b},${stop.opacity})`
+        color = this.applyOpacityToColor(stop.color, stop.opacity)
       }
       gradient.addColorStop(position, color)
     }
@@ -615,8 +658,12 @@ export class RenderEngine {
   ): void {
     const style = layer.style ?? {}
     const shapeType = style.shapeType ?? 'rectangle'
-    const fill = style.fill ?? '#2563eb'
-    const stroke = style.strokeColor ?? style.border?.color
+    const fill = this.applyOpacityToColor(style.fill ?? '#2563eb')
+    const stroke = style.strokeColor
+      ? this.applyOpacityToColor(style.strokeColor)
+      : style.border?.color
+        ? this.applyOpacityToColor(style.border.color)
+        : undefined
     const strokeWidth = style.strokeWidth ?? style.border?.width ?? 0
     const cornerRadius = style.border?.radius ?? 0
 
