@@ -375,6 +375,7 @@ function GenerateImageForm({
   const [lastGeneratedPrompt, setLastGeneratedPrompt] = React.useState<string>('')
   const [lastReferenceUrls, setLastReferenceUrls] = React.useState<string[]>([])
   const [showSavePromptDialog, setShowSavePromptDialog] = React.useState(false)
+  const [localFilePreviewUrls, setLocalFilePreviewUrls] = React.useState<string[]>([])
 
   // Buscar prompts globais do usuário
   const { data: prompts = [] } = usePrompts()
@@ -499,6 +500,15 @@ function GenerateImageForm({
       toast({ description: 'Prompt aplicado com sucesso!' })
     }
   }, [promptToApply, onPromptApplied, toast])
+
+  React.useEffect(() => {
+    const previewUrls = localFiles.map(file => URL.createObjectURL(file))
+    setLocalFilePreviewUrls(previewUrls)
+
+    return () => {
+      previewUrls.forEach(url => URL.revokeObjectURL(url))
+    }
+  }, [localFiles])
 
   // Função helper para calcular tamanho e posição com largura total do canvas e centralizada
   const calculateCanvasPlacement = (imageWidth: number, imageHeight: number) => {
@@ -1464,13 +1474,17 @@ function GenerateImageForm({
               {localFiles.map((file, index) => (
                 <div key={`local-${index}`} className="relative group">
                   <div className="relative w-full h-20 rounded border overflow-hidden">
-                    <Image
-                      src={URL.createObjectURL(file)}
-                      alt={file.name}
-                      fill
-                      className="object-cover"
-                      unoptimized
-                    />
+                    {localFilePreviewUrls[index] ? (
+                      <Image
+                        src={localFilePreviewUrls[index]}
+                        alt={file.name}
+                        fill
+                        className="object-cover"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="h-full w-full bg-muted" />
+                    )}
                   </div>
                   <button
                     onClick={() => handleRemoveLocalFile(index)}

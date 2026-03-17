@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import type { PostType } from '../../prisma/generated/client'
 
@@ -37,7 +37,10 @@ export function useAgendaPosts({
     },
     staleTime: 2 * 60_000, // OPTIMIZED: Increased to 2 minutes for better caching
     gcTime: 5 * 60_000, // OPTIMIZED: Cache for 5 minutes
-    refetchOnWindowFocus: true, // Refetch when user returns to tab
+    placeholderData: keepPreviousData,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: true,
+    retry: 1,
     // OPTIMIZED: Reduced refetch frequency
     refetchInterval: (query) => {
       const data = query.state.data as any

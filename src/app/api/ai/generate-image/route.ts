@@ -122,75 +122,44 @@ export async function POST(request: Request) {
       throw error
     }
 
-    // 4. Upload de imagens de referência para Vercel Blob (se houver)
-    let publicReferenceUrls: string[] = []
+    // 4. Preparar imagens de referência uma única vez para evitar re-fetch imediato do Blob
+    let preparedReferenceAssets: Array<{ publicUrl: string; buffer: Buffer; contentType: string }> = []
     if (body.referenceImages && body.referenceImages.length > 0) {
-      console.log('[AI Generate] Uploading reference images to Vercel Blob...', {
+      console.log('[AI Generate] Preparing reference images...', {
         count: body.referenceImages.length,
         urls: body.referenceImages
       })
 
-      publicReferenceUrls = await Promise.all(
+      preparedReferenceAssets = await Promise.all(
         body.referenceImages.map(async (url, index) => {
           try {
-            // Se já é uma URL pública do Vercel Blob, usar diretamente
-            if (url.includes('vercel-storage.com') || url.includes('blob.vercel-storage.com')) {
-              console.log('[AI Generate] Using existing Vercel Blob URL:', url)
-              return url
-            }
-
-            // Se é uma URL do Google Drive, usar o serviço diretamente
-            let imageBuffer: Buffer | ArrayBuffer
-            let contentType = 'image/jpeg'
-
-            const googleDriveFileId = extractGoogleDriveFileId(url)
-            if (googleDriveFileId) {
-              console.log('[AI Generate] Using Google Drive service for reference image:', googleDriveFileId)
-
-              try {
-                const { buffer, contentType: driveContentType } = await fetchGoogleDriveImage(googleDriveFileId)
-                imageBuffer = buffer
-                contentType = driveContentType
-              } catch (error) {
-                console.error(`[AI Generate] Failed to fetch reference image ${index + 1} from Google Drive:`, error)
-                throw new Error(`Falha ao carregar imagem de referência ${index + 1} do Google Drive. Verifique se o arquivo existe e você tem permissão.`)
-              }
-            } else {
-              // Para outras URLs, fazer fetch normal
-              const response = await fetch(url)
-              if (!response.ok) {
-                throw new Error(`Falha ao carregar imagem de referência ${index + 1}. Verifique se a URL está acessível.`)
-              }
-              imageBuffer = await response.arrayBuffer()
-              contentType = response.headers.get('content-type') || 'image/jpeg'
-            }
+            const { buffer: imageBuffer, contentType } = await fetchImageFromSource(url)
 
             // Validar tamanho da imagem de referência
-            const sizeInMb = (imageBuffer.byteLength / (1024 * 1024)).toFixed(2)
+            const sizeInMb = (imageBuffer.length / (1024 * 1024)).toFixed(2)
             const maxMb = 10 // Limite de 10MB para imagens de referência
 
             console.log(`[AI Generate] Reference image ${index + 1} size: ${sizeInMb}MB`)
 
-            if (imageBuffer.byteLength > maxMb * 1024 * 1024) {
+            if (imageBuffer.length > maxMb * 1024 * 1024) {
               throw new Error(`Imagem de referência ${index + 1} muito grande (${sizeInMb}MB). Tamanho máximo: ${maxMb}MB.\n\nCompacte a imagem antes de enviar.`)
             }
 
-            // Upload para Vercel Blob
-            const fileName = `ai-ref-${Date.now()}-${index}.jpg`
-            const blob = await put(fileName, imageBuffer, {
-              access: 'public',
+            const publicUrl = isVercelBlobUrl(url)
+              ? url
+              : await storeBufferInVercelBlob(
+                  imageBuffer,
+                  `ai-ref-${Date.now()}-${index}${getFileExtensionFromMimeType(contentType)}`,
+                  contentType
+                )
+
+            console.log('[AI Generate] Reference image ready:', publicUrl)
+
+            return {
+              publicUrl,
+              buffer: imageBuffer,
               contentType,
-            })
-
-            console.log('[AI Generate] Reference image uploaded:', blob.url)
-
-            // Verificar se a imagem está acessível
-            const testResponse = await fetch(blob.url, { method: 'HEAD' })
-            if (!testResponse.ok) {
-              throw new Error(`Falha ao verificar imagem enviada (HTTP ${testResponse.status}). Tente novamente.`)
             }
-
-            return blob.url
           } catch (error) {
             console.error(`[AI Generate] Error processing reference image ${index + 1}:`, error)
             throw new Error(`Erro ao processar imagem de referência ${index + 1}: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
@@ -198,65 +167,45 @@ export async function POST(request: Request) {
         })
       )
 
+      const publicReferenceUrls = preparedReferenceAssets.map(asset => asset.publicUrl)
       console.log('[AI Generate] All reference images validated and ready:', {
         count: publicReferenceUrls.length,
         urls: publicReferenceUrls
       })
     }
 
-    // 4.5. Upload de imagem base para Vercel Blob (se necessário para modo edit)
+    const publicReferenceUrls = preparedReferenceAssets.map(asset => asset.publicUrl)
+
+    // 4.5. Preparar imagem base para modo edit sem reler a URL do Blob logo depois
     let publicBaseImageUrl: string | undefined = body.baseImage
+    let baseImageBuffer: Buffer | undefined
+    let baseImageBufferType: string | undefined
     if (body.baseImage && (body.mode === 'edit' || body.mode === 'inpaint')) {
       console.log('[AI Generate] Processing base image for edit mode:', body.baseImage)
 
       try {
-        // Se já é uma URL pública do Vercel Blob, usar diretamente
-        if (body.baseImage.includes('vercel-storage.com') || body.baseImage.includes('blob.vercel-storage.com')) {
-          console.log('[AI Generate] Base image is already a Vercel Blob URL')
-          publicBaseImageUrl = body.baseImage
+        const preparedBaseImage = await fetchImageFromSource(body.baseImage)
+        baseImageBuffer = preparedBaseImage.buffer
+        baseImageBufferType = preparedBaseImage.contentType
+
+        const sizeInMb = (baseImageBuffer.length / (1024 * 1024)).toFixed(2)
+        console.log(`[AI Generate] Base image size: ${sizeInMb}MB, content-type: ${baseImageBufferType}`)
+
+        if (baseImageBuffer.length > 12 * 1024 * 1024) {
+          throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 12MB.`)
         }
-        // Se é uma URL do Google Drive (internal API), usar o serviço diretamente
-        else {
-          const googleDriveFileId = extractGoogleDriveFileId(body.baseImage)
 
-          if (googleDriveFileId) {
-            console.log('[AI Generate] Using Google Drive service for base image:', googleDriveFileId)
-
-            try {
-              const { buffer: imageBuffer, contentType } = await fetchGoogleDriveImage(googleDriveFileId)
-
-              // Validar tamanho
-              const sizeInMb = (imageBuffer.length / (1024 * 1024)).toFixed(2)
-              console.log(`[AI Generate] Base image size: ${sizeInMb}MB, content-type: ${contentType}`)
-
-              if (imageBuffer.length > 12 * 1024 * 1024) {
-                throw new Error(`Imagem base muito grande (${sizeInMb}MB). Tamanho máximo: 12MB.`)
-              }
-
-              if (imageBuffer.length === 0) {
-                throw new Error('Imagem base está vazia. Selecione outra imagem.')
-              }
-
-              // Upload para Vercel Blob
-              const fileName = `ai-base-${Date.now()}.jpg`
-              const blob = await put(fileName, imageBuffer, {
-                access: 'public',
-                contentType,
-              })
-
-              console.log('[AI Generate] Base image uploaded to Vercel Blob:', blob.url)
-              publicBaseImageUrl = blob.url
-            } catch (fetchError) {
-              console.error('[AI Generate] Error fetching base image from Google Drive:', fetchError)
-              throw new Error(`Falha ao carregar imagem base do Google Drive: ${fetchError instanceof Error ? fetchError.message : 'Erro desconhecido'}`)
-            }
-          }
-          // Para outras URLs externas, usar diretamente
-          else {
-            console.log('[AI Generate] Using external base image URL directly:', body.baseImage)
-            publicBaseImageUrl = body.baseImage
-          }
+        if (baseImageBuffer.length === 0) {
+          throw new Error('Imagem base está vazia. Selecione outra imagem.')
         }
+
+        publicBaseImageUrl = isVercelBlobUrl(body.baseImage)
+          ? body.baseImage
+          : await storeBufferInVercelBlob(
+              baseImageBuffer,
+              `ai-base-${Date.now()}${getFileExtensionFromMimeType(baseImageBufferType)}`,
+              baseImageBufferType
+            )
       } catch (error) {
         console.error('[AI Generate] Error processing base image:', error)
         throw new Error(`Erro ao processar imagem base: ${error instanceof Error ? error.message : 'Erro desconhecido'}`)
@@ -298,41 +247,12 @@ export async function POST(request: Request) {
         )
       }
 
-      // Preparar imagens de referência como buffers para Gemini
-      let referenceBuffers: Buffer[] | undefined
-      let referenceBufferTypes: string[] | undefined
-
-      if (publicReferenceUrls.length > 0) {
-        console.log('[AI Generate] Fetching reference images as buffers for Gemini...')
-        const fetchedRefs = await Promise.all(
-          publicReferenceUrls.map(async (url) => {
-            const response = await fetch(url)
-            if (!response.ok) {
-              throw new Error(`Falha ao carregar imagem de referência para Gemini`)
-            }
-            const arrayBuffer = await response.arrayBuffer()
-            const contentType = response.headers.get('content-type') || 'image/jpeg'
-            return { buffer: Buffer.from(arrayBuffer), contentType }
-          })
-        )
-        referenceBuffers = fetchedRefs.map(r => r.buffer)
-        referenceBufferTypes = fetchedRefs.map(r => r.contentType)
-      }
-
-      // Preparar imagem base como buffer para edição
-      let baseImageBuffer: Buffer | undefined
-      let baseImageBufferType: string | undefined
-
-      if (publicBaseImageUrl && (body.mode === 'edit' || body.mode === 'inpaint')) {
-        console.log('[AI Generate] Fetching base image as buffer for Gemini...')
-        const response = await fetch(publicBaseImageUrl)
-        if (!response.ok) {
-          throw new Error('Falha ao carregar imagem base para Gemini')
-        }
-        const arrayBuffer = await response.arrayBuffer()
-        baseImageBuffer = Buffer.from(arrayBuffer)
-        baseImageBufferType = response.headers.get('content-type') || 'image/jpeg'
-      }
+      const referenceBuffers = preparedReferenceAssets.length > 0
+        ? preparedReferenceAssets.map(asset => asset.buffer)
+        : undefined
+      const referenceBufferTypes = preparedReferenceAssets.length > 0
+        ? preparedReferenceAssets.map(asset => asset.contentType)
+        : undefined
 
       // Executar geração com retry (1 retry com Gemini, depois fallback para Nano Banana Pro via Replicate)
       const MAX_GEMINI_RETRIES = 2
@@ -952,6 +872,57 @@ async function uploadToVercelBlob(imageUrl: string, fileName: string) {
     console.error('[AI Generate] Failed to upload to Vercel Blob:', error)
     throw new Error('Falha ao salvar imagem gerada. Tente novamente.')
   }
+}
+
+async function storeBufferInVercelBlob(
+  buffer: Buffer,
+  fileName: string,
+  contentType: string,
+): Promise<string> {
+  try {
+    const blob = await put(fileName, buffer, {
+      access: 'public',
+      contentType,
+    })
+
+    return blob.url
+  } catch (error) {
+    console.error('[AI Generate] Failed to upload source image to Vercel Blob:', error)
+    throw new Error('Falha ao preparar imagem para geração. Tente novamente.')
+  }
+}
+
+function isVercelBlobUrl(url: string): boolean {
+  return url.includes('vercel-storage.com') || url.includes('blob.vercel-storage.com')
+}
+
+function getFileExtensionFromMimeType(contentType: string): string {
+  if (contentType.includes('png')) return '.png'
+  if (contentType.includes('webp')) return '.webp'
+  if (contentType.includes('gif')) return '.gif'
+  return '.jpg'
+}
+
+async function fetchExternalImage(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(30000) })
+  if (!response.ok) {
+    throw new Error('Verifique se a URL está acessível.')
+  }
+
+  const arrayBuffer = await response.arrayBuffer()
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    contentType: response.headers.get('content-type') || 'image/jpeg',
+  }
+}
+
+async function fetchImageFromSource(url: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const googleDriveFileId = extractGoogleDriveFileId(url)
+  if (googleDriveFileId) {
+    return fetchGoogleDriveImage(googleDriveFileId)
+  }
+
+  return fetchExternalImage(url)
 }
 
 function calculateDimensions(aspectRatio: string): { width: number; height: number } {

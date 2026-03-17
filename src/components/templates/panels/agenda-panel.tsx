@@ -76,7 +76,7 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
   const startDate = React.useMemo(() => getMonthStart(currentMonth), [currentMonth])
   const endDate = React.useMemo(() => getMonthEnd(currentMonth), [currentMonth])
 
-  const { data: posts, isLoading } = useAgendaPosts({
+  const { data: posts, isLoading, isError, error, refetch } = useAgendaPosts({
     projectId,
     startDate,
     endDate,
@@ -215,6 +215,20 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
         {isLoading ? (
           <div className="flex items-center justify-center py-4">
             <div className="text-[10px] text-muted-foreground">Carregando...</div>
+          </div>
+        ) : isError ? (
+          <div className="flex flex-col items-center justify-center gap-2 py-4 text-center">
+            <div className="text-[10px] text-muted-foreground">
+              {error instanceof Error ? error.message : 'Falha ao carregar agenda.'}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[10px]"
+              onClick={() => refetch()}
+            >
+              Tentar novamente
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-7 gap-0.5 mt-1">
