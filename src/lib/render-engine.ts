@@ -83,6 +83,9 @@ export class RenderEngine {
       case 'gradient2':
         this.renderGradient(ctx, finalLayer, width, height)
         break
+      case 'shape':
+        this.renderShape(ctx, finalLayer, width, height)
+        break
       case 'logo':
       case 'element':
         await this.renderImage(ctx, finalLayer, width, height, options)
@@ -602,6 +605,92 @@ export class RenderEngine {
 
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, width, height)
+  }
+
+  private static renderShape(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    width: number,
+    height: number,
+  ): void {
+    const style = layer.style ?? {}
+    const shapeType = style.shapeType ?? 'rectangle'
+    const fill = style.fill ?? '#2563eb'
+    const stroke = style.strokeColor ?? style.border?.color
+    const strokeWidth = style.strokeWidth ?? style.border?.width ?? 0
+    const cornerRadius = style.border?.radius ?? 0
+
+    ctx.beginPath()
+
+    switch (shapeType) {
+      case 'circle': {
+        const radius = Math.min(width, height) / 2
+        ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2)
+        break
+      }
+      case 'triangle': {
+        ctx.moveTo(width / 2, 0)
+        ctx.lineTo(width, height)
+        ctx.lineTo(0, height)
+        ctx.closePath()
+        break
+      }
+      case 'line': {
+        ctx.moveTo(0, height / 2)
+        ctx.lineTo(width, height / 2)
+        break
+      }
+      case 'rounded-rectangle': {
+        this.traceRoundedRectPath(ctx, width, height, Math.min(cornerRadius || 24, Math.min(width, height) / 2))
+        break
+      }
+      case 'rectangle':
+      default: {
+        if (cornerRadius > 0) {
+          this.traceRoundedRectPath(ctx, width, height, cornerRadius)
+        } else {
+          ctx.rect(0, 0, width, height)
+        }
+        break
+      }
+    }
+
+    if (shapeType === 'line') {
+      ctx.strokeStyle = fill
+      ctx.lineWidth = Math.max(1, style.strokeWidth ?? 4)
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+      ctx.stroke()
+      return
+    }
+
+    ctx.fillStyle = fill
+    ctx.fill()
+
+    if (stroke && strokeWidth > 0) {
+      ctx.strokeStyle = stroke
+      ctx.lineWidth = strokeWidth
+      ctx.stroke()
+    }
+  }
+
+  private static traceRoundedRectPath(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    radius: number,
+  ): void {
+    const r = Math.min(radius, width / 2, height / 2)
+    ctx.moveTo(r, 0)
+    ctx.lineTo(width - r, 0)
+    ctx.quadraticCurveTo(width, 0, width, r)
+    ctx.lineTo(width, height - r)
+    ctx.quadraticCurveTo(width, height, width - r, height)
+    ctx.lineTo(r, height)
+    ctx.quadraticCurveTo(0, height, 0, height - r)
+    ctx.lineTo(0, r)
+    ctx.quadraticCurveTo(0, 0, r, 0)
+    ctx.closePath()
   }
 
   private static applyTextTransform(text: string, style: LayerStyle): string {

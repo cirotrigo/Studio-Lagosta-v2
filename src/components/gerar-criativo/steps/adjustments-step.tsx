@@ -15,6 +15,30 @@ import { toast } from 'sonner'
 import { CanvasPreview, type CanvasPreviewHandle } from '../components/canvas-preview'
 import { LayerActionsToolbar } from '../components/layer-actions-toolbar'
 import { LayerControls } from '../components/layer-controls'
+import type { Layer } from '@/types/template'
+
+function needsLosslessExport(layers: Layer[]): boolean {
+  return layers.some((layer) => {
+    if (layer.visible === false) return false
+
+    const opacity = layer.style?.opacity
+    if (typeof opacity === 'number' && opacity < 1) {
+      return true
+    }
+
+    const fill = layer.style?.fill
+    if (typeof fill === 'string' && fill.startsWith('rgba(')) {
+      return true
+    }
+
+    const gradientStops = layer.style?.gradientStops
+    if (Array.isArray(gradientStops) && gradientStops.some((stop) => typeof stop.opacity === 'number' && stop.opacity < 1)) {
+      return true
+    }
+
+    return false
+  })
+}
 
 export function AdjustmentsStep() {
   const {
@@ -69,8 +93,11 @@ export function AdjustmentsStep() {
 
       toast.info('Renderizando criativo...')
       console.log('[AdjustmentsStep] Calling exportToDataUrl...')
-      // Use JPEG with 85% quality to reduce file size (PNG is too large for serverless limits)
-      const dataUrl = await canvasRef.current.exportToDataUrl('jpeg', 0.85)
+      const exportFormat = needsLosslessExport(layers) ? 'png' : 'jpeg'
+      const dataUrl = await canvasRef.current.exportToDataUrl(
+        exportFormat,
+        exportFormat === 'jpeg' ? 0.85 : 1,
+      )
       console.log('[AdjustmentsStep] Export complete, dataUrl length:', dataUrl?.length)
 
       if (!dataUrl || dataUrl.length < 100) {
