@@ -412,20 +412,21 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Kon
     baseProps.crop = layer.crop
   } else if (layer.type === 'gradient' || layer.type === 'gradient2') {
     // Prefer direct colors/stops/opacities, fall back to style.gradientStops
-    let colors = layer.colors as string[]
-    let stops = layer.stops as number[]
+    let colors = layer.colors as string[] | undefined
+    let stops = layer.stops as number[] | undefined
     let opacities = layer.opacities as number[] | undefined
     let angle = layer.angle as number
     let gradientType = layer.gradientType as 'linear' | 'radial' | undefined
 
-    // If colors not present at root, extract from style.gradientStops
-    if (!colors && layer.style?.gradientStops) {
+    // If colors not present or empty at root, extract from style.gradientStops
+    const hasValidColors = Array.isArray(colors) && colors.length > 0
+    if (!hasValidColors && layer.style?.gradientStops && layer.style.gradientStops.length > 0) {
       colors = layer.style.gradientStops.map((s) => s.color)
       stops = layer.style.gradientStops.map((s) => s.position)
       opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
       angle = layer.style.gradientAngle ?? 0
       gradientType = layer.style.gradientType
-    } else if (!opacities && layer.style?.gradientStops) {
+    } else if (!opacities && layer.style?.gradientStops && layer.style.gradientStops.length > 0) {
       // Extract opacities from gradientStops if not present at root
       opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
     }
@@ -435,11 +436,13 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Kon
       gradientType = layer.style.gradientType
     }
 
-    baseProps.colors = colors ?? ['#ffffff', '#000000']
-    baseProps.stops = stops
-    baseProps.opacities = opacities
-    baseProps.angle = angle
-    baseProps.gradientType = gradientType
+    // Ensure colors is always a valid array with at least 2 colors
+    const finalColors = Array.isArray(colors) && colors.length >= 2 ? colors : ['#ffffff', '#000000']
+    baseProps.colors = finalColors
+    baseProps.stops = stops ?? finalColors.map((_, i) => i / Math.max(finalColors.length - 1, 1))
+    baseProps.opacities = opacities ?? finalColors.map(() => 1)
+    baseProps.angle = angle ?? 180
+    baseProps.gradientType = gradientType ?? 'linear'
   } else if (layer.type === 'shape') {
     baseProps.shape = layer.shape ?? layer.style?.shapeType ?? 'rectangle'
     baseProps.fill = layer.style?.fill

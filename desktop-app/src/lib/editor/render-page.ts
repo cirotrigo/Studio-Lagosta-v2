@@ -608,7 +608,8 @@ export async function renderPageToDataUrl(
     }
 
     if (layer.type === 'gradient' || layer.type === 'gradient2') {
-      const colors = layer.colors.length > 1 ? layer.colors : ['#111827', '#F59E0B']
+      const rawColors = layer.colors ?? []
+      const colors = rawColors.length > 1 ? rawColors : ['#111827', '#F59E0B']
       const stops =
         layer.stops && layer.stops.length === colors.length
           ? layer.stops

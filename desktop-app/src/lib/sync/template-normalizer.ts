@@ -561,14 +561,15 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Lay
       let angle = layer.angle
       let gradientType = layer.gradientType as 'linear' | 'radial' | undefined
 
-      // If colors not present at root, extract from style.gradientStops
-      if (!colors && layer.style?.gradientStops) {
+      // If colors not present or empty at root, extract from style.gradientStops
+      const hasValidColors = Array.isArray(colors) && colors.length > 0
+      if (!hasValidColors && layer.style?.gradientStops && layer.style.gradientStops.length > 0) {
         colors = layer.style.gradientStops.map((s) => s.color)
         stops = layer.style.gradientStops.map((s) => s.position)
         opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
         angle = layer.style.gradientAngle
         gradientType = layer.style.gradientType
-      } else if (!opacities && layer.style?.gradientStops) {
+      } else if (!opacities && layer.style?.gradientStops && layer.style.gradientStops.length > 0) {
         // Extract opacities from gradientStops if not present at root
         opacities = layer.style.gradientStops.map((s) => s.opacity ?? 1)
       }
@@ -578,14 +579,17 @@ function webLayerToLocal(layer: WebLayer, warnings: NormalizationWarning[]): Lay
         gradientType = layer.style.gradientType
       }
 
+      // Ensure colors is always a valid array with at least 2 colors
+      const finalColors = Array.isArray(colors) && colors.length >= 2 ? colors : ['#ffffff', '#000000']
+
       const gradLayer: KonvaGradientLayer = {
         ...baseProps,
         type: layer.type as 'gradient' | 'gradient2',
-        colors: colors ?? ['#ffffff', '#000000'],
-        stops: stops,
-        opacities: opacities,
-        angle: angle,
-        gradientType: gradientType,
+        colors: finalColors,
+        stops: stops ?? finalColors.map((_, i) => i / Math.max(finalColors.length - 1, 1)),
+        opacities: opacities ?? finalColors.map(() => 1),
+        angle: angle ?? 180,
+        gradientType: gradientType ?? 'linear',
       }
       return gradLayer
     }

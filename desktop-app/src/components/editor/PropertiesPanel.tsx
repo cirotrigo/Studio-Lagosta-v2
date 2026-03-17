@@ -956,17 +956,18 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                   <span className="text-xs font-medium uppercase tracking-[0.18em] text-white/40">
                     Color Stops
                   </span>
-                  {selectedLayer.colors.map((color, index) => (
+                  {(selectedLayer.colors ?? ['#ffffff', '#000000']).map((color, index) => (
                     <div key={index} className="space-y-2 rounded-xl border border-white/10 bg-white/5 p-3">
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-white/50">Stop {index + 1}</span>
-                        {selectedLayer.colors.length > 2 ? (
+                        {(selectedLayer.colors ?? []).length > 2 ? (
                           <button
                             type="button"
                             onClick={() =>
                               updateLayer(selectedLayer.id, (layer) => {
                                 if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                                const newColors = [...layer.colors]
+                                const currentColors = layer.colors ?? ['#ffffff', '#000000']
+                                const newColors = [...currentColors]
                                 const newStops = [...(layer.stops ?? [])]
                                 const newOpacities = [...(layer.opacities ?? [])]
                                 newColors.splice(index, 1)
@@ -988,7 +989,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                           onChange={(event) =>
                             updateLayer(selectedLayer.id, (layer) => {
                               if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                              const newColors = [...layer.colors]
+                              const newColors = [...(layer.colors ?? ['#ffffff', '#000000'])]
                               newColors[index] = event.target.value
                               return { ...layer, colors: newColors }
                             })
@@ -1001,7 +1002,7 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                           onChange={(event) =>
                             updateLayer(selectedLayer.id, (layer) => {
                               if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                              const newColors = [...layer.colors]
+                              const newColors = [...(layer.colors ?? ['#ffffff', '#000000'])]
                               newColors[index] = event.target.value
                               return { ...layer, colors: newColors }
                             })
@@ -1016,13 +1017,14 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                             type="number"
                             min={0}
                             max={100}
-                            value={Math.round((selectedLayer.stops?.[index] ?? index / Math.max(selectedLayer.colors.length - 1, 1)) * 100)}
+                            value={Math.round((selectedLayer.stops?.[index] ?? index / Math.max((selectedLayer.colors ?? []).length - 1, 1)) * 100)}
                             onChange={(event) =>
                               updateLayer(selectedLayer.id, (layer) => {
                                 if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                                const newStops = layer.stops?.length === layer.colors.length
+                                const currentColors = layer.colors ?? ['#ffffff', '#000000']
+                                const newStops = layer.stops?.length === currentColors.length
                                   ? [...layer.stops]
-                                  : layer.colors.map((_, i) => i / Math.max(layer.colors.length - 1, 1))
+                                  : currentColors.map((_, i) => i / Math.max(currentColors.length - 1, 1))
                                 newStops[index] = Math.min(100, Math.max(0, Number(event.target.value))) / 100
                                 return { ...layer, stops: newStops }
                               })
@@ -1040,9 +1042,10 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                             onChange={(event) =>
                               updateLayer(selectedLayer.id, (layer) => {
                                 if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                                const newOpacities = layer.opacities?.length === layer.colors.length
+                                const currentColors = layer.colors ?? ['#ffffff', '#000000']
+                                const newOpacities = layer.opacities?.length === currentColors.length
                                   ? [...layer.opacities]
-                                  : layer.colors.map(() => 1)
+                                  : currentColors.map(() => 1)
                                 newOpacities[index] = Math.min(100, Math.max(0, Number(event.target.value))) / 100
                                 return { ...layer, opacities: newOpacities }
                               })
@@ -1053,17 +1056,18 @@ export function PropertiesPanel({ availableFontFamilies = [] }: PropertiesPanelP
                       </div>
                     </div>
                   ))}
-                  {selectedLayer.colors.length < 6 ? (
+                  {(selectedLayer.colors ?? []).length < 6 ? (
                     <button
                       type="button"
                       onClick={() =>
                         updateLayer(selectedLayer.id, (layer) => {
                           if (layer.type !== 'gradient' && layer.type !== 'gradient2') return layer
-                          const newColors = [...layer.colors, '#888888']
-                          const newStops = layer.stops?.length === layer.colors.length
+                          const currentColors = layer.colors ?? ['#ffffff', '#000000']
+                          const newColors = [...currentColors, '#888888']
+                          const newStops = layer.stops?.length === currentColors.length
                             ? [...layer.stops, 1]
                             : newColors.map((_, i) => i / Math.max(newColors.length - 1, 1))
-                          const newOpacities = layer.opacities?.length === layer.colors.length
+                          const newOpacities = layer.opacities?.length === currentColors.length
                             ? [...layer.opacities, 1]
                             : newColors.map(() => 1)
                           return { ...layer, colors: newColors, stops: newStops, opacities: newOpacities }
