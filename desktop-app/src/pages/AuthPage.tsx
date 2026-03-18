@@ -28,7 +28,7 @@ export default function AuthPage() {
           <div className="mb-10 text-center">
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center relative group perspective-1000">
               <div className="absolute -inset-4 bg-orange-500/20 blur-xl -z-10 opacity-50 transition-opacity duration-700"></div>
-              <img src="/icon.png" alt="Lagosta" className="h-full w-full rounded-2xl object-cover shadow-2xl border border-white/5" />
+              <img src="./icon.png" alt="Lagosta" className="h-full w-full rounded-2xl object-cover shadow-2xl border border-white/5" />
             </div>
             <h1 className="text-4xl md:text-5xl leading-[1.05] tracking-tight text-white font-medium mb-3">
               Studio{' '}

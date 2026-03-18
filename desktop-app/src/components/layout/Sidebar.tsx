@@ -39,7 +39,7 @@ export default function Sidebar() {
         <div className="flex items-center gap-3">
           <div className="relative group perspective-1000">
              <div className="absolute -inset-2 bg-orange-500/20 blur-md -z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-             <img src="/icon.png" alt="Lagosta" className="h-8 w-8 rounded-lg object-cover border border-white/10 shadow-lg" />
+             <img src="./icon.png" alt="Lagosta" className="h-8 w-8 rounded-lg object-cover border border-white/10 shadow-lg" />
           </div>
           <div className="flex flex-col">
             <span className="text-white font-bold leading-tight tracking-tight text-sm flex items-center gap-1">

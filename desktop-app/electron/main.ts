@@ -292,7 +292,7 @@ async function refreshClerkSession(): Promise<boolean> {
   })
 }
 
-const isDev = process.env.NODE_ENV !== 'production' || !app.isPackaged
+const isDev = !app.isPackaged
 
 function createWindow() {
   mainWindow = new BrowserWindow({
