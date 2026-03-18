@@ -8,12 +8,15 @@ import {
 } from './konva-ipc-types'
 import { JsonStorageService } from '../services/json-storage'
 
+type MigrationResult = { migrated: number; total: number }
+
 type TemplateHandlerResult =
   | KonvaTemplateDocument[]
   | KonvaTemplateDocument
   | null
   | TemplateSaveResult
   | TemplateDeleteResult
+  | MigrationResult
 
 function parseProjectId(value: unknown): number {
   const parsed = Number(value)
@@ -121,6 +124,30 @@ export function registerTemplateHandlers(storage: JsonStorageService): void {
         return { ok: true }
       } catch (error) {
         return handleTemplateError('delete', error)
+      }
+    },
+  )
+
+  registerHandler(
+    KONVA_CHANNELS.TEMPLATE_MIGRATE_GRADIENTS,
+    async (_event, rawProjectId: unknown) => {
+      try {
+        const projectId = parseProjectId(rawProjectId)
+        return await storage.migrateGradientLayers(projectId)
+      } catch (error) {
+        return handleTemplateError('migrate-gradients', error)
+      }
+    },
+  )
+
+  registerHandler(
+    KONVA_CHANNELS.TEMPLATE_DELETE_ALL,
+    async (_event, rawProjectId: unknown) => {
+      try {
+        const projectId = parseProjectId(rawProjectId)
+        return await storage.deleteAllTemplates(projectId)
+      } catch (error) {
+        return handleTemplateError('delete-all', error)
       }
     },
   )

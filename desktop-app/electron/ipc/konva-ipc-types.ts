@@ -5,6 +5,8 @@ export const KONVA_CHANNELS = {
   TEMPLATE_GET: 'konva:template:get',
   TEMPLATE_SAVE: 'konva:template:save',
   TEMPLATE_DELETE: 'konva:template:delete',
+  TEMPLATE_MIGRATE_GRADIENTS: 'konva:template:migrate-gradients',
+  TEMPLATE_DELETE_ALL: 'konva:template:delete-all',
   SYNC_PULL: 'konva:sync:pull',
   SYNC_PUSH: 'konva:sync:push',
   SYNC_STATUS: 'konva:sync:status',

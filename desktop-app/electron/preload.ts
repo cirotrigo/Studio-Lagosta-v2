@@ -285,6 +285,8 @@ export interface ElectronAPI {
     get: (projectId: number, templateId: string) => Promise<KonvaTemplateDocument | null>
     save: (projectId: number, doc: KonvaTemplateDocument) => Promise<{ ok: true; id: string }>
     delete: (projectId: number, templateId: string) => Promise<{ ok: true }>
+    migrateGradients: (projectId: number) => Promise<{ migrated: number; total: number }>
+    deleteAll: (projectId: number) => Promise<{ deleted: number }>
   }
 
   // Konva-only sync contracts
@@ -358,6 +360,10 @@ const electronAPI: ElectronAPI = {
       ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_SAVE, projectId, doc),
     delete: (projectId: number, templateId: string) =>
       ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_DELETE, projectId, templateId),
+    migrateGradients: (projectId: number) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_MIGRATE_GRADIENTS, projectId),
+    deleteAll: (projectId: number) =>
+      ipcRenderer.invoke(KONVA_CHANNELS.TEMPLATE_DELETE_ALL, projectId),
   },
 
   // Konva-only sync contracts

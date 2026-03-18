@@ -156,6 +156,95 @@ export class JsonStorageService {
     }
   }
 
+  /**
+   * Delete all local templates for a project to force re-sync from server.
+   */
+  async deleteAllTemplates(projectId: number): Promise<{ deleted: number }> {
+    const templates = await this.listTemplates(projectId)
+    let deleted = 0
+
+    for (const template of templates) {
+      try {
+        await this.deleteTemplate(projectId, template.id)
+        deleted++
+        console.log(`[Storage] Deleted template: ${template.name} (${template.id})`)
+      } catch (error) {
+        console.warn(`[Storage] Failed to delete template ${template.id}:`, error)
+      }
+    }
+
+    // Clear sync queue for this project to avoid re-pushing deleted templates
+    const queue = await this.listSyncQueue(projectId)
+    if (queue.length > 0) {
+      await this.clearSyncQueue(projectId)
+      console.log(`[Storage] Cleared ${queue.length} sync queue items for project ${projectId}`)
+    }
+
+    console.log(`[Storage] Deleted ${deleted}/${templates.length} templates for project ${projectId}`)
+    return { deleted }
+  }
+
+  /**
+   * Migrate all templates to fix gradient layers with missing colors array.
+   * This ensures gradients always have valid colors, stops, opacities, angle, and gradientType.
+   */
+  async migrateGradientLayers(projectId: number): Promise<{ migrated: number; total: number }> {
+    const templates = await this.listTemplates(projectId)
+    let migrated = 0
+
+    for (const template of templates) {
+      let changed = false
+
+      for (const page of template.design.pages) {
+        for (const layer of page.layers) {
+          if (layer.type === 'gradient' || layer.type === 'gradient2') {
+            const gradLayer = layer as { colors?: string[]; stops?: number[]; opacities?: number[]; angle?: number; gradientType?: string }
+
+            // Fix missing or empty colors
+            if (!Array.isArray(gradLayer.colors) || gradLayer.colors.length < 2) {
+              gradLayer.colors = ['#ffffff', '#000000']
+              changed = true
+            }
+
+            // Fix missing stops
+            if (!Array.isArray(gradLayer.stops) || gradLayer.stops.length !== gradLayer.colors.length) {
+              gradLayer.stops = gradLayer.colors.map((_, i) => i / Math.max(gradLayer.colors!.length - 1, 1))
+              changed = true
+            }
+
+            // Fix missing opacities
+            if (!Array.isArray(gradLayer.opacities) || gradLayer.opacities.length !== gradLayer.colors.length) {
+              gradLayer.opacities = gradLayer.colors.map(() => 1)
+              changed = true
+            }
+
+            // Fix missing angle
+            if (typeof gradLayer.angle !== 'number') {
+              gradLayer.angle = 180
+              changed = true
+            }
+
+            // Fix missing gradientType
+            if (!gradLayer.gradientType) {
+              gradLayer.gradientType = 'linear'
+              changed = true
+            }
+          }
+        }
+      }
+
+      if (changed) {
+        template.meta.updatedAt = new Date().toISOString()
+        await this.saveTemplate(projectId, template)
+        migrated++
+        console.log(`[Migration] Fixed gradient layers in template: ${template.name} (${template.id})`)
+      }
+    }
+
+    console.log(`[Migration] Completed: ${migrated}/${templates.length} templates migrated for project ${projectId}`)
+    return { migrated, total: templates.length }
+  }
+
   async enqueueSyncOperation(input: {
     projectId: number
     entity: SyncQueueItem['entity']
