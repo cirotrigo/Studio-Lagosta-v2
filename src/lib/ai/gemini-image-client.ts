@@ -99,9 +99,9 @@ export async function generateImageWithGemini(
     })
   }
 
-  // Adicionar imagens de referência (até 5)
+  // Adicionar imagens de referência (até 14 para ambos os modelos)
   if (params.referenceImages && params.referenceImages.length > 0) {
-    const maxRefs = Math.min(params.referenceImages.length, 5)
+    const maxRefs = Math.min(params.referenceImages.length, 14)
     for (let i = 0; i < maxRefs; i++) {
       contents.push({
         inlineData: {
@@ -122,7 +122,7 @@ export async function generateImageWithGemini(
       model: modelId,
       contents,
       config: {
-        responseModalities: ['IMAGE'],
+        responseModalities: ['TEXT', 'IMAGE'],
         ...(imageConfig ? { imageConfig } : {}),
       },
     })

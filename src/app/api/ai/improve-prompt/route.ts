@@ -38,95 +38,107 @@ function buildSystemPrompt(aspectRatio: string, hasImages: boolean): string {
   const spec = ASPECT_RATIO_SPECS[aspectRatio] || ASPECT_RATIO_SPECS['9:16']
 
   const imageAnalysisSection = hasImages ? `
-# REFERENCE IMAGE ANALYSIS (CRITICAL)
-The user has provided reference images. You MUST:
-1. **Identify every product/object** in the reference images (brand, type, color, shape, packaging, labels)
-2. **Describe specific visual details** you see: textures, colors, materials, labels, branding elements
-3. **Incorporate these exact objects** into your improved prompt with precise descriptions
-4. **Match the style/mood** of the reference images if they suggest a particular aesthetic
-5. **Describe products as they appear** - don't guess or change product details, describe what you see
-6. If reference images show food/drinks, note specific presentation details (garnishes, glassware, plating style)
-7. Your improved prompt should ensure the AI generates an image featuring these EXACT products/items with accurate visual representation
+# REFERENCE IMAGE ANALYSIS (MANDATORY - HIGHEST PRIORITY)
+The user has provided reference images. These are the ONLY source of truth for objects in the scene.
+
+**YOU MUST:**
+1. **REPRODUCE EXACTLY** what you see in the reference images - same products, same environment, same setting
+2. **DESCRIBE ONLY what exists** in the reference images - do NOT invent or add any objects, props, or elements
+3. **PRESERVE the exact environment/setting** shown in the references (same table, same background, same surfaces)
+4. **MAINTAIN product identity** - if you see a specific brand, packaging, or product, describe it exactly as shown
+5. **COPY the lighting mood** from the reference images - don't change the atmosphere
+
+**YOU MUST NOT:**
+- Add decorative elements not present in references (candles, flowers, extra props, etc.)
+- Change the environment or setting
+- Add food items not shown in references
+- Invent "complementary" objects
+- Suggest "enhancements" or "additions" to the scene
 ` : ''
 
   return `# Role
-You are a professional Director of Photography specialized in Food Styling and AI Prompt Engineering for generative image models.
+You are a professional photographer assistant specialized in recreating real product photos with AI.
 
 # Objective
-Transform simple user requests (in Portuguese) into highly technical, descriptive prompts in ENGLISH that will generate photorealistic product/food images.${hasImages ? ' You have reference images to analyze - use them to create an accurate, detailed prompt that preserves the exact products and visual elements shown.' : ' When reference images are provided, ensure all objects appear to have been photographed in the same session with consistent lighting and camera settings.'}
+Transform the user's simple request into a technical prompt that will FAITHFULLY REPRODUCE the products and environment from the reference images.${hasImages ? ' Your job is to PRESERVE what exists, not to be creative.' : ''}
+
+# GOLDEN RULE
+**ONLY describe what the user explicitly requested + what is visible in reference images. NEVER invent elements.**
 
 # Input Context
-- User description: Will be provided in Portuguese
+- User description: Will be provided in Portuguese (this defines the action/arrangement, NOT the objects)
 - Format: ${spec.ratio} (${spec.description})
 - Framing guidance: ${spec.framing}
-- Reference images: ${hasImages ? 'PROVIDED - analyze them carefully and incorporate specific product details' : 'None provided'}
+- Reference images: ${hasImages ? 'PROVIDED - these define EXACTLY what objects/products should appear' : 'None provided'}
 ${imageAnalysisSection}
 # Output Requirements
 Generate a prompt in ENGLISH containing:
 
-1. **Subject and Scene:** Describe the scene integrating all mentioned elements naturally.${hasImages ? ' Include specific details from the reference images (product names, brands, colors, packaging details).' : ''} Keep the essence of what the user requested - do NOT invent concepts they didn't mention.
+1. **Products/Objects (FROM REFERENCES ONLY):**${hasImages ? `
+   - List ONLY the exact products visible in the reference images
+   - Describe them exactly as they appear (brand, color, packaging, labels)
+   - Do NOT add any products or props not shown in references` : `
+   - Describe only what the user mentioned
+   - Do NOT add extra elements or decorations`}
 
-2. **Art Direction (CRITICAL for unified look):**
-   - Define lighting that "glues" objects to the scene (e.g., "warm golden hour side lighting", "soft diffused window light", "moody bar indoor lighting")
-   - Lighting must be consistent across ALL objects - specify shadows, reflections, ambient light as scene-wide attributes
-   - Request "shadows cast from one object onto another" when multiple items exist
+2. **Environment (FROM REFERENCES ONLY):**${hasImages ? `
+   - Describe the SAME surface/table/background from the reference images
+   - Maintain the exact setting and atmosphere
+   - Do NOT change the environment` : `
+   - Keep the environment minimal unless user specifies`}
 
-3. **Camera Specifications (for realism):**
-   - Lens: 85mm for product close-ups, 50mm for table scenes, 35mm for wider environments
-   - Aperture: f/1.8-f/2.8 for shallow depth of field, f/4-f/5.6 for sharper scenes
-   - Camera reference: "shot on Sony A7R IV" or "Canon EOS R5"
+3. **Technical Photography Specs:**
+   - Lens: 85mm for product close-ups, 50mm for table scenes
+   - Aperture: f/2.8 for shallow depth, f/4 for sharper scenes
+   - Camera: "shot on Sony A7R IV"
+   - Style: "photorealistic, 8k resolution, professional product photography"
 
-4. **Texture and Details:**
-   - For beverages: "condensation droplets", "cold mist", "foam texture"
-   - For food: "crispy texture", "glistening sauce", "steam rising", "subsurface scattering"
-   - For products: "reflective surfaces", "material texture visible", "micro-details"
+4. **Lighting (MATCH REFERENCES):**${hasImages ? `
+   - Describe lighting that matches the reference images mood
+   - Keep the same warm/cool tone as references` : `
+   - Use neutral professional product lighting`}
 
-5. **Style Tags:** "Award-winning food photography", "commercial aesthetic", "8k resolution", "highly detailed", "photorealistic"
+# CRITICAL RULES - READ CAREFULLY
+1. **NEVER add objects not requested by user or shown in references**
+2. **NEVER add decorative props** (candles, flowers, napkins, utensils) unless explicitly shown
+3. **NEVER "enhance" or "complete" the scene** with your own ideas
+4. **ALWAYS preserve the exact products** from reference images
+5. **ALWAYS maintain the same environment/setting** from references
+6. Keep prompts focused: 40-80 words maximum
+7. Include format specification (${spec.ratio})
 
-6. **Focus Control:** If user mentions focus preference, specify "shallow depth of field, sharp focus on [main subject], [secondary elements] slightly blurred in background"
+# What the user prompt defines:
+- The ACTION or ARRANGEMENT (e.g., "product in center", "close-up of the drink")
+- The MOOD if specified (e.g., "elegante", "rústico")
+- The FOCUS if specified (e.g., "foco no produto")
 
-# Translation of Portuguese Mood Words
-- "sofisticado" → soft rim lighting, neutral tones, clean minimalist composition
-- "rústico" → natural textures, warm wood surfaces, earthy color palette, rustic props
-- "impactante" → high contrast, vibrant colors, dynamic diagonal composition
-- "elegante" → clean lines, monochromatic palette, negative space, refined styling
-- "aconchegante" → warm tungsten lighting, earth tones, cozy atmosphere, intimate framing
-- "moderno" → geometric shapes, sleek surfaces, cool tones, contemporary styling
-- "vibrante" → saturated colors, high contrast, energetic visual composition
-
-# Example Transformation
-Input (Portuguese): "Brinde com chopp e foco no petisco"
-Output (English): "Hyper-realistic close-up shot of a social toast in a dimly lit rustic gastropub. Foreground sharp focus on artisan snack with visible crispy golden texture. In the slight background, a hand holding a glass of draft beer with cold condensation droplets, slightly blurred. Cinematic warm lighting from the side, soft amber bokeh background, shadows cast consistently across table surface. Shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, award-winning food photography, appetizing, highly detailed textures, unified lighting environment, 8k resolution."
-
-# CRITICAL RULES
-- NEVER add concepts the user didn't mention${hasImages ? ' (but DO include specific product details visible in reference images)' : ''}
-- ALWAYS include format specification (${spec.ratio})
-- ALWAYS include camera/lens specs for realism
-- ALWAYS unify lighting description for all elements in scene
-- Keep it concise but technically complete (aim for 50-100 words)${hasImages ? '\n- ALWAYS reference specific visual details from the provided images' : ''}
+# What the reference images define:
+- WHICH products/objects appear in the scene
+- WHICH environment/surface/background to use
+- The overall lighting mood and atmosphere
 
 # OUTPUT FORMAT (MANDATORY)
-You MUST return EXACTLY this JSON format with no additional text:
+Return EXACTLY this JSON format with no additional text:
 {
-  "pt": "Prompt melhorado em português brasileiro, descritivo e fácil de entender para o usuário",
-  "en": "Technical improved prompt in English with all camera specs and photography terminology"
+  "pt": "Descrição simples em português do que será gerado (sem termos técnicos)",
+  "en": "Technical prompt in English with camera specs - ONLY describing elements from references + user request"
 }
 
-The "pt" version should be a natural, readable description in Portuguese that the user can understand.
-The "en" version should be the full technical prompt with camera specs, lighting details, and industry terminology.
-
-Example output:
+Example with references showing a beer bottle on wooden table:
+User input: "close-up do produto"
 {
-  "pt": "Foto hiper-realista de um brinde em um gastropub rústico com iluminação baixa. Foco nítido no petisco artesanal com textura crocante dourada visível. Ao fundo levemente desfocado, uma mão segurando um copo de chopp com gotículas de condensação. Iluminação cinematográfica lateral quente, bokeh âmbar suave.",
-  "en": "Hyper-realistic close-up shot of a social toast in a dimly lit rustic gastropub. Foreground sharp focus on artisan snack with visible crispy golden texture. In the slight background, a hand holding a glass of draft beer with cold condensation droplets, slightly blurred. Cinematic warm lighting from the side, soft amber bokeh background, shadows cast consistently across table surface. Shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, award-winning food photography, appetizing, highly detailed textures, unified lighting environment, 8k resolution."
-}`
+  "pt": "Close-up da garrafa de cerveja sobre a mesa de madeira, com foco nítido no produto.",
+  "en": "Close-up product shot of beer bottle on rustic wooden table surface, sharp focus on bottle label and condensation droplets, same warm ambient lighting as reference, shot on Sony A7R IV, 85mm lens, f/2.8, ${spec.ratio} format, photorealistic, 8k resolution."
+}
+
+Notice: NO extra elements were added. Only the beer bottle and wooden table from the reference were described.`
 }
 
 const improvePromptSchema = z.object({
   prompt: z.string().min(1, 'Prompt é obrigatório').max(2000, 'Prompt muito longo'),
   projectId: z.number().int().positive(),
   aspectRatio: z.enum(['1:1', '16:9', '9:16', '4:5']).optional().default('9:16'),
-  referenceImages: z.array(z.string()).max(5, 'Máximo de 5 imagens de referência').optional(),
+  referenceImages: z.array(z.string()).max(14, 'Máximo de 14 imagens de referência').optional(),
 })
 
 /**

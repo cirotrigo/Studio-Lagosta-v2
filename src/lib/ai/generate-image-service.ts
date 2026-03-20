@@ -101,7 +101,7 @@ export async function generateStoredAiImage(
     organizationId: params.orgId ?? undefined,
   })
 
-  const referenceSources = (params.referenceImages ?? []).slice(0, 5)
+  const referenceSources = (params.referenceImages ?? []).slice(0, 14)
   const referenceResults = await Promise.all(referenceSources.map(fetchImageAsBuffer))
   const referenceBuffers = referenceResults.map((item) => item.buffer)
   const referenceBufferTypes = referenceResults.map((item) => item.contentType)

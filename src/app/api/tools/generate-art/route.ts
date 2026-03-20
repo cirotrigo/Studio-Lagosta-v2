@@ -609,7 +609,7 @@ interface PreparedRefImage {
 async function prepareReferenceImages(urls: string[]): Promise<PreparedRefImage[]> {
   if (!urls.length) return []
 
-  const toFetch = urls.slice(0, 5)
+  const toFetch = urls.slice(0, 14)
   console.log(`[generate-art] Fetching ${toFetch.length} reference images...`)
 
   const results = await Promise.allSettled(
@@ -1315,7 +1315,7 @@ async function handleTemplatePath(
         ...(body.compositionReferenceUrls ?? []),
         ...brandAssets.referenceImageUrls,
       ])
-    ).slice(0, 5)
+    ).slice(0, 14)
     const refImages = await prepareReferenceImages(mergedReferenceUrls)
     const systemPrompt = buildImagePromptSystemPrompt(
       brandAssets, body.format, useAIComposition,
@@ -1568,7 +1568,7 @@ export async function POST(request: Request) {
           ...(body.compositionReferenceUrls ?? []),
           ...brandAssets.referenceImageUrls,
         ])
-      ).slice(0, 5)
+      ).slice(0, 14)
       const refImages = await prepareReferenceImages(mergedReferenceUrls)
 
       // Log visual elements if available

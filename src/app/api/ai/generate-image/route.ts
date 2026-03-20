@@ -735,9 +735,9 @@ async function createReplicatePrediction(params: {
     console.log(`[AI Generate] ${params.model} edit mode: using baseImage as primary input`)
     inputData.image_input = [params.baseImage]
   }
-  // Modo geração: usar referenceImages (até 5 imagens)
+  // Modo geração: usar referenceImages (até 14 imagens)
   else if (params.referenceImages && params.referenceImages.length > 0) {
-    inputData.image_input = params.referenceImages.slice(0, 5)
+    inputData.image_input = params.referenceImages.slice(0, 14)
   }
 
   // Safety filter (apenas Pro)

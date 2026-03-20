@@ -68,7 +68,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     capabilities: {
       maxResolution: '2048x2048',
       minResolution: '512x512',
-      maxReferenceImages: 5,
+      maxReferenceImages: 14,
       supportsCustomDimensions: false,
       supports4K: false,
       averageSpeed: '5-15',
@@ -82,7 +82,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
 
     features: [
       'Modelo mais atual e estável',
-      'Até 5 imagens de referência',
+      'Até 14 imagens de referência',
       'Excelente qualidade de imagem',
       'Múltiplos aspect ratios',
       'Ideal para fundos de artes',
@@ -104,7 +104,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
     capabilities: {
       maxResolution: '4096x4096',
       minResolution: '1024x1024',
-      maxReferenceImages: 5,
+      maxReferenceImages: 14,
       supportsCustomDimensions: false,
       supports4K: true,
       averageSpeed: '15-30',
@@ -125,7 +125,7 @@ export const AI_IMAGE_MODELS: Record<AIImageModel, AIImageModelConfig> = {
 
     features: [
       'Resolução até 4K',
-      'Até 5 imagens de referência',
+      'Até 14 imagens de referência',
       'Edição de imagens (generative fill)',
       'Inpainting profissional',
       'Fallback confiável',
