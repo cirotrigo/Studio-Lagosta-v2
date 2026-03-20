@@ -104,7 +104,7 @@ Generate a prompt in ENGLISH containing:
 3. **NEVER "enhance" or "complete" the scene** with your own ideas
 4. **ALWAYS preserve the exact products** from reference images
 5. **ALWAYS maintain the same environment/setting** from references
-6. Keep prompts focused: 40-80 words maximum
+6. Keep prompts focused but complete: 80-150 words
 7. Include format specification (${spec.ratio})
 
 # What the user prompt defines:
@@ -318,34 +318,56 @@ export async function POST(request: Request) {
         // Fallback: try to extract content more gracefully
         console.warn('[Improve Prompt] JSON parse failed:', parseError)
 
-        // Try to extract "pt" value directly with regex
-        const ptMatch = rawText.match(/"pt"\s*:\s*"((?:[^"\\]|\\.)*)"/)
-        const enMatch = rawText.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+        // Try multiple extraction strategies
 
+        // Strategy 1: Try to extract with greedy regex (handles longer texts)
+        // Look for "pt": " ... " (stops at ", "en" or end of object)
+        const ptGreedyMatch = rawText.match(/"pt"\s*:\s*"([\s\S]*?)"\s*,\s*"en"/)
+        const enGreedyMatch = rawText.match(/"en"\s*:\s*"([\s\S]*?)"\s*\}/)
 
-        if (ptMatch && enMatch) {
+        if (ptGreedyMatch && enGreedyMatch) {
           // Unescape JSON string escapes
-          improvedPromptPt = ptMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-          improvedPromptEn = enMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-          console.log('[Improve Prompt] Recovered from partial JSON via regex')
+          improvedPromptPt = ptGreedyMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+          improvedPromptEn = enGreedyMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+          console.log('[Improve Prompt] Recovered via greedy regex - PT:', improvedPromptPt.length, 'chars, EN:', improvedPromptEn.length, 'chars')
         } else {
-          // Last resort: use raw text cleaned of JSON artifacts
-          const cleanText = rawText
-            .replace(/^[\s\S]*?"pt"\s*:\s*"/i, '')
-            .replace(/",?\s*"en"\s*:[\s\S]*$/i, '')
-            .replace(/\\n/g, '\n')
-            .replace(/\\"/g, '"')
-            .trim()
+          // Strategy 2: Try simple regex for each field
+          const ptMatch = rawText.match(/"pt"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+          const enMatch = rawText.match(/"en"\s*:\s*"((?:[^"\\]|\\.)*)"/)
 
-          if (cleanText && cleanText.length > 20) {
-            improvedPromptPt = cleanText
-            improvedPromptEn = cleanText
-            console.log('[Improve Prompt] Using cleaned text as fallback')
+          if (ptMatch && enMatch) {
+            improvedPromptPt = ptMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+            improvedPromptEn = enMatch[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim()
+            console.log('[Improve Prompt] Recovered via simple regex')
           } else {
-            // Absolute fallback: return original prompt with enhancement note
-            improvedPromptPt = `${prompt} - foto profissional com iluminação cinematográfica, alta resolução, detalhes nítidos`
-            improvedPromptEn = `${prompt} - professional photography with cinematic lighting, high resolution, sharp details, 8k, photorealistic`
-            console.log('[Improve Prompt] Using minimal enhancement fallback')
+            // Strategy 3: Last resort - extract text between quotes after "pt": and "en":
+            const ptStart = rawText.indexOf('"pt"')
+            const enStart = rawText.indexOf('"en"')
+
+            if (ptStart !== -1 && enStart !== -1 && enStart > ptStart) {
+              const ptSection = rawText.substring(ptStart, enStart)
+              const enSection = rawText.substring(enStart)
+
+              // Extract content between first and last quote
+              const ptContent = ptSection.match(/"pt"\s*:\s*"([\s\S]+)"\s*,?\s*$/)
+              const enContent = enSection.match(/"en"\s*:\s*"([\s\S]+)"\s*\}?\s*$/)
+
+              if (ptContent && enContent) {
+                improvedPromptPt = ptContent[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim()
+                improvedPromptEn = enContent[1].replace(/\\n/g, ' ').replace(/\\"/g, '"').trim()
+                console.log('[Improve Prompt] Recovered via section extraction')
+              } else {
+                // Absolute fallback
+                improvedPromptPt = `${prompt} - foto profissional com iluminação cinematográfica, alta resolução, detalhes nítidos`
+                improvedPromptEn = `${prompt} - professional photography with cinematic lighting, high resolution, sharp details, 8k, photorealistic`
+                console.log('[Improve Prompt] Using minimal enhancement fallback')
+              }
+            } else {
+              // Absolute fallback
+              improvedPromptPt = `${prompt} - foto profissional com iluminação cinematográfica, alta resolução, detalhes nítidos`
+              improvedPromptEn = `${prompt} - professional photography with cinematic lighting, high resolution, sharp details, 8k, photorealistic`
+              console.log('[Improve Prompt] Using minimal enhancement fallback')
+            }
           }
         }
       }
