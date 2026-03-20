@@ -121,6 +121,7 @@ export async function generateStoredAiImage(
     contentType: generated.mimeType,
   })
 
+  // Nota: Usamos a URL interna /api/google-drive/image/{fileId} para evitar CORS
   let googleDriveUrl: string | null = null
   try {
     const driveEnabled = googleDriveService?.isEnabled?.() ?? false
@@ -137,7 +138,8 @@ export async function generateStoredAiImage(
           project.googleDriveFolderId,
           project.name,
         )
-        googleDriveUrl = driveResult.publicUrl
+        // Usar URL interna para evitar problemas de CORS
+        googleDriveUrl = `/api/google-drive/image/${driveResult.fileId}`
       }
     }
   } catch (error) {

@@ -563,6 +563,7 @@ export async function POST(request: Request) {
     const dimensions = calculateDimensions(body.aspectRatio)
 
     // 6.5. Salvar no Google Drive (pasta IA)
+    // Nota: Usamos a URL interna /api/google-drive/image/{fileId} para evitar CORS
     let googleDriveUrl: string | null = null
     try {
       const driveEnabled = googleDriveService?.isEnabled?.() ?? false
@@ -586,8 +587,11 @@ export async function POST(request: Request) {
               projectWithFolder.name
             )
 
-            googleDriveUrl = driveResult.publicUrl
-            console.log('[AI Generate] Uploaded to Google Drive:', googleDriveUrl)
+            // Usar URL interna para evitar problemas de CORS
+            // Em vez de: https://drive.google.com/uc?export=view&id={fileId}
+            // Usamos: /api/google-drive/image/{fileId}
+            googleDriveUrl = `/api/google-drive/image/${driveResult.fileId}`
+            console.log('[AI Generate] Uploaded to Google Drive, internal URL:', googleDriveUrl)
           }
         }
       }
