@@ -622,13 +622,15 @@ function GenerateImageForm({
         setLastReferenceUrls(variables.referenceImages)
       }
 
-      setPrompt('')
-      setPromptEn(null) // Limpar versão em inglês
-      setReferenceImages([]) // Limpar imagens de referência
-      setLocalFiles([]) // Limpar arquivos locais
-      setReferenceUrls([]) // Limpar URLs de referência
+      // MANTER o prompt e as imagens de referência para permitir ajustes rápidos
+      // O usuário pode modificar o prompt e gerar novamente sem perder o contexto
+      // setPrompt('') - Removido: manter prompt
+      // setPromptEn(null) - Removido: manter versão em inglês para próxima geração
+      // setReferenceImages([]) - Removido: manter imagens de referência do Drive
+      // setLocalFiles([]) - Removido: manter arquivos locais
+      // setReferenceUrls([]) - Removido: manter URLs de referência
 
-      // Limpar estado de edição
+      // Limpar estado de edição (apenas no modo edit, pois a imagem base muda)
       if (mode === 'edit') {
         setBaseImageFile(null)
         setBaseImagePreview(null)
@@ -1207,6 +1209,28 @@ function GenerateImageForm({
             >
               <BookmarkPlus className="h-3.5 w-3.5" />
             </Button>
+            {/* Botão para limpar contexto e começar nova geração */}
+            {(prompt.trim() || referenceImages.length > 0 || localFiles.length > 0 || referenceUrls.length > 0) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setPrompt('')
+                  setPromptEn(null)
+                  setReferenceImages([])
+                  setLocalFiles([])
+                  setReferenceUrls([])
+                  setLastGeneratedPrompt(null)
+                  setLastReferenceUrls([])
+                  toast({ description: 'Contexto limpo. Pronto para nova geração!' })
+                }}
+                disabled={generateMutation.isPending}
+                className="h-7 gap-1 text-xs text-muted-foreground hover:text-destructive"
+                title="Limpar tudo e começar nova geração"
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            )}
           </div>
         </div>
         <Textarea
