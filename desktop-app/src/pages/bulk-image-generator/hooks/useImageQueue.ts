@@ -1,4 +1,5 @@
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import {
   useImageQueueStore,
   useQueueStats,
@@ -9,6 +10,10 @@ import type {
   AspectRatio,
   ImageResolution,
   ReferenceImage,
+  QueueItem,
+  QueueBatch,
+  QueueStats,
+  QueuePauseReason,
 } from '@/lib/queue/types'
 import { calculateCredits } from '@/lib/queue/types'
 import { parsePromptVariables, generateBatchName } from '../utils/prompt-parser'
@@ -20,8 +25,6 @@ interface AddToQueueParams {
   resolution: ImageResolution
   referenceImages: ReferenceImage[]
 }
-
-import type { QueueItem, QueueBatch, QueueStats, QueuePauseReason } from '@/lib/queue/types'
 
 interface UseImageQueueReturn {
   // State
@@ -63,12 +66,41 @@ interface UseImageQueueReturn {
 }
 
 export function useImageQueue(): UseImageQueueReturn {
-  const store = useImageQueueStore()
+  // Use individual selectors with useShallow to prevent unnecessary re-renders
+  const items = useImageQueueStore(useShallow((state) => state.items))
+  const batches = useImageQueueStore(useShallow((state) => state.batches))
+  const isProcessing = useImageQueueStore((state) => state.isProcessing)
+  const isPaused = useImageQueueStore((state) => state.isPaused)
+  const pauseReason = useImageQueueStore((state) => state.pauseReason)
+  const isDrawerOpen = useImageQueueStore((state) => state.isDrawerOpen)
+  const selectedItemId = useImageQueueStore((state) => state.selectedItemId)
+
+  // Actions - stable references from store
+  const addItem = useImageQueueStore((state) => state.addItem)
+  const addBatch = useImageQueueStore((state) => state.addBatch)
+  const removeItem = useImageQueueStore((state) => state.removeItem)
+  const cancelItem = useImageQueueStore((state) => state.cancelItem)
+  const retryItem = useImageQueueStore((state) => state.retryItem)
+  const cancelBatch = useImageQueueStore((state) => state.cancelBatch)
+  const removeBatch = useImageQueueStore((state) => state.removeBatch)
+  const startProcessing = useImageQueueStore((state) => state.startProcessing)
+  const stopProcessing = useImageQueueStore((state) => state.stopProcessing)
+  const pauseQueue = useImageQueueStore((state) => state.pauseQueue)
+  const resumeQueue = useImageQueueStore((state) => state.resumeQueue)
+  const clearCompleted = useImageQueueStore((state) => state.clearCompleted)
+  const clearAll = useImageQueueStore((state) => state.clearAll)
+  const toggleDrawer = useImageQueueStore((state) => state.toggleDrawer)
+  const setDrawerOpen = useImageQueueStore((state) => state.setDrawerOpen)
+  const selectItem = useImageQueueStore((state) => state.selectItem)
+
   const stats = useQueueStats()
   const recentReferenceImages = useRecentReferenceImages()
 
-  const hasItems = store.items.length > 0
-  const hasPendingItems = store.items.some((i) => i.status === 'PENDING')
+  const hasItems = items.length > 0
+  const hasPendingItems = useMemo(
+    () => items.some((i) => i.status === 'PENDING'),
+    [items]
+  )
 
   const estimatedCredits = useCallback(
     (params: AddToQueueParams): number => {
@@ -85,7 +117,7 @@ export function useImageQueue(): UseImageQueueReturn {
 
       if (parsed.hasVariables && parsed.expandedPrompts.length > 1) {
         // Add as batch
-        const batchId = store.addBatch({
+        const batchId = addBatch({
           name: generateBatchName(params.prompt),
           originalPrompt: params.prompt,
           prompts: parsed.expandedPrompts,
@@ -97,7 +129,7 @@ export function useImageQueue(): UseImageQueueReturn {
         return batchId
       } else {
         // Add single item
-        const itemId = store.addItem({
+        const itemId = addItem({
           prompt: parsed.expandedPrompts[0],
           originalPrompt: params.prompt,
           model: params.model,
@@ -108,45 +140,77 @@ export function useImageQueue(): UseImageQueueReturn {
         return itemId
       }
     },
-    [store]
+    [addItem, addBatch]
   )
 
-  return {
-    // State
-    items: store.items,
-    batches: store.batches,
-    stats,
-    isProcessing: store.isProcessing,
-    isPaused: store.isPaused,
-    pauseReason: store.pauseReason,
-    isDrawerOpen: store.isDrawerOpen,
-    selectedItemId: store.selectedItemId,
-    recentReferenceImages,
+  // Return a stable object using useMemo
+  return useMemo(
+    () => ({
+      // State
+      items,
+      batches,
+      stats,
+      isProcessing,
+      isPaused,
+      pauseReason,
+      isDrawerOpen,
+      selectedItemId,
+      recentReferenceImages,
 
-    // Computed
-    hasItems,
-    hasPendingItems,
-    estimatedCredits,
+      // Computed
+      hasItems,
+      hasPendingItems,
+      estimatedCredits,
 
-    // Actions
-    addToQueue,
-    removeItem: store.removeItem,
-    cancelItem: store.cancelItem,
-    retryItem: store.retryItem,
-    cancelBatch: store.cancelBatch,
-    removeBatch: store.removeBatch,
+      // Actions
+      addToQueue,
+      removeItem,
+      cancelItem,
+      retryItem,
+      cancelBatch,
+      removeBatch,
 
-    // Queue Control
-    startProcessing: store.startProcessing,
-    stopProcessing: store.stopProcessing,
-    pauseQueue: store.pauseQueue,
-    resumeQueue: store.resumeQueue,
-    clearCompleted: store.clearCompleted,
-    clearAll: store.clearAll,
+      // Queue Control
+      startProcessing,
+      stopProcessing,
+      pauseQueue,
+      resumeQueue,
+      clearCompleted,
+      clearAll,
 
-    // UI
-    toggleDrawer: store.toggleDrawer,
-    setDrawerOpen: store.setDrawerOpen,
-    selectItem: store.selectItem,
-  }
+      // UI
+      toggleDrawer,
+      setDrawerOpen,
+      selectItem,
+    }),
+    [
+      items,
+      batches,
+      stats,
+      isProcessing,
+      isPaused,
+      pauseReason,
+      isDrawerOpen,
+      selectedItemId,
+      recentReferenceImages,
+      hasItems,
+      hasPendingItems,
+      estimatedCredits,
+      addToQueue,
+      removeItem,
+      cancelItem,
+      retryItem,
+      cancelBatch,
+      removeBatch,
+      startProcessing,
+      stopProcessing,
+      pauseQueue,
+      resumeQueue,
+      clearCompleted,
+      clearAll,
+      toggleDrawer,
+      setDrawerOpen,
+      selectItem,
+    ]
+  )
 }

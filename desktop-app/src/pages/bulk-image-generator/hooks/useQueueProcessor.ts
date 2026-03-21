@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react'
 import { toast } from 'sonner'
 import { api } from '@/lib/api-client'
+import { API_BASE_URL } from '@/lib/constants'
 import { useImageQueueStore } from '@/stores/image-queue.store'
 import { useProjectStore } from '@/stores/project.store'
 import type { QueueItem } from '@/lib/queue/types'
@@ -87,7 +88,13 @@ export function useQueueProcessor(options: UseQueueProcessorOptions = {}) {
             model: item.request.model,
             aspectRatio: item.request.aspectRatio,
             resolution: item.request.resolution,
-            referenceImages: item.request.referenceImages.map((r) => r.url),
+            referenceImages: item.request.referenceImages.map((r) => {
+              // Convert relative URLs to absolute
+              if (r.url.startsWith('/')) {
+                return `${API_BASE_URL}${r.url}`
+              }
+              return r.url
+            }),
           }
         )
 

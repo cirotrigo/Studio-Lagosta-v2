@@ -31,9 +31,6 @@ interface ImageQueueStore {
   settings: QueueSettings
   recentReferenceImages: ReferenceImage[]
 
-  // Computed
-  stats: QueueStats
-
   // Item Actions
   addItem: (params: AddItemParams) => string
   addBatch: (params: AddBatchParams) => string
@@ -143,11 +140,6 @@ export const useImageQueueStore = create<ImageQueueStore>()(
       settings: DEFAULT_QUEUE_SETTINGS,
       recentReferenceImages: [],
 
-      // Computed stats
-      get stats() {
-        return computeStats(get().items)
-      },
-
       // Add single item
       addItem: (params) => {
         const id = crypto.randomUUID()
@@ -176,7 +168,6 @@ export const useImageQueueStore = create<ImageQueueStore>()(
           const newItems = [...state.items, item]
           return {
             items: newItems,
-            stats: computeStats(newItems),
             batches: updateBatchProgress(state.batches, newItems),
           }
         })
@@ -237,8 +228,7 @@ export const useImageQueueStore = create<ImageQueueStore>()(
           )
           return {
             items: newItems,
-            stats: computeStats(newItems),
-            batches: updateBatchProgress(state.batches, newItems),
+                        batches: updateBatchProgress(state.batches, newItems),
           }
         })
       },
@@ -257,8 +247,7 @@ export const useImageQueueStore = create<ImageQueueStore>()(
           return {
             items: newItems,
             batches: updateBatchProgress(newBatches, newItems),
-            stats: computeStats(newItems),
-            selectedItemId:
+                        selectedItemId:
               state.selectedItemId === id ? undefined : state.selectedItemId,
           }
         })
@@ -344,8 +333,7 @@ export const useImageQueueStore = create<ImageQueueStore>()(
           return {
             items: newItems,
             batches: updateBatchProgress(newBatches, newItems),
-            stats: computeStats(newItems),
-          }
+                      }
         })
       },
 
@@ -355,7 +343,6 @@ export const useImageQueueStore = create<ImageQueueStore>()(
           items: [],
           batches: [],
           isProcessing: false,
-          stats: computeStats([]),
         })
       },
 
@@ -517,7 +504,7 @@ export const useQueueBatches = () =>
   useImageQueueStore(useShallow((state) => state.batches))
 
 export const useQueueStats = () =>
-  useImageQueueStore((state) => computeStats(state.items))
+  useImageQueueStore(useShallow((state) => computeStats(state.items)))
 
 export const usePendingItems = () =>
   useImageQueueStore(
