@@ -29,8 +29,8 @@ export default function BulkImageGeneratorPage() {
   // Form state
   const [prompt, setPrompt] = useState('')
   const [model, setModel] = useState<AIImageModel>('nano-banana-2')
-  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1')
-  const [resolution, setResolution] = useState<ImageResolution>('1K')
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('9:16')
+  const [resolution, setResolution] = useState<ImageResolution>('2K')
   const [referenceImages, setReferenceImages] = useState<ReferenceImage[]>([])
 
   // Queue

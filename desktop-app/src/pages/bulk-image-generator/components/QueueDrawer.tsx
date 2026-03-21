@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   X,
   Trash2,
@@ -13,14 +13,24 @@ import {
   Play,
   XCircle,
   Eye,
+  ImageIcon,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { API_BASE_URL } from '@/lib/constants'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { QueueItem, QueueBatch, QueueItemStatus } from '@/lib/queue/types'
 import { useImageQueue } from '../hooks/useImageQueue'
 import ImagePreviewModal from './ImagePreviewModal'
+
+// Helper to convert relative URLs to absolute
+function toAbsoluteUrl(url: string): string {
+  if (url.startsWith('/')) {
+    return `${API_BASE_URL}${url}`
+  }
+  return url
+}
 
 // Status badge component
 function StatusBadge({ status }: { status: QueueItemStatus }) {
@@ -67,6 +77,82 @@ function StatusBadge({ status }: { status: QueueItemStatus }) {
       {c.icon}
       <span>{c.label}</span>
     </span>
+  )
+}
+
+// Result thumbnail that loads via Electron API
+function ResultThumbnail({
+  fileUrl,
+  onPreview,
+}: {
+  fileUrl: string
+  onPreview?: () => void
+}) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(false)
+  const loadedRef = useRef(false)
+
+  useEffect(() => {
+    if (loadedRef.current || loading) return
+
+    const loadImage = async () => {
+      setLoading(true)
+      setError(false)
+      try {
+        const absoluteUrl = toAbsoluteUrl(fileUrl)
+        const response = await window.electronAPI.downloadBlob(absoluteUrl)
+        if (response.ok && response.buffer) {
+          const blob = new Blob([response.buffer], {
+            type: response.contentType || 'image/png',
+          })
+          const url = URL.createObjectURL(blob)
+          setBlobUrl(url)
+          loadedRef.current = true
+        } else {
+          setError(true)
+        }
+      } catch {
+        setError(true)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    loadImage()
+  }, [fileUrl])
+
+  if (loading) {
+    return (
+      <div className="mt-2 h-16 w-16 rounded-lg bg-white/[0.03] flex items-center justify-center">
+        <Loader2 size={16} className="animate-spin text-white/30" />
+      </div>
+    )
+  }
+
+  if (error || !blobUrl) {
+    return (
+      <div className="mt-2 h-16 w-16 rounded-lg bg-white/[0.03] flex items-center justify-center">
+        <ImageIcon size={16} className="text-white/20" />
+      </div>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onPreview}
+      className="mt-2 relative group cursor-pointer"
+    >
+      <img
+        src={blobUrl}
+        alt="Generated"
+        className="h-16 w-16 rounded-lg object-cover transition-transform group-hover:scale-105"
+      />
+      <div className="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <Eye size={20} className="text-white" />
+      </div>
+    </button>
   )
 }
 
@@ -158,21 +244,11 @@ function QueueSingleItem({
       </div>
 
       {/* Result thumbnail */}
-      {item.result?.thumbnailUrl && (
-        <button
-          type="button"
-          onClick={onPreview}
-          className="mt-2 relative group cursor-pointer"
-        >
-          <img
-            src={item.result.thumbnailUrl}
-            alt="Generated"
-            className="h-16 w-16 rounded-lg object-cover transition-transform group-hover:scale-105"
-          />
-          <div className="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-            <Eye size={20} className="text-white" />
-          </div>
-        </button>
+      {item.result?.fileUrl && (
+        <ResultThumbnail
+          fileUrl={item.result.fileUrl}
+          onPreview={onPreview}
+        />
       )}
     </motion.div>
   )

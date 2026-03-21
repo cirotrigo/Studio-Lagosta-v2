@@ -562,9 +562,8 @@ export async function POST(request: Request) {
     // 6. Calcular dimensões baseado no aspect ratio
     const dimensions = calculateDimensions(body.aspectRatio)
 
-    // 6.5. Salvar no Google Drive (pasta IA)
-    // Nota: Usamos a URL interna /api/google-drive/image/{fileId} para evitar CORS
-    let googleDriveUrl: string | null = null
+    // 6.5. Salvar no Google Drive como BACKUP (não bloqueia, não afeta URLs retornadas)
+    // O Vercel Blob é o armazenamento principal para exibição
     try {
       const driveEnabled = googleDriveService?.isEnabled?.() ?? false
 
@@ -575,7 +574,7 @@ export async function POST(request: Request) {
         })
 
         if (projectWithFolder?.googleDriveFolderId) {
-          console.log('[AI Generate] Uploading to Google Drive IA folder...')
+          console.log('[AI Generate] Uploading backup to Google Drive IA folder...')
 
           const imageResponse = await fetch(blobUrl)
           if (imageResponse.ok) {
@@ -587,26 +586,24 @@ export async function POST(request: Request) {
               projectWithFolder.name
             )
 
-            // Usar URL interna para evitar problemas de CORS
-            // Em vez de: https://drive.google.com/uc?export=view&id={fileId}
-            // Usamos: /api/google-drive/image/{fileId}
-            googleDriveUrl = `/api/google-drive/image/${driveResult.fileId}`
-            console.log('[AI Generate] Uploaded to Google Drive, internal URL:', googleDriveUrl)
+            console.log('[AI Generate] Backup uploaded to Google Drive:', driveResult.fileId)
           }
         }
       }
     } catch (driveError) {
-      console.error('[AI Generate] Drive upload failed (non-blocking):', driveError instanceof Error ? driveError.message : driveError)
+      // Drive é apenas backup, não bloqueia o fluxo
+      console.error('[AI Generate] Drive backup failed (non-blocking):', driveError instanceof Error ? driveError.message : driveError)
     }
 
     // 7. Salvar no banco de dados (usando o modelo que realmente foi usado, pode ser fallback)
+    // Vercel Blob é o armazenamento principal para fileUrl e thumbnailUrl
     const aiImage = await db.aIGeneratedImage.create({
       data: {
         projectId: body.projectId,
         name: `${currentModelConfig.displayName} - ${body.prompt.slice(0, 40)}${body.prompt.length > 40 ? '...' : ''}`,
         prompt: body.prompt,
         mode: 'GENERATE',
-        fileUrl: googleDriveUrl || blobUrl,
+        fileUrl: blobUrl,
         thumbnailUrl: blobUrl,
         width: dimensions.width,
         height: dimensions.height,

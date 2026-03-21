@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
 import { X, Download, ExternalLink, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { API_BASE_URL } from '@/lib/constants'
+
+// Helper to convert relative URLs to absolute
+function toAbsoluteUrl(url: string): string {
+  if (url.startsWith('/')) {
+    return `${API_BASE_URL}${url}`
+  }
+  return url
+}
 
 interface ImagePreviewModalProps {
   isOpen: boolean
@@ -29,7 +38,8 @@ export default function ImagePreviewModal({
     const loadImage = async () => {
       setIsLoading(true)
       try {
-        const response = await window.electronAPI.downloadBlob(imageUrl)
+        const absoluteUrl = toAbsoluteUrl(imageUrl)
+        const response = await window.electronAPI.downloadBlob(absoluteUrl)
         if (!cancelled && response.ok && response.buffer) {
           const blob = new Blob([response.buffer], {
             type: response.contentType || 'image/png',
@@ -86,7 +96,7 @@ export default function ImagePreviewModal({
 
   const handleOpenExternal = () => {
     if (imageUrl) {
-      window.electronAPI.openExternal(imageUrl)
+      window.electronAPI.openExternal(toAbsoluteUrl(imageUrl))
     }
   }
 
