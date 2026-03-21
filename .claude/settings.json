@@ -15,7 +15,8 @@
     ],
     "additionalDirectories": [
       "/Users/cirotrigo/Documents/Studio-Lagosta-v2/lumina-video/assets",
-      "/private/tmp/asar-check"
+      "/private/tmp/asar-check",
+      "/Users/cirotrigo/Documents/Studio-Lagosta-v2/desktop-app/src/pages/bulk-image-generator"
     ]
   }
 }

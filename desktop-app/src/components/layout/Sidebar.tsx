@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom'
-import { Calendar, Settings, Wand2, Layers3, Images } from 'lucide-react'
+import { Calendar, Settings, Wand2, Layers3, Images, Sparkles } from 'lucide-react'
 import ProjectSelector from './ProjectSelector'
 import SyncStatusIndicator from './SyncStatusIndicator'
 import { cn } from '@/lib/utils'
@@ -27,6 +27,12 @@ const navItems = [
     to: '/arts',
     icon: Images,
     label: 'Artes',
+    disabled: false,
+  },
+  {
+    to: '/bulk-generator',
+    icon: Sparkles,
+    label: 'IA em Massa',
     disabled: false,
   },
 ]

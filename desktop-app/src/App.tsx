@@ -10,6 +10,7 @@ import ProjectPage from './pages/ProjectPage'
 import AppShell from './components/layout/AppShell'
 import EditorPage from './pages/EditorPage'
 import ArtsPage from './pages/ArtsPage'
+import BulkImageGeneratorPage from './pages/bulk-image-generator'
 import ConflictResolutionDialog from './components/sync/ConflictResolutionDialog'
 
 function App() {
@@ -57,6 +58,7 @@ function App() {
           <Route path="/project" element={<ProjectPage />} />
           <Route path="/editor" element={<EditorPage />} />
           <Route path="/arts" element={<ArtsPage />} />
+          <Route path="/bulk-generator" element={<BulkImageGeneratorPage />} />
           <Route path="/new-post" element={<NewPostPage />} />
           <Route path="/edit-post/:postId" element={<EditPostPage />} />
           <Route path="/settings" element={<SettingsPage />} />
