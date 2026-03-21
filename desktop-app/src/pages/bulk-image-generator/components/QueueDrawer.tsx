@@ -1,3 +1,4 @@
+import { useState, useCallback } from 'react'
 import {
   X,
   Trash2,
@@ -11,6 +12,7 @@ import {
   Pause,
   Play,
   XCircle,
+  Eye,
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
@@ -18,7 +20,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import type { QueueItem, QueueBatch, QueueItemStatus } from '@/lib/queue/types'
 import { useImageQueue } from '../hooks/useImageQueue'
-import { useState } from 'react'
+import ImagePreviewModal from './ImagePreviewModal'
 
 // Status badge component
 function StatusBadge({ status }: { status: QueueItemStatus }) {
@@ -74,11 +76,13 @@ function QueueSingleItem({
   onCancel,
   onRetry,
   onRemove,
+  onPreview,
 }: {
   item: QueueItem
   onCancel: () => void
   onRetry: () => void
   onRemove: () => void
+  onPreview?: () => void
 }) {
   const canCancel = item.status === 'PENDING'
   const canRetry = item.status === 'FAILED' || item.status === 'CANCELLED'
@@ -89,7 +93,6 @@ function QueueSingleItem({
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
@@ -156,13 +159,20 @@ function QueueSingleItem({
 
       {/* Result thumbnail */}
       {item.result?.thumbnailUrl && (
-        <div className="mt-2">
+        <button
+          type="button"
+          onClick={onPreview}
+          className="mt-2 relative group cursor-pointer"
+        >
           <img
             src={item.result.thumbnailUrl}
             alt="Generated"
-            className="h-16 w-16 rounded-lg object-cover"
+            className="h-16 w-16 rounded-lg object-cover transition-transform group-hover:scale-105"
           />
-        </div>
+          <div className="absolute inset-0 rounded-lg bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <Eye size={20} className="text-white" />
+          </div>
+        </button>
       )}
     </motion.div>
   )
@@ -177,6 +187,7 @@ function QueueBatchItem({
   onRetryItem,
   onCancelItem,
   onRemoveItem,
+  onPreviewItem,
 }: {
   batch: QueueBatch
   items: QueueItem[]
@@ -185,6 +196,7 @@ function QueueBatchItem({
   onRetryItem: (id: string) => void
   onCancelItem: (id: string) => void
   onRemoveItem: (id: string) => void
+  onPreviewItem: (item: QueueItem) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(false)
 
@@ -202,7 +214,6 @@ function QueueBatchItem({
 
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, x: 20 }}
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
@@ -293,6 +304,7 @@ function QueueBatchItem({
                   onCancel={() => onCancelItem(item.id)}
                   onRetry={() => onRetryItem(item.id)}
                   onRemove={() => onRemoveItem(item.id)}
+                  onPreview={() => onPreviewItem(item)}
                 />
               ))}
             </div>
@@ -324,6 +336,19 @@ export default function QueueDrawer() {
     resumeQueue,
     startProcessing,
   } = useImageQueue()
+
+  // Preview state
+  const [previewItem, setPreviewItem] = useState<QueueItem | null>(null)
+
+  const handlePreview = useCallback((item: QueueItem) => {
+    if (item.result?.fileUrl) {
+      setPreviewItem(item)
+    }
+  }, [])
+
+  const closePreview = useCallback(() => {
+    setPreviewItem(null)
+  }, [])
 
   // Group items by batch
   const standaloneItems = items.filter((i: QueueItem) => !i.batchId)
@@ -464,6 +489,7 @@ export default function QueueDrawer() {
                         onRetryItem={retryItem}
                         onCancelItem={cancelItem}
                         onRemoveItem={removeItem}
+                        onPreviewItem={handlePreview}
                       />
                     ))}
 
@@ -475,6 +501,7 @@ export default function QueueDrawer() {
                         onCancel={() => cancelItem(item.id)}
                         onRetry={() => retryItem(item.id)}
                         onRemove={() => removeItem(item.id)}
+                        onPreview={() => handlePreview(item)}
                       />
                     ))}
                   </AnimatePresence>
@@ -506,6 +533,14 @@ export default function QueueDrawer() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        isOpen={previewItem !== null}
+        onClose={closePreview}
+        imageUrl={previewItem?.result?.fileUrl || null}
+        prompt={previewItem?.request.prompt}
+      />
     </>
   )
 }

@@ -98,9 +98,12 @@ export default function DriveImagePicker({
   const [items, setItems] = useState<DriveFile[]>([])
   const [breadcrumbs, setBreadcrumbs] = useState<BreadcrumbItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [nextPageToken, setNextPageToken] = useState<string | null>(null)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
 
   const { isRefreshing, lastRefreshedLabel, refreshFolder } = useDriveCache({
     projectId,
@@ -109,8 +112,14 @@ export default function DriveImagePicker({
   const canSelectMore = selectedCount + selectedIds.size < maxImages
 
   const loadFiles = useCallback(
-    async (folderId?: string) => {
-      setIsLoading(true)
+    async (folderId?: string, pageToken?: string) => {
+      if (pageToken) {
+        setIsLoadingMore(true)
+      } else {
+        setIsLoading(true)
+        setItems([])
+        setNextPageToken(null)
+      }
       setError(null)
 
       try {
@@ -120,10 +129,18 @@ export default function DriveImagePicker({
         })
         if (folderId) params.set('folderId', folderId)
         if (search) params.set('search', search)
+        if (pageToken) params.set('pageToken', pageToken)
 
         const data = await api.get<DriveListResponse>(`/api/drive/list?${params}`)
 
-        setItems(data.items)
+        if (pageToken) {
+          // Append to existing items
+          setItems((prev) => [...prev, ...data.items])
+        } else {
+          setItems(data.items)
+        }
+
+        setNextPageToken(data.nextPageToken || null)
 
         if (!folderId && data.folderName && breadcrumbs.length === 0) {
           setBreadcrumbs([{ id: data.currentFolderId, name: data.folderName }])
@@ -133,10 +150,30 @@ export default function DriveImagePicker({
         setError(msg)
       } finally {
         setIsLoading(false)
+        setIsLoadingMore(false)
       }
     },
     [projectId, search, breadcrumbs.length]
   )
+
+  // Infinite scroll observer
+  useEffect(() => {
+    if (!loadMoreRef.current || !nextPageToken || isLoadingMore) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && nextPageToken && !isLoadingMore) {
+          const currentFolderId = breadcrumbs[breadcrumbs.length - 1]?.id
+          loadFiles(currentFolderId, nextPageToken)
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    observer.observe(loadMoreRef.current)
+
+    return () => observer.disconnect()
+  }, [nextPageToken, isLoadingMore, breadcrumbs, loadFiles])
 
   const handleRefresh = useCallback(async () => {
     const currentFolderId = breadcrumbs[breadcrumbs.length - 1]?.id
@@ -149,6 +186,7 @@ export default function DriveImagePicker({
   const handleFolderClick = (folder: DriveFile) => {
     setBreadcrumbs((prev) => [...prev, { id: folder.id, name: folder.name }])
     setSearch('')
+    setNextPageToken(null)
     loadFiles(folder.id)
   }
 
@@ -156,6 +194,7 @@ export default function DriveImagePicker({
     const crumb = breadcrumbs[index]
     setBreadcrumbs((prev) => prev.slice(0, index + 1))
     setSearch('')
+    setNextPageToken(null)
     loadFiles(crumb.id)
   }
 
@@ -345,44 +384,62 @@ export default function DriveImagePicker({
 
                 {/* Images */}
                 {imageItems.length > 0 ? (
-                  <div className="grid grid-cols-4 gap-3">
-                    {imageItems.map((item) => {
-                      const isSelected = selectedIds.has(item.id)
-                      const canSelect = canSelectMore || isSelected
+                  <>
+                    <div className="grid grid-cols-4 gap-3">
+                      {imageItems.map((item) => {
+                        const isSelected = selectedIds.has(item.id)
+                        const canSelect = canSelectMore || isSelected
 
-                      return (
-                        <button
-                          key={item.id}
-                          onClick={() => handleToggleSelect(item)}
-                          disabled={!canSelect}
-                          className={cn(
-                            'relative aspect-square rounded-xl overflow-hidden',
-                            'border-2 transition-all duration-200',
-                            isSelected
-                              ? 'border-primary ring-2 ring-primary/30'
-                              : 'border-transparent hover:border-white/20',
-                            !canSelect && 'opacity-40 cursor-not-allowed'
-                          )}
-                        >
-                          <DriveThumbnail fileId={item.id} fileName={item.name} />
+                        return (
+                          <button
+                            key={item.id}
+                            onClick={() => handleToggleSelect(item)}
+                            disabled={!canSelect}
+                            className={cn(
+                              'relative aspect-square rounded-xl overflow-hidden',
+                              'border-2 transition-all duration-200',
+                              isSelected
+                                ? 'border-primary ring-2 ring-primary/30'
+                                : 'border-transparent hover:border-white/20',
+                              !canSelect && 'opacity-40 cursor-not-allowed'
+                            )}
+                          >
+                            <DriveThumbnail fileId={item.id} fileName={item.name} />
 
-                          {/* Selection Indicator */}
-                          {isSelected && (
-                            <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
-                              <Check size={14} className="text-white" />
+                            {/* Selection Indicator */}
+                            {isSelected && (
+                              <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                                <Check size={14} className="text-white" />
+                              </div>
+                            )}
+
+                            {/* Hover Overlay */}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity">
+                              <p className="absolute bottom-2 left-2 right-2 text-xs text-white truncate">
+                                {item.name}
+                              </p>
                             </div>
-                          )}
+                          </button>
+                        )
+                      })}
+                    </div>
 
-                          {/* Hover Overlay */}
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 hover:opacity-100 transition-opacity">
-                            <p className="absolute bottom-2 left-2 right-2 text-xs text-white truncate">
-                              {item.name}
-                            </p>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
+                    {/* Load more trigger */}
+                    {nextPageToken && (
+                      <div
+                        ref={loadMoreRef}
+                        className="flex items-center justify-center py-4"
+                      >
+                        {isLoadingMore ? (
+                          <Loader2 size={24} className="animate-spin text-primary" />
+                        ) : (
+                          <span className="text-sm text-white/40">
+                            Role para carregar mais...
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </>
                 ) : !isLoading && folderItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center h-48 gap-3">
                     <ImageIcon size={32} className="text-white/30" />
