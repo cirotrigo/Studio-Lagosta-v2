@@ -24,7 +24,10 @@ export const layerSchema = z.object({
   elementId: z.number().optional(),
   fileUrl: z.preprocess(
     (val) => (typeof val === 'string' && val.trim() === '' ? undefined : val),
-    z.string().url().optional()
+    z.string().refine(
+      (val) => !val || val.startsWith('/api/') || val.startsWith('http://') || val.startsWith('https://') || val.startsWith('data:') || val.startsWith('blob:'),
+      { message: 'URL inválida' }
+    ).optional()
   ),
   parentId: z.string().nullable().optional(),
   effects: z.record(z.string(), z.any()).optional(),
