@@ -44,18 +44,36 @@ export function QuickScheduleModal({
     setIsSubmitting(true)
 
     try {
-      // 1. Convert data URL to buffer and upload to Vercel Blob
-      const response = await window.electronAPI.downloadBlob(imageUrl)
-      if (!response.ok || !response.buffer) {
-        throw new Error(response.error || 'Falha ao processar imagem.')
+      // 1. Convert image to buffer and upload to Vercel Blob
+      let buffer: ArrayBuffer
+      let mimeType = 'image/png'
+
+      if (imageUrl.startsWith('data:')) {
+        // Data URL (from rendered Konva canvas)
+        const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/)
+        if (!match) throw new Error('Formato de imagem invalido.')
+        mimeType = match[1]
+        const binary = atob(match[2])
+        const bytes = new Uint8Array(binary.length)
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+        buffer = bytes.buffer
+      } else {
+        // HTTP URL — download via Electron IPC
+        const response = await window.electronAPI.downloadBlob(imageUrl)
+        if (!response.ok || !response.buffer) {
+          throw new Error(response.error || 'Falha ao processar imagem.')
+        }
+        buffer = response.buffer
+        mimeType = response.contentType || 'image/png'
       }
 
+      const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png'
       const uploadResponse = await window.electronAPI.uploadFile(
         `${API_BASE_URL}/api/upload`,
         {
-          name: `story-${Date.now()}.jpg`,
-          type: 'image/jpeg',
-          buffer: response.buffer,
+          name: `story-${Date.now()}.${ext}`,
+          type: mimeType,
+          buffer,
         },
         { type: 'post', postType },
       )
