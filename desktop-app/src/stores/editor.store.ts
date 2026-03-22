@@ -313,8 +313,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   toggleLayerVisibility: (layerId) =>
     get().updateLayer(layerId, (layer) => ({ ...layer, visible: layer.visible === false ? true : !layer.visible })),
 
-  toggleLayerLock: (layerId) =>
-    get().updateLayer(layerId, (layer) => ({ ...layer, locked: !layer.locked })),
+  toggleLayerLock: (layerId) => {
+    const layer = getCurrentPage(get().document)?.layers.find((l) => l.id === layerId)
+    const willBeLocked = !layer?.locked
+    get().updateLayer(layerId, (l) => ({ ...l, locked: willBeLocked }))
+    if (willBeLocked) {
+      set((state) => ({
+        selectedLayerIds: state.selectedLayerIds.filter((id) => id !== layerId),
+      }))
+    }
+  },
 
   selectLayer: (layerId, additive = false) =>
     set((state) => ({

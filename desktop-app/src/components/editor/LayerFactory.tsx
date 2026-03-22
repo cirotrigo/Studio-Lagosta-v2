@@ -229,6 +229,8 @@ export function LayerFactory({
       rotation: layer.rotation ?? 0,
       opacity: layer.opacity ?? 1,
       visible: layer.visible !== false,
+      // Locked layers: disable dragging and all event listening (click-through)
+      listening: !layer.locked,
       draggable: layer.locked ? false : layer.draggable !== false,
       onClick: (event: KonvaEventObject<MouseEvent | TouchEvent>) => onSelect(event, layer.id),
       onTap: (event: KonvaEventObject<MouseEvent | TouchEvent>) => onSelect(event, layer.id),
