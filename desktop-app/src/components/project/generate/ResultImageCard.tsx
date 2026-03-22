@@ -208,44 +208,38 @@ export function ResultImageCard({
           ) : null}
         </div>
 
-        {variation.fields.length > 0 ? (
+        {variation.fields.length > 0 && variation.status === 'ready' ? (
           <div className="space-y-2">
-            {!isEditing && onFieldsChange && (
-              <button
-                type="button"
-                onClick={() => setIsEditing(true)}
-                className="mb-2 text-xs text-primary hover:underline"
-              >
-                Editar textos
-              </button>
-            )}
             {variation.fields.map((field) => (
               <div
                 key={`${variation.id}-${field.key}`}
-                className="rounded-lg border border-border bg-white/[0.03] px-3 py-2"
+                className="group/field rounded-lg border border-border bg-white/[0.03] px-3 py-2 transition-colors hover:border-primary/30"
               >
                 <p className="text-[10px] font-medium uppercase tracking-[0.16em] text-text-subtle">
                   {field.label}
                 </p>
-                {isEditing ? (
+                {onFieldsChange ? (
                   <textarea
                     value={getFieldValue(field.key)}
-                    onChange={(e) => handleFieldChange(field.key, e.target.value)}
-                    rows={2}
-                    className="mt-1 w-full resize-none rounded border border-border bg-input px-2 py-1 text-sm text-text focus:border-primary focus:outline-none"
+                    onChange={(e) => {
+                      if (!isEditing) setIsEditing(true)
+                      handleFieldChange(field.key, e.target.value)
+                    }}
+                    rows={1}
+                    className="mt-1 w-full resize-none bg-transparent text-sm text-text focus:outline-none"
+                    placeholder={field.label}
                   />
                 ) : (
                   <p className="mt-1 text-sm text-text">{field.value}</p>
                 )}
               </div>
             ))}
-            {isEditing && (
+            {hasEdits && (
               <div className="flex gap-2">
                 <button
                   type="button"
                   onClick={handleApplyEdits}
-                  disabled={!hasEdits}
-                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                  className="flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground"
                 >
                   <RefreshCw size={12} />
                   Aplicar e Regenerar
