@@ -24,7 +24,7 @@ import { applyCopyToKonvaTemplate, type SlotBinderInput } from '@/lib/automation
 import { cn } from '@/lib/utils'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
-import { ResultImageCard } from '@/components/project/generate/ResultImageCard'
+import { VariationCanvas } from '@/components/project/generate/VariationCanvas'
 import FormatSelector from '@/components/project/generate/FormatSelector'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import VariationSelector from '@/components/project/generate/VariationSelector'
@@ -46,7 +46,6 @@ import {
   type BackgroundGenerationInfo,
   type ObjectivePreset,
   type TonePreset,
-  type ReviewField,
 } from '@/stores/generation.store'
 import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
@@ -1137,27 +1136,20 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                   </details>
                 ) : null}
 
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {job.variations.map((variation) => (
-                    <ResultImageCard
-                      key={variation.id}
-                      format={job.params.format}
-                      variation={variation}
-                      projectSlug={currentProject?.name}
-                      projectFonts={brandAssets?.fonts}
-                      onDownload={() => variation.imageUrl && handleDownload(variation.imageUrl)}
-                      onSchedule={() => variation.imageUrl && handleSchedule(variation.imageUrl)}
-                      onRemove={() => removeVariation(job.id, variation.id)}
-                      onApprove={() => void handleApproveVariation(job, variation)}
-                      onOpenInEditor={() => handleOpenVariationInEditor(job, variation)}
-                      onOpenArts={handleOpenArts}
-                      onFieldsChange={(fields: ReviewField[]) => {
-                        updateVariation(job.id, variation.id, { fields })
-                      }}
-                      onRegenerate={() => void handleRegenerateVariation(job, variation)}
-                    />
-                  ))}
-                </div>
+                <VariationCanvas
+                  format={job.params.format}
+                  variations={job.variations}
+                  projectSlug={currentProject?.name}
+                  projectFonts={brandAssets?.fonts}
+                  onDownload={handleDownload}
+                  onSchedule={handleSchedule}
+                  onRemove={(variationId) => removeVariation(job.id, variationId)}
+                  onApprove={(variation) => void handleApproveVariation(job, variation)}
+                  onOpenInEditor={(variation) => handleOpenVariationInEditor(job, variation)}
+                  onOpenArts={handleOpenArts}
+                  onFieldsChange={(variationId, fields) => updateVariation(job.id, variationId, { fields })}
+                  onRegenerate={(variation) => void handleRegenerateVariation(job, variation)}
+                />
               </div>
             ))}
           </div>
