@@ -25,6 +25,7 @@ import { cn } from '@/lib/utils'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
 import { VariationCanvas } from '@/components/project/generate/VariationCanvas'
+import { QuickScheduleModal } from '@/components/project/generate/QuickScheduleModal'
 import FormatSelector from '@/components/project/generate/FormatSelector'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import VariationSelector from '@/components/project/generate/VariationSelector'
@@ -173,6 +174,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
+  const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -265,8 +267,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }, [])
 
   const handleSchedule = useCallback((imageUrl: string) => {
-    navigate('/new-post', { state: { imageUrl } })
-  }, [navigate])
+    if (format === 'STORY') {
+      setScheduleImageUrl(imageUrl)
+    } else {
+      navigate('/new-post', { state: { imageUrl } })
+    }
+  }, [format, navigate])
 
   const handleOpenArts = useCallback(() => {
     navigate('/arts')
@@ -1155,6 +1161,16 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
           </div>
         )}
       </div>
+
+      {/* Quick Schedule Modal for Stories */}
+      {scheduleImageUrl && (
+        <QuickScheduleModal
+          imageUrl={scheduleImageUrl}
+          format={format}
+          projectId={projectId}
+          onClose={() => setScheduleImageUrl(null)}
+        />
+      )}
     </div>
   )
 }
