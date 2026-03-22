@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
   format,
@@ -30,23 +31,35 @@ interface DragItem {
 }
 
 // Story hover preview component
-function StoryPreview({ post, onClose, openAbove }: { post: Post; onClose: () => void; openAbove: boolean }) {
-  if (!post.mediaUrls[0]) return null
+function StoryPreview({ post, onClose, anchorRect }: { post: Post; onClose: () => void; anchorRect: DOMRect | null }) {
+  if (!post.mediaUrls[0] || !anchorRect) return null
 
-  return (
+  const previewWidth = 200
+  const previewHeight = 310
+
+  // Position: centered horizontally on anchor, clamped to viewport
+  let left = anchorRect.left + anchorRect.width / 2 - previewWidth / 2
+  left = Math.max(8, Math.min(left, window.innerWidth - previewWidth - 8))
+
+  // Position: prefer above, fall below if not enough space
+  const spaceAbove = anchorRect.top
+  const openAbove = spaceAbove > previewHeight + 16
+  const top = openAbove
+    ? anchorRect.top - previewHeight - 8
+    : anchorRect.bottom + 8
+
+  return createPortal(
     <div
-      className={cn(
-        'absolute z-[100] -translate-x-1/2 left-1/2',
-        openAbove ? 'bottom-full mb-2' : 'top-full mt-2',
-      )}
-      style={{ pointerEvents: 'auto' }}
+      className="fixed z-[9999]"
+      style={{ left, top, width: previewWidth }}
       onMouseLeave={onClose}
     >
       <div className="rounded-lg border border-white/10 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/60">
         <img
           src={post.mediaUrls[0]}
           alt=""
-          className="h-72 w-48 rounded-md object-cover"
+          className="w-full rounded-md object-cover"
+          style={{ aspectRatio: '9/16' }}
         />
         <div className="mt-1.5 px-1 pb-0.5">
           <p className="text-[10px] font-medium text-white/60 truncate">
@@ -56,12 +69,8 @@ function StoryPreview({ post, onClose, openAbove }: { post: Post; onClose: () =>
           </p>
         </div>
       </div>
-      {/* Arrow */}
-      <div className={cn(
-        'absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-[#0c0c0c] border-white/10',
-        openAbove ? '-bottom-1.5 border-r border-b' : '-top-1.5 border-l border-t',
-      )} />
-    </div>
+    </div>,
+    document.body,
   )
 }
 
@@ -116,7 +125,7 @@ export default function CalendarView({ posts }: CalendarViewProps) {
   const [draggedItem, setDraggedItem] = useState<DragItem | null>(null)
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
   const [duplicateModal, setDuplicateModal] = useState<{ post: Post; targetDate: string } | null>(null)
-  const [hoveredPostId, setHoveredPostId] = useState<string | null>(null)
+  const [hoveredPost, setHoveredPost] = useState<{ id: string; rect: DOMRect } | null>(null)
   const { currentProject } = useProjectStore()
   const updatePost = useUpdatePost(currentProject?.id, draggedItem?.postId || '')
   const createPost = useCreatePost(currentProject?.id)
@@ -270,8 +279,7 @@ export default function CalendarView({ posts }: CalendarViewProps) {
 
       {/* Calendar grid */}
       <div className="grid flex-1 grid-cols-7 auto-rows-fr overflow-auto" style={{ overflow: 'auto clip' }}>
-        {calendarDays.map((calDay, dayIndex) => {
-          const weekRow = Math.floor(dayIndex / 7)
+        {calendarDays.map((calDay) => {
           const dateKey = format(calDay, 'yyyy-MM-dd')
           const dayPosts = postsByDate[dateKey] || []
           const isCurrentMonth = isSameMonth(calDay, currentMonth)
@@ -314,21 +322,26 @@ export default function CalendarView({ posts }: CalendarViewProps) {
 
                   const isDraggable = canMovePost(post)
                   const isStory = post.postType === 'STORY' || post.postType === 'REEL'
-                  const isHovered = hoveredPostId === post.id
+                  const isHovered = hoveredPost?.id === post.id
 
                   return (
                     <div
                       key={post.id}
                       className="relative"
-                      onMouseEnter={() => isStory && post.mediaUrls[0] && setHoveredPostId(post.id)}
-                      onMouseLeave={() => setHoveredPostId(null)}
+                      onMouseEnter={(e) => {
+                        if (isStory && post.mediaUrls[0]) {
+                          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                          setHoveredPost({ id: post.id, rect })
+                        }
+                      }}
+                      onMouseLeave={() => setHoveredPost(null)}
                     >
-                      {/* Story hover preview */}
+                      {/* Story hover preview (rendered via portal) */}
                       {isStory && isHovered && (
                         <StoryPreview
                           post={post}
-                          onClose={() => setHoveredPostId(null)}
-                          openAbove={weekRow >= 2}
+                          onClose={() => setHoveredPost(null)}
+                          anchorRect={hoveredPost?.rect ?? null}
                         />
                       )}
 
