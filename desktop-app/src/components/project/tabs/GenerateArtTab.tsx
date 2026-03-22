@@ -24,7 +24,8 @@ import { applyCopyToKonvaTemplate, type SlotBinderInput } from '@/lib/automation
 import { cn } from '@/lib/utils'
 import ProjectBadge from '@/components/layout/ProjectBadge'
 import GenerationQueue from '@/components/project/generate/GenerationQueue'
-import { ResultImageCard } from '@/components/project/generate/ResultImageCard'
+import { VariationCanvas } from '@/components/project/generate/VariationCanvas'
+import { QuickScheduleModal } from '@/components/project/generate/QuickScheduleModal'
 import FormatSelector from '@/components/project/generate/FormatSelector'
 import PhotoSelector from '@/components/project/generate/PhotoSelector'
 import VariationSelector from '@/components/project/generate/VariationSelector'
@@ -32,9 +33,7 @@ import ObjectivePresets from '@/components/project/generate/ObjectivePresets'
 import TonePresets from '@/components/project/generate/TonePresets'
 import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
 import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
-import { TemplateCarousel } from '@/components/project/generate/TemplateCarousel'
 import ReferenceSelector, { type SelectedReference } from '@/components/project/generate/ReferenceSelector'
-import type { Design } from '@/hooks/use-project-designs'
 import { useProjectStore } from '@/stores/project.store'
 import {
   useGenerationStore,
@@ -48,7 +47,6 @@ import {
   type BackgroundGenerationInfo,
   type ObjectivePreset,
   type TonePreset,
-  type ReviewField,
 } from '@/stores/generation.store'
 import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
 import type { KonvaTemplateDocument } from '@/types/template'
@@ -172,11 +170,11 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
   const [selectedReferences, setSelectedReferences] = useState<SelectedReference[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
-  const [selectedCarouselDesign, setSelectedCarouselDesign] = useState<Design | null>(null)
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
+  const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -197,10 +195,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       cancelled = true
     }
   }, [projectId])
-
-  useEffect(() => {
-    setSelectedCarouselDesign(null)
-  }, [format])
 
   useEffect(() => {
     if (!draft) return
@@ -273,8 +267,12 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   }, [])
 
   const handleSchedule = useCallback((imageUrl: string) => {
-    navigate('/new-post', { state: { imageUrl } })
-  }, [navigate])
+    if (format === 'STORY') {
+      setScheduleImageUrl(imageUrl)
+    } else {
+      navigate('/new-post', { state: { imageUrl } })
+    }
+  }, [format, navigate])
 
   const handleOpenArts = useCallback(() => {
     navigate('/arts')
@@ -511,8 +509,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       backgroundMode: job.params.backgroundMode,
       photoUrl: job.params.photoUrl,
       referenceUrls: job.params.referenceUrls,
-      manualTemplateId: job.params.manualTemplateId,
-      selectedPageId: job.params.selectedPageId,
       analyzeImageForContext: job.params.analyzeImageForContext,
       objective: job.params.objective,
       tone: job.params.tone,
@@ -775,11 +771,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       }
     }
 
-    // Use carousel selection (template with tag "Template")
-    const effectiveTemplateId = selectedCarouselDesign
-      ? String(selectedCarouselDesign.templateId)
-      : undefined
-
     const params: GenerationParams = {
       projectId,
       format,
@@ -789,8 +780,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
       backgroundPrompt: backgroundMode === 'ai' ? backgroundPrompt.trim() : undefined,
       referenceUrls,
-      manualTemplateId: effectiveTemplateId,
-      selectedPageId: selectedCarouselDesign?.id,
       analyzeImageForContext,
       objective,
       tone,
@@ -805,7 +794,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     backgroundMode,
     backgroundPrompt,
     format,
-    selectedCarouselDesign,
     projectId,
     prompt,
     selectedReferences,
@@ -871,14 +859,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             <label className="block text-sm font-medium text-text">Formato</label>
             <FormatSelector value={format} onChange={setFormat} />
           </div>
-
-          {/* Template Carousel - shows designs with tag "Template" */}
-          <TemplateCarousel
-            projectId={projectId}
-            format={format}
-            selectedDesignId={selectedCarouselDesign?.id ?? null}
-            onSelectDesign={setSelectedCarouselDesign}
-          />
 
           <div className="space-y-3">
             <label className="block text-sm font-medium text-text">Fundo</label>
@@ -1162,32 +1142,35 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
                   </details>
                 ) : null}
 
-                <div className="grid gap-4 xl:grid-cols-2">
-                  {job.variations.map((variation) => (
-                    <ResultImageCard
-                      key={variation.id}
-                      format={job.params.format}
-                      variation={variation}
-                      projectSlug={currentProject?.name}
-                      projectFonts={brandAssets?.fonts}
-                      onDownload={() => variation.imageUrl && handleDownload(variation.imageUrl)}
-                      onSchedule={() => variation.imageUrl && handleSchedule(variation.imageUrl)}
-                      onRemove={() => removeVariation(job.id, variation.id)}
-                      onApprove={() => void handleApproveVariation(job, variation)}
-                      onOpenInEditor={() => handleOpenVariationInEditor(job, variation)}
-                      onOpenArts={handleOpenArts}
-                      onFieldsChange={(fields: ReviewField[]) => {
-                        updateVariation(job.id, variation.id, { fields })
-                      }}
-                      onRegenerate={() => void handleRegenerateVariation(job, variation)}
-                    />
-                  ))}
-                </div>
+                <VariationCanvas
+                  format={job.params.format}
+                  variations={job.variations}
+                  projectSlug={currentProject?.name}
+                  projectFonts={brandAssets?.fonts}
+                  onDownload={handleDownload}
+                  onSchedule={handleSchedule}
+                  onRemove={(variationId) => removeVariation(job.id, variationId)}
+                  onApprove={(variation) => void handleApproveVariation(job, variation)}
+                  onOpenInEditor={(variation) => handleOpenVariationInEditor(job, variation)}
+                  onOpenArts={handleOpenArts}
+                  onFieldsChange={(variationId, fields) => updateVariation(job.id, variationId, { fields })}
+                  onRegenerate={(variation) => void handleRegenerateVariation(job, variation)}
+                />
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* Quick Schedule Modal for Stories */}
+      {scheduleImageUrl && (
+        <QuickScheduleModal
+          imageUrl={scheduleImageUrl}
+          format={format}
+          projectId={projectId}
+          onClose={() => setScheduleImageUrl(null)}
+        />
+      )}
     </div>
   )
 }

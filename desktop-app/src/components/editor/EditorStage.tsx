@@ -6,13 +6,15 @@ import { LayerFactory } from './LayerFactory'
 import { Ruler, RulerCorner } from './canvas/Ruler'
 import { AlignmentQuickMenu, type AlignmentType } from './canvas/AlignmentQuickMenu'
 import { ImageCropOverlay } from './canvas/ImageCropOverlay'
+import { StoryGuideLines } from './canvas/StoryGuideLines'
+import { InlineTextEditor } from './canvas/InlineTextEditor'
 import { computeSmartGuides, type GuideLine } from '@/lib/editor/smart-guides'
 import {
   convertAbsoluteTextPositionToOffsets,
 } from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
 import { useEditorShortcuts } from '@/hooks/use-editor-shortcuts'
-import type { Layer } from '@/types/template'
+import type { Layer, KonvaTextLayer } from '@/types/template'
 
 // @ts-expect-error Konva uses this internal flag for text sharpness.
 Konva._fixTextRendering = true
@@ -47,6 +49,7 @@ export function EditorStage() {
   const zoom = useEditorStore((state) => state.zoom)
   const pan = useEditorStore((state) => state.pan)
   const cropMode = useEditorStore((state) => state.cropMode)
+  const docFormat = useEditorStore((state) => state.document?.format)
   const clearSelection = useEditorStore((state) => state.clearSelection)
   const selectLayer = useEditorStore((state) => state.selectLayer)
   const updateLayer = useEditorStore((state) => state.updateLayer)
@@ -62,6 +65,11 @@ export function EditorStage() {
   const [guides, setGuides] = useState<GuideLine[]>([])
   const [isSpacePressed, setIsSpacePressed] = useState(false)
   const [showRulers, setShowRulers] = useState(true)
+  const [editingLayerId, setEditingLayerId] = useState<string | null>(null)
+
+  const editingLayer = editingLayerId
+    ? currentPage?.layers.find((l) => l.id === editingLayerId) as KonvaTextLayer | undefined
+    : undefined
 
   useEffect(() => {
     const container = containerRef.current
@@ -114,19 +122,25 @@ export function EditorStage() {
       const isTextInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
 
       // R para toggle das réguas (não tratado no hook global)
-      if (event.key === 'r' && !isTextInput && !cropMode) {
+      if (event.key === 'r' && !isTextInput && !cropMode && !editingLayerId) {
         setShowRulers((prev) => !prev)
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cropMode])
+  }, [cropMode, editingLayerId])
 
   useEffect(() => {
     const stage = stageRef.current
     const transformer = transformerRef.current
     if (!stage || !transformer) {
+      return
+    }
+
+    if (editingLayerId) {
+      transformer.nodes([])
+      transformer.getLayer()?.batchDraw()
       return
     }
 
@@ -142,7 +156,7 @@ export function EditorStage() {
       }),
     )
     transformer.getLayer()?.batchDraw()
-  }, [currentPage, selectedLayerIds])
+  }, [currentPage, selectedLayerIds, editingLayerId])
 
   const pagePosition = useMemo(() => {
     if (!currentPage) {
@@ -353,16 +367,26 @@ export function EditorStage() {
     })
   }
 
-  const handleDirectEdit = (layer: Layer) => {
-    if (layer.type === 'text' || layer.type === 'rich-text') {
-      const text = window.prompt('Editar texto da layer', layer.text)
-      if (text !== null) {
-        updateLayer(layer.id, (currentLayer) =>
-          currentLayer.type === 'text' || currentLayer.type === 'rich-text'
-            ? { ...currentLayer, text }
-            : currentLayer,
+  const handleInlineEditConfirm = useCallback(
+    (newText: string) => {
+      if (editingLayerId && newText.trim()) {
+        updateLayer(editingLayerId, (l) =>
+          l.type === 'text' || l.type === 'rich-text' ? { ...l, text: newText } : l,
         )
       }
+      setEditingLayerId(null)
+    },
+    [editingLayerId, updateLayer],
+  )
+
+  const handleInlineEditCancel = useCallback(() => {
+    setEditingLayerId(null)
+  }, [])
+
+  const handleDirectEdit = (layer: Layer) => {
+    if (layer.type === 'text' || layer.type === 'rich-text') {
+      clearSelection()
+      setEditingLayerId(layer.id)
       return
     }
 
@@ -567,6 +591,7 @@ export function EditorStage() {
                 page={currentPage}
                 layer={layer}
                 isSelected={selectedLayerIds.includes(layer.id) && !cropMode}
+                isEditing={layer.id === editingLayerId}
                 onSelect={handleLayerSelect}
                 onDragMove={handleLayerDragMove}
                 onDragEnd={handleLayerDragEnd}
@@ -588,6 +613,11 @@ export function EditorStage() {
               }
               return null
             })()}
+
+            {/* Story Safe Zone Guide Lines */}
+            {showRulers && docFormat === 'STORY' && (
+              <StoryGuideLines page={currentPage} zoom={zoom} />
+            )}
 
             {guides.map((guide) =>
               guide.orientation === 'vertical' ? (
@@ -632,6 +662,19 @@ export function EditorStage() {
           />
         </KonvaLayer>
       </Stage>
+
+      {/* Inline Text Editor */}
+      {editingLayer && (editingLayer.type === 'text' || editingLayer.type === 'rich-text') && (
+        <InlineTextEditor
+          layer={editingLayer}
+          page={currentPage}
+          pagePosition={pagePosition}
+          zoom={zoom}
+          isPanning={isSpacePressed}
+          onConfirm={handleInlineEditConfirm}
+          onCancel={handleInlineEditCancel}
+        />
+      )}
 
       {/* Crop Mode UI */}
       {cropMode && (

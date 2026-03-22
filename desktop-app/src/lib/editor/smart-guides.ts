@@ -1,4 +1,9 @@
 import { resolveLayerAbsoluteFrame } from './text-layout'
+import {
+  STORY_HORIZONTAL_GUIDES,
+  STORY_VERTICAL_GUIDES,
+  isStoryFormat,
+} from './story-guides'
 import type { KonvaPage } from '@/types/template'
 
 export interface GuideLine {
@@ -56,6 +61,16 @@ export function computeSmartGuides(
     { value: page.height / 2, anchor: 'center' as const },
     { value: page.height, anchor: 'bottom' as const },
   ]
+
+  // Add story guide positions as snap targets
+  if (isStoryFormat(page.width, page.height)) {
+    STORY_VERTICAL_GUIDES.forEach((guide) => {
+      verticalTargets.push({ value: guide.position, anchor: 'left' })
+    })
+    STORY_HORIZONTAL_GUIDES.forEach((guide) => {
+      horizontalTargets.push({ value: guide.position, anchor: 'top' })
+    })
+  }
 
   page.layers.forEach((layer) => {
     if (layer.id === layerId || layer.visible === false) {
