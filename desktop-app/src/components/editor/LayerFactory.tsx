@@ -21,6 +21,7 @@ interface LayerFactoryProps {
   page: KonvaPage
   layer: Layer
   isSelected: boolean
+  isEditing?: boolean
   onSelect: (event: KonvaEventObject<MouseEvent | TouchEvent>, layerId: string) => void
   onDragMove: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
   onDragEnd: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
@@ -211,6 +212,7 @@ export function LayerFactory({
   page,
   layer,
   isSelected,
+  isEditing,
   onSelect,
   onDragMove,
   onDragEnd,
@@ -278,7 +280,7 @@ export function LayerFactory({
       const curvePath = generateCurvedTextPath(renderState.width, renderState.height, curvedText.power)
 
       return (
-        <Group {...commonProps} x={renderState.x} y={renderState.y}>
+        <Group {...commonProps} x={renderState.x} y={renderState.y} visible={!isEditing}>
           {/* Text Background */}
           {textBackground && (
             <Rect
@@ -304,7 +306,7 @@ export function LayerFactory({
     }
 
     return (
-      <Group {...commonProps} x={renderState.x} y={renderState.y}>
+      <Group {...commonProps} x={renderState.x} y={renderState.y} visible={!isEditing}>
         {/* Text Background */}
         {textBackground && (
           <Rect
