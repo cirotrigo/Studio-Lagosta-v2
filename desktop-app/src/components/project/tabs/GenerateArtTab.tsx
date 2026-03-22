@@ -32,9 +32,7 @@ import ObjectivePresets from '@/components/project/generate/ObjectivePresets'
 import TonePresets from '@/components/project/generate/TonePresets'
 import AdvancedOptionsDrawer from '@/components/project/generate/AdvancedOptionsDrawer'
 import ProjectContextIndicator from '@/components/project/generate/ProjectContextIndicator'
-import { TemplateCarousel } from '@/components/project/generate/TemplateCarousel'
 import ReferenceSelector, { type SelectedReference } from '@/components/project/generate/ReferenceSelector'
-import type { Design } from '@/hooks/use-project-designs'
 import { useProjectStore } from '@/stores/project.store'
 import {
   useGenerationStore,
@@ -172,7 +170,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [selectedPhoto, setSelectedPhoto] = useState<SelectedPhotoRef | null>(null)
   const [selectedReferences, setSelectedReferences] = useState<SelectedReference[]>([])
   const [variations, setVariations] = useState<1 | 2 | 4>(1)
-  const [selectedCarouselDesign, setSelectedCarouselDesign] = useState<Design | null>(null)
   const [templates, setTemplates] = useState<KonvaTemplateDocument[]>([])
   const [exportingJobId, setExportingJobId] = useState<string | null>(null)
   const [objective, setObjective] = useState<ObjectivePreset>(null)
@@ -197,10 +194,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       cancelled = true
     }
   }, [projectId])
-
-  useEffect(() => {
-    setSelectedCarouselDesign(null)
-  }, [format])
 
   useEffect(() => {
     if (!draft) return
@@ -511,8 +504,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       backgroundMode: job.params.backgroundMode,
       photoUrl: job.params.photoUrl,
       referenceUrls: job.params.referenceUrls,
-      manualTemplateId: job.params.manualTemplateId,
-      selectedPageId: job.params.selectedPageId,
       analyzeImageForContext: job.params.analyzeImageForContext,
       objective: job.params.objective,
       tone: job.params.tone,
@@ -775,11 +766,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       }
     }
 
-    // Use carousel selection (template with tag "Template")
-    const effectiveTemplateId = selectedCarouselDesign
-      ? String(selectedCarouselDesign.templateId)
-      : undefined
-
     const params: GenerationParams = {
       projectId,
       format,
@@ -789,8 +775,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       photoUrl: backgroundMode === 'photo' ? selectedPhoto?.url : undefined,
       backgroundPrompt: backgroundMode === 'ai' ? backgroundPrompt.trim() : undefined,
       referenceUrls,
-      manualTemplateId: effectiveTemplateId,
-      selectedPageId: selectedCarouselDesign?.id,
       analyzeImageForContext,
       objective,
       tone,
@@ -805,7 +789,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     backgroundMode,
     backgroundPrompt,
     format,
-    selectedCarouselDesign,
     projectId,
     prompt,
     selectedReferences,
@@ -871,14 +854,6 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
             <label className="block text-sm font-medium text-text">Formato</label>
             <FormatSelector value={format} onChange={setFormat} />
           </div>
-
-          {/* Template Carousel - shows designs with tag "Template" */}
-          <TemplateCarousel
-            projectId={projectId}
-            format={format}
-            selectedDesignId={selectedCarouselDesign?.id ?? null}
-            onSelectDesign={setSelectedCarouselDesign}
-          />
 
           <div className="space-y-3">
             <label className="block text-sm font-medium text-text">Fundo</label>
