@@ -30,19 +30,23 @@ interface DragItem {
 }
 
 // Story hover preview component
-function StoryPreview({ post, onClose }: { post: Post; onClose: () => void }) {
+function StoryPreview({ post, onClose, openAbove }: { post: Post; onClose: () => void; openAbove: boolean }) {
   if (!post.mediaUrls[0]) return null
 
   return (
     <div
-      className="absolute z-50 -translate-x-1/2 left-1/2 bottom-full mb-2 animate-in fade-in zoom-in-95 duration-200"
+      className={cn(
+        'absolute z-[100] -translate-x-1/2 left-1/2',
+        openAbove ? 'bottom-full mb-2' : 'top-full mt-2',
+      )}
+      style={{ pointerEvents: 'auto' }}
       onMouseLeave={onClose}
     >
-      <div className="rounded-2xl border border-white/10 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/60">
+      <div className="rounded-lg border border-white/10 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/60">
         <img
           src={post.mediaUrls[0]}
           alt=""
-          className="h-64 w-36 rounded-xl object-cover"
+          className="h-72 w-48 rounded-md object-cover"
         />
         <div className="mt-1.5 px-1 pb-0.5">
           <p className="text-[10px] font-medium text-white/60 truncate">
@@ -52,8 +56,11 @@ function StoryPreview({ post, onClose }: { post: Post; onClose: () => void }) {
           </p>
         </div>
       </div>
-      {/* Arrow pointing down */}
-      <div className="absolute left-1/2 -translate-x-1/2 -bottom-1.5 w-3 h-3 rotate-45 bg-[#0c0c0c] border-r border-b border-white/10" />
+      {/* Arrow */}
+      <div className={cn(
+        'absolute left-1/2 -translate-x-1/2 w-3 h-3 rotate-45 bg-[#0c0c0c] border-white/10',
+        openAbove ? '-bottom-1.5 border-r border-b' : '-top-1.5 border-l border-t',
+      )} />
     </div>
   )
 }
@@ -262,8 +269,9 @@ export default function CalendarView({ posts }: CalendarViewProps) {
       </div>
 
       {/* Calendar grid */}
-      <div className="grid flex-1 grid-cols-7 auto-rows-fr overflow-auto">
-        {calendarDays.map((calDay) => {
+      <div className="grid flex-1 grid-cols-7 auto-rows-fr overflow-auto" style={{ overflow: 'auto clip' }}>
+        {calendarDays.map((calDay, dayIndex) => {
+          const weekRow = Math.floor(dayIndex / 7)
           const dateKey = format(calDay, 'yyyy-MM-dd')
           const dayPosts = postsByDate[dateKey] || []
           const isCurrentMonth = isSameMonth(calDay, currentMonth)
@@ -316,7 +324,13 @@ export default function CalendarView({ posts }: CalendarViewProps) {
                       onMouseLeave={() => setHoveredPostId(null)}
                     >
                       {/* Story hover preview */}
-                      {isStory && isHovered && <StoryPreview post={post} onClose={() => setHoveredPostId(null)} />}
+                      {isStory && isHovered && (
+                        <StoryPreview
+                          post={post}
+                          onClose={() => setHoveredPostId(null)}
+                          openAbove={weekRow >= 2}
+                        />
+                      )}
 
                       <div
                         draggable={isDraggable}
