@@ -10,7 +10,7 @@ import CalendarView from '@/components/post/CalendarView'
 type ViewMode = 'list' | 'calendar'
 
 export default function SchedulerPage() {
-  const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [viewMode, setViewMode] = useState<ViewMode>('calendar')
   const { currentProject } = useProjectStore()
   const { data: posts, isLoading, refetch, isRefetching } = usePosts(currentProject?.id)
 
