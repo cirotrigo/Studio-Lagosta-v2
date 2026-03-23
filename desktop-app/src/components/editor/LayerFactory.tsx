@@ -258,6 +258,12 @@ export function LayerFactory({
     // Curved Text
     const curvedText = effects?.curvedText?.enabled && effects.curvedText.power !== 0 ? effects.curvedText : null
 
+    // Build textDecoration from underline/strikethrough
+    const decorations: string[] = []
+    if (layer.textStyle?.underline) decorations.push('underline')
+    if (layer.textStyle?.strikethrough) decorations.push('line-through')
+    const textDecoration = decorations.length > 0 ? decorations.join(' ') : undefined
+
     // Common text styling props
     const textStyleProps = {
       fontFamily: serializeFontFamilyStack(layer.textStyle?.fontFamily),
@@ -266,6 +272,7 @@ export function LayerFactory({
         `${layer.textStyle?.fontWeight ?? ''} ${layer.textStyle?.fontStyle ?? ''}`.trim() || 'normal',
       fill: layer.textStyle?.fill ?? '#111827',
       letterSpacing: layer.textStyle?.letterSpacing ?? 0,
+      textDecoration,
       // Text Stroke
       stroke: textStroke ? textStroke.color : isSelected ? '#F59E0B' : undefined,
       strokeWidth: textStroke ? textStroke.width : isSelected ? 0.6 : 0,

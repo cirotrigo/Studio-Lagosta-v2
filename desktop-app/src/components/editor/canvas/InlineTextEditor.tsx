@@ -99,6 +99,12 @@ export function InlineTextEditor({
   const lineHeight = layer.textStyle?.lineHeight ?? 1.1
   const letterSpacing = layer.textStyle?.letterSpacing ?? 0
 
+  // Build text-decoration from underline/strikethrough
+  const decorations: string[] = []
+  if (layer.textStyle?.underline) decorations.push('underline')
+  if (layer.textStyle?.strikethrough) decorations.push('line-through')
+  const textDecoration = decorations.length > 0 ? decorations.join(' ') : undefined
+
   return (
     <textarea
       ref={textareaRef}
@@ -120,6 +126,7 @@ export function InlineTextEditor({
         textAlign,
         lineHeight,
         letterSpacing: `${letterSpacing * zoom}px`,
+        textDecorationLine: textDecoration,
         transform: rotation ? `rotate(${rotation}deg)` : undefined,
         transformOrigin: 'top left',
         background: 'transparent',
