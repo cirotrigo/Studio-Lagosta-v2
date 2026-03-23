@@ -17,8 +17,8 @@ type VariationCount = 1 | 2 | 4
 type VisualKnowledgeCategory = 'CARDAPIO' | 'CAMPANHAS'
 
 const IMAGE_ANALYSIS_MODEL = 'gemini-2.5-flash'
-const IMAGE_ANALYSIS_CONFIDENCE_THRESHOLD = 0.68
-const IMAGE_ANALYSIS_MATCH_THRESHOLD = 0.72
+const IMAGE_ANALYSIS_CONFIDENCE_THRESHOLD = 0.35
+const IMAGE_ANALYSIS_MATCH_THRESHOLD = 0.50
 const IMAGE_ANALYSIS_MAX_BYTES = 5 * 1024 * 1024
 const VISUAL_KNOWLEDGE_CATEGORIES: VisualKnowledgeCategory[] = [
   'CARDAPIO',
@@ -147,7 +147,7 @@ const variationSchema = z.object(VARIATION_FIELD_SCHEMAS)
 const responseSchema = buildResponseSchema()
 
 const imageContextSchema = z.object({
-  summary: z.string().trim().max(280).default(''),
+  summary: z.string().trim().max(500).default(''),
   dishNameCandidates: z.array(z.string().trim().min(1).max(80)).max(5).default([]),
   sceneType: z.string().trim().max(120).default(''),
   beverageFamily: z.string().trim().max(80).default(''),
@@ -504,18 +504,21 @@ async function analyzeImageContext(
         {
           type: 'text' as const,
           text: [
-            'Analise esta imagem de restaurante/comida para enriquecer a geracao de copy.',
+            'Analise esta imagem de restaurante/comida/bebida para gerar copy de arte no Instagram.',
             `Prompt do usuario: "${prompt}"`,
+            '',
+            'OBJETIVO: Identificar o que esta na imagem para associar ao cardapio do restaurante.',
+            '',
             'Regras:',
-            '- Nao invente nome especifico de prato se a imagem nao permitir alta confianca.',
-            '- Se a imagem mostrar vinho, bebida ou garrafa, identifique a familia visual da bebida em beverageFamily (ex: vinho tinto, vinho branco, espumante, rose).',
-            '- labelTextHints deve listar apenas fragmentos realmente legiveis do rotulo ou embalagem, preservando a grafia visivel quando possivel.',
-            '- productClues deve listar pistas praticas do produto observadas na imagem ou no rotulo, como safra, origem, varietal, tipo da bebida, ocasiacao de consumo ou formato da garrafa.',
-            '- Nunca invente marca, rotulo, safra, origem ou nome do produto se isso nao estiver claramente legivel.',
-            '- Se houver duvida, use candidatos genericos e abaixe a confianca.',
-            '- ingredientsHints deve listar apenas ingredientes ou componentes visualmente plausiveis.',
-            '- sceneType deve descrever o contexto da cena em poucas palavras.',
-            '- confidence mede a confianca da identificacao do prato principal/contexto (0 a 1).',
+            '- summary: descreva o prato/produto da imagem de forma completa e detalhada. Inclua tipo de proteina, acompanhamentos, modo de preparo e apresentacao.',
+            '- dishNameCandidates: liste nomes possiveis do prato (ex: "bife ancho grelhado", "picanha na brasa", "risoto de camarao"). Seja especifico baseado no que ve.',
+            '- Se o usuario mencionou o nome do prato no prompt, INCLUA esse nome como primeiro candidato com alta confianca.',
+            '- ingredientsHints: liste ingredientes visiveis (ex: "arroz", "farofa", "feijao tropeiro", "vinagrete").',
+            '- Se a imagem mostrar vinho/bebida/garrafa, identifique a familia em beverageFamily (ex: vinho tinto, espumante).',
+            '- labelTextHints: apenas fragmentos legiveis de rotulo/embalagem.',
+            '- productClues: pistas praticas do produto (safra, origem, varietal, formato).',
+            '- sceneType: contexto da cena em poucas palavras.',
+            '- confidence: confianca na identificacao (0 a 1). Se o prato e claramente visivel, use 0.7+. Se o usuario nomeou o prato no prompt, use 0.8+.',
           ].join('\n'),
         },
       ],
@@ -525,8 +528,8 @@ async function analyzeImageContext(
   try {
     const { object } = await generateObject({
       model: google(IMAGE_ANALYSIS_MODEL),
-      temperature: 0.2,
-      maxOutputTokens: 500,
+      temperature: 0.3,
+      maxOutputTokens: 700,
       schema: imageContextSchema,
       messages,
     })
@@ -587,7 +590,7 @@ async function analyzeImageContext(
       )
 
       return imageContextSchema.parse({
-        summary: limitText(cleaned || 'Analise visual em texto livre sem JSON estruturado.', 280),
+        summary: limitText(cleaned || 'Analise visual em texto livre sem JSON estruturado.', 500),
         dishNameCandidates: dedupeStrings(
           beverageFamily ? [beverageFamily] : [],
           5,
@@ -659,7 +662,7 @@ function buildImageAnalysisPayload(
     requested,
     applied: true,
     sourceImageUrl,
-    summary: limitText(analysis.summary, 280),
+    summary: limitText(analysis.summary, 500),
     sceneType: limitText(analysis.sceneType, 120),
     beverageFamily: limitText(analysis.beverageFamily, 80),
     confidence: Number(Math.max(0, Math.min(1, analysis.confidence)).toFixed(4)),
@@ -1855,15 +1858,17 @@ function buildImageAnalysisPromptSection(
   ]
 
   if (imageAnalysis.matchedKnowledge) {
-    lines.push(
-      `- match confirmado na base: [${imageAnalysis.matchedKnowledge.category}] ${imageAnalysis.matchedKnowledge.title}`,
-    )
-    lines.push(`- motivo do match: ${imageAnalysis.matchedKnowledge.reason}`)
+    lines.push('')
+    lines.push('ITEM DO CARDAPIO IDENTIFICADO NA IMAGEM:')
+    lines.push(`- Nome: ${imageAnalysis.matchedKnowledge.title}`)
+    lines.push(`- Categoria: ${imageAnalysis.matchedKnowledge.category}`)
+    lines.push(`- Match score: ${imageAnalysis.matchedKnowledge.score}`)
+    lines.push('OBRIGATORIO: Use o nome deste item do cardapio no title ou description da copy. A imagem mostra este prato/produto.')
   } else {
-    lines.push('- match confirmado na base: nenhum')
-    lines.push(
-      '- regra: se nao houver match confiavel, use apenas contexto visual generico sem inventar nome de prato.',
-    )
+    lines.push('- match na base do cardapio: nenhum')
+    if (imageAnalysis.dishNameCandidates.length > 0) {
+      lines.push(`- Use os candidatos visuais como contexto: ${imageAnalysis.dishNameCandidates.join(', ')}`)
+    }
   }
 
   if (imageAnalysis.warnings.length > 0) {
