@@ -66,6 +66,7 @@ export interface QueueItemError {
  */
 export interface QueueItem {
   id: string
+  projectId?: number
   batchId?: string
   batchIndex?: number
   status: QueueItemStatus

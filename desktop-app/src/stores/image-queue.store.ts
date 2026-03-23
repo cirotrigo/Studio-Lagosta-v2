@@ -30,6 +30,8 @@ interface ImageQueueStore {
   selectedItemId?: string
   settings: QueueSettings
   recentReferenceImages: ReferenceImage[]
+  /** Recent reference images stored per project */
+  recentImagesByProject: Record<string, ReferenceImage[]>
 
   // Item Actions
   addItem: (params: AddItemParams) => string
@@ -67,8 +69,8 @@ interface ImageQueueStore {
   updateSettings: (settings: Partial<QueueSettings>) => void
 
   // Reference Images
-  addToRecent: (image: ReferenceImage) => void
-  clearRecentImages: () => void
+  addToRecent: (image: ReferenceImage, projectId?: number) => void
+  clearRecentImages: (projectId?: number) => void
 }
 
 interface AddItemParams {
@@ -81,6 +83,7 @@ interface AddItemParams {
   batchId?: string
   batchIndex?: number
   priority?: number
+  projectId?: number
 }
 
 interface AddBatchParams {
@@ -91,6 +94,7 @@ interface AddBatchParams {
   aspectRatio: AspectRatio
   resolution: ImageResolution
   referenceImages: ReferenceImage[]
+  projectId?: number
 }
 
 // Helper to compute stats
@@ -139,6 +143,7 @@ export const useImageQueueStore = create<ImageQueueStore>()(
       selectedItemId: undefined,
       settings: DEFAULT_QUEUE_SETTINGS,
       recentReferenceImages: [],
+      recentImagesByProject: {},
 
       // Add single item
       addItem: (params) => {
@@ -147,6 +152,7 @@ export const useImageQueueStore = create<ImageQueueStore>()(
 
         const item: QueueItem = {
           id,
+          projectId: params.projectId,
           batchId: params.batchId,
           batchIndex: params.batchIndex,
           status: 'PENDING',
@@ -165,15 +171,16 @@ export const useImageQueueStore = create<ImageQueueStore>()(
         }
 
         set((state) => {
-          const newItems = [...state.items, item]
+          // Prepend new items so they appear at the top of the queue
+          const newItems = [item, ...state.items]
           return {
             items: newItems,
             batches: updateBatchProgress(state.batches, newItems),
           }
         })
 
-        // Add reference images to recent
-        params.referenceImages.forEach((img) => get().addToRecent(img))
+        // Add reference images to recent (per project)
+        params.referenceImages.forEach((img) => get().addToRecent(img, params.projectId))
 
         return id
       },
@@ -209,12 +216,13 @@ export const useImageQueueStore = create<ImageQueueStore>()(
             referenceImages: params.referenceImages,
             batchId,
             batchIndex: index + 1,
+            projectId: params.projectId,
           })
           itemIds.push(itemId)
         })
 
         set((state) => ({
-          batches: [...state.batches, { ...batch, itemIds }],
+          batches: [{ ...batch, itemIds }, ...state.batches],
         }))
 
         return batchId
@@ -462,35 +470,65 @@ export const useImageQueueStore = create<ImageQueueStore>()(
         }))
       },
 
-      // Add to recent reference images
-      addToRecent: (image) => {
+      // Add to recent reference images (per project)
+      addToRecent: (image, projectId) => {
         set((state) => {
+          const imageWithDate = { ...image, addedAt: new Date().toISOString() }
+
+          // Update per-project recent images
+          if (projectId) {
+            const key = String(projectId)
+            const existing = state.recentImagesByProject[key] ?? []
+            const filtered = existing.filter((img) => img.id !== image.id)
+            const updated = [imageWithDate, ...filtered].slice(0, 20)
+            return {
+              recentImagesByProject: {
+                ...state.recentImagesByProject,
+                [key]: updated,
+              },
+              // Also update the legacy flat list for backward compat
+              recentReferenceImages: [
+                imageWithDate,
+                ...state.recentReferenceImages.filter((img) => img.id !== image.id),
+              ].slice(0, 20),
+            }
+          }
+
+          // Fallback: update legacy flat list only
           const filtered = state.recentReferenceImages.filter(
             (img) => img.id !== image.id
           )
-          const updated = [
-            { ...image, addedAt: new Date().toISOString() },
-            ...filtered,
-          ].slice(0, 20)
+          const updated = [imageWithDate, ...filtered].slice(0, 20)
           return { recentReferenceImages: updated }
         })
       },
 
       // Clear recent images
-      clearRecentImages: () => {
-        set({ recentReferenceImages: [] })
+      clearRecentImages: (projectId) => {
+        if (projectId) {
+          set((state) => ({
+            recentImagesByProject: {
+              ...state.recentImagesByProject,
+              [String(projectId)]: [],
+            },
+          }))
+        } else {
+          set({ recentReferenceImages: [], recentImagesByProject: {} })
+        }
       },
     }),
     {
       name: 'image-queue-storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        // Persist all non-cancelled items (including COMPLETED) so queue survives project switch
         items: state.items.filter(
-          (i) => i.status === 'PENDING' || i.status === 'PROCESSING'
+          (i) => i.status !== 'CANCELLED'
         ),
         batches: state.batches,
         settings: state.settings,
         recentReferenceImages: state.recentReferenceImages,
+        recentImagesByProject: state.recentImagesByProject,
       }),
     }
   )
@@ -531,3 +569,21 @@ export const useQueueSettings = () =>
 
 export const useRecentReferenceImages = () =>
   useImageQueueStore(useShallow((state) => state.recentReferenceImages))
+
+/** Get recent reference images for a specific project */
+export const useRecentReferenceImagesByProject = (projectId: number | undefined) =>
+  useImageQueueStore(
+    useShallow((state) => {
+      if (!projectId) return []
+      return state.recentImagesByProject[String(projectId)] ?? []
+    })
+  )
+
+/** Get queue items filtered by project */
+export const useQueueItemsByProject = (projectId: number | undefined) =>
+  useImageQueueStore(
+    useShallow((state) => {
+      if (!projectId) return state.items
+      return state.items.filter((i) => i.projectId === projectId)
+    })
+  )

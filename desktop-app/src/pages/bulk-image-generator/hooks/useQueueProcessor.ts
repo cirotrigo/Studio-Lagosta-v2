@@ -68,7 +68,9 @@ export function useQueueProcessor(options: UseQueueProcessorOptions = {}) {
   // Process single item
   const processItem = useCallback(
     async (item: QueueItem) => {
-      if (!currentProject?.id) {
+      // Use the item's stored projectId, falling back to current project
+      const itemProjectId = item.projectId ?? currentProject?.id
+      if (!itemProjectId) {
         store.markAsFailed(item.id, {
           code: 'NO_PROJECT',
           message: 'Nenhum projeto selecionado',
@@ -83,7 +85,7 @@ export function useQueueProcessor(options: UseQueueProcessorOptions = {}) {
         const response = await api.post<GenerateImageResponse>(
           '/api/ai/generate-image',
           {
-            projectId: currentProject.id,
+            projectId: itemProjectId,
             prompt: item.request.improvedPrompt || item.request.prompt,
             model: item.request.model,
             aspectRatio: item.request.aspectRatio,

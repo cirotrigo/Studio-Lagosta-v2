@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { cn } from '@/lib/utils'
 import type { ReferenceImage, AIImageModel } from '@/lib/queue/types'
 import { AI_IMAGE_MODEL_CONFIGS } from '@/lib/queue/types'
-import { useRecentReferenceImages } from '@/stores/image-queue.store'
+import { useRecentReferenceImagesByProject } from '@/stores/image-queue.store'
 import DriveImagePicker from './DriveImagePicker'
 
 type TabId = 'recent' | 'drive' | 'local'
@@ -25,7 +25,7 @@ export default function ReferenceImagesSection({
   const [activeTab, setActiveTab] = useState<TabId>('recent')
   const [isDrivePickerOpen, setIsDrivePickerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const recentImages = useRecentReferenceImages()
+  const recentImages = useRecentReferenceImagesByProject(projectId)
 
   const modelConfig = AI_IMAGE_MODEL_CONFIGS[model]
   const maxImages = modelConfig.maxReferenceImages
