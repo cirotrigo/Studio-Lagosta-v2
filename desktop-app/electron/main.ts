@@ -33,6 +33,10 @@ interface GenerateAiTextPayload {
   compositionReferenceUrls?: string[]
   analyzeImageForContext?: boolean
   analysisImageUrl?: string
+  objective?: string | null
+  tone?: string | null
+  includedFields?: string[]
+  templateContext?: Record<string, unknown>
 }
 
 interface GenerateAiTextVariation {
@@ -1080,6 +1084,21 @@ function normalizeGenerateAiTextPayload(input: unknown): GenerateAiTextPayload {
     throw new Error('photoUrl obrigatoria quando usePhoto=true')
   }
 
+  // Pass-through fields for AI prompt customization
+  const validObjectives = ['promocao', 'institucional', 'agenda', 'oferta']
+  const validTones = ['casual', 'profissional', 'urgente', 'inspirador']
+  const validFields = ['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']
+
+  const objective = typeof raw.objective === 'string' && validObjectives.includes(raw.objective)
+    ? raw.objective : undefined
+  const tone = typeof raw.tone === 'string' && validTones.includes(raw.tone)
+    ? raw.tone : undefined
+  const includedFields = Array.isArray(raw.includedFields)
+    ? raw.includedFields.filter((f: unknown): f is string => typeof f === 'string' && validFields.includes(f))
+    : undefined
+  const templateContext = raw.templateContext && typeof raw.templateContext === 'object'
+    ? raw.templateContext as Record<string, unknown> : undefined
+
   return {
     projectId,
     prompt,
@@ -1094,6 +1113,10 @@ function normalizeGenerateAiTextPayload(input: unknown): GenerateAiTextPayload {
     compositionReferenceUrls: refs,
     analyzeImageForContext,
     analysisImageUrl,
+    objective,
+    tone,
+    includedFields: includedFields?.length ? includedFields : undefined,
+    templateContext,
   }
 }
 
