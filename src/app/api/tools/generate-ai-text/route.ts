@@ -109,7 +109,7 @@ export type GenerateAiTextResponse = {
   conflicts: string[]
 }
 
-const variationSchema = z.object({
+const VARIATION_FIELD_SCHEMAS = {
   pre_title: z.string().max(80).default(''),
   title: z.string().max(160).default(''),
   description: z.string().max(240).default(''),
@@ -117,11 +117,34 @@ const variationSchema = z.object({
   badge: z.string().max(90).default(''),
   footer_info_1: z.string().max(120).default(''),
   footer_info_2: z.string().max(120).default(''),
-})
+} as const
 
-const responseSchema = z.object({
-  variacoes: z.array(variationSchema).min(1).max(4),
-})
+type FieldKey = keyof typeof VARIATION_FIELD_SCHEMAS
+const ALL_FIELD_KEYS: FieldKey[] = ['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']
+
+/** Build a response schema that only includes the selected fields */
+function buildResponseSchema(includedFields?: FieldKey[]) {
+  const active = includedFields?.length ? includedFields : ALL_FIELD_KEYS
+
+  const shape: Record<string, z.ZodType> = {}
+  for (const key of ALL_FIELD_KEYS) {
+    if (active.includes(key)) {
+      shape[key] = VARIATION_FIELD_SCHEMAS[key]
+    } else {
+      // Excluded fields: always empty string
+      shape[key] = z.string().max(0).default('')
+    }
+  }
+
+  const variationSchema = z.object(shape as Record<FieldKey, z.ZodType>)
+  return z.object({
+    variacoes: z.array(variationSchema).min(1).max(4),
+  })
+}
+
+// Static schemas for validation/typing (all fields)
+const variationSchema = z.object(VARIATION_FIELD_SCHEMAS)
+const responseSchema = buildResponseSchema()
 
 const imageContextSchema = z.object({
   summary: z.string().trim().max(280).default(''),
@@ -1892,7 +1915,7 @@ function buildUserPrompt(
     'Regras obrigatorias:',
     '1. Preserve o sentido principal do prompt base.',
     '2. Gere exatamente o numero de variacoes solicitado.',
-    '3. TODOS os campos listados em "Campos para preencher" DEVEM ter conteudo - nao deixe nenhum vazio.',
+    '3. Preencha SOMENTE os campos incluidos pelo usuario. Campos excluidos DEVEM ficar com string vazia "".',
     '4. footer_info_1 e footer_info_2: se o template tiver esses campos, priorize horario de funcionamento, endereco, canal de pedido/reserva, CTA curto ou complemento objetivo do title/description. Nao invente dados praticos que nao estejam no prompt ou na base.',
     '5. CTA deve ser objetivo e acionavel.',
     '6. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
@@ -1901,11 +1924,13 @@ function buildUserPrompt(
     '8. Variacoes DEVEM ter angulos diferentes: variacao 1 = beneficio emocional, variacao 2 = urgencia/escassez, variacao 3 = prova social/autoridade, variacao 4 = curiosidade/exclusividade.',
     '9. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
     '10. Em conflito entre prompt e base, priorize o prompt do usuario.',
-    '11. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
-    '12. Se a analise visual estiver com baixa confianca, mantenha a copy contextual e generica sem inventar item.',
-    '12b. Se houver texto legivel de rotulo ou pistas claras do produto, use isso como apoio contextual sem transformar inferencia em fato nao confirmado.',
+    '11. REGRA CRITICA SOBRE NOMES DE PRATOS/PRODUTOS:',
+    '  11a. Se o usuario MENCIONOU o nome do prato/produto no prompt base, USE esse nome obrigatoriamente no title ou description. O usuario sabe o que esta pedindo.',
+    '  11b. Se a analise visual identificou o prato/produto E o usuario mencionou algo similar no prompt, USE o nome do prompt.',
+    '  11c. SOMENTE quando o usuario NAO mencionou nenhum prato E a analise visual tem baixa confianca, mantenha a copy generica.',
+    '  11d. Se houver texto legivel de rotulo ou pistas claras do produto na imagem, use como apoio contextual.',
     input.analyzeImageForContext
-      ? '12c. Como a analise visual foi solicitada, trate a descricao da imagem, familia da bebida/produto, texto visivel de rotulo e pistas do produto como insumos prioritarios para contextualizar a copy.'
+      ? '  11e. Com analise visual ativa: trate descricao da imagem, familia da bebida/produto e texto visivel como insumos prioritarios.'
       : '',
     '13. Se houver contexto de template, adapte a copy ao estilo e densidade do conteudo existente.',
     '14. Quando o template tiver conteudo preenchido, use como referencia de tom mas gere textos novos e originais.',
@@ -2085,17 +2110,33 @@ export async function generateAiTextPayload(
   }
 
   try {
+    const dynamicSchema = buildResponseSchema(body.includedFields as FieldKey[] | undefined)
+
     const { object } = await generateObject({
       model: openai('gpt-4o-mini'),
-      schema: responseSchema,
+      schema: dynamicSchema,
       system: buildSystemPrompt(brandContext, { tone: body.tone, objective: body.objective }),
       prompt: buildUserPrompt(body, templateGuidance, knowledgeContext, imageAnalysisPayload),
       temperature: 0.75,
       maxOutputTokens: 900,
     })
 
+    // Force-clear excluded fields (belt and suspenders)
+    const rawVariacoes = object.variacoes.map((v: Record<string, string>) => {
+      if (body.includedFields?.length) {
+        const cleaned = { ...v }
+        for (const key of ALL_FIELD_KEYS) {
+          if (!body.includedFields.includes(key)) {
+            cleaned[key] = ''
+          }
+        }
+        return cleaned
+      }
+      return v
+    })
+
     const variacoes = ensureVariationCount(
-      object.variacoes,
+      rawVariacoes,
       body.variations,
       body.prompt,
     )
