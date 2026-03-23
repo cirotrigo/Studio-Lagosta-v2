@@ -88,6 +88,7 @@ const requestSchema = z.object({
   analysisImageUrl: z.string().url().optional(),
   objective: objectivePresetSchema,
   tone: tonePresetSchema,
+  includedFields: z.array(z.enum(['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2'])).optional(),
   templateContext: templateContextSchema,
 }).superRefine((value, ctx) => {
   if (value.usePhoto && !value.photoUrl) {
@@ -1643,18 +1644,37 @@ function translateTextDensity(density: string): string {
   return map[density] || density
 }
 
-function buildFieldSemanticsPromptSection(): string {
-  return [
-    'SEMANTICA DOS CAMPOS:',
-    '- pre_title: assunto macro da arte. Exemplos: almoco executivo, happy hour, jantar, comunicado, menu.',
-    '- title: headline principal chamativa, nome do prato ou inicio da headline.',
-    '- description: descricao do prato, complemento do title ou informacoes adicionais sobre a headline.',
-    '- cta: chamada para acao curta e direta.',
-    '- badge: selo curtissimo de destaque.',
-    '- footer_info_1: priorize dia da semana, periodo, horario de funcionamento, assunto complementar ou contexto pratico.',
-    '- footer_info_2: complemente o footer_info_1 com horario, endereco, canal de contato, CTA curto ou apoio contextual.',
-    '- Evite repetir o mesmo texto entre title, description e footers.',
-  ].join('\n')
+const FIELD_SEMANTICS: Record<string, string> = {
+  pre_title: 'pre_title: assunto macro da arte. Exemplos: almoco executivo, happy hour, jantar, comunicado, menu.',
+  title: 'title: headline principal chamativa, nome do prato ou inicio da headline.',
+  description: 'description: descricao do prato, complemento do title ou informacoes adicionais sobre a headline.',
+  cta: 'cta: chamada para acao curta e direta.',
+  badge: 'badge: selo curtissimo de destaque.',
+  footer_info_1: 'footer_info_1: priorize dia da semana, periodo, horario de funcionamento, assunto complementar ou contexto pratico.',
+  footer_info_2: 'footer_info_2: complemente o footer_info_1 com horario, endereco, canal de contato, CTA curto ou apoio contextual.',
+}
+
+function buildFieldSemanticsPromptSection(includedFields?: string[]): string {
+  const allFields = ['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']
+  const active = includedFields?.length ? includedFields : allFields
+  const excluded = allFields.filter((f) => !active.includes(f))
+
+  const lines: string[] = ['SEMANTICA DOS CAMPOS:']
+
+  for (const field of active) {
+    if (FIELD_SEMANTICS[field]) {
+      lines.push(`- ${FIELD_SEMANTICS[field]}`)
+    }
+  }
+
+  if (excluded.length > 0) {
+    lines.push('')
+    lines.push(`CAMPOS EXCLUIDOS PELO USUARIO (deixe VAZIO ""): ${excluded.join(', ')}`)
+    lines.push('IMPORTANTE: Os campos excluidos DEVEM retornar string vazia "". Nao preencha.')
+  }
+
+  lines.push('- Evite repetir o mesmo texto entre title, description e footers.')
+  return lines.join('\n')
 }
 
 function buildTemplateContextPromptSection(context: TemplateContext | undefined): string {
@@ -1862,7 +1882,7 @@ function buildUserPrompt(
     imageAnalysisSection,
     templateContextSection,
     templateSection,
-    `\n${buildFieldSemanticsPromptSection()}\n`,
+    `\n${buildFieldSemanticsPromptSection(input.includedFields)}\n`,
     '',
     'Regras obrigatorias:',
     '1. Preserve o sentido principal do prompt base.',

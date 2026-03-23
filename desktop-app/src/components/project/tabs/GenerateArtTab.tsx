@@ -49,7 +49,7 @@ import {
   type TonePreset,
 } from '@/stores/generation.store'
 import type { ApprovedVariationEditorDraft, ReeditDraft } from '@/types/art-automation'
-import type { KonvaTemplateDocument } from '@/types/template'
+import type { KonvaTemplateDocument, SlotFieldKey } from '@/types/template'
 
 const UPLOAD_URL = 'https://studio-lagosta-v2.vercel.app/api/upload'
 
@@ -175,6 +175,19 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
   const [objective, setObjective] = useState<ObjectivePreset>(null)
   const [tone, setTone] = useState<TonePreset>(null)
   const [scheduleImageUrl, setScheduleImageUrl] = useState<string | null>(null)
+
+  const ALL_FIELDS: { key: SlotFieldKey; label: string }[] = [
+    { key: 'pre_title', label: 'Pre-titulo' },
+    { key: 'title', label: 'Titulo' },
+    { key: 'description', label: 'Descricao' },
+    { key: 'badge', label: 'Badge' },
+    { key: 'cta', label: 'CTA' },
+    { key: 'footer_info_1', label: 'Info rodape 1' },
+    { key: 'footer_info_2', label: 'Info rodape 2' },
+  ]
+  const [includedFields, setIncludedFields] = useState<SlotFieldKey[]>(
+    ALL_FIELDS.map((f) => f.key),
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -512,6 +525,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       analyzeImageForContext: job.params.analyzeImageForContext,
       objective: job.params.objective,
       tone: job.params.tone,
+      includedFields: job.params.includedFields,
       templates,
       project: currentProject ?? undefined,
       brandAssets: brandAssets
@@ -783,6 +797,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
       analyzeImageForContext,
       objective,
       tone,
+      includedFields: includedFields.length < ALL_FIELDS.length ? includedFields : undefined,
     }
 
     addJob(params)
@@ -804,6 +819,7 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
     variations,
     objective,
     tone,
+    includedFields,
   ])
 
   const canGenerate =
@@ -963,6 +979,57 @@ export default function GenerateArtTab({ projectId, draft, onDraftConsumed }: Ge
               <div className="space-y-2">
                 <label className="block text-sm font-medium text-text">Variacoes</label>
                 <VariationSelector value={variations} onChange={setVariations} />
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-text">Campos do template</label>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (includedFields.length === ALL_FIELDS.length) {
+                        setIncludedFields(['title', 'description'])
+                      } else {
+                        setIncludedFields(ALL_FIELDS.map((f) => f.key))
+                      }
+                    }}
+                    className="text-xs text-primary hover:text-primary-hover transition-colors"
+                  >
+                    {includedFields.length === ALL_FIELDS.length ? 'Selecionar alguns' : 'Selecionar todos'}
+                  </button>
+                </div>
+                <p className="text-xs text-text-muted">
+                  Escolha quais campos a IA deve preencher na arte.
+                </p>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {ALL_FIELDS.map((field) => {
+                    const isActive = includedFields.includes(field.key)
+                    const isRequired = field.key === 'title'
+                    return (
+                      <button
+                        key={field.key}
+                        type="button"
+                        onClick={() => {
+                          if (isRequired) return
+                          setIncludedFields((prev) =>
+                            isActive
+                              ? prev.filter((k) => k !== field.key)
+                              : [...prev, field.key],
+                          )
+                        }}
+                        className={cn(
+                          'rounded-lg px-3 py-1.5 text-xs font-medium transition-all border',
+                          isActive
+                            ? 'bg-primary/15 border-primary/40 text-primary'
+                            : 'bg-card/50 border-border text-text-muted hover:border-text-subtle',
+                          isRequired && 'opacity-70 cursor-not-allowed',
+                        )}
+                      >
+                        {field.label}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
           </AdvancedOptionsDrawer>

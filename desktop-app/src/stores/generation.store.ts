@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { useShallow } from 'zustand/react/shallow'
 import type { ImageContextAnalysis } from '@/lib/automation/image-context-analyzer'
-import type { KonvaTemplateDocument } from '@/types/template'
+import type { KonvaTemplateDocument, SlotFieldKey } from '@/types/template'
 
 export type ArtFormat = 'FEED_PORTRAIT' | 'STORY' | 'SQUARE'
 export type TextProcessingMode = 'faithful' | 'grammar_correct' | 'headline_detection' | 'generate_copy'
@@ -73,6 +73,7 @@ export interface GenerationParams {
   analyzeImageForContext?: boolean
   objective?: ObjectivePreset
   tone?: TonePreset
+  includedFields?: SlotFieldKey[]
 }
 
 export interface GenerationJob {

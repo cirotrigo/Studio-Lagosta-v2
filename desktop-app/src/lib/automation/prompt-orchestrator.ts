@@ -55,6 +55,7 @@ export interface PromptOrchestratorInput {
   analyzeImageForContext?: boolean
   objective?: ObjectivePreset
   tone?: TonePreset
+  includedFields?: SlotFieldKey[]
   templates: KonvaTemplateDocument[]
   project?: Pick<Project, 'id' | 'name' | 'logoUrl'>
   brandAssets?: Pick<
@@ -643,6 +644,7 @@ export async function preparePromptBatch(
     analysisImageUrl: input.photoUrl || input.referenceUrls?.[0],
     objective: input.objective ?? undefined,
     tone: input.tone ?? undefined,
+    includedFields: input.includedFields,
     templateContext: templateContext,
   }) as GenerateAiTextResponse
 
