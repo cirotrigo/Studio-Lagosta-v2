@@ -1538,17 +1538,17 @@ function buildTemplateGuidance(templates: TemplateSummary[]): string {
 }
 
 const TONE_INSTRUCTIONS: Record<string, string> = {
-  casual: 'Use linguagem descontraida, amigavel e acessivel. Fale como um amigo conversando.',
-  profissional: 'Use tom corporativo, formal e confiante. Mantenha credibilidade e sofisticacao.',
-  urgente: 'Crie senso de urgencia e escassez. Use frases curtas e diretas que motivem acao imediata.',
-  inspirador: 'Use linguagem motivacional e emocional. Conecte com valores e aspiracoes do publico.',
+  casual: 'Tom descontraido e amigavel. Fale como um amigo. Use girias leves e linguagem acessivel. Emojis opcionais no badge ou CTA.',
+  profissional: 'Tom corporativo e confiante. Palavras sofisticadas. Evite girias. Mantenha credibilidade e elegancia.',
+  urgente: 'Senso de urgencia e escassez. Frases curtas e impactantes. Use palavras gatilho: ULTIMO, HOJE, AGORA, CORRA, RESTAM.',
+  inspirador: 'Linguagem motivacional e emocional. Conecte com valores e aspiracoes. Use verbos no imperativo positivo: DESCUBRA, VIVA, SINTA.',
 }
 
 const OBJECTIVE_INSTRUCTIONS: Record<string, string> = {
-  promocao: 'Foco em destacar uma promocao especial, desconto ou oferta por tempo limitado.',
-  institucional: 'Foco em reforcar a identidade da marca, valores e diferenciais do estabelecimento.',
-  agenda: 'Foco em comunicar um evento, programacao ou agenda especifica com data e horario.',
-  oferta: 'Foco em destacar um produto ou servico especifico com preco ou condicao comercial.',
+  promocao: 'Destacar promocao, desconto ou oferta limitada. Badge deve ter o desconto ou beneficio. CTA direto para acao de compra.',
+  institucional: 'Reforcar identidade da marca, valores e diferenciais. Tom mais conceitual. Titulo evocativo, nao comercial.',
+  agenda: 'Comunicar evento ou programacao com data e horario. Titulo deve ser o nome do evento. Footer prioriza data/horario/local.',
+  oferta: 'Destacar produto ou servico especifico. Titulo pode ser o nome do produto. Badge pode ter preco ou condicao.',
 }
 
 function buildSystemPrompt(brandContext: {
@@ -1571,12 +1571,17 @@ function buildSystemPrompt(brandContext: {
     : ''
 
   return [
-    'Voce e um redator senior de social media para Instagram.',
+    'Voce e um copywriter de design grafico para Instagram. Cada texto deve ser visualmente impactante, nao apenas informativo.',
     'Retorne SOMENTE JSON valido no schema solicitado.',
-    'Aplique hierarquia tipografica: pre_title, title, description, cta, badge e footer.',
-    'Use <br> literal no title quando melhorar a leitura.',
+    'Aplique hierarquia tipografica clara: title e o elemento dominante, os demais campos sao apoio.',
+    'Regras de texto:',
+    '- Title: max 5 palavras por linha. Use <br> para criar quebra dramatica que destaque a palavra-chave.',
+    '- Badge: max 2 palavras. Selo curtissimo e chamativo (ex: -30%, NOVO, SO HOJE, IMPERDIVEL).',
+    '- CTA: max 3 palavras. Verbo no imperativo (ex: PECA JA, RESERVE, SAIBA MAIS).',
+    '- Pre-title: contextualizador curto em uppercase (ex: HAPPY HOUR, ALMOCO EXECUTIVO).',
+    '- Description: complementa o title sem repetir. Max 2 frases curtas.',
+    '- Footers: informacao pratica. Se nao houver horario/endereco na base, use beneficio ou diferencial.',
     'Nao use markdown, nao inclua comentarios.',
-    'Textos devem ser curtos para caber em safe zone de story/feed.',
     'Nao invente dados criticos como horario, preco, endereco ou condicao comercial.',
     'Se houver contexto da base do projeto, use somente o que estiver presente e relevante.',
     'Se o prompt do usuario conflitar com a base, priorize o pedido explicito do usuario.',
@@ -1645,13 +1650,13 @@ function translateTextDensity(density: string): string {
 }
 
 const FIELD_SEMANTICS: Record<string, string> = {
-  pre_title: 'pre_title: assunto macro da arte. Exemplos: almoco executivo, happy hour, jantar, comunicado, menu.',
-  title: 'title: headline principal chamativa, nome do prato ou inicio da headline.',
-  description: 'description: descricao do prato, complemento do title ou informacoes adicionais sobre a headline.',
-  cta: 'cta: chamada para acao curta e direta.',
-  badge: 'badge: selo curtissimo de destaque.',
-  footer_info_1: 'footer_info_1: priorize dia da semana, periodo, horario de funcionamento, assunto complementar ou contexto pratico.',
-  footer_info_2: 'footer_info_2: complemente o footer_info_1 com horario, endereco, canal de contato, CTA curto ou apoio contextual.',
+  pre_title: 'pre_title: contextualizador em uppercase (1-3 palavras). Ex: HAPPY HOUR, ALMOCO EXECUTIVO, MENU DO DIA, NOVIDADE.',
+  title: 'title: headline dominante, impactante e curta (max 5 palavras por linha). Use <br> para quebra dramatica. Ex: SABOR QUE<br>SURPREENDE.',
+  description: 'description: complemento do title (1-2 frases curtas). Nao repita o title. Adicione detalhe, beneficio ou contexto.',
+  cta: 'cta: chamada para acao em uppercase (2-3 palavras, verbo imperativo). Ex: PECA JA, RESERVE AGORA, SAIBA MAIS, CONFIRA.',
+  badge: 'badge: selo curtissimo de destaque (1-2 palavras). Ex: -30%, NOVO, SO HOJE, IMPERDIVEL, EXCLUSIVO, RESERVA JA.',
+  footer_info_1: 'footer_info_1: info pratica (horario, dia, periodo). Se nao houver dados na base, use beneficio curto ou diferencial.',
+  footer_info_2: 'footer_info_2: complemento (endereco, canal de contato, CTA secundario). Se nao houver dados, use apoio contextual.',
 }
 
 function buildFieldSemanticsPromptSection(includedFields?: string[]): string {
@@ -1893,7 +1898,7 @@ function buildUserPrompt(
     '6. Title deve ter ate 2 linhas logicas com <br> quando necessario.',
     '7. Respeite os slots, prioridade e densidade quando houver guia de template.',
     '7b. Quando houver limites por campo (linhas, palavras, caracteres por linha), trate esses limites como obrigatorios.',
-    '8. As variacoes devem ser realmente diferentes entre si (angulo de copy, CTA e micro-enfase).',
+    '8. Variacoes DEVEM ter angulos diferentes: variacao 1 = beneficio emocional, variacao 2 = urgencia/escassez, variacao 3 = prova social/autoridade, variacao 4 = curiosidade/exclusividade.',
     '9. Quando houver contexto de campanha, horario, cardapio ou diferencial, incorpore esse contexto naturalmente na copy.',
     '10. Em conflito entre prompt e base, priorize o prompt do usuario.',
     '11. So use nome especifico de prato quando houver match confiavel entre analise visual e base do projeto.',
@@ -2085,7 +2090,7 @@ export async function generateAiTextPayload(
       schema: responseSchema,
       system: buildSystemPrompt(brandContext, { tone: body.tone, objective: body.objective }),
       prompt: buildUserPrompt(body, templateGuidance, knowledgeContext, imageAnalysisPayload),
-      temperature: 0.6,
+      temperature: 0.75,
       maxOutputTokens: 900,
     })
 
