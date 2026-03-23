@@ -570,11 +570,14 @@ export async function POST(request: Request) {
       if (driveEnabled && blobUrl) {
         const projectWithFolder = await db.project.findUnique({
           where: { id: body.projectId },
-          select: { googleDriveFolderId: true, name: true },
+          select: { googleDriveImagesFolderId: true, googleDriveFolderId: true, name: true },
         })
 
-        if (projectWithFolder?.googleDriveFolderId) {
-          console.log('[AI Generate] Uploading backup to Google Drive IA folder...')
+        // Use the images folder if configured, otherwise fall back to the main project folder
+        const targetFolderId = projectWithFolder?.googleDriveImagesFolderId || projectWithFolder?.googleDriveFolderId
+
+        if (targetFolderId) {
+          console.log('[AI Generate] Uploading backup to Google Drive IA folder (inside images folder)...')
 
           const imageResponse = await fetch(blobUrl)
           if (imageResponse.ok) {
@@ -582,8 +585,8 @@ export async function POST(request: Request) {
 
             const driveResult = await googleDriveService.uploadAIGeneratedImage(
               imageBuffer,
-              projectWithFolder.googleDriveFolderId,
-              projectWithFolder.name
+              targetFolderId,
+              projectWithFolder?.name ?? null
             )
 
             console.log('[AI Generate] Backup uploaded to Google Drive:', driveResult.fileId)

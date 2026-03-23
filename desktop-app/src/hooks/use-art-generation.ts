@@ -1,4 +1,4 @@
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api-client'
 import { useAuthStore } from '@/stores/auth.store'
 import { ArtFormat, TextProcessingMode } from '@/stores/generation.store'
@@ -131,6 +131,19 @@ export function useAIImages(projectId: number | undefined) {
     retry: (failureCount, error) => {
       if (error instanceof ApiError && error.status === 401) return false
       return failureCount < 2
+    },
+  })
+}
+
+export function useDeleteAIImage(projectId: number | undefined) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (imageId: string) => {
+      return await api.delete(`/api/projects/${projectId}/ai-images/${imageId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['ai-images', projectId] })
     },
   })
 }

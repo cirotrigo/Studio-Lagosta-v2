@@ -2,9 +2,9 @@ import { useCallback, useMemo } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import {
   useImageQueueStore,
-  useQueueStats,
-  useRecentReferenceImages,
+  useRecentReferenceImagesByProject,
 } from '@/stores/image-queue.store'
+import { useProjectStore } from '@/stores/project.store'
 import type {
   AIImageModel,
   AspectRatio,
@@ -66,9 +66,27 @@ interface UseImageQueueReturn {
 }
 
 export function useImageQueue(): UseImageQueueReturn {
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const projectId = currentProject?.id
+
   // Use individual selectors with useShallow to prevent unnecessary re-renders
-  const items = useImageQueueStore(useShallow((state) => state.items))
-  const batches = useImageQueueStore(useShallow((state) => state.batches))
+  // Filter items by current project
+  const items = useImageQueueStore(
+    useShallow((state) => {
+      if (!projectId) return state.items
+      return state.items.filter((i) => i.projectId === projectId)
+    })
+  )
+  const batches = useImageQueueStore(
+    useShallow((state) => {
+      if (!projectId) return state.batches
+      // Filter batches that have items belonging to this project
+      const projectItemIds = new Set(
+        state.items.filter((i) => i.projectId === projectId).map((i) => i.batchId)
+      )
+      return state.batches.filter((b) => projectItemIds.has(b.id))
+    })
+  )
   const isProcessing = useImageQueueStore((state) => state.isProcessing)
   const isPaused = useImageQueueStore((state) => state.isPaused)
   const pauseReason = useImageQueueStore((state) => state.pauseReason)
@@ -93,8 +111,17 @@ export function useImageQueue(): UseImageQueueReturn {
   const setDrawerOpen = useImageQueueStore((state) => state.setDrawerOpen)
   const selectItem = useImageQueueStore((state) => state.selectItem)
 
-  const stats = useQueueStats()
-  const recentReferenceImages = useRecentReferenceImages()
+  // Compute stats from project-filtered items
+  const stats: QueueStats = useMemo(() => ({
+    pending: items.filter((i) => i.status === 'PENDING').length,
+    processing: items.filter((i) => i.status === 'PROCESSING').length,
+    completed: items.filter((i) => i.status === 'COMPLETED').length,
+    failed: items.filter((i) => i.status === 'FAILED').length,
+    totalCreditsUsed: items
+      .filter((i) => i.status === 'COMPLETED' && i.result?.creditsUsed)
+      .reduce((acc, i) => acc + (i.result?.creditsUsed ?? 0), 0),
+  }), [items])
+  const recentReferenceImages = useRecentReferenceImagesByProject(projectId)
 
   const hasItems = items.length > 0
   const hasPendingItems = useMemo(
@@ -125,6 +152,7 @@ export function useImageQueue(): UseImageQueueReturn {
           aspectRatio: params.aspectRatio,
           resolution: params.resolution,
           referenceImages: params.referenceImages,
+          projectId,
         })
         return batchId
       } else {
@@ -136,11 +164,12 @@ export function useImageQueue(): UseImageQueueReturn {
           aspectRatio: params.aspectRatio,
           resolution: params.resolution,
           referenceImages: params.referenceImages,
+          projectId,
         })
         return itemId
       }
     },
-    [addItem, addBatch]
+    [addItem, addBatch, projectId]
   )
 
   // Return a stable object using useMemo
