@@ -120,6 +120,8 @@ export interface KonvaTextLayer extends KonvaLayerBase {
     maxFontSize?: number
     align?: 'left' | 'center' | 'right' | 'justify'
     verticalAlign?: 'top' | 'middle' | 'bottom'
+    underline?: boolean
+    strikethrough?: boolean
     safeArea?: {
       enabled?: boolean
       vertical: SafeAreaVertical

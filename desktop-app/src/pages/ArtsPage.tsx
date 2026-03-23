@@ -10,8 +10,6 @@ import {
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
-import { formatDistanceToNow } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import { API_BASE_URL } from '@/lib/constants'
 import { useProjectStore } from '@/stores/project.store'
 import ProjectBadge from '@/components/layout/ProjectBadge'
