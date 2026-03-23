@@ -419,7 +419,19 @@ export async function preparePromptBatch(
     templateContext: templateContext,
   }) as GenerateAiTextResponse
 
-  const copies = copyResponse.variacoes.map((variation) => normalizeVariation(variation))
+  const allFieldKeys: SlotFieldKey[] = ['pre_title', 'title', 'description', 'cta', 'badge', 'footer_info_1', 'footer_info_2']
+  const copies = copyResponse.variacoes.map((variation) => {
+    const normalized = normalizeVariation(variation)
+    // Force-clear excluded fields so slot-binder never sees them
+    if (input.includedFields?.length) {
+      for (const key of allFieldKeys) {
+        if (!input.includedFields.includes(key)) {
+          normalized[key] = ''
+        }
+      }
+    }
+    return normalized
+  })
 
   // Use manual template if found, otherwise auto-select
   const selection = manualTemplate
