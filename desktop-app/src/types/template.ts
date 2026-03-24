@@ -103,9 +103,24 @@ export interface KonvaLayerBase {
   effects?: LayerEffects
 }
 
+export interface RichStyleRun {
+  start: number
+  end: number
+  style: {
+    fontFamily?: string
+    fontSize?: number
+    fontWeight?: string
+    fontStyle?: 'normal' | 'italic'
+    fill?: string
+    underline?: boolean
+    strikethrough?: boolean
+  }
+}
+
 export interface KonvaTextLayer extends KonvaLayerBase {
   type: 'text' | 'rich-text'
   text: string
+  richStyles?: RichStyleRun[]
   textStyle?: {
     fontFamily?: string
     fontSize?: number
