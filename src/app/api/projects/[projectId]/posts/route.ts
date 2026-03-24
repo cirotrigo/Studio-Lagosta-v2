@@ -114,8 +114,12 @@ export async function POST(
     let mediaUrls: string[]
     let generationId: string | undefined
 
-    if (isTemplateBased) {
-      // Template-based: no media needed now, will be rendered server-side
+    if (isTemplateBased && data.mediaUrls && data.mediaUrls.length > 0) {
+      // Template-based with pre-rendered image (exported from Konva)
+      mediaUrls = data.mediaUrls
+      generationId = data.generationIds?.[0]
+    } else if (isTemplateBased) {
+      // Template-based without image: cron will render server-side
       mediaUrls = []
       generationId = data.generationIds?.[0]
     } else if (data.mediaUrls && data.mediaUrls.length > 0) {
