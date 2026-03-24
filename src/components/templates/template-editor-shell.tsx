@@ -187,6 +187,7 @@ function TemplateEditorContent({
     markSaved,
     dirty,
     generateThumbnail,
+    exportStageDataUrl,
     exportDesign,
     isExporting,
     projectId,
@@ -1079,13 +1080,7 @@ function TemplateEditorContent({
             projectId={projectId}
             templateId={templateId}
             pageId={currentPageId}
-            onExportImage={async () => {
-              // Use generateThumbnail at full canvas width for pixel-perfect export
-              // This avoids the 413 error from exportDesign (which tries to upload)
-              const dataUrl = await generateThumbnail(design.canvas.width)
-              if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
-              return dataUrl
-            }}
+            onExportImage={() => exportStageDataUrl('jpeg')}
           />
         )}
       </>
@@ -1120,13 +1115,7 @@ function TemplateEditorContent({
             projectId={projectId}
             templateId={templateId}
             pageId={currentPageId}
-            onExportImage={async () => {
-              // Use generateThumbnail at full canvas width for pixel-perfect export
-              // This avoids the 413 error from exportDesign (which tries to upload)
-              const dataUrl = await generateThumbnail(design.canvas.width)
-              if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
-              return dataUrl
-            }}
+            onExportImage={() => exportStageDataUrl('jpeg')}
           />
         )}
       </>
@@ -1155,11 +1144,7 @@ function TemplateEditorContent({
           projectId={projectId}
           templateId={templateId}
           pageId={currentPageId}
-          onExportImage={async () => {
-            const dataUrl = await generateThumbnail(design.canvas.width)
-            if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
-            return dataUrl
-          }}
+          onExportImage={() => exportStageDataUrl('jpeg')}
         />
       )}
     </>

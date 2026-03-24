@@ -62,6 +62,8 @@ export interface TemplateEditorContextValue {
   isExporting: boolean
   exportHistory: ExportRecord[]
   generateThumbnail: (maxWidth?: number) => Promise<string | null>
+  /** Export the current stage as a data URL without uploading. Same quality as exportDesign. */
+  exportStageDataUrl: (format?: 'png' | 'jpeg') => Promise<string>
   exportDesign: (format: 'png' | 'jpeg', pageName?: string) => Promise<ExportRecord>
   removeExport: (id: string) => void
   clearExports: () => void
@@ -586,6 +588,78 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       }
     },
     [design.canvas.width, design.canvas.height, design.layers],
+  )
+
+  /**
+   * Export stage as data URL — same rendering as exportDesign but without upload/save.
+   * Uses the original stage (not a clone) for pixel-perfect output.
+   */
+  const exportStageDataUrl = React.useCallback(
+    async (format: 'png' | 'jpeg' = 'jpeg'): Promise<string> => {
+      const stage = stageInstanceRef.current
+      if (!stage) throw new Error('Canvas não está pronto')
+
+      // Save current state
+      const prevSelection = [...selectedLayerIdsRef.current]
+      const prevZoom = zoom
+      const prevPosition = { x: stage.x(), y: stage.y() }
+      const invisibleNodes: Array<{ node: Konva.Node; wasVisible: boolean }> = []
+
+      try {
+        // Clear selection
+        setSelectedLayerIds([])
+        await new Promise((r) => requestAnimationFrame(r))
+
+        // Normalize zoom
+        setZoomState(1)
+        stage.scale({ x: 1, y: 1 })
+        stage.position({ x: 0, y: 0 })
+        await new Promise((r) => requestAnimationFrame(r))
+
+        // Hide guides
+        const guidesLayer = stage.findOne('.guides-layer')
+        const guidesWas = guidesLayer?.visible() ?? false
+        guidesLayer?.visible(false)
+
+        // Hide invisible layers
+        const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
+        contentLayer?.getChildren().forEach((node: Konva.Node) => {
+          const layerId = node.id()
+          const layer = design.layers.find((l) => l.id === layerId)
+          if (layer && layer.visible === false) {
+            invisibleNodes.push({ node, wasVisible: node.visible() })
+            node.visible(false)
+          }
+        })
+
+        stage.batchDraw()
+        await new Promise((r) => requestAnimationFrame(r))
+
+        const w = design.canvas.width
+        const h = design.canvas.height
+        const mimeType = format === 'jpeg' ? 'image/jpeg' : 'image/png'
+
+        const dataUrl = stage.toDataURL({
+          pixelRatio: 1,
+          mimeType,
+          quality: format === 'jpeg' ? 0.92 : undefined,
+          x: 0, y: 0, width: w, height: h,
+        })
+
+        return dataUrl
+      } finally {
+        // Restore everything
+        invisibleNodes.forEach(({ node, wasVisible }) => node.visible(wasVisible))
+        const guidesLayer2 = stage.findOne('.guides-layer')
+        guidesLayer2?.visible(true)
+        setZoomState(prevZoom)
+        stage.scale({ x: prevZoom, y: prevZoom })
+        stage.position(prevPosition)
+        setSelectedLayerIds(prevSelection)
+        stage.batchDraw()
+      }
+    },
+    [design.canvas.width, design.canvas.height, design.layers, zoom],
   )
 
   const exportDesign = React.useCallback(
@@ -1281,6 +1355,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       isExporting,
       exportHistory,
       generateThumbnail,
+      exportStageDataUrl,
       exportDesign,
       removeExport,
       clearExports,
@@ -1344,6 +1419,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       isExporting,
       exportHistory,
       generateThumbnail,
+      exportStageDataUrl,
       exportDesign,
       removeExport,
       clearExports,
