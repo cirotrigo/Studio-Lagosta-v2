@@ -13,8 +13,12 @@ import {
   convertAbsoluteTextPositionToOffsets,
 } from '@/lib/editor/text-layout'
 import { selectCurrentPageState, useEditorStore } from '@/stores/editor.store'
+import { useProjectStore } from '@/stores/project.store'
 import { useEditorShortcuts } from '@/hooks/use-editor-shortcuts'
-import type { Layer, KonvaTextLayer } from '@/types/template'
+import { useEditorProjectFonts } from '@/hooks/use-editor-project-fonts'
+import { useProjectColors } from '@/hooks/use-project-colors'
+import { useBrandAssets } from '@/hooks/use-brand-assets'
+import type { Layer, KonvaTextLayer, RichStyleRun } from '@/types/template'
 
 // @ts-expect-error Konva uses this internal flag for text sharpness.
 Konva._fixTextRendering = true
@@ -60,6 +64,22 @@ export function EditorStage() {
   const setPan = useEditorStore((state) => state.setPan)
   const enterCropMode = useEditorStore((state) => state.enterCropMode)
   const exitCropMode = useEditorStore((state) => state.exitCropMode)
+
+  // Project palette and fonts for inline text editor
+  const currentProject = useProjectStore((s) => s.currentProject)
+  const editorDocument = useEditorStore((s) => s.document)
+  const { availableFontFamilies } = useEditorProjectFonts(currentProject?.id, editorDocument)
+  const { data: projectColors } = useProjectColors(currentProject?.id)
+  const { data: brandAssets } = useBrandAssets(currentProject?.id)
+
+  const projectPalette = useMemo(() => {
+    const colors = [
+      ...(projectColors?.map((c) => c.hexCode) ?? []),
+      ...(brandAssets?.colors ?? []),
+      ...(editorDocument?.identity.colors ?? []),
+    ]
+    return Array.from(new Set(colors.filter(Boolean)))
+  }, [projectColors, brandAssets?.colors, editorDocument?.identity.colors])
 
   const [containerSize, setContainerSize] = useState({ width: 1200, height: 900 })
   const [guides, setGuides] = useState<GuideLine[]>([])
@@ -368,10 +388,16 @@ export function EditorStage() {
   }
 
   const handleInlineEditConfirm = useCallback(
-    (newText: string) => {
-      if (editingLayerId && newText.trim()) {
+    (result: { text: string; richStyles: RichStyleRun[] }) => {
+      if (editingLayerId && result.text.trim()) {
         updateLayer(editingLayerId, (l) =>
-          l.type === 'text' || l.type === 'rich-text' ? { ...l, text: newText } : l,
+          l.type === 'text' || l.type === 'rich-text'
+            ? {
+                ...l,
+                text: result.text,
+                richStyles: result.richStyles.length > 0 ? result.richStyles : undefined,
+              }
+            : l,
         )
       }
       setEditingLayerId(null)
@@ -671,6 +697,8 @@ export function EditorStage() {
           pagePosition={pagePosition}
           zoom={zoom}
           isPanning={isSpacePressed}
+          projectPalette={projectPalette}
+          availableFontFamilies={availableFontFamilies}
           onConfirm={handleInlineEditConfirm}
           onCancel={handleInlineEditCancel}
         />
