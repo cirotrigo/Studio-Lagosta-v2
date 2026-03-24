@@ -1080,8 +1080,11 @@ function TemplateEditorContent({
             templateId={templateId}
             pageId={currentPageId}
             onExportImage={async () => {
-              const record = await exportDesign('png')
-              return record.dataUrl
+              // Use generateThumbnail at full canvas width for pixel-perfect export
+              // This avoids the 413 error from exportDesign (which tries to upload)
+              const dataUrl = await generateThumbnail(design.canvas.width)
+              if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
+              return dataUrl
             }}
           />
         )}
@@ -1118,8 +1121,11 @@ function TemplateEditorContent({
             templateId={templateId}
             pageId={currentPageId}
             onExportImage={async () => {
-              const record = await exportDesign('png')
-              return record.dataUrl
+              // Use generateThumbnail at full canvas width for pixel-perfect export
+              // This avoids the 413 error from exportDesign (which tries to upload)
+              const dataUrl = await generateThumbnail(design.canvas.width)
+              if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
+              return dataUrl
             }}
           />
         )}
@@ -1150,8 +1156,9 @@ function TemplateEditorContent({
           templateId={templateId}
           pageId={currentPageId}
           onExportImage={async () => {
-            const record = await exportDesign('png')
-            return record.dataUrl
+            const dataUrl = await generateThumbnail(design.canvas.width)
+            if (!dataUrl) throw new Error('Falha ao gerar imagem do canvas')
+            return dataUrl
           }}
         />
       )}
