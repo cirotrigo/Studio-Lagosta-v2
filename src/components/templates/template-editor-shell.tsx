@@ -1079,6 +1079,10 @@ function TemplateEditorContent({
             projectId={projectId}
             templateId={templateId}
             pageId={currentPageId}
+            onExportImage={async () => {
+              const record = await exportDesign('png')
+              return record.dataUrl
+            }}
           />
         )}
       </>
@@ -1113,6 +1117,10 @@ function TemplateEditorContent({
             projectId={projectId}
             templateId={templateId}
             pageId={currentPageId}
+            onExportImage={async () => {
+              const record = await exportDesign('png')
+              return record.dataUrl
+            }}
           />
         )}
       </>
@@ -1141,6 +1149,10 @@ function TemplateEditorContent({
           projectId={projectId}
           templateId={templateId}
           pageId={currentPageId}
+          onExportImage={async () => {
+            const record = await exportDesign('png')
+            return record.dataUrl
+          }}
         />
       )}
     </>

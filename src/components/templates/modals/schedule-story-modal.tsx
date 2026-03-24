@@ -25,6 +25,8 @@ interface ScheduleStoryModalProps {
   templateId: number
   pageId: string
   pageThumbnail?: string | null
+  /** Export current Konva stage as data URL (same as "Salvar Criativo") */
+  onExportImage: () => Promise<string>
 }
 
 export function ScheduleStoryModal({
@@ -34,6 +36,7 @@ export function ScheduleStoryModal({
   templateId,
   pageId,
   pageThumbnail,
+  onExportImage,
 }: ScheduleStoryModalProps) {
   const { toast } = useToast()
   const { createPost } = useSocialPosts(projectId)
@@ -41,6 +44,7 @@ export function ScheduleStoryModal({
   const [selectedDate, setSelectedDate] = React.useState<Date>()
   const [selectedTime, setSelectedTime] = React.useState('12:00')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [submitStatus, setSubmitStatus] = React.useState('')
 
   const getScheduledDate = () => {
     if (!selectedDate) return null
@@ -64,6 +68,38 @@ export function ScheduleStoryModal({
     setIsSubmitting(true)
 
     try {
+      // 1. Export image from Konva stage (pixel-perfect, same as "Salvar Criativo")
+      setSubmitStatus('Gerando imagem...')
+      const dataUrl = await onExportImage()
+
+      // 2. Convert data URL to File and upload via FormData
+      setSubmitStatus('Enviando imagem...')
+      const mimeType = dataUrl.match(/^data:([^;]+)/)?.[1] || 'image/png'
+      const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
+      const binaryStr = atob(dataUrl.split(',')[1])
+      const bytes = new Uint8Array(binaryStr.length)
+      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+      const file = new File([bytes], `story-scheduled-${Date.now()}.${ext}`, { type: mimeType })
+
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('type', 'post')
+      formData.append('postType', 'STORY')
+
+      const uploadRes = await fetch('/api/upload', {
+        method: 'POST',
+        body: formData,
+      })
+      if (!uploadRes.ok) {
+        throw new Error('Falha ao fazer upload da imagem')
+      }
+      const uploadData = await uploadRes.json() as { url: string }
+      if (!uploadData?.url) {
+        throw new Error('URL da imagem não retornada')
+      }
+
+      // 3. Create post with image already rendered
+      setSubmitStatus('Criando agendamento...')
       const scheduled = getScheduledDate()
       const scheduledDatetimeISO =
         scheduleType === 'SCHEDULED' && scheduled
@@ -74,7 +110,7 @@ export function ScheduleStoryModal({
         postType: 'STORY',
         caption: '',
         generationIds: [],
-        mediaUrls: [],
+        mediaUrls: [uploadData.url],
         scheduleType,
         scheduledDatetime: scheduledDatetimeISO,
         pageId,
@@ -85,7 +121,6 @@ export function ScheduleStoryModal({
         title: scheduleType === 'IMMEDIATE'
           ? 'Story enviado para publicação!'
           : 'Story agendado com sucesso!',
-        description: 'A imagem será gerada automaticamente.',
       })
       onClose()
     } catch (error) {
@@ -97,6 +132,7 @@ export function ScheduleStoryModal({
       })
     } finally {
       setIsSubmitting(false)
+      setSubmitStatus('')
     }
   }
 
@@ -106,7 +142,7 @@ export function ScheduleStoryModal({
         <DialogHeader>
           <DialogTitle>Agendar Story</DialogTitle>
           <DialogDescription>
-            A imagem será gerada automaticamente a partir do template.
+            A imagem será exportada do editor e agendada para publicação.
           </DialogDescription>
         </DialogHeader>
 
@@ -146,7 +182,6 @@ export function ScheduleStoryModal({
         {/* Date & time picker */}
         {scheduleType === 'SCHEDULED' && (
           <div className="space-y-4">
-            {/* Date picker with Calendar */}
             <div className="space-y-2">
               <Label>Data</Label>
               <Popover>
@@ -183,7 +218,6 @@ export function ScheduleStoryModal({
               </Popover>
             </div>
 
-            {/* Time picker */}
             <div className="space-y-2">
               <Label htmlFor="schedule-time">Horário</Label>
               <div className="relative">
@@ -198,7 +232,6 @@ export function ScheduleStoryModal({
               </div>
             </div>
 
-            {/* Preview of selected datetime */}
             {selectedDate && (
               <div className="rounded-lg border border-primary/40 bg-primary/10 p-3">
                 <p className="text-sm text-muted-foreground mb-1">Agendamento:</p>
@@ -225,7 +258,7 @@ export function ScheduleStoryModal({
           {isSubmitting ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              {scheduleType === 'IMMEDIATE' ? 'Publicando...' : 'Agendando...'}
+              {submitStatus || 'Agendando...'}
             </>
           ) : (
             <>

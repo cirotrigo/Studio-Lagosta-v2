@@ -244,10 +244,14 @@ export class LaterPostScheduler {
     let nextRenderAtValue: Date | null = null
 
     if (isTemplateBased) {
-      renderStatusValue = RenderStatus.PENDING
-      // Always render immediately so the user gets a preview in the calendar
-      // If the template is edited later, the invalidation logic will re-render
-      nextRenderAtValue = new Date()
+      if (data.mediaUrls.length > 0) {
+        // Image already rendered client-side (Konva export), mark as RENDERED
+        renderStatusValue = RenderStatus.RENDERED
+      } else {
+        // No image provided, cron will render server-side
+        renderStatusValue = RenderStatus.PENDING
+        nextRenderAtValue = new Date()
+      }
     }
 
     // Create post in database with SCHEDULED status (using normalized URLs)
@@ -276,6 +280,8 @@ export class LaterPostScheduler {
         templateId: data.templateId || null,
         slotValues: data.slotValues ? (data.slotValues as Prisma.InputJsonValue) : null,
         renderStatus: renderStatusValue,
+        renderedImageUrl: isTemplateBased && data.mediaUrls.length > 0 ? data.mediaUrls[0] : null,
+        renderedAt: isTemplateBased && data.mediaUrls.length > 0 ? new Date() : null,
         nextRenderAt: nextRenderAtValue,
       },
     })
