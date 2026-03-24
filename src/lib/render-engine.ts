@@ -688,13 +688,17 @@ export class RenderEngine {
       const radius = Math.max(width, height) / 2
       gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, radius)
     } else {
-      const angle = (style.gradientAngle ?? 0) * (Math.PI / 180)
-      const x = Math.cos(angle)
-      const y = Math.sin(angle)
-      const x0 = width / 2 - (x * width) / 2
-      const y0 = height / 2 - (y * height) / 2
-      const x1 = width / 2 + (x * width) / 2
-      const y1 = height / 2 + (y * height) / 2
+      // CSS-style gradient angle: 0° = bottom-to-top, 180° = top-to-bottom
+      // Must match Konva editor's calculateGradientPoints formula
+      const angleDeg = style.gradientAngle ?? 0
+      const radians = ((180 - angleDeg) / 180) * Math.PI
+      const length = Math.abs(width * Math.sin(radians)) + Math.abs(height * Math.cos(radians))
+      const halfX = (Math.sin(radians) * length) / 2
+      const halfY = (Math.cos(radians) * length) / 2
+      const x0 = width / 2 - halfX
+      const y0 = height / 2 - halfY
+      const x1 = width / 2 + halfX
+      const y1 = height / 2 + halfY
       gradient = ctx.createLinearGradient(x0, y0, x1, y1)
     }
 
