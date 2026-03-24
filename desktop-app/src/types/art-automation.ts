@@ -20,4 +20,8 @@ export interface ApprovedVariationEditorDraft {
 
 export interface EditorPageLocationState {
   approvedVariationDraft?: ApprovedVariationEditorDraft
+  /** Navigate to editor with specific template loaded (by remote/server ID) */
+  openTemplateRemoteId?: number
+  /** Focus on specific page within the template */
+  openPageId?: string
 }

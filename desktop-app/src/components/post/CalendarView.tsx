@@ -213,6 +213,18 @@ export default function CalendarView({ posts }: CalendarViewProps) {
       toast.info('Este post ja foi publicado e nao pode ser editado')
       return
     }
+
+    // Template-based posts: open in template editor
+    if (post.pageId && post.templateId && post.postType === 'STORY') {
+      navigate('/editor', {
+        state: {
+          openTemplateRemoteId: post.templateId,
+          openPageId: post.pageId,
+        },
+      })
+      return
+    }
+
     navigate(`/edit-post/${post.id}`)
   }
 

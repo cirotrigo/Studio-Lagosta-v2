@@ -161,6 +161,31 @@ export default function EditorPage() {
 
         setTemplates(list)
 
+        // Check if we should open a specific template (from agenda/calendar)
+        const navState = (location.state as EditorPageLocationState | null) ?? null
+        if (navState?.openTemplateRemoteId) {
+          const targetTemplate = list.find(
+            (t: KonvaTemplateDocument) => t.meta.remoteId === navState.openTemplateRemoteId,
+          )
+          if (targetTemplate) {
+            // If a specific page was requested, set it as current
+            if (navState.openPageId) {
+              const pageExists = targetTemplate.design.pages.some(
+                (p: { id: string }) => p.id === navState.openPageId,
+              )
+              if (pageExists) {
+                targetTemplate.design.currentPageId = navState.openPageId
+              }
+            }
+            resetPagesState()
+            setDocument(targetTemplate)
+            setSelectedTemplateId(targetTemplate.id)
+            // Clear navigation state to avoid re-loading on re-renders
+            window.history.replaceState({}, '')
+            return
+          }
+        }
+
         if (
           preparedApprovedVariationDraft &&
           preparedApprovedVariationDraft.document.projectId === currentProject.id
