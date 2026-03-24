@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
+import { useRouter } from 'next/navigation'
 import { createPortal } from 'react-dom'
 import { TemplateEditorProvider, TemplateResource, useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { MultiPageProvider, useMultiPage } from '@/contexts/multi-page-context'
@@ -64,9 +65,11 @@ interface TemplateEditorShellProps {
     folderId?: string
   }
   aiEditMode?: boolean
+  initialPageId?: string
+  agendaMode?: boolean
 }
 
-export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode }: TemplateEditorShellProps) {
+export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, initialPageId, agendaMode }: TemplateEditorShellProps) {
   const [fontsLoaded, setFontsLoaded] = React.useState(false)
   const fontManager = React.useMemo(() => getFontManager(), [])
 
@@ -147,10 +150,10 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode }:
   }
 
   return (
-    <MultiPageProvider templateId={template.id}>
+    <MultiPageProvider templateId={template.id} initialPageId={initialPageId}>
       <TemplateEditorProvider template={resource}>
         <PageSyncWrapper>
-          <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} />
+          <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} agendaMode={agendaMode} />
         </PageSyncWrapper>
       </TemplateEditorProvider>
     </MultiPageProvider>
@@ -163,10 +166,13 @@ type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | '
 function TemplateEditorContent({
   prefillDriveImage,
   aiEditMode,
+  agendaMode,
 }: {
   prefillDriveImage?: { fileId: string; fileName?: string; folderId?: string }
   aiEditMode?: boolean
+  agendaMode?: boolean
 }) {
+  const router = useRouter()
   const { toast } = useToast()
   const { mutateAsync: updateTemplate, isPending: isSaving } = useUpdateTemplateWithThumbnail()
   const {
@@ -278,11 +284,19 @@ function TemplateEditorContent({
       loadingToast.dismiss?.()
 
       toast({
-        title: 'Template salvo com sucesso!',
-        description: thumbnailUrl
-          ? 'Thumbnail da primeira página gerado e alterações aplicadas.'
-          : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
+        title: agendaMode ? 'Template salvo! Imagem será regenerada.' : 'Template salvo com sucesso!',
+        description: agendaMode
+          ? 'Os posts agendados terão a imagem atualizada em instantes.'
+          : thumbnailUrl
+            ? 'Thumbnail da primeira página gerado e alterações aplicadas.'
+            : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
       })
+
+      // In agenda mode, go back to agenda after save
+      if (agendaMode) {
+        router.back()
+        return
+      }
     } catch (_error) {
       console.error('[TemplateEditor] Falha ao salvar template:', _error)
       console.error('[TemplateEditor] Design data:', JSON.stringify(design, null, 2))
@@ -299,7 +313,7 @@ function TemplateEditorContent({
         variant: 'destructive',
       })
     }
-  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId])
+  }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId, agendaMode, router])
 
   const handleExport = React.useCallback(async () => {
     // Se tem múltiplas páginas, abrir modal de seleção
@@ -653,25 +667,39 @@ function TemplateEditorContent({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-2">
-          <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty}>
-            <Save className="mr-2 h-4 w-4" />
-            {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
-          </Button>
-          <Button size="sm" onClick={handleExport} disabled={isExporting || isGeneratingMultiple}>
-            <Save className="mr-2 h-4 w-4" />
-            {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
-          </Button>
-          {canSchedule && (
-            <Button size="sm" variant="outline" onClick={() => setShowScheduleModal(true)}>
-              <Calendar className="mr-2 h-4 w-4" />
-              Agendar
-            </Button>
+          {agendaMode ? (
+            <>
+              <Button size="sm" onClick={handleSave} disabled={isSaving}>
+                <Save className="mr-2 h-4 w-4" />
+                {isSaving ? 'Salvando...' : 'Salvar e Voltar'}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => router.back()}>
+                Cancelar
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty}>
+                <Save className="mr-2 h-4 w-4" />
+                {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
+              </Button>
+              <Button size="sm" onClick={handleExport} disabled={isExporting || isGeneratingMultiple}>
+                <Save className="mr-2 h-4 w-4" />
+                {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
+              </Button>
+              {canSchedule && (
+                <Button size="sm" variant="outline" onClick={() => setShowScheduleModal(true)}>
+                  <Calendar className="mr-2 h-4 w-4" />
+                  Agendar
+                </Button>
+              )}
+              <VideoExportButton />
+              <Button size="sm" variant="outline" onClick={toggleFullscreen}>
+                <Maximize2 className="mr-2 h-4 w-4" />
+                Tela Cheia
+              </Button>
+            </>
           )}
-          <VideoExportButton />
-          <Button size="sm" variant="outline" onClick={toggleFullscreen}>
-            <Maximize2 className="mr-2 h-4 w-4" />
-            Tela Cheia
-          </Button>
         </div>
       </header>
 

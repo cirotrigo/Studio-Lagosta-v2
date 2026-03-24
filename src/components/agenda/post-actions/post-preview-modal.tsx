@@ -571,7 +571,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   size="sm"
                   asChild
                 >
-                  <Link href={`/templates/${post.templateId}/editor`}>
+                  <Link href={`/templates/${post.templateId}/editor?pageId=${post.pageId}&from=agenda`}>
                     <Paintbrush className="w-4 h-4 mr-2" />
                     Editar Template
                   </Link>

@@ -9,6 +9,8 @@ interface SearchParams {
   driveFileName?: string
   driveFolderId?: string
   aiEdit?: string
+  pageId?: string
+  from?: string
 }
 
 export default async function TemplateEditorPage({
@@ -35,6 +37,8 @@ export default async function TemplateEditorPage({
           : undefined
       }
       aiEditMode={query.aiEdit === 'true'}
+      initialPageId={query.pageId}
+      agendaMode={query.from === 'agenda'}
     />
   )
 }
