@@ -78,9 +78,7 @@ export default function PostCard({ post }: PostCardProps) {
 
   const isTemplateBased = !!post.pageId && post.postType === 'STORY'
   const displayImageUrl = post.mediaUrls[0] || post.renderedImageUrl
-  const editLink = isTemplateBased && post.templateId
-    ? `/editor` // Navigate to editor (template will be loaded by EditorPage)
-    : `/edit-post/${post.id}`
+  const editLink = `/edit-post/${post.id}`
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm">

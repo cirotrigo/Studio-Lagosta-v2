@@ -10,6 +10,7 @@ import { ScheduledPostsBanner } from '@/components/editor/ScheduledPostsBanner'
 import { EditorTemplateCarousel } from '@/components/editor/EditorTemplateCarousel'
 import { TemplateTagsModal } from '@/components/editor/TemplateTagsModal'
 import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
+import { renderPageToDataUrl } from '@/lib/editor/render-page'
 import { createStarterDocument, cloneKonvaDocument, sortPages } from '@/lib/editor/document'
 import { mergeEditorFontSources } from '@/lib/editor/font-utils'
 import { normalizeKonvaTextValue } from '@/lib/editor/text-normalization'
@@ -592,6 +593,11 @@ export default function EditorPage() {
           onClose={() => setIsScheduleModalOpen(false)}
           pageId={document.design.currentPageId}
           templateId={document.meta.remoteId ?? undefined}
+          onExportImage={async () => {
+            const currentPage = orderedPages.find((p) => p.id === document.design.currentPageId)
+            if (!currentPage) throw new Error('Página atual não encontrada')
+            return renderPageToDataUrl(currentPage, { mimeType: 'image/jpeg', quality: 0.92 })
+          }}
         />
       )}
 

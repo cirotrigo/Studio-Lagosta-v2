@@ -13,6 +13,8 @@ interface QuickScheduleModalProps {
   // Template-based scheduling (optional)
   pageId?: string
   templateId?: number
+  /** Export current Konva stage as data URL for immediate rendering */
+  onExportImage?: () => Promise<string>
 }
 
 function formatToPostType(format: ArtFormat): 'STORY' | 'POST' {
@@ -26,6 +28,7 @@ export function QuickScheduleModal({
   onClose,
   pageId,
   templateId,
+  onExportImage,
 }: QuickScheduleModalProps) {
   const [scheduleType, setScheduleType] = useState<'SCHEDULED' | 'IMMEDIATE'>('SCHEDULED')
   const [scheduledDatetime, setScheduledDatetime] = useState('')
@@ -57,11 +60,37 @@ export function QuickScheduleModal({
           : undefined
 
       if (isTemplateMode) {
-        // Template-based: send pageId, image will be rendered server-side
+        // Template-based: export image from Konva stage, upload, then create post
+        let uploadedUrl = ''
+
+        if (onExportImage) {
+          // Export from Konva stage (pixel-perfect)
+          const dataUrl = await onExportImage()
+          const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/)
+          if (!match) throw new Error('Formato de imagem invalido.')
+          const mimeType = match[1]
+          const binary = atob(match[2])
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+          const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
+          const uploadResponse = await window.electronAPI.uploadFile(
+            `${API_BASE_URL}/api/upload`,
+            {
+              name: `story-scheduled-${Date.now()}.${ext}`,
+              type: mimeType,
+              buffer: bytes.buffer,
+            },
+            { type: 'post', postType },
+          )
+          const uploadData = uploadResponse.data as { url: string }
+          if (uploadData?.url) uploadedUrl = uploadData.url
+        }
+
         await createPost.mutateAsync({
           postType,
           caption: '',
-          mediaUrls: [],
+          mediaUrls: uploadedUrl ? [uploadedUrl] : [],
           scheduleType,
           scheduledDatetime: scheduledDatetimeISO,
           pageId,
@@ -117,9 +146,7 @@ export function QuickScheduleModal({
       toast.success(
         scheduleType === 'IMMEDIATE'
           ? 'Story enviado para publicação!'
-          : isTemplateMode
-            ? 'Story agendado! Imagem será gerada automaticamente.'
-            : 'Story agendado com sucesso!',
+          : 'Story agendado com sucesso!',
       )
       onClose()
     } catch (error) {
