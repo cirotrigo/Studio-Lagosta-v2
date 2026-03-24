@@ -49,10 +49,21 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
 
   // Definir página inicial quando páginas carregarem
   React.useEffect(() => {
-    if (!currentPageId && pages.length > 0) {
+    if (pages.length === 0) return
+
+    // Se initialPageId foi fornecido e existe nas pages, usar ele
+    if (initialPageId && pages.some((p) => p.id === initialPageId)) {
+      if (currentPageId !== initialPageId) {
+        setCurrentPageIdState(initialPageId)
+      }
+      return
+    }
+
+    // Fallback: se não tem página selecionada, usar a primeira
+    if (!currentPageId || !pages.some((p) => p.id === currentPageId)) {
       setCurrentPageIdState(pages[0].id)
     }
-  }, [pages, currentPageId])
+  }, [pages, currentPageId, initialPageId])
 
   const currentPage = React.useMemo(() => {
     return pages.find((p) => p.id === currentPageId) ?? null

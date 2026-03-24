@@ -197,7 +197,7 @@ function TemplateEditorContent({
     setPendingAIImageEdit,
   } = useTemplateEditor()
 
-  const { pages, currentPageId, setCurrentPageId } = useMultiPage()
+  const { pages, currentPageId, setCurrentPageId, isLoading: isPagesLoading } = useMultiPage()
   const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
   const { canPerformOperation, getCost } = useCredits()
   const createPageMutation = useCreatePage()
@@ -647,6 +647,18 @@ function TemplateEditorContent({
       </MobileToolsDrawer>
     </div>
   )
+
+  // Wait for pages to load in agenda mode to avoid flash
+  if (agendaMode && isPagesLoading) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] items-center justify-center">
+        <div className="text-center">
+          <div className="mb-4 inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-r-transparent" />
+          <p className="text-sm text-muted-foreground">Carregando template...</p>
+        </div>
+      </div>
+    )
+  }
 
   // Desktop Layout
   const editorContent = (
