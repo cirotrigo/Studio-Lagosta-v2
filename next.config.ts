@@ -8,7 +8,7 @@ const heavyNodeModulesGlobs = [
   './node_modules/@swc/core-darwin-arm64/**/*',
   './node_modules/@esbuild/**/*',
   './node_modules/canvas/**/*',
-  './node_modules/@napi-rs/canvas/**/*',
+  // @napi-rs/canvas NOT excluded — needed for server-side story rendering
   // NOTE: sharp is needed for image processing - do NOT exclude it
   './node_modules/playwright/**/*',
   './node_modules/@playwright/**/*',
@@ -45,7 +45,7 @@ const nextConfig: NextConfig = {
   },
   // 禁用 Next.js 热重载，由 nodemon 处理重编译
   reactStrictMode: false,
-  serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'ffmpeg-static'],
+  serverExternalPackages: ['fluent-ffmpeg', '@ffmpeg-installer/ffmpeg', 'ffmpeg-static', '@napi-rs/canvas'],
 
   // Performance optimizations
   experimental: {
