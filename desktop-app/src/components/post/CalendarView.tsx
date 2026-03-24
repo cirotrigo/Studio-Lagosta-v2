@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import {
@@ -31,7 +31,7 @@ interface DragItem {
 }
 
 // Story hover preview component
-function StoryPreview({ post, onClose, anchorRect }: { post: Post; onClose: () => void; anchorRect: DOMRect | null }) {
+function StoryPreview({ post, anchorRect }: { post: Post; onClose: () => void; anchorRect: DOMRect | null }) {
   const previewUrl = post.mediaUrls[0] || (post as any).renderedImageUrl
   if (!previewUrl || !anchorRect) return null
 
@@ -51,9 +51,8 @@ function StoryPreview({ post, onClose, anchorRect }: { post: Post; onClose: () =
 
   return createPortal(
     <div
-      className="fixed z-[9999]"
+      className="fixed z-[9999] pointer-events-none"
       style={{ left, top, width: previewWidth }}
-      onMouseLeave={onClose}
     >
       <div className="rounded-lg border border-white/10 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/60">
         <img
@@ -127,6 +126,7 @@ export default function CalendarView({ posts }: CalendarViewProps) {
   const [dragOverDate, setDragOverDate] = useState<string | null>(null)
   const [duplicateModal, setDuplicateModal] = useState<{ post: Post; targetDate: string } | null>(null)
   const [hoveredPost, setHoveredPost] = useState<{ id: string; rect: DOMRect } | null>(null)
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { currentProject } = useProjectStore()
   const updatePost = useUpdatePost(currentProject?.id, draggedItem?.postId || '')
   const createPost = useCreatePost(currentProject?.id)
@@ -307,8 +307,8 @@ export default function CalendarView({ posts }: CalendarViewProps) {
                 {format(calDay, 'd')}
               </div>
 
-              {/* Posts */}
-              <div className="space-y-1">
+              {/* Posts — scrollable when more than 3 */}
+              <div className="space-y-1 max-h-[72px] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10">
                 {dayPosts.map((post) => {
                   const PostTypeIcon = {
                     POST: ImageIcon,
@@ -330,12 +330,19 @@ export default function CalendarView({ posts }: CalendarViewProps) {
                       key={post.id}
                       className="relative"
                       onMouseEnter={(e) => {
-                        if (isStory && post.mediaUrls[0]) {
+                        const previewUrl = post.mediaUrls[0] || (post as any).renderedImageUrl
+                        if (isStory && previewUrl) {
                           const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-                          setHoveredPost({ id: post.id, rect })
+                          if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+                          hoverTimerRef.current = setTimeout(() => {
+                            setHoveredPost({ id: post.id, rect })
+                          }, 500) // 500ms delay to avoid blocking drag
                         }
                       }}
-                      onMouseLeave={() => setHoveredPost(null)}
+                      onMouseLeave={() => {
+                        if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+                        setHoveredPost(null)
+                      }}
                     >
                       {/* Story hover preview (rendered via portal) */}
                       {isStory && isHovered && (
@@ -348,7 +355,11 @@ export default function CalendarView({ posts }: CalendarViewProps) {
 
                       <div
                         draggable={isDraggable}
-                        onDragStart={(e) => isDraggable && handleDragStart(e, post.id, dateKey)}
+                        onDragStart={(e) => {
+                          if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+                          setHoveredPost(null)
+                          isDraggable && handleDragStart(e, post.id, dateKey)
+                        }}
                         onDoubleClick={() => handlePostDoubleClick(post)}
                         className={cn(
                           'group flex items-center gap-1 rounded px-1 py-0.5 text-[10px] text-white',
@@ -360,8 +371,8 @@ export default function CalendarView({ posts }: CalendarViewProps) {
                       >
                         {/* Mini thumbnail */}
                         <div className="relative h-5 w-5 flex-shrink-0 overflow-hidden rounded-sm bg-black/20">
-                          {post.mediaUrls[0] ? (
-                            <img src={post.mediaUrls[0]} alt="" className="h-full w-full object-cover" draggable={false} />
+                          {(post.mediaUrls[0] || (post as any).renderedImageUrl) ? (
+                            <img src={post.mediaUrls[0] || (post as any).renderedImageUrl} alt="" className="h-full w-full object-cover" draggable={false} />
                           ) : (
                             <div className="flex h-full w-full items-center justify-center">
                               <PostTypeIcon size={8} />
