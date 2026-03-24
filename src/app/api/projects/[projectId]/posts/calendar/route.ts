@@ -89,6 +89,11 @@ export async function GET(
         isRecurring: true,
         createdAt: true,
         updatedAt: true,
+        // Template-based scheduling fields
+        pageId: true,
+        templateId: true,
+        renderStatus: true,
+        renderedImageUrl: true,
         Generation: {
           select: {
             id: true,
@@ -153,6 +158,11 @@ export async function GET(
         instagramMediaId: true,
         createdAt: true,
         updatedAt: true,
+        // Template-based scheduling fields
+        pageId: true,
+        templateId: true,
+        renderStatus: true,
+        renderedImageUrl: true,
         Generation: {
           select: {
             id: true,

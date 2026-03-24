@@ -110,6 +110,11 @@ export async function GET(request: NextRequest) {
         isRecurring: true,
         createdAt: true,
         updatedAt: true,
+        // Template-based scheduling fields
+        pageId: true,
+        templateId: true,
+        renderStatus: true,
+        renderedImageUrl: true,
         Project: {
           select: {
             id: true,
@@ -174,6 +179,11 @@ export async function GET(request: NextRequest) {
         isRecurring: true,
         createdAt: true,
         updatedAt: true,
+        // Template-based scheduling fields
+        pageId: true,
+        templateId: true,
+        renderStatus: true,
+        renderedImageUrl: true,
         Project: {
           select: {
             id: true,

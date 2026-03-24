@@ -1,9 +1,12 @@
 'use client'
 
 import * as React from 'react'
-import { CalendarClock, Loader2, Send, Zap } from 'lucide-react'
+import { CalendarClock, Clock, Loader2, Send, Zap } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Calendar } from '@/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   Dialog,
   DialogContent,
@@ -11,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import { useSocialPosts } from '@/hooks/use-social-posts'
 import { useToast } from '@/hooks/use-toast'
 
@@ -34,23 +38,25 @@ export function ScheduleStoryModal({
   const { toast } = useToast()
   const { createPost } = useSocialPosts(projectId)
   const [scheduleType, setScheduleType] = React.useState<'SCHEDULED' | 'IMMEDIATE'>('SCHEDULED')
-  const [scheduledDatetime, setScheduledDatetime] = React.useState('')
+  const [selectedDate, setSelectedDate] = React.useState<Date>()
+  const [selectedTime, setSelectedTime] = React.useState('12:00')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
+
+  const getScheduledDate = () => {
+    if (!selectedDate) return null
+    const [hours, minutes] = selectedTime.split(':').map(Number)
+    const date = new Date(selectedDate)
+    date.setHours(hours, minutes, 0, 0)
+    return date
+  }
 
   const canSubmit = () => {
     if (isSubmitting) return false
-    if (scheduleType === 'SCHEDULED' && !scheduledDatetime) return false
     if (scheduleType === 'SCHEDULED') {
-      const scheduled = new Date(scheduledDatetime)
-      if (scheduled <= new Date()) return false
+      const scheduled = getScheduledDate()
+      if (!scheduled || scheduled <= new Date()) return false
     }
     return true
-  }
-
-  const getMinDatetime = () => {
-    const now = new Date()
-    now.setMinutes(now.getMinutes() + 5)
-    return now.toISOString().slice(0, 16)
   }
 
   const handleSubmit = async () => {
@@ -58,9 +64,10 @@ export function ScheduleStoryModal({
     setIsSubmitting(true)
 
     try {
+      const scheduled = getScheduledDate()
       const scheduledDatetimeISO =
-        scheduleType === 'SCHEDULED' && scheduledDatetime
-          ? new Date(scheduledDatetime).toISOString()
+        scheduleType === 'SCHEDULED' && scheduled
+          ? scheduled.toISOString()
           : undefined
 
       await createPost.mutateAsync({
@@ -95,7 +102,7 @@ export function ScheduleStoryModal({
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Agendar Story</DialogTitle>
           <DialogDescription>
@@ -136,16 +143,76 @@ export function ScheduleStoryModal({
           </Button>
         </div>
 
-        {/* Datetime picker */}
+        {/* Date & time picker */}
         {scheduleType === 'SCHEDULED' && (
-          <div className="space-y-1.5">
-            <label className="text-sm font-medium">Data e horário</label>
-            <Input
-              type="datetime-local"
-              value={scheduledDatetime}
-              onChange={(e) => setScheduledDatetime(e.target.value)}
-              min={getMinDatetime()}
-            />
+          <div className="space-y-4">
+            {/* Date picker with Calendar */}
+            <div className="space-y-2">
+              <Label>Data</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      'w-full justify-start text-left font-normal',
+                      !selectedDate && 'text-muted-foreground'
+                    )}
+                  >
+                    <CalendarClock className="mr-2 h-4 w-4" />
+                    {selectedDate ? (
+                      selectedDate.toLocaleDateString('pt-BR', {
+                        weekday: 'long',
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                      })
+                    ) : (
+                      <span>Selecione uma data</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            {/* Time picker */}
+            <div className="space-y-2">
+              <Label htmlFor="schedule-time">Horário</Label>
+              <div className="relative">
+                <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="schedule-time"
+                  type="time"
+                  value={selectedTime}
+                  onChange={(e) => setSelectedTime(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
+
+            {/* Preview of selected datetime */}
+            {selectedDate && (
+              <div className="rounded-lg border border-primary/40 bg-primary/10 p-3">
+                <p className="text-sm text-muted-foreground mb-1">Agendamento:</p>
+                <p className="font-medium">
+                  {(() => {
+                    const d = getScheduledDate()
+                    return d?.toLocaleString('pt-BR', {
+                      dateStyle: 'full',
+                      timeStyle: 'short',
+                    })
+                  })()}
+                </p>
+              </div>
+            )}
           </div>
         )}
 
