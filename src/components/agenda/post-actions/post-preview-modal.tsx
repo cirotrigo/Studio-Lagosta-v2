@@ -9,6 +9,7 @@ import { isPhotoSwipeOpen, wasPhotoSwipeJustClosed } from '@/hooks/use-photoswip
 import {
   Send,
   Edit,
+  Paintbrush,
   MoreHorizontal,
   Trash2,
   Clock,
@@ -22,6 +23,7 @@ import {
   ShieldAlert,
   Bell
 } from 'lucide-react'
+import Link from 'next/link'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -77,7 +79,8 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
     }
   })
 
-  const mediaUrls = post.mediaUrls || []
+  const isTemplateBased = !!post.pageId && post.postType === 'STORY'
+  const mediaUrls = (post.mediaUrls?.length ? post.mediaUrls : post.renderedImageUrl ? [post.renderedImageUrl] : []) as string[]
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
   const isStory = post.postType === 'STORY'
 
@@ -562,15 +565,28 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 </>
               )}
 
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleEdit}
-                disabled={!onEdit || post.status === 'POSTED' || post.status === 'POSTING'}
-              >
-                <Edit className="w-4 h-4 mr-2" />
-                Editar
-              </Button>
+              {isTemplateBased && post.templateId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  asChild
+                >
+                  <Link href={`/templates/${post.templateId}/editor`}>
+                    <Paintbrush className="w-4 h-4 mr-2" />
+                    Editar Template
+                  </Link>
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleEdit}
+                  disabled={!onEdit || post.status === 'POSTED' || post.status === 'POSTING'}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Editar
+                </Button>
+              )}
 
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>

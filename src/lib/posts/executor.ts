@@ -6,6 +6,7 @@ import {
   PostLogEvent,
   PostType,
   PublishType,
+  RenderStatus,
   VerificationStatus,
 } from '../../../prisma/generated/client'
 import { getLaterClient } from '@/lib/later/client'
@@ -105,6 +106,35 @@ export class PostExecutor {
             console.log(`⏸️ Aguardando 2 segundos antes de processar próximo post atrasado (rate limiting)...`)
             await new Promise(resolve => setTimeout(resolve, 2000))
           }
+        }
+
+        // Guard: template-based Stories must be rendered before sending
+        if (post.postType === PostType.STORY && post.pageId) {
+          if (post.renderStatus === RenderStatus.PENDING || post.renderStatus === RenderStatus.RENDERING) {
+            console.log(`⏳ Skipping post ${post.id} — still rendering (${post.renderStatus})`)
+            continue
+          }
+          if (post.renderStatus === RenderStatus.RENDER_FAILED) {
+            console.log(`❌ Post ${post.id} — render failed after 3 attempts, marking FAILED`)
+            await db.socialPost.update({
+              where: { id: post.id },
+              data: {
+                status: PostStatus.FAILED,
+                errorMessage: 'Story image rendering failed after 3 attempts',
+                failedAt: new Date(),
+              },
+            })
+            await db.postLog.create({
+              data: {
+                postId: post.id,
+                event: PostLogEvent.FAILED,
+                message: 'Story image rendering failed after 3 attempts',
+              },
+            })
+            failureCount++
+            continue
+          }
+          // renderStatus === RENDERED → proceed normally
         }
 
         try {

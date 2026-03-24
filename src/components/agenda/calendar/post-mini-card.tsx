@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
@@ -32,7 +32,7 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
     return videoExtensions.some(ext => url.toLowerCase().includes(ext))
   }
 
-  const firstMediaUrl = post.mediaUrls?.[0]
+  const firstMediaUrl = post.renderedImageUrl || post.mediaUrls?.[0]
   const isVideo = firstMediaUrl ? isVideoUrl(firstMediaUrl) : false
 
   const getIcon = () => {
@@ -71,8 +71,8 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
         getStatusColor()
       )}
     >
-      {/* Thumbnail */}
-      {post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0] && (
+      {/* Thumbnail — template-based stories may use renderedImageUrl */}
+      {((post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0]) || post.renderedImageUrl) && (
         <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
           {isVideo ? (
             <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
@@ -80,7 +80,7 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
             </div>
           ) : (
             <Image
-              src={post.mediaUrls[0]}
+              src={firstMediaUrl!}
               alt={post.caption || 'Prévia do post'}
               fill
               sizes="(max-width: 640px) 32px, 40px" // OPTIMIZED: Responsive sizes
@@ -89,7 +89,7 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               quality={50} // OPTIMIZED: Reduced from 60 for small thumbnails
               placeholder="blur"
               blurDataURL="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMSIgaGVpZ2h0PSIxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4="
-              unoptimized={isExternalImage(post.mediaUrls[0])}
+              unoptimized={isExternalImage(firstMediaUrl!)}
             />
           )}
 
@@ -180,6 +180,40 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
               </span>
               <span className="sm:hidden">{post.reminderSentAt ? '✓' : '🔔'}</span>
             </Badge>
+          )}
+
+          {/* Badges de Render Status - para Stories com template */}
+          {post.postType === 'STORY' && post.pageId && post.status === 'SCHEDULED' && (
+            <>
+              {(post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING') && (
+                <Badge
+                  variant="outline"
+                  className="h-3 px-1 text-[8px] flex items-center gap-0.5 border-blue-400 text-blue-500"
+                  title="Imagem será gerada antes da publicação"
+                >
+                  <ImageIcon className="w-2 h-2" />
+                  <span className="hidden sm:inline">Renderizar</span>
+                </Badge>
+              )}
+              {post.renderStatus === 'RENDERED' && (
+                <Badge
+                  className="h-3 px-1 text-[8px] bg-emerald-600 text-white hover:bg-emerald-700 flex items-center gap-0.5"
+                  title="Imagem gerada com sucesso"
+                >
+                  <ImageIcon className="w-2 h-2" />
+                  <span className="hidden sm:inline">Imagem ✓</span>
+                </Badge>
+              )}
+              {post.renderStatus === 'RENDER_FAILED' && (
+                <Badge
+                  className="h-3 px-1 text-[8px] bg-red-600 text-white hover:bg-red-700 flex items-center gap-0.5"
+                  title="Falha na geração da imagem"
+                >
+                  <ImageIcon className="w-2 h-2" />
+                  <span className="hidden sm:inline">Imagem ✗</span>
+                </Badge>
+              )}
+            </>
           )}
 
           {/* Badges de Verificação - apenas para Stories já enviados e NÃO lembretes */}

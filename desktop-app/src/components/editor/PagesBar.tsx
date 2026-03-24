@@ -15,6 +15,7 @@ export function PagesBar() {
   const currentPage = useEditorStore(selectCurrentPageState)
   const setCurrentPageId = useEditorStore((state) => state.setCurrentPageId)
   const thumbnails = usePagesStore((state) => state.thumbnails)
+  const thumbnailVersions = usePagesStore((state) => state.thumbnailVersions)
   const setThumbnail = usePagesStore((state) => state.setThumbnail)
   const removeThumbnail = usePagesStore((state) => state.removeThumbnail)
   const addPage = usePagesStore((state) => state.addPage)
@@ -84,7 +85,7 @@ export function PagesBar() {
       cancelled = true
       window.clearTimeout(timeoutId)
     }
-  }, [pages, removeThumbnail, setThumbnail])
+  }, [pages, thumbnailVersions, removeThumbnail, setThumbnail])
 
   if (!document || !pages.length || !currentPage) {
     return null

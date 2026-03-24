@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, Blend, History, Keyboard, RefreshCw, Sparkles, Type, Undo2, X, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
+import { AlertTriangle, Blend, CalendarClock, History, Keyboard, RefreshCw, Sparkles, Type, Undo2, X, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
 import { createGradientLayer, createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
 import { LayersPanel } from './LayersPanel'
 import { PropertiesPanel } from './PropertiesPanel'
@@ -14,15 +14,19 @@ import { useHistoryStore } from '@/stores/history.store'
 interface EditorShellProps {
   onSave: () => Promise<void> | void
   onOpenGenerateArt: () => void
+  onSchedule?: () => void
   isSaving: boolean
   saveLabel?: string
+  canSchedule?: boolean
 }
 
 export function EditorShell({
   onSave,
   onOpenGenerateArt,
+  onSchedule,
   isSaving,
   saveLabel = 'Salvar template',
+  canSchedule = false,
 }: EditorShellProps) {
   const currentProject = useProjectStore((state) => state.currentProject)
   const document = useEditorStore((state) => state.document)
@@ -124,6 +128,19 @@ export function EditorShell({
           >
             {isSaving ? 'Salvando...' : saveLabel}
           </button>
+          {canSchedule && onSchedule && (
+            <button
+              type="button"
+              onClick={onSchedule}
+              disabled={!document}
+              className={`${compactButtonClass} disabled:opacity-50`}
+            >
+              <span className="inline-flex items-center gap-2">
+                <CalendarClock size={16} />
+                Agendar
+              </span>
+            </button>
+          )}
           <button
             type="button"
             onClick={onOpenGenerateArt}

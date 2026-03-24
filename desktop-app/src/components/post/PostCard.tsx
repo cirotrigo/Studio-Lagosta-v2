@@ -1,4 +1,4 @@
-import { Image as ImageIcon, Film, LayoutGrid, MoreVertical, Trash2, Edit } from 'lucide-react'
+import { Image as ImageIcon, Film, LayoutGrid, MoreVertical, Trash2, Edit, Paintbrush } from 'lucide-react'
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { toast } from 'sonner'
@@ -23,6 +23,10 @@ interface PostCardProps {
     status: string
     scheduledDatetime: string | null
     createdAt: string
+    pageId?: string | null
+    templateId?: number | null
+    renderedImageUrl?: string | null
+    renderStatus?: string | null
   }
 }
 
@@ -72,13 +76,19 @@ export default function PostCard({ post }: PostCardProps) {
     return 'aspect-[4/5]'
   }
 
+  const isTemplateBased = !!post.pageId && post.postType === 'STORY'
+  const displayImageUrl = post.mediaUrls[0] || post.renderedImageUrl
+  const editLink = isTemplateBased && post.templateId
+    ? `/editor` // Navigate to editor (template will be loaded by EditorPage)
+    : `/edit-post/${post.id}`
+
   return (
     <div className="group relative overflow-hidden rounded-xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-sm">
       {/* Image */}
       <div className={cn('relative overflow-hidden bg-[#080808]', getAspectRatio(post.postType))}>
-        {post.mediaUrls[0] ? (
+        {displayImageUrl ? (
           <img
-            src={post.mediaUrls[0]}
+            src={displayImageUrl}
             alt=""
             className="h-full w-full object-cover"
           />
@@ -98,10 +108,11 @@ export default function PostCard({ post }: PostCardProps) {
         {/* Hover overlay */}
         <div className="absolute inset-0 flex items-center justify-center gap-2 bg-black/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <Link
-            to={`/edit-post/${post.id}`}
+            to={editLink}
             className="rounded-lg bg-white/20 p-2 text-white backdrop-blur hover:bg-white/30"
+            title={isTemplateBased ? 'Editar Template' : 'Editar Post'}
           >
-            <Edit size={20} />
+            {isTemplateBased ? <Paintbrush size={20} /> : <Edit size={20} />}
           </Link>
           <button
             onClick={handleDelete}
@@ -150,11 +161,11 @@ export default function PostCard({ post }: PostCardProps) {
         {showMenu && (
           <div className="absolute right-0 top-full z-10 mt-1 w-32 rounded-lg border border-white/10 bg-[#1a1a1a]/95 backdrop-blur-xl py-1 shadow-xl">
             <Link
-              to={`/edit-post/${post.id}`}
+              to={editLink}
               className="flex w-full items-center gap-2 px-3 py-2 text-sm text-white/80 hover:bg-white/10 transition-colors"
             >
-              <Edit size={14} />
-              Editar
+              {isTemplateBased ? <Paintbrush size={14} /> : <Edit size={14} />}
+              {isTemplateBased ? 'Editar Template' : 'Editar'}
             </Link>
             <button
               onClick={handleDelete}

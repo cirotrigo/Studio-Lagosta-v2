@@ -14,6 +14,7 @@ import {
   PostStatus,
   PostLogEvent,
   PublishType,
+  RenderStatus,
   VerificationStatus,
 } from '../../../prisma/generated/client'
 import { generateVerificationTag } from '@/lib/posts/verification/tag-generator'
@@ -48,6 +49,10 @@ interface CreatePostData {
   firstComment?: string
   publishType?: PublishType
   reminderExtraInfo?: string
+  // Template-based scheduling (Stories only)
+  pageId?: string
+  templateId?: number
+  slotValues?: Record<string, unknown>
 }
 
 /**
@@ -203,10 +208,11 @@ export class LaterPostScheduler {
 
     // PRE-NORMALIZE media URLs for FEED and CAROUSEL posts BEFORE database creation
     // This ensures Later can always access the media URLs
+    // Skip for template-based stories (no media yet)
     let normalizedMediaUrls = data.mediaUrls
     let normalizedBlobPathnames = data.blobPathnames || []
 
-    if (data.postType === PostType.POST || data.postType === PostType.CAROUSEL) {
+    if ((data.postType === PostType.POST || data.postType === PostType.CAROUSEL) && !data.pageId) {
       console.log('[Later Scheduler] 🔄 Pre-normalizing media for FEED/CAROUSEL post...')
       console.log('[Later Scheduler] Original URLs:', data.mediaUrls)
 
@@ -232,6 +238,18 @@ export class LaterPostScheduler {
       console.log('[Later Scheduler] Story detected - verification tag will be generated')
     }
 
+    // Determine render status for template-based stories
+    const isTemplateBased = data.postType === PostType.STORY && data.pageId
+    let renderStatusValue: RenderStatus = RenderStatus.NOT_NEEDED
+    let nextRenderAtValue: Date | null = null
+
+    if (isTemplateBased) {
+      renderStatusValue = RenderStatus.PENDING
+      // Always render immediately so the user gets a preview in the calendar
+      // If the template is edited later, the invalidation logic will re-render
+      nextRenderAtValue = new Date()
+    }
+
     // Create post in database with SCHEDULED status (using normalized URLs)
     let post = await db.socialPost.create({
       data: {
@@ -240,7 +258,7 @@ export class LaterPostScheduler {
         generationId: data.generationId,
         postType: data.postType,
         caption: data.caption,
-        mediaUrls: normalizedMediaUrls, // Use normalized URLs
+        mediaUrls: normalizedMediaUrls, // Use normalized URLs (empty for template-based)
         blobPathnames: normalizedBlobPathnames, // Include normalized blobs
         altText: data.altText || [],
         firstComment: data.firstComment,
@@ -253,6 +271,12 @@ export class LaterPostScheduler {
           : null,
         status: PostStatus.SCHEDULED,
         originalScheduleType: data.scheduleType,
+        // Template-based scheduling fields
+        pageId: data.pageId || null,
+        templateId: data.templateId || null,
+        slotValues: data.slotValues ? (data.slotValues as Prisma.InputJsonValue) : null,
+        renderStatus: renderStatusValue,
+        nextRenderAt: nextRenderAtValue,
       },
     })
 
@@ -284,7 +308,8 @@ export class LaterPostScheduler {
 
     // For IMMEDIATE posts, send to Later API now
     // For SCHEDULED posts, keep in database and send via cron job later
-    if (data.scheduleType === ScheduleType.IMMEDIATE) {
+    // Template-based stories: always wait for render cron, even if IMMEDIATE
+    if (data.scheduleType === ScheduleType.IMMEDIATE && !isTemplateBased) {
       console.log('[Later Scheduler] 🚀 IMMEDIATE post - sending to Later API now')
       try {
         await this.sendToLater(post.id)
@@ -339,14 +364,24 @@ export class LaterPostScheduler {
    * Validate post data
    */
   validatePost(data: CreatePostData) {
+    // Template-based stories: skip media validation (image will be rendered server-side)
+    const isTemplateBased = data.postType === 'STORY' && data.pageId
+
     // Validate media count
-    if (data.postType === 'CAROUSEL') {
-      if (data.mediaUrls.length < 2 || data.mediaUrls.length > 10) {
-        throw new Error('Carrossel deve ter entre 2 e 10 imagens')
+    if (!isTemplateBased) {
+      if (data.postType === 'CAROUSEL') {
+        if (data.mediaUrls.length < 2 || data.mediaUrls.length > 10) {
+          throw new Error('Carrossel deve ter entre 2 e 10 imagens')
+        }
+      } else if (['STORY', 'REEL'].includes(data.postType)) {
+        if (data.mediaUrls.length !== 1) {
+          throw new Error(`${data.postType} deve ter exatamente 1 mídia`)
+        }
       }
-    } else if (['STORY', 'REEL'].includes(data.postType)) {
-      if (data.mediaUrls.length !== 1) {
-        throw new Error(`${data.postType} deve ter exatamente 1 mídia`)
+
+      // Validate media URLs are present
+      if (data.mediaUrls.length === 0) {
+        throw new Error('Pelo menos uma mídia é necessária')
       }
     }
 
@@ -356,11 +391,6 @@ export class LaterPostScheduler {
       if (scheduledTime <= new Date()) {
         throw new Error('Data/hora deve ser no futuro')
       }
-    }
-
-    // Validate media URLs are present
-    if (data.mediaUrls.length === 0) {
-      throw new Error('Pelo menos uma mídia é necessária')
     }
   }
 

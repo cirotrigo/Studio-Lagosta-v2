@@ -32,6 +32,10 @@ interface CreatePostData {
   firstComment?: string
   publishType?: PublishType
   reminderExtraInfo?: string
+  // Template-based scheduling (Stories only)
+  pageId?: string
+  templateId?: number
+  slotValues?: Record<string, unknown>
 }
 
 export class PostScheduler {

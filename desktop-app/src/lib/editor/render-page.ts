@@ -1,5 +1,6 @@
 import { buildTextFontString, resolveTextRenderState } from './text-layout'
 import { resolveContainPlacement, resolveImageCrop } from './image-fit'
+import { splitTextIntoSegments, type TextSegment } from './rich-text-parser'
 import type { KonvaPage, KonvaTextLayer, Layer, LayerEffects } from '@/types/template'
 
 interface RenderPageOptions {
@@ -347,12 +348,171 @@ function drawTextWithStroke(
   drawTextLine(context, line, x, y, letterSpacing, extraSpacePerGap)
 }
 
+// ─── Rich Text Export Renderer ─────────────────────────────────────
+
+interface RichWord {
+  text: string
+  segment: TextSegment
+  width: number
+}
+
+function drawRichTextExport(
+  context: CanvasRenderingContext2D,
+  layer: KonvaTextLayer,
+  segments: TextSegment[],
+  renderState: ReturnType<typeof resolveTextRenderState>,
+  scale: number,
+) {
+  const align = layer.textStyle?.align ?? 'left'
+  const verticalAlign = layer.textStyle?.verticalAlign ?? 'top'
+  const baseFontSize = Math.max(12, renderState.fontSize * scale)
+  const frameX = renderState.x * scale
+  const frameY = renderState.y * scale
+  const frameWidth = renderState.width * scale
+  const frameHeight = renderState.height * scale
+  const baseLineHeight = layer.textStyle?.lineHeight ?? 1.2
+  const lineHeightPx = baseFontSize * baseLineHeight
+  const letterSpacing = (layer.textStyle?.letterSpacing ?? 0) * scale
+  const effects = layer.effects
+  const baseFill = layer.textStyle?.fill ?? '#111827'
+  const baseFontWeight = layer.textStyle?.fontWeight ?? 'normal'
+  const baseFontStyle = layer.textStyle?.fontStyle ?? 'normal'
+
+  function fontForSeg(seg: TextSegment): string {
+    const weight = seg.style.fontWeight || baseFontWeight
+    const style = seg.style.fontStyle || baseFontStyle
+    const size = seg.style.fontSize ? seg.style.fontSize * scale : baseFontSize
+    const family = seg.style.fontFamily || (layer.textStyle?.fontFamily ?? 'sans-serif')
+    return `${style} ${weight} ${size}px ${family}`
+  }
+
+  // Break segments into words
+  const words: RichWord[] = []
+  for (const seg of segments) {
+    context.font = fontForSeg(seg)
+    const parts = seg.text.split(/(\s+)/)
+    for (const part of parts) {
+      if (part.length === 0) continue
+      const w = context.measureText(part).width + (part.trim().length > 0 ? letterSpacing * part.length : 0)
+      words.push({ text: part, segment: seg, width: w })
+    }
+  }
+
+  // Layout words into lines
+  const lines: RichWord[][] = [[]]
+  let currentLineWidth = 0
+
+  for (const word of words) {
+    if (word.text.includes('\n')) {
+      const nlParts = word.text.split('\n')
+      for (let n = 0; n < nlParts.length; n++) {
+        if (n > 0) { lines.push([]); currentLineWidth = 0 }
+        if (nlParts[n].length > 0) {
+          context.font = fontForSeg(word.segment)
+          const w = context.measureText(nlParts[n]).width + letterSpacing * nlParts[n].length
+          lines[lines.length - 1].push({ text: nlParts[n], segment: word.segment, width: w })
+          currentLineWidth += w
+        }
+      }
+      continue
+    }
+
+    const isSpace = word.text.trim().length === 0
+    if (!isSpace && currentLineWidth + word.width > frameWidth && lines[lines.length - 1].length > 0) {
+      lines.push([])
+      currentLineWidth = 0
+    }
+    lines[lines.length - 1].push(word)
+    currentLineWidth += word.width
+  }
+
+  // Vertical alignment
+  const totalHeight = lines.length * lineHeightPx
+  let startY = 0
+  if (verticalAlign === 'middle') startY = Math.max(0, (frameHeight - totalHeight) / 2)
+  else if (verticalAlign === 'bottom') startY = Math.max(0, frameHeight - totalHeight)
+
+  context.textBaseline = 'top'
+
+  // Apply drop shadow
+  applyTextEffects(context, effects, scale)
+
+  // Draw each line
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx]
+    const y = frameY + startY + lineIdx * lineHeightPx
+
+    let lineWidth = 0
+    for (const w of line) lineWidth += w.width
+
+    let x = frameX
+    if (align === 'center') x = frameX + (frameWidth - lineWidth) / 2
+    else if (align === 'right') x = frameX + frameWidth - lineWidth
+
+    for (const word of line) {
+      const seg = word.segment
+      const fill = seg.style.fill || baseFill
+      const fontSize = seg.style.fontSize ? seg.style.fontSize * scale : baseFontSize
+
+      context.font = fontForSeg(seg)
+
+      // Stroke first if enabled
+      const hasStroke = effects?.textStroke?.enabled && (effects.textStroke.width ?? 0) > 0
+      if (hasStroke) {
+        const stroke = effects.textStroke!
+        context.save()
+        context.strokeStyle = stroke.color ?? '#000000'
+        context.lineWidth = (stroke.width ?? 2) * scale * 2
+        context.lineJoin = 'round'
+        context.miterLimit = 2
+        context.strokeText(word.text, x, y)
+        context.restore()
+      }
+
+      context.fillStyle = fill
+      context.fillText(word.text, x, y)
+
+      // Decorations
+      const underline = seg.style.underline ?? layer.textStyle?.underline
+      const strikethrough = seg.style.strikethrough ?? layer.textStyle?.strikethrough
+      if (underline) {
+        context.beginPath()
+        context.strokeStyle = fill
+        context.lineWidth = Math.max(1, fontSize * 0.07)
+        context.moveTo(x, y + fontSize * 1.05)
+        context.lineTo(x + word.width, y + fontSize * 1.05)
+        context.stroke()
+      }
+      if (strikethrough) {
+        context.beginPath()
+        context.strokeStyle = fill
+        context.lineWidth = Math.max(1, fontSize * 0.07)
+        context.moveTo(x, y + fontSize * 0.55)
+        context.lineTo(x + word.width, y + fontSize * 0.55)
+        context.stroke()
+      }
+
+      x += word.width
+    }
+  }
+
+  clearTextEffects(context)
+}
+
 function drawTextLayer(
   context: CanvasRenderingContext2D,
   layer: KonvaTextLayer,
   renderState: ReturnType<typeof resolveTextRenderState>,
   scale: number,
 ) {
+  // Rich text path: render segments with individual styles
+  if (layer.richStyles && layer.richStyles.length > 0) {
+    const segments = splitTextIntoSegments(renderState.text, layer.richStyles)
+    drawRichTextExport(context, layer, segments, renderState, scale)
+    return
+  }
+
+  // Plain text path (original)
   const lines = renderState.text.split('\n')
   const align = layer.textStyle?.align ?? 'left'
   const verticalAlign = layer.textStyle?.verticalAlign ?? 'top'

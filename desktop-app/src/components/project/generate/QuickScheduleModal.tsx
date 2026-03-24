@@ -10,6 +10,9 @@ interface QuickScheduleModalProps {
   format: ArtFormat
   projectId: number
   onClose: () => void
+  // Template-based scheduling (optional)
+  pageId?: string
+  templateId?: number
 }
 
 function formatToPostType(format: ArtFormat): 'STORY' | 'POST' {
@@ -21,6 +24,8 @@ export function QuickScheduleModal({
   format,
   projectId,
   onClose,
+  pageId,
+  templateId,
 }: QuickScheduleModalProps) {
   const [scheduleType, setScheduleType] = useState<'SCHEDULED' | 'IMMEDIATE'>('SCHEDULED')
   const [scheduledDatetime, setScheduledDatetime] = useState('')
@@ -39,68 +44,82 @@ export function QuickScheduleModal({
     return true
   }
 
+  const isTemplateMode = !!pageId && postType === 'STORY'
+
   const handleSubmit = async () => {
     if (!canSubmit()) return
     setIsSubmitting(true)
 
     try {
-      // 1. Convert image to buffer and upload to Vercel Blob
-      let buffer: ArrayBuffer
-      let mimeType = 'image/png'
-
-      if (imageUrl.startsWith('data:')) {
-        // Data URL (from rendered Konva canvas)
-        const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/)
-        if (!match) throw new Error('Formato de imagem invalido.')
-        mimeType = match[1]
-        const binary = atob(match[2])
-        const bytes = new Uint8Array(binary.length)
-        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-        buffer = bytes.buffer
-      } else {
-        // HTTP URL — download via Electron IPC
-        const response = await window.electronAPI.downloadBlob(imageUrl)
-        if (!response.ok || !response.buffer) {
-          throw new Error(response.error || 'Falha ao processar imagem.')
-        }
-        buffer = response.buffer
-        mimeType = response.contentType || 'image/png'
-      }
-
-      const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png'
-      const uploadResponse = await window.electronAPI.uploadFile(
-        `${API_BASE_URL}/api/upload`,
-        {
-          name: `story-${Date.now()}.${ext}`,
-          type: mimeType,
-          buffer,
-        },
-        { type: 'post', postType },
-      )
-
-      const uploadData = uploadResponse.data as { url: string }
-      if (!uploadData?.url) {
-        throw new Error('Falha ao fazer upload da imagem.')
-      }
-
-      // 2. Create the post
       const scheduledDatetimeISO =
         scheduleType === 'SCHEDULED' && scheduledDatetime
           ? new Date(scheduledDatetime).toISOString()
           : undefined
 
-      await createPost.mutateAsync({
-        postType,
-        caption: '',
-        mediaUrls: [uploadData.url],
-        scheduleType,
-        scheduledDatetime: scheduledDatetimeISO,
-      })
+      if (isTemplateMode) {
+        // Template-based: send pageId, image will be rendered server-side
+        await createPost.mutateAsync({
+          postType,
+          caption: '',
+          mediaUrls: [],
+          scheduleType,
+          scheduledDatetime: scheduledDatetimeISO,
+          pageId,
+          templateId,
+        })
+      } else {
+        // Legacy: upload image and send URL
+        let buffer: ArrayBuffer
+        let mimeType = 'image/png'
+
+        if (imageUrl.startsWith('data:')) {
+          const match = imageUrl.match(/^data:([^;]+);base64,(.+)$/)
+          if (!match) throw new Error('Formato de imagem invalido.')
+          mimeType = match[1]
+          const binary = atob(match[2])
+          const bytes = new Uint8Array(binary.length)
+          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+          buffer = bytes.buffer
+        } else {
+          const response = await window.electronAPI.downloadBlob(imageUrl)
+          if (!response.ok || !response.buffer) {
+            throw new Error(response.error || 'Falha ao processar imagem.')
+          }
+          buffer = response.buffer
+          mimeType = response.contentType || 'image/png'
+        }
+
+        const ext = mimeType.includes('jpeg') || mimeType.includes('jpg') ? 'jpg' : 'png'
+        const uploadResponse = await window.electronAPI.uploadFile(
+          `${API_BASE_URL}/api/upload`,
+          {
+            name: `story-${Date.now()}.${ext}`,
+            type: mimeType,
+            buffer,
+          },
+          { type: 'post', postType },
+        )
+
+        const uploadData = uploadResponse.data as { url: string }
+        if (!uploadData?.url) {
+          throw new Error('Falha ao fazer upload da imagem.')
+        }
+
+        await createPost.mutateAsync({
+          postType,
+          caption: '',
+          mediaUrls: [uploadData.url],
+          scheduleType,
+          scheduledDatetime: scheduledDatetimeISO,
+        })
+      }
 
       toast.success(
         scheduleType === 'IMMEDIATE'
           ? 'Story enviado para publicação!'
-          : 'Story agendado com sucesso!',
+          : isTemplateMode
+            ? 'Story agendado! Imagem será gerada automaticamente.'
+            : 'Story agendado com sucesso!',
       )
       onClose()
     } catch (error) {
@@ -138,7 +157,9 @@ export function QuickScheduleModal({
         <div className="mb-5">
           <h3 className="text-lg font-semibold text-text">Agendar Story</h3>
           <p className="mt-1 text-sm text-text-muted">
-            Escolha quando publicar ou poste agora.
+            {isTemplateMode
+              ? 'A imagem será gerada automaticamente antes da publicação.'
+              : 'Escolha quando publicar ou poste agora.'}
           </p>
         </div>
 

@@ -34,6 +34,10 @@ const createPostValidationSchema = (postType?: PostType) => {
     firstComment: z.string().optional(),
     reminderExtraInfo: z.string().optional(),
     publishType: z.nativeEnum(PublishType).optional().default(PublishType.DIRECT),
+    // Template-based scheduling (Stories only)
+    pageId: z.string().optional(),
+    templateId: z.number().optional(),
+    slotValues: z.record(z.unknown()).optional(),
   })
 }
 
@@ -103,11 +107,18 @@ export async function POST(
     const data = schema.parse(body)
     console.log('✅ Validated data:', JSON.stringify(data, null, 2))
 
+    // Template-based story: pageId replaces mediaUrls requirement
+    const isTemplateBased = data.postType === 'STORY' && data.pageId
+
     // Determine media URLs source
     let mediaUrls: string[]
     let generationId: string | undefined
 
-    if (data.mediaUrls && data.mediaUrls.length > 0) {
+    if (isTemplateBased) {
+      // Template-based: no media needed now, will be rendered server-side
+      mediaUrls = []
+      generationId = data.generationIds?.[0]
+    } else if (data.mediaUrls && data.mediaUrls.length > 0) {
       // Direct media URLs (from upload or Google Drive)
       mediaUrls = data.mediaUrls
       generationId = data.generationIds?.[0] // Optional generation link
@@ -132,12 +143,12 @@ export async function POST(
       generationId = data.generationIds[0]
     } else {
       return NextResponse.json(
-        { error: 'Either generationIds or mediaUrls is required' },
+        { error: 'Either generationIds, mediaUrls, or pageId is required' },
         { status: 400 }
       )
     }
 
-    if (mediaUrls.length === 0) {
+    if (mediaUrls.length === 0 && !isTemplateBased) {
       return NextResponse.json(
         { error: 'No media URLs found' },
         { status: 400 }
@@ -177,6 +188,9 @@ export async function POST(
       firstComment: data.firstComment,
       publishType: data.publishType || PublishType.DIRECT,
       reminderExtraInfo: data.reminderExtraInfo,
+      pageId: data.pageId,
+      templateId: data.templateId,
+      slotValues: data.slotValues,
     })
 
     console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')

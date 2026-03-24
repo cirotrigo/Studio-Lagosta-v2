@@ -5,6 +5,8 @@ import { toast } from 'sonner'
 import { EditorGenerateArtModal } from '@/components/editor/EditorGenerateArtModal'
 import { EditorGenerationQueue } from '@/components/editor/EditorGenerationQueue'
 import { EditorShell } from '@/components/editor/EditorShell'
+import { QuickScheduleModal } from '@/components/project/generate/QuickScheduleModal'
+import { ScheduledPostsBanner } from '@/components/editor/ScheduledPostsBanner'
 import { EditorTemplateCarousel } from '@/components/editor/EditorTemplateCarousel'
 import { TemplateTagsModal } from '@/components/editor/TemplateTagsModal'
 import { ProjectTagsManager } from '@/components/editor/ProjectTagsManager'
@@ -98,6 +100,7 @@ export default function EditorPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false)
   const [isAutoSyncing, setIsAutoSyncing] = useState(false)
   const [isTagsModalOpen, setIsTagsModalOpen] = useState(false)
   const [selectedDesignForTags, setSelectedDesignForTags] = useState<Design | null>(null)
@@ -555,11 +558,15 @@ export default function EditorPage() {
               </label>
             </div>
 
+            <ScheduledPostsBanner templateId={document.meta.remoteId ?? undefined} />
+
             <EditorShell
               onSave={handleSave}
               onOpenGenerateArt={() => setIsGenerateModalOpen(true)}
+              onSchedule={() => setIsScheduleModalOpen(true)}
               isSaving={isSaving}
               saveLabel={approvedVariationDraft ? 'Salvar como novo template' : 'Salvar template'}
+              canSchedule={document.format === 'STORY' && !!document.meta.remoteId}
             />
             <EditorGenerationQueue />
           </>
@@ -576,6 +583,17 @@ export default function EditorPage() {
           onGenerate={handleQueueGeneration}
         />
       ) : null}
+
+      {isScheduleModalOpen && document && currentProject && (
+        <QuickScheduleModal
+          imageUrl={thumbnails[document.design.currentPageId] ?? ''}
+          format={document.format as 'STORY'}
+          projectId={currentProject.id}
+          onClose={() => setIsScheduleModalOpen(false)}
+          pageId={document.design.currentPageId}
+          templateId={document.meta.remoteId ?? undefined}
+        />
+      )}
 
       <TemplateTagsModal
         isOpen={isTagsModalOpen}

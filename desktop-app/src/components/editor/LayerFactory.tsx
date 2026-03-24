@@ -6,6 +6,7 @@ import {
   Rect,
   RegularPolygon,
   Star,
+  Shape,
   Text,
   TextPath,
   Circle,
@@ -15,7 +16,8 @@ import type { KonvaEventObject } from 'konva/lib/Node'
 import { resolveImageCrop } from '@/lib/editor/image-fit'
 import { serializeFontFamilyStack } from '@/lib/editor/font-utils'
 import { resolveTextRenderState } from '@/lib/editor/text-layout'
-import type { KonvaPage, Layer, KonvaShapeLayer } from '@/types/template'
+import { splitTextIntoSegments, type TextSegment } from '@/lib/editor/rich-text-parser'
+import type { KonvaPage, Layer, KonvaShapeLayer, KonvaTextLayer } from '@/types/template'
 
 interface LayerFactoryProps {
   page: KonvaPage
@@ -26,6 +28,164 @@ interface LayerFactoryProps {
   onDragMove: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
   onDragEnd: (event: KonvaEventObject<DragEvent>, layer: Layer) => void
   onDirectEdit: (layer: Layer) => void
+}
+
+// ─── Rich Text Canvas Renderer ─────────────────────────────────────
+// Draws text segments with per-segment styles using canvas 2D API.
+// Handles word-wrapping and alignment within the bounding box.
+
+interface RichTextRenderOpts {
+  segments: TextSegment[]
+  width: number
+  height: number
+  baseFontFamily: string
+  baseFontSize: number
+  baseFontWeight: string
+  baseFontStyle: string
+  baseFill: string
+  lineHeight: number
+  letterSpacing: number
+  align: string
+  verticalAlign: string
+  baseUnderline?: boolean
+  baseStrikethrough?: boolean
+}
+
+interface MeasuredWord {
+  text: string
+  segIdx: number
+  width: number
+}
+
+function drawRichText(ctx: CanvasRenderingContext2D, opts: RichTextRenderOpts) {
+  const {
+    segments, width, height,
+    baseFontFamily, baseFontSize, baseFontWeight, baseFontStyle, baseFill,
+    lineHeight, letterSpacing, align, verticalAlign,
+    baseUnderline, baseStrikethrough,
+  } = opts
+
+  const lineHeightPx = baseFontSize * lineHeight
+
+  // Helper to build a canvas font string for a segment
+  function fontFor(seg: TextSegment) {
+    const weight = seg.style.fontWeight || baseFontWeight || 'normal'
+    const style = seg.style.fontStyle || baseFontStyle || 'normal'
+    const size = seg.style.fontSize || baseFontSize
+    const family = seg.style.fontFamily || baseFontFamily
+    return `${style} ${weight} ${size}px ${family}`
+  }
+
+  // Break segments into individual words with their segment index
+  // We need to handle word wrapping correctly across segments
+  const words: MeasuredWord[] = []
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i]
+    ctx.font = fontFor(seg)
+
+    // Split on whitespace but keep track of spaces
+    const parts = seg.text.split(/(\s+)/)
+    for (const part of parts) {
+      if (part.length === 0) continue
+      const w = ctx.measureText(part).width + (part.trim().length > 0 ? letterSpacing * part.length : 0)
+      words.push({ text: part, segIdx: i, width: w })
+    }
+  }
+
+  // Layout words into lines
+  type LineWord = MeasuredWord
+  const lines: LineWord[][] = [[]]
+  let currentLineWidth = 0
+
+  for (const word of words) {
+    // Handle explicit newlines
+    if (word.text.includes('\n')) {
+      const nlParts = word.text.split('\n')
+      for (let n = 0; n < nlParts.length; n++) {
+        if (n > 0) {
+          lines.push([])
+          currentLineWidth = 0
+        }
+        if (nlParts[n].length > 0) {
+          ctx.font = fontFor(segments[word.segIdx])
+          const w = ctx.measureText(nlParts[n]).width + letterSpacing * nlParts[n].length
+          lines[lines.length - 1].push({ text: nlParts[n], segIdx: word.segIdx, width: w })
+          currentLineWidth += w
+        }
+      }
+      continue
+    }
+
+    const isSpace = word.text.trim().length === 0
+    if (!isSpace && currentLineWidth + word.width > width && lines[lines.length - 1].length > 0) {
+      // Word wrap
+      lines.push([])
+      currentLineWidth = 0
+    }
+    lines[lines.length - 1].push(word)
+    currentLineWidth += word.width
+  }
+
+  // Calculate total text height for vertical alignment
+  const totalHeight = lines.length * lineHeightPx
+  let startY = 0
+  if (verticalAlign === 'middle') {
+    startY = Math.max(0, (height - totalHeight) / 2)
+  } else if (verticalAlign === 'bottom') {
+    startY = Math.max(0, height - totalHeight)
+  }
+
+  // Draw each line
+  for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+    const line = lines[lineIdx]
+    const y = startY + lineIdx * lineHeightPx + baseFontSize * 0.85 // baseline offset
+
+    // Calculate line width for alignment
+    let lineWidth = 0
+    for (const w of line) lineWidth += w.width
+
+    let x = 0
+    if (align === 'center') x = (width - lineWidth) / 2
+    else if (align === 'right') x = width - lineWidth
+
+    for (const word of line) {
+      const seg = segments[word.segIdx]
+      const fill = seg.style.fill || baseFill
+      const fontSize = seg.style.fontSize || baseFontSize
+      const underline = seg.style.underline ?? baseUnderline
+      const strikethrough = seg.style.strikethrough ?? baseStrikethrough
+
+      ctx.font = fontFor(seg)
+      ctx.fillStyle = fill
+      ctx.fillText(word.text, x, y)
+
+      // Decorations
+      const textWidth = word.width
+      if (underline) {
+        ctx.beginPath()
+        ctx.strokeStyle = fill
+        ctx.lineWidth = Math.max(1, fontSize * 0.07)
+        ctx.moveTo(x, y + fontSize * 0.15)
+        ctx.lineTo(x + textWidth, y + fontSize * 0.15)
+        ctx.stroke()
+      }
+      if (strikethrough) {
+        ctx.beginPath()
+        ctx.strokeStyle = fill
+        ctx.lineWidth = Math.max(1, fontSize * 0.07)
+        const strikeY = y - fontSize * 0.3
+        ctx.moveTo(x, strikeY)
+        ctx.lineTo(x + textWidth, strikeY)
+        ctx.stroke()
+      }
+
+      x += word.width
+    }
+  }
+}
+
+function hasRichStyles(layer: KonvaTextLayer): boolean {
+  return !!(layer.richStyles && layer.richStyles.length > 0)
 }
 
 function calculateGradientPoints(width: number, height: number, angle = 180) {
@@ -314,6 +474,11 @@ export function LayerFactory({
       )
     }
 
+    // Rich text segments for canvas rendering
+    const richSegments = hasRichStyles(layer)
+      ? splitTextIntoSegments(renderState.text, layer.richStyles)
+      : null
+
     return (
       <Group {...commonProps} x={renderState.x} y={renderState.y} visible={!isEditing}>
         {/* Text Background */}
@@ -329,17 +494,55 @@ export function LayerFactory({
           />
         )}
 
-        {/* Text with effects */}
-        <Text
-          width={renderState.width}
-          height={renderState.height}
-          text={renderState.text}
-          {...textStyleProps}
-          lineHeight={layer.textStyle?.lineHeight ?? 1.1}
-          align={layer.textStyle?.align ?? 'left'}
-          verticalAlign={layer.textStyle?.verticalAlign ?? 'top'}
-          wrap="word"
-        />
+        {/* Rich text rendering via custom canvas draw */}
+        {richSegments ? (
+          <Shape
+            width={renderState.width}
+            height={renderState.height}
+            // Drop Shadow
+            shadowColor={dropShadow ? dropShadow.color : undefined}
+            shadowBlur={dropShadow ? dropShadow.blur : undefined}
+            shadowOffsetX={dropShadow ? dropShadow.offsetX : undefined}
+            shadowOffsetY={dropShadow ? dropShadow.offsetY : undefined}
+            shadowOpacity={dropShadow ? dropShadow.opacity / 100 : undefined}
+            sceneFunc={(context) => {
+              const ctx = (context as any)._context as CanvasRenderingContext2D
+              drawRichText(ctx, {
+                segments: richSegments,
+                width: renderState.width,
+                height: renderState.height,
+                baseFontFamily: serializeFontFamilyStack(layer.textStyle?.fontFamily),
+                baseFontSize: renderState.fontSize,
+                baseFontWeight: layer.textStyle?.fontWeight ?? 'normal',
+                baseFontStyle: layer.textStyle?.fontStyle ?? 'normal',
+                baseFill: layer.textStyle?.fill ?? '#111827',
+                lineHeight: layer.textStyle?.lineHeight ?? 1.1,
+                letterSpacing: layer.textStyle?.letterSpacing ?? 0,
+                align: layer.textStyle?.align ?? 'left',
+                verticalAlign: layer.textStyle?.verticalAlign ?? 'top',
+                baseUnderline: layer.textStyle?.underline,
+                baseStrikethrough: layer.textStyle?.strikethrough,
+              })
+            }}
+            hitFunc={(context, shape) => {
+              context.beginPath()
+              context.rect(0, 0, renderState.width, renderState.height)
+              context.closePath()
+              context.fillStrokeShape(shape)
+            }}
+          />
+        ) : (
+          <Text
+            width={renderState.width}
+            height={renderState.height}
+            text={renderState.text}
+            {...textStyleProps}
+            lineHeight={layer.textStyle?.lineHeight ?? 1.1}
+            align={layer.textStyle?.align ?? 'left'}
+            verticalAlign={layer.textStyle?.verticalAlign ?? 'top'}
+            wrap="word"
+          />
+        )}
       </Group>
     )
   }

@@ -32,7 +32,8 @@ interface DragItem {
 
 // Story hover preview component
 function StoryPreview({ post, onClose, anchorRect }: { post: Post; onClose: () => void; anchorRect: DOMRect | null }) {
-  if (!post.mediaUrls[0] || !anchorRect) return null
+  const previewUrl = post.mediaUrls[0] || (post as any).renderedImageUrl
+  if (!previewUrl || !anchorRect) return null
 
   const previewWidth = 200
   const previewHeight = 310
@@ -56,7 +57,7 @@ function StoryPreview({ post, onClose, anchorRect }: { post: Post; onClose: () =
     >
       <div className="rounded-lg border border-white/10 bg-[#0c0c0c] p-1.5 shadow-2xl shadow-black/60">
         <img
-          src={post.mediaUrls[0]}
+          src={previewUrl}
           alt=""
           className="w-full rounded-md object-cover"
           style={{ aspectRatio: '9/16' }}

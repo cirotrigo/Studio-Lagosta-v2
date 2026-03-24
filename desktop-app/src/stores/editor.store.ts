@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import { cloneKonvaDocument, getCurrentPage } from '@/lib/editor/document'
 import type { KonvaPage, KonvaTemplateDocument, Layer } from '@/types/template'
 import { useHistoryStore } from './history.store'
+import { usePagesStore } from './pages.store'
 
 interface ViewportState {
   x: number
@@ -150,13 +151,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
 
   updateCurrentPage: (updater, recordHistory = true) =>
-    set((state) => ({
-      document: applyDocumentMutation(
-        state.document,
-        (document) => updateCurrentPageDocument(document, updater),
-        recordHistory,
-      ),
-    })),
+    set((state) => {
+      const pageId = state.document?.design.currentPageId
+      if (pageId) usePagesStore.getState().invalidateThumbnail(pageId)
+      return {
+        document: applyDocumentMutation(
+          state.document,
+          (document) => updateCurrentPageDocument(document, updater),
+          recordHistory,
+        ),
+      }
+    }),
 
   updatePage: (pageId, updates, recordHistory = true) =>
     set((state) => ({
@@ -176,21 +181,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })),
 
   updateLayer: (layerId, updater, recordHistory = true) =>
-    set((state) => ({
-      document: applyDocumentMutation(
-        state.document,
-        (document) =>
-          updateCurrentPageDocument(document, (page) => ({
-            ...page,
-            layers: page.layers.map((layer) => (layer.id === layerId ? updater(layer) : layer)),
-          })),
-        recordHistory,
-      ),
-    })),
+    set((state) => {
+      const pageId = state.document?.design.currentPageId
+      if (pageId) usePagesStore.getState().invalidateThumbnail(pageId)
+      return {
+        document: applyDocumentMutation(
+          state.document,
+          (document) =>
+            updateCurrentPageDocument(document, (page) => ({
+              ...page,
+              layers: page.layers.map((layer) => (layer.id === layerId ? updater(layer) : layer)),
+            })),
+          recordHistory,
+        ),
+      }
+    }),
 
   updateSelectedLayers: (updater) =>
     set((state) => {
       const selected = new Set(state.selectedLayerIds)
+      const pageId = state.document?.design.currentPageId
+      if (pageId) usePagesStore.getState().invalidateThumbnail(pageId)
       return {
         document: applyDocumentMutation(
           state.document,

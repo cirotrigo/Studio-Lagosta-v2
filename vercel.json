@@ -67,6 +67,9 @@
     },
     "app/api/posts/[id]/analytics/route.ts": {
       "maxDuration": 30
+    },
+    "app/api/cron/render-stories/route.ts": {
+      "maxDuration": 120
     }
   },
   "crons": [
@@ -125,6 +128,10 @@
     {
       "path": "/api/cron/process-youtube-downloads",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/cron/render-stories",
+      "schedule": "*/2 * * * *"
     }
   ]
 }

@@ -34,6 +34,7 @@ import { getFontManager } from '@/lib/font-manager'
 import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
 import { PageSyncWrapper } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
+import { ScheduleStoryModal } from './modals/schedule-story-modal'
 import { useGenerateMultipleCreatives } from '@/hooks/use-generate-multiple-creatives'
 import { useCredits } from '@/hooks/use-credits'
 import { ToggleTemplateButton } from '@/components/template/toggle-template-button'
@@ -202,6 +203,9 @@ function TemplateEditorContent({
   const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
+  const [showScheduleModal, setShowScheduleModal] = React.useState(false)
+
+  const canSchedule = templateType === 'STORY' && !!currentPageId
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -657,6 +661,12 @@ function TemplateEditorContent({
             <Save className="mr-2 h-4 w-4" />
             {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
           </Button>
+          {canSchedule && (
+            <Button size="sm" variant="outline" onClick={() => setShowScheduleModal(true)}>
+              <Calendar className="mr-2 h-4 w-4" />
+              Agendar
+            </Button>
+          )}
           <VideoExportButton />
           <Button size="sm" variant="outline" onClick={toggleFullscreen}>
             <Maximize2 className="mr-2 h-4 w-4" />
@@ -1022,6 +1032,15 @@ function TemplateEditorContent({
           isGenerating={isGeneratingMultiple}
           generationProgress={generationProgress}
         />
+        {canSchedule && currentPageId && (
+          <ScheduleStoryModal
+            open={showScheduleModal}
+            onClose={() => setShowScheduleModal(false)}
+            projectId={projectId}
+            templateId={templateId}
+            pageId={currentPageId}
+          />
+        )}
       </>
     )
   }
@@ -1047,6 +1066,15 @@ function TemplateEditorContent({
           isGenerating={isGeneratingMultiple}
           generationProgress={generationProgress}
         />
+        {canSchedule && currentPageId && (
+          <ScheduleStoryModal
+            open={showScheduleModal}
+            onClose={() => setShowScheduleModal(false)}
+            projectId={projectId}
+            templateId={templateId}
+            pageId={currentPageId}
+          />
+        )}
       </>
     )
   }
@@ -1066,6 +1094,15 @@ function TemplateEditorContent({
         isGenerating={isGeneratingMultiple}
         generationProgress={generationProgress}
       />
+      {canSchedule && currentPageId && (
+        <ScheduleStoryModal
+          open={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          projectId={projectId}
+          templateId={templateId}
+          pageId={currentPageId}
+        />
+      )}
     </>
   )
 }

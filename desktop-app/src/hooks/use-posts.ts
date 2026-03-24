@@ -14,6 +14,11 @@ export interface Post {
   scheduledDatetime: string | null
   createdAt: string
   updatedAt: string
+  // Template-based scheduling
+  pageId?: string | null
+  templateId?: number | null
+  renderedImageUrl?: string | null
+  renderStatus?: string | null
 }
 
 export interface CreatePostData {
@@ -22,6 +27,10 @@ export interface CreatePostData {
   mediaUrls: string[]
   scheduleType: ScheduleType
   scheduledDatetime?: string
+  // Template-based scheduling (Stories only)
+  pageId?: string
+  templateId?: number
+  slotValues?: Record<string, unknown>
 }
 
 export interface UpdatePostData {

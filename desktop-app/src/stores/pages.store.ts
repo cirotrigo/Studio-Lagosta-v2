@@ -6,8 +6,12 @@ import { useEditorStore } from './editor.store'
 
 interface PagesState {
   thumbnails: Record<string, string>
+  /** Monotonic counter per page — bumped to signal stale thumbnail */
+  thumbnailVersions: Record<string, number>
   setThumbnail: (pageId: string, dataUrl: string) => void
   removeThumbnail: (pageId: string) => void
+  /** Mark a page's thumbnail as stale so it gets re-rendered */
+  invalidateThumbnail: (pageId: string) => void
   addPage: () => void
   duplicatePage: (pageId?: string) => void
   removePage: (pageId: string) => void
@@ -26,6 +30,7 @@ function normalizePageOrder(pages: KonvaPage[]): KonvaPage[] {
 
 export const usePagesStore = create<PagesState>((set) => ({
   thumbnails: {},
+  thumbnailVersions: {},
 
   setThumbnail: (pageId, dataUrl) =>
     set((state) => ({
@@ -40,6 +45,19 @@ export const usePagesStore = create<PagesState>((set) => ({
       const next = { ...state.thumbnails }
       delete next[pageId]
       return { thumbnails: next }
+    }),
+
+  invalidateThumbnail: (pageId) =>
+    set((state) => {
+      const next = { ...state.thumbnails }
+      delete next[pageId]
+      return {
+        thumbnails: next,
+        thumbnailVersions: {
+          ...state.thumbnailVersions,
+          [pageId]: (state.thumbnailVersions[pageId] ?? 0) + 1,
+        },
+      }
     }),
 
   addPage: () => {
@@ -165,8 +183,8 @@ export const usePagesStore = create<PagesState>((set) => ({
 
     editor.updateDocument((document) => applyFormatToDocument(document, format))
     editor.clearSelection()
-    set({ thumbnails: {} })
+    set({ thumbnails: {}, thumbnailVersions: {} })
   },
 
-  reset: () => set({ thumbnails: {} }),
+  reset: () => set({ thumbnails: {}, thumbnailVersions: {} }),
 }))

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Bold,
   Italic,
@@ -262,6 +263,7 @@ export function InlineTextEditor({
   // Track selection for toolbar position using multiple events
   const updateToolbarPosition = useCallback(() => {
     const sel = window.getSelection()
+
     if (!sel || sel.rangeCount === 0 || sel.isCollapsed) {
       setToolbarPos(null)
       return
@@ -269,7 +271,9 @@ export function InlineTextEditor({
 
     // Check selection is within our editor
     const editor = editorRef.current
-    if (!editor || !editor.contains(sel.anchorNode)) {
+    const containsAnchor = editor?.contains(sel.anchorNode ?? null)
+
+    if (!editor || !containsAnchor) {
       setToolbarPos(null)
       return
     }
@@ -283,10 +287,11 @@ export function InlineTextEditor({
       return
     }
 
-    setToolbarPos({
+    const pos = {
       x: rect.left + rect.width / 2,
       y: rect.top,
-    })
+    }
+    setToolbarPos(pos)
   }, [])
 
   useEffect(() => {
@@ -440,13 +445,16 @@ export function InlineTextEditor({
         }}
       />
 
-      {/* Floating formatting toolbar */}
-      <FloatingToolbar
-        editorRef={editorRef}
-        position={toolbarPos}
-        projectPalette={projectPalette}
-        availableFontFamilies={availableFontFamilies}
-      />
+      {/* Floating formatting toolbar — portal to body to escape overflow/stacking contexts */}
+      {createPortal(
+        <FloatingToolbar
+          editorRef={editorRef}
+          position={toolbarPos}
+          projectPalette={projectPalette}
+          availableFontFamilies={availableFontFamilies}
+        />,
+        document.body,
+      )}
     </>
   )
 }
