@@ -59,6 +59,7 @@
     "@google/genai": "^1.40.0",
     "@google/generative-ai": "^0.24.1",
     "@hookform/resolvers": "^5.1.1",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@napi-rs/canvas": "^0.1.72",
     "@prisma/client": "^6.16.3",
     "@radix-ui/react-accordion": "^1.2.12",
