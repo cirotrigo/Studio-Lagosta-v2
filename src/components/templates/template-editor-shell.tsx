@@ -150,8 +150,8 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   }
 
   return (
-    <MultiPageProvider templateId={template.id} initialPageId={initialPageId}>
-      <TemplateEditorProvider template={resource}>
+    <MultiPageProvider key={initialPageId || 'default'} templateId={template.id} initialPageId={initialPageId}>
+      <TemplateEditorProvider key={initialPageId || 'default'} template={resource}>
         <PageSyncWrapper>
           <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} agendaMode={agendaMode} />
         </PageSyncWrapper>
