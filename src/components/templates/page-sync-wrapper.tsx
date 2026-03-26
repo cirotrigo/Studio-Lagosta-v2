@@ -15,7 +15,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
   const { currentPage, currentPageId, savePageLayers, updatePageThumbnail } = useMultiPage()
   const { design, loadTemplate, generateThumbnail } = useTemplateEditor()
 
-  const lastPageIdRef = React.useRef<string | null>(currentPageId)
+  const lastPageIdRef = React.useRef<string | null>(null)
   const isSyncingRef = React.useRef(false)
   const lastSavedLayersRef = React.useRef<string>('')
 
