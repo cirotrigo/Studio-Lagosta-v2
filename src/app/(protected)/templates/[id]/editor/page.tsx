@@ -26,6 +26,7 @@ export default async function TemplateEditorPage({
 
   return (
     <TemplateEditorClient
+      key={query.pageId || String(templateId)}
       templateId={Number.isFinite(templateId) ? templateId : NaN}
       prefillDriveImage={
         query.driveFileId
