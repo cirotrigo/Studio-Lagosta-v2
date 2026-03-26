@@ -214,22 +214,35 @@ function getWeekStart(weekStr: string): Date {
   return new Date(weekStr + 'T12:00:00')
 }
 
-async function getTemplatePages(projectId: number) {
+async function getTemplatePages(projectId: number, tags?: string[]) {
+  const where: any = { projectId, type: 'STORY' }
+  if (tags?.length) where.tags = { hasSome: tags }
+
   const templates = await prisma.template.findMany({
-    where: { projectId, type: 'STORY' },
+    where,
     include: {
       Page: {
         where: { isTemplate: true },
-        select: { id: true, name: true, templateId: true },
+        select: { id: true, name: true, templateId: true, tags: true },
       },
     },
   })
 
   const allPages = templates.flatMap((t: any) =>
-    t.Page.map((p: any) => ({ ...p, templateName: t.name, templateId: t.id })),
+    t.Page.map((p: any) => ({ ...p, templateName: t.name, templateId: t.id, templateTags: t.tags ?? [] })),
   )
 
   return { templates, pages: allPages }
+}
+
+/** Select a page from available pages, avoiding recently used ones */
+function selectThemePage(pages: any[], usedPages: Set<string>): any | null {
+  if (pages.length === 0) return null
+  const unused = pages.filter((p: any) => !usedPages.has(p.id))
+  const pool = unused.length > 0 ? unused : pages
+  const selected = pool[Math.floor(Math.random() * pool.length)]
+  usedPages.add(selected.id)
+  return selected
 }
 
 // ─── MCP Server Setup ────────────────────────────────────────────────
@@ -375,6 +388,78 @@ server.tool(
 )
 
 // ═══════════════════════════════════════════════════════════════════════
+// TOOL: create-template
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'create-template',
+  'Create a new template with optional inline pages. Use for theme-based templates (abertura, almoco, happy-hour, etc.)',
+  {
+    projectId: z.number().describe('Project ID'),
+    name: z.string().describe('Template name (e.g., "By Rock - Happy Hour")'),
+    type: z.enum(['STORY', 'FEED_PORTRAIT', 'SQUARE']).optional().describe('Template type (default: STORY)'),
+    dimensions: z.string().optional().describe('Dimensions string (default: "1080x1920")'),
+    category: z.string().optional().describe('Category for grouping'),
+    tags: z.array(z.string()).optional().describe('Tags for theme-based selection (e.g., ["happy-hour", "promo"])'),
+    pages: z.string().optional().describe('JSON array of pages: [{ name, layers (JSON string), background?, tags? }]'),
+  },
+  async ({ projectId, name, type, dimensions, category, tags, pages }) => {
+    try {
+      const project = await prisma.project.findUnique({ where: { id: projectId }, select: { userId: true } })
+      if (!project) return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
+
+      const parsedPages = pages ? JSON.parse(pages) : []
+
+      const template = await prisma.template.create({
+        data: {
+          name,
+          type: (type ?? 'STORY') as any,
+          dimensions: dimensions ?? '1080x1920',
+          designData: {},
+          category: category ?? null,
+          tags: tags ?? [],
+          projectId,
+          createdBy: project.userId,
+        },
+      })
+
+      const pageIds: string[] = []
+      for (let i = 0; i < parsedPages.length; i++) {
+        const p = parsedPages[i]
+        const pageLayers = typeof p.layers === 'string' ? p.layers : JSON.stringify(p.layers ?? [])
+        const page = await prisma.page.create({
+          data: {
+            name: p.name ?? `Página ${i + 1}`,
+            width: 1080,
+            height: 1920,
+            layers: pageLayers,
+            background: p.background ?? '#000000',
+            order: i,
+            isTemplate: true,
+            tags: p.tags ?? [],
+            templateId: template.id,
+          },
+        })
+        pageIds.push(page.id)
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify({
+          created: true,
+          templateId: template.id,
+          name: template.name,
+          tags: template.tags,
+          pageCount: pageIds.length,
+          pageIds,
+        }, null, 2) }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
 // TOOL 4: create-page
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -399,14 +484,15 @@ server.tool(
         _max: { order: true },
       })
 
-      const parsedLayers = layers ? JSON.parse(layers) : []
+      // Store layers as JSON string (matching editor format)
+      const layersStr = layers ?? '[]'
 
       const page = await prisma.page.create({
         data: {
           name,
           width: width ?? 1080,
           height: height ?? 1920,
-          layers: parsedLayers,
+          layers: layersStr,
           background: background ?? '#ffffff',
           order: (maxOrder._max.order ?? -1) + 1,
           isTemplate: isTemplate ?? true,
@@ -717,6 +803,31 @@ server.tool(
       const slotValues = (post.slotValues as Record<string, unknown>) ?? {}
       if (Object.keys(slotValues).length > 0) {
         designData = applySlotValues(designData, slotValues)
+      }
+
+      // 5b. Resolve _driveImageId → thumbnail URL for isDynamic image layers
+      const driveImageId = slotValues._driveImageId as string | undefined
+      if (driveImageId) {
+        try {
+          const drive = getDrive()
+          const file = await drive.files.get({ fileId: driveImageId, fields: 'thumbnailLink' })
+          if (file.data.thumbnailLink) {
+            // Replace =s220 with =s1920 for high-res
+            const hiResUrl = file.data.thumbnailLink.replace(/=s\d+$/, '=s1920')
+            // Apply to first isDynamic image layer (or layer named bg-img / "Imagem - Background")
+            designData = {
+              ...designData,
+              layers: designData.layers.map((layer: any) => {
+                if (layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && (!layer.fileUrl || layer.fileUrl === '')) {
+                  return { ...layer, fileUrl: hiResUrl }
+                }
+                return layer
+              }),
+            }
+          }
+        } catch (driveErr: any) {
+          console.error('[render-story] Drive image resolve failed:', driveErr.message)
+        }
       }
 
       // 6. Register project fonts
@@ -1089,8 +1200,10 @@ server.tool(
 
       // 4. Load KB & template pages
       const kb = await loadKB(projectId)
-      const { pages } = await getTemplatePages(projectId)
-      if (pages.length === 0) {
+
+      // Load ALL template pages first (for fallback), then theme-specific ones
+      const { pages: allPages } = await getTemplatePages(projectId)
+      if (allPages.length === 0) {
         return { content: [{ type: 'text' as const, text: 'Error: No template pages found' }], isError: true }
       }
 
@@ -1102,9 +1215,10 @@ server.tool(
       ]
       const configs = storyConfigs ? JSON.parse(storyConfigs) : defaultConfigs.slice(0, storiesPerDay ?? 3)
 
-      // 6. Plan each day
+      // 6. Plan each day — select template per STORY (by theme), not per day
       const weekPlan: any[] = []
       const selectedImages = new Set<string>()
+      const usedPages = new Set<string>()
 
       for (let d = 0; d < numDays; d++) {
         const date = new Date(start)
@@ -1112,35 +1226,50 @@ server.tool(
         const dateStr = formatDate(date)
         const dayOfWeek = DAY_NAMES[date.getDay()]
 
-        // Select page for this day
-        const dayPage = pages.find((p: any) =>
-          p.templateName.toLowerCase().includes(dayOfWeek) || p.name.toLowerCase().includes(dayOfWeek),
-        ) ?? pages[0]
-
         const stories = configs.map((config: any) => {
           const image = selectImage(catalog, config.theme, dateStr, selectedImages)
           if (image) selectedImages.add(image.driveFileId)
+
+          // Select page by theme tag (new), fallback to day-of-week name (legacy)
+          const themePages = allPages.filter((p: any) =>
+            p.templateTags?.includes(config.theme),
+          )
+          const legacyPages = allPages.filter((p: any) =>
+            p.templateName.toLowerCase().includes(dayOfWeek) || p.name.toLowerCase().includes(dayOfWeek),
+          )
+          const candidatePages = themePages.length > 0 ? themePages : (legacyPages.length > 0 ? legacyPages : allPages)
+          const page = selectThemePage(candidatePages, usedPages) ?? allPages[0]
 
           // Convert local time to UTC (add 3h for BRT)
           const [hh, mm] = config.localTime.split(':').map(Number)
           const utcHH = String(hh + 3).padStart(2, '0')
           const utcTime = `${utcHH}:${String(mm).padStart(2, '0')}`
 
+          // Build texts with semantic slot names for multi-field copy
+          const dayTitle = DAY_TITLES[dayOfWeek] ?? dayOfWeek.toUpperCase()
+          const themeTitle = config.label.toUpperCase()
+
           return {
             label: config.label,
             localTime: config.localTime,
             utcTime,
             theme: config.theme,
-            pageId: dayPage.id,
-            pageName: dayPage.name,
-            templateId: dayPage.templateId,
-            templateName: dayPage.templateName,
+            pageId: page.id,
+            pageName: page.name,
+            templateId: page.templateId,
+            templateName: page.templateName,
             driveImageId: image?.driveFileId ?? null,
             driveImageName: image?.fileName ?? null,
             driveImageDescription: image?.description ?? null,
             texts: {
-              title: DAY_TITLES[dayOfWeek] ?? dayOfWeek.toUpperCase(),
-              subtitle: config.label.toUpperCase(),
+              'Pre-titulo': dayTitle,
+              'Titulo': themeTitle,
+              'Subtitulo': '',
+              'Rodape-1': '',
+              'CTA': '',
+              // Legacy compatibility
+              title: dayTitle,
+              subtitle: themeTitle,
             },
           }
         })
@@ -1162,7 +1291,7 @@ server.tool(
               days: numDays,
               totalStories,
               catalogImages: catalog.images.length,
-              templatePages: pages.length,
+              templatePages: allPages.length,
               knowledgeEntries: kb.length,
               plan: weekPlan,
             }, null, 2),
@@ -1188,7 +1317,7 @@ server.tool(
               projectId: project.id,
               userId: project.userId,
               postType: 'STORY',
-              caption: `${story.texts.title} ${story.texts.subtitle}`,
+              caption: `${story.texts['Pre-titulo'] || story.texts.title} ${story.texts['Titulo'] || story.texts.subtitle}`,
               mediaUrls: [],
               scheduleType: 'SCHEDULED',
               scheduledDatetime,
