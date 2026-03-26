@@ -26,8 +26,17 @@ interface MultiPageProviderProps {
 export function MultiPageProvider({ templateId, children, initialPageId }: MultiPageProviderProps) {
   const [currentPageId, setCurrentPageIdState] = React.useState<string | null>(initialPageId ?? null)
 
-  const { data: pagesData = [], isLoading } = usePages(templateId)
+  const { data: pagesData = [], isLoading, refetch } = usePages(templateId)
   const updatePageMutation = useUpdatePage({ skipInvalidation: true }) // Otimizado: não causa re-fetch
+
+  // Force refetch when mounting with initialPageId (agenda navigation)
+  const hasRefetchedRef = React.useRef(false)
+  React.useEffect(() => {
+    if (initialPageId && !hasRefetchedRef.current) {
+      hasRefetchedRef.current = true
+      refetch()
+    }
+  }, [initialPageId, refetch])
 
   // Converter pages do banco para o formato Page
   const pages = React.useMemo<Page[]>(() => {
