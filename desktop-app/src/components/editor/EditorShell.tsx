@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, Blend, CalendarClock, History, Keyboard, RefreshCw, Sparkles, Type, Undo2, X, ZoomIn, ZoomOut, Image as ImageIcon, Loader2, Square, Trash2 } from 'lucide-react'
 import { createGradientLayer, createImageLayer, createShapeLayer, createTextLayer } from '@/lib/editor/document'
 import { LayersPanel } from './LayersPanel'
+import { LogoElementsPanel } from './LogoElementsPanel'
 import { PropertiesPanel } from './PropertiesPanel'
 import { EditorStage } from './EditorStage'
 import { PagesBar } from './PagesBar'
@@ -277,9 +278,14 @@ export function EditorShell({
 
       {/* Main Editor Area with Panel Dividers */}
       <div className="flex h-[calc(100vh-280px)] min-h-[680px] gap-0">
-        {/* Layers Panel */}
-        <div className="w-[300px] shrink-0">
-          <LayersPanel />
+        {/* Layers + Assets Panel */}
+        <div className="w-[300px] shrink-0 flex flex-col gap-0 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto">
+            <LayersPanel />
+          </div>
+          <div className="border-t border-white/10 max-h-[45%] overflow-y-auto">
+            <LogoElementsPanel />
+          </div>
         </div>
 
         {/* Divider with beam */}
