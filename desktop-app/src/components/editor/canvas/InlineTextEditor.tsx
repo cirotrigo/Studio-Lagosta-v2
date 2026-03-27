@@ -409,6 +409,11 @@ export function InlineTextEditor({
         contentEditable
         suppressContentEditableWarning
         onKeyDown={handleKeyDown}
+        onPaste={(e) => {
+          e.preventDefault()
+          const text = e.clipboardData.getData('text/plain')
+          document.execCommand('insertText', false, text)
+        }}
         dangerouslySetInnerHTML={{ __html: initialHtml.current }}
         className="inline-text-editor"
         style={{

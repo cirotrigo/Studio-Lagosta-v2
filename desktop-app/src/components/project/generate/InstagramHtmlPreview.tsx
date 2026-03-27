@@ -170,6 +170,11 @@ export default function InstagramHtmlPreview({
         style={mergedStyle}
         contentEditable
         suppressContentEditableWarning
+        onPaste={(e) => {
+          e.preventDefault()
+          const text = e.clipboardData.getData('text/plain')
+          document.execCommand('insertText', false, text)
+        }}
         onInput={(event) => {
           const next = normalizeInputValue(event.currentTarget.textContent || '', preserveBreaks)
           handleFieldChange(fieldKey, next)
