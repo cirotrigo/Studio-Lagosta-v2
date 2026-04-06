@@ -50,9 +50,12 @@ function parseArgs() {
   const args = process.argv.slice(2)
   const opts: Record<string, string | boolean> = {}
   for (let i = 0; i < args.length; i++) {
-    if (args[i].startsWith('--') && i + 1 < args.length && !args[i + 1].startsWith('--')) {
-      const key = args[i].replace(/^--/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+    if (!args[i].startsWith('--')) continue
+    const key = args[i].replace(/^--/, '').replace(/-([a-z])/g, (_, c) => c.toUpperCase())
+    if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
       opts[key] = args[++i]
+    } else {
+      opts[key] = true // boolean flag
     }
   }
   return opts
@@ -91,14 +94,23 @@ function fetchBuffer(url: string): Promise<Buffer> {
 }
 
 // ─── Drive Helpers ───────────────────────────────────────────────────
-async function listSubfolders(parentId: string) {
+async function listSubfolders(parentId: string, depth = 2, prefix = ''): Promise<{ id: string; name: string }[]> {
   const drive = getDrive()
   const res = await drive.files.list({
     q: `'${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
     fields: 'files(id, name)',
     pageSize: 50,
   })
-  return res.data.files ?? []
+  const folders: { id: string; name: string }[] = []
+  for (const f of res.data.files ?? []) {
+    const fullName = prefix ? `${prefix}/${f.name}` : f.name!
+    folders.push({ id: f.id!, name: fullName })
+    if (depth > 1) {
+      const subFolders = await listSubfolders(f.id!, depth - 1, fullName)
+      folders.push(...subFolders)
+    }
+  }
+  return folders
 }
 
 async function listFolderImages(folderId: string, cutoffDate: string) {
@@ -121,6 +133,48 @@ async function listFolderImages(folderId: string, cutoffDate: string) {
   } while (pageToken)
 
   return all
+}
+
+function slugify(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // strip accents
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60)
+}
+
+function buildNewFileName(
+  originalName: string,
+  analysis: { menuItem: string | null; tags: string[]; mood: string; menuCategory: string | null },
+  fileId: string,
+): string | null {
+  const extMatch = originalName.match(/\.[a-zA-Z0-9]+$/)
+  const ext = extMatch ? extMatch[0].toLowerCase() : '.jpg'
+
+  let base: string
+  if (analysis.menuItem) {
+    base = slugify(analysis.menuItem)
+  } else if (analysis.menuCategory) {
+    const catSlug = slugify(analysis.menuCategory)
+    const tagSlug = analysis.tags[0] ? slugify(analysis.tags[0]) : analysis.mood ? slugify(analysis.mood) : ''
+    base = tagSlug ? `${catSlug}-${tagSlug}` : catSlug
+  } else if (analysis.tags[0]) {
+    base = slugify(analysis.tags[0])
+  } else {
+    return null // not enough info to rename safely
+  }
+
+  if (!base) return null
+
+  const shortId = fileId.slice(-6).toLowerCase()
+  return `${base}-${shortId}${ext}`
+}
+
+async function renameDriveFile(fileId: string, newName: string): Promise<void> {
+  const drive = getDrive()
+  await drive.files.update({ fileId, requestBody: { name: newName } })
 }
 
 async function downloadThumbnail(fileId: string): Promise<Buffer> {
@@ -179,11 +233,16 @@ async function saveCatalogToDrive(catalog: ImageCatalog, imagesFolderId: string)
 
 // ─── Knowledge Base ──────────────────────────────────────────────────
 async function loadMenu(projectId: number): Promise<string> {
+  // First try CARDAPIO category, then fallback to ESTABELECIMENTO_INFO tagged as "Cardápio"
   const entries = await prisma.$queryRawUnsafe<{ content: string }[]>(
-    `SELECT content FROM knowledge_base_entries WHERE "projectId" = $1 AND category = 'CARDAPIO'`,
+    `SELECT content FROM knowledge_base_entries WHERE "projectId" = $1 AND (
+      category = 'CARDAPIO'
+      OR (category = 'ESTABELECIMENTO_INFO' AND (title ILIKE '%cardápio%' OR title ILIKE '%cardapio%'))
+    ) ORDER BY CASE WHEN category = 'CARDAPIO' THEN 0 ELSE 1 END`,
     projectId,
   )
-  return entries[0]?.content ?? ''
+  // Concatenate all matching entries (some projects split menu across entries)
+  return entries.map(e => e.content).join('\n\n') || ''
 }
 
 // ─── Gemini Analysis ─────────────────────────────────────────────────
@@ -192,19 +251,24 @@ async function analyzeImage(
   fileName: string,
   folderName: string,
   menu: string,
+  projectName: string,
 ): Promise<Omit<ImageAnalysis, 'driveFileId' | 'fileName' | 'folder' | 'folderId' | 'createdTime' | 'usageHistory'>> {
   const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
 
-  const prompt = `Analise esta foto de um restaurante/steakhouse chamado "By Rock" (steakhouse rock & roll).
+  const menuSection = menu
+    ? `CARDÁPIO COMPLETO DO RESTAURANTE (use EXATAMENTE estes nomes):
+${menu}`
+    : '(Cardápio não disponível — descreva o prato pelo que vê na foto)'
+
+  const prompt = `Analise esta foto do restaurante "${projectName}".
 
 A foto está na pasta "${folderName}" do acervo do restaurante.
 
-CARDÁPIO DO RESTAURANTE:
-${menu}
+${menuSection}
 
 Retorne um JSON com:
 {
-  "menuItem": "Nome do prato do cardápio que aparece na foto (null se não for comida ou não conseguir identificar)",
+  "menuItem": "Nome EXATO do item do cardápio acima (copie letra por letra). null se não for comida/bebida ou se não conseguir identificar",
   "menuCategory": "Categoria: PRATOS_PRINCIPAIS, PETISCOS_ENTRADAS, BURGERS, CHAPAS, SALADAS, SOBREMESAS, BEBIDAS, AMBIENTE, AREA_KIDS, MUSICA, ou null",
   "description": "Descrição curta em português do que aparece na foto (1-2 frases)",
   "tags": ["lista", "de", "tags", "relevantes"],
@@ -213,10 +277,13 @@ Retorne um JSON com:
   "quality": "alta, media, ou baixa (baseado em foco, iluminação, composição)"
 }
 
-IMPORTANTE:
-- Se for comida, tente associar ao prato EXATO do cardápio pela aparência dos ingredientes
-- Se não for comida (ambiente, pessoas, decoração), menuItem = null
-- Responda APENAS o JSON, sem markdown`
+REGRAS OBRIGATÓRIAS:
+1. menuItem DEVE ser copiado EXATAMENTE como aparece no cardápio acima (mesma capitalização, acentos e grafia)
+2. Se a foto mostra comida mas você não consegue associar a nenhum item específico do cardápio, use null
+3. NÃO invente nomes de pratos — use APENAS os que constam no cardápio
+4. Se for ambiente, pessoas, decoração ou área externa: menuItem = null, menuCategory = "AMBIENTE"
+5. Se for bebida (cerveja, chopp, drink, etc): menuCategory = "BEBIDAS"
+6. Responda APENAS o JSON, sem markdown`
 
   const result = await model.generateContent([
     prompt,
@@ -256,6 +323,9 @@ async function main() {
   const opts = parseArgs()
   const months = parseInt(opts.months as string ?? '9', 10)
   const batchSize = parseInt(opts.batch as string ?? '200', 10)
+  const shouldRename = opts.rename === true || opts.rename === 'true'
+  const shouldReset = opts.reset === true || opts.reset === 'true'
+  const renameOnly = opts.renameOnly === true || opts.renameOnly === 'true'
 
   console.log('═══════════════════════════════════════════════════')
   console.log('  Studio Lagosta — Image Analysis (Gemini Flash)')
@@ -274,8 +344,9 @@ async function main() {
   if (!project) throw new Error('Project not found')
   console.log(`Project: ${project.name} (ID: ${project.id})`)
 
-  const imagesFolderId = project.googleDriveImagesFolderId ?? project.googleDriveFolderId
+  const imagesFolderId = (opts.folderId as string) ?? project.googleDriveImagesFolderId ?? project.googleDriveFolderId
   if (!imagesFolderId) throw new Error('No Drive folder configured')
+  if (opts.folderId) console.log(`  Using custom folder: ${opts.folderId}`)
 
   // 2. Load menu
   console.log('\n1. Loading menu from knowledge base...')
@@ -284,8 +355,14 @@ async function main() {
 
   // 3. Load or create catalog
   console.log('\n2. Loading catalog from Drive...')
-  const catalogFileId = await findCatalogFile(imagesFolderId)
+  let catalogFileId = await findCatalogFile(imagesFolderId)
   let catalog: ImageCatalog
+
+  if (catalogFileId && shouldReset) {
+    console.log(`  ⚠ --reset flag: deleting existing catalog (${catalogFileId})`)
+    await getDrive().files.delete({ fileId: catalogFileId })
+    catalogFileId = null
+  }
 
   if (catalogFileId) {
     catalog = await readCatalogFromDrive(catalogFileId)
@@ -300,6 +377,66 @@ async function main() {
       images: [],
     }
     console.log('  ○ No catalog found, creating new one')
+  }
+
+  // ── Rename-only mode: rename cataloged images without re-analyzing ──
+  if (renameOnly) {
+    if (catalog.images.length === 0) {
+      console.log('\n  No images in catalog to rename.')
+      await prisma.$disconnect()
+      return
+    }
+
+    console.log(`\n3. Renaming ${catalog.images.length} cataloged images on Drive...\n`)
+    let renamed = 0
+    let skipped = 0
+    let errors = 0
+
+    for (let i = 0; i < catalog.images.length; i++) {
+      const img = catalog.images[i]
+      const progress = `[${i + 1}/${catalog.images.length}]`
+
+      if (img.quality === 'baixa') {
+        skipped++
+        continue
+      }
+
+      const newName = buildNewFileName(img.fileName, img, img.driveFileId)
+      if (!newName || newName === img.fileName) {
+        skipped++
+        continue
+      }
+
+      process.stdout.write(`  ${progress} ${img.folder}/${img.fileName} → ${newName}...`)
+
+      try {
+        await renameDriveFile(img.driveFileId, newName)
+        img.fileName = newName
+        renamed++
+        console.log(' ✓')
+      } catch (e: any) {
+        errors++
+        console.log(` ✗ ${e.message?.slice(0, 50)}`)
+      }
+
+      // Avoid rate limiting
+      await sleep(200)
+    }
+
+    // Save updated catalog with new filenames
+    console.log(`\n4. Saving catalog to Drive...`)
+    catalog.lastUpdated = new Date().toISOString()
+    await saveCatalogToDrive(catalog, imagesFolderId)
+    console.log(`  ✓ Catalog saved`)
+
+    console.log('\n═══════════════════════════════════════════════════')
+    console.log(`  ✓ Renamed: ${renamed} files`)
+    console.log(`  ○ Skipped: ${skipped} (low quality, already named, or insufficient info)`)
+    if (errors) console.log(`  ✗ Errors: ${errors}`)
+    console.log('═══════════════════════════════════════════════════')
+
+    await prisma.$disconnect()
+    return
   }
 
   const existingIds = new Set(catalog.images.map((i) => i.driveFileId))
@@ -337,9 +474,10 @@ async function main() {
   }
 
   // 5. Analyze each image
-  console.log(`\n4. Analyzing ${toProcess.length} images with Gemini 2.0 Flash...\n`)
+  console.log(`\n4. Analyzing ${toProcess.length} images with Gemini 2.0 Flash${shouldRename ? ' + renaming' : ''}...\n`)
   let analyzed = 0
   let errors = 0
+  let renamed = 0
 
   for (const img of toProcess) {
     const progress = `[${analyzed + 1}/${toProcess.length}]`
@@ -350,12 +488,27 @@ async function main() {
       const thumbBuf = await downloadThumbnail(img.id)
 
       // Analyze with Gemini
-      const result = await analyzeImage(thumbBuf, img.name, img.folder, menu)
+      const result = await analyzeImage(thumbBuf, img.name, img.folder, menu, project.name)
+
+      // Optionally rename file on Drive (skip low-quality to avoid masking bad photos)
+      let finalName = img.name
+      if (shouldRename && result.quality !== 'baixa') {
+        const newName = buildNewFileName(img.name, result, img.id)
+        if (newName && newName !== img.name) {
+          try {
+            await renameDriveFile(img.id, newName)
+            finalName = newName
+            renamed++
+          } catch (renameErr: any) {
+            console.log(` ⚠ rename failed: ${renameErr.message?.slice(0, 40)}`)
+          }
+        }
+      }
 
       // Add to catalog
       catalog.images.push({
         driveFileId: img.id,
-        fileName: img.name,
+        fileName: finalName,
         folder: img.folder,
         folderId: img.folderId,
         createdTime: img.createdTime,
@@ -370,7 +523,8 @@ async function main() {
       })
 
       const menuLabel = result.menuItem ? ` → ${result.menuItem}` : ''
-      console.log(` ✓${menuLabel}`)
+      const renameLabel = finalName !== img.name ? ` [renamed: ${finalName}]` : ''
+      console.log(` ✓${menuLabel}${renameLabel}`)
       analyzed++
 
       // Rate limit: ~15 req/min for free tier
@@ -392,6 +546,7 @@ async function main() {
   const menuAssociations = catalog.images.filter((i) => i.menuItem).length
   console.log('\n═══════════════════════════════════════════════════')
   console.log(`  ✓ Analyzed: ${analyzed} images (${errors} errors)`)
+  if (shouldRename) console.log(`  ✓ Renamed: ${renamed} files on Drive`)
   console.log(`  ✓ Total catalog: ${catalog.images.length} images`)
   console.log(`  ✓ Menu associations: ${menuAssociations} photos linked to menu items`)
   console.log('')
