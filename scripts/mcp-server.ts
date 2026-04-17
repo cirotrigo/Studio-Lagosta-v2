@@ -689,8 +689,34 @@ server.tool(
       const updated = await prisma.socialPost.update({
         where: { id: postId },
         data,
-        select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true },
+        select: { id: true, status: true, renderStatus: true, scheduledDatetime: true, caption: true, laterPostId: true },
       })
+
+      // Sync changes to Zernio if post is already on Zernio
+      let zernioSynced = false
+      if (updated.laterPostId) {
+        try {
+          const { getLaterClient } = await import('../src/lib/later/client')
+          const client = getLaterClient()
+          const zernioPayload: any = {}
+          if (caption !== undefined) zernioPayload.content = caption
+          if (scheduledDatetime !== undefined && updated.scheduledDatetime) {
+            zernioPayload.scheduledFor = updated.scheduledDatetime.toISOString()
+          }
+          if (mediaUrls !== undefined) {
+            zernioPayload.mediaItems = mediaUrls.map((url: string) => ({
+              type: /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url) ? 'video' : 'image',
+              url,
+            }))
+          }
+          if (Object.keys(zernioPayload).length > 0) {
+            await client.updatePost(updated.laterPostId, zernioPayload)
+            zernioSynced = true
+          }
+        } catch (err: any) {
+          console.error(`[MCP update-post] Zernio sync failed: ${err.message}`)
+        }
+      }
 
       return {
         content: [{
@@ -701,6 +727,7 @@ server.tool(
             status: updated.status,
             renderStatus: updated.renderStatus,
             scheduledBRT: updated.scheduledDatetime ? formatBRT(updated.scheduledDatetime) : null,
+            zernioSynced,
           }, null, 2),
         }],
       }
@@ -744,10 +771,30 @@ server.tool(
         return { content: [{ type: 'text' as const, text: 'Error: Provide postIds or projectId + date range' }], isError: true }
       }
 
+      // Before deleting, sync deletions to Zernio
+      const postsToDelete = await prisma.socialPost.findMany({
+        where,
+        select: { id: true, laterPostId: true },
+      })
+
+      let zernioDeleted = 0
+      for (const p of postsToDelete) {
+        if (p.laterPostId) {
+          try {
+            const { getLaterClient } = await import('../src/lib/later/client')
+            const client = getLaterClient()
+            await client.deletePost(p.laterPostId)
+            zernioDeleted++
+          } catch (err: any) {
+            console.error(`[MCP delete-posts] Zernio delete failed for ${p.laterPostId}: ${err.message}`)
+          }
+        }
+      }
+
       const result = await prisma.socialPost.deleteMany({ where })
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ deleted: result.count }, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify({ deleted: result.count, zernioDeleted }, null, 2) }],
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
@@ -910,7 +957,7 @@ server.tool(
     projectId: z.number().describe('Project ID'),
     folderId: z.string().optional().describe('Specific subfolder ID (default: project imagesFolderId)'),
     includeSubfolders: z.boolean().optional().describe('Include subfolder images (default: true)'),
-    limit: z.number().optional().describe('Max results (default: 50)'),
+    limit: z.number().optional().describe('Max results (default: all images)'),
   },
   async ({ projectId, folderId, includeSubfolders, limit }) => {
     try {
@@ -924,45 +971,60 @@ server.tool(
       if (!rootFolderId) return { content: [{ type: 'text' as const, text: 'Error: No Drive folder configured' }], isError: true }
 
       const drive = getDrive()
-      const maxResults = Math.min(limit ?? 50, 200)
 
-      // List images in folder
-      const listImages = async (parentId: string, folderName: string) => {
-        const res = await drive.files.list({
-          q: `'${parentId}' in parents and mimeType contains 'image/' and trashed = false`,
-          fields: 'files(id,name,mimeType,thumbnailLink,createdTime,size)',
-          pageSize: maxResults,
-          orderBy: 'createdTime desc',
-        })
-        return (res.data.files ?? []).map((f: any) => ({
-          driveFileId: f.id,
-          fileName: f.name,
-          folder: folderName,
-          mimeType: f.mimeType,
-          thumbnailLink: f.thumbnailLink,
-          createdTime: f.createdTime,
-          sizeBytes: f.size,
-        }))
+      // List ALL images in a folder with pagination
+      const listAllImages = async (parentId: string, folderName: string) => {
+        const allFiles: any[] = []
+        let pageToken: string | undefined
+        do {
+          const res = await drive.files.list({
+            q: `'${parentId}' in parents and mimeType contains 'image/' and trashed = false`,
+            fields: 'nextPageToken, files(id,name,mimeType,thumbnailLink,createdTime,size)',
+            pageSize: 1000,
+            orderBy: 'createdTime desc',
+            pageToken,
+          })
+          for (const f of res.data.files ?? []) {
+            allFiles.push({
+              driveFileId: f.id,
+              fileName: f.name,
+              folder: folderName,
+              mimeType: f.mimeType,
+              thumbnailLink: f.thumbnailLink,
+              createdTime: f.createdTime,
+              sizeBytes: f.size,
+            })
+          }
+          pageToken = res.data.nextPageToken ?? undefined
+        } while (pageToken)
+        return allFiles
       }
 
-      let images = await listImages(rootFolderId, '(root)')
+      let images = await listAllImages(rootFolderId, '(root)')
 
-      // Include subfolders
+      // Include subfolders (paginated too)
       if (includeSubfolders !== false) {
-        const foldersRes = await drive.files.list({
-          q: `'${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
-          fields: 'files(id,name)',
-          pageSize: 20,
-        })
-        for (const folder of foldersRes.data.files ?? []) {
-          if (images.length >= maxResults) break
-          const subImages = await listImages(folder.id!, folder.name!)
-          images = images.concat(subImages)
-        }
+        let folderPageToken: string | undefined
+        do {
+          const foldersRes = await drive.files.list({
+            q: `'${rootFolderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+            fields: 'nextPageToken, files(id,name)',
+            pageSize: 100,
+            pageToken: folderPageToken,
+          })
+          for (const folder of foldersRes.data.files ?? []) {
+            const subImages = await listAllImages(folder.id!, folder.name!)
+            images = images.concat(subImages)
+          }
+          folderPageToken = foldersRes.data.nextPageToken ?? undefined
+        } while (folderPageToken)
       }
+
+      // Apply limit only if explicitly set
+      const finalImages = limit ? images.slice(0, limit) : images
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify(images.slice(0, maxResults), null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify(finalImages, null, 2) }],
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
@@ -1111,6 +1173,37 @@ server.tool(
           { type: 'text' as const, text: `Image: ${file.data.name}` },
           { type: 'image' as const, data: base64, mimeType: 'image/png' },
         ],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL: download-drive-image
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'download-drive-image',
+  'Download a Google Drive image to a local file path (full resolution)',
+  {
+    driveFileId: z.string().describe('Google Drive file ID'),
+    outputPath: z.string().describe('Absolute local file path to save the image (e.g., /Users/.../images/story-01.jpg)'),
+  },
+  async ({ driveFileId, outputPath }) => {
+    try {
+      const drive = getDrive()
+      const resp = await drive.files.get(
+        { fileId: driveFileId, alt: 'media' },
+        { responseType: 'arraybuffer' },
+      )
+      const buf = Buffer.from(resp.data as ArrayBuffer)
+      const dir = path.dirname(outputPath)
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(outputPath, buf)
+      return {
+        content: [{ type: 'text' as const, text: `Downloaded ${buf.length} bytes to ${outputPath}` }],
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
@@ -1343,6 +1436,186 @@ server.tool(
             postIds,
             plan: weekPlan,
           }, null, 2),
+        }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 15: get-brand-assets
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'get-brand-assets',
+  'Get all brand assets for a project: colors, custom fonts (with file URLs), logo, and a summary of the knowledge base. Used to cache project identity locally.',
+  {
+    projectId: z.number().describe('Project ID'),
+  },
+  async ({ projectId }) => {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: {
+          id: true,
+          name: true,
+          instagramUsername: true,
+          logoUrl: true,
+          titleFontFamily: true,
+          bodyFontFamily: true,
+          brandStyleDescription: true,
+          cuisineType: true,
+          brandColors: {
+            select: { id: true, name: true, hexCode: true },
+            orderBy: { id: 'asc' },
+          },
+          customFonts: {
+            select: { id: true, name: true, fontFamily: true, fileUrl: true },
+            orderBy: { id: 'asc' },
+          },
+          logos: {
+            select: { id: true, name: true, fileUrl: true, isProjectLogo: true },
+            orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }],
+          },
+        },
+      })
+
+      if (!project) {
+        return { content: [{ type: 'text' as const, text: `Project ${projectId} not found` }], isError: true }
+      }
+
+      // Fetch KB summary (key categories only)
+      const kbEntries = await prisma.knowledgeBaseEntry.findMany({
+        where: {
+          projectId,
+          status: 'ACTIVE',
+          category: { in: ['TOM_DE_VOZ', 'ESTABELECIMENTO_INFO', 'HORARIOS', 'DIFERENCIAIS'] },
+        },
+        select: { category: true, title: true, content: true },
+        orderBy: { category: 'asc' },
+      })
+
+      const knowledge: Record<string, string> = {}
+      for (const entry of kbEntries) {
+        const key = entry.category === 'TOM_DE_VOZ' ? 'tomDeVoz'
+          : entry.category === 'ESTABELECIMENTO_INFO' ? 'estabelecimento'
+          : entry.category === 'HORARIOS' ? 'horarios'
+          : entry.category === 'DIFERENCIAIS' ? 'diferenciais'
+          : entry.category
+        // Concatenate multiple entries of the same category
+        knowledge[key] = knowledge[key]
+          ? `${knowledge[key]}\n---\n${entry.content}`
+          : entry.content
+      }
+
+      const result = {
+        projectId: project.id,
+        projectName: project.name,
+        instagramUsername: project.instagramUsername,
+        brandStyle: project.brandStyleDescription,
+        cuisineType: project.cuisineType,
+        titleFontFamily: project.titleFontFamily,
+        bodyFontFamily: project.bodyFontFamily,
+        logoUrl: project.logoUrl,
+        logos: project.logos,
+        colors: project.brandColors,
+        fonts: project.customFonts,
+        knowledge,
+      }
+
+      return {
+        content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 16: sync-zernio-posts
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'sync-zernio-posts',
+  'Import/sync posts from Zernio into local DB for a project. Posts created via Zernio dashboard or MCP will appear locally.',
+  {
+    projectId: z.number().describe('Project ID'),
+  },
+  async ({ projectId }) => {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, laterAccountId: true, userId: true },
+      })
+      if (!project) return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
+      if (!project.laterAccountId) return { content: [{ type: 'text' as const, text: 'Error: Zernio account not configured' }], isError: true }
+
+      const { getLaterClient } = await import('../src/lib/later/client')
+      const client = getLaterClient()
+      const zernioPosts = await client.listPosts({ accountId: project.laterAccountId, limit: 100 })
+
+      let imported = 0
+      let updated = 0
+      let skipped = 0
+
+      for (const zPost of zernioPosts) {
+        const existing = await prisma.socialPost.findFirst({ where: { laterPostId: zPost.id } })
+
+        if (existing) {
+          const hasChanges = existing.lateStatus !== zPost.status || (zPost.text && existing.caption !== zPost.text)
+          if (hasChanges) {
+            const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const }
+            await prisma.socialPost.update({
+              where: { id: existing.id },
+              data: {
+                lateStatus: zPost.status,
+                status: (statusMap as any)[zPost.status] || 'SCHEDULED',
+                caption: zPost.text || existing.caption,
+                lastSyncAt: new Date(),
+              },
+            })
+            updated++
+          } else {
+            skipped++
+          }
+          continue
+        }
+
+        // Import new post
+        const igPlatform = (zPost as any).platforms?.find((p: any) => p.platform === 'instagram')
+        const contentType = igPlatform?.platformSpecificData?.contentType
+        const postType = contentType === 'story' ? 'STORY' as const : contentType === 'reel' ? 'REEL' as const : contentType === 'carousel' ? 'CAROUSEL' as const : 'POST' as const
+        const mediaUrls = (zPost as any).media?.map((m: any) => m.url).filter(Boolean) || []
+        const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const }
+
+        await prisma.socialPost.create({
+          data: {
+            projectId: project.id,
+            userId: project.userId,
+            laterPostId: zPost.id,
+            postType,
+            caption: zPost.text || '',
+            mediaUrls,
+            scheduleType: (zPost as any).publishAt ? 'SCHEDULED' : 'IMMEDIATE',
+            scheduledDatetime: (zPost as any).publishAt ? new Date((zPost as any).publishAt) : null,
+            status: (statusMap as any)[zPost.status] || 'SCHEDULED',
+            lateStatus: zPost.status,
+            publishType: 'DIRECT',
+            verificationStatus: postType === 'STORY' ? (zPost.status === 'published' ? 'VERIFIED' : 'PENDING') : 'SKIPPED',
+            renderStatus: 'NOT_NEEDED',
+            lastSyncAt: new Date(),
+          },
+        })
+        imported++
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({ synced: true, imported, updated, skipped, totalFromZernio: zernioPosts.length }, null, 2),
         }],
       }
     } catch (error: any) {

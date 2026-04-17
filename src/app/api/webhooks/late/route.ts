@@ -1,7 +1,7 @@
 /**
- * Late API Webhook Handler
- * Receives real-time status updates from Late API
- * Documentation: https://docs.getlate.dev/webhooks
+ * Zernio API Webhook Handler (formerly Late)
+ * Receives real-time status updates from Zernio API
+ * Documentation: https://docs.zernio.com/webhooks
  */
 
 import { NextRequest, NextResponse } from 'next/server'
@@ -91,10 +91,10 @@ const buildLateStoryVerification = (
 export async function POST(req: NextRequest) {
   try {
     const headersList = await headers()
-    const signature = headersList.get('x-late-signature')
+    const signature = headersList.get('x-zernio-signature') || headersList.get('x-late-signature')
 
     const payload = await req.text()
-    const secret = process.env.LATE_WEBHOOK_SECRET || process.env.LATER_WEBHOOK_SECRET || ''
+    const secret = process.env.ZERNIO_WEBHOOK_SECRET || process.env.LATE_WEBHOOK_SECRET || process.env.LATER_WEBHOOK_SECRET || ''
 
     // Verify authenticity
     if (!verifyWebhookSignature(payload, signature, secret)) {

@@ -1,7 +1,7 @@
 /**
- * Later API Client
- * Main HTTP client for interacting with the Later API
- * API Documentation: https://docs.getlate.dev
+ * Zernio API Client (formerly Later/Late)
+ * Main HTTP client for interacting with the Zernio API
+ * API Documentation: https://docs.zernio.com
  */
 
 import FormDataNode from 'form-data'
@@ -49,16 +49,16 @@ export class LaterClient {
   private rateLimitInfo?: RateLimitInfo
 
   constructor(config?: Partial<LaterClientConfig>) {
-    const apiKey = config?.apiKey || process.env.LATER_API_KEY
+    const apiKey = config?.apiKey || process.env.ZERNIO_API_KEY || process.env.LATER_API_KEY
 
     if (!apiKey) {
       throw new Error(
-        'Later API key is required. Provide it via config or LATER_API_KEY environment variable.'
+        'Zernio API key is required. Provide it via config or ZERNIO_API_KEY environment variable.'
       )
     }
 
     this.apiKey = apiKey
-    this.baseUrl = config?.baseUrl || 'https://getlate.dev/api/v1'
+    this.baseUrl = config?.baseUrl || process.env.ZERNIO_API_URL || 'https://zernio.com/api/v1'
     // Increased timeout to 120 seconds to handle carousel posts with up to 10 images
     // Later API can take a long time to process multiple images
     this.timeout = config?.timeout || 120000
@@ -672,6 +672,52 @@ export class LaterClient {
     console.log(`[Later Client] Post retrieved: ${post.id} (${post.status})`)
 
     return post
+  }
+
+  /**
+   * List posts with optional filters
+   * GET /posts
+   */
+  async listPosts(params?: {
+    status?: string
+    limit?: number
+    page?: number
+    accountId?: string
+  }): Promise<LaterPost[]> {
+    const query = new URLSearchParams()
+    if (params?.status) query.set('status', params.status)
+    if (params?.limit) query.set('limit', String(params.limit))
+    if (params?.page) query.set('page', String(params.page))
+    if (params?.accountId) query.set('accountId', params.accountId)
+
+    const qs = query.toString()
+    const endpoint = qs ? `/posts?${qs}` : '/posts'
+
+    console.log(`[Zernio Client] Listing posts: ${endpoint}`)
+
+    const response = await this.request<any>(endpoint)
+
+    // Handle different response formats
+    let posts: any[]
+    if (Array.isArray(response)) {
+      posts = response
+    } else if (response?.data && Array.isArray(response.data)) {
+      posts = response.data
+    } else if (response?.posts && Array.isArray(response.posts)) {
+      posts = response.posts
+    } else {
+      console.error('[Zernio Client] Unexpected listPosts response format:', response)
+      posts = []
+    }
+
+    // Normalize _id to id
+    const normalized: LaterPost[] = posts.map((p: any) => ({
+      ...p,
+      id: p._id || p.id,
+    }))
+
+    console.log(`[Zernio Client] Found ${normalized.length} post(s)`)
+    return normalized
   }
 
   /**

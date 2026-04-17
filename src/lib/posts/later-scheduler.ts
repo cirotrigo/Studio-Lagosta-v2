@@ -556,25 +556,31 @@ export class LaterPostScheduler {
         )
       }
 
-      // 4. Create post in Later - ALWAYS publish immediately
-      // Scheduling is handled locally, Later just publishes when we call this
-      console.log('[Later Scheduler] Creating post in Later (immediate publish)...')
+      // 4. Create post in Zernio - use native scheduling when possible
+      // If scheduledDatetime is in the future, let Zernio handle the timing
+      // Otherwise, publish immediately
+      const now = new Date()
+      const scheduledTime = post.scheduledDatetime
+      const isFutureSchedule = scheduledTime && scheduledTime.getTime() > now.getTime() + 60_000 // at least 1 min in future
 
-      // CORRECT APPROACH per Later API documentation:
-      // For immediate posts, use ONLY "publishNow: true"
-      // DO NOT send scheduledFor or timezone - they are ignored when publishNow is true
-      console.log('[Later Scheduler] ⚡ Using publishNow: true (no scheduling fields needed)')
+      if (isFutureSchedule) {
+        console.log(`[Later Scheduler] 📅 Using Zernio native scheduling: ${scheduledTime!.toISOString()}`)
+      } else {
+        console.log('[Later Scheduler] ⚡ Publishing immediately via Zernio')
+      }
 
       const payload: any = {
         content: captionWithTag,
         platforms: [
           {
             platform: 'instagram',
-            accountId: post.Project.laterAccountId, // Later Account ID (unique per Instagram account)
+            accountId: post.Project.laterAccountId,
             ...(platformSpecificData ? { platformSpecificData } : {}),
           },
         ],
-        publishNow: true, // Triggers immediate publishing, bypasses scheduling
+        ...(isFutureSchedule
+          ? { scheduledFor: scheduledTime!.toISOString() }
+          : { publishNow: true }),
       }
       let laterPost
 

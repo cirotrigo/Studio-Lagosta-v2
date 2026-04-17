@@ -1,6 +1,6 @@
 /**
- * TypeScript interfaces for Later API
- * API Documentation: https://docs.getlate.dev
+ * TypeScript interfaces for Zernio API (formerly Later/Late)
+ * API Documentation: https://docs.zernio.com
  */
 
 /**
@@ -90,6 +90,17 @@ export interface LaterPost {
   text: string // Caption/text content
   status: LaterPostStatus
   accounts: LaterAccount[] // Accounts this post is scheduled for
+  platforms?: Array<{
+    platform: string
+    accountId?: string
+    status?: string
+    platformPostId?: string
+    platformPostUrl?: string
+    errorMessage?: string
+    platformSpecificData?: {
+      contentType?: 'post' | 'story' | 'reel' | 'carousel'
+    }
+  }> // Platform targets with status
   mediaIds?: string[] // IDs of uploaded media
   media?: LaterMediaUpload[] // Full media objects (if included)
   publishAt?: string // ISO timestamp - when to publish
@@ -217,11 +228,11 @@ export interface RateLimitInfo {
 }
 
 /**
- * Later Client Configuration
+ * Zernio Client Configuration
  */
 export interface LaterClientConfig {
   apiKey: string
-  baseUrl?: string // Default: https://getlate.dev/api/v1
+  baseUrl?: string // Default: https://zernio.com/api/v1
   timeout?: number // Request timeout in ms (default: 30000)
   retryAttempts?: number // Number of retry attempts for failed requests (default: 3)
 }

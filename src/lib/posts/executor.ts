@@ -78,8 +78,41 @@ export class PostExecutor {
         },
       })
 
-      // Combine both lists
-      const postsToSend = [...postsInWindow, ...overduePosts]
+      // PRE-SEND: Find future posts that are rendered and ready to be sent to Zernio
+      // Zernio handles native scheduling, so we can send them ahead of time
+      const futurePosts = await db.socialPost.findMany({
+        where: {
+          status: PostStatus.SCHEDULED,
+          laterPostId: null,
+          scheduledDatetime: {
+            gt: windowEnd, // Future posts (beyond current window)
+          },
+          publishType: {
+            not: 'REMINDER',
+          },
+          OR: [
+            // Template-based posts that are fully rendered
+            { renderStatus: RenderStatus.RENDERED },
+            // Non-template posts (renderStatus = NOT_NEEDED) ready to go
+            { renderStatus: RenderStatus.NOT_NEEDED },
+          ],
+        },
+        include: {
+          Project: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+        },
+        take: 10,
+        orderBy: {
+          scheduledDatetime: 'asc',
+        },
+      })
+
+      // Combine all lists
+      const postsToSend = [...postsInWindow, ...overduePosts, ...futurePosts]
 
       if (postsToSend.length === 0) {
         return { processed: 0, catchUp: 0 }
@@ -88,7 +121,10 @@ export class PostExecutor {
       if (overduePosts.length > 0) {
         console.log(`⏰ CATCH-UP: Encontrados ${overduePosts.length} posts atrasados`)
       }
-      console.log(`📨 Total de ${postsToSend.length} posts para enviar (${postsInWindow.length} na janela, ${overduePosts.length} atrasados)`)
+      if (futurePosts.length > 0) {
+        console.log(`📅 PRE-SEND: Encontrados ${futurePosts.length} posts futuros prontos para agendar no Zernio`)
+      }
+      console.log(`📨 Total de ${postsToSend.length} posts para enviar (${postsInWindow.length} na janela, ${overduePosts.length} atrasados, ${futurePosts.length} pré-agendamento)`)
 
       let successCount = 0
       let failureCount = 0

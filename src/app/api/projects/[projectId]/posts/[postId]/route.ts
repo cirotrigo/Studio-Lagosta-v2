@@ -413,7 +413,19 @@ export async function DELETE(
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
     }
 
-    // Delete post
+    // Delete from Zernio if synced
+    if (existingPost.laterPostId) {
+      try {
+        const laterClient = getLaterClient()
+        await laterClient.deletePost(existingPost.laterPostId)
+        console.log(`[Delete Post] Deleted from Zernio: ${existingPost.laterPostId}`)
+      } catch (error) {
+        // Log but don't block local delete
+        console.error(`[Delete Post] Failed to delete from Zernio (${existingPost.laterPostId}):`, error)
+      }
+    }
+
+    // Delete post locally
     await db.socialPost.delete({
       where: { id: postId },
     })
