@@ -63,10 +63,22 @@ export async function POST(
     }
 
     const client = getLaterClient()
-    const zernioPosts = await client.listPosts({
-      accountId: project.laterAccountId,
-      limit: 100,
-    })
+
+    // Paginate to fetch all scheduled posts
+    let zernioPosts: any[] = []
+    let page = 1
+    while (true) {
+      const posts = await client.listPosts({
+        accountId: project.laterAccountId!,
+        limit: 50,
+        status: 'scheduled',
+        page,
+      })
+      if (!posts || posts.length === 0) break
+      zernioPosts.push(...posts)
+      if (posts.length < 50) break
+      page++
+    }
 
     let imported = 0
     let updated = 0
