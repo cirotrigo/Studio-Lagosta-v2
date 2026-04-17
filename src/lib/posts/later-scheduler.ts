@@ -722,7 +722,9 @@ export class LaterPostScheduler {
           ? PostStatus.POSTED
           : laterPost.status === 'failed'
             ? PostStatus.FAILED
-            : PostStatus.POSTING
+            : laterPost.status === 'scheduled'
+              ? PostStatus.SCHEDULED
+              : PostStatus.POSTING
 
       console.log(`[Later Scheduler] 💾 Saving laterPostId to database:`, {
         postId: post.id,

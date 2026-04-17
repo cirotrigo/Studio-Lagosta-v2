@@ -710,10 +710,13 @@ export class LaterClient {
       posts = []
     }
 
-    // Normalize _id to id
+    // Normalize Zernio response fields
     const normalized: LaterPost[] = posts.map((p: any) => ({
       ...p,
       id: p._id || p.id,
+      text: p.text || p.content || '', // Zernio uses 'content', normalize to 'text'
+      publishAt: p.publishAt || p.scheduledFor || null, // Zernio uses 'scheduledFor'
+      media: p.media || p.mediaItems || [], // Zernio uses 'mediaItems'
     }))
 
     console.log(`[Zernio Client] Found ${normalized.length} post(s)`)

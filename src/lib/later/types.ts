@@ -87,23 +87,27 @@ export interface PlatformSpecificData {
  */
 export interface LaterPost {
   id: string
-  text: string // Caption/text content
+  text: string // Caption/text content (alias for content)
+  content?: string // Zernio uses 'content' instead of 'text'
   status: LaterPostStatus
   accounts: LaterAccount[] // Accounts this post is scheduled for
   platforms?: Array<{
     platform: string
-    accountId?: string
+    accountId?: string | { _id: string }
     status?: string
     platformPostId?: string
     platformPostUrl?: string
     errorMessage?: string
+    scheduledFor?: string
     platformSpecificData?: {
       contentType?: 'post' | 'story' | 'reel' | 'carousel'
     }
   }> // Platform targets with status
   mediaIds?: string[] // IDs of uploaded media
   media?: LaterMediaUpload[] // Full media objects (if included)
+  mediaItems?: Array<{ type: string; url: string }> // Zernio format
   publishAt?: string // ISO timestamp - when to publish
+  scheduledFor?: string // Zernio uses 'scheduledFor' instead of 'publishAt'
   publishedAt?: string // ISO timestamp - when it was published
   createdAt: string // ISO timestamp
   updatedAt: string // ISO timestamp
