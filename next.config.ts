@@ -166,6 +166,14 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: 'via.placeholder.com',
       },
+      {
+        protocol: 'https',
+        hostname: 'media.zernio.com',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.zernio.com',
+      },
     ],
     // OPTIMIZED: Image optimization settings
     formats: ['image/avif', 'image/webp'], // Use modern formats for better compression
