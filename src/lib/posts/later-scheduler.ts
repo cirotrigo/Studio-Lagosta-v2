@@ -557,11 +557,12 @@ export class LaterPostScheduler {
       }
 
       // 4. Create post in Zernio - use native scheduling when possible
-      // If scheduledDatetime is in the future, let Zernio handle the timing
-      // Otherwise, publish immediately
+      // If SCHEDULED and scheduledDatetime is in the future, let Zernio handle the timing
+      // If IMMEDIATE (user clicked "publish now"), always publish immediately
       const now = new Date()
       const scheduledTime = post.scheduledDatetime
-      const isFutureSchedule = scheduledTime && scheduledTime.getTime() > now.getTime() + 60_000 // at least 1 min in future
+      const isImmediate = post.scheduleType === ScheduleType.IMMEDIATE
+      const isFutureSchedule = !isImmediate && scheduledTime && scheduledTime.getTime() > now.getTime() + 60_000 // at least 1 min in future
 
       if (isFutureSchedule) {
         console.log(`[Later Scheduler] 📅 Using Zernio native scheduling: ${scheduledTime!.toISOString()}`)
