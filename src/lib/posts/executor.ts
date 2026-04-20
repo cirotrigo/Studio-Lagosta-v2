@@ -311,7 +311,7 @@ export class PostExecutor {
         status: { in: [PostStatus.SCHEDULED, PostStatus.POSTING] },
         OR: [
           { lastSyncAt: null }, // Never synced
-          { lastSyncAt: { lt: new Date(Date.now() - 30 * 60 * 1000) } } // >30min (fallback)
+          { lastSyncAt: { lt: new Date(Date.now() - 5 * 60 * 1000) } } // >5min
         ]
       },
       take: 50, // Max 50 per run (rate limit)
@@ -403,14 +403,18 @@ export class PostExecutor {
       case 'published':
         if (currentPost.status !== PostStatus.POSTED) {
           updateData.status = PostStatus.POSTED
-          updateData.latePublishedAt = new Date(laterPost.publishedAt)
-          updateData.sentAt = new Date(laterPost.publishedAt)
           statusChanged = true
 
-          // Extract Instagram URL
+          // Extract Instagram platform data (Zernio stores per-platform info)
           const igPlatform = laterPost.platforms?.find(
             (p: any) => p.platform === 'instagram'
           )
+          // publishedAt is inside platform object on Zernio, fallback to top-level
+          const publishedAtRaw = igPlatform?.publishedAt || laterPost.publishedAt
+          const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : new Date()
+          updateData.latePublishedAt = publishedAt
+          updateData.sentAt = publishedAt
+
           const platformUrl = igPlatform?.platformPostUrl || laterPost.permalink
           if (platformUrl) {
             updateData.latePlatformUrl = platformUrl

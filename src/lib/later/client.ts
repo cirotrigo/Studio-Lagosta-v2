@@ -667,7 +667,17 @@ export class LaterClient {
   async getPost(postId: string): Promise<LaterPost> {
     console.log(`[Later Client] Getting post: ${postId}`)
 
-    const post = await this.request<LaterPost>(`/posts/${postId}`)
+    const response = await this.request<any>(`/posts/${postId}`)
+
+    // Zernio returns { post: {...} } — extract and normalize
+    const raw = response.post || response
+    const post: LaterPost = {
+      ...raw,
+      id: raw._id || raw.id,
+      text: raw.text || raw.content || '',
+      publishAt: raw.publishAt || raw.scheduledFor || null,
+      media: raw.media || raw.mediaItems || [],
+    }
 
     console.log(`[Later Client] Post retrieved: ${post.id} (${post.status})`)
 
