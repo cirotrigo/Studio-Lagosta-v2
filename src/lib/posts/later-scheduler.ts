@@ -602,84 +602,32 @@ export class LaterPostScheduler {
         console.log('[Later Scheduler] 📸 Using URL-based create (Later API will download media)')
         console.log('[Later Scheduler] Media URLs:', post.mediaUrls)
 
-        // CRITICAL: Test if URLs are publicly accessible
-        console.log('[Later Scheduler] 🔍 Testing if URLs are publicly accessible by Later...')
-        const urlTests = []
+        // Skip URL accessibility check for trusted domains (Vercel Blob, Zernio media)
+        // The old HEAD-request check was unreliable from serverless environments
+        const allTrusted = post.mediaUrls.every(
+          (url) => url.includes('blob.vercel-storage.com') || url.includes('zernio.com')
+        )
 
-        for (const [index, url] of post.mediaUrls.entries()) {
-          console.log(`[Later Scheduler]   Testing URL ${index + 1}:`)
-          console.log(`[Later Scheduler]   ${url}`)
-
-          try {
-            // Test with HEAD request (like Later does)
-            const headResponse = await fetch(url, {
-              method: 'HEAD',
-              signal: AbortSignal.timeout(10000),
-              headers: {
-                'User-Agent': 'Later-Media-Fetcher/1.0' // Simulate Later's user agent
+        if (!allTrusted) {
+          // Only test URLs from unknown domains
+          for (const [index, url] of post.mediaUrls.entries()) {
+            try {
+              const headResponse = await fetch(url, {
+                method: 'HEAD',
+                signal: AbortSignal.timeout(10000),
+              })
+              if (!headResponse.ok) {
+                throw new Error(`URL ${index + 1} not accessible: HTTP ${headResponse.status}`)
               }
-            })
-
-            if (!headResponse.ok) {
-              console.error(`[Later Scheduler]      ❌ FAILED: HTTP ${headResponse.status}`)
-              console.error(`[Later Scheduler]      This URL is NOT accessible - Later will fail!`)
-              urlTests.push({ url, status: headResponse.status, ok: false })
-            } else {
-              const contentLength = headResponse.headers.get('content-length')
-              const contentType = headResponse.headers.get('content-type')
-              const cacheControl = headResponse.headers.get('cache-control')
-              console.log(`[Later Scheduler]      ✅ ACCESSIBLE: ${contentType}, ${contentLength} bytes`)
-              console.log(`[Later Scheduler]      Cache-Control: ${cacheControl}`)
-              urlTests.push({ url, status: headResponse.status, ok: true, contentType, contentLength })
+              console.log(`[Later Scheduler]   ✅ URL ${index + 1} accessible`)
+            } catch (error) {
+              throw new Error(
+                `Media URL not accessible: ${url}. Error: ${error instanceof Error ? error.message : 'Unknown'}`
+              )
             }
-          } catch (error) {
-            console.error(`[Later Scheduler]      ❌ FETCH FAILED:`, error instanceof Error ? error.message : 'Unknown')
-            console.error(`[Later Scheduler]      Later will NOT be able to access this URL!`)
-            urlTests.push({ url, error: error instanceof Error ? error.message : 'Unknown', ok: false })
           }
-        }
-
-        // Check if all URLs are accessible
-        const failedUrls = urlTests.filter(t => !t.ok)
-        if (failedUrls.length > 0) {
-          console.error('[Later Scheduler] ❌❌❌ CRITICAL ERROR ❌❌❌')
-          console.error(`[Later Scheduler] ${failedUrls.length}/${post.mediaUrls.length} URLs are NOT accessible`)
-          console.error('[Later Scheduler] Later API will fail with "Media fetch failed"')
-          console.error('[Later Scheduler] Failed URLs:', failedUrls)
-
-          throw new Error(
-            `Media URLs are not publicly accessible. Later cannot download them. ` +
-            `Failed: ${failedUrls.length}/${post.mediaUrls.length} URLs. ` +
-            `Check Vercel Blob permissions and firewall settings.`
-          )
-        }
-
-        console.log('[Later Scheduler] ✅ All URLs are publicly accessible')
-
-        // CRITICAL FIX: Add delay to allow URLs to propagate in CDN
-        // Users reported that manual posts work but automatic posts fail
-        // This suggests URLs need time to propagate through Vercel's CDN
-        console.log('[Later Scheduler] ⏳ Waiting 3 seconds for URLs to propagate in CDN...')
-        await new Promise(resolve => setTimeout(resolve, 3000))
-        console.log('[Later Scheduler] ✅ CDN propagation delay completed')
-
-        // Re-validate URLs one more time after delay
-        console.log('[Later Scheduler] 🔄 Final validation after CDN delay...')
-        for (const [index, url] of post.mediaUrls.entries()) {
-          try {
-            const finalCheck = await fetch(url, {
-              method: 'HEAD',
-              signal: AbortSignal.timeout(10000),
-              cache: 'no-store', // Force fresh request, bypass cache
-            })
-            if (!finalCheck.ok) {
-              throw new Error(`URL ${index + 1} not ready after delay: HTTP ${finalCheck.status}`)
-            }
-            console.log(`[Later Scheduler]   ✅ URL ${index + 1} confirmed ready`)
-          } catch (error) {
-            console.error(`[Later Scheduler]   ❌ URL ${index + 1} still not ready:`, error)
-            throw new Error(`Media URL ${index + 1} not ready after CDN delay`)
-          }
+        } else {
+          console.log('[Later Scheduler] ✅ All URLs from trusted domains, skipping accessibility check')
         }
 
         // Add media items to payload
