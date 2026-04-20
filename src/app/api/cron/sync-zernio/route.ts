@@ -57,26 +57,36 @@ export async function GET(req: NextRequest) {
       accountToProject.set(project.laterAccountId!, project)
     }
 
-    // Fetch ALL scheduled posts from Zernio with pagination
+    // Fetch scheduled + published posts from Zernio with pagination
     let allZernioPosts: any[] = []
-    let page = 1
-    while (true) {
-      const posts = await client.listPosts({ limit: 50, status: 'scheduled', page })
-      if (!posts || posts.length === 0) break
-      allZernioPosts.push(...posts)
-      if (posts.length < 50) break
-      page++
+    for (const status of ['scheduled', 'published']) {
+      let page = 1
+      while (true) {
+        const posts = await client.listPosts({ limit: 50, status, page })
+        if (!posts || posts.length === 0) break
+        allZernioPosts.push(...posts)
+        if (posts.length < 50) break
+        page++
+        if (status === 'published' && page > 3) break // Limit published pages to avoid huge fetches
+      }
     }
 
-    console.log(`[Cron Sync Zernio] Fetched ${allZernioPosts.length} scheduled posts from Zernio`)
+    console.log(`[Cron Sync Zernio] Fetched ${allZernioPosts.length} posts from Zernio`)
 
     let totalImported = 0
     let totalUpdated = 0
     let totalSkipped = 0
 
     for (const zPost of allZernioPosts) {
+      // Extract Instagram platform data (Zernio nests per-platform info)
+      const igPlatformData = zPost.platforms?.find((p: any) => p.platform === 'instagram')
+      const publishedAtRaw = igPlatformData?.publishedAt || zPost.publishedAt
+      const platformPostUrl = igPlatformData?.platformPostUrl || zPost.permalink || null
+      const platformPostId = igPlatformData?.platformPostId || zPost.platformPostId || null
+
       const existing = await db.socialPost.findFirst({
         where: { laterPostId: zPost.id },
+        select: { id: true, status: true, lateStatus: true, caption: true, postType: true, publishType: true, verificationStatus: true, verificationAttempts: true },
       })
 
       if (existing) {
@@ -86,6 +96,26 @@ export async function GET(req: NextRequest) {
           (zPost.text && existing.caption !== zPost.text)
 
         if (hasChanges) {
+          const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : null
+
+          // Auto-verify stories when Zernio reports published
+          const verificationUpdate = (
+            zPost.status === 'published' &&
+            existing.postType === PostType.STORY &&
+            existing.publishType === PublishType.DIRECT &&
+            existing.verificationStatus !== VerificationStatus.VERIFIED
+          ) ? {
+            verificationStatus: VerificationStatus.VERIFIED,
+            verificationAttempts: Math.max(existing.verificationAttempts || 0, 1),
+            verifiedByFallback: true,
+            verifiedStoryId: platformPostId,
+            verifiedPermalink: platformPostUrl,
+            verifiedTimestamp: publishedAt || new Date(),
+            lastVerificationAt: new Date(),
+            nextVerificationAt: null,
+            verificationError: null,
+          } : {}
+
           await db.socialPost.update({
             where: { id: existing.id },
             data: {
@@ -93,12 +123,10 @@ export async function GET(req: NextRequest) {
               status: newStatus,
               caption: zPost.text || existing.caption,
               lastSyncAt: new Date(),
-              ...(zPost.publishedAt ? {
-                latePublishedAt: new Date(zPost.publishedAt),
-                sentAt: new Date(zPost.publishedAt),
-              } : {}),
-              ...(zPost.permalink ? { publishedUrl: zPost.permalink } : {}),
-              ...(zPost.platformPostId ? { instagramMediaId: zPost.platformPostId } : {}),
+              ...(publishedAt ? { latePublishedAt: publishedAt, sentAt: publishedAt } : {}),
+              ...(platformPostUrl ? { publishedUrl: platformPostUrl, latePlatformUrl: platformPostUrl } : {}),
+              ...(platformPostId ? { instagramMediaId: platformPostId } : {}),
+              ...verificationUpdate,
             },
           })
           totalUpdated++
@@ -126,9 +154,27 @@ export async function GET(req: NextRequest) {
         continue
       }
 
-      const igPlatform = zPost.platforms?.find((p: any) => p.platform === 'instagram')
-      const postType = igPlatform ? mapZernioPostType(igPlatform) : PostType.POST
+      const postType = igPlatformData ? mapZernioPostType(igPlatformData) : PostType.POST
       const mediaUrls = zPost.media?.map((m: any) => m.url).filter(Boolean) || []
+      const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : null
+      const isPublished = zPost.status === 'published'
+
+      // Verification data for published stories
+      const verificationData = (
+        isPublished && postType === PostType.STORY
+      ) ? {
+        verificationStatus: VerificationStatus.VERIFIED,
+        verificationAttempts: 1,
+        verifiedByFallback: true,
+        verifiedStoryId: platformPostId,
+        verifiedPermalink: platformPostUrl,
+        verifiedTimestamp: publishedAt || new Date(),
+        lastVerificationAt: new Date(),
+      } : {
+        verificationStatus: postType === PostType.STORY
+          ? (isPublished ? VerificationStatus.VERIFIED : VerificationStatus.PENDING)
+          : VerificationStatus.SKIPPED,
+      }
 
       await db.socialPost.create({
         data: {
@@ -143,17 +189,12 @@ export async function GET(req: NextRequest) {
           status: mapZernioStatus(zPost.status),
           lateStatus: zPost.status,
           publishType: PublishType.DIRECT,
-          verificationStatus: postType === PostType.STORY
-            ? (zPost.status === 'published' ? VerificationStatus.VERIFIED : VerificationStatus.PENDING)
-            : VerificationStatus.SKIPPED,
           renderStatus: RenderStatus.NOT_NEEDED,
           lastSyncAt: new Date(),
-          ...(zPost.publishedAt ? {
-            sentAt: new Date(zPost.publishedAt),
-            latePublishedAt: new Date(zPost.publishedAt),
-          } : {}),
-          ...(zPost.permalink ? { publishedUrl: zPost.permalink } : {}),
-          ...(zPost.platformPostId ? { instagramMediaId: zPost.platformPostId } : {}),
+          ...verificationData,
+          ...(publishedAt ? { sentAt: publishedAt, latePublishedAt: publishedAt } : {}),
+          ...(platformPostUrl ? { publishedUrl: platformPostUrl, latePlatformUrl: platformPostUrl } : {}),
+          ...(platformPostId ? { instagramMediaId: platformPostId } : {}),
         },
       })
       totalImported++
