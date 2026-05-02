@@ -138,7 +138,7 @@ export class LaterClient {
 
       // Handle non-OK responses
       if (!response.ok) {
-        await this.handleErrorResponse(response)
+        await this.handleErrorResponse(response, endpoint, options.method || 'GET')
       }
 
       // Parse JSON response
@@ -281,19 +281,46 @@ export class LaterClient {
   /**
    * Handle error responses from Later API
    */
-  private async handleErrorResponse(response: Response): Promise<never> {
+  private async handleErrorResponse(
+    response: Response,
+    endpoint?: string,
+    method?: string
+  ): Promise<never> {
     const statusCode = response.status
 
     let errorResponse: LaterErrorResponse | undefined
+    let rawBody: string | undefined
 
+    // Read body once as text, then try to parse as JSON
     try {
-      errorResponse = await response.json()
-      // Log full error response for debugging
-      const sanitized = this.redactSensitive(errorResponse)
-      console.error('[Later Client] API Error Response:', JSON.stringify(sanitized, null, 2))
+      rawBody = await response.text()
     } catch {
-      // If JSON parsing fails, use response text
+      // body unreadable
     }
+
+    if (rawBody) {
+      try {
+        errorResponse = JSON.parse(rawBody)
+      } catch {
+        // not JSON — keep rawBody as-is
+      }
+    }
+
+    const responseHeaders: Record<string, string> = {}
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value
+    })
+
+    const sanitized = errorResponse ? this.redactSensitive(errorResponse) : undefined
+    console.error('[Later Client] API Error Response:', JSON.stringify({
+      endpoint,
+      method,
+      statusCode,
+      statusText: response.statusText,
+      headers: responseHeaders,
+      parsed: sanitized,
+      rawBody: rawBody && rawBody.length > 2000 ? rawBody.slice(0, 2000) + '...[truncated]' : rawBody,
+    }, null, 2))
 
     const errorMessage =
       errorResponse?.error?.message ||
@@ -332,7 +359,11 @@ export class LaterClient {
         throw new LaterRateLimitError(rateLimitInfo, errorResponse)
 
       default:
-        throw new LaterApiError(errorMessage, statusCode, errorResponse)
+        throw new LaterApiError(errorMessage, statusCode, errorResponse, {
+          rawBody,
+          endpoint,
+          method,
+        })
     }
   }
 
@@ -586,7 +617,10 @@ export class LaterClient {
    */
   async uploadMultipleMedia(
     urls: string[]
-  ): Promise<LaterMediaUpload[]> {
+  ): Promise<{
+    successful: LaterMediaUpload[]
+    failed: Array<{ index: number; url: string; error: string }>
+  }> {
     console.log(`[Later Client] Uploading ${urls.length} media files`)
 
     const results = await Promise.allSettled(
@@ -594,23 +628,31 @@ export class LaterClient {
     )
 
     const successful: LaterMediaUpload[] = []
-    const failed: Array<{ url: string; error: unknown }> = []
+    const failed: Array<{ index: number; url: string; error: string }> = []
 
     results.forEach((result, index) => {
       if (result.status === 'fulfilled') {
         successful.push(result.value)
       } else {
+        const reason = result.reason
+        const errorMsg =
+          reason instanceof Error
+            ? reason.message
+            : typeof reason === 'string'
+              ? reason
+              : JSON.stringify(reason)
         failed.push({
+          index: index + 1, // 1-indexed for user display
           url: urls[index],
-          error: result.reason,
+          error: errorMsg,
         })
       }
     })
 
     if (failed.length > 0) {
       console.error(
-        `[Later Client] ${failed.length}/${urls.length} media uploads failed`,
-        failed
+        `[Later Client] ${failed.length}/${urls.length} media uploads failed:`,
+        JSON.stringify(failed, null, 2)
       )
     }
 
@@ -618,7 +660,7 @@ export class LaterClient {
       `[Later Client] Successfully uploaded ${successful.length}/${urls.length} media files`
     )
 
-    return successful
+    return { successful, failed }
   }
 
   // =============================================================================
@@ -745,10 +787,20 @@ export class LaterClient {
     console.log(`[Later Client] Updating post: ${postId}`)
     console.log(`[Later Client] Update payload:`, JSON.stringify(payload, null, 2))
 
-    const post = await this.request<LaterPost>(`/posts/${postId}`, {
+    const response = await this.request<any>(`/posts/${postId}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
     })
+
+    // Zernio returns { post: {...} } — extract and normalize
+    const raw = response.post || response
+    const post: LaterPost = {
+      ...raw,
+      id: raw._id || raw.id,
+      text: raw.text || raw.content || '',
+      publishAt: raw.publishAt || raw.scheduledFor || null,
+      media: raw.media || raw.mediaItems || [],
+    }
 
     console.log(`[Later Client] Post updated: ${post.id} (${post.status})`)
 
@@ -795,19 +847,47 @@ export class LaterClient {
   }
 
   /**
-   * Publish a post immediately
-   * POST /posts/:postId/publish
+   * Publish a post immediately.
+   * Zernio has no /publish endpoint, so we delete the existing post and
+   * recreate it with publishNow:true. The returned post has a NEW id —
+   * callers must update any stored laterPostId reference.
    */
   async publishPost(postId: string): Promise<LaterPost> {
-    console.log(`[Later Client] Publishing post immediately: ${postId}`)
+    console.log(`[Zernio Client] Publishing via delete+recreate: ${postId}`)
 
-    const post = await this.request<LaterPost>(`/posts/${postId}/publish`, {
-      method: 'POST',
-    })
+    const existing = await this.getPost(postId)
+    const raw = existing as any
 
-    console.log(`[Later Client] Post published: ${post.id} (${post.status})`)
+    const platforms = (raw.platforms || []).map((p: any) => ({
+      platform: p.platform,
+      accountId:
+        typeof p.accountId === 'object'
+          ? p.accountId._id || p.accountId.id
+          : p.accountId,
+      ...(p.platformSpecificData
+        ? { platformSpecificData: p.platformSpecificData }
+        : {}),
+    }))
 
-    return post
+    const mediaItems = (raw.media || raw.mediaItems || []).map((m: any) => ({
+      type: m.type,
+      url: m.url,
+    }))
+
+    const payload: CreateLaterPostPayload = {
+      content: raw.text || raw.content || '',
+      platforms,
+      mediaItems,
+      publishNow: true,
+    }
+
+    await this.deletePost(postId)
+
+    const newPost = await this.createPost(payload)
+    console.log(
+      `[Zernio Client] Republished as ${newPost.id} (${newPost.status})`
+    )
+    return newPost
   }
 
   // =============================================================================
@@ -843,21 +923,27 @@ export class LaterClient {
 
     // Upload all media files
     console.log(`[Later Client] 📤 Starting batch upload of ${mediaUrls.length} media files...`)
-    const uploadedMedia = await this.uploadMultipleMedia(mediaUrls)
+    const { successful: uploadedMedia, failed } = await this.uploadMultipleMedia(mediaUrls)
 
     console.log(`[Later Client] 📊 Upload results: ${uploadedMedia.length}/${mediaUrls.length} successful`)
 
     if (uploadedMedia.length === 0) {
       console.error('[Later Client] ❌ All media uploads failed')
       throw new LaterMediaUploadError(
-        'Failed to upload any media files'
+        'Failed to upload any media files',
+        undefined,
+        undefined,
+        { failedItems: failed, totalCount: mediaUrls.length }
       )
     }
     if (uploadedMedia.length !== mediaUrls.length) {
       const failedCount = mediaUrls.length - uploadedMedia.length
       console.error(`[Later Client] ❌ ${failedCount} media file(s) failed to upload`)
       throw new LaterMediaUploadError(
-        `Failed to upload ${failedCount} media file(s)`
+        `Failed to upload ${failedCount} of ${mediaUrls.length} media file(s)`,
+        undefined,
+        undefined,
+        { failedItems: failed, totalCount: mediaUrls.length }
       )
     }
 

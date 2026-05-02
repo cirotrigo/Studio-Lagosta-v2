@@ -247,6 +247,18 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
               {post.caption}
             </p>
           )}
+
+          {post.status === 'FAILED' && post.errorMessage && (
+            <div className="mt-2 border border-red-300 bg-red-50 dark:bg-red-950/20 rounded p-2">
+              <div className="text-[10px] font-semibold text-red-700 dark:text-red-300 mb-0.5 flex items-center gap-1">
+                <XCircle className="w-3 h-3" />
+                Motivo da falha
+              </div>
+              <p className="text-[11px] text-red-700 dark:text-red-200 line-clamp-3 whitespace-pre-wrap">
+                {post.errorMessage}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Menu dropdown */}

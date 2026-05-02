@@ -21,7 +21,8 @@ import {
   ExternalLink,
   ShieldCheck,
   ShieldAlert,
-  Bell
+  Bell,
+  XCircle
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -513,6 +514,18 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 </>
               )}
             </div>
+
+            {post.status === 'FAILED' && post.errorMessage && (
+              <div className="border border-red-300 bg-red-50 dark:bg-red-950/20 rounded-md p-3 text-sm">
+                <div className="font-semibold text-red-700 dark:text-red-300 mb-1 flex items-center gap-2">
+                  <XCircle className="w-4 h-4" />
+                  Motivo da falha
+                </div>
+                <pre className="whitespace-pre-wrap text-red-700 dark:text-red-200 text-xs leading-relaxed font-sans">
+                  {post.errorMessage}
+                </pre>
+              </div>
+            )}
 
             {/* Ações */}
             <div className="flex items-center gap-2 pt-4 border-t">

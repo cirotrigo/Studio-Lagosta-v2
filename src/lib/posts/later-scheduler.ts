@@ -796,6 +796,13 @@ export class LaterPostScheduler {
               `Sua imagem tem aspect ratio ${currentAspectRatio}:1, mas carrosséis no Instagram aceitam apenas de 0.75:1 (4:5 retrato) até 1.91:1 (paisagem).\n\n` +
               `💡 Todas as imagens do carrossel devem ter aspect ratio entre 4:5 e 1.91:1.`
           }
+        } else if (error.statusCode === 409) {
+          userFriendlyMessage =
+            `❌ Zernio retornou Conflict (HTTP 409)\n\n` +
+            `Causa provável: o post já foi criado em uma tentativa anterior, ou está em conflito com outro post (mesmo conteúdo/conta) no Zernio.\n\n` +
+            `💡 Verifique no Zernio se o post já existe antes de tentar novamente. ` +
+            `Se persistir, abrir suporte com o ID do post.` +
+            (error.rawBody ? `\n\nResposta do Zernio:\n${error.rawBody.slice(0, 500)}` : '')
         }
 
         await db.socialPost.update({
@@ -815,6 +822,42 @@ export class LaterPostScheduler {
             statusCode: error.statusCode,
             errorCode: error.errorCode,
             originalError: error.message,
+            endpoint: error.endpoint,
+            method: error.method,
+            rawBody: error.rawBody,
+          }
+        )
+      } else if (error instanceof LaterMediaUploadError && error.failedItems?.length) {
+        // Media upload failed for one or more files - show which images failed
+        const failedList = error.failedItems
+          .map(
+            (f) =>
+              `  • Imagem ${f.index}/${error.totalCount}\n    URL: ${f.url}\n    Erro: ${f.error}`
+          )
+          .join('\n\n')
+
+        const userFriendlyMessage =
+          `❌ Falha ao enviar ${error.failedItems.length} de ${error.totalCount} imagem(ns) para o Zernio\n\n` +
+          `Imagens que falharam:\n${failedList}\n\n` +
+          `💡 Causas comuns: imagem inacessível, formato/tamanho rejeitado, timeout. ` +
+          `Verifique a URL acima no navegador. Se abrir normalmente, tente publicar novamente — pode ter sido instabilidade momentânea.`
+
+        await db.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: PostStatus.FAILED,
+            errorMessage: userFriendlyMessage,
+            failedAt: new Date(),
+          },
+        })
+
+        await this.createLog(
+          postId,
+          PostLogEvent.FAILED,
+          `Media upload failed: ${error.failedItems.length}/${error.totalCount}`,
+          {
+            failedItems: error.failedItems,
+            totalCount: error.totalCount,
           }
         )
       } else {

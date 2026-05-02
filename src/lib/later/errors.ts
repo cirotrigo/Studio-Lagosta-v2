@@ -10,20 +10,26 @@ import type { LaterErrorResponse, RateLimitInfo } from './types'
 export class LaterApiError extends Error {
   public readonly statusCode: number
   public readonly response?: LaterErrorResponse
+  public readonly rawBody?: string
+  public readonly endpoint?: string
+  public readonly method?: string
   public readonly timestamp: Date
 
   constructor(
     message: string,
     statusCode: number,
-    response?: LaterErrorResponse
+    response?: LaterErrorResponse,
+    options?: { rawBody?: string; endpoint?: string; method?: string }
   ) {
     super(message)
     this.name = 'LaterApiError'
     this.statusCode = statusCode
     this.response = response
+    this.rawBody = options?.rawBody
+    this.endpoint = options?.endpoint
+    this.method = options?.method
     this.timestamp = new Date()
 
-    // Maintains proper stack trace for where error was thrown
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, LaterApiError)
     }
@@ -53,6 +59,9 @@ export class LaterApiError extends Error {
       statusCode: this.statusCode,
       errorCode: this.errorCode,
       errorDetails: this.errorDetails,
+      rawBody: this.rawBody,
+      endpoint: this.endpoint,
+      method: this.method,
       timestamp: this.timestamp.toISOString(),
     }
   }
@@ -196,19 +205,30 @@ export class LaterNetworkError extends Error {
 /**
  * Media upload error
  */
+export interface FailedMediaItem {
+  index: number
+  url: string
+  error: string
+}
+
 export class LaterMediaUploadError extends Error {
   public readonly mediaUrl?: string
   public readonly originalError?: unknown
+  public readonly failedItems?: FailedMediaItem[]
+  public readonly totalCount?: number
 
   constructor(
     message = 'Failed to upload media.',
     mediaUrl?: string,
-    originalError?: unknown
+    originalError?: unknown,
+    options?: { failedItems?: FailedMediaItem[]; totalCount?: number }
   ) {
     super(message)
     this.name = 'LaterMediaUploadError'
     this.mediaUrl = mediaUrl
     this.originalError = originalError
+    this.failedItems = options?.failedItems
+    this.totalCount = options?.totalCount
 
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, LaterMediaUploadError)
@@ -221,6 +241,8 @@ export class LaterMediaUploadError extends Error {
       message: this.message,
       mediaUrl: this.mediaUrl,
       originalError: this.originalError,
+      failedItems: this.failedItems,
+      totalCount: this.totalCount,
     }
   }
 }
