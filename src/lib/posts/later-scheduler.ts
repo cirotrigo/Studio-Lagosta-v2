@@ -401,6 +401,103 @@ export class LaterPostScheduler {
   }
 
   /**
+   * When Zernio returns 409 Conflict with `details.existingPostId`, the post was
+   * already created on a prior attempt that failed before saving `laterPostId`.
+   * Fetch it from Zernio, adopt it as ours, and reconcile the local state.
+   * Returns the adopted post info on success, or null if adoption isn't possible.
+   */
+  private async tryAdoptExistingPost(
+    postId: string,
+    error: LaterApiError
+  ): Promise<{ laterPostId: string } | null> {
+    if (!error.rawBody) return null
+
+    let existingPostId: string | undefined
+    try {
+      const parsed = JSON.parse(error.rawBody)
+      // Zernio returns: { error: "...", details: { existingPostId, accountId, platform } }
+      existingPostId =
+        parsed?.details?.existingPostId ||
+        parsed?.error?.details?.existingPostId
+    } catch {
+      return null
+    }
+
+    if (!existingPostId) return null
+
+    console.log(
+      `[Later Scheduler] 🔄 409 with existingPostId ${existingPostId} — trying to adopt`
+    )
+
+    let zernioPost
+    try {
+      zernioPost = await this.laterClient.getPost(existingPostId)
+    } catch (fetchError) {
+      console.error(
+        `[Later Scheduler] ❌ Failed to fetch existing Zernio post ${existingPostId}:`,
+        fetchError
+      )
+      return null
+    }
+
+    const newStatus =
+      zernioPost.status === 'published'
+        ? PostStatus.POSTED
+        : zernioPost.status === 'failed'
+          ? PostStatus.FAILED
+          : zernioPost.status === 'scheduled'
+            ? PostStatus.SCHEDULED
+            : PostStatus.POSTING
+
+    const publishedAt =
+      zernioPost.status === 'published'
+        ? new Date((zernioPost as any).publishedAt || Date.now())
+        : null
+
+    try {
+      await db.socialPost.update({
+        where: { id: postId },
+        data: {
+          laterPostId: existingPostId,
+          status: newStatus,
+          publishedUrl: zernioPost.permalink || null,
+          instagramMediaId: (zernioPost as any).platformPostId || null,
+          lateStatus: zernioPost.status,
+          latePublishedAt: publishedAt,
+          latePlatformUrl: zernioPost.permalink || null,
+          sentAt: publishedAt || new Date(),
+          lastSyncAt: new Date(),
+          errorMessage: null,
+          failedAt: null,
+        },
+      })
+    } catch (updateError) {
+      console.error(
+        `[Later Scheduler] ❌ Failed to save adopted post:`,
+        updateError
+      )
+      return null
+    }
+
+    await this.createLog(
+      postId,
+      PostLogEvent.SENT,
+      `Adopted existing Zernio post ${existingPostId} on 409 (Zernio dedup, post created on prior attempt)`,
+      {
+        adopted: true,
+        existingPostId,
+        zernioStatus: zernioPost.status,
+      }
+    )
+
+    console.log(
+      `[Later Scheduler] ✅ Adopted Zernio post ${existingPostId} (status: ${zernioPost.status})`
+    )
+
+    return { laterPostId: existingPostId }
+  }
+
+  /**
    * Send post to Later API
    */
   async sendToLater(postId: string) {
@@ -770,6 +867,14 @@ export class LaterPostScheduler {
           }
         )
       } else if (error instanceof LaterApiError) {
+        // Try to adopt the existing Zernio post on 409 (Zernio dedupes content for 24h)
+        if (error.statusCode === 409) {
+          const adopted = await this.tryAdoptExistingPost(postId, error)
+          if (adopted) {
+            return { success: true, adopted: true, laterPostId: adopted.laterPostId }
+          }
+        }
+
         // Handle Later API errors
         let userFriendlyMessage = error.message
 
