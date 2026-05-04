@@ -48,11 +48,30 @@ export function usePhotoSwipe({
       const items = gallery.querySelectorAll(childSelector)
       if (items.length === 0) return false
 
-      // Simple PhotoSwipe setup per documentation
+      // PhotoSwipe setup with fast-navigation tuning
       lightboxRef.current = new PhotoSwipeLightbox({
         gallery: gallerySelector,
         children: childSelector,
         pswpModule: () => import('photoswipe'),
+        // Pré-carrega 1 anterior + 3 próximas para troca instantânea
+        preload: [1, 3],
+        // Loop infinito entre primeira/última
+        loop: true,
+        // Setas de navegação maiores e sempre visíveis no desktop
+        showHideAnimationType: 'fade',
+        // Zoom com scroll do mouse (sem precisar segurar Ctrl)
+        wheelToZoom: true,
+        // Fundo opaco — melhor leitura visual
+        bgOpacity: 0.92,
+        // Não fechar ao arrastar pra baixo (pinch-to-close ativo no mobile só)
+        pinchToClose: true,
+        closeOnVerticalDrag: true,
+        // Transições mais snappy
+        showAnimationDuration: 200,
+        hideAnimationDuration: 150,
+        // Zoom rápido e direto
+        zoom: true,
+        clickToCloseNonZoomable: true,
       })
 
       // Track open/close state for other components

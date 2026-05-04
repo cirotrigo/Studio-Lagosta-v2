@@ -225,11 +225,10 @@ export function GalleryItem({
       {/* Main Content Area */}
       <a
         href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
+        data-pswp-src={resolvedAssetUrl ?? undefined}
         data-pswp-width={imageDimensions.width}
         data-pswp-height={imageDimensions.height}
         data-pswp-type={resolvedAssetUrl && isVideoAsset ? 'video' : 'image'}
-        target="_blank"
-        rel="noopener noreferrer"
         className={cn(
           'relative block bg-muted overflow-hidden w-full h-full rounded-xl', // inner rounding
           resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
@@ -240,9 +239,7 @@ export function GalleryItem({
             e.preventDefault()
             e.stopPropagation()
             onPreview?.()
-            return
           }
-          console.log('PhotoSwipe: Item clicável')
         }}
       >
         {/* Skeleton */}
