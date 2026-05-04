@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { Prisma } from '../../../../../../prisma/generated/client'
+import { Prisma } from '../../../../../../prisma/generated/client'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
@@ -7,6 +7,18 @@ import { hasProjectReadAccess } from '@/lib/projects/access'
 
 // Export runtime to ensure proper handling
 export const runtime = 'nodejs'
+
+// Postgres EXTRACT(DOW) → 0 = Domingo, 6 = Sábado (mesma convenção que JS Date.getDay())
+const TIMEZONE = 'America/Sao_Paulo'
+
+function parseWeekdays(raw: string | null): number[] | null {
+  if (!raw) return null
+  const parsed = raw
+    .split(',')
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+  return parsed.length > 0 ? Array.from(new Set(parsed)) : null
+}
 
 export async function GET(
   req: NextRequest,
@@ -59,6 +71,7 @@ export async function GET(
     const page = parseInt(url.searchParams.get('page') || '1', 10)
     const pageSize = parseInt(url.searchParams.get('pageSize') || '100', 10)
     const createdByFilter = url.searchParams.get('createdBy')
+    const weekdays = parseWeekdays(url.searchParams.get('weekdays'))
 
     // Build where clause
     const where: Prisma.GenerationWhereInput = { projectId }
@@ -66,10 +79,51 @@ export async function GET(
       where.createdBy = createdByFilter
     }
 
-    // Fetch total count
-    const total = await db.generation.count({ where })
+    // Filtro por dia da semana usa raw SQL pra calcular DOW em America/Sao_Paulo
+    // sobre COALESCE(MAX(SocialPost.sentAt), Generation.createdAt).
+    // Quando weekdays é setado, primeiro pegamos os IDs filtrados via raw, depois
+    // o findMany normal mantém o select/relations com o id IN (...) extra.
+    let weekdayFilteredIds: string[] | null = null
+    let weekdayTotal: number | null = null
+    if (weekdays && weekdays.length < 7) {
+      // Total no projeto que bate com o filtro (sem paginação)
+      const totalRows = await db.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM "Generation" g
+        LEFT JOIN LATERAL (
+          SELECT MAX(sp."sentAt") AS last_sent
+          FROM "SocialPost" sp
+          WHERE sp."generationId" = g.id AND sp."sentAt" IS NOT NULL
+        ) sp_meta ON TRUE
+        WHERE g."projectId" = ${projectId}
+          ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
+      `
+      weekdayTotal = Number(totalRows[0]?.count ?? 0)
 
-    // Fetch generations for this project with pagination
+      const idRows = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT g.id
+        FROM "Generation" g
+        LEFT JOIN LATERAL (
+          SELECT MAX(sp."sentAt") AS last_sent
+          FROM "SocialPost" sp
+          WHERE sp."generationId" = g.id AND sp."sentAt" IS NOT NULL
+        ) sp_meta ON TRUE
+        WHERE g."projectId" = ${projectId}
+          ${createdByFilter ? Prisma.sql`AND g."createdBy" = ${createdByFilter}` : Prisma.empty}
+          AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${TIMEZONE}))::int IN (${Prisma.join(weekdays)})
+        ORDER BY g."createdAt" DESC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `
+      weekdayFilteredIds = idRows.map((r) => r.id)
+      where.id = { in: weekdayFilteredIds }
+    }
+
+    // Fetch total count (sem filtro de weekday usa o where padrão)
+    const total = weekdayTotal ?? (await db.generation.count({ where }))
+
+    // Fetch generations: quando filtramos por weekday, não aplicamos paginação aqui
+    // porque o where.id já está limitado aos IDs corretos da página.
     const generations = await db.generation.findMany({
       where,
       select: {
@@ -97,8 +151,8 @@ export async function GET(
         },
       },
       orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip: weekdayFilteredIds ? undefined : (page - 1) * pageSize,
+      take: weekdayFilteredIds ? undefined : pageSize,
     })
 
     return NextResponse.json({

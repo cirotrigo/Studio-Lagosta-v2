@@ -79,6 +79,17 @@ const GRID_DENSITY_OPTIONS: { value: GridDensity; label: string }[] = [
   { value: 'comfortable', label: GRID_DENSITY_CONFIG.comfortable.label },
 ]
 
+// Convenção JS Date.getDay() / Postgres EXTRACT(DOW): 0 = Domingo, 6 = Sábado
+const WEEKDAY_OPTIONS: { value: number; label: string; short: string }[] = [
+  { value: 1, label: 'Segunda-feira', short: 'Seg' },
+  { value: 2, label: 'Terça-feira', short: 'Ter' },
+  { value: 3, label: 'Quarta-feira', short: 'Qua' },
+  { value: 4, label: 'Quinta-feira', short: 'Qui' },
+  { value: 5, label: 'Sexta-feira', short: 'Sex' },
+  { value: 6, label: 'Sábado', short: 'Sáb' },
+  { value: 0, label: 'Domingo', short: 'Dom' },
+]
+
 type ViewMode = 'grid' | 'list'
 type PreviewState = {
   id: string
@@ -133,6 +144,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [searchTerm, setSearchTerm] = React.useState('')
   const [statusFilter, setStatusFilter] = React.useState<'all' | GenerationRecord['status']>('all')
   const [memberFilter, setMemberFilter] = React.useState<string | null>(null)
+  const [weekdayFilter, setWeekdayFilter] = React.useState<Set<number>>(new Set())
   const [viewMode, setViewMode] = React.useState<ViewMode>('grid')
   const [gridDensity, setGridDensity] = React.useState<GridDensity>('cozy')
   const [selectedIds, setSelectedIds] = React.useState<Set<string>>(new Set())
@@ -141,6 +153,12 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [progressOverrides, setProgressOverrides] = React.useState<Record<string, ProgressOverride>>({})
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
+
+  // Serializa weekdays ordenados pra estabilidade do queryKey
+  const weekdaysParam = React.useMemo(
+    () => Array.from(weekdayFilter).sort().join(','),
+    [weekdayFilter]
+  )
 
   const {
     data,
@@ -151,7 +169,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery<GenerationsResponse>({
-    queryKey: ['generations', projectId, memberFilter],
+    queryKey: ['generations', projectId, memberFilter, weekdaysParam],
     enabled: !!projectId,
     initialPageParam: 1,
     queryFn: ({ pageParam = 1 }) => {
@@ -161,6 +179,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       })
       if (memberFilter) {
         params.set('createdBy', memberFilter)
+      }
+      if (weekdaysParam) {
+        params.set('weekdays', weekdaysParam)
       }
       return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
     },
@@ -656,6 +677,48 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               />
             )}
           </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-muted-foreground mr-1">Dia:</span>
+          <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
+            {WEEKDAY_OPTIONS.map((option) => {
+              const active = weekdayFilter.has(option.value)
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  title={option.label}
+                  className={cn(
+                    'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                    active
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:text-foreground'
+                  )}
+                  onClick={() =>
+                    setWeekdayFilter((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(option.value)) next.delete(option.value)
+                      else next.add(option.value)
+                      return next
+                    })
+                  }
+                >
+                  {option.short}
+                </button>
+              )
+            })}
+          </div>
+          {weekdayFilter.size > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 text-xs text-muted-foreground"
+              onClick={() => setWeekdayFilter(new Set())}
+            >
+              Limpar
+            </Button>
+          )}
         </div>
 
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
