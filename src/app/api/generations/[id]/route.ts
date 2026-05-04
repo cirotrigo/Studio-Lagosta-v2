@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { del } from '@vercel/blob'
 import { db } from '@/lib/db'
 import {
   fetchProjectWithShares,
   hasProjectReadAccess,
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
+import { extractBlobPathname } from '@/lib/cleanup/blob-cleanup'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 
@@ -71,12 +74,13 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     // Buscar geração com verificação de ownership
     const generation = await db.generation.findFirst({
       where: { id },
-      include: {
-        Project: {
-          select: {
-            userId: true,
-          },
-        },
+      select: {
+        id: true,
+        projectId: true,
+        resultUrl: true,
+        fileName: true,
+        googleDriveFileId: true,
+        googleDriveBackupUrl: true,
       },
     })
 
@@ -91,15 +95,29 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    // Deletar geração
+    // Limpar Drive primeiro (mais visível pro usuário se falhar)
+    if (generation.googleDriveFileId && googleDriveService.isEnabled()) {
+      try {
+        await googleDriveService.deleteFiles([generation.googleDriveFileId])
+      } catch (driveError) {
+        console.warn(`[DELETE generation ${id}] Failed to delete Drive file:`, driveError)
+      }
+    }
+
+    // Limpar blob do Vercel
+    const pathname = generation.fileName ?? extractBlobPathname(generation.resultUrl)
+    if (pathname) {
+      try {
+        await del(pathname)
+      } catch (blobError) {
+        console.warn(`[DELETE generation ${id}] Failed to delete blob:`, blobError)
+      }
+    }
+
+    // Deletar geração do banco por último
     await db.generation.delete({
       where: { id },
     })
-
-    // TODO: Deletar arquivo do Vercel Blob também
-    // if (generation.resultUrl) {
-    //   await del(generation.resultUrl)
-    // }
 
     return NextResponse.json({ success: true })
   } catch (error) {

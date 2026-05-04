@@ -2,7 +2,8 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Loader2 } from 'lucide-react'
 import { useOrganization } from '@clerk/nextjs'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
@@ -141,18 +142,41 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
 
-  const { data, isLoading, isError, refetch } = useQuery<GenerationsResponse>({
+  const {
+    data,
+    isLoading,
+    isError,
+    refetch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery<GenerationsResponse>({
     queryKey: ['generations', projectId, memberFilter],
     enabled: !!projectId,
-    queryFn: () => {
-      const params = new URLSearchParams({ page: '1', pageSize: '100' })
+    initialPageParam: 1,
+    queryFn: ({ pageParam = 1 }) => {
+      const params = new URLSearchParams({
+        page: String(pageParam),
+        pageSize: '60',
+      })
       if (memberFilter) {
         params.set('createdBy', memberFilter)
       }
       return api.get(`/api/projects/${projectId}/generations?${params.toString()}`)
     },
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
     staleTime: 10_000,
   })
+
+  const allGenerations = React.useMemo(
+    () => data?.pages.flatMap((page) => page.generations) ?? [],
+    [data?.pages]
+  )
+
+  const totalGenerationsServer = data?.pages[0]?.pagination.total ?? 0
 
   // Mutation para deletar
   const deleteMutation = useMutation({
@@ -318,11 +342,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   // Limpar overrides quando os dados chegam atualizados
   React.useEffect(() => {
-    if (!data?.generations) return
+    if (allGenerations.length === 0) return
     setProgressOverrides((prev) => {
       let mutated = false
       const next: Record<string, ProgressOverride> = { ...prev }
-      for (const generation of data.generations) {
+      for (const generation of allGenerations) {
         if (!next[generation.id]) continue
         if (generation.status === 'COMPLETED' || generation.status === 'FAILED') {
           delete next[generation.id]
@@ -331,11 +355,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       }
       return mutated ? next : prev
     })
-  }, [data?.generations])
+  }, [allGenerations])
 
   const filtered = React.useMemo(() => {
-    const list = data?.generations ?? []
-    return list.filter((generation) => {
+    return allGenerations.filter((generation) => {
       const fieldValues = (generation.fieldValues ?? {}) as Record<string, unknown>
       const thumbnailValue = getStringField(fieldValues, 'thumbnailUrl')
 
@@ -354,7 +377,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         generation.id.toLowerCase().includes(query)
       return matchesStatus && matchesResult && matchesSearch
     })
-  }, [data?.generations, statusFilter, searchTerm, onlyWithResult])
+  }, [allGenerations, statusFilter, searchTerm, onlyWithResult])
 
   const shouldEnablePhotoSwipe = viewMode === 'grid' && !isLoading && !isError && filtered.length > 0
 
@@ -517,7 +540,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   }, [filtered, selectedIds, toast])
 
   const handleDelete = React.useCallback((generation: GenerationRecord) => {
-    if (!confirm('Deseja realmente remover este criativo?')) return
+    const driveWarning = generation.googleDriveBackupUrl
+      ? ' O backup no Google Drive também será removido.'
+      : ''
+    if (!confirm(`Deseja realmente remover este criativo?${driveWarning}`)) return
     deleteMutation.mutate(generation.id)
     setSelectedIds((prev) => {
       const next = new Set(prev)
@@ -529,7 +555,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const handleBulkDelete = React.useCallback(() => {
     if (selectedIds.size === 0) return
 
-    if (!confirm(`Deseja realmente remover ${selectedIds.size} criativo(s) selecionado(s)?`)) {
+    if (!confirm(`Deseja realmente remover ${selectedIds.size} criativo(s) selecionado(s)? Os backups no Google Drive (quando existirem) também serão removidos.`)) {
       return
     }
 
@@ -590,7 +616,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     )
   }, [filtered, getGenerationMeta])
 
-  const totalGenerations = data?.generations?.length ?? 0
+  const totalGenerations = totalGenerationsServer
   const showGridSummary = shouldEnablePhotoSwipe
 
   const isEmpty = !isLoading && filtered.length === 0
@@ -626,7 +652,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 organizationId={organization.id}
                 value={memberFilter}
                 onChange={setMemberFilter}
-                items={data?.generations || []}
+                items={allGenerations}
               />
             )}
           </div>
@@ -957,6 +983,19 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
             </table>
           </ScrollArea>
         </Card>
+      )}
+
+      {hasNextPage && !isEmpty && (
+        <div className="mt-6 flex justify-center">
+          <Button
+            onClick={() => fetchNextPage()}
+            variant="outline"
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Carregar mais ({totalGenerations - allGenerations.length} restantes)
+          </Button>
+        </div>
       )}
 
       <Dialog open={Boolean(preview)} onOpenChange={(open) => !open && setPreview(null)}>

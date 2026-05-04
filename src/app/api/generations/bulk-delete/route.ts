@@ -1,10 +1,13 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { del } from '@vercel/blob'
 import { db } from '@/lib/db'
 import {
   fetchProjectWithShares,
   hasProjectWriteAccess,
 } from '@/lib/projects/access'
+import { extractBlobPathname } from '@/lib/cleanup/blob-cleanup'
+import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
 
@@ -27,12 +30,12 @@ export async function POST(req: Request) {
       where: {
         id: { in: ids },
       },
-      include: {
-        Project: {
-          select: {
-            userId: true,
-          },
-        },
+      select: {
+        id: true,
+        projectId: true,
+        resultUrl: true,
+        fileName: true,
+        googleDriveFileId: true,
       },
     })
 
@@ -50,6 +53,32 @@ export async function POST(req: Request) {
         { error: 'Não autorizado para deletar alguns criativos' },
         { status: 403 }
       )
+    }
+
+    // Limpar Drive em batch (uma chamada com todos os fileIds)
+    const driveFileIds = generations
+      .map((g) => g.googleDriveFileId)
+      .filter((id): id is string => Boolean(id))
+
+    if (driveFileIds.length > 0 && googleDriveService.isEnabled()) {
+      try {
+        await googleDriveService.deleteFiles(driveFileIds)
+      } catch (driveError) {
+        console.warn('[bulk-delete] Failed to delete some Drive files:', driveError)
+      }
+    }
+
+    // Limpar blobs do Vercel em paralelo
+    const blobPathnames = generations
+      .map((g) => g.fileName ?? extractBlobPathname(g.resultUrl))
+      .filter((p): p is string => Boolean(p))
+
+    if (blobPathnames.length > 0) {
+      const blobResults = await Promise.allSettled(blobPathnames.map((p) => del(p)))
+      const failedBlobs = blobResults.filter((r) => r.status === 'rejected').length
+      if (failedBlobs > 0) {
+        console.warn(`[bulk-delete] Failed to delete ${failedBlobs} blob(s)`)
+      }
     }
 
     // Deletar gerações em lote
