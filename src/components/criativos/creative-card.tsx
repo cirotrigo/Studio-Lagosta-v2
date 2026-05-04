@@ -3,7 +3,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
-import { Download, Calendar, Play, Check } from 'lucide-react'
+import { Download, Calendar, Play, Check, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface CreativeCardProps {
@@ -18,6 +18,7 @@ interface CreativeCardProps {
   onToggleSelect: () => void
   onDownload: () => void
   onSchedule?: () => void
+  onImprove?: () => void
 }
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
@@ -34,6 +35,7 @@ export function CreativeCard({
   onToggleSelect,
   onDownload,
   onSchedule,
+  onImprove,
 }: CreativeCardProps) {
   const [imageLoaded, setImageLoaded] = React.useState(false)
 
@@ -139,8 +141,24 @@ export function CreativeCard({
                 e.stopPropagation()
                 onSchedule()
               }}
+              title="Agendar"
             >
               <Calendar className="h-4 w-4" />
+            </Button>
+          )}
+          {onImprove && (
+            <Button
+              size="icon"
+              variant="outline"
+              className="h-8 w-8 rounded-full bg-black/40 border-white/30 text-white hover:bg-black/60 hover:text-white backdrop-blur-sm"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onImprove()
+              }}
+              title="Melhorar com IA (25 créditos)"
+            >
+              <Sparkles className="h-4 w-4" />
             </Button>
           )}
           <Button
@@ -152,6 +170,7 @@ export function CreativeCard({
               e.stopPropagation()
               onDownload()
             }}
+            title="Baixar"
           >
             <Download className="h-4 w-4" />
           </Button>

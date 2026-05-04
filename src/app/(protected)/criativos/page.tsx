@@ -19,6 +19,7 @@ import { PostComposer, type PostFormData } from '@/components/posts/post-compose
 import { Eye, Download, Trash2, Calendar, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
+import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 
 interface TemplateInfo {
   id: number
@@ -172,6 +173,7 @@ export default function GlobalCreativesPage() {
   const [preview, setPreview] = React.useState<PreviewState>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
+  const [improvingGeneration, setImprovingGeneration] = React.useState<GenerationRecord | null>(null)
   const [weekdayFilter, setWeekdayFilter] = React.useState<Set<number>>(new Set())
 
   const weekdaysArray = React.useMemo(() => Array.from(weekdayFilter), [weekdayFilter])
@@ -381,6 +383,10 @@ export default function GlobalCreativesPage() {
     setIsComposerOpen(true)
   }, [])
 
+  const handleImprove = React.useCallback((generation: GenerationRecord) => {
+    setImprovingGeneration(generation)
+  }, [])
+
   const handleCloseComposer = React.useCallback(() => {
     setIsComposerOpen(false)
     setSchedulingGeneration(null)
@@ -553,6 +559,7 @@ export default function GlobalCreativesPage() {
                   onToggleSelect={() => toggleSelection(generation.id)}
                   onDownload={() => handleDownload(generation)}
                   onSchedule={() => handleSchedule(generation)}
+                  onImprove={() => handleImprove(generation)}
                 />
               </div>
             )
@@ -629,6 +636,24 @@ export default function GlobalCreativesPage() {
           initialData={composerInitialData}
         />
       )}
+
+      {/* Improve Creative Modal */}
+      <ImproveCreativeModal
+        generation={
+          improvingGeneration
+            ? {
+                id: improvingGeneration.id,
+                projectId: improvingGeneration.projectId,
+                resultUrl: improvingGeneration.resultUrl,
+                templateName: improvingGeneration.templateName,
+              }
+            : null
+        }
+        open={!!improvingGeneration}
+        onOpenChange={(next) => {
+          if (!next) setImprovingGeneration(null)
+        }}
+      />
     </div>
   )
 }

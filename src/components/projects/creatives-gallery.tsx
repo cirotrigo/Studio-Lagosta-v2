@@ -23,6 +23,7 @@ import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Cal
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
+import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 
 interface TemplateInfo {
   id: number
@@ -144,6 +145,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [progressOverrides, setProgressOverrides] = React.useState<Record<string, ProgressOverride>>({})
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
+  const [improvingGeneration, setImprovingGeneration] = React.useState<GenerationRecord | null>(null)
 
   // Serializa weekdays ordenados pra estabilidade do queryKey
   const weekdaysParam = React.useMemo(
@@ -579,6 +581,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     setIsComposerOpen(true)
   }, [])
 
+  const handleImprove = React.useCallback((generation: GenerationRecord) => {
+    setImprovingGeneration(generation)
+  }, [])
+
   const handleCloseComposer = React.useCallback(() => {
     setIsComposerOpen(false)
     setSchedulingGeneration(null)
@@ -885,6 +891,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onDownload={() => handleDownload(generation)}
                   onDelete={() => handleDelete(generation)}
                   onSchedule={() => handleSchedule(generation)}
+                  onImprove={() => handleImprove(generation)}
                   onPreview={() => {
                     if (previewPayload) {
                       setPreview(previewPayload)
@@ -1092,6 +1099,24 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           initialData={composerInitialData}
         />
       )}
+
+      {/* Improve Creative Modal */}
+      <ImproveCreativeModal
+        generation={
+          improvingGeneration
+            ? {
+                id: improvingGeneration.id,
+                projectId: improvingGeneration.projectId,
+                resultUrl: improvingGeneration.resultUrl,
+                templateName: improvingGeneration.templateName ?? improvingGeneration.template?.name,
+              }
+            : null
+        }
+        open={!!improvingGeneration}
+        onOpenChange={(next) => {
+          if (!next) setImprovingGeneration(null)
+        }}
+      />
     </>
   )
 }

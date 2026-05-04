@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2, Calendar } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -29,6 +29,7 @@ interface GalleryItemProps {
   onDriveOpen?: () => void
   onPreview?: () => void
   onSchedule?: () => void
+  onImprove?: () => void
   index: number
   pswpWidth: number
   pswpHeight: number
@@ -57,6 +58,7 @@ export function GalleryItem({
   onDriveOpen,
   onPreview,
   onSchedule,
+  onImprove,
   index,
   pswpWidth,
   pswpHeight,
@@ -340,6 +342,22 @@ export function GalleryItem({
             title="Agendar"
           >
             <Calendar className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {onImprove && status === 'COMPLETED' && resolvedAssetUrl && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onImprove()
+            }}
+            title="Melhorar com IA (25 créditos)"
+          >
+            <Sparkles className="h-3.5 w-3.5" />
           </Button>
         )}
 

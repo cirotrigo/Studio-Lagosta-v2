@@ -8,6 +8,7 @@ export const FEATURE_CREDIT_COSTS = {
   video_export: 10,
   social_media_post: 3,
   background_removal: 3,
+  ai_creative_improvement: 25,
 } as const
 
 // Feature keys are derived from the config above to ensure type-safety across the codebase
@@ -21,6 +22,7 @@ const FEATURE_TO_OPERATION: Record<FeatureKey, OperationType> = {
   video_export: OperationType.VIDEO_EXPORT,
   social_media_post: OperationType.SOCIAL_MEDIA_POST,
   background_removal: OperationType.BACKGROUND_REMOVAL,
+  ai_creative_improvement: OperationType.AI_CREATIVE_IMPROVEMENT,
 }
 
 export function toPrismaOperationType(feature: FeatureKey): OperationType {

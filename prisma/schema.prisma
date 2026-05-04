@@ -1293,6 +1293,7 @@ enum OperationType {
   VIDEO_EXPORT
   SOCIAL_MEDIA_POST
   BACKGROUND_REMOVAL
+  AI_CREATIVE_IMPROVEMENT
 }
 
 enum ProjectStatus {
