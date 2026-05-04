@@ -121,16 +121,16 @@ export default function AdminSpendingPage() {
                 data={data.byDay.map((d) => ({ ...d, display: toDisplay(d.usd) }))}
                 margin={{ top: 12, right: 24, left: 12, bottom: 12 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.3} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.3} />
                 <XAxis
                   dataKey="date"
                   tickFormatter={formatXAxisLabel}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                  tick={{ fill: '#9ca3af', fontSize: 12 }}
                   interval="preserveStartEnd"
                 />
                 <YAxis
                   tickFormatter={(v: number) => formatCurrency(v)}
-                  tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }}
+                  tick={{ fill: '#9ca3af', fontSize: 12 }}
                   width={90}
                 />
                 <Tooltip
@@ -146,10 +146,10 @@ export default function AdminSpendingPage() {
                 <Line
                   type="monotone"
                   dataKey="display"
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  dot={false}
-                  activeDot={{ r: 5, fill: 'hsl(var(--primary))' }}
+                  stroke="hsl(280 100% 70%)"
+                  strokeWidth={3}
+                  dot={{ fill: 'hsl(280 100% 70%)', r: 4 }}
+                  activeDot={{ r: 6, fill: 'hsl(280 100% 70%)' }}
                 />
               </LineChart>
             </ResponsiveContainer>
