@@ -23,30 +23,55 @@ function getClient(): OpenAI {
  */
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2'
 
+/**
+ * Limite de área para textos, expressado em linguagem visual.
+ * O gpt-image entende melhor descrições visuais do que percentuais matemáticos.
+ * Customizável via env (ex: "no máximo 20% da arte" ou "muito compactos, ocupando
+ * menos de um quinto da imagem").
+ */
+const TEXT_AREA_HINT =
+  process.env.OPENAI_IMAGE_TEXT_AREA_HINT ||
+  'no máximo um quarto (cerca de 25%) da área visual total da arte'
+
 export function getCurrentImageModel(): string {
   return IMAGE_MODEL
 }
 
-const ART_DIRECTOR_SYSTEM_PROMPT = `Atue como um Diretor de Arte Sênior focado em design de comunicação. Sua tarefa é aprimorar o layout da peça fornecida, elevando seu nível de organização, clareza e percepção de valor, com foco em leitura rápida e eficiente para dispositivos móveis.
+function buildArtDirectorPrompt(): string {
+  return `[INSTRUÇÃO TIPOGRÁFICA — PRIORIDADE MÁXIMA]
+Antes de qualquer outra modificação, examine cuidadosamente a tipografia da arte original e siga estas regras críticas:
 
-Siga estas diretrizes de forma estrita:
+TAMANHO DOS TEXTOS: os blocos de texto na versão melhorada devem ocupar ${TEXT_AREA_HINT}. Os textos devem permanecer COMPACTOS e DISCRETOS. NUNCA aumente o tamanho dos textos em relação à arte original — eles devem ter o mesmo tamanho ou menores. Não use ampliação de fonte para destacar informações; use peso, cor ou posição.
 
-[RESTRIÇÕES ABSOLUTAS - O QUE NÃO ALTERAR]
+FIDELIDADE TIPOGRÁFICA: replique fielmente as fontes da arte original. Observe a família tipográfica (serif, sans-serif, display, manuscrita), o peso (light, regular, medium, bold, black) e o estilo (italic, normal). Mantenha exatamente o mesmo tipo de letra. Se a original usa uma fonte com personalidade marcante, preserve essa personalidade. NÃO modernize, NÃO substitua por fontes "mais limpas", NÃO troque serif por sans-serif (ou vice-versa).
+
+PROPORÇÃO INTERNA: a relação de tamanho entre título, subtítulo, corpo de texto e detalhes deve permanecer EXATAMENTE como na original. Se o título original era 3× maior que o corpo, mantenha 3×. Não inverta nem altere essa hierarquia.
+
+[PAPEL]
+Atue como um Diretor de Arte Sênior focado em design de comunicação. Sua tarefa é aprimorar o layout da peça fornecida, elevando organização, clareza e percepção de valor, com foco em leitura rápida em dispositivos móveis.
+
+[RESTRIÇÕES ABSOLUTAS — O QUE NÃO ALTERAR]
 - Preserve exatamente a mesma imagem de fundo da peça original.
 - Mantenha a identidade visual e a paleta de cores da marca.
-- Não substitua as fontes originais (mantenha a mesma família tipográfica).
+- Mantenha a mesma família tipográfica (ver INSTRUÇÃO TIPOGRÁFICA acima).
 - Não altere, distorça ou reposicione a logo.
 
 [DIRETRIZES DE COMPOSIÇÃO E TEXTO]
-- Hierarquia Visual: Reorganize o alinhamento e a distribuição dos blocos de texto para criar uma leitura lógica e equilibrada, evitando poluição visual.
-- Espaçamento: Ajuste os respiros (white space) entre os elementos para otimizar o conforto da leitura.
-- Ênfase: Destaque as informações principais utilizando variações de peso (gramatura da fonte), tamanho ou cor, sempre dentro da identidade da marca.
-- Contraste: Garanta que todo o texto tenha alto contraste contra o fundo.
+- Hierarquia visual: reorganize alinhamento e distribuição dos blocos de texto para leitura lógica e equilibrada, evitando poluição visual.
+- Espaçamento: ajuste os respiros (white space) entre elementos para conforto de leitura.
+- Ênfase: use peso da fonte, cor ou posição (NÃO tamanho) para destacar informações.
+- Contraste: garanta alto contraste do texto contra o fundo.
 
 [ACABAMENTO ESTÉTICO]
-- Aplique uma textura sutil e coerente exclusivamente no título principal para agregar valor visual, sem comprometer a legibilidade em nenhum aspecto.
+- Aplique uma textura sutil e coerente APENAS no título principal, sem comprometer legibilidade.
+
+[REFORÇO FINAL — REGRAS CRÍTICAS]
+- TEXTOS COMPACTOS: ocupando ${TEXT_AREA_HINT}.
+- FONTES IDÊNTICAS às da arte original — mesma família, peso e estilo.
+- PROPORÇÕES TIPOGRÁFICAS preservadas — sem ampliação.
 
 O resultado deve ser uma versão altamente profissional, bem resolvida e orientada à conversão, mantendo a consistência e a essência da arte original do cliente.`
+}
 
 interface ImproveCreativeOptions {
   imageBuffer: Buffer
@@ -75,7 +100,7 @@ export async function improveCreative({
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = `${buildPedidoSection(userRequest)}\n\n${ART_DIRECTOR_SYSTEM_PROMPT}`
+  const prompt = `${buildPedidoSection(userRequest)}\n\n${buildArtDirectorPrompt()}`
 
   const extension = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg'
   const imageFile = await toFile(imageBuffer, `original.${extension}`, { type: mimeType })
