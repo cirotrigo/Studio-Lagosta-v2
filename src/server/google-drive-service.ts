@@ -423,6 +423,79 @@ export class GoogleDriveService {
     })
   }
 
+  /**
+   * Localiza o subfolder ARTES LAGOSTA dentro do projectFolderId. Não cria se não existir.
+   * Usado pelo script de recovery.
+   */
+  async findArtesLagostaFolder(projectFolderId: string): Promise<string | null> {
+    this.ensureEnabled()
+    return this.findFolderByName(ARTES_FOLDER_NAME, projectFolderId)
+  }
+
+  /**
+   * Lista todas as imagens dentro de um folder com paginação completa, incluindo createdTime.
+   * Usado pelo script de recovery para reconciliar Drive com o banco.
+   */
+  async listImagesInFolder(folderId: string): Promise<
+    Array<{
+      id: string
+      name: string
+      mimeType: string
+      createdTime?: string
+      modifiedTime?: string
+      webContentLink?: string | null
+      webViewLink?: string | null
+    }>
+  > {
+    this.ensureEnabled()
+
+    const results: Array<{
+      id: string
+      name: string
+      mimeType: string
+      createdTime?: string
+      modifiedTime?: string
+      webContentLink?: string | null
+      webViewLink?: string | null
+    }> = []
+
+    let pageToken: string | undefined
+
+    do {
+      const response = await this.withRetry('listImagesInFolder', async () =>
+        this.drive.files.list(
+          {
+            q: `'${escapeQueryValue(folderId)}' in parents and trashed = false and mimeType contains '${MIME_TYPE_IMAGE_PREFIX}'`,
+            orderBy: 'createdTime',
+            pageSize: 1000,
+            pageToken,
+            fields: 'nextPageToken, files(id, name, mimeType, createdTime, modifiedTime, webContentLink, webViewLink)',
+            supportsAllDrives: true,
+            includeItemsFromAllDrives: true,
+          },
+          { timeout: LIST_TIMEOUT },
+        ),
+      )
+
+      for (const file of response.data.files ?? []) {
+        if (!file.id) continue
+        results.push({
+          id: file.id,
+          name: file.name ?? 'Sem nome',
+          mimeType: file.mimeType ?? 'application/octet-stream',
+          createdTime: file.createdTime ?? undefined,
+          modifiedTime: file.modifiedTime ?? undefined,
+          webContentLink: file.webContentLink ?? null,
+          webViewLink: file.webViewLink ?? null,
+        })
+      }
+
+      pageToken = response.data.nextPageToken ?? undefined
+    } while (pageToken)
+
+    return results
+  }
+
   async uploadAIGeneratedImage(buffer: Buffer, imagesFolderId: string, projectName?: string | null): Promise<GoogleDriveUploadResult> {
     this.ensureEnabled()
 
