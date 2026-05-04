@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { cleanupGenerations } from '@/lib/cleanup/blob-cleanup'
+
+export const maxDuration = 120
 
 export async function GET(req: NextRequest) {
   try {
@@ -13,7 +16,11 @@ export async function GET(req: NextRequest) {
 
     let totalDeleted = 0
     const results = {
-      generations: 0,
+      generationsRepointed: 0,
+      generationsRecovered: 0,
+      generationsDeleted: 0,
+      generationBlobsDeleted: 0,
+      generationBudgetExceeded: false,
       storageObjects: 0,
       usageHistory: 0,
       videoJobs: 0,
@@ -22,16 +29,14 @@ export async function GET(req: NextRequest) {
       subscriptionEvents: 0,
     }
 
-    // 1. Delete old Generations (>30 days)
-    const oldGenerations = await db.generation.deleteMany({
-      where: {
-        createdAt: {
-          lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        }
-      }
-    })
-    results.generations = oldGenerations.count
-    totalDeleted += oldGenerations.count
+    // 1. Cleanup Generations: preserva linhas com Drive backup, retenção de 90 dias.
+    const generationStats = await cleanupGenerations()
+    results.generationsRepointed = generationStats.generationsRepointed
+    results.generationsRecovered = generationStats.generationsRecovered
+    results.generationsDeleted = generationStats.generationsDeleted
+    results.generationBlobsDeleted = generationStats.blobsDeleted
+    results.generationBudgetExceeded = generationStats.budgetExceeded
+    totalDeleted += generationStats.generationsDeleted
 
     // 2. Clean deleted StorageObjects
     const deletedStorage = await db.storageObject.deleteMany({
