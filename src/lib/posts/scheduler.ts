@@ -103,69 +103,116 @@ export class PostScheduler {
   }
 
   /**
-   * SOLUÇÃO 3: Check for posts stuck in POSTING status for more than 30 minutes
-   * and mark them as FAILED
-   * Increased from 10 to 30 minutes to avoid marking posts as failed while Later is still processing
+   * Mark posts as FAILED when:
+   *   (a) POSTING for 30+ min with no laterPostId (never reached Zernio), OR
+   *   (b) POSTING/SCHEDULED past their time + 30 min grace with a laterPostId
+   *       that no longer resolves on Zernio (Zernio dropped the post).
+   * Case (b) is the silent-failure path: Zernio deletes failed/expired drafts
+   * and our sync cron only imports scheduled/published, so these posts would
+   * otherwise stay stuck forever.
    */
   async checkStuckPosts() {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000) // Aumentado de 10 para 30 minutos
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000)
 
-    // Find posts that have been in POSTING status for more than 30 minutes
-    // Only mark as stuck if no laterPostId (not sent to Later yet)
-    // Use processingStartedAt when available, fallback to updatedAt
+    // Case (a): POSTING without laterPostId — never sent to Zernio
     const stuckPosts = await db.socialPost.findMany({
       where: {
         status: PostStatus.POSTING,
-        laterPostId: null, // Só marca como stuck se não foi enviado
+        laterPostId: null,
         OR: [
-          {
-            processingStartedAt: {
-              lt: thirtyMinutesAgo,
-            },
-          },
-          {
-            processingStartedAt: null,
-            updatedAt: {
-              lt: thirtyMinutesAgo, // Fallback para posts antigos sem processingStartedAt
-            },
-          },
+          { processingStartedAt: { lt: thirtyMinutesAgo } },
+          { processingStartedAt: null, updatedAt: { lt: thirtyMinutesAgo } },
         ],
       },
     })
 
-    if (stuckPosts.length === 0) {
+    // Case (b): orphaned laterPostId — present locally, gone on Zernio.
+    // Use scheduledDatetime OR processingStartedAt — IMMEDIATE posts may have a near-future
+    // scheduledDatetime (set to "now" at creation) or none, so we'd miss them otherwise.
+    const orphanCandidates = await db.socialPost.findMany({
+      where: {
+        laterPostId: { not: null },
+        status: { in: [PostStatus.POSTING, PostStatus.SCHEDULED] },
+        OR: [
+          { scheduledDatetime: { lt: thirtyMinutesAgo } },
+          { processingStartedAt: { lt: thirtyMinutesAgo } },
+          {
+            processingStartedAt: null,
+            scheduledDatetime: null,
+            updatedAt: { lt: thirtyMinutesAgo },
+          },
+        ],
+      },
+      select: { id: true, laterPostId: true, scheduledDatetime: true },
+    })
+
+    const orphans: string[] = []
+    if (orphanCandidates.length > 0) {
+      const { getLaterClient } = await import('@/lib/later')
+      const { LaterNotFoundError } = await import('@/lib/later/errors')
+      const client = getLaterClient()
+      for (const candidate of orphanCandidates) {
+        try {
+          await client.getPost(candidate.laterPostId!)
+        } catch (err) {
+          if (err instanceof LaterNotFoundError) {
+            orphans.push(candidate.id)
+          }
+        }
+      }
+    }
+
+    if (stuckPosts.length === 0 && orphans.length === 0) {
       console.log('✅ No stuck posts found')
       return { updated: 0 }
     }
 
-    console.log(`⚠️ Found ${stuckPosts.length} stuck posts, updating to FAILED...`)
+    let updatedCount = 0
 
-    // Update all stuck posts to FAILED
-    const result = await db.socialPost.updateMany({
-      where: {
-        id: {
-          in: stuckPosts.map((p) => p.id),
+    if (stuckPosts.length > 0) {
+      const ids = stuckPosts.map((p) => p.id)
+      const result = await db.socialPost.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          status: PostStatus.FAILED,
+          errorMessage: 'Post travado em POSTING por mais de 30 minutos - criação no Zernio não confirmada',
+          failedAt: new Date(),
         },
-      },
-      data: {
-        status: PostStatus.FAILED,
-        errorMessage: 'Post travado em POSTING por mais de 30 minutos - criação no Later não confirmada',
-        failedAt: new Date(),
-      },
-    })
-
-    // Create logs for each stuck post
-    await Promise.all(
-      stuckPosts.map((post) =>
-        this.createLog(
-          post.id,
-          PostLogEvent.FAILED,
-          'Post travado em POSTING por 30+ minutos - marcado como FAILED automaticamente (Later API timeout)'
+      })
+      updatedCount += result.count
+      await Promise.all(
+        stuckPosts.map((post) =>
+          this.createLog(
+            post.id,
+            PostLogEvent.FAILED,
+            'Post travado em POSTING por 30+ minutos - marcado como FAILED automaticamente'
+          )
         )
       )
-    )
+    }
 
-    console.log(`✅ Updated ${result.count} stuck posts to FAILED`)
-    return { updated: result.count }
+    if (orphans.length > 0) {
+      const result = await db.socialPost.updateMany({
+        where: { id: { in: orphans } },
+        data: {
+          status: PostStatus.FAILED,
+          errorMessage: 'Post no Zernio não encontrado (404) após prazo agendado - provavelmente falhou ou foi removido',
+          failedAt: new Date(),
+        },
+      })
+      updatedCount += result.count
+      await Promise.all(
+        orphans.map((id) =>
+          this.createLog(
+            id,
+            PostLogEvent.FAILED,
+            'laterPostId não encontrado no Zernio após prazo - marcado como FAILED'
+          )
+        )
+      )
+    }
+
+    console.log(`✅ Updated ${updatedCount} stuck posts to FAILED (direct: ${stuckPosts.length}, orphans: ${orphans.length})`)
+    return { updated: updatedCount }
   }
 }

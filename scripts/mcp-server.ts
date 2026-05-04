@@ -654,18 +654,26 @@ server.tool(
 
 server.tool(
   'update-post',
-  'Update a post: caption, schedule, status, slotValues, or mediaUrls',
+  'Update a post: caption, schedule, status, slotValues, or mediaUrls. Setting status to DRAFT/SCHEDULED/FAILED clears transient fields (processingStartedAt, errorMessage) — safe to unstick posts frozen in POSTING.',
   {
     postId: z.string().describe('Post ID'),
     caption: z.string().optional(),
     scheduledDatetime: z.string().optional().describe('"YYYY-MM-DD HH:mm" BRT or ISO'),
-    status: z.enum(['DRAFT', 'SCHEDULED', 'POSTING', 'POSTED', 'FAILED']).optional(),
+    status: z.enum(['DRAFT', 'SCHEDULED', 'POSTED', 'FAILED']).optional().describe('Cannot set POSTING directly — it is a transient state managed by the scheduler. Use recover-stuck-post to deal with posts frozen in POSTING.'),
     slotValues: z.string().optional().describe('JSON string'),
     pageId: z.string().optional(),
     mediaUrls: z.array(z.string()).optional(),
   },
   async ({ postId, caption, scheduledDatetime, status, slotValues, pageId, mediaUrls }) => {
     try {
+      const existing = await prisma.socialPost.findUnique({
+        where: { id: postId },
+        select: { pageId: true, mediaUrls: true, status: true, laterPostId: true },
+      })
+      if (!existing) {
+        return { content: [{ type: 'text' as const, text: `Error: post ${postId} not found` }], isError: true }
+      }
+
       const data: any = {}
       if (caption !== undefined) data.caption = caption
       if (scheduledDatetime !== undefined) data.scheduledDatetime = parseBRT(scheduledDatetime)
@@ -673,13 +681,24 @@ server.tool(
       if (pageId !== undefined) data.pageId = pageId
       if (mediaUrls !== undefined) data.mediaUrls = mediaUrls
 
-      // If changing to SCHEDULED and post has a pageId, set renderStatus to PENDING
       if (status) {
         data.status = status
+        // Leaving POSTING or moving to a terminal/editable state: clear
+        // transient markers so the post is coherent for the cron + UI.
+        if (status === 'DRAFT' || status === 'SCHEDULED' || status === 'FAILED') {
+          data.processingStartedAt = null
+        }
+        if (status === 'DRAFT' || status === 'SCHEDULED') {
+          data.errorMessage = null
+          data.failedAt = null
+        }
+        if (status === 'FAILED' && existing.status === 'POSTING') {
+          data.failedAt = new Date()
+          if (!data.errorMessage) data.errorMessage = 'Manually unstuck from POSTING via MCP'
+        }
         if (status === 'SCHEDULED') {
-          const existing = await prisma.socialPost.findUnique({ where: { id: postId }, select: { pageId: true, mediaUrls: true } })
-          const effectivePageId = pageId ?? existing?.pageId
-          const effectiveMedia = mediaUrls ?? existing?.mediaUrls
+          const effectivePageId = pageId ?? existing.pageId
+          const effectiveMedia = mediaUrls ?? existing.mediaUrls
           if (effectivePageId && (!effectiveMedia || effectiveMedia.length === 0)) {
             data.renderStatus = 'PENDING'
           }
@@ -733,6 +752,292 @@ server.tool(
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 7b: recover-stuck-post
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'recover-stuck-post',
+  'Recover a post frozen in POSTING (or any broken state) by reconciling with Zernio. Fetches real status from Zernio and updates the local DB. Optionally republishes immediately by rebuilding from local mediaUrls (Vercel Blob) — does NOT reuse Zernio CDN copies, which are wiped when the stale post is deleted. Use this whenever a post is stuck after clicking "Publicar Agora" or the scheduler crashed mid-publish.',
+  {
+    postId: z.string().describe('Post ID (local DB id)'),
+    action: z
+      .enum(['reconcile', 'publish', 'force-failed'])
+      .default('reconcile')
+      .describe('reconcile = pull Zernio state into DB; publish = delete the stale Zernio post (best-effort) and republish from local mediaUrls via LaterPostScheduler.sendToLater(forceImmediate, skipCreditDeduction) — works for carousels because we re-upload our Vercel Blob copies instead of relying on Zernio\'s deleted CDN files; force-failed = mark as FAILED and clear transient fields (use when Zernio lost the post or you want to retry from scratch)'),
+  },
+  async ({ postId, action }) => {
+    try {
+      const post = await prisma.socialPost.findUnique({
+        where: { id: postId },
+        include: { Project: { select: { id: true, name: true, laterAccountId: true } } },
+      })
+      if (!post) {
+        return { content: [{ type: 'text' as const, text: `Error: post ${postId} not found` }], isError: true }
+      }
+
+      const result: any = {
+        postId,
+        project: post.Project?.name,
+        before: {
+          status: post.status,
+          lateStatus: post.lateStatus,
+          laterPostId: post.laterPostId,
+          processingStartedAt: post.processingStartedAt,
+        },
+      }
+
+      const { getLaterClient } = await import('../src/lib/later/client')
+      const { LaterNotFoundError } = await import('../src/lib/later/errors')
+      const client = getLaterClient()
+
+      if (action === 'force-failed') {
+        await prisma.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: 'FAILED',
+            errorMessage: 'Forced FAILED via MCP recover-stuck-post',
+            failedAt: new Date(),
+            processingStartedAt: null,
+          },
+        })
+        await prisma.postLog.create({
+          data: {
+            postId,
+            event: 'FAILED',
+            message: 'Forced FAILED via MCP recover-stuck-post',
+            metadata: { prevStatus: post.status, prevLaterPostId: post.laterPostId },
+          },
+        })
+        result.action = 'force-failed'
+        result.after = { status: 'FAILED' }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+      }
+
+      if (!post.laterPostId) {
+        await prisma.socialPost.update({
+          where: { id: postId },
+          data: {
+            status: post.status === 'POSTING' ? 'DRAFT' : post.status,
+            processingStartedAt: null,
+            errorMessage: post.status === 'POSTING' ? 'No laterPostId — reset via recover-stuck-post' : post.errorMessage,
+          },
+        })
+        result.action = 'reconcile-no-laterid'
+        result.note = 'Post had no laterPostId; reset local status only'
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+      }
+
+      // Fetch real state from Zernio
+      let zPost: any
+      try {
+        zPost = await client.getPost(post.laterPostId)
+      } catch (err: any) {
+        if (err instanceof LaterNotFoundError || err?.status === 404) {
+          await prisma.socialPost.update({
+            where: { id: postId },
+            data: {
+              laterPostId: null,
+              lateStatus: null,
+              status: 'FAILED',
+              errorMessage: 'Zernio post not found (404) — possibly deleted or expired',
+              failedAt: new Date(),
+              processingStartedAt: null,
+            },
+          })
+          await prisma.postLog.create({
+            data: {
+              postId,
+              event: 'FAILED',
+              message: 'Zernio returned 404 during recover-stuck-post',
+              metadata: { prevLaterPostId: post.laterPostId },
+            },
+          })
+          result.action = 'reconcile-zernio-404'
+          result.after = { status: 'FAILED', laterPostId: null }
+          return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+        }
+        throw err
+      }
+
+      const zRaw = zPost as any
+      result.zernio = {
+        id: zRaw._id || zRaw.id,
+        status: zRaw.status,
+        scheduledFor: zRaw.scheduledFor || zRaw.publishAt,
+        updatedAt: zRaw.updatedAt,
+      }
+
+      if (action === 'publish') {
+        // Republish from local source (post.mediaUrls — typically Vercel Blob).
+        //
+        // We do NOT use client.publishPost(): it does delete + recreate using
+        // Zernio's CDN URLs from getPost(), but Zernio wipes the uploaded media
+        // when the post is deleted, so the recreate fails with 400 missingFiles
+        // (especially for carousels). Rebuilding from our own Vercel Blob URLs
+        // sidesteps the issue entirely — those don't disappear.
+        const fullPost = await prisma.socialPost.findUnique({
+          where: { id: postId },
+          select: { mediaUrls: true, postType: true },
+        })
+        if (!fullPost || !fullPost.mediaUrls || fullPost.mediaUrls.length === 0) {
+          return {
+            content: [{ type: 'text' as const, text: `Error: post ${postId} has no mediaUrls — cannot rebuild for republish. Re-render or re-attach media first.` }],
+            isError: true,
+          }
+        }
+
+        const oldLaterPostId = post.laterPostId
+
+        // Best-effort: delete the stale Zernio post so we don't leave orphans
+        // and so dedup (409) doesn't hit us on the recreate.
+        try {
+          await client.deletePost(oldLaterPostId)
+        } catch (delErr: any) {
+          if (delErr instanceof LaterNotFoundError || delErr?.status === 404) {
+            // already gone — fine
+          } else {
+            console.warn(`[recover-stuck-post] Could not delete stale Zernio post ${oldLaterPostId}: ${delErr?.message || delErr}`)
+          }
+        }
+
+        // Reset local state so sendToLater() will accept the post (it skips
+        // posts that already have laterPostId or are in POSTING).
+        await prisma.socialPost.update({
+          where: { id: postId },
+          data: {
+            laterPostId: null,
+            lateStatus: null,
+            status: 'DRAFT',
+            processingStartedAt: null,
+            errorMessage: null,
+            failedAt: null,
+          },
+        })
+
+        const { LaterPostScheduler } = await import('../src/lib/posts/later-scheduler')
+        const scheduler = new LaterPostScheduler()
+
+        try {
+          // skipCreditDeduction: credits were charged on the original attempt
+          //   (only true if the original sendToLater reached the deduction step,
+          //   which is the typical stuck-post case — Zernio created the post,
+          //   credits charged, then publish hung).
+          // forceImmediate: action is named "publish" — user wants it out NOW,
+          //   regardless of whatever scheduledDatetime the local DB still holds.
+          await scheduler.sendToLater(postId, {
+            skipCreditDeduction: true,
+            forceImmediate: true,
+          })
+        } catch (err: any) {
+          // sendToLater already updated DB to FAILED with errorMessage.
+          const after = await prisma.socialPost.findUnique({
+            where: { id: postId },
+            select: { status: true, errorMessage: true, laterPostId: true },
+          })
+          return {
+            content: [{
+              type: 'text' as const,
+              text: `Republish failed: ${err?.message || String(err)}\n\nPost state after failure:\n${JSON.stringify(after, null, 2)}`,
+            }],
+            isError: true,
+          }
+        }
+
+        const after = await prisma.socialPost.findUnique({
+          where: { id: postId },
+          select: { status: true, lateStatus: true, laterPostId: true },
+        })
+
+        await prisma.postLog.create({
+          data: {
+            postId,
+            event: 'SENT',
+            message: 'Recovered via MCP recover-stuck-post (republish-from-source)',
+            metadata: {
+              prevLaterPostId: oldLaterPostId,
+              newLaterPostId: after?.laterPostId,
+              newStatus: after?.status,
+              newLateStatus: after?.lateStatus,
+              mediaUrlCount: fullPost.mediaUrls.length,
+              postType: fullPost.postType,
+            },
+          },
+        })
+
+        result.action = 'publish'
+        result.after = {
+          status: after?.status,
+          lateStatus: after?.lateStatus,
+          laterPostId: after?.laterPostId,
+        }
+        return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+      }
+
+      // Default: reconcile
+      const statusMap: Record<string, string> = {
+        draft: 'DRAFT',
+        scheduled: 'SCHEDULED',
+        publishing: 'POSTING',
+        published: 'POSTED',
+        failed: 'FAILED',
+        partial: 'FAILED', // Zernio "partial" = some platform succeeded, some failed → user-facing failure
+      }
+      const mappedStatus = statusMap[zRaw.status] || post.status
+      const patch: any = {
+        status: mappedStatus,
+        lateStatus: zRaw.status,
+        lastSyncAt: new Date(),
+      }
+      if (zRaw.scheduledFor) patch.scheduledDatetime = new Date(zRaw.scheduledFor)
+      if (mappedStatus !== 'POSTING') patch.processingStartedAt = null
+      if (mappedStatus === 'POSTED') {
+        patch.sentAt = post.sentAt || new Date()
+        if (zRaw.publishedAt) patch.latePublishedAt = new Date(zRaw.publishedAt)
+      }
+      if (mappedStatus === 'DRAFT' || mappedStatus === 'SCHEDULED') {
+        patch.errorMessage = null
+        patch.failedAt = null
+      }
+      if (mappedStatus === 'FAILED') {
+        patch.failedAt = post.failedAt || new Date()
+        const zErrors = Array.isArray(zRaw.errors)
+          ? zRaw.errors.filter((e: any) => typeof e === 'string')
+          : []
+        patch.errorMessage =
+          zRaw.error ||
+          (zErrors.length ? zErrors.join(' | ') : null) ||
+          `Marcado FAILED via reconcile (Zernio status: ${zRaw.status})`
+      }
+
+      await prisma.socialPost.update({ where: { id: postId }, data: patch })
+      await prisma.postLog.create({
+        data: {
+          postId,
+          event: 'EDITED',
+          message: `Reconciled from Zernio via recover-stuck-post: ${post.status} → ${mappedStatus}`,
+          metadata: { zernioStatus: zRaw.status, zernioScheduledFor: zRaw.scheduledFor || null },
+        },
+      })
+      result.action = 'reconcile'
+      result.after = {
+        status: mappedStatus,
+        lateStatus: zRaw.status,
+        scheduledBRT: patch.scheduledDatetime ? formatBRT(patch.scheduledDatetime) : null,
+      }
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+    } catch (error: any) {
+      return {
+        content: [{
+          type: 'text' as const,
+          text: `Error in recover-stuck-post: ${error?.message || String(error)}`,
+        }],
+        isError: true,
+      }
     }
   },
 )
@@ -1567,7 +1872,7 @@ server.tool(
         if (existing) {
           const hasChanges = existing.lateStatus !== zPost.status || (zPost.text && existing.caption !== zPost.text)
           if (hasChanges) {
-            const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const }
+            const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const, partial: 'FAILED' as const }
             await prisma.socialPost.update({
               where: { id: existing.id },
               data: {
@@ -1589,7 +1894,7 @@ server.tool(
         const contentType = igPlatform?.platformSpecificData?.contentType
         const postType = contentType === 'story' ? 'STORY' as const : contentType === 'reel' ? 'REEL' as const : contentType === 'carousel' ? 'CAROUSEL' as const : 'POST' as const
         const mediaUrls = (zPost as any).media?.map((m: any) => m.url).filter(Boolean) || []
-        const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const }
+        const statusMap = { draft: 'DRAFT' as const, scheduled: 'SCHEDULED' as const, publishing: 'POSTING' as const, published: 'POSTED' as const, failed: 'FAILED' as const, partial: 'FAILED' as const }
 
         await prisma.socialPost.create({
           data: {

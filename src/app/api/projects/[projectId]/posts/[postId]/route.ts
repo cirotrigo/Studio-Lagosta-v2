@@ -6,6 +6,7 @@ import { PostScheduler } from '@/lib/posts/scheduler'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { getLaterClient } from '@/lib/later'
 import type { UpdateLaterPostPayload } from '@/lib/later/types'
+import { LaterNotFoundError } from '@/lib/later/errors'
 
 const areStringArraysEqual = (left?: string[] | null, right?: string[] | null) => {
   const leftValue = left ?? []
@@ -195,11 +196,16 @@ export async function PUT(
     if (scheduleType === 'IMMEDIATE') {
       updateData.errorMessage = null
       updateData.failedAt = null
-      updateData.processingStartedAt = null
 
-      // If post already exists in Later, mark as POSTING before publish
+      // If post already exists in Later, mark as POSTING before publish.
+      // Stamp processingStartedAt NOW so the stuck-post cron can recover the
+      // post if this request is killed mid-publish (Vercel timeout, client
+      // abort, etc). Without the timestamp the post is invisible to recovery.
       if (existingPost.laterPostId) {
         updateData.status = PostStatus.POSTING
+        updateData.processingStartedAt = new Date()
+      } else {
+        updateData.processingStartedAt = null
       }
     }
 
@@ -340,11 +346,64 @@ export async function PUT(
       const scheduler = new PostScheduler()
 
       if (existingPost.laterPostId) {
-        console.log('[PUT /posts] Publishing Later post immediately')
+        // Zernio has no /publish endpoint; publishPost does delete+recreate,
+        // so laterPostId changes and must be persisted before the cron sees
+        // an orphaned id. Await it and reconcile status from the response.
+        console.log('[PUT /posts] Publishing Zernio post immediately (delete+recreate)')
         const laterClient = getLaterClient()
-        laterClient.publishPost(existingPost.laterPostId).catch((error) => {
-          console.error('Error publishing Later post immediately:', error)
-        })
+        try {
+          const republished = await laterClient.publishPost(existingPost.laterPostId)
+          await db.socialPost.update({
+            where: { id: postId },
+            data: {
+              laterPostId: republished.id,
+              lateStatus: republished.status,
+              status:
+                republished.status === 'published'
+                  ? PostStatus.POSTED
+                  : PostStatus.POSTING,
+              sentAt: new Date(),
+              lastSyncAt: new Date(),
+              processingStartedAt: new Date(),
+            },
+          })
+        } catch (error) {
+          // Zernio can drop posts (failed publishes, expired drafts). When the
+          // stored laterPostId no longer resolves, fall back to sending from
+          // scratch using local data so "publish now" is never a silent no-op.
+          if (error instanceof LaterNotFoundError) {
+            console.warn('[PUT /posts] Zernio post missing, sending fresh via scheduler')
+            await db.socialPost.update({
+              where: { id: postId },
+              data: { laterPostId: null, lateStatus: null },
+            })
+            try {
+              await scheduler.sendToLater(postId)
+            } catch (sendError) {
+              console.error('[PUT /posts] Fallback send failed:', sendError)
+              await db.socialPost.update({
+                where: { id: postId },
+                data: {
+                  status: PostStatus.FAILED,
+                  errorMessage:
+                    sendError instanceof Error ? sendError.message : 'Publish failed',
+                  failedAt: new Date(),
+                },
+              })
+            }
+          } else {
+            console.error('[PUT /posts] Error publishing Zernio post immediately:', error)
+            await db.socialPost.update({
+              where: { id: postId },
+              data: {
+                status: PostStatus.FAILED,
+                errorMessage:
+                  error instanceof Error ? error.message : 'Publish failed',
+                failedAt: new Date(),
+              },
+            })
+          }
+        }
       } else {
         console.log('[PUT /posts] Sending post immediately via Late API')
         scheduler.sendToLater(postId).catch((error) => {

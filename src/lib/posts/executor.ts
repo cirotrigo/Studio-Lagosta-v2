@@ -10,6 +10,7 @@ import {
   VerificationStatus,
 } from '../../../prisma/generated/client'
 import { getLaterClient } from '@/lib/later/client'
+import { LaterNotFoundError } from '@/lib/later/errors'
 
 export class PostExecutor {
   private scheduler: PostScheduler
@@ -340,6 +341,49 @@ export class PostExecutor {
       } catch (error: any) {
         console.error(`❌ [Late Sync] Failed to sync post ${post.id}:`, error)
         failed++
+
+        // 404: Zernio removes failed posts (and old/expired ones). Without this branch
+        // the local row stays POSTING/SCHEDULED forever — check-stuck-posts only kicks
+        // in 30 min after scheduledDatetime, which doesn't help IMMEDIATE posts.
+        const is404 =
+          error instanceof LaterNotFoundError ||
+          error?.statusCode === 404 ||
+          error?.name === 'LaterNotFoundError'
+
+        if (
+          is404 &&
+          (post.status === PostStatus.POSTING || post.status === PostStatus.SCHEDULED)
+        ) {
+          try {
+            await db.socialPost.update({
+              where: { id: post.id },
+              data: {
+                status: PostStatus.FAILED,
+                errorMessage:
+                  'Post não encontrado no Zernio (404) durante sync — provavelmente falhou e foi removido pelo Zernio',
+                failedAt: new Date(),
+                processingStartedAt: null,
+                lastSyncAt: new Date(),
+              },
+            })
+            await db.postLog.create({
+              data: {
+                postId: post.id,
+                event: PostLogEvent.FAILED,
+                message: '404 do Zernio durante syncLateStatus — marcado como FAILED',
+                metadata: {
+                  laterPostId: post.laterPostId,
+                  prevStatus: post.status,
+                },
+              },
+            })
+            updated++
+            failed--
+          } catch (dbErr) {
+            console.error(`❌ [Late Sync] Failed to mark post ${post.id} FAILED after 404:`, dbErr)
+          }
+          continue
+        }
 
         // Handle rate limit
         if (error.statusCode === 429) {

@@ -91,31 +91,39 @@ export async function GET(req: NextRequest) {
 
       if (existing) {
         const newStatus = mapZernioStatus(zPost.status)
+        const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : null
+
+        // A story can be already marked `published` locally but still have
+        // verificationStatus=PENDING when the post was written outside the sync
+        // path (e.g. manual recreate after Zernio dropped it). Compute the
+        // verification patch independently of caption/status drift so we don't
+        // leave stories stuck as "verificando" forever.
+        const needsVerification =
+          zPost.status === 'published' &&
+          existing.postType === PostType.STORY &&
+          existing.publishType === PublishType.DIRECT &&
+          existing.verificationStatus !== VerificationStatus.VERIFIED
+
+        const verificationUpdate = needsVerification
+          ? {
+              verificationStatus: VerificationStatus.VERIFIED,
+              verificationAttempts: Math.max(existing.verificationAttempts || 0, 1),
+              verifiedByFallback: true,
+              verifiedStoryId: platformPostId,
+              verifiedPermalink: platformPostUrl,
+              verifiedTimestamp: publishedAt || new Date(),
+              lastVerificationAt: new Date(),
+              nextVerificationAt: null,
+              verificationError: null,
+            }
+          : {}
+
         const hasChanges =
           existing.lateStatus !== zPost.status ||
-          (zPost.text && existing.caption !== zPost.text)
+          (zPost.text && existing.caption !== zPost.text) ||
+          needsVerification
 
         if (hasChanges) {
-          const publishedAt = publishedAtRaw ? new Date(publishedAtRaw) : null
-
-          // Auto-verify stories when Zernio reports published
-          const verificationUpdate = (
-            zPost.status === 'published' &&
-            existing.postType === PostType.STORY &&
-            existing.publishType === PublishType.DIRECT &&
-            existing.verificationStatus !== VerificationStatus.VERIFIED
-          ) ? {
-            verificationStatus: VerificationStatus.VERIFIED,
-            verificationAttempts: Math.max(existing.verificationAttempts || 0, 1),
-            verifiedByFallback: true,
-            verifiedStoryId: platformPostId,
-            verifiedPermalink: platformPostUrl,
-            verifiedTimestamp: publishedAt || new Date(),
-            lastVerificationAt: new Date(),
-            nextVerificationAt: null,
-            verificationError: null,
-          } : {}
-
           await db.socialPost.update({
             where: { id: existing.id },
             data: {

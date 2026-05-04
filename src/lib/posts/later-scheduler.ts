@@ -322,13 +322,15 @@ export class LaterPostScheduler {
       } catch (error) {
         console.error('[Later Scheduler] Failed to send immediate post:', error)
 
-        // Update status to FAILED
+        // Update status to FAILED (sendToLater already wrote a more specific
+        // errorMessage in most paths; this is the safety net for everything else).
         await db.socialPost.update({
           where: { id: post.id },
           data: {
             status: PostStatus.FAILED,
             errorMessage: error instanceof Error ? error.message : 'Unknown error',
             failedAt: new Date(),
+            processingStartedAt: null,
           },
         })
 
@@ -443,7 +445,7 @@ export class LaterPostScheduler {
     const newStatus =
       zernioPost.status === 'published'
         ? PostStatus.POSTED
-        : zernioPost.status === 'failed'
+        : zernioPost.status === 'failed' || zernioPost.status === 'partial'
           ? PostStatus.FAILED
           : zernioPost.status === 'scheduled'
             ? PostStatus.SCHEDULED
@@ -452,6 +454,16 @@ export class LaterPostScheduler {
     const publishedAt =
       zernioPost.status === 'published'
         ? new Date((zernioPost as any).publishedAt || Date.now())
+        : null
+
+    const zernioErrors = Array.isArray((zernioPost as any).errors)
+      ? (zernioPost as any).errors.filter((e: unknown) => typeof e === 'string')
+      : []
+    const failureMessage =
+      newStatus === PostStatus.FAILED
+        ? (zernioPost as any).error ||
+          (zernioErrors.length ? zernioErrors.join(' | ') : null) ||
+          `Adopted post on 409 com status ${zernioPost.status}`
         : null
 
     try {
@@ -467,8 +479,9 @@ export class LaterPostScheduler {
           latePlatformUrl: zernioPost.permalink || null,
           sentAt: publishedAt || new Date(),
           lastSyncAt: new Date(),
-          errorMessage: null,
-          failedAt: null,
+          errorMessage: failureMessage,
+          failedAt: newStatus === PostStatus.FAILED ? new Date() : null,
+          processingStartedAt: newStatus === PostStatus.POSTING ? undefined : null,
         },
       })
     } catch (updateError) {
@@ -499,10 +512,22 @@ export class LaterPostScheduler {
 
   /**
    * Send post to Later API
+   *
+   * Options (used by recovery flows):
+   *   skipCreditDeduction: don't call deductCreditsForFeature (post was already charged on a prior attempt)
+   *   forceImmediate: ignore post.scheduleType / scheduledDatetime, always send with publishNow:true
    */
-  async sendToLater(postId: string) {
+  async sendToLater(
+    postId: string,
+    options?: { skipCreditDeduction?: boolean; forceImmediate?: boolean }
+  ) {
+    const skipCreditDeduction = options?.skipCreditDeduction ?? false
+    const forceImmediate = options?.forceImmediate ?? false
     try {
-      console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`)
+      console.log(`[Later Scheduler] Starting sendToLater for post ${postId}`, {
+        skipCreditDeduction,
+        forceImmediate,
+      })
 
       // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
       let post = await db.$transaction(async (tx) => {
@@ -658,7 +683,7 @@ export class LaterPostScheduler {
       // If IMMEDIATE (user clicked "publish now"), always publish immediately
       const now = new Date()
       const scheduledTime = post.scheduledDatetime
-      const isImmediate = post.scheduleType === ScheduleType.IMMEDIATE
+      const isImmediate = forceImmediate || post.scheduleType === ScheduleType.IMMEDIATE
       const isFutureSchedule = !isImmediate && scheduledTime && scheduledTime.getTime() > now.getTime() + 60_000 // at least 1 min in future
 
       if (isFutureSchedule) {
@@ -746,27 +771,32 @@ export class LaterPostScheduler {
       })
 
       // 6. Deduct credits AFTER successful post creation
+      // Skipped on recovery flows where credits were already charged on the first attempt.
       const organizationId =
         post.Project.organizationProjects?.[0]?.organization?.clerkOrgId
-      console.log('[Later Scheduler] Deducting credits...')
-      await deductCreditsForFeature({
-        clerkUserId: postAuthor.clerkId,
-        feature: 'social_media_post',
-        details: {
-          postId: post.id,
-          postType: post.postType,
+      if (skipCreditDeduction) {
+        console.log('[Later Scheduler] ⏭️  Skipping credit deduction (recovery flow)')
+      } else {
+        console.log('[Later Scheduler] Deducting credits...')
+        await deductCreditsForFeature({
+          clerkUserId: postAuthor.clerkId,
+          feature: 'social_media_post',
+          details: {
+            postId: post.id,
+            postType: post.postType,
+            projectId: post.projectId,
+            laterPostId: laterPost.id,
+          },
+          organizationId,
           projectId: post.projectId,
-          laterPostId: laterPost.id,
-        },
-        organizationId,
-        projectId: post.projectId,
-      })
+        })
+      }
 
       // 7. Update post in database
       const newStatus =
         laterPost.status === 'published'
           ? PostStatus.POSTED
-          : laterPost.status === 'failed'
+          : laterPost.status === 'failed' || laterPost.status === 'partial'
             ? PostStatus.FAILED
             : laterPost.status === 'scheduled'
               ? PostStatus.SCHEDULED
@@ -800,6 +830,24 @@ export class LaterPostScheduler {
             }
           : {}
 
+      // Surface Zernio-side failure so the agenda UI shows why instead of "Falhou".
+      const laterErrorList = Array.isArray((laterPost as any).errors)
+        ? (laterPost as any).errors.filter((e: unknown) => typeof e === 'string')
+        : []
+      const failureUpdate =
+        newStatus === PostStatus.FAILED
+          ? {
+              errorMessage:
+                (laterPost as any).error ||
+                (laterErrorList.length ? laterErrorList.join(' | ') : null) ||
+                `Zernio retornou status "${laterPost.status}"`,
+              failedAt: new Date(),
+              processingStartedAt: null,
+            }
+          : newStatus !== PostStatus.POSTING
+            ? { processingStartedAt: null }
+            : {}
+
       try {
         const updatedPost = await db.socialPost.update({
           where: { id: post.id },
@@ -814,6 +862,7 @@ export class LaterPostScheduler {
             sentAt: publishedAt || null,
             lastSyncAt: new Date(),
             ...verificationUpdate,
+            ...failureUpdate,
           },
         })
 
@@ -855,6 +904,7 @@ export class LaterPostScheduler {
             status: PostStatus.FAILED,
             errorMessage: `Rate limit exceeded. Retry after ${rateLimitError.retryAfterSeconds} seconds.`,
             failedAt: new Date(),
+            processingStartedAt: null,
           },
         })
 
@@ -916,6 +966,7 @@ export class LaterPostScheduler {
             status: PostStatus.FAILED,
             errorMessage: userFriendlyMessage,
             failedAt: new Date(),
+            processingStartedAt: null,
           },
         })
 
@@ -953,6 +1004,7 @@ export class LaterPostScheduler {
             status: PostStatus.FAILED,
             errorMessage: userFriendlyMessage,
             failedAt: new Date(),
+            processingStartedAt: null,
           },
         })
 
@@ -973,6 +1025,7 @@ export class LaterPostScheduler {
             status: PostStatus.FAILED,
             errorMessage: error instanceof Error ? error.message : 'Unknown error',
             failedAt: new Date(),
+            processingStartedAt: null,
           },
         })
 
