@@ -20,8 +20,11 @@ import { googleDriveService } from '@/server/google-drive-service'
 export const runtime = 'nodejs'
 export const maxDuration = 300
 
+// userRequest é opcional — quando vazio, aplica apenas as diretrizes do
+// Diretor de Arte sem mudanças de conteúdo. O cliente do OpenAI lida com isso
+// substituindo a seção [PEDIDO DO CLIENTE] por uma instrução padrão.
 const bodySchema = z.object({
-  userRequest: z.string().min(3).max(500),
+  userRequest: z.string().max(500).default(''),
 })
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB

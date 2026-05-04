@@ -30,10 +30,9 @@ interface ImproveCreativeModalProps {
   onOpenChange: (open: boolean) => void
 }
 
-const MIN_CHARS = 3
 const MAX_CHARS = 500
 const PLACEHOLDER =
-  'Ex: Mude o texto para Happy Hour, das 16h às 20h e adicione pessoas brindando'
+  'Ex: Mude o texto para Happy Hour, das 16h às 20h e adicione pessoas brindando.\n\nOu deixe em branco para um aprimoramento geral sem alterações de conteúdo.'
 
 export function ImproveCreativeModal({
   generation,
@@ -52,7 +51,6 @@ export function ImproveCreativeModal({
   const handleConfirm = () => {
     if (!generation) return
     const trimmed = userRequest.trim()
-    if (trimmed.length < MIN_CHARS) return
 
     addJob({
       generationId: generation.id,
@@ -70,7 +68,8 @@ export function ImproveCreativeModal({
     onOpenChange(false)
   }
 
-  const isDisabled = userRequest.trim().length < MIN_CHARS
+  // Botão sempre habilitado: sem pedido, vira um aprimoramento geral.
+  const isDisabled = false
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : handleClose())}>
@@ -109,7 +108,7 @@ export function ImproveCreativeModal({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="user-request">Seu pedido</Label>
+              <Label htmlFor="user-request">Seu pedido (opcional)</Label>
               <span className="text-xs text-muted-foreground">
                 {userRequest.length}/{MAX_CHARS}
               </span>
@@ -124,7 +123,8 @@ export function ImproveCreativeModal({
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Acompanhe o status no indicador flutuante do canto inferior direito.
+              Sem pedido específico, a IA aplica apenas as diretrizes do Diretor de Arte
+              (hierarquia, espaçamentos, contraste) sem alterar o conteúdo.
             </p>
           </div>
         </div>
@@ -135,7 +135,9 @@ export function ImproveCreativeModal({
           </Button>
           <Button onClick={handleConfirm} disabled={isDisabled}>
             <Sparkles className="mr-2 h-4 w-4" />
-            Adicionar à fila (25 créditos)
+            {userRequest.trim().length === 0
+              ? 'Aprimorar (25 créditos)'
+              : 'Adicionar à fila (25 créditos)'}
           </Button>
         </DialogFooter>
       </DialogContent>

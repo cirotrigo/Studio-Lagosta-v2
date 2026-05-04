@@ -144,5 +144,10 @@ export async function improveCreative({
 
 function buildPedidoSection(userRequest: string): string {
   const trimmed = userRequest.trim()
+  if (trimmed.length === 0) {
+    // Aprimoramento geral: o usuário não pediu mudanças específicas.
+    // Instrução padrão deixa explícito pro modelo NÃO inventar conteúdo novo.
+    return `[PEDIDO DO CLIENTE]\nAprimoramento geral: aplique apenas as diretrizes do Diretor de Arte (hierarquia, espaçamentos, contraste, ênfase). Mantenha EXATAMENTE o mesmo conteúdo de textos da arte original — não reescreva, não traduza, não acrescente palavras.`
+  }
   return `[PEDIDO DO CLIENTE]\n${trimmed}`
 }

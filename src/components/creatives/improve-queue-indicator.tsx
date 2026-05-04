@@ -158,7 +158,9 @@ function QueueItem({ job, onRemove, onRetry }: QueueItemProps) {
           <span className="ml-auto text-[11px] text-muted-foreground">{formatRelative(job.createdAt)}</span>
         </div>
         <p className="text-sm font-medium truncate">{job.generationLabel}</p>
-        <p className="text-xs text-muted-foreground line-clamp-2">{job.userRequest}</p>
+        <p className="text-xs text-muted-foreground line-clamp-2 italic">
+          {job.userRequest.length > 0 ? job.userRequest : 'Aprimoramento geral (sem alterações de conteúdo)'}
+        </p>
         {isFailed && job.errorMessage && (
           <p className="mt-1 rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive line-clamp-2">
             {job.errorMessage}
