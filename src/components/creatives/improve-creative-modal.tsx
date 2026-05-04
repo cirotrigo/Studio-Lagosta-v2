@@ -2,8 +2,7 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Sparkles, Loader2 } from 'lucide-react'
+import { Sparkles } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -15,8 +14,8 @@ import {
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { api, ApiError } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { useImproveQueueStore } from '@/stores/improve-queue-store'
 
 interface ImproveTarget {
   id: string
@@ -29,7 +28,6 @@ interface ImproveCreativeModalProps {
   generation: ImproveTarget | null
   open: boolean
   onOpenChange: (open: boolean) => void
-  onSuccess?: () => void
 }
 
 const MIN_CHARS = 3
@@ -37,63 +35,42 @@ const MAX_CHARS = 500
 const PLACEHOLDER =
   'Ex: Mude o texto para Happy Hour, das 16h às 20h e adicione pessoas brindando'
 
-interface ImproveResponse {
-  success: boolean
-  creditsRemaining: number
-  generation: { id: string; resultUrl: string | null; fileName: string | null }
-}
-
 export function ImproveCreativeModal({
   generation,
   open,
   onOpenChange,
-  onSuccess,
 }: ImproveCreativeModalProps) {
   const { toast } = useToast()
-  const queryClient = useQueryClient()
+  const addJob = useImproveQueueStore((s) => s.addJob)
   const [userRequest, setUserRequest] = React.useState('')
 
-  const mutation = useMutation<ImproveResponse, ApiError, string>({
-    mutationFn: (request) =>
-      api.post<ImproveResponse>(`/api/generations/${generation?.id}/improve`, {
-        userRequest: request,
-      }),
-    onSuccess: () => {
-      if (generation) {
-        queryClient.invalidateQueries({ queryKey: ['generations', generation.projectId] })
-      }
-      queryClient.invalidateQueries({ queryKey: ['all-generations'] })
-      toast({
-        title: 'Criativo melhorado',
-        description: 'A nova versão já está disponível na galeria.',
-      })
-      setUserRequest('')
-      onOpenChange(false)
-      onSuccess?.()
-    },
-    onError: (error) => {
-      const description =
-        error.status === 402
-          ? 'Créditos insuficientes para melhorar criativos.'
-          : error.message || 'Não foi possível melhorar o criativo.'
-      toast({ title: 'Falha na melhoria', description, variant: 'destructive' })
-    },
-  })
-
   const handleClose = () => {
-    if (mutation.isPending) return
     setUserRequest('')
     onOpenChange(false)
   }
 
   const handleConfirm = () => {
+    if (!generation) return
     const trimmed = userRequest.trim()
     if (trimmed.length < MIN_CHARS) return
-    mutation.mutate(trimmed)
+
+    addJob({
+      generationId: generation.id,
+      projectId: generation.projectId,
+      generationThumbnailUrl: generation.resultUrl,
+      generationLabel: generation.templateName ?? 'Criativo',
+      userRequest: trimmed,
+    })
+
+    toast({
+      title: 'Adicionado à fila',
+      description: 'A melhoria começa em instantes — você pode adicionar mais.',
+    })
+    setUserRequest('')
+    onOpenChange(false)
   }
 
-  const isDisabled =
-    mutation.isPending || userRequest.trim().length < MIN_CHARS
+  const isDisabled = userRequest.trim().length < MIN_CHARS
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? onOpenChange(true) : handleClose())}>
@@ -143,32 +120,22 @@ export function ImproveCreativeModal({
               value={userRequest}
               onChange={(e) => setUserRequest(e.target.value.slice(0, MAX_CHARS))}
               rows={5}
-              disabled={mutation.isPending}
               className="resize-none"
+              autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Descreva o que você quer alterar. Pode incluir mudanças de texto, ajustes de
-              hierarquia ou novos elementos visuais.
+              Acompanhe o status no indicador flutuante do canto inferior direito.
             </p>
           </div>
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={handleClose} disabled={mutation.isPending}>
+          <Button variant="outline" onClick={handleClose}>
             Cancelar
           </Button>
           <Button onClick={handleConfirm} disabled={isDisabled}>
-            {mutation.isPending ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Melhorando...
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Melhorar (25 créditos)
-              </>
-            )}
+            <Sparkles className="mr-2 h-4 w-4" />
+            Adicionar à fila (25 créditos)
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -11,6 +11,7 @@ import { ContextIndicator } from "@/components/app/context-indicator";
 import { PageMetadataProvider } from "@/contexts/page-metadata";
 import { AudioPlayerProvider } from "@/contexts/audio-player-context";
 import { useSubscription } from "@/hooks/use-subscription";
+import { ImproveQueueProvider } from "@/components/creatives/improve-queue-provider";
 
 export default function ProtectedLayout({
   children,
@@ -115,6 +116,7 @@ export default function ProtectedLayout({
             </div>
           </div>
         </div>
+        <ImproveQueueProvider />
       </PageMetadataProvider>
     </AudioPlayerProvider>
   );
