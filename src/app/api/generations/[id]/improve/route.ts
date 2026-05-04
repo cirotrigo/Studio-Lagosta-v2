@@ -8,7 +8,7 @@ import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/ac
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { fetchImageSource } from '@/lib/ai/fetch-image-source'
-import { improveCreative } from '@/lib/ai/openai-image-client'
+import { improveCreative, getCurrentImageModel } from '@/lib/ai/openai-image-client'
 import {
   inferFormatFromTemplate,
   OPENAI_INPUT_SIZE,
@@ -169,7 +169,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           source: 'ai_improvement',
           originalGenerationId: original.id,
           userRequest,
-          model: 'gpt-image-2',
+          model: getCurrentImageModel(),
           quality: 'high',
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
@@ -189,7 +189,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       details: {
         originalGenerationId: original.id,
         newGenerationId: newGen.id,
-        model: 'gpt-image-2',
+        model: getCurrentImageModel(),
         format,
       },
       organizationId: orgId ?? undefined,

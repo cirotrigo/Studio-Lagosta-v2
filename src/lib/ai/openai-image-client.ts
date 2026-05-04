@@ -13,6 +13,20 @@ function getClient(): OpenAI {
   return cachedClient
 }
 
+/**
+ * Modelo de geração de imagem usado pela melhoria de criativo.
+ * Default: gpt-image-2. Requer organização verificada na OpenAI:
+ * https://platform.openai.com/settings/organization/general
+ *
+ * Se a verificação ainda não propagou (até 15 min), defina
+ * OPENAI_IMAGE_MODEL=gpt-image-1 no .env (não requer verificação).
+ */
+const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2'
+
+export function getCurrentImageModel(): string {
+  return IMAGE_MODEL
+}
+
 const ART_DIRECTOR_SYSTEM_PROMPT = `Atue como um Diretor de Arte Sênior focado em design de comunicação. Sua tarefa é aprimorar o layout da peça fornecida, elevando seu nível de organização, clareza e percepção de valor, com foco em leitura rápida e eficiente para dispositivos móveis.
 
 Siga estas diretrizes de forma estrita:
@@ -70,7 +84,7 @@ export async function improveCreative({
     // necessário até a SDK atualizar o type. https://developers.openai.com/api/docs/guides/image-generation
     const response = await client.images.edit(
       {
-        model: 'gpt-image-2',
+        model: IMAGE_MODEL,
         image: imageFile,
         prompt,
         size: size as never,
