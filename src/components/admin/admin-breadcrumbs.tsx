@@ -25,6 +25,7 @@ const pathNames: Record<string, string> = {
   storage: 'Armazenamento',
   knowledge: 'Base de Conhecimento',
   usage: 'Histórico de Uso',
+  spending: 'Gastos & Uso',
   settings: 'Configurações',
   features: 'Custos por Funcionalidade',
   plans: 'Planos de Assinatura',

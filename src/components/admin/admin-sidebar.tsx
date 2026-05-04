@@ -19,6 +19,7 @@ import {
   Settings,
   UserPlus,
   FolderKanban,
+  Wallet,
 } from "lucide-react";
 import {
   Sidebar,
@@ -57,6 +58,7 @@ const management: Item[] = [
 ];
 const reports: Item[] = [
   { title: "Histórico de Uso", href: "/admin/usage", icon: Activity },
+  { title: "Gastos & Uso", href: "/admin/spending", icon: Wallet },
 ];
 const settings: Item[] = [
   { title: "Configurações do Site", href: "/admin/site-settings", icon: Settings },
