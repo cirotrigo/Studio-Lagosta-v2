@@ -680,8 +680,12 @@ export class GoogleDriveService {
     })
   }
 
-  getPublicUrl(fileId: string) {
-    return `https://drive.google.com/uc?export=view&id=${fileId}`
+  getPublicUrl(fileId: string, maxWidth = 2000) {
+    // Usa lh3.googleusercontent.com (CDN do Google) em vez de drive.google.com/uc?export=view.
+    // Motivo: uc?export=view faz redirect 303 cross-origin que quebra <img> e fetchers
+    // externos (Buffer/Zernio). A URL do CDN responde direto com Content-Type: image/jpeg,
+    // sem redirect, com CORS aberto.
+    return `https://lh3.googleusercontent.com/d/${fileId}=w${maxWidth}`
   }
 
   private async ensureArtesLagostaFolder(projectFolderId: string): Promise<string> {
