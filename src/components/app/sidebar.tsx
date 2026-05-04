@@ -17,7 +17,9 @@ import {
   Music,
   Sparkles,
   Layers,
+  Wallet,
 } from "lucide-react";
+import { useIsAdmin } from "@/hooks/use-is-admin";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -47,8 +49,23 @@ export const navigationItems = [
   { name: "Cobrança", href: "/billing", icon: CreditCard },
 ];
 
+// Items visíveis somente para admins. Inseridos logo depois de "Cobrança".
+export const adminNavigationItems = [
+  { name: "Gastos & Uso", href: "/admin/spending", icon: Wallet },
+];
+
+/** Hook que retorna a lista final de items pro usuário atual. */
+export function useResolvedNavigationItems() {
+  const { isAdmin } = useIsAdmin();
+  return React.useMemo(
+    () => (isAdmin ? [...navigationItems, ...adminNavigationItems] : navigationItems),
+    [isAdmin]
+  );
+}
+
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const pathname = usePathname();
+  const items = useResolvedNavigationItems();
 
   return (
     <aside
@@ -81,7 +98,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       
       <ScrollArea className="h-[calc(100vh-3.5rem)]">
         <nav className="flex flex-col gap-1 p-2" aria-label="Navegação principal">
-          {navigationItems.map((item) => {
+          {items.map((item) => {
             const isActive = pathname === item.href;
             const link = (
               <Link

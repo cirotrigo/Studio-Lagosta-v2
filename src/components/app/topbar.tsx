@@ -10,7 +10,7 @@ import { Menu } from "lucide-react";
 import { OrganizationSwitcher, SignedIn, SignedOut, SignInButton, SignUpButton, UserButton } from "@clerk/nextjs";
 import { CreditStatus } from "@/components/credits/credit-status";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetClose, SheetFooter } from "@/components/ui/sheet";
-import { navigationItems } from "@/components/app/sidebar";
+import { useResolvedNavigationItems } from "@/components/app/sidebar";
 import { useOrganizationCreationLimits } from "@/hooks/use-organizations";
 import { DynamicLogo } from "@/components/app/dynamic-logo";
 import { useSiteConfig } from "@/hooks/use-site-config";
@@ -24,6 +24,7 @@ type TopbarProps = {
 export function Topbar({ onToggleSidebar }: TopbarProps) {
   const { data: creationLimits } = useOrganizationCreationLimits();
   const { data: siteConfig, isLoading: isSiteConfigLoading } = useSiteConfig();
+  const navItems = useResolvedNavigationItems();
   const config = siteConfig || site;
   const createMode: "modal" | "navigation" = "modal";
   const creationReminder =
@@ -66,7 +67,7 @@ export function Topbar({ onToggleSidebar }: TopbarProps) {
                 </div>
               </SheetHeader>
               <nav className="flex flex-col gap-1 p-2">
-                {navigationItems.map((item) => {
+                {navItems.map((item) => {
                   const Icon = item.icon as React.ComponentType<{ className?: string }>;
                   return (
                     <SheetClose asChild key={item.name}>
