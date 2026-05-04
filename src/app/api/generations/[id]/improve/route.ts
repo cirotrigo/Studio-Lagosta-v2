@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import sharp from 'sharp'
@@ -13,11 +13,12 @@ import {
   inferFormatFromTemplate,
   OPENAI_INPUT_SIZE,
   FINAL_OUTPUT_SIZE,
+  type ImprovementFormat,
 } from '@/lib/ai/creative-improvement-format'
 import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300
 
 const bodySchema = z.object({
   userRequest: z.string().min(3).max(500),
@@ -89,82 +90,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       throw error
     }
 
-    // Baixa o original
-    const { buffer: rawBuffer, contentType: originalContentType } = await fetchImageSource(original.resultUrl)
-
-    // Pre-comprime se exceder o limite da OpenAI (4MB)
-    const { buffer: inputBuffer, mimeType: inputMimeType } = await ensureUnderLimit(rawBuffer, originalContentType)
-
-    // Determina formato e tamanhos
     const format = inferFormatFromTemplate(original.Template)
     const openaiSize = OPENAI_INPUT_SIZE[format]
     const finalSize = FINAL_OUTPUT_SIZE[format]
 
-    // Chama OpenAI gpt-image-2
-    let improvedBuffer: Buffer
-    try {
-      improvedBuffer = await improveCreative({
-        imageBuffer: inputBuffer,
-        mimeType: inputMimeType,
-        userRequest,
-        size: openaiSize,
-      })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erro desconhecido'
-      if (message.toLowerCase().includes('abort') || message.toLowerCase().includes('timeout')) {
-        return NextResponse.json(
-          { error: 'Tempo limite excedido na geração. Tente novamente.' },
-          { status: 504 },
-        )
-      }
-      console.error('[improve] OpenAI error:', error)
-      return NextResponse.json(
-        { error: 'Falha ao melhorar criativo', details: message },
-        { status: 502 },
-      )
-    }
-
-    // Resize final (downscale pro tamanho de publicação)
-    const finalBuffer = await sharp(improvedBuffer)
-      .resize(finalSize.width, finalSize.height, { fit: 'cover', position: 'center' })
-      .jpeg({ quality: 92 })
-      .toBuffer()
-
-    // Upload Vercel Blob
-    const fileNameBase = sanitize(original.templateName ?? 'criativo')
-    const blob = await put(`${fileNameBase}_ia_melhorado_${Date.now()}.jpg`, finalBuffer, {
-      access: 'public',
-      contentType: 'image/jpeg',
-      addRandomSuffix: true,
-    })
-
-    // Backup Drive opcional
-    let googleDriveFileId: string | null = null
-    let googleDriveBackupUrl: string | null = null
-    if (project.googleDriveFolderId && googleDriveService.isEnabled()) {
-      try {
-        const backup = await googleDriveService.uploadCreativeToArtesLagosta(
-          finalBuffer,
-          project.googleDriveFolderId,
-          project.name,
-        )
-        googleDriveFileId = backup.fileId
-        googleDriveBackupUrl = backup.publicUrl
-      } catch (backupError) {
-        console.warn('[improve] Google Drive backup failed:', backupError)
-      }
-    }
-
-    // Cria nova Generation
-    const newGen = await db.generation.create({
+    // Cria a Generation logo no PROCESSING — o client vai pollar pelo id dela.
+    const job = await db.generation.create({
       data: {
         templateId: original.templateId,
         projectId: original.projectId,
-        status: 'COMPLETED',
-        resultUrl: blob.url,
-        fileName: blob.pathname,
-        googleDriveFileId,
-        googleDriveBackupUrl,
+        status: 'PROCESSING',
+        resultUrl: null,
+        fileName: null,
         fieldValues: {
           source: 'ai_improvement',
           originalGenerationId: original.id,
@@ -174,46 +111,183 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
           format,
+          processingStartedAt: new Date().toISOString(),
         },
         templateName: `${original.templateName ?? 'Criativo'} (melhorado)`,
         projectName: project.name,
         createdBy: userId,
-        completedAt: new Date(),
       },
     })
 
-    // Deduz créditos
-    const creditResult = await deductCreditsForFeature({
-      clerkUserId: userId,
-      feature: 'ai_creative_improvement',
-      details: {
+    // Dispara o trabalho pesado em background — response sai imediatamente,
+    // o Vercel mantém a function viva até o maxDuration ou o término da task.
+    after(() =>
+      processImprovementInBackground({
+        jobGenerationId: job.id,
         originalGenerationId: original.id,
-        newGenerationId: newGen.id,
-        model: getCurrentImageModel(),
+        originalResultUrl: original.resultUrl!,
+        userId,
+        orgId: orgId ?? undefined,
+        projectId: original.projectId,
+        projectName: project.name,
+        projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
+        templateName: original.templateName,
+        userRequest,
         format,
-      },
-      organizationId: orgId ?? undefined,
-      projectId: original.projectId,
-    })
+      }),
+    )
 
-    return NextResponse.json({
-      success: true,
-      creditsRemaining: creditResult.creditsRemaining,
-      generation: {
-        id: newGen.id,
-        resultUrl: newGen.resultUrl,
-        fileName: newGen.fileName,
+    return NextResponse.json(
+      {
+        success: true,
+        generation: {
+          id: job.id,
+          status: 'PROCESSING' as const,
+        },
       },
-    })
+      { status: 202 },
+    )
   } catch (error) {
     console.error('[improve] Unexpected error:', error)
     return NextResponse.json(
       {
-        error: 'Erro ao melhorar criativo',
+        error: 'Erro ao iniciar melhoria',
         details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 },
     )
+  }
+}
+
+interface BackgroundArgs {
+  jobGenerationId: string
+  originalGenerationId: string
+  originalResultUrl: string
+  userId: string
+  orgId?: string
+  projectId: number
+  projectName: string
+  projectGoogleDriveFolderId: string | null
+  templateName: string | null | undefined
+  userRequest: string
+  format: ImprovementFormat
+}
+
+async function processImprovementInBackground(args: BackgroundArgs): Promise<void> {
+  const startedAt = Date.now()
+  const openaiSize = OPENAI_INPUT_SIZE[args.format]
+  const finalSize = FINAL_OUTPUT_SIZE[args.format]
+
+  try {
+    const { buffer: rawBuffer, contentType: originalContentType } = await fetchImageSource(
+      args.originalResultUrl,
+    )
+
+    const { buffer: inputBuffer, mimeType: inputMimeType } = await ensureUnderLimit(
+      rawBuffer,
+      originalContentType,
+    )
+
+    const improvedBuffer = await improveCreative({
+      imageBuffer: inputBuffer,
+      mimeType: inputMimeType,
+      userRequest: args.userRequest,
+      size: openaiSize,
+    })
+
+    const finalBuffer = await sharp(improvedBuffer)
+      .resize(finalSize.width, finalSize.height, { fit: 'cover', position: 'center' })
+      .jpeg({ quality: 92 })
+      .toBuffer()
+
+    const fileNameBase = sanitize(args.templateName ?? 'criativo')
+    const blob = await put(`${fileNameBase}_ia_melhorado_${Date.now()}.jpg`, finalBuffer, {
+      access: 'public',
+      contentType: 'image/jpeg',
+      addRandomSuffix: true,
+    })
+
+    let googleDriveFileId: string | null = null
+    let googleDriveBackupUrl: string | null = null
+    if (args.projectGoogleDriveFolderId && googleDriveService.isEnabled()) {
+      try {
+        const backup = await googleDriveService.uploadCreativeToArtesLagosta(
+          finalBuffer,
+          args.projectGoogleDriveFolderId,
+          args.projectName,
+        )
+        googleDriveFileId = backup.fileId
+        googleDriveBackupUrl = backup.publicUrl
+      } catch (backupError) {
+        console.warn('[improve.bg] Google Drive backup failed:', backupError)
+      }
+    }
+
+    const elapsedSeconds = Math.round((Date.now() - startedAt) / 1000)
+
+    await db.generation.update({
+      where: { id: args.jobGenerationId },
+      data: {
+        status: 'COMPLETED',
+        resultUrl: blob.url,
+        fileName: blob.pathname,
+        googleDriveFileId,
+        googleDriveBackupUrl,
+        completedAt: new Date(),
+        fieldValues: {
+          source: 'ai_improvement',
+          originalGenerationId: args.originalGenerationId,
+          userRequest: args.userRequest,
+          model: getCurrentImageModel(),
+          quality: 'high',
+          inputSize: openaiSize,
+          finalSize: `${finalSize.width}x${finalSize.height}`,
+          format: args.format,
+          elapsedSeconds,
+        },
+      },
+    })
+
+    await deductCreditsForFeature({
+      clerkUserId: args.userId,
+      feature: 'ai_creative_improvement',
+      details: {
+        originalGenerationId: args.originalGenerationId,
+        newGenerationId: args.jobGenerationId,
+        model: getCurrentImageModel(),
+        format: args.format,
+        elapsedSeconds,
+      },
+      organizationId: args.orgId,
+      projectId: args.projectId,
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Erro desconhecido'
+    console.error('[improve.bg] failed:', message)
+
+    await db.generation
+      .update({
+        where: { id: args.jobGenerationId },
+        data: {
+          status: 'FAILED',
+          fieldValues: {
+            source: 'ai_improvement',
+            originalGenerationId: args.originalGenerationId,
+            userRequest: args.userRequest,
+            model: getCurrentImageModel(),
+            quality: 'high',
+            inputSize: openaiSize,
+            finalSize: `${finalSize.width}x${finalSize.height}`,
+            format: args.format,
+            error: message,
+            failedAt: new Date().toISOString(),
+          },
+          completedAt: new Date(),
+        },
+      })
+      .catch((updateError) => {
+        console.error('[improve.bg] failed to mark generation as FAILED:', updateError)
+      })
   }
 }
 
@@ -224,7 +298,6 @@ async function ensureUnderLimit(
   if (buffer.length <= MAX_OPENAI_INPUT_BYTES) {
     return { buffer, mimeType: contentType || 'image/jpeg' }
   }
-  // Recomprime pra JPEG q=90; se ainda for grande, redimensiona pra max 2048px
   let result = await sharp(buffer).jpeg({ quality: 90 }).toBuffer()
   if (result.length > MAX_OPENAI_INPUT_BYTES) {
     result = await sharp(buffer)

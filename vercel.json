@@ -72,7 +72,7 @@
       "maxDuration": 120
     },
     "app/api/generations/[id]/improve/route.ts": {
-      "maxDuration": 120
+      "maxDuration": 300
     }
   },
   "crons": [

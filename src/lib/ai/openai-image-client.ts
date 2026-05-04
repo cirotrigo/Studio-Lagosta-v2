@@ -56,7 +56,10 @@ interface ImproveCreativeOptions {
   timeoutMs?: number
 }
 
-const DEFAULT_TIMEOUT_MS = 110_000
+// Tempo máximo da chamada à OpenAI. O endpoint /improve roda em background
+// com maxDuration=300, então temos folga até ~290s. gpt-image-2 high tipicamente
+// fica em 30-90s, mas pode chegar a 3min em casos extremos.
+const DEFAULT_TIMEOUT_MS = 280_000
 
 /**
  * Envia o criativo + pedido do usuário pra OpenAI gpt-image-2 (image edit endpoint)

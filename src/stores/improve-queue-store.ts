@@ -16,6 +16,9 @@ export interface ImproveJob {
   createdAt: number
   startedAt?: number
   completedAt?: number
+  // ID da Generation criada no servidor (status PROCESSING/COMPLETED/FAILED)
+  // Usado pra polling.
+  serverGenerationId?: string
   resultGenerationId?: string
   resultUrl?: string | null
   errorMessage?: string
@@ -35,7 +38,8 @@ interface ImproveQueueState {
   hasHydrated: boolean
 
   addJob: (input: AddJobInput) => string
-  markProcessing: (id: string) => void
+  markProcessing: (id: string, serverGenerationId?: string) => void
+  attachServerJob: (id: string, serverGenerationId: string) => void
   markCompleted: (id: string, result: { resultGenerationId: string; resultUrl: string | null }) => void
   markFailed: (id: string, errorMessage: string) => void
   removeJob: (id: string) => void
@@ -74,12 +78,25 @@ export const useImproveQueueStore = create(
         return id
       },
 
-      markProcessing: (id) =>
+      markProcessing: (id, serverGenerationId) =>
         set((state) => ({
           jobs: state.jobs.map((job) =>
             job.id === id
-              ? { ...job, status: 'processing', startedAt: Date.now(), errorMessage: undefined }
+              ? {
+                  ...job,
+                  status: 'processing',
+                  startedAt: Date.now(),
+                  errorMessage: undefined,
+                  serverGenerationId: serverGenerationId ?? job.serverGenerationId,
+                }
               : job
+          ),
+        })),
+
+      attachServerJob: (id, serverGenerationId) =>
+        set((state) => ({
+          jobs: state.jobs.map((job) =>
+            job.id === id ? { ...job, serverGenerationId } : job
           ),
         })),
 
@@ -126,6 +143,7 @@ export const useImproveQueueStore = create(
                   errorMessage: undefined,
                   resultGenerationId: undefined,
                   resultUrl: undefined,
+                  serverGenerationId: undefined,
                 }
               : job
           ),
