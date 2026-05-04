@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query'
+import { useInfiniteQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 
 export interface ProjectInfo {
@@ -50,17 +50,38 @@ export interface AllGenerationsResponse {
   }
 }
 
-export function useAllGenerations(projectId?: number | null) {
-  return useQuery<AllGenerationsResponse>({
-    queryKey: ['all-generations', projectId ?? 'all'],
-    queryFn: () => {
-      const params = new URLSearchParams({ page: '1', pageSize: '200' })
+interface UseAllGenerationsOptions {
+  projectId?: number | null
+  weekdays?: number[]
+  pageSize?: number
+}
+
+export function useAllGenerations(options: UseAllGenerationsOptions = {}) {
+  const { projectId, weekdays, pageSize = 60 } = options
+  // Serializa weekdays ordenados pra estabilidade do queryKey
+  const weekdaysParam = (weekdays ?? []).slice().sort((a, b) => a - b).join(',')
+
+  return useInfiniteQuery<AllGenerationsResponse>({
+    queryKey: ['all-generations', projectId ?? 'all', weekdaysParam],
+    initialPageParam: 1,
+    queryFn: ({ pageParam = 1 }) => {
+      const params = new URLSearchParams({
+        page: String(pageParam),
+        pageSize: String(pageSize),
+      })
       if (projectId) {
         params.set('projectId', String(projectId))
       }
+      if (weekdaysParam) {
+        params.set('weekdays', weekdaysParam)
+      }
       return api.get(`/api/generations?${params.toString()}`)
     },
-    staleTime: 30_000, // 30 seconds
-    gcTime: 5 * 60_000, // 5 minutes
+    getNextPageParam: (lastPage) =>
+      lastPage.pagination.page < lastPage.pagination.totalPages
+        ? lastPage.pagination.page + 1
+        : undefined,
+    staleTime: 30_000,
+    gcTime: 5 * 60_000,
   })
 }

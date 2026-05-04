@@ -22,6 +22,7 @@ import { MemberFilter } from '../filters/member-filter'
 import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
+import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
 
 interface TemplateInfo {
   id: number
@@ -79,16 +80,6 @@ const GRID_DENSITY_OPTIONS: { value: GridDensity; label: string }[] = [
   { value: 'comfortable', label: GRID_DENSITY_CONFIG.comfortable.label },
 ]
 
-// Convenção JS Date.getDay() / Postgres EXTRACT(DOW): 0 = Domingo, 6 = Sábado
-const WEEKDAY_OPTIONS: { value: number; label: string; short: string }[] = [
-  { value: 1, label: 'Segunda-feira', short: 'Seg' },
-  { value: 2, label: 'Terça-feira', short: 'Ter' },
-  { value: 3, label: 'Quarta-feira', short: 'Qua' },
-  { value: 4, label: 'Quinta-feira', short: 'Qui' },
-  { value: 5, label: 'Sexta-feira', short: 'Sex' },
-  { value: 6, label: 'Sábado', short: 'Sáb' },
-  { value: 0, label: 'Domingo', short: 'Dom' },
-]
 
 type ViewMode = 'grid' | 'list'
 type PreviewState = {

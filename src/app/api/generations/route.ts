@@ -1,10 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { Prisma } from '../../../../prisma/generated/client'
+import { Prisma } from '../../../../prisma/generated/client'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import { WEEKDAY_TIMEZONE } from '@/lib/weekday-options'
 
 export const runtime = 'nodejs'
+
+function parseWeekdays(raw: string | null): number[] | null {
+  if (!raw) return null
+  const parsed = raw
+    .split(',')
+    .map((s) => Number.parseInt(s.trim(), 10))
+    .filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+  return parsed.length > 0 ? Array.from(new Set(parsed)) : null
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -21,6 +31,7 @@ export async function GET(req: NextRequest) {
     const page = parseInt(url.searchParams.get('page') || '1', 10)
     const pageSize = parseInt(url.searchParams.get('pageSize') || '50', 10)
     const projectIdFilter = url.searchParams.get('projectId')
+    const weekdays = parseWeekdays(url.searchParams.get('weekdays'))
 
     // Build list of accessible project IDs
     // 1. Projects owned by the user
@@ -88,8 +99,48 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    // Filtro por dia da semana via raw SQL: COALESCE(MAX(SocialPost.sentAt), Generation.createdAt)
+    // convertido pra America/Sao_Paulo. Restringe aos accessibleProjectIds (segurança).
+    let weekdayFilteredIds: string[] | null = null
+    let weekdayTotal: number | null = null
+    if (weekdays && weekdays.length < 7) {
+      const projectIdScope: number[] =
+        typeof generationWhere.projectId === 'number'
+          ? [generationWhere.projectId]
+          : accessibleProjectIds
+
+      const totalRows = await db.$queryRaw<Array<{ count: bigint }>>`
+        SELECT COUNT(*)::bigint AS count
+        FROM "Generation" g
+        LEFT JOIN LATERAL (
+          SELECT MAX(sp."sentAt") AS last_sent
+          FROM "SocialPost" sp
+          WHERE sp."generationId" = g.id AND sp."sentAt" IS NOT NULL
+        ) sp_meta ON TRUE
+        WHERE g."projectId" IN (${Prisma.join(projectIdScope)})
+          AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${WEEKDAY_TIMEZONE}))::int IN (${Prisma.join(weekdays)})
+      `
+      weekdayTotal = Number(totalRows[0]?.count ?? 0)
+
+      const idRows = await db.$queryRaw<Array<{ id: string }>>`
+        SELECT g.id
+        FROM "Generation" g
+        LEFT JOIN LATERAL (
+          SELECT MAX(sp."sentAt") AS last_sent
+          FROM "SocialPost" sp
+          WHERE sp."generationId" = g.id AND sp."sentAt" IS NOT NULL
+        ) sp_meta ON TRUE
+        WHERE g."projectId" IN (${Prisma.join(projectIdScope)})
+          AND EXTRACT(DOW FROM (COALESCE(sp_meta.last_sent, g."createdAt") AT TIME ZONE ${WEEKDAY_TIMEZONE}))::int IN (${Prisma.join(weekdays)})
+        ORDER BY g."createdAt" DESC
+        LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}
+      `
+      weekdayFilteredIds = idRows.map((r) => r.id)
+      generationWhere.id = { in: weekdayFilteredIds }
+    }
+
     // Fetch total count
-    const total = await db.generation.count({ where: generationWhere })
+    const total = weekdayTotal ?? (await db.generation.count({ where: generationWhere }))
 
     // Fetch generations with project data
     const generations = await db.generation.findMany({
@@ -130,8 +181,8 @@ export async function GET(req: NextRequest) {
         },
       },
       orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      skip: weekdayFilteredIds ? undefined : (page - 1) * pageSize,
+      take: weekdayFilteredIds ? undefined : pageSize,
     })
 
     // Format projects for the carousel (with logo URL resolved)

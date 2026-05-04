@@ -16,7 +16,9 @@ import { useAllGenerations, type GenerationRecord } from '@/hooks/use-generation
 import { ProjectCarouselFilter } from '@/components/criativos/project-carousel-filter'
 import { CreativeCard } from '@/components/criativos/creative-card'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
-import { Eye, Download, Trash2, Calendar } from 'lucide-react'
+import { Eye, Download, Trash2, Calendar, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
 
 interface TemplateInfo {
   id: number
@@ -170,9 +172,26 @@ export default function GlobalCreativesPage() {
   const [preview, setPreview] = React.useState<PreviewState>(null)
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
+  const [weekdayFilter, setWeekdayFilter] = React.useState<Set<number>>(new Set())
 
-  // Query with project filter
-  const { data, isLoading, isError, refetch } = useAllGenerations(selectedProjectId)
+  const weekdaysArray = React.useMemo(() => Array.from(weekdayFilter), [weekdayFilter])
+
+  // Query with project + weekday filter (infinite paginated)
+  const {
+    data,
+    isLoading,
+    isError,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useAllGenerations({ projectId: selectedProjectId, weekdays: weekdaysArray })
+
+  const allGenerations = React.useMemo(
+    () => data?.pages.flatMap((page) => page.generations) ?? [],
+    [data?.pages]
+  )
+
+  const totalGenerations = data?.pages[0]?.pagination.total ?? 0
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/api/generations/${id}`),
@@ -206,20 +225,19 @@ export default function GlobalCreativesPage() {
 
   const generationMetaMap = React.useMemo(() => {
     const map = new Map<string, GenerationMeta>()
-    for (const generation of data?.generations ?? []) {
+    for (const generation of allGenerations) {
       map.set(generation.id, buildGenerationMeta(generation))
     }
     return map
-  }, [data?.generations])
+  }, [allGenerations])
 
   const filtered = React.useMemo(() => {
-    const list = data?.generations ?? []
     // Only show completed items with a result
-    return list.filter((generation) => {
+    return allGenerations.filter((generation) => {
       const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
       return generation.status === 'COMPLETED' && Boolean(meta.assetUrl ?? meta.displayUrl)
     })
-  }, [data?.generations, generationMetaMap])
+  }, [allGenerations, generationMetaMap])
 
   // PhotoSwipe integration - matches working implementation pattern
   usePhotoSwipe({
@@ -406,7 +424,7 @@ export default function GlobalCreativesPage() {
   }, [schedulingGeneration, generationMetaMap])
 
   const isEmpty = !isLoading && filtered.length === 0
-  const projects = data?.projects ?? []
+  const projects = data?.pages[0]?.projects ?? []
 
   return (
     <div className="flex flex-col min-h-[calc(100dvh-4rem)]">
@@ -427,6 +445,49 @@ export default function GlobalCreativesPage() {
             selectedId={selectedProjectId}
             onSelect={setSelectedProjectId}
           />
+        )}
+      </div>
+
+      {/* Weekday filter chips */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <span className="text-xs font-medium text-muted-foreground mr-1">Dia:</span>
+        <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
+          {WEEKDAY_OPTIONS.map((option) => {
+            const active = weekdayFilter.has(option.value)
+            return (
+              <button
+                key={option.value}
+                type="button"
+                title={option.label}
+                className={cn(
+                  'rounded-full px-3 py-1 text-xs font-medium transition-colors',
+                  active
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:text-foreground'
+                )}
+                onClick={() =>
+                  setWeekdayFilter((prev) => {
+                    const next = new Set(prev)
+                    if (next.has(option.value)) next.delete(option.value)
+                    else next.add(option.value)
+                    return next
+                  })
+                }
+              >
+                {option.short}
+              </button>
+            )
+          })}
+        </div>
+        {weekdayFilter.size > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 text-xs text-muted-foreground"
+            onClick={() => setWeekdayFilter(new Set())}
+          >
+            Limpar
+          </Button>
         )}
       </div>
 
@@ -496,6 +557,20 @@ export default function GlobalCreativesPage() {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Carregar mais */}
+      {hasNextPage && !isEmpty && (
+        <div className="mt-6 mb-20 md:mb-4 flex justify-center">
+          <Button
+            onClick={() => fetchNextPage()}
+            variant="outline"
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Carregar mais ({Math.max(0, totalGenerations - allGenerations.length)} restantes)
+          </Button>
         </div>
       )}
 
