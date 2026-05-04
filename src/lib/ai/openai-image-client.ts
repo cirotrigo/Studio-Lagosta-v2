@@ -56,6 +56,8 @@ interface ImproveCreativeOptions {
   timeoutMs?: number
 }
 
+const DEFAULT_TIMEOUT_MS = 110_000
+
 /**
  * Envia o criativo + pedido do usuário pra OpenAI gpt-image-2 (image edit endpoint)
  * usando o prompt fixo do "Diretor de Arte Sênior" com a seção [PEDIDO DO CLIENTE]
@@ -66,7 +68,7 @@ export async function improveCreative({
   mimeType,
   userRequest,
   size,
-  timeoutMs = 100_000,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
@@ -77,6 +79,7 @@ export async function improveCreative({
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const startedAt = Date.now()
 
   try {
     // SDK v6.25 ainda tipa `size` com os valores antigos do gpt-image-1.
@@ -94,11 +97,18 @@ export async function improveCreative({
       { signal: controller.signal },
     )
 
+    const elapsed = Date.now() - startedAt
+    console.log(`[improveCreative] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s`)
+
     const b64 = response.data?.[0]?.b64_json
     if (!b64) {
       throw new Error('OpenAI não retornou dados de imagem')
     }
     return Buffer.from(b64, 'base64')
+  } catch (error) {
+    const elapsed = Date.now() - startedAt
+    console.warn(`[improveCreative] ${IMAGE_MODEL} ${size} falhou após ${(elapsed / 1000).toFixed(1)}s`)
+    throw error
   } finally {
     clearTimeout(timeout)
   }

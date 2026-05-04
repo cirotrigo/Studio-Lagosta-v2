@@ -6,12 +6,14 @@
 export type ImprovementFormat = 'STORY' | 'SQUARE' | 'FEED_PORTRAIT'
 
 export const OPENAI_INPUT_SIZE: Record<ImprovementFormat, string> = {
-  // 9:16 nativo, 4K portrait — sem necessidade de crop
-  STORY: '2160x3840',
-  // 1:1 quadrado 2K
-  SQUARE: '2048x2048',
-  // 4:5 portrait 2K (múltiplo de 16, dentro dos limites)
-  FEED_PORTRAIT: '2048x2560',
+  // 9:16 (~0.571), múltiplo de 16. 4K (2160x3840) era ideal mas demorava
+  // >100s no quality 'high', estourava o timeout. 1024x1792 mantém qualidade
+  // pro upscale leve até 1080x1920.
+  STORY: '1024x1792',
+  // 1:1 — preço listado da OpenAI ($0.211 high), tempo previsível.
+  SQUARE: '1024x1024',
+  // 4:5 exato, múltiplo de 16. Upscale leve pra 1080x1350 no Sharp.
+  FEED_PORTRAIT: '1024x1280',
 }
 
 export const FINAL_OUTPUT_SIZE: Record<ImprovementFormat, { width: number; height: number }> = {
