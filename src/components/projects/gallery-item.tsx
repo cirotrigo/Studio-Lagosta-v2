@@ -315,11 +315,24 @@ export function GalleryItem({
                 onLoad={(e) => {
                   setImageLoaded(true)
                   const img = e.currentTarget as HTMLImageElement
+                  if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return
+
+                  // Atualiza data-pswp-* diretamente via DOM com a proporção real
+                  // do thumbnail, escalada pra 1080w. Bypass de React state pra
+                  // garantir que PhotoSwipe vê dimensões corretas mesmo quando
+                  // props vieram de Template.dimensions errado (ex: criativos
+                  // recuperados do Drive).
+                  const link = ref.current?.querySelector('a')
+                  if (link) {
+                    const scaledW = 1080
+                    const scaledH = Math.round((img.naturalHeight / img.naturalWidth) * scaledW)
+                    link.setAttribute('data-pswp-width', String(scaledW))
+                    link.setAttribute('data-pswp-height', String(scaledH))
+                  }
+
                   if (
-                    img.naturalWidth > 0 &&
-                    img.naturalHeight > 0 &&
-                    (img.naturalWidth !== imageDimensions.width ||
-                      img.naturalHeight !== imageDimensions.height)
+                    img.naturalWidth !== imageDimensions.width ||
+                    img.naturalHeight !== imageDimensions.height
                   ) {
                     setImageDimensions({
                       width: img.naturalWidth,
