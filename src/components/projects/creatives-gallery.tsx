@@ -47,7 +47,7 @@ interface GenerationRecord {
   createdBy: string
   createdAt: string
   completedAt?: string | null
-  template?: TemplateInfo
+  Template?: TemplateInfo
 }
 
 interface GenerationsResponse {
@@ -387,7 +387,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       const matchesSearch =
         !query ||
         generation.templateName?.toLowerCase().includes(query) ||
-        generation.template?.name?.toLowerCase().includes(query) ||
+        generation.Template?.name?.toLowerCase().includes(query) ||
         generation.id.toLowerCase().includes(query)
       return matchesStatus && matchesResult && matchesSearch
     })
@@ -593,7 +593,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const composerInitialData = React.useMemo(() => {
     if (!schedulingGeneration) return undefined
 
-    const dimensions = schedulingGeneration.template?.dimensions || '1080x1080'
+    const dimensions = schedulingGeneration.Template?.dimensions || '1080x1080'
     const [widthStr, heightStr] = dimensions.split('x')
     const width = parseInt(widthStr, 10) || 1080
     const height = parseInt(heightStr, 10) || 1080
@@ -836,8 +836,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         >
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
-            const templateLabel = generation.template?.name || generation.templateName || 'Template'
-            const dimensions = generation.template?.dimensions || '1080x1080'
+            const templateLabel = generation.Template?.name || generation.templateName || 'Template'
+            const dimensions = generation.Template?.dimensions || '1080x1080'
 
             // Parsear dimensões do template
             const [widthStr, heightStr] = dimensions.split('x')
@@ -926,7 +926,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               <tbody>
                 {filtered.map((generation) => {
                   const selected = selectedIds.has(generation.id)
-                  const templateLabel = generation.template?.name || generation.templateName || 'Template'
+                  const templateLabel = generation.Template?.name || generation.templateName || 'Template'
                   const meta = getGenerationMeta(generation)
                   const previewUrl = meta.assetUrl ?? meta.displayUrl ?? null
                   const canPreview = Boolean(previewUrl)
@@ -955,8 +955,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                       <td className="px-4 py-3">
                         <div className="flex flex-col">
                           <span className="font-medium truncate">{templateLabel}</span>
-                          {generation.template?.dimensions && (
-                            <span className="text-xs text-muted-foreground">{generation.template.dimensions}</span>
+                          {generation.Template?.dimensions && (
+                            <span className="text-xs text-muted-foreground">{generation.Template.dimensions}</span>
                           )}
                         </div>
                       </td>
@@ -1108,7 +1108,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 id: improvingGeneration.id,
                 projectId: improvingGeneration.projectId,
                 resultUrl: improvingGeneration.resultUrl,
-                templateName: improvingGeneration.templateName ?? improvingGeneration.template?.name,
+                templateName: improvingGeneration.templateName ?? improvingGeneration.Template?.name,
               }
             : null
         }
