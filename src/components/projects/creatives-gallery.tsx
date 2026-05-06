@@ -837,7 +837,17 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
             const templateLabel = generation.Template?.name || generation.templateName || 'Template'
-            const dimensions = generation.Template?.dimensions || '1080x1080'
+            // Prefer fieldValues.finalSize (escrito pela rota de melhoria de IA com
+            // as dimensões REAIS da imagem gerada) sobre Template.dimensions —
+            // criativos recuperados do Drive frequentemente têm Template default
+            // 1080x1350 mesmo quando o asset é 1080x1920. Sem isso, PhotoSwipe
+            // abre stories no formato feed e o usuário vê slides achatados.
+            const fv = (generation.fieldValues ?? null) as Record<string, unknown> | null
+            const finalSize =
+              typeof fv?.finalSize === 'string' && /^\d+x\d+$/.test(fv.finalSize)
+                ? (fv.finalSize as string)
+                : null
+            const dimensions = finalSize || generation.Template?.dimensions || '1080x1080'
 
             // Parsear dimensões do template
             const [widthStr, heightStr] = dimensions.split('x')
