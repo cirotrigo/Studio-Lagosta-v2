@@ -41,14 +41,24 @@ export function inferFormatFromTemplate(template?: TemplateLike | null): Improve
     if (match) {
       const w = Number(match[1])
       const h = Number(match[2])
-      if (w > 0 && h > 0) {
-        const ratio = w / h
-        if (ratio < 0.7) return 'STORY' // 9:16 ≈ 0.5625
-        if (ratio > 0.95 && ratio < 1.05) return 'SQUARE'
-        return 'FEED_PORTRAIT' // 4:5 = 0.8
-      }
+      if (w > 0 && h > 0) return inferFormatFromDimensions(w, h)
     }
   }
 
   return 'STORY'
+}
+
+/**
+ * Decide o formato a partir das dimensões REAIS da imagem fonte.
+ * Mais robusto que `inferFormatFromTemplate` quando o Template está mal
+ * configurado (ex: criativos recuperados que receberam um templateId
+ * default de tipo errado). Use isto como fonte de verdade na pipeline
+ * de melhoria — preserva a proporção visual do que o usuário vê.
+ */
+export function inferFormatFromDimensions(width: number, height: number): ImprovementFormat {
+  if (width <= 0 || height <= 0) return 'STORY'
+  const ratio = width / height
+  if (ratio < 0.7) return 'STORY' // 9:16 ≈ 0.5625
+  if (ratio >= 0.95 && ratio <= 1.05) return 'SQUARE'
+  return 'FEED_PORTRAIT' // 4:5 = 0.8 e variações próximas
 }
