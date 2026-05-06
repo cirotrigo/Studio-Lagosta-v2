@@ -83,6 +83,24 @@ export function usePhotoSwipe({
         lastClosedAt = Date.now()
       })
 
+      // Sobrescreve as dimensões do item com as dimensões REAIS do <img>
+      // renderizado no card. Necessário porque data-pswp-width/height vêm de
+      // Template.dimensions, que pode estar errado (ex: criativos recuperados
+      // do Drive com Template default 1080x1350 mas asset real 1080x1920).
+      // Sem isso, navegação por seta abre slides achatados.
+      lightboxRef.current.addFilter('itemData', (itemData, index) => {
+        const galleryEl = document.querySelector(gallerySelector)
+        if (!galleryEl) return itemData
+        const links = galleryEl.querySelectorAll(childSelector)
+        const link = links[index] as HTMLAnchorElement | undefined
+        if (!link) return itemData
+        const img = link.querySelector('img') as HTMLImageElement | null
+        if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+          return { ...itemData, w: img.naturalWidth, h: img.naturalHeight, width: img.naturalWidth, height: img.naturalHeight }
+        }
+        return itemData
+      })
+
       lightboxRef.current.init()
       return true
     }
