@@ -15,6 +15,7 @@ import {
 } from '@/lib/ai/openai-image-client'
 import {
   inferFormatFromTemplate,
+  inferFormatFromDimensions,
   OPENAI_INPUT_SIZE,
   FINAL_OUTPUT_SIZE,
   type ImprovementFormat,
@@ -220,8 +221,9 @@ interface DownloadResult {
 
 async function processImprovementInBackground(args: BackgroundArgs): Promise<void> {
   const startedAt = Date.now()
-  const openaiSize = OPENAI_INPUT_SIZE[args.format]
-  const finalSize = FINAL_OUTPUT_SIZE[args.format]
+  let format = args.format
+  let openaiSize = OPENAI_INPUT_SIZE[format]
+  let finalSize = FINAL_OUTPUT_SIZE[format]
 
   try {
     const assets = await loadImprovementAssets(args.projectId, {
@@ -295,6 +297,26 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
     const primary = downloads.find((d) => d.role === 'primary')
     if (!primary) {
       throw new Error('Falha ao baixar a arte original')
+    }
+
+    // Re-infer format pelas dimensões REAIS da imagem fonte. Mais robusto que
+    // confiar só no Template — criativos recuperados ou com Template incorreto
+    // não devem sair achatados em outro aspect ratio.
+    try {
+      const meta = await sharp(primary.buffer).metadata()
+      if (meta.width && meta.height) {
+        const detectedFormat = inferFormatFromDimensions(meta.width, meta.height)
+        if (detectedFormat !== format) {
+          console.log(
+            `[improve.bg] format override: template=${format} → image=${detectedFormat} (${meta.width}x${meta.height})`,
+          )
+          format = detectedFormat
+          openaiSize = OPENAI_INPUT_SIZE[format]
+          finalSize = FINAL_OUTPUT_SIZE[format]
+        }
+      }
+    } catch (metaError) {
+      console.warn('[improve.bg] sharp.metadata falhou — mantendo formato do template:', metaError)
     }
 
     const { buffer: primaryBuffer, mimeType: primaryMime } = await ensureUnderLimit(
@@ -399,7 +421,7 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
           quality: 'high',
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
-          format: args.format,
+          format,
           elapsedSeconds,
           referenceCounts: {
             background: references.filter((r) => r.role === 'background').length,
@@ -417,7 +439,7 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
         originalGenerationId: args.originalGenerationId,
         newGenerationId: args.jobGenerationId,
         model: getCurrentImageModel(),
-        format: args.format,
+        format,
         elapsedSeconds,
       },
       organizationId: args.orgId,
@@ -443,7 +465,7 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
             quality: 'high',
             inputSize: openaiSize,
             finalSize: `${finalSize.width}x${finalSize.height}`,
-            format: args.format,
+            format,
             error: message,
             failedAt: new Date().toISOString(),
           },
