@@ -41,7 +41,12 @@ export async function GET(request: Request) {
         select: { operationType: true, creditsUsed: true, details: true, timestamp: true },
       }),
       db.organizationUsage.findMany({
-        where: { createdAt: { gte: start, lte: end } },
+        where: {
+          createdAt: { gte: start, lte: end },
+          // Top-ups (credits added manually) gravam aqui com feature='manual_credit_adjustment'
+          // e credits positivo, indistinguíveis de débito. Não são gasto, então excluímos.
+          feature: { not: 'manual_credit_adjustment' },
+        },
         select: { feature: true, credits: true, metadata: true, createdAt: true },
       }),
       getUsdBrlRate().catch((error) => {
