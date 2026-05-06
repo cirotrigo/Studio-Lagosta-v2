@@ -67,6 +67,11 @@ export function GalleryItem({
   const [isInView, setIsInView] = React.useState(false)
   const [imageDimensions, setImageDimensions] = React.useState({ width: pswpWidth, height: pswpHeight })
   const ref = React.useRef<HTMLDivElement>(null)
+  // Marca que data-pswp-* já foi sincronizado com a imagem real, pra evitar
+  // recursão quando o handler dispara link.click() depois de carregar a imagem
+  // sob demanda (caso de criativos com Template.dimensions errado e <img>
+  // ainda em loading="lazy").
+  const dimensionsLockedRef = React.useRef(false)
 
   // Mouse tracking for spotlight effect
   const mouseX = useMotionValue(0)
@@ -236,6 +241,11 @@ export function GalleryItem({
           resolvedAssetUrl && status === 'COMPLETED' ? 'cursor-zoom-in' : 'cursor-default'
         )}
         onClick={(e) => {
+          // Re-trigger interno após preload — deixa o PhotoSwipe processar.
+          if (dimensionsLockedRef.current) {
+            return
+          }
+
           const shouldHandlePreview = !resolvedAssetUrl || status !== 'COMPLETED'
           if (shouldHandlePreview) {
             e.preventDefault()
@@ -243,15 +253,36 @@ export function GalleryItem({
             onPreview?.()
             return
           }
-          // Sincroniza data-pswp-* com as dimensões REAIS da imagem antes do
-          // PhotoSwipe capturar o clique. Evita lightbox achatar quando o
-          // Template.dimensions diverge da imagem (ex: criativos recuperados
-          // do Drive com Template default errado).
+
           const link = e.currentTarget as HTMLAnchorElement
           const img = link.querySelector('img') as HTMLImageElement | null
+
+          // Caminho rápido: thumbnail já tá carregado, usa as dimensões reais.
           if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
             link.setAttribute('data-pswp-width', String(img.naturalWidth))
             link.setAttribute('data-pswp-height', String(img.naturalHeight))
+            dimensionsLockedRef.current = true
+            return
+          }
+
+          // Caminho lento: <img> ainda em loading="lazy" e Template.dimensions
+          // pode estar mentindo. Carrega o asset diretamente, fixa data-pswp-*
+          // e re-dispara o clique pro PhotoSwipe.
+          if (resolvedAssetUrl) {
+            e.preventDefault()
+            e.stopPropagation()
+            const probe = new window.Image()
+            const finish = (w: number | null, h: number | null) => {
+              if (w && h && w > 0 && h > 0) {
+                link.setAttribute('data-pswp-width', String(w))
+                link.setAttribute('data-pswp-height', String(h))
+              }
+              dimensionsLockedRef.current = true
+              link.click()
+            }
+            probe.onload = () => finish(probe.naturalWidth, probe.naturalHeight)
+            probe.onerror = () => finish(null, null)
+            probe.src = resolvedAssetUrl
           }
         }}
       >
