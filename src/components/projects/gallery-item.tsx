@@ -36,6 +36,9 @@ interface GalleryItemProps {
 }
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
+// Build-cache bust: pswp-dim-fix-v3
+const PSWP_FIX_VERSION = 'v3'
+void PSWP_FIX_VERSION
 
 export function GalleryItem({
   id,
