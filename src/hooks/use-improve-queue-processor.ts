@@ -51,7 +51,16 @@ export function useImproveQueueProcessor() {
     try {
       const startResponse = await api.post<StartImproveResponse>(
         `/api/generations/${next.generationId}/improve`,
-        { userRequest: next.userRequest }
+        {
+          userRequest: next.userRequest,
+          ...(next.backgroundImageUrl ? { backgroundImageUrl: next.backgroundImageUrl } : {}),
+          ...(next.selectedLogoIds && next.selectedLogoIds.length > 0
+            ? { selectedLogoIds: next.selectedLogoIds }
+            : {}),
+          ...(next.selectedElementIds && next.selectedElementIds.length > 0
+            ? { selectedElementIds: next.selectedElementIds }
+            : {}),
+        }
       )
 
       const serverGenerationId = startResponse.generation.id

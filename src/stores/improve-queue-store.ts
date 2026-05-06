@@ -12,6 +12,9 @@ export interface ImproveJob {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  backgroundImageUrl?: string | null
+  selectedLogoIds?: number[]
+  selectedElementIds?: number[]
   status: ImproveJobStatus
   createdAt: number
   startedAt?: number
@@ -30,6 +33,9 @@ interface AddJobInput {
   generationThumbnailUrl: string | null
   generationLabel: string
   userRequest: string
+  backgroundImageUrl?: string | null
+  selectedLogoIds?: number[]
+  selectedElementIds?: number[]
 }
 
 interface ImproveQueueState {

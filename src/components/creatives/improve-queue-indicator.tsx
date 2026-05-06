@@ -2,7 +2,17 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { Sparkles, Loader2, CheckCircle2, XCircle, Trash2, RotateCw, X } from 'lucide-react'
+import {
+  Sparkles,
+  Loader2,
+  CheckCircle2,
+  XCircle,
+  Trash2,
+  RotateCw,
+  X,
+  ImageIcon,
+  Tag,
+} from 'lucide-react'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -161,6 +171,25 @@ function QueueItem({ job, onRemove, onRetry }: QueueItemProps) {
         <p className="text-xs text-muted-foreground line-clamp-2 italic">
           {job.userRequest.length > 0 ? job.userRequest : 'Aprimoramento geral (sem alterações de conteúdo)'}
         </p>
+        {(job.backgroundImageUrl ||
+          (job.selectedLogoIds && job.selectedLogoIds.length > 0) ||
+          (job.selectedElementIds && job.selectedElementIds.length > 0)) && (
+          <div className="mt-1 flex flex-wrap gap-1">
+            {job.backgroundImageUrl && (
+              <Chip icon={ImageIcon}>fundo personalizado</Chip>
+            )}
+            {job.selectedLogoIds && job.selectedLogoIds.length > 0 && (
+              <Chip icon={Tag}>
+                {job.selectedLogoIds.length} logo
+              </Chip>
+            )}
+            {job.selectedElementIds && job.selectedElementIds.length > 0 && (
+              <Chip icon={Sparkles}>
+                {job.selectedElementIds.length} elemento{job.selectedElementIds.length === 1 ? '' : 's'}
+              </Chip>
+            )}
+          </div>
+        )}
         {isFailed && job.errorMessage && (
           <p className="mt-1 rounded bg-destructive/10 px-2 py-1 text-[11px] text-destructive line-clamp-2">
             {job.errorMessage}
@@ -217,6 +246,21 @@ function QueueFooter() {
         Limpar concluídos ({finishedCount})
       </Button>
     </div>
+  )
+}
+
+function Chip({
+  icon: Icon,
+  children,
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  children: React.ReactNode
+}) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+      <Icon className="h-3 w-3" />
+      {children}
+    </span>
   )
 }
 

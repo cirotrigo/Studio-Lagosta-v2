@@ -8,13 +8,22 @@ import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/ac
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { fetchImageSource } from '@/lib/ai/fetch-image-source'
-import { improveCreative, getCurrentImageModel } from '@/lib/ai/openai-image-client'
+import {
+  improveCreative,
+  getCurrentImageModel,
+  type ReferenceImage,
+} from '@/lib/ai/openai-image-client'
 import {
   inferFormatFromTemplate,
   OPENAI_INPUT_SIZE,
   FINAL_OUTPUT_SIZE,
   type ImprovementFormat,
 } from '@/lib/ai/creative-improvement-format'
+import { loadImprovementAssets } from '@/lib/ai/improvement-assets-loader'
+import {
+  MAX_SELECTED_LOGOS,
+  MAX_SELECTED_ELEMENTS,
+} from '@/lib/ai/improvement-assets-constants'
 import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
@@ -25,9 +34,22 @@ export const maxDuration = 300
 // substituindo a seção [PEDIDO DO CLIENTE] por uma instrução padrão.
 const bodySchema = z.object({
   userRequest: z.string().max(500).default(''),
+  backgroundImageUrl: z.string().url().optional().nullable(),
+  selectedLogoIds: z
+    .array(z.number().int().positive())
+    .max(MAX_SELECTED_LOGOS)
+    .optional()
+    .default([]),
+  selectedElementIds: z
+    .array(z.number().int().positive())
+    .max(MAX_SELECTED_ELEMENTS)
+    .optional()
+    .default([]),
 })
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
+
+const VERCEL_BLOB_HOST_REGEX = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -44,7 +66,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 400 },
       )
     }
-    const { userRequest } = parsed.data
+    const { userRequest, backgroundImageUrl, selectedLogoIds, selectedElementIds } = parsed.data
+
+    if (backgroundImageUrl && !VERCEL_BLOB_HOST_REGEX.test(backgroundImageUrl)) {
+      return NextResponse.json({ error: 'URL de fundo não permitida' }, { status: 400 })
+    }
 
     const original = await db.generation.findFirst({
       where: { id },
@@ -109,6 +135,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           source: 'ai_improvement',
           originalGenerationId: original.id,
           userRequest,
+          backgroundImageUrl: backgroundImageUrl ?? null,
+          selectedLogoIds,
+          selectedElementIds,
           model: getCurrentImageModel(),
           quality: 'high',
           inputSize: openaiSize,
@@ -136,6 +165,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
         templateName: original.templateName,
         userRequest,
+        backgroundImageUrl: backgroundImageUrl ?? null,
+        selectedLogoIds,
+        selectedElementIds,
         format,
       }),
     )
@@ -173,7 +205,17 @@ interface BackgroundArgs {
   projectGoogleDriveFolderId: string | null
   templateName: string | null | undefined
   userRequest: string
+  backgroundImageUrl: string | null
+  selectedLogoIds: number[]
+  selectedElementIds: number[]
   format: ImprovementFormat
+}
+
+interface DownloadResult {
+  buffer: Buffer
+  mimeType: string
+  role: 'primary' | 'background' | 'logo' | 'element'
+  label?: string
 }
 
 async function processImprovementInBackground(args: BackgroundArgs): Promise<void> {
@@ -182,20 +224,129 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
   const finalSize = FINAL_OUTPUT_SIZE[args.format]
 
   try {
-    const { buffer: rawBuffer, contentType: originalContentType } = await fetchImageSource(
-      args.originalResultUrl,
+    const assets = await loadImprovementAssets(args.projectId, {
+      selectedLogoIds: args.selectedLogoIds,
+      selectedElementIds: args.selectedElementIds,
+    })
+
+    const downloadTasks: Array<Promise<DownloadResult | null>> = []
+
+    downloadTasks.push(
+      fetchImageSource(args.originalResultUrl).then((r) => ({
+        buffer: r.buffer,
+        mimeType: r.contentType,
+        role: 'primary' as const,
+      })),
     )
 
-    const { buffer: inputBuffer, mimeType: inputMimeType } = await ensureUnderLimit(
-      rawBuffer,
-      originalContentType,
+    if (args.backgroundImageUrl) {
+      const bgUrl = args.backgroundImageUrl
+      downloadTasks.push(
+        fetchImageSource(bgUrl)
+          .then((r) => ({
+            buffer: r.buffer,
+            mimeType: r.contentType,
+            role: 'background' as const,
+          }))
+          .catch((err) => {
+            throw new Error(
+              `Falha ao baixar fundo: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          }),
+      )
+    }
+
+    for (const logo of assets.logos) {
+      downloadTasks.push(
+        fetchImageSource(logo.fileUrl)
+          .then((r) => ({
+            buffer: r.buffer,
+            mimeType: r.contentType,
+            role: 'logo' as const,
+            label: logo.name,
+          }))
+          .catch((err) => {
+            console.warn(`[improve.bg] Falha ao baixar logo "${logo.name}":`, err)
+            return null
+          }),
+      )
+    }
+
+    for (const element of assets.elements) {
+      downloadTasks.push(
+        fetchImageSource(element.fileUrl)
+          .then((r) => ({
+            buffer: r.buffer,
+            mimeType: r.contentType,
+            role: 'element' as const,
+            label: element.name,
+          }))
+          .catch((err) => {
+            console.warn(`[improve.bg] Falha ao baixar element "${element.name}":`, err)
+            return null
+          }),
+      )
+    }
+
+    const downloads = (await Promise.all(downloadTasks)).filter(
+      (d): d is DownloadResult => d !== null,
     )
+
+    const primary = downloads.find((d) => d.role === 'primary')
+    if (!primary) {
+      throw new Error('Falha ao baixar a arte original')
+    }
+
+    const { buffer: primaryBuffer, mimeType: primaryMime } = await ensureUnderLimit(
+      primary.buffer,
+      primary.mimeType,
+    )
+
+    const references: ReferenceImage[] = []
+
+    const bg = downloads.find((d) => d.role === 'background')
+    if (bg) {
+      const constrained = await ensureUnderLimit(bg.buffer, bg.mimeType)
+      const [w, h] = openaiSize.split('x').map(Number)
+      const resized = await sharp(constrained.buffer)
+        .resize(w, h, { fit: 'cover', position: 'center' })
+        .jpeg({ quality: 90 })
+        .toBuffer()
+      references.push({
+        buffer: resized,
+        mimeType: 'image/jpeg',
+        role: 'background',
+        label: 'fundo',
+      })
+    }
+
+    for (const logo of downloads.filter((d) => d.role === 'logo')) {
+      const constrained = await ensureUnderLimit(logo.buffer, logo.mimeType)
+      references.push({
+        buffer: constrained.buffer,
+        mimeType: constrained.mimeType,
+        role: 'logo',
+        label: logo.label,
+      })
+    }
+
+    for (const element of downloads.filter((d) => d.role === 'element')) {
+      const constrained = await ensureUnderLimit(element.buffer, element.mimeType)
+      references.push({
+        buffer: constrained.buffer,
+        mimeType: constrained.mimeType,
+        role: 'element',
+        label: element.label,
+      })
+    }
 
     const improvedBuffer = await improveCreative({
-      imageBuffer: inputBuffer,
-      mimeType: inputMimeType,
+      imageBuffer: primaryBuffer,
+      mimeType: primaryMime,
       userRequest: args.userRequest,
       size: openaiSize,
+      references: references.length > 0 ? references : undefined,
+      brandColors: assets.colors,
     })
 
     const finalBuffer = await sharp(improvedBuffer)
@@ -241,12 +392,20 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
           source: 'ai_improvement',
           originalGenerationId: args.originalGenerationId,
           userRequest: args.userRequest,
+          backgroundImageUrl: args.backgroundImageUrl ?? null,
+          selectedLogoIds: args.selectedLogoIds,
+          selectedElementIds: args.selectedElementIds,
           model: getCurrentImageModel(),
           quality: 'high',
           inputSize: openaiSize,
           finalSize: `${finalSize.width}x${finalSize.height}`,
           format: args.format,
           elapsedSeconds,
+          referenceCounts: {
+            background: references.filter((r) => r.role === 'background').length,
+            logos: references.filter((r) => r.role === 'logo').length,
+            elements: references.filter((r) => r.role === 'element').length,
+          },
         },
       },
     })
@@ -277,6 +436,9 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
             source: 'ai_improvement',
             originalGenerationId: args.originalGenerationId,
             userRequest: args.userRequest,
+            backgroundImageUrl: args.backgroundImageUrl ?? null,
+            selectedLogoIds: args.selectedLogoIds,
+            selectedElementIds: args.selectedElementIds,
             model: getCurrentImageModel(),
             quality: 'high',
             inputSize: openaiSize,
@@ -312,11 +474,13 @@ async function ensureUnderLimit(
 }
 
 function sanitize(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 60) || 'criativo'
+  return (
+    name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 60) || 'criativo'
+  )
 }
