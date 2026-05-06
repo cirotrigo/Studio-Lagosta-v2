@@ -241,6 +241,17 @@ export function GalleryItem({
             e.preventDefault()
             e.stopPropagation()
             onPreview?.()
+            return
+          }
+          // Sincroniza data-pswp-* com as dimensões REAIS da imagem antes do
+          // PhotoSwipe capturar o clique. Evita lightbox achatar quando o
+          // Template.dimensions diverge da imagem (ex: criativos recuperados
+          // do Drive com Template default errado).
+          const link = e.currentTarget as HTMLAnchorElement
+          const img = link.querySelector('img') as HTMLImageElement | null
+          if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
+            link.setAttribute('data-pswp-width', String(img.naturalWidth))
+            link.setAttribute('data-pswp-height', String(img.naturalHeight))
           }
         }}
       >
@@ -270,7 +281,21 @@ export function GalleryItem({
                 fill
                 sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, (max-width: 1280px) 33vw, (max-width: 1536px) 25vw, 20vw"
                 className="object-cover transition-transform duration-500 group-hover:scale-105"
-                onLoad={() => setImageLoaded(true)}
+                onLoad={(e) => {
+                  setImageLoaded(true)
+                  const img = e.currentTarget as HTMLImageElement
+                  if (
+                    img.naturalWidth > 0 &&
+                    img.naturalHeight > 0 &&
+                    (img.naturalWidth !== imageDimensions.width ||
+                      img.naturalHeight !== imageDimensions.height)
+                  ) {
+                    setImageDimensions({
+                      width: img.naturalWidth,
+                      height: img.naturalHeight,
+                    })
+                  }
+                }}
                 loading="lazy"
               />
             )
