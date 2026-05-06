@@ -83,30 +83,6 @@ export function usePhotoSwipe({
         lastClosedAt = Date.now()
       })
 
-      // Sobrescreve as dimensões do item com o RATIO real do <img> renderizado
-      // no card. O thumbnail Next.js Image preserva proporção mas vem em escala
-      // reduzida (ex: 345x614 pra um asset 1080x1920) — usar essas dims pequenas
-      // direto faz o PhotoSwipe renderizar a slide minúscula, então normalizamos
-      // pra 1080 de largura mantendo o ratio. Necessário porque data-pswp-* vêm
-      // de Template.dimensions, que pode estar errado (criativos recuperados
-      // com Template default 1080x1350 mas asset real 1080x1920). Sem isso,
-      // navegação por seta abre slides achatados.
-      lightboxRef.current.addFilter('itemData', (itemData, index) => {
-        const galleryEl = document.querySelector(gallerySelector)
-        if (!galleryEl) return itemData
-        const links = galleryEl.querySelectorAll(childSelector)
-        const link = links[index] as HTMLAnchorElement | undefined
-        if (!link) return itemData
-        const img = link.querySelector('img') as HTMLImageElement | null
-        if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-          const baseWidth = 1080
-          const ratio = img.naturalHeight / img.naturalWidth
-          const w = baseWidth
-          const h = Math.round(baseWidth * ratio)
-          return { ...itemData, w, h, width: w, height: h }
-        }
-        return itemData
-      })
 
       lightboxRef.current.init()
       return true
