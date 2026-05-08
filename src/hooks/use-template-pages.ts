@@ -14,10 +14,12 @@ interface TemplatePage {
   background: string | null
   thumbnail: string | null
   order: number
+  tags: string[]
   createdAt: string
   updatedAt: string
   Template: {
     name: string
+    tags: string[]
   }
 }
 

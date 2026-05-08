@@ -1929,6 +1929,285 @@ server.tool(
   },
 )
 
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 17: prepare-creative
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'prepare-creative',
+  'Resolve project + best matching template page for a theme/day. Returns the page layers, exact slot fields to fill, brand assets and tone-of-voice context. Use this as the FIRST call in the arte-rapida flow before generating copy.',
+  {
+    projectHint: z.string().describe('Project name or substring (e.g., "Tero", "By Rock")'),
+    theme: z.string().describe('Theme of the creative (e.g., "almoço executivo", "happy hour", "delivery")'),
+    day: z.string().optional().describe('Optional day of week in PT (e.g., "sexta", "sabado", "sexta-feira")'),
+  },
+  async ({ projectHint, theme, day }) => {
+    try {
+      const normalize = (s: string) => s.toLowerCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .replace(/\s+/g, '-')
+
+      // 1. Resolve project by name (case-insensitive contains)
+      const projects = await prisma.project.findMany({
+        where: {
+          status: 'ACTIVE',
+          name: { contains: projectHint, mode: 'insensitive' },
+        },
+        select: {
+          id: true, name: true, userId: true,
+          googleDriveImagesFolderId: true, googleDriveFolderId: true,
+          instagramUsername: true,
+          logoUrl: true, titleFontFamily: true, bodyFontFamily: true,
+          brandStyleDescription: true, cuisineType: true,
+          BrandColor: { select: { name: true, hexCode: true }, orderBy: { id: 'asc' } },
+          CustomFont: { select: { name: true, fontFamily: true, fileUrl: true }, orderBy: { id: 'asc' } },
+          Logo: { select: { name: true, fileUrl: true, isProjectLogo: true }, orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }] },
+        },
+        orderBy: { name: 'asc' },
+      })
+
+      if (projects.length === 0) {
+        return { content: [{ type: 'text' as const, text: `Error: No active project matching "${projectHint}"` }], isError: true }
+      }
+      if (projects.length > 1) {
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'AMBIGUOUS_PROJECT',
+              message: `Multiple projects match "${projectHint}". Re-run with a more specific hint.`,
+              candidates: projects.map((p: any) => ({ id: p.id, name: p.name })),
+            }, null, 2),
+          }],
+          isError: true,
+        }
+      }
+      const project = projects[0]
+
+      // 2. Load all template pages for the project (STORY)
+      const { pages: allPages } = await getTemplatePages(project.id)
+      if (allPages.length === 0) {
+        return { content: [{ type: 'text' as const, text: `Error: No template pages found for project "${project.name}". Create templates first.` }], isError: true }
+      }
+
+      // 3. Theme matching: try full normalized form, main word, individual words
+      const themeNorm = normalize(theme)
+      const themeWords = themeNorm.split('-').filter((w) => w.length > 2)
+      const themeVariants = Array.from(new Set([themeNorm, themeWords[0], ...themeWords].filter(Boolean)))
+
+      const themeMatches = allPages.filter((p: any) => {
+        const tags = [...(p.tags ?? []), ...(p.templateTags ?? [])].map(normalize)
+        return themeVariants.some((v) => tags.some((t) => t === v || t.includes(v) || v.includes(t)))
+      })
+
+      // 4. Optional day filter (legacy: page.name / template.name contains day)
+      const dayNorm = day ? normalize(day).replace(/-feira$/, '') : null
+      let candidates = themeMatches
+      if (dayNorm) {
+        const dayMatches = themeMatches.filter((p: any) =>
+          normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
+        )
+        if (dayMatches.length > 0) candidates = dayMatches
+      }
+
+      // 5. Fallback: if no theme matches, try day-of-week alone (legacy templates without tags)
+      if (candidates.length === 0 && dayNorm) {
+        candidates = allPages.filter((p: any) =>
+          normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
+        )
+      }
+
+      if (candidates.length === 0) {
+        const availableTags = Array.from(new Set(
+          allPages.flatMap((p: any) => [...(p.tags ?? []), ...(p.templateTags ?? [])]),
+        )).slice(0, 30)
+        const availableTemplates = Array.from(new Set(allPages.map((p: any) => p.templateName)))
+        return {
+          content: [{
+            type: 'text' as const,
+            text: JSON.stringify({
+              error: 'NO_TEMPLATE_MATCH',
+              message: `No template page found for theme "${theme}"${day ? ` and day "${day}"` : ''} in project "${project.name}".`,
+              project: { id: project.id, name: project.name },
+              availableTags,
+              availableTemplates,
+              suggestion: 'Tag a template page with the theme (e.g., "almoco-executivo") via the admin, or pick from availableTemplates and re-run.',
+            }, null, 2),
+          }],
+          isError: true,
+        }
+      }
+
+      // 6. Pick best candidate; rest go to alternatives
+      const bestRef = candidates[0]
+      const alternatives = candidates.slice(1, 5).map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        templateId: p.templateId,
+        templateName: p.templateName,
+        tags: p.tags ?? [],
+        templateTags: p.templateTags ?? [],
+      }))
+
+      // 7. Load full page (with layers) to extract slot fields
+      const page = await prisma.page.findUnique({
+        where: { id: bestRef.id },
+        select: {
+          id: true, templateId: true, name: true, tags: true,
+          layers: true, width: true, height: true, background: true,
+        },
+      })
+      if (!page) {
+        return { content: [{ type: 'text' as const, text: `Error: Page not found: ${bestRef.id}` }], isError: true }
+      }
+
+      const layers: any[] = Array.isArray(page.layers)
+        ? (page.layers as any[])
+        : (typeof page.layers === 'string' ? JSON.parse(page.layers) : [])
+
+      const slotFields = layers
+        .filter((l: any) => l.type === 'text' || (l.type === 'image' && l.isDynamic))
+        .map((l: any) => ({
+          layerId: l.id,
+          name: l.name,
+          type: l.type,
+          isDynamic: !!l.isDynamic,
+          currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
+        }))
+
+      // 8. Knowledge base: tom de voz + categorias relevantes
+      const kbEntries = await prisma.knowledgeBaseEntry.findMany({
+        where: {
+          projectId: project.id,
+          status: 'ACTIVE',
+          category: { in: ['TOM_DE_VOZ', 'ESTABELECIMENTO_INFO', 'HORARIOS', 'DIFERENCIAIS', 'CARDAPIO', 'CAMPANHAS'] },
+        },
+        select: { category: true, title: true, content: true },
+        orderBy: { category: 'asc' },
+      })
+
+      const knowledge: Record<string, string> = {}
+      for (const entry of kbEntries) {
+        const key = entry.category === 'TOM_DE_VOZ' ? 'tomDeVoz'
+          : entry.category === 'ESTABELECIMENTO_INFO' ? 'estabelecimento'
+          : entry.category === 'HORARIOS' ? 'horarios'
+          : entry.category === 'DIFERENCIAIS' ? 'diferenciais'
+          : entry.category === 'CARDAPIO' ? 'cardapio'
+          : entry.category === 'CAMPANHAS' ? 'campanhas'
+          : entry.category
+        knowledge[key] = knowledge[key] ? `${knowledge[key]}\n---\n${entry.content}` : entry.content
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            project: {
+              id: project.id,
+              name: project.name,
+              instagramUsername: project.instagramUsername,
+              googleDriveImagesFolderId: project.googleDriveImagesFolderId ?? project.googleDriveFolderId,
+            },
+            page: {
+              id: page.id,
+              templateId: page.templateId,
+              templateName: bestRef.templateName,
+              name: page.name,
+              width: page.width,
+              height: page.height,
+              tags: page.tags ?? [],
+              templateTags: bestRef.templateTags ?? [],
+              slotFields,
+            },
+            alternatives,
+            brand: {
+              brandStyle: project.brandStyleDescription,
+              cuisineType: project.cuisineType,
+              titleFontFamily: project.titleFontFamily,
+              bodyFontFamily: project.bodyFontFamily,
+              logoUrl: project.logoUrl,
+              logos: project.Logo,
+              colors: project.BrandColor,
+              fonts: project.CustomFont,
+            },
+            knowledge,
+          }, null, 2),
+        }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 18: upload-to-drive
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'upload-to-drive',
+  'Upload an image (base64) to a project\'s Google Drive images folder. Returns the new fileId for use as _driveImageId in slot values. Used when the user attaches an image in chat instead of pasting a Drive link.',
+  {
+    projectId: z.number().describe('Project ID (must have googleDriveImagesFolderId configured)'),
+    imageBase64: z.string().describe('Base64-encoded image data (raw or with data URL prefix)'),
+    filename: z.string().describe('Filename for the upload (e.g., "salmao-2026-05-08.jpg")'),
+    mimeType: z.string().optional().describe('MIME type (default: image/jpeg)'),
+  },
+  async ({ projectId, imageBase64, filename, mimeType }) => {
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true, googleDriveImagesFolderId: true, googleDriveFolderId: true },
+      })
+      if (!project) return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
+
+      const folderId = project.googleDriveImagesFolderId ?? project.googleDriveFolderId
+      if (!folderId) {
+        return { content: [{ type: 'text' as const, text: `Error: Project "${project.name}" has no Drive images folder configured. Set googleDriveImagesFolderId in admin.` }], isError: true }
+      }
+
+      // Strip data URL prefix if present (data:image/jpeg;base64,...)
+      const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/, '')
+      const buffer = Buffer.from(cleanBase64, 'base64')
+      if (buffer.length === 0) {
+        return { content: [{ type: 'text' as const, text: 'Error: Empty image data after base64 decode' }], isError: true }
+      }
+
+      const drive = getDrive()
+      const { Readable } = await import('stream')
+
+      const result = await drive.files.create({
+        requestBody: {
+          name: filename,
+          parents: [folderId],
+        },
+        media: {
+          mimeType: mimeType ?? 'image/jpeg',
+          body: Readable.from(buffer),
+        },
+        fields: 'id, name, thumbnailLink, webViewLink',
+      })
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            uploaded: true,
+            fileId: result.data.id,
+            fileName: result.data.name,
+            thumbnailLink: result.data.thumbnailLink ?? null,
+            webViewLink: result.data.webViewLink ?? null,
+            sizeKB: Math.round(buffer.length / 1024),
+            folderId,
+          }, null, 2),
+        }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
 // ─── Start Server ────────────────────────────────────────────────────
 
 async function main() {

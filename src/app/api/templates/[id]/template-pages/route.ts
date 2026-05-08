@@ -50,11 +50,13 @@ export async function GET(
         background: true,
         thumbnail: true,
         order: true,
+        tags: true,
         createdAt: true,
         updatedAt: true,
         Template: {
           select: {
             name: true, // Incluir nome do template de origem
+            tags: true,
           },
         },
       },

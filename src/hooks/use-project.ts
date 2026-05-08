@@ -35,6 +35,10 @@ export interface ProjectResponse {
   createdAt: string
   updatedAt: string
   organizationShares?: ProjectShareInfo[]
+  /** True when the current user is the project owner OR a Clerk org admin
+   *  of an organization the project is shared with. Used to gate "Modelos"
+   *  curator actions. Computed server-side, see GET /api/projects/[id]. */
+  canCurate?: boolean
 }
 
 export interface ProjectWithLogoResponse extends ProjectResponse {

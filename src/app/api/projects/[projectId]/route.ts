@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import {
+  fetchProjectWithShares,
+  hasProjectOwnership,
+  hasProjectReadAccess,
+} from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
 
@@ -10,7 +14,7 @@ export async function GET(
   { params }: { params: Promise<{ projectId: string }> },
 ) {
   try {
-    const { userId, orgId } = await auth()
+    const { userId, orgId, orgRole } = await auth()
     if (!userId) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
     }
@@ -31,10 +35,13 @@ export async function GET(
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
+    const canCurate = hasProjectOwnership(project, { userId, orgId, orgRole })
+
     const { organizationProjects, ...rest } = project
 
     return NextResponse.json({
       ...rest,
+      canCurate,
       organizationShares: organizationProjects.map((share) => ({
         organizationId: share.organization.clerkOrgId,
         organizationName: share.organization.name,

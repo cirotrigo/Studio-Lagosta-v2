@@ -26,6 +26,7 @@ import { toast } from 'sonner'
 import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
+import { ModelosTab } from '@/components/projects/modelos-tab'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
@@ -187,6 +188,7 @@ export default function ProjectDetailPage() {
         <TabsList>
           <TabsTrigger value="drive">Drive</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="modelos">Modelos</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
@@ -293,6 +295,17 @@ export default function ProjectDetailPage() {
             projectId={projectId}
             onCreateClick={() => setIsDialogOpen(true)}
           />
+        </TabsContent>
+
+        <TabsContent value="modelos" className="mt-6">
+          <div className="mb-6">
+            <h2 className="text-xl font-semibold">Modelos</h2>
+            <p className="text-sm text-muted-foreground">
+              Curadoria de templates por tema. Aplique tags para que a skill
+              /arte-rapida encontre o template certo a partir de uma frase em PT.
+            </p>
+          </div>
+          <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-6">
