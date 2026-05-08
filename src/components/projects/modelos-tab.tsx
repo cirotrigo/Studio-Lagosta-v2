@@ -3,8 +3,9 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Lock, Pencil, Tag, Wand2 } from 'lucide-react'
+import { AlertCircle, Lock, Pencil, Plus, Tag, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api-client'
@@ -12,8 +13,26 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { TagInput } from '@/components/projects/tag-input'
 import { useUpdateTemplatePageTags } from '@/hooks/use-template-page-tags'
+import { useCreateModelo } from '@/hooks/use-create-modelo'
 
 const SUGGESTED_THEME_TAGS = [
   'almoco-executivo',
@@ -31,6 +50,138 @@ const SUGGESTED_THEME_TAGS = [
   'novidade',
   'evento',
 ]
+
+const MODELO_DIMENSIONS: Record<'STORY' | 'FEED' | 'SQUARE', string> = {
+  STORY: '1080x1920',
+  FEED: '1080x1350',
+  SQUARE: '1080x1080',
+}
+
+interface CreateModeloDialogProps {
+  projectId: number
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+function CreateModeloDialog({
+  projectId,
+  open,
+  onOpenChange,
+}: CreateModeloDialogProps) {
+  const router = useRouter()
+  const createModelo = useCreateModelo(projectId)
+  const [name, setName] = React.useState('')
+  const [type, setType] = React.useState<'STORY' | 'FEED' | 'SQUARE'>('STORY')
+  const [tags, setTags] = React.useState<string[]>([])
+
+  const reset = () => {
+    setName('')
+    setType('STORY')
+    setTags([])
+  }
+
+  const handleSubmit = async (action: 'create' | 'createAndOpen') => {
+    if (!name.trim()) {
+      toast.error('Dá um nome pro modelo')
+      return
+    }
+    try {
+      const created = await createModelo.mutateAsync({
+        name: name.trim(),
+        type,
+        dimensions: MODELO_DIMENSIONS[type],
+        tags,
+      })
+      toast.success('Modelo criado')
+      onOpenChange(false)
+      reset()
+      if (action === 'createAndOpen') {
+        router.push(
+          `/templates/${created.templateId}/editor?pageId=${created.pageId}`,
+        )
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro ao criar modelo'
+      toast.error(message)
+    }
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(value) => {
+        if (!value) reset()
+        onOpenChange(value)
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Criar modelo do zero</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="modelo-name">Nome</Label>
+            <Input
+              id="modelo-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Ex: Story Almoço Executivo"
+              autoFocus
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="modelo-type">Formato</Label>
+            <Select
+              value={type}
+              onValueChange={(value) =>
+                setType(value as 'STORY' | 'FEED' | 'SQUARE')
+              }
+            >
+              <SelectTrigger id="modelo-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="STORY">Story (9:16) — 1080x1920</SelectItem>
+                <SelectItem value="FEED">Feed (4:5) — 1080x1350</SelectItem>
+                <SelectItem value="SQUARE">Quadrado (1:1) — 1080x1080</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label>Tags de tema</Label>
+            <TagInput
+              value={tags}
+              onChange={setTags}
+              suggestions={SUGGESTED_THEME_TAGS}
+              placeholder="almoco-executivo, happy-hour..."
+            />
+            <p className="text-xs text-muted-foreground">
+              A skill /arte-rapida usa estas tags pra encontrar o modelo a partir
+              da frase do usuário. Pode editar depois.
+            </p>
+          </div>
+        </div>
+        <DialogFooter className="gap-2 sm:gap-2">
+          <Button
+            variant="outline"
+            onClick={() => handleSubmit('create')}
+            disabled={createModelo.isPending}
+          >
+            Criar
+          </Button>
+          <Button
+            onClick={() => handleSubmit('createAndOpen')}
+            disabled={createModelo.isPending}
+          >
+            {createModelo.isPending ? 'Criando...' : 'Criar e abrir editor'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 interface ModelosTabProps {
   projectId: number
@@ -171,7 +322,7 @@ function PageRow({
             >
               <Button size="sm" variant="outline">
                 <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Editar layout
+                Editar página
               </Button>
             </Link>
           )}
@@ -184,6 +335,7 @@ function PageRow({
 
 export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
   const canEdit = canCurate
+  const [createOpen, setCreateOpen] = React.useState(false)
 
   const templatesQuery = useQuery<TemplateSummary[]>({
     queryKey: ['templates', projectId],
@@ -220,12 +372,29 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
 
   if (templates.length === 0) {
     return (
-      <Card className="p-8 text-center">
-        <p className="text-sm text-muted-foreground">
-          Este projeto ainda não tem templates. Crie um template primeiro na aba
-          “Templates”, depois volte aqui para taggear as pages por tema.
-        </p>
-      </Card>
+      <>
+        <Card className="p-8 text-center space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Este projeto ainda não tem modelos.
+            {canEdit
+              ? ' Crie um modelo do zero pra começar.'
+              : ' Apenas o curador pode criar modelos.'}
+          </p>
+          {canEdit && (
+            <div className="flex justify-center">
+              <Button onClick={() => setCreateOpen(true)}>
+                <Plus className="h-4 w-4 mr-1.5" />
+                Criar modelo do zero
+              </Button>
+            </div>
+          )}
+        </Card>
+        <CreateModeloDialog
+          projectId={projectId}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+        />
+      </>
     )
   }
 
@@ -241,6 +410,15 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
 
   return (
     <div className="space-y-6">
+      {canEdit && (
+        <div className="flex justify-end">
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4 mr-1.5" />
+            Criar modelo do zero
+          </Button>
+        </div>
+      )}
+
       <Card className="p-4 border-dashed bg-muted/30">
         <div className="flex items-start gap-3">
           {canEdit ? (
@@ -272,14 +450,6 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
                   {template.type} • {pages.length} page{pages.length === 1 ? '' : 's'}
                 </p>
               </div>
-              {canEdit && (
-                <Link href={`/templates/${template.id}/editor`}>
-                  <Button size="sm" variant="outline">
-                    <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                    Editar template
-                  </Button>
-                </Link>
-              )}
             </div>
 
             {pagesQuery.isLoading ? (
@@ -322,6 +492,12 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
           </Card>
         )
       })}
+
+      <CreateModeloDialog
+        projectId={projectId}
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+      />
     </div>
   )
 }
