@@ -1,6 +1,7 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
 import { CalendarHeader } from '@/components/agenda/calendar/calendar-header'
@@ -106,11 +107,43 @@ interface ProjectAgendaViewProps {
 }
 
 export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [viewMode, setViewMode] = useState<ViewMode>('month')
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
+
+  // Deep-link: when /projects/[id]?tab=agenda&postId=X is opened (e.g. from
+  // the arte-rapida skill response), fetch that post and open the editor for
+  // it directly — without forcing the user to navigate the calendar.
+  const postIdParam = searchParams.get('postId')
+  useEffect(() => {
+    if (!postIdParam) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const post = await api.get<SocialPost>(
+          `/api/projects/${projectId}/posts/${postIdParam}`,
+        )
+        if (cancelled) return
+        setEditingPost(post)
+        if (post.scheduledDatetime) {
+          setSelectedDate(new Date(post.scheduledDatetime))
+        }
+        // Clean the postId param from the URL so the effect doesn't re-fire
+        // on subsequent re-renders or when the user closes/reopens the dialog.
+        router.replace(`/projects/${projectId}?tab=agenda`, { scroll: false })
+      } catch (err) {
+        console.error('[ProjectAgendaView] Failed to load post for editing', err)
+        toast.error('Não foi possível abrir o post para edição')
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [postIdParam, projectId, router])
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
   const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')

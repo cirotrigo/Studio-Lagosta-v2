@@ -1225,6 +1225,13 @@ server.tool(
         },
       })
 
+      // Build a clickable admin URL for editing this specific post.
+      // Uses NEXT_PUBLIC_APP_URL when set (configured in Vercel for prod);
+      // falls back to localhost for dev. The agenda view honors ?postId= and
+      // auto-opens the editor for that post.
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+      const editUrl = `${appUrl}/projects/${page.Template.projectId}?tab=agenda&postId=${encodeURIComponent(postId)}`
+
       return {
         content: [{
           type: 'text' as const,
@@ -1232,6 +1239,7 @@ server.tool(
             rendered: true,
             postId,
             url: blob.url,
+            editUrl,
             width: designData.canvas.width,
             height: designData.canvas.height,
             sizeKB: Math.round(buffer.length / 1024),
