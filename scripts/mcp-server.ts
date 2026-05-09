@@ -179,6 +179,23 @@ async function loadKB(projectId: number) {
 
 // ─── HTTP fetch helper (for fonts/images) ────────────────────────────
 
+/**
+ * Resolve the public app URL used to build clickable links in tool responses
+ * (edit URLs, gallery URLs). Priority:
+ *   1. STUDIO_LAGOSTA_PUBLIC_URL — dedicated MCP override, lets the user point
+ *      at the deployed site even when running the MCP locally.
+ *   2. NEXT_PUBLIC_APP_URL — what the Next.js app uses internally; fine for
+ *      local dev but typically points at localhost in .env.
+ *   3. http://localhost:3000 — last-resort fallback.
+ */
+function getPublicAppUrl(): string {
+  const url =
+    process.env.STUDIO_LAGOSTA_PUBLIC_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    'http://localhost:3000'
+  return url.replace(/\/$/, '')
+}
+
 function fetchBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http
@@ -1226,10 +1243,10 @@ server.tool(
       })
 
       // Build a clickable admin URL for editing this specific post.
-      // Uses NEXT_PUBLIC_APP_URL when set (configured in Vercel for prod);
-      // falls back to localhost for dev. The agenda view honors ?postId= and
-      // auto-opens the editor for that post.
-      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+      // Uses STUDIO_LAGOSTA_PUBLIC_URL (or NEXT_PUBLIC_APP_URL fallback) so the
+      // MCP can be pointed at the deployed site even when running locally.
+      // The agenda view honors ?postId= and auto-opens the editor for that post.
+      const appUrl = getPublicAppUrl()
       const editUrl = `${appUrl}/projects/${page.Template.projectId}?tab=agenda&postId=${encodeURIComponent(postId)}`
 
       return {
@@ -2401,7 +2418,7 @@ server.tool(
         },
       })
 
-      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+      const appUrl = getPublicAppUrl()
       const editUrl = `${appUrl}/templates/${arteTemplate.id}/editor?pageId=${encodeURIComponent(newPage.id)}`
       const galleryUrl = `${appUrl}/projects/${projectId}?tab=criativos`
 
