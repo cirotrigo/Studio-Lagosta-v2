@@ -488,7 +488,20 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
         </div>
         {canEdit && (
           <div className="flex gap-2">
-            <Sheet open={tagsManagerOpen} onOpenChange={setTagsManagerOpen}>
+            <Sheet
+              open={tagsManagerOpen}
+              onOpenChange={(open) => {
+                setTagsManagerOpen(open)
+                // Belt-and-suspenders: the mutations already invalidate
+                // ['projectTags', projectId], and useProjectTags has
+                // refetchOnMount enabled, so this should be fresh on its own.
+                // But if the user is still on a stale build (Vercel cache or
+                // service worker), or any future code adds a tag via a path
+                // that forgets to invalidate, this refetch guarantees the
+                // sheet always shows the current ProjectTag table.
+                if (open) projectTagsQuery.refetch()
+              }}
+            >
               <SheetTrigger asChild>
                 <Button variant="outline" size="sm">
                   <Settings2 className="h-4 w-4 mr-1.5" />
