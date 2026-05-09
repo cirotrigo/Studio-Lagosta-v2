@@ -36,15 +36,25 @@ function getDatabaseUrl() {
     // Parse URL to add connection params
     const url = new URL(baseUrl)
 
-    // Only add params if not already present
+    // Neon uses pgbouncer on the "-pooler" host. With pgbouncer in front,
+    // the application should keep at most 1 connection per Prisma client
+    // and tell Prisma it's talking to pgbouncer (so prepared statements are
+    // disabled). This eliminates the recurring "Error: Closed" errors that
+    // happen when pgbouncer drops idle pooled connections that Prisma still
+    // thinks are alive.
+    const isPooler = url.hostname.includes('-pooler')
+
+    if (isPooler && !url.searchParams.has('pgbouncer')) {
+      url.searchParams.set('pgbouncer', 'true')
+    }
     if (!url.searchParams.has('connection_limit')) {
-      url.searchParams.set('connection_limit', '10')
+      url.searchParams.set('connection_limit', isPooler ? '1' : '10')
     }
     if (!url.searchParams.has('pool_timeout')) {
-      url.searchParams.set('pool_timeout', '10')
+      url.searchParams.set('pool_timeout', '20')
     }
     if (!url.searchParams.has('connect_timeout')) {
-      url.searchParams.set('connect_timeout', '10')
+      url.searchParams.set('connect_timeout', '15')
     }
 
     // Log de sucesso (apenas em dev)
