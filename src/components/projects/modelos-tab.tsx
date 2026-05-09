@@ -410,10 +410,22 @@ export function ModelosTab({ projectId, canCurate }: ModelosTabProps) {
 
   const projectTagsQuery = useProjectTags({ projectId })
 
-  const tagSuggestions = React.useMemo(
-    () => (projectTagsQuery.data ?? []).map((t) => t.name).sort(),
-    [projectTagsQuery.data],
-  )
+  // Suggestions = ProjectTag table (the global registry) UNION any tag that
+  // already lives on a loaded page (defensive: covers the case where a tag
+  // exists on a page but didn't get registered in ProjectTag for any reason,
+  // e.g. legacy data from before auto-registration was added).
+  const tagSuggestions = React.useMemo(() => {
+    const set = new Set<string>()
+    for (const tag of projectTagsQuery.data ?? []) {
+      if (tag.name) set.add(tag.name)
+    }
+    for (const page of pagesQuery.data ?? []) {
+      for (const tag of page.tags ?? []) {
+        if (tag) set.add(tag)
+      }
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'pt-BR'))
+  }, [projectTagsQuery.data, pagesQuery.data])
 
   const tagInfoByName = React.useMemo<Record<string, ProjectTagInfo>>(() => {
     const map: Record<string, ProjectTagInfo> = {}

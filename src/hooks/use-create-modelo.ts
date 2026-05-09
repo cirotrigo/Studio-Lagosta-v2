@@ -34,6 +34,9 @@ export function useCreateModelo(projectId: number) {
       // which keys by an object).
       queryClient.invalidateQueries({ queryKey: ['templates'] })
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
+      // Modelo creation auto-registers any new tag names in ProjectTag, so
+      // refresh the suggestions cache.
+      queryClient.invalidateQueries({ queryKey: ['projectTags', projectId] })
     },
   })
 }

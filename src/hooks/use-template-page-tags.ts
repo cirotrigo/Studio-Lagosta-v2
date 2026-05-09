@@ -31,6 +31,10 @@ export function useUpdateTemplatePageTags(projectId: number) {
       // all pages across the project's templates, so any cached entry under
       // this prefix should be invalidated.
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
+      // The PATCH endpoint also auto-creates ProjectTag entries for any new
+      // tag names — invalidate the project tags cache so the suggestion
+      // dropdown picks them up immediately.
+      queryClient.invalidateQueries({ queryKey: ['projectTags', projectId] })
     },
   })
 }
