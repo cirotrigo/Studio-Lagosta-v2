@@ -38,7 +38,6 @@ import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { ScheduleStoryModal } from './modals/schedule-story-modal'
 import { useGenerateMultipleCreatives } from '@/hooks/use-generate-multiple-creatives'
 import { useCredits } from '@/hooks/use-credits'
-import { ToggleTemplateButton } from '@/components/template/toggle-template-button'
 import {
   DndContext,
   closestCenter,
@@ -1529,16 +1528,6 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                 Nova Página
               </Button>
 
-              {/* Botão de Template - só mostra se houver página selecionada */}
-              {currentPageId && (
-                <div className="ml-2 border-l pl-2">
-                  <ToggleTemplateButton
-                    templateId={templateId}
-                    pageId={currentPageId}
-                    isTemplate={sortedPages.find(p => p.id === currentPageId)?.isTemplate || false}
-                  />
-                </div>
-              )}
             </div>
           </div>
 

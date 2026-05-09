@@ -64,6 +64,33 @@ export async function PATCH(
     new Set(parsed.data.tags.map(normalize).filter(Boolean)),
   )
 
+  // Auto-create ProjectTag entries for any new tag names so they appear
+  // in the global suggestion list (mirrors /designs/[designId]/tags pattern).
+  if (normalizedTags.length > 0) {
+    const existing = await db.projectTag.findMany({
+      where: { projectId: projectIdNum },
+      select: { name: true },
+    })
+    const existingNames = new Set(existing.map((t) => t.name.toLowerCase()))
+    const toCreate = normalizedTags.filter(
+      (tag) => !existingNames.has(tag.toLowerCase()),
+    )
+    if (toCreate.length > 0) {
+      const TAG_COLORS = [
+        '#F59E0B', '#10B981', '#3B82F6', '#8B5CF6',
+        '#EC4899', '#EF4444', '#06B6D4', '#84CC16',
+      ]
+      const offset = existing.length
+      await db.projectTag.createMany({
+        data: toCreate.map((name, index) => ({
+          name,
+          color: TAG_COLORS[(offset + index) % TAG_COLORS.length],
+          projectId: projectIdNum,
+        })),
+      })
+    }
+  }
+
   const page = await db.page.findFirst({
     where: {
       id: pageId,

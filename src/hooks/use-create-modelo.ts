@@ -29,7 +29,10 @@ export function useCreateModelo(projectId: number) {
         input,
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['templates', projectId] })
+      // Prefix-only invalidation: catches both ['templates', projectId] (Modelos
+      // tab) and ['templates', { projectId, ... }] (editor's Templates panel,
+      // which keys by an object).
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
     },
   })
