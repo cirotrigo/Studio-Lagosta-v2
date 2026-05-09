@@ -5,7 +5,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { AlertCircle, Lock, Pencil, Plus, Settings2, Tag, Wand2 } from 'lucide-react'
+import { AlertCircle, Lock, Pencil, Plus, Settings2, Tag, Trash2, Wand2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { api } from '@/lib/api-client'
@@ -38,7 +38,10 @@ import {
 } from '@/components/ui/select'
 import { TagInput } from '@/components/projects/tag-input'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
-import { useUpdateTemplatePageTags } from '@/hooks/use-template-page-tags'
+import {
+  useDeleteTemplatePage,
+  useUpdateTemplatePageTags,
+} from '@/hooks/use-template-page-tags'
 import { useCreateModelo } from '@/hooks/use-create-modelo'
 import { useProjectTags } from '@/hooks/use-project-tags'
 
@@ -299,6 +302,26 @@ function ModeloCard({
   canEdit: boolean
   tagSuggestions: string[]
 }) {
+  const deleteMutation = useDeleteTemplatePage(projectId)
+
+  const handleDelete = async () => {
+    const ok = window.confirm(
+      `Excluir o modelo "${page.name}"? Essa ação não pode ser desfeita.`,
+    )
+    if (!ok) return
+    try {
+      const result = await deleteMutation.mutateAsync({ pageId: page.id })
+      if (result?.deletedTemplate) {
+        toast.success('Modelo excluído (template ficou vazio e foi removido)')
+      } else {
+        toast.success('Modelo excluído')
+      }
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Erro ao excluir modelo'
+      toast.error(message)
+    }
+  }
+
   return (
     <Card className="flex flex-col overflow-hidden">
       <div className="relative w-full aspect-[9/16] bg-muted">
@@ -332,14 +355,28 @@ function ModeloCard({
           tagSuggestions={tagSuggestions}
         />
         {canEdit && (
-          <Link
-            href={`/templates/${page.templateId}/editor?pageId=${page.id}`}
-          >
-            <Button size="sm" variant="outline" className="w-full">
-              <Pencil className="h-3.5 w-3.5 mr-1.5" />
-              Editar página
+          <div className="flex gap-1.5">
+            <Link
+              href={`/templates/${page.templateId}/editor?pageId=${page.id}`}
+              className="flex-1"
+            >
+              <Button size="sm" variant="outline" className="w-full">
+                <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                Editar página
+              </Button>
+            </Link>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDelete}
+              disabled={deleteMutation.isPending}
+              aria-label="Excluir modelo"
+              title="Excluir modelo"
+              className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
             </Button>
-          </Link>
+          </div>
         )}
       </div>
     </Card>

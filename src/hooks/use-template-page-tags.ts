@@ -9,6 +9,13 @@ interface UpdateTagsResponse {
   updatedAt: string
 }
 
+interface DeletePageResponse {
+  deleted: true
+  pageId: string
+  templateId: number
+  deletedTemplate: boolean
+}
+
 export function useUpdateTemplatePageTags(projectId: number) {
   const queryClient = useQueryClient()
 
@@ -23,6 +30,23 @@ export function useUpdateTemplatePageTags(projectId: number) {
       // and cached under ['template-pages', templateId]. The endpoint returns
       // all pages across the project's templates, so any cached entry under
       // this prefix should be invalidated.
+      queryClient.invalidateQueries({ queryKey: ['template-pages'] })
+    },
+  })
+}
+
+export function useDeleteTemplatePage(projectId: number) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ pageId }: { pageId: string }) =>
+      api.delete<DeletePageResponse>(
+        `/api/projects/${projectId}/template-pages/${pageId}`,
+      ),
+    onSuccess: () => {
+      // The deletion may have removed the parent Template too, so refresh
+      // both the templates list and the template-pages bundle.
+      queryClient.invalidateQueries({ queryKey: ['templates'] })
       queryClient.invalidateQueries({ queryKey: ['template-pages'] })
     },
   })
