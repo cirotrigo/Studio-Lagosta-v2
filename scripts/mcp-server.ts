@@ -2216,6 +2216,219 @@ server.tool(
   },
 )
 
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 19: create-arte-rapida
+// ═══════════════════════════════════════════════════════════════════════
+
+server.tool(
+  'create-arte-rapida',
+  'Generate a one-shot creative from a source template page for the arte-rapida flow. Bakes slot values + Drive image into the layers, creates a new Page inside the project\'s special "Arte Rápida" template (auto-created on first use), renders to Vercel Blob, and registers a Generation visible in the Criativos gallery. Replaces create-post + render-story for arte-rapida outputs (the result is NOT a SocialPost, so it never shows up in the Agenda calendar). Filter Criativos by searching "Arte Rápida" to see all outputs.',
+  {
+    projectId: z.number().describe('Project ID'),
+    sourcePageId: z.string().describe('Source template page ID (from prepare-creative.page.id)'),
+    slotValues: z.string().describe('JSON of slot values, including optional _driveImageId'),
+    name: z.string().optional().describe('Name for the generated page (default: "<source name> — <timestamp>")'),
+  },
+  async ({ projectId, sourcePageId, slotValues, name }) => {
+    try {
+      const parsedSlots = JSON.parse(slotValues) as Record<string, unknown>
+      const driveImageId = typeof parsedSlots._driveImageId === 'string' ? parsedSlots._driveImageId : null
+
+      // 1. Resolve project
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true, name: true, userId: true },
+      })
+      if (!project) {
+        return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
+      }
+
+      // 2. Resolve source page (with template for type/dimensions)
+      const sourcePage = await prisma.page.findUnique({
+        where: { id: sourcePageId },
+        include: { Template: true },
+      })
+      if (!sourcePage) {
+        return { content: [{ type: 'text' as const, text: `Error: Source page not found: ${sourcePageId}` }], isError: true }
+      }
+
+      // 3. Find or create the project's "Arte Rápida" template (single per project)
+      const ARTE_RAPIDA_NAME = 'Arte Rápida'
+      let arteTemplate = await prisma.template.findFirst({
+        where: { projectId, name: ARTE_RAPIDA_NAME },
+      })
+      if (!arteTemplate) {
+        arteTemplate = await prisma.template.create({
+          data: {
+            name: ARTE_RAPIDA_NAME,
+            type: sourcePage.Template.type,
+            dimensions: sourcePage.Template.dimensions,
+            projectId,
+            createdBy: project.userId,
+            designData: {} as any,
+            dynamicFields: [] as any,
+            tags: ['arte-rapida'],
+            category: 'arte-rapida',
+          },
+        })
+      }
+
+      // 4. Resolve Drive image to high-res thumbnail URL (used for image layers)
+      let driveImageUrl: string | null = null
+      if (driveImageId) {
+        try {
+          const drive = getDrive()
+          const file = await drive.files.get({ fileId: driveImageId, fields: 'thumbnailLink' })
+          if (file.data.thumbnailLink) {
+            driveImageUrl = file.data.thumbnailLink.replace(/=s\d+$/, '=s1920')
+          }
+        } catch (driveErr: any) {
+          console.error('[create-arte-rapida] Drive resolve failed:', driveErr.message)
+        }
+      }
+
+      // 5. Bake slot values + image into source layers (resolved layers, not overrides)
+      const sourceLayers: any[] = Array.isArray(sourcePage.layers)
+        ? (sourcePage.layers as any[])
+        : (typeof sourcePage.layers === 'string' ? JSON.parse(sourcePage.layers) : [])
+
+      const resolvedLayers = sourceLayers.map((layer: any) => {
+        const slot = parsedSlots[layer.id] ?? parsedSlots[layer.name]
+        const updated = { ...layer }
+        if (typeof slot === 'string') {
+          updated.content = slot
+        } else if (slot && typeof slot === 'object') {
+          const slotObj = slot as Record<string, unknown>
+          if (typeof slotObj.content === 'string') updated.content = slotObj.content
+          if (typeof slotObj.fileUrl === 'string') updated.fileUrl = slotObj.fileUrl
+        }
+        // Apply Drive image to dynamic image layers (or the conventional bg-img id)
+        if (
+          driveImageUrl &&
+          layer.type === 'image' &&
+          (layer.isDynamic || layer.id === 'bg-img') &&
+          (!updated.fileUrl || updated.fileUrl === '')
+        ) {
+          updated.fileUrl = driveImageUrl
+        }
+        return updated
+      })
+
+      // 6. Create the new Page inside "Arte Rápida" template
+      const pageName = name ?? `${sourcePage.name} — ${new Date().toLocaleString('pt-BR')}`
+      const newPage = await prisma.page.create({
+        data: {
+          name: pageName,
+          width: sourcePage.width,
+          height: sourcePage.height,
+          layers: resolvedLayers as any,
+          background: sourcePage.background,
+          order: 0,
+          templateId: arteTemplate.id,
+          isTemplate: false, // these are rendered artworks, not modelos
+          tags: ['arte-rapida'],
+        },
+      })
+
+      // 7. Render
+      const { convertPageToDesignData } = await import('../src/lib/posts/page-to-design-data')
+      const designData = convertPageToDesignData({
+        id: newPage.id,
+        name: newPage.name,
+        width: newPage.width,
+        height: newPage.height,
+        layers: newPage.layers,
+        background: newPage.background,
+      })
+
+      // Register custom fonts (same pattern as render-story)
+      const fonts = await prisma.customFont.findMany({ where: { projectId } })
+      if (fonts.length > 0) {
+        const { GlobalFonts } = await import('@napi-rs/canvas')
+        const fontDir = `/tmp/studio-lagosta-fonts/${projectId}`
+        if (!fs.existsSync(fontDir)) fs.mkdirSync(fontDir, { recursive: true })
+        for (const font of fonts) {
+          const ext = path.extname(font.fileUrl) || '.otf'
+          const filePath = path.join(fontDir, `${font.fontFamily}${ext}`)
+          if (!fs.existsSync(filePath)) {
+            try {
+              const buf = await fetchBuffer(font.fileUrl)
+              fs.writeFileSync(filePath, buf)
+            } catch { continue }
+          }
+          try { GlobalFonts.registerFromPath(filePath, font.fontFamily) } catch { /* already registered */ }
+        }
+      }
+
+      const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
+      const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
+      const buffer = await renderer.renderDesign(designData, {})
+
+      const timestamp = Date.now()
+      const blobPath = `arte-rapida/${projectId}/${newPage.id}-${timestamp}.png`
+      const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
+
+      // 8. Update page thumbnail (so it shows in template grids too)
+      await prisma.page.update({
+        where: { id: newPage.id },
+        data: { thumbnail: blob.url },
+      })
+
+      // 9. Create Generation record (visible in Criativos gallery)
+      const generation = await prisma.generation.create({
+        data: {
+          status: 'COMPLETED' as any,
+          templateId: arteTemplate.id,
+          fieldValues: {
+            source: 'arte-rapida',
+            sourceTemplateId: sourcePage.Template.id,
+            sourceTemplateName: sourcePage.Template.name,
+            sourcePageId: sourcePage.id,
+            sourcePageName: sourcePage.name,
+            sourceTags: sourcePage.tags ?? [],
+            driveImageId,
+            slotValues: parsedSlots,
+            thumbnailUrl: blob.url,
+          } as any,
+          resultUrl: blob.url,
+          projectId,
+          createdBy: project.userId,
+          authorName: 'arte-rapida',
+          templateName: ARTE_RAPIDA_NAME,
+          projectName: project.name,
+          completedAt: new Date(),
+          fileName: `${pageName}.png`,
+        },
+      })
+
+      const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000').replace(/\/$/, '')
+      const editUrl = `${appUrl}/templates/${arteTemplate.id}/editor?pageId=${encodeURIComponent(newPage.id)}`
+      const galleryUrl = `${appUrl}/projects/${projectId}?tab=criativos`
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            created: true,
+            generationId: generation.id,
+            pageId: newPage.id,
+            templateId: arteTemplate.id,
+            templateName: ARTE_RAPIDA_NAME,
+            url: blob.url,
+            editUrl,
+            galleryUrl,
+            width: designData.canvas.width,
+            height: designData.canvas.height,
+            sizeKB: Math.round(buffer.length / 1024),
+          }, null, 2),
+        }],
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+    }
+  },
+)
+
 // ─── Start Server ────────────────────────────────────────────────────
 
 async function main() {
