@@ -239,7 +239,7 @@ export async function updateJobWithDownloadLink(
       status: 'downloading',
       progress: 50,
       videoApiStatus: 'ready',
-      videoApiJobId: link.substring(0, 100), // Guardar parte do link como referência
+      videoApiJobId: link,
       title: title ?? undefined,
       duration: duration ?? undefined,
       startedAt: new Date(),
@@ -268,10 +268,60 @@ function estimateDuration(sizeInBytes: number, bitrateKbps = 128) {
   return seconds
 }
 
+/**
+ * Para jobs que ficaram em "pending" porque a RapidAPI ainda estava convertendo,
+ * re-consulta a API. Se a conversão terminou, salva o link e move o job para "downloading".
+ *
+ * Retorna o job atualizado (ou o job original se nada mudou). Falha silenciosamente em erros
+ * transitórios — quem chamou continua usando o job que recebeu.
+ */
+export async function refreshPendingYoutubeJob(jobId: number) {
+  const job = await db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
+  if (!job) return null
+
+  if (job.status !== 'pending' || job.videoApiStatus !== 'processing' || !job.youtubeId) {
+    return job
+  }
+
+  const result = await getYoutubeDownloadLink(job.youtubeId)
+
+  if (!result.success) {
+    if (result.error === 'processing') {
+      return job
+    }
+
+    return db.youtubeDownloadJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'failed',
+        error: result.error || 'Conversion failed',
+        videoApiStatus: 'fail',
+      },
+    })
+  }
+
+  return db.youtubeDownloadJob.update({
+    where: { id: job.id },
+    data: {
+      status: 'downloading',
+      progress: 50,
+      videoApiStatus: 'ready',
+      videoApiJobId: result.link ?? null,
+      title: result.title ?? job.title,
+      duration: result.duration ?? job.duration,
+      startedAt: new Date(),
+    },
+  })
+}
+
 // Manter compatibilidade com cron job existente (vai falhar graciosamente)
 export async function checkYoutubeDownloadStatus(jobId: number) {
   const job = await db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
   if (!job) return null
+
+  if (job.status === 'pending' && job.videoApiStatus === 'processing') {
+    return refreshPendingYoutubeJob(jobId)
+  }
 
   // Jobs agora são processados pelo cliente, não pelo servidor
   // Apenas marcar jobs antigos como falhos

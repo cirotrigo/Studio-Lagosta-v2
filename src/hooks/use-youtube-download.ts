@@ -63,6 +63,7 @@ export interface YoutubeJobStatusResponse {
   createdAt: string
   completedAt: string | null
   videoApiStatus?: string | null
+  downloadLink?: string | null
   music: {
     id: number
     name: string

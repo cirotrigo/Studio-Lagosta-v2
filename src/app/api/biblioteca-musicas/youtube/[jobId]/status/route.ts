@@ -1,6 +1,7 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { refreshPendingYoutubeJob } from '@/lib/youtube/video-download-client'
 
 export async function GET(
   req: NextRequest,
@@ -18,7 +19,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid job ID' }, { status: 400 })
     }
 
-    const job = await getJob(jobId)
+    let job = await getJob(jobId)
 
     if (!job) {
       return NextResponse.json({ error: 'Job not found' }, { status: 404 })
@@ -26,6 +27,18 @@ export async function GET(
 
     if (job.createdBy && job.createdBy !== userId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (job.status === 'pending' && job.videoApiStatus === 'processing') {
+      try {
+        await refreshPendingYoutubeJob(job.id)
+        job = await getJob(jobId)
+        if (!job) {
+          return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+        }
+      } catch (error) {
+        console.error('[YOUTUBE] Failed to refresh pending job', job.id, error)
+      }
     }
 
     return NextResponse.json(formatJobResponse(job))
@@ -38,6 +51,11 @@ export async function GET(
 type JobWithRelations = Awaited<ReturnType<typeof getJob>>
 
 function formatJobResponse(job: NonNullable<JobWithRelations>) {
+  const downloadLink =
+    job.status === 'downloading' && job.videoApiJobId?.startsWith('http')
+      ? job.videoApiJobId
+      : null
+
   return {
     jobId: job.id,
     status: job.status,
@@ -49,6 +67,7 @@ function formatJobResponse(job: NonNullable<JobWithRelations>) {
     createdAt: job.createdAt,
     completedAt: job.completedAt,
     videoApiStatus: job.videoApiStatus,
+    downloadLink,
     music: job.music
       ? {
           id: job.music.id,
