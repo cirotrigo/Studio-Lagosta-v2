@@ -122,14 +122,16 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     enabled: open && !!projectId,
   })
 
-  // Use ref to prevent recreating the callback
-  const setSelectedMediaRef = useRef(setSelectedMedia)
+  // Track the latest selection in a ref so functional updates resolve against
+  // the most recent value even when callers interleave (rapid clicks) or
+  // complete out of order (async Drive/AI downloads).
+  const selectedMediaStateRef = useRef(selectedMedia)
   const formRef = useRef(form)
 
   useEffect(() => {
-    setSelectedMediaRef.current = setSelectedMedia
+    selectedMediaStateRef.current = selectedMedia
     formRef.current = form
-  }, [setSelectedMedia, form])
+  }, [selectedMedia, form])
 
   // Reset form with initialData when dialog opens for editing
   useEffect(() => {
@@ -227,12 +229,23 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
     formRef.current.setValue('recurringConfig', config)
   }, [])
 
-  // Update form when media changes
-  const handleMediaChange = useCallback((media: MediaItem[]) => {
-    setSelectedMediaRef.current(media)
-    formRef.current.setValue('mediaUrls', media.map(m => m.url))
-    formRef.current.setValue('generationIds', media.filter(m => m.type === 'generation').map(m => m.id))
-  }, [])
+  // Update form when media changes. Accepts a new array OR a functional updater;
+  // the updater is resolved against the latest selection ref (kept in sync above
+  // and updated synchronously here) so concurrent add/remove operations chain
+  // atomically and never clobber each other.
+  const handleMediaChange = useCallback(
+    (update: MediaItem[] | ((prev: MediaItem[]) => MediaItem[])) => {
+      const next = typeof update === 'function' ? update(selectedMediaStateRef.current) : update
+      selectedMediaStateRef.current = next
+      setSelectedMedia(next)
+      formRef.current.setValue('mediaUrls', next.map((m) => m.url))
+      formRef.current.setValue(
+        'generationIds',
+        next.filter((m) => m.type === 'generation').map((m) => m.id),
+      )
+    },
+    [],
+  )
 
   // Handler para melhorar legenda com IA
   const handleImproveCaption = useCallback(() => {

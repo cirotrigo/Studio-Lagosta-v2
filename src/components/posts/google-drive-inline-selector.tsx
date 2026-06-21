@@ -59,7 +59,12 @@ export function GoogleDriveInlineSelector({
   })
   const [searchTerm, setSearchTerm] = React.useState('')
   const [debouncedSearch, setDebouncedSearch] = React.useState('')
-  const [selectedItems, setSelectedItems] = React.useState<GoogleDriveItem[]>([])
+  // Optimistically-selected ids whose download hasn't completed yet (so they are
+  // not in `selectedIds` from the parent). Cleared once the parent confirms them.
+  const [pendingIds, setPendingIds] = React.useState<string[]>([])
+  // Cache of every file we've rendered, so the full GoogleDriveItem objects for
+  // the current selection can be reconstructed even across folder navigation.
+  const itemCacheRef = React.useRef<Map<string, GoogleDriveItem>>(new Map())
   const scrollRef = React.useRef<HTMLDivElement>(null)
 
   // Debounce search
@@ -93,6 +98,33 @@ export function GoogleDriveInlineSelector({
     enabled: items.length > 0,
   })
 
+  // Cache every seen file so selections survive folder navigation / search.
+  React.useEffect(() => {
+    if (items.length === 0) return
+    const cache = itemCacheRef.current
+    for (const it of items) {
+      if (it.kind !== 'folder') cache.set(it.id, it)
+    }
+  }, [items])
+
+  // Once the parent confirms a pending item (it appears in selectedIds), drop it
+  // from the optimistic pending set.
+  React.useEffect(() => {
+    setPendingIds((prev) => {
+      const next = prev.filter((id) => !selectedIds.includes(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [selectedIds])
+
+  // Effective selection = confirmed by parent (selectedIds) + optimistic pending.
+  const effectiveSelectedIds = React.useMemo(() => {
+    const ids = [...selectedIds]
+    for (const id of pendingIds) {
+      if (!ids.includes(id)) ids.push(id)
+    }
+    return ids
+  }, [selectedIds, pendingIds])
+
   const queryError = driveQuery.isError
     ? driveQuery.error instanceof Error
       ? driveQuery.error.message
@@ -124,25 +156,34 @@ export function GoogleDriveInlineSelector({
       return
     }
 
-    setSelectedItems(prev => {
-      const isSelected = prev.some(i => i.id === item.id)
+    itemCacheRef.current.set(item.id, item)
 
-      if (isSelected) {
-        // Remove from selection
-        const newSelected = prev.filter(i => i.id !== item.id)
-        onSelectionChange(newSelected)
-        return newSelected
-      } else {
-        // Add to selection
-        if (prev.length >= maxSelection) {
-          return prev
-        }
-        const newSelected = [...prev, item]
-        onSelectionChange(newSelected)
-        return newSelected
-      }
-    })
-  }, [handleEnterFolder, maxSelection, onSelectionChange])
+    const isSelected = effectiveSelectedIds.includes(item.id)
+
+    if (!isSelected && effectiveSelectedIds.length >= maxSelection) {
+      return // limit reached
+    }
+
+    const nextIds = isSelected
+      ? effectiveSelectedIds.filter((id) => id !== item.id)
+      : [...effectiveSelectedIds, item.id]
+
+    if (isSelected) {
+      // Deselecting: clear any pending flag for this item.
+      setPendingIds((prev) => prev.filter((id) => id !== item.id))
+    } else {
+      // Selecting: optimistically mark as pending until the download confirms it.
+      setPendingIds((prev) => (prev.includes(item.id) ? prev : [...prev, item.id]))
+    }
+
+    // Reconstruct the full GoogleDriveItem list (parent needs the objects to
+    // download newly-added files and to know which ids remain selected).
+    const cache = itemCacheRef.current
+    const nextItems = nextIds
+      .map((id) => cache.get(id))
+      .filter((i): i is GoogleDriveItem => Boolean(i))
+    onSelectionChange(nextItems)
+  }, [handleEnterFolder, maxSelection, onSelectionChange, effectiveSelectedIds])
 
   const clearSearch = React.useCallback(() => {
     setSearchTerm('')
@@ -231,12 +272,12 @@ export function GoogleDriveInlineSelector({
         {/* Counter */}
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {selectedItems.length === 0
+            {effectiveSelectedIds.length === 0
               ? 'Nenhum arquivo selecionado'
-              : `${selectedItems.length} ${selectedItems.length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}`}
+              : `${effectiveSelectedIds.length} ${effectiveSelectedIds.length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'}`}
           </p>
           <Badge variant="secondary" className="font-mono">
-            {selectedItems.length}/{maxSelection}
+            {effectiveSelectedIds.length}/{maxSelection}
           </Badge>
         </div>
       </div>
@@ -254,7 +295,7 @@ export function GoogleDriveInlineSelector({
             <ItemsGrid
               items={items}
               mode={mode}
-              selectedItems={selectedItems}
+              selectedIds={effectiveSelectedIds}
               onItemToggle={handleItemToggle}
             />
           )}
@@ -280,7 +321,7 @@ export function GoogleDriveInlineSelector({
         </div>
       </ScrollArea>
 
-      {selectedItems.length >= maxSelection && (
+      {effectiveSelectedIds.length >= maxSelection && (
         <p className="text-sm text-amber-600 dark:text-amber-500 font-medium text-center">
           Limite de {maxSelection} {maxSelection === 1 ? 'arquivo atingido' : 'arquivos atingido'}
         </p>
@@ -351,17 +392,17 @@ function EmptyState({ searchTerm }: { searchTerm: string }) {
 interface ItemsGridProps {
   items: GoogleDriveItem[]
   mode: GoogleDriveBrowserMode
-  selectedItems: GoogleDriveItem[]
+  selectedIds: string[]
   onItemToggle: (item: GoogleDriveItem) => void
 }
 
-function ItemsGrid({ items, mode, selectedItems, onItemToggle }: ItemsGridProps) {
+function ItemsGrid({ items, selectedIds, onItemToggle }: ItemsGridProps) {
   return (
     <div id="google-drive-inline-gallery" className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
       {items.map((item) => {
         const isFolder = item.kind === 'folder'
-        const isSelected = selectedItems.some(i => i.id === item.id)
-        const selectionIndex = selectedItems.findIndex(i => i.id === item.id)
+        const isSelected = selectedIds.includes(item.id)
+        const selectionIndex = selectedIds.indexOf(item.id)
 
         return (
           <ItemCard

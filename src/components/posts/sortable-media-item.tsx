@@ -22,7 +22,7 @@ interface MediaItem {
 interface SortableMediaItemProps {
   item: MediaItem
   index: number
-  onRemove: (index: number) => void
+  onRemove: (id: string) => void
   isDragging?: boolean
 }
 
@@ -168,7 +168,7 @@ export function SortableMediaItem({
             size="icon"
             variant="destructive"
             className="h-6 w-6"
-            onClick={() => onRemove(index)}
+            onClick={() => onRemove(item.id)}
           >
             <X className="w-3 h-3" />
           </Button>

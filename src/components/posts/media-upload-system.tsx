@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef, useEffect, useMemo, startTransition } from 'react'
+import { useState, useCallback, useMemo, useRef } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,7 +47,9 @@ interface MediaItem {
 interface MediaUploadSystemProps {
   projectId: number
   selectedMedia: MediaItem[]
-  onSelectionChange: (media: MediaItem[]) => void
+  // Accepts a new array OR a functional updater. Prefer the functional form so
+  // concurrent add/remove operations apply atomically against the latest state.
+  onSelectionChange: (media: MediaItem[] | ((prev: MediaItem[]) => MediaItem[])) => void
   maxSelection: number
   postType?: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL'
 }
@@ -146,15 +148,11 @@ export function MediaUploadSystem({
     return { initialFolderId: undefined, initialFolderName: undefined }
   }, [project, mediaMode])
 
-  // Use refs to avoid recreating callbacks
-  const selectedMediaRef = useRef(selectedMedia)
-  const onSelectionChangeRef = useRef(onSelectionChange)
-
-  // Keep refs in sync
-  useEffect(() => {
-    selectedMediaRef.current = selectedMedia
-    onSelectionChangeRef.current = onSelectionChange
-  }, [selectedMedia, onSelectionChange])
+  // Latest "desired" ids per async source, updated on every selection change.
+  // The download onSuccess consults these so an item the user deselected WHILE
+  // its download was still in flight is not re-added when the download resolves.
+  const desiredDriveIdsRef = useRef<Set<string>>(new Set())
+  const desiredAIImageIdsRef = useRef<Set<string>>(new Set())
 
   // Mutation para download e upload de arquivos do Google Drive
   const downloadDriveMutation = useMutation<GoogleDriveDownloadResponse, Error, string[]>({
@@ -173,10 +171,16 @@ export function MediaUploadSystem({
         mimeType: file.mimeType,
       }))
 
-      // Keep non-google-drive media and replace all google-drive media with the new list
-      // This prevents duplicates when downloading multiple times
-      const otherMedia = selectedMedia.filter(m => m.type !== 'google-drive')
-      onSelectionChange([...otherMedia, ...newMedia])
+      // Append only the freshly downloaded items (by id) that are STILL desired,
+      // keeping everything already selected. Order-independent (overlapping
+      // downloads are safe) and ignores items deselected mid-download.
+      onSelectionChange((prev) => {
+        const existing = new Set(prev.map((m) => m.id))
+        const additions = newMedia.filter(
+          (m) => !existing.has(m.id) && desiredDriveIdsRef.current.has(m.id),
+        )
+        return additions.length > 0 ? [...prev, ...additions] : prev
+      })
       toast.success(`${data.uploaded} arquivo(s) preparado(s)`)
     },
     onError: (error) => {
@@ -200,10 +204,15 @@ export function MediaUploadSystem({
         name: file.name,
       }))
 
-      // Keep non-ai-image media and replace all ai-image media with the new list
-      // This prevents duplicates when downloading multiple times
-      const otherMedia = selectedMedia.filter(m => m.type !== 'ai-image')
-      onSelectionChange([...otherMedia, ...newMedia])
+      // Append only the freshly downloaded items (by id) that are STILL desired.
+      // Order-independent and ignores items deselected mid-download.
+      onSelectionChange((prev) => {
+        const existing = new Set(prev.map((m) => m.id))
+        const additions = newMedia.filter(
+          (m) => !existing.has(m.id) && desiredAIImageIdsRef.current.has(m.id),
+        )
+        return additions.length > 0 ? [...prev, ...additions] : prev
+      })
       toast.success(`${data.uploaded} imagem(ns) de IA preparada(s)`)
     },
     onError: (error) => {
@@ -235,64 +244,65 @@ export function MediaUploadSystem({
     [remainingSlots, selectedMedia]
   )
 
-  // Handler para seleção de Generations
+  // Handler para seleção de Generations.
+  // The selector always reports the COMPLETE list of selected generations, so we
+  // atomically swap the 'generation' slice while preserving every other type.
   const handleGenerationsChange = useCallback((ids: string[], generations: Generation[]) => {
-    startTransition(() => {
-      const newMedia: MediaItem[] = generations.map(g => ({
-        id: g.id,
-        type: 'generation' as const,
-        url: g.resultUrl,
-        thumbnailUrl: g.thumbnailUrl || g.resultUrl,
-        name: g.templateName,
-      }))
+    const newMedia: MediaItem[] = generations.map(g => ({
+      id: g.id,
+      type: 'generation' as const,
+      url: g.resultUrl,
+      thumbnailUrl: g.thumbnailUrl || g.resultUrl,
+      name: g.templateName,
+    }))
 
-      // Remove existing generation items and add new ones
-      const otherMedia = selectedMediaRef.current.filter(m => m.type !== 'generation')
-      onSelectionChangeRef.current([...otherMedia, ...newMedia])
-    })
-  }, [])
+    onSelectionChange((prev) => [...prev.filter(m => m.type !== 'generation'), ...newMedia])
+  }, [onSelectionChange])
 
-  // Handler para seleção de AI Images
-  const handleAIImagesChange = useCallback(async (ids: string[], aiImages: AIGeneratedImage[]) => {
-    if (ids.length === 0) {
-      // Remove all ai-image items
-      const otherMedia = selectedMedia.filter(m => m.type !== 'ai-image')
-      onSelectionChange(otherMedia)
-      return
-    }
+  // Handler para seleção de AI Images.
+  // Removal is applied immediately and atomically (by id); only the newly added
+  // ids are downloaded, then appended by id in the mutation's onSuccess.
+  const handleAIImagesChange = useCallback(async (ids: string[], _aiImages: AIGeneratedImage[]) => {
+    const desired = new Set(ids)
+    desiredAIImageIdsRef.current = desired
+    onSelectionChange((prev) => prev.filter(m => m.type !== 'ai-image' || desired.has(m.id)))
+
+    const alreadyHave = new Set(
+      selectedMedia.filter(m => m.type === 'ai-image').map(m => m.id),
+    )
+    const toDownload = ids.filter(id => !alreadyHave.has(id))
+    if (toDownload.length === 0) return
 
     try {
-      // Download and process the newly selected AI images
-      await downloadAIImagesMutation.mutateAsync(ids)
-
-      // The mutation already updates the selection, so we don't need to do anything else here
+      await downloadAIImagesMutation.mutateAsync(toDownload)
     } catch (_error) {
       // Error already handled in mutation
     }
   }, [selectedMedia, onSelectionChange, downloadAIImagesMutation])
 
-  // Handler para Google Drive inline selector
+  // Handler para Google Drive inline selector.
+  // Same incremental + atomic strategy as AI images.
   const handleGoogleDriveChange = useCallback(async (items: GoogleDriveItem[]) => {
-    if (items.length === 0) {
-      // Remove all google-drive items
-      const otherMedia = selectedMedia.filter(m => m.type !== 'google-drive')
-      onSelectionChange(otherMedia)
-      return
-    }
+    const desired = new Set(items.map(i => i.id))
+    desiredDriveIdsRef.current = desired
+    onSelectionChange((prev) => prev.filter(m => m.type !== 'google-drive' || desired.has(m.id)))
+
+    const alreadyHave = new Set(
+      selectedMedia.filter(m => m.type === 'google-drive').map(m => m.id),
+    )
+    const toDownload = items.filter(i => !alreadyHave.has(i.id))
+    if (toDownload.length === 0) return
 
     try {
-      // Download the newly selected files
-      const response = await downloadDriveMutation.mutateAsync(items.map(item => item.id))
-
-      // The mutation already updates the selection, so we don't need to do anything else here
+      await downloadDriveMutation.mutateAsync(toDownload.map(i => i.id))
     } catch (_error) {
       // Error already handled in mutation
     }
   }, [selectedMedia, onSelectionChange, downloadDriveMutation])
 
-  // Handler para upload local
+  // Handler para upload local. LocalFileUploader sends the complete list of
+  // uploads, so we atomically swap the 'upload' slice.
   const handleLocalUpload = useCallback((files: UploadedFile[]) => {
-    // Convert uploaded files to MediaItem format
     const newMedia: MediaItem[] = files.map(f => ({
       id: f.id,
       type: 'upload' as const,
@@ -302,17 +312,14 @@ export function MediaUploadSystem({
       size: f.size,
     }))
 
-    // Keep non-upload media and replace all upload media with the new list
-    // This prevents duplicates since LocalFileUploader sends the complete list
-    const otherMedia = selectedMedia.filter(m => m.type !== 'upload')
-    onSelectionChange([...otherMedia, ...newMedia])
-  }, [selectedMedia, onSelectionChange])
+    onSelectionChange((prev) => [...prev.filter(m => m.type !== 'upload'), ...newMedia])
+  }, [onSelectionChange])
 
-  // Handler para remover item
-  const handleRemoveItem = (index: number) => {
-    const newMedia = selectedMedia.filter((_, i) => i !== index)
-    onSelectionChange(newMedia)
-  }
+  // Handler para remover item — remove ONLY the requested item, by id (never by
+  // array index, which can drift when downloads resolve concurrently).
+  const handleRemoveItem = useCallback((id: string) => {
+    onSelectionChange((prev) => prev.filter(m => m.id !== id))
+  }, [onSelectionChange])
 
   // Drag & Drop sensors
   const sensors = useSensors(
