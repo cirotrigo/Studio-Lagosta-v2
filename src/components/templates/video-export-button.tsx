@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from 'react'
+import Image from 'next/image'
 import { Download, Loader2, Film, AlertCircle, Music } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@clerk/nextjs'
@@ -213,6 +214,8 @@ export function VideoExportButton() {
 
   const creditCost = getCost('video_export')
   const hasCredits = canPerformOperation('video_export')
+  const hasSelectedMusic =
+    (audioConfig.source === 'library' || audioConfig.source === 'mix') && !!audioConfig.musicId
 
   // Verificar suporte do navegador
   const browserSupport = React.useMemo(() => checkVideoExportSupport(), [])
@@ -565,7 +568,7 @@ export function VideoExportButton() {
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>Exportar vídeo final</DialogTitle>
             <DialogDescription>
@@ -574,7 +577,7 @@ export function VideoExportButton() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-6 py-2">
+          <div className="flex-1 space-y-5 overflow-y-auto py-2 pr-1 -mr-1">
             {!browserSupport.supported && (
               <div className="flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/10 p-3">
                 <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
@@ -632,64 +635,57 @@ export function VideoExportButton() {
             </div>
 
             <div className="rounded-xl border bg-background p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-4">
-                <div>
+              <div className="flex items-center gap-3">
+                {hasSelectedMusic && audioConfig.musicThumbnailUrl ? (
+                  <Image
+                    src={audioConfig.musicThumbnailUrl}
+                    alt={audioConfig.musicName ?? 'Trilha'}
+                    width={44}
+                    height={44}
+                    unoptimized
+                    className="h-11 w-11 shrink-0 rounded-md object-cover"
+                  />
+                ) : (
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                    <Music className="h-5 w-5" />
+                  </div>
+                )}
+
+                <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold">Trilha sonora</p>
-                  <p className="text-xs text-muted-foreground">
-                    {audioConfig.source === 'original'
-                      ? 'Usando o áudio do próprio vídeo'
-                      : audioConfig.source === 'library'
-                        ? 'Música da biblioteca selecionada'
-                        : audioConfig.source === 'mix'
-                          ? 'Mix de áudio original + biblioteca'
-                          : 'Sem áudio (mudo)'}
+                  <p className="truncate text-xs text-muted-foreground">
+                    {audioConfig.source === 'library'
+                      ? audioConfig.musicName
+                        ? `${audioConfig.musicName}${audioConfig.audioVersion === 'instrumental' ? ' • Instrumental' : ''}`
+                        : 'Música da biblioteca'
+                      : audioConfig.source === 'mix'
+                        ? audioConfig.musicName
+                          ? `Áudio do vídeo + ${audioConfig.musicName}`
+                          : 'Mix: áudio do vídeo + música'
+                        : audioConfig.source === 'mute'
+                          ? 'Sem áudio (mudo)'
+                          : 'Usando o áudio do próprio vídeo'}
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => setIsAudioModalOpen(true)}>
+
+                <Button
+                  variant={hasSelectedMusic ? 'outline' : 'default'}
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => setIsAudioModalOpen(true)}
+                >
                   <Music className="mr-2 h-4 w-4" />
-                  Configurar
+                  {hasSelectedMusic ? 'Trocar' : 'Escolher música'}
                 </Button>
               </div>
+
               {(audioConfig.source === 'library' || audioConfig.source === 'mix') && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Janela selecionada: {audioConfig.startTime.toFixed(1)}s →{' '}
-                  {audioConfig.endTime.toFixed(1)}s • Volume{' '}
+                <p className="mt-3 border-t pt-2 text-xs text-muted-foreground">
+                  Trecho: {audioConfig.startTime.toFixed(1)}s → {audioConfig.endTime.toFixed(1)}s
+                  {' • '}Volume{' '}
                   {audioConfig.source === 'mix'
                     ? `${audioConfig.volumeMusic ?? audioConfig.volume}%`
                     : `${audioConfig.volume}%`}
-                </p>
-              )}
-            </div>
-
-            <div className="rounded-xl border bg-muted/30 p-4">
-              <p className="text-sm font-semibold text-muted-foreground">Resumo técnico</p>
-              <dl className="mt-3 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
-                <div>
-                  <dt>Formato final</dt>
-                  <dd className="font-medium">
-                    {exportFormat.toUpperCase()}{' '}
-                    {exportFormat === 'mp4' ? '(H.264 + AAC)' : '(VP9/VP8)'}
-                  </dd>
-                </div>
-                <div>
-                  <dt>Duração</dt>
-                  <dd className="font-medium">
-                    {videoLayer?.videoMetadata?.duration?.toFixed(1) || 'Detectando...'}s
-                  </dd>
-                </div>
-                <div>
-                  <dt>FPS e qualidade</dt>
-                  <dd className="font-medium">30 fps • Qualidade alta</dd>
-                </div>
-                <div>
-                  <dt>Projeto</dt>
-                  <dd className="font-medium truncate">{designName}</dd>
-                </div>
-              </dl>
-              {exportFormat === 'mp4' && (
-                <p className="mt-2 text-xs text-amber-600">
-                  ⚠️ A conversão para MP4 acontece após a gravação e pode levar alguns segundos a
-                  mais.
                 </p>
               )}
             </div>

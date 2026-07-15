@@ -99,6 +99,7 @@ export function MusicCard({ musica, isSelected, videoDuration, onSelect }: Music
                 src={musica.thumbnailUrl}
                 alt={musica.name}
                 fill
+                unoptimized
                 className="rounded-md object-cover"
               />
             </div>

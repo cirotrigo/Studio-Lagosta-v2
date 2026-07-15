@@ -36,6 +36,9 @@ export interface AudioConfig {
   source: 'original' | 'library' | 'mute' | 'mix';
   musicId?: number;
   audioVersion?: AudioVersion;
+  /** Apenas para exibição no resumo (não afeta a renderização) */
+  musicName?: string;
+  musicThumbnailUrl?: string | null;
   startTime: number;
   endTime: number;
   volume: number;
@@ -85,14 +88,14 @@ const AUDIO_SOURCE_OPTIONS: Array<{
   description: string;
 }> = [
   {
+    id: 'library',
+    title: 'Música da biblioteca',
+    description: 'Use uma trilha que você baixou e escolha o melhor trecho.',
+  },
+  {
     id: 'original',
     title: 'Áudio do vídeo',
     description: 'Mantém o som original exatamente como está no arquivo base.',
-  },
-  {
-    id: 'library',
-    title: 'Biblioteca de músicas',
-    description: 'Selecione uma faixa pronta e sincronize o melhor trecho.',
   },
   {
     id: 'mix',
@@ -154,10 +157,13 @@ export function AudioSelectionModal({
   );
 
   const handleConfirm = () => {
+    const usaMusica = audioSource === 'library' || audioSource === 'mix';
     const config: AudioConfig = {
       source: audioSource,
-      musicId: audioSource === 'library' || audioSource === 'mix' ? musicaSelecionada : undefined,
-      audioVersion: audioSource === 'library' || audioSource === 'mix' ? audioVersion : undefined,
+      musicId: usaMusica ? musicaSelecionada : undefined,
+      audioVersion: usaMusica ? audioVersion : undefined,
+      musicName: usaMusica ? musicaAtual?.name : undefined,
+      musicThumbnailUrl: usaMusica ? musicaAtual?.thumbnailUrl : undefined,
       startTime,
       endTime,
       volume: audioSource === 'mix' ? volumeMusic : volume,
@@ -337,6 +343,7 @@ export function AudioSelectionModal({
                             alt={musicaAtual.name}
                             width={56}
                             height={56}
+                            unoptimized
                             className="h-full w-full object-cover"
                           />
                         ) : (
