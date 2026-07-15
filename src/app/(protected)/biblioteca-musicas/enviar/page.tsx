@@ -233,22 +233,18 @@ export default function EnviarMusicaPage() {
         projectId: projectId !== 'none' ? parseInt(projectId) : undefined,
       });
 
-      if (result.downloadLink) {
-        // Novo fluxo: mostrar link de download para o usuário
-        setYoutubeJobData(result);
-        setYoutubeDownloadPhase('download-ready');
+      if (result.status === 'processing') {
         toast({
-          title: 'Link de download pronto!',
-          description: 'Clique no botão para baixar o MP3 e depois faça o upload.',
+          title: 'Convertendo o áudio...',
+          description: 'A música será adicionada à biblioteca em alguns segundos.',
         });
       } else {
-        // Fallback: comportamento antigo (se o servidor ainda processar no backend)
         toast({
-          title: 'Download iniciado',
-          description: 'Estamos baixando a música do YouTube. Você será avisado quando estiver pronta.',
+          title: 'Música adicionada!',
+          description: 'Gerando a versão instrumental em segundo plano.',
         });
-        router.push('/biblioteca-musicas');
       }
+      router.push('/biblioteca-musicas');
     } catch (error) {
       console.error('Erro ao iniciar download do YouTube:', error);
       toast({
@@ -260,10 +256,8 @@ export default function EnviarMusicaPage() {
   };
 
   const handleDownloadClick = () => {
-    if (youtubeJobData?.downloadLink) {
-      // Abre o link em nova aba para download
-      window.open(youtubeJobData.downloadLink, '_blank');
-    }
+    // Fluxo antigo desativado — o servidor agora baixa e cadastra a música
+    // automaticamente ao receber o link. Mantido apenas por compatibilidade.
   };
 
   const handleMp3FileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

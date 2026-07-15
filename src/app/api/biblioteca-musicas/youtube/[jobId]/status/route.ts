@@ -1,7 +1,13 @@
 import { auth } from '@clerk/nextjs/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { refreshPendingYoutubeJob } from '@/lib/youtube/video-download-client'
+import {
+  refreshPendingYoutubeJob,
+  downloadAndIngestYoutubeJob,
+} from '@/lib/youtube/video-download-client'
+
+export const runtime = 'nodejs'
+export const maxDuration = 120
 
 export async function GET(
   req: NextRequest,
@@ -38,6 +44,24 @@ export async function GET(
         }
       } catch (error) {
         console.error('[YOUTUBE] Failed to refresh pending job', job.id, error)
+      }
+    }
+
+    // Link ficou pronto (ex.: RapidAPI terminou a conversão): baixa o MP3 no
+    // servidor e cadastra a música. O claim atômico evita download duplicado.
+    if (job.status === 'downloading' && !job.musicId && job.videoApiJobId?.startsWith('http')) {
+      try {
+        await downloadAndIngestYoutubeJob(job.id)
+        job = await getJob(jobId)
+        if (!job) {
+          return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+        }
+      } catch (error) {
+        console.error('[YOUTUBE] Falha ao baixar/cadastrar job', job.id, error)
+        job = await getJob(jobId)
+        if (!job) {
+          return NextResponse.json({ error: 'Job not found' }, { status: 404 })
+        }
       }
     }
 

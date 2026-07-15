@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { checkYoutubeDownloadStatus } from '@/lib/youtube/video-download-client'
+import {
+  checkYoutubeDownloadStatus,
+  refreshPendingYoutubeJob,
+  downloadAndIngestYoutubeJob,
+} from '@/lib/youtube/video-download-client'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120
@@ -31,36 +35,62 @@ export async function GET(req: NextRequest) {
       console.log(`[CRON] Cleaned ${stuckJobs.count} stuck download jobs`)
     }
 
-    const downloadingJobs = await db.youtubeDownloadJob.findMany({
-      where: { status: 'downloading' },
+    // Reseta jobs travados em "uploading" (crash/timeout no meio da ingestão)
+    // de volta para "downloading" para que possam ser rebaixados abaixo.
+    const tenMinAgo = new Date(Date.now() - 10 * 60 * 1000)
+    const stalledUploads = await db.youtubeDownloadJob.updateMany({
+      where: {
+        status: 'uploading',
+        musicId: null,
+        startedAt: { lt: tenMinAgo },
+      },
+      data: { status: 'downloading', progress: 50 },
+    })
+    if (stalledUploads.count > 0) {
+      console.log(`[CRON] Reset ${stalledUploads.count} stalled uploads to downloading`)
+    }
+
+    // Reconsulta jobs pendentes (RapidAPI ainda convertendo) — pode virar "downloading".
+    const pendingJobs = await db.youtubeDownloadJob.findMany({
+      where: { status: 'pending', videoApiStatus: 'processing' },
       orderBy: { createdAt: 'asc' },
+      take: 20,
+    })
+    for (const job of pendingJobs) {
+      try {
+        await refreshPendingYoutubeJob(job.id)
+      } catch (error) {
+        console.error(`[CRON] Failed to refresh pending job ${job.id}:`, error)
+      }
+    }
+
+    // Baixa (server-side) e cadastra os jobs prontos: status "downloading",
+    // com link e sem música ainda. Esse é o fallback do fluxo automático.
+    const readyJobs = await db.youtubeDownloadJob.findMany({
+      where: { status: 'downloading', musicId: null },
+      orderBy: { createdAt: 'asc' },
+      take: 10,
     })
 
-    for (const job of downloadingJobs) {
-      try {
-        await checkYoutubeDownloadStatus(job.id)
-      } catch (error) {
-        console.error(`[CRON] Failed to update job ${job.id}:`, error)
-      }
-    }
-
-    if (downloadingJobs.length === 0) {
-      const nextJob = await db.youtubeDownloadJob.findFirst({
-        where: { status: 'pending' },
-        orderBy: { createdAt: 'asc' },
-      })
-
-      if (nextJob) {
-        console.log('[CRON] Starting next YouTube download job:', nextJob.id)
+    let ingested = 0
+    for (const job of readyJobs) {
+      if (job.videoApiJobId?.startsWith('http')) {
         try {
-          await checkYoutubeDownloadStatus(nextJob.id)
+          await downloadAndIngestYoutubeJob(job.id)
+          ingested++
         } catch (error) {
-          console.error(`[CRON] Failed to start job ${nextJob.id}:`, error)
+          console.error(`[CRON] Failed to ingest job ${job.id}:`, error)
         }
       } else {
-        console.log('[CRON] No pending YouTube downloads')
+        // Sem link ainda — mantém compatibilidade com o handler antigo (timeout).
+        try {
+          await checkYoutubeDownloadStatus(job.id)
+        } catch (error) {
+          console.error(`[CRON] Failed to update job ${job.id}:`, error)
+        }
       }
     }
+    console.log(`[CRON] Ingested ${ingested}/${readyJobs.length} ready jobs`)
 
     const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000)
     const deleted = await db.youtubeDownloadJob.deleteMany({
@@ -73,7 +103,9 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      processing: downloadingJobs.length,
+      pending: pendingJobs.length,
+      ready: readyJobs.length,
+      ingested,
       cleaned: deleted.count,
     })
   } catch (error) {

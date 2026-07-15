@@ -3,7 +3,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { extractYoutubeId } from '@/lib/youtube/utils'
-import { getYoutubeDownloadLink } from '@/lib/youtube/video-download-client'
+import {
+  getYoutubeDownloadLink,
+  downloadAndIngestYoutubeJob,
+} from '@/lib/youtube/video-download-client'
+
+export const runtime = 'nodejs'
+export const maxDuration = 120
 
 const youtubeDownloadSchema = z.object({
   youtubeUrl: z.string().url(),
@@ -110,7 +116,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Criar job com link de download
+    // Criar job com o link de download guardado em videoApiJobId
     const job = await db.youtubeDownloadJob.create({
       data: {
         youtubeUrl: data.youtubeUrl,
@@ -126,6 +132,7 @@ export async function POST(req: NextRequest) {
         duration: downloadResult.duration ?? null,
         status: 'downloading',
         videoApiStatus: 'ready',
+        videoApiJobId: downloadResult.link ?? null,
         startedAt: new Date(),
         progress: 50,
       },
@@ -133,15 +140,34 @@ export async function POST(req: NextRequest) {
 
     console.log('[YOUTUBE] Job criado com link:', { jobId: job.id, youtubeId })
 
-    return NextResponse.json({
-      success: true,
-      jobId: job.id,
-      downloadLink: downloadResult.link,
-      title: downloadResult.title ?? metadata?.title,
-      thumbnail: metadata?.thumbnail_url,
-      duration: downloadResult.duration,
-      message: 'Link de download obtido. Baixe o arquivo e faça upload.',
-    })
+    // Baixa o MP3 no servidor e cadastra a música na hora (só a versão original).
+    // A versão instrumental é enfileirada automaticamente (cron process-music-stems).
+    try {
+      const music = await downloadAndIngestYoutubeJob(job.id)
+
+      return NextResponse.json({
+        success: true,
+        jobId: job.id,
+        status: 'completed',
+        musicId: 'id' in (music ?? {}) ? (music as { id: number }).id : undefined,
+        title: downloadResult.title ?? metadata?.title,
+        thumbnail: metadata?.thumbnail_url,
+        duration: downloadResult.duration,
+        message: 'Música adicionada à biblioteca. Gerando versão instrumental...',
+      })
+    } catch (ingestError) {
+      console.error('[YOUTUBE] Falha ao baixar/cadastrar música:', ingestError)
+      return NextResponse.json(
+        {
+          error:
+            ingestError instanceof Error
+              ? ingestError.message
+              : 'Falha ao baixar o áudio do YouTube',
+          jobId: job.id,
+        },
+        { status: 502 }
+      )
+    }
   } catch (error) {
     console.error('[YOUTUBE] Erro ao iniciar download:', error)
 

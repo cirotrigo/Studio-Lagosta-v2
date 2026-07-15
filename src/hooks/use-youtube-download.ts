@@ -13,7 +13,7 @@ export interface StartYoutubeDownloadInput {
 export interface StartYoutubeDownloadResponse {
   success: boolean
   jobId: number
-  downloadLink?: string
+  musicId?: number
   title?: string
   thumbnail?: string
   duration?: number
@@ -48,7 +48,7 @@ export interface YoutubeJobSummary {
     id: number
     name: string
     blobUrl: string
-    hasPercussionStem: boolean
+    hasInstrumentalStem: boolean
   } | null
 }
 
@@ -68,8 +68,8 @@ export interface YoutubeJobStatusResponse {
     id: number
     name: string
     blobUrl: string
-    hasPercussionStem: boolean
-    percussionUrl: string | null
+    hasInstrumentalStem: boolean
+    instrumentalUrl: string | null
     stemJob: {
       status: string
       progress: number

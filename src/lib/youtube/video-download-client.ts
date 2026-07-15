@@ -76,7 +76,89 @@ export async function getYoutubeDownloadLink(videoId: string): Promise<{
 }
 
 /**
- * Salva um MP3 que foi baixado pelo cliente
+ * Persiste um MP3 (já em memória) na biblioteca: sobe para o Vercel Blob,
+ * cria a MusicLibrary (versão original), enfileira a geração instrumental
+ * (MusicStemJob) e marca o job de download como concluído.
+ *
+ * IMPORTANTE: não marca o job como "failed" em caso de erro — quem chama é
+ * responsável por isso (para poder aplicar mensagens/estratégias diferentes).
+ */
+async function persistDownloadedMp3(
+  job: YoutubeDownloadJob,
+  mp3Buffer: Buffer,
+  fileName: string
+) {
+  await db.youtubeDownloadJob.update({
+    where: { id: job.id },
+    data: {
+      status: 'uploading',
+      progress: 90,
+    },
+  })
+
+  console.log(`[YOUTUBE-API] Persistindo ${mp3Buffer.length} bytes para o job ${job.id}`)
+
+  if (mp3Buffer.length < 10000) {
+    throw new Error('Arquivo muito pequeno — o download pode ter falhado')
+  }
+
+  const blobFileName = `musicas/youtube/${Date.now()}-${job.youtubeId ?? job.id}.mp3`
+  const blob = await put(blobFileName, mp3Buffer, {
+    access: 'public',
+    contentType: 'audio/mpeg',
+  })
+
+  const durationSeconds = job.duration ?? estimateDuration(mp3Buffer.length)
+  const resolvedName = job.requestedName || job.title || fileName || 'Música do YouTube'
+
+  // Cadastra a música IMEDIATAMENTE com apenas a versão original.
+  const music = await db.musicLibrary.create({
+    data: {
+      name: resolvedName,
+      artist: job.requestedArtist,
+      genre: job.requestedGenre,
+      mood: job.requestedMood,
+      projectId: job.projectId,
+      duration: durationSeconds,
+      blobUrl: blob.url,
+      blobSize: mp3Buffer.length,
+      thumbnailUrl: job.thumbnail,
+      createdBy: job.createdBy,
+    },
+  })
+
+  // Enfileira a versão instrumental. Se falhar aqui, a música permanece
+  // cadastrada só com a original (o usuário pode reprocessar depois).
+  await db.musicStemJob.create({
+    data: {
+      musicId: music.id,
+      status: 'pending',
+      progress: 0,
+    },
+  }).catch((error) => {
+    console.error('[YOUTUBE-API] Falha ao criar MusicStemJob (instrumental na fila):', error)
+  })
+
+  await db.youtubeDownloadJob.update({
+    where: { id: job.id },
+    data: {
+      status: 'completed',
+      progress: 100,
+      musicId: music.id,
+      completedAt: new Date(),
+      duration: durationSeconds,
+      title: music.name,
+      videoApiStatus: 'done',
+    },
+  })
+
+  console.log(`[YOUTUBE-API] Job ${job.id} concluído — Music ID: ${music.id}`)
+  return music
+}
+
+/**
+ * Salva um MP3 que foi baixado pelo cliente (fluxo legado de upload manual).
+ * Mantido como fallback — o fluxo principal agora usa downloadAndIngestYoutubeJob.
  */
 export async function saveClientDownloadedMp3(
   jobId: number,
@@ -93,69 +175,7 @@ export async function saveClientDownloadedMp3(
   }
 
   try {
-    await db.youtubeDownloadJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'uploading',
-        progress: 90,
-      },
-    })
-
-    console.log(`[YOUTUBE-API] Uploading ${mp3Buffer.length} bytes for job ${job.id}`)
-
-    if (mp3Buffer.length < 10000) {
-      throw new Error('File is too small - download may have failed')
-    }
-
-    const blobFileName = `musicas/youtube/${Date.now()}-${job.youtubeId ?? job.id}.mp3`
-    const blob = await put(blobFileName, mp3Buffer, {
-      access: 'public',
-      contentType: 'audio/mpeg',
-    })
-
-    const durationSeconds = job.duration ?? estimateDuration(mp3Buffer.length)
-    const resolvedName = job.requestedName || job.title || fileName || 'Música do YouTube'
-
-    const music = await db.musicLibrary.create({
-      data: {
-        name: resolvedName,
-        artist: job.requestedArtist,
-        genre: job.requestedGenre,
-        mood: job.requestedMood,
-        projectId: job.projectId,
-        duration: durationSeconds,
-        blobUrl: blob.url,
-        blobSize: mp3Buffer.length,
-        thumbnailUrl: job.thumbnail,
-        createdBy: job.createdBy,
-      },
-    })
-
-    await db.musicStemJob.create({
-      data: {
-        musicId: music.id,
-        status: 'pending',
-        progress: 0,
-      },
-    }).catch((error) => {
-      console.error('[YOUTUBE-API] Failed to create MusicStemJob:', error)
-    })
-
-    await db.youtubeDownloadJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'completed',
-        progress: 100,
-        musicId: music.id,
-        completedAt: new Date(),
-        duration: durationSeconds,
-        title: music.name,
-        videoApiStatus: 'done',
-      },
-    })
-
-    console.log(`[YOUTUBE-API] Job ${job.id} completed - Music ID: ${music.id}`)
-    return music
+    return await persistDownloadedMp3(job, mp3Buffer, fileName)
   } catch (error) {
     console.error('[YOUTUBE-API] Upload failed:', error)
     await db.youtubeDownloadJob.update({
@@ -163,6 +183,70 @@ export async function saveClientDownloadedMp3(
       data: {
         status: 'failed',
         error: error instanceof Error ? error.message : 'Upload failed',
+      },
+    })
+    throw error
+  }
+}
+
+/**
+ * Baixa o MP3 direto do link da RapidAPI (server-side) e cadastra a música.
+ *
+ * Substitui o antigo fluxo manual "abrir link no browser + reenviar arquivo".
+ * Usa um claim atômico (downloading → uploading) para que chamadas concorrentes
+ * (POST inicial, polling do status e cron) nunca baixem o mesmo job em duplicidade.
+ *
+ * Em caso de erro no download, marca o job como "failed" com mensagem em PT — a
+ * música NÃO é cadastrada, e o usuário pode tentar novamente pelo mesmo link.
+ */
+export async function downloadAndIngestYoutubeJob(jobId: number) {
+  // Claim atômico: só um processo consegue transicionar downloading → uploading.
+  const claim = await db.youtubeDownloadJob.updateMany({
+    where: { id: jobId, status: 'downloading', musicId: null },
+    data: { status: 'uploading', progress: 70 },
+  })
+
+  if (claim.count === 0) {
+    // Já foi processado por outro fluxo (ou não está pronto). Retorna o estado atual.
+    return db.youtubeDownloadJob.findUnique({
+      where: { id: jobId },
+      include: { music: true },
+    })
+  }
+
+  const job = await db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
+  if (!job) {
+    throw new Error('Job not found')
+  }
+
+  const link = job.videoApiJobId
+  if (!link || !link.startsWith('http')) {
+    await db.youtubeDownloadJob.update({
+      where: { id: job.id },
+      data: { status: 'failed', error: 'Link de download indisponível' },
+    })
+    throw new Error('No download link available')
+  }
+
+  try {
+    console.log(`[YOUTUBE-API] Baixando MP3 (server-side) para o job ${job.id}...`)
+    const response = await fetch(link)
+    if (!response.ok) {
+      throw new Error(`Falha ao baixar do YouTube (HTTP ${response.status})`)
+    }
+
+    const arrayBuffer = await response.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const fileName = `${job.youtubeId ?? job.id}.mp3`
+
+    return await persistDownloadedMp3(job, buffer, fileName)
+  } catch (error) {
+    console.error('[YOUTUBE-API] Download server-side falhou:', error)
+    await db.youtubeDownloadJob.update({
+      where: { id: job.id },
+      data: {
+        status: 'failed',
+        error: error instanceof Error ? error.message : 'Falha ao baixar o áudio',
       },
     })
     throw error
