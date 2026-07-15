@@ -157,8 +157,8 @@ async function persistDownloadedMp3(
 }
 
 /**
- * Salva um MP3 que foi baixado pelo cliente (fluxo legado de upload manual).
- * Mantido como fallback — o fluxo principal agora usa downloadAndIngestYoutubeJob.
+ * Salva um MP3 baixado pelo cliente (via /youtube/[jobId]/upload).
+ * Sobe para o Blob, cadastra a MusicLibrary e enfileira a versão instrumental.
  */
 export async function saveClientDownloadedMp3(
   jobId: number,
@@ -190,68 +190,13 @@ export async function saveClientDownloadedMp3(
 }
 
 /**
- * Baixa o MP3 direto do link da RapidAPI (server-side) e cadastra a música.
- *
- * Substitui o antigo fluxo manual "abrir link no browser + reenviar arquivo".
- * Usa um claim atômico (downloading → uploading) para que chamadas concorrentes
- * (POST inicial, polling do status e cron) nunca baixem o mesmo job em duplicidade.
- *
- * Em caso de erro no download, marca o job como "failed" com mensagem em PT — a
- * música NÃO é cadastrada, e o usuário pode tentar novamente pelo mesmo link.
+ * NOTA sobre o download do MP3:
+ * O CDN da RapidAPI (123tokyo.xyz / Cloudflare) responde 404 para IPs de
+ * datacenter (ex.: funções da Vercel), mas serve normalmente para IPs
+ * residenciais e envia `Access-Control-Allow-Origin: *`. Por isso o download
+ * é feito NO NAVEGADOR do usuário (fetch + upload automático em
+ * youtube-download-progress.tsx), e não no servidor.
  */
-export async function downloadAndIngestYoutubeJob(jobId: number) {
-  // Claim atômico: só um processo consegue transicionar downloading → uploading.
-  const claim = await db.youtubeDownloadJob.updateMany({
-    where: { id: jobId, status: 'downloading', musicId: null },
-    data: { status: 'uploading', progress: 70 },
-  })
-
-  if (claim.count === 0) {
-    // Já foi processado por outro fluxo (ou não está pronto). Retorna o estado atual.
-    return db.youtubeDownloadJob.findUnique({
-      where: { id: jobId },
-      include: { music: true },
-    })
-  }
-
-  const job = await db.youtubeDownloadJob.findUnique({ where: { id: jobId } })
-  if (!job) {
-    throw new Error('Job not found')
-  }
-
-  const link = job.videoApiJobId
-  if (!link || !link.startsWith('http')) {
-    await db.youtubeDownloadJob.update({
-      where: { id: job.id },
-      data: { status: 'failed', error: 'Link de download indisponível' },
-    })
-    throw new Error('No download link available')
-  }
-
-  try {
-    console.log(`[YOUTUBE-API] Baixando MP3 (server-side) para o job ${job.id}...`)
-    const response = await fetch(link)
-    if (!response.ok) {
-      throw new Error(`Falha ao baixar do YouTube (HTTP ${response.status})`)
-    }
-
-    const arrayBuffer = await response.arrayBuffer()
-    const buffer = Buffer.from(arrayBuffer)
-    const fileName = `${job.youtubeId ?? job.id}.mp3`
-
-    return await persistDownloadedMp3(job, buffer, fileName)
-  } catch (error) {
-    console.error('[YOUTUBE-API] Download server-side falhou:', error)
-    await db.youtubeDownloadJob.update({
-      where: { id: job.id },
-      data: {
-        status: 'failed',
-        error: error instanceof Error ? error.message : 'Falha ao baixar o áudio',
-      },
-    })
-    throw error
-  }
-}
 
 /**
  * Inicia um job de download (cria registro no banco)

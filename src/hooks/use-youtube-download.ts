@@ -13,7 +13,7 @@ export interface StartYoutubeDownloadInput {
 export interface StartYoutubeDownloadResponse {
   success: boolean
   jobId: number
-  musicId?: number
+  downloadLink?: string
   title?: string
   thumbnail?: string
   duration?: number

@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Loader2, CheckCircle2, XCircle } from 'lucide-react'
 import { Progress } from '@/components/ui/progress'
 import { Button } from '@/components/ui/button'
 import {
   useYoutubeDownloadStatus,
   useCancelarYoutubeJob,
+  useUploadYoutubeMp3,
 } from '@/hooks/use-youtube-download'
 import { useQueryClient } from '@tanstack/react-query'
 import { chavesMusica } from '@/hooks/use-music-library'
@@ -19,7 +20,12 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
   const queryClient = useQueryClient()
   const { data: job, isLoading } = useYoutubeDownloadStatus(jobId)
   const cancelJob = useCancelarYoutubeJob()
+  const uploadMp3 = useUploadYoutubeMp3()
   const hasInvalidated = useRef(false)
+  // Controle do download automático no navegador (uma vez por link)
+  const downloadedLinkRef = useRef<string | null>(null)
+  const [clientDownloading, setClientDownloading] = useState(false)
+  const [clientError, setClientError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!job || job.status !== 'completed' || !job.music) return
@@ -27,6 +33,40 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
     queryClient.invalidateQueries({ queryKey: chavesMusica.listas() })
     hasInvalidated.current = true
   }, [job, queryClient])
+
+  // Download automático no NAVEGADOR: o CDN da RapidAPI bloqueia IPs de
+  // datacenter (Vercel → 404) mas serve IPs residenciais e tem CORS aberto.
+  // Quando o link fica pronto, baixamos via fetch e subimos para o servidor.
+  useEffect(() => {
+    if (!job || job.status !== 'downloading' || !job.downloadLink || job.music) return
+    if (downloadedLinkRef.current === job.downloadLink) return
+
+    downloadedLinkRef.current = job.downloadLink
+    const link = job.downloadLink
+    const fileName = `${job.title ?? job.jobId}.mp3`
+
+    setClientDownloading(true)
+    setClientError(null)
+    ;(async () => {
+      try {
+        const res = await fetch(link)
+        if (!res.ok) throw new Error(`Falha ao baixar o áudio (HTTP ${res.status})`)
+        const blob = await res.blob()
+        if (blob.size < 10000) throw new Error('Arquivo muito pequeno — download falhou')
+        const file = new File([blob], fileName, { type: 'audio/mpeg' })
+        await uploadMp3.mutateAsync({ jobId: job.jobId, file })
+        queryClient.invalidateQueries({ queryKey: ['youtube-job-status', job.jobId] })
+        queryClient.invalidateQueries({ queryKey: chavesMusica.listas() })
+      } catch (error) {
+        console.error('[YOUTUBE] Download no navegador falhou:', error)
+        setClientError(error instanceof Error ? error.message : 'Falha ao baixar o áudio')
+        // Permite nova tentativa (botão) sem recarregar
+        downloadedLinkRef.current = null
+      } finally {
+        setClientDownloading(false)
+      }
+    })()
+  }, [job, uploadMp3, queryClient])
 
   if (isLoading || !job) {
     return (
@@ -79,13 +119,53 @@ export function YoutubeDownloadProgress({ jobId }: YoutubeDownloadProgressProps)
     )
   }
 
-  // Estados intermediários: pending (RapidAPI convertendo / na fila),
-  // downloading e uploading (o servidor baixa e cadastra automaticamente).
+  // Falha no download feito pelo navegador (link expirado, rede, etc.) — com retry.
+  if (clientError && !clientDownloading) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+        <div className="flex items-start gap-3">
+          <XCircle className="mt-0.5 h-5 w-5 text-red-600" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-900">Não foi possível baixar</p>
+            <p className="text-sm text-red-700">{clientError}</p>
+            <div className="mt-2 flex gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setClientError(null)
+                  // Reabre o link atual para o efeito de download tentar de novo
+                  queryClient.invalidateQueries({ queryKey: ['youtube-job-status', job.jobId] })
+                }}
+              >
+                Tentar novamente
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => cancelJob.mutate(job.jobId)}
+                disabled={cancelJob.isPending}
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Estados intermediários: pending (RapidAPI convertendo / na fila) e
+  // downloading (o navegador baixa e sobe o arquivo automaticamente).
   const statusCopy: Record<string, string> = {
     pending: job.videoApiStatus === 'processing'
       ? 'Convertendo o áudio...'
       : 'Na fila...',
-    downloading: 'Baixando o áudio...',
+    downloading: clientDownloading || uploadMp3.isPending
+      ? 'Baixando e adicionando...'
+      : 'Preparando download...',
     uploading: 'Adicionando à biblioteca...',
   }
 

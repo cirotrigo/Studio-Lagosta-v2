@@ -244,8 +244,8 @@ export default function BibliotecaMusicasPage() {
         });
       } else {
         toast({
-          title: 'Música adicionada!',
-          description: 'Gerando a versão instrumental em segundo plano.',
+          title: 'Baixando o áudio...',
+          description: 'A música aparecerá na biblioteca em instantes.',
         });
       }
 
