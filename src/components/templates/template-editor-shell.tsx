@@ -664,21 +664,21 @@ function TemplateEditorContent({
   const editorContent = (
     <div className={`polotno-editor flex overflow-hidden bg-background ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)]'} flex-col`}>
       {/* Top Toolbar - Polotno Style */}
-      <header className={`flex h-14 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-4 shadow-sm ${isFullscreen ? 'hidden' : ''}`}>
+      <header className={`flex h-14 flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 bg-card px-4 shadow-sm ${isFullscreen ? 'hidden' : ''}`}>
         {/* Left: Logo + Template Name */}
-        <div className="flex items-center gap-3">
-          <FileText className="h-5 w-5 text-primary" />
+        <div className="flex min-w-0 flex-shrink items-center gap-3">
+          <FileText className="h-5 w-5 flex-shrink-0 text-primary" />
           <Input
-            className="h-8 w-64 border-0 bg-transparent text-sm font-medium focus-visible:ring-0"
+            className="h-8 w-32 min-w-0 border-0 bg-transparent text-sm font-medium focus-visible:ring-0 lg:w-64"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Nome do template"
           />
-          {dirty && <span className="text-xs text-orange-500">● Não salvo</span>}
+          {dirty && <span className="hidden flex-shrink-0 text-xs text-orange-500 sm:inline">● Não salvo</span>}
         </div>
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-2">
+        {/* Right: Actions — rolam horizontalmente em telas estreitas em vez de cortar */}
+        <div className="flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:flex-shrink-0">
           {agendaMode ? (
             <>
               <Button size="sm" onClick={handleSave} disabled={isSaving}>
@@ -784,7 +784,7 @@ function TemplateEditorContent({
 
         {/* Expandable Side Panel */}
         {activePanel && (
-          <aside className="flex w-80 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg overflow-hidden">
+          <aside className="flex w-64 flex-shrink-0 flex-col border-r border-border/40 bg-card shadow-lg overflow-hidden xl:w-80">
             <div className="flex-shrink-0 border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
                 {activePanel === 'templates' && 'Templates'}
@@ -884,7 +884,7 @@ function TemplateEditorContent({
 
         {/* Right Side Panel with Expandable Content */}
         {activeRightPanel && (
-          <aside className={`flex flex-shrink-0 flex-col border-l border-border/40 bg-card shadow-lg overflow-hidden ${activeRightPanel === 'layers' ? 'w-[420px]' : 'w-80'
+          <aside className={`flex flex-shrink-0 flex-col border-l border-border/40 bg-card shadow-lg overflow-hidden ${activeRightPanel === 'layers' ? 'w-72 xl:w-[420px]' : 'w-64 xl:w-80'
             }`}>
             <div className="flex-shrink-0 border-b border-border/40 p-4">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
@@ -1014,7 +1014,7 @@ function TemplateEditorContent({
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
 
-                      <span className="text-xs font-medium px-2">
+                      <span className="whitespace-nowrap px-2 text-xs font-medium">
                         {pages.findIndex((p) => p.id === currentPageId) + 1} / {pages.length}
                       </span>
 
@@ -1450,7 +1450,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                 <ChevronLeft className="h-4 w-4" />
               </Button>
 
-              <span className="text-xs text-muted-foreground">
+              <span className="whitespace-nowrap text-xs text-muted-foreground">
                 {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
               </span>
 

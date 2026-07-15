@@ -227,7 +227,7 @@ export function EditorCanvas() {
       */}
       <div className="flex-shrink-0 h-[52px] relative">
         {/* Text Toolbar - position absolute para não afetar layout */}
-        <div className={`absolute inset-0 transition-opacity duration-150 ${isTextSelected && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`absolute inset-0 overflow-x-auto transition-opacity duration-150 ${isTextSelected && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           {isTextSelected && selectedLayer && (
             <TextToolbar
               selectedLayer={selectedLayer}
@@ -239,7 +239,7 @@ export function EditorCanvas() {
         </div>
 
         {/* Image Toolbar - position absolute para não afetar layout */}
-        <div className={`absolute inset-0 transition-opacity duration-150 ${showImageToolbar && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
+        <div className={`absolute inset-0 overflow-x-auto transition-opacity duration-150 ${showImageToolbar && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
           {showImageToolbar && selectedLayer && (
             <ImageToolbar
               selectedLayer={selectedLayer}
