@@ -174,6 +174,12 @@ const nextConfig: NextConfig = {
         protocol: 'https',
         hostname: '*.zernio.com',
       },
+      {
+        // Supabase Storage do Claudinho (insta-automatico) — artes e fotos
+        // agendadas via /api/external chegam com mediaUrls deste host
+        protocol: 'https',
+        hostname: '*.supabase.co',
+      },
     ],
     // OPTIMIZED: Image optimization settings
     formats: ['image/avif', 'image/webp'], // Use modern formats for better compression
