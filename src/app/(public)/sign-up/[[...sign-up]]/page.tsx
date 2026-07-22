@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function SignUpPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-6">
+    <div className="min-h-dvh flex items-center justify-center bg-background p-6">
       <div className="w-full max-w-md pt-20">
         <Card>
           <CardHeader className="text-center">

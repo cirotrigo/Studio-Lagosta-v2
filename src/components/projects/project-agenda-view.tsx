@@ -313,7 +313,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col h-[calc(100vh-12rem)]">
+      <div className="flex flex-col h-[calc(100dvh-12rem)]">
         <CalendarHeader
           selectedDate={selectedDate}
           onDateChange={setSelectedDate}

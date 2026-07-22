@@ -967,7 +967,7 @@ export default function AIChatPage() {
   }, [credits?.creditsRemaining])
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col md:flex-row gap-4">
+    <div className="flex h-[calc(100dvh-6rem)] flex-col md:flex-row gap-4">
       {/* Mobile History Sheet */}
       <Sheet open={historyMobileOpen} onOpenChange={setHistoryMobileOpen}>
         <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0">

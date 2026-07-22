@@ -96,7 +96,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
       </div>
       
-      <ScrollArea className="h-[calc(100vh-3.5rem)]">
+      <ScrollArea className="h-[calc(100dvh-3.5rem)]">
         <nav className="flex flex-col gap-1 p-2" aria-label="Navegação principal">
           {items.map((item) => {
             const isActive = pathname === item.href;

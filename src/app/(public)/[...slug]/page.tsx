@@ -19,7 +19,7 @@ export default async function DynamicPage({ params }: PageProps) {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-dvh">
       {page.sections
         .sort((a, b) => a.order - b.order)
         .map((section) => (

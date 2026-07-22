@@ -75,7 +75,7 @@ export function MobileChannelsDrawer({
           </div>
 
           {/* Lista de canais */}
-          <ScrollArea className="h-[calc(100vh-200px)]">
+          <ScrollArea className="h-[calc(100dvh-200px)]">
             <div className="space-y-2">
               {/* Todos os canais */}
               <button

@@ -20,7 +20,7 @@ export function HeroSection() {
     return (
         <section
             onMouseMove={handleMouseMove}
-            className="relative min-h-[90vh] flex items-center justify-center overflow-hidden pt-20 pb-16 lg:pt-32 group"
+            className="relative min-h-[90dvh] flex items-center justify-center overflow-hidden pt-20 pb-16 lg:pt-32 group"
         >
             {/* Mouse Spotlight Effect */}
             <motion.div

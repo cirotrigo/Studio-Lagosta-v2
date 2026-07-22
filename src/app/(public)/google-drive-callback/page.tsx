@@ -75,7 +75,7 @@ function GoogleDriveCallbackContent() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-10">
+    <div className="mx-auto flex min-h-dvh max-w-3xl flex-col gap-6 px-6 py-10">
       <div className="space-y-2">
         <h1 className="text-3xl font-bold">Integração com Google Drive</h1>
         <p className="text-sm text-muted-foreground">
@@ -168,7 +168,7 @@ function InfoField({ label, value }: { label: string; value: string | null }) {
 export default function GoogleDriveCallbackPage() {
   return (
     <React.Suspense fallback={
-      <div className="mx-auto flex min-h-screen max-w-3xl items-center justify-center px-6">
+      <div className="mx-auto flex min-h-dvh max-w-3xl items-center justify-center px-6">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     }>

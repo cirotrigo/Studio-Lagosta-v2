@@ -276,7 +276,7 @@ export function DesktopGoogleDriveModal({
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
       <DialogContent
-        className="max-w-[1200px] h-[700px] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80vh] sm:max-w-[95vw] sm:h-[85vh]"
+        className="max-w-[95vw] h-[85dvh] p-0 gap-0 flex flex-col md:max-w-[90vw] md:h-[80dvh] lg:max-w-[1200px] lg:h-[700px]"
       >
         <DialogTitle className="sr-only">{headerTitle}</DialogTitle>
         <DialogDescription className="sr-only">{description}</DialogDescription>
