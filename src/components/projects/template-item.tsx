@@ -127,9 +127,9 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                 )}
 
                 {/* Hover Overlay & Info */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
 
-                <div className="absolute bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20">
+                <div className="absolute bottom-[4.75rem] md:bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 pointer-events-none z-20">
                     <h3 className="text-white font-bold text-sm truncate drop-shadow-md">
                         {template.name}
                     </h3>
@@ -144,7 +144,7 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
             {/* Action Buttons - Top Right Dropdown (Always visible or on hover? Let's make it on hover for cleaner look, but accessible) */}
             {/* For UX consistency with 'clean' look, let's put actions at the bottom like GalleryItem */}
 
-            <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
+            <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
                 <Button
                     asChild
                     size="sm"
@@ -153,8 +153,8 @@ export function TemplateItem({ template, onDuplicate, onDelete, index }: Templat
                     title="Editar Template"
                 >
                     <Link href={`/templates/${template.id}/editor`}>
-                        <Edit className="h-3.5 w-3.5 mr-1" />
-                        Editar
+                        <Edit className="h-3.5 w-3.5 sm:mr-1" />
+                        <span className="hidden sm:inline">Editar</span>
                     </Link>
                 </Button>
 

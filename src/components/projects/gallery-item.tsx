@@ -203,7 +203,7 @@ export function GalleryItem({
       />
 
       {/* Checkbox - Always visible for quick selection, but styled subtly */}
-      <div className="absolute top-3 left-3 z-30 pointer-events-auto opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute top-3 left-3 z-30 pointer-events-auto opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-200">
         <motion.input
           whileHover={{ scale: 1.1 }}
           whileTap={{ scale: 0.95 }}
@@ -221,7 +221,7 @@ export function GalleryItem({
           Let's make them fade in on hover for cleaner look, or keep them as 'meta' that is always there?
           User said "informações e botões só aparecesem ao passar o mouse". So opacity-0 default.
       */}
-      <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+      <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end pointer-events-none opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300">
         <div className="px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-xs font-medium shadow-lg border border-white/10">
           {date}
         </div>
@@ -380,9 +380,9 @@ export function GalleryItem({
         )}
 
         {/* Hover Overlay & Info */}
-        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300 pointer-events-none z-10" />
 
-        <div className="absolute bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none z-20">
+        <div className="absolute bottom-[4.75rem] md:bottom-12 left-0 right-0 p-4 translate-y-4 group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 pointer-events-none z-20">
           <h3 className="text-white font-bold text-sm truncate drop-shadow-md">
             {title}
           </h3>
@@ -400,7 +400,7 @@ export function GalleryItem({
       </a>
 
       {/* Action Buttons */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
+      <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
         {onSchedule && status === 'COMPLETED' && resolvedAssetUrl && (
           <Button
             size="sm"
