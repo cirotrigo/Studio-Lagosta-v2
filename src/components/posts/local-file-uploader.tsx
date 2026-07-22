@@ -200,7 +200,7 @@ export function LocalFileUploader({
           <h4 className="font-medium text-sm mb-2">
             Arquivos ({uploadedFiles.length}/{maxFiles})
           </h4>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
             {uploadedFiles.map((file) => (
               <div key={file.id} className="relative group aspect-[4/5]">
                 <Image

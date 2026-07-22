@@ -133,7 +133,7 @@ export function OfferSection() {
     ];
 
     return (
-        <section id="pricing" className="py-24 bg-zinc-950 text-white relative overflow-hidden">
+        <section id="pricing" className="py-16 md:py-24 bg-zinc-950 text-white relative overflow-hidden">
             {/* Glow effect */}
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-orange-500/10 blur-[120px] rounded-full pointer-events-none" />
 

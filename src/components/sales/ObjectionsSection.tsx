@@ -29,7 +29,7 @@ const objections = [
 
 export function ObjectionsSection() {
     return (
-        <section className="py-24 bg-muted/30">
+        <section className="py-16 md:py-24 bg-muted/30">
             <div className="container px-4 md:px-6 max-w-3xl">
                 <h2 className="text-3xl font-bold text-center mb-12">Perguntas Frequentes (e duras)</h2>
                 <Accordion type="single" collapsible className="w-full">

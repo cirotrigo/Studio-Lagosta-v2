@@ -1157,7 +1157,7 @@ export default function AIChatPage() {
                 </DropdownMenuContent>
               </DropdownMenu>
 
-              <div className="h-8 w-[180px]">
+              <div className="h-8 w-[140px] sm:w-[180px]">
                 <Autocomplete
                   items={modelItems}
                   value={model}

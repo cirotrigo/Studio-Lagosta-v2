@@ -13,7 +13,7 @@ export function ValuePropSection() {
     ];
 
     return (
-        <section className="py-24 bg-zinc-950 text-white">
+        <section className="py-16 md:py-24 bg-zinc-950 text-white">
             <div className="container px-4 md:px-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
 

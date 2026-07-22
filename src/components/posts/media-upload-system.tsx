@@ -392,7 +392,7 @@ export function MediaUploadSystem({
 
       {/* Tabs de Fonte */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="grid grid-cols-4 w-full">
+        <TabsList className="grid grid-cols-2 sm:grid-cols-4 w-full">
           <TabsTrigger value="generations" className="gap-2">
             <ImageIcon className="w-4 h-4" />
             <span className="hidden sm:inline">Criativos</span>

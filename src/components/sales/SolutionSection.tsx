@@ -29,7 +29,7 @@ const features = [
 
 export function SolutionSection() {
     return (
-        <section className="py-24 bg-background relative overflow-hidden">
+        <section className="py-16 md:py-24 bg-background relative overflow-hidden">
             {/* Decorative bg */}
             <div className="absolute top-0 right-0 w-1/3 h-full bg-orange-500/5 blur-3xl pointer-events-none" />
 

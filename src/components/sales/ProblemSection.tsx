@@ -5,7 +5,7 @@ import { XCircle, AlertTriangle } from 'lucide-react';
 
 export function ProblemSection() {
     return (
-        <section className="py-24 bg-muted/30">
+        <section className="py-16 md:py-24 bg-muted/30">
             <div className="container px-4 md:px-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
 

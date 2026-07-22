@@ -86,7 +86,7 @@ export default function ProtectedLayout({
         <div className="min-h-dvh w-full text-foreground overflow-x-hidden">
           <div className="flex max-w-full">
             <Sidebar collapsed={collapsed} onToggle={toggleCollapse} />
-            <div className="flex min-h-dvh flex-1 flex-col p-4 max-w-full overflow-x-hidden">
+            <div className="flex min-h-dvh flex-1 flex-col p-2 sm:p-4 max-w-full overflow-x-hidden">
               <Topbar onToggleSidebar={toggleCollapse} sidebarCollapsed={collapsed} />
               <main
                 className={cn(
@@ -105,7 +105,7 @@ export default function ProtectedLayout({
                     }}
                     aria-hidden="true"
                   />
-                  <div className="glass-panel border-border/40 bg-card/30 p-6">
+                  <div className="glass-panel border-border/40 bg-card/30 p-4 sm:p-6">
                     {/* Mostrar ContextIndicator apenas no dashboard */}
                     {pathname === '/studio' && <ContextIndicator />}
                     <PageHeader />

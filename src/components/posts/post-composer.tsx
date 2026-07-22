@@ -507,7 +507,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
           {/* Tipo de Post */}
           <div>
             <Label className="text-base font-semibold">Tipo de Post</Label>
-            <div className="grid grid-cols-4 gap-2 mt-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
               {[
                 { value: 'POST', label: 'Post', icon: '📸' },
                 { value: 'STORY', label: 'Story', icon: '⭐' },

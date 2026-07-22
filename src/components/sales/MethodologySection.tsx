@@ -33,7 +33,7 @@ const steps = [
 
 export function MethodologySection() {
     return (
-        <section className="py-24 bg-background">
+        <section className="py-16 md:py-24 bg-background">
             <div className="container px-4 md:px-6">
                 <div className="text-center mb-16">
                     <span className="text-orange-500 font-semibold tracking-wider text-sm uppercase">O Método</span>

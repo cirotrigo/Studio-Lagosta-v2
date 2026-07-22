@@ -7,7 +7,7 @@ import Link from 'next/link';
 
 export function CtaSection() {
     return (
-        <section className="py-24 bg-orange-600 text-white relative overflow-hidden">
+        <section className="py-16 md:py-24 bg-orange-600 text-white relative overflow-hidden">
             {/* Background decorative pattern */}
             <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at 1px 1px, white 1px, transparent 0)', backgroundSize: '40px 40px' }} />
 

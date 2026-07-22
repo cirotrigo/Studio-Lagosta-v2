@@ -14,7 +14,7 @@ interface DailyHeatmapProps {
 
 export function DailyHeatmap({ data }: DailyHeatmapProps) {
   return (
-    <div className="grid grid-cols-7 gap-2">
+    <div className="grid grid-cols-7 gap-1 sm:gap-2">
       {data.map((day) => {
         const dayDate = new Date(day.date)
         const percentage = (day.storiesPublished / day.storiesGoal) * 100
@@ -23,7 +23,7 @@ export function DailyHeatmap({ data }: DailyHeatmapProps) {
           <div
             key={day.date.toString()}
             className={`
-              relative p-3 rounded-lg text-center transition-all hover:scale-105 cursor-pointer
+              relative p-1.5 sm:p-3 rounded-lg text-center transition-all hover:scale-105 cursor-pointer
               ${
                 day.goalMet
                   ? 'bg-green-100 border-2 border-green-500'
@@ -37,7 +37,7 @@ export function DailyHeatmap({ data }: DailyHeatmapProps) {
             <div className="text-xs font-medium text-gray-600 uppercase">
               {format(dayDate, 'EEE', { locale: ptBR })}
             </div>
-            <div className="text-2xl font-bold mt-1">
+            <div className="text-lg sm:text-2xl font-bold mt-1">
               {day.storiesPublished}
             </div>
             <div className="text-xs text-gray-600 mt-1">
