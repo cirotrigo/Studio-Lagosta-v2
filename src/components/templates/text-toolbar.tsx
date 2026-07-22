@@ -224,11 +224,9 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
-  const handleStrokeWidthChange = (value: number) => {
-    setStrokeWidth(value)
-  }
+  const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
 
-  const handleStrokeWidthCommit = (value: number) => {
+  const applyStrokeWidth = (value: number) => {
     onUpdateLayer(selectedLayer.id, {
       style: {
         ...selectedLayer.style,
@@ -243,26 +241,60 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
-  const handleLineHeightChange = (value: number) => {
-    setLineHeight(value)
+  const handleStrokeWidthChange = (value: number) => {
+    setStrokeWidth(value)
+    // Aplicar em tempo real quando o valor é válido (não esperar o blur)
+    if (Number.isFinite(value) && value >= 0 && value <= 20) {
+      applyStrokeWidth(value)
+    }
   }
 
-  const handleLineHeightCommit = (value: number) => {
+  const handleStrokeWidthCommit = (value: number) => {
+    const finalValue = Number.isFinite(value) ? clamp(value, 0, 20) : 0
+    setStrokeWidth(finalValue)
+    applyStrokeWidth(finalValue)
+  }
+
+  const applyLineHeight = (value: number) => {
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, lineHeight: value },
     })
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
-  const handleLetterSpacingChange = (value: number) => {
-    setLetterSpacing(value)
+  const handleLineHeightChange = (value: number) => {
+    setLineHeight(value)
+    // Aplicar em tempo real quando o valor é válido (não esperar o blur)
+    if (Number.isFinite(value) && value >= 0.5 && value <= 3) {
+      applyLineHeight(value)
+    }
   }
 
-  const handleLetterSpacingCommit = (value: number) => {
+  const handleLineHeightCommit = (value: number) => {
+    const finalValue = Number.isFinite(value) && value > 0 ? clamp(value, 0.5, 3) : 1.2
+    setLineHeight(finalValue)
+    applyLineHeight(finalValue)
+  }
+
+  const applyLetterSpacing = (value: number) => {
     onUpdateLayer(selectedLayer.id, {
       style: { ...selectedLayer.style, letterSpacing: value },
     })
     forceRedraw() // ⚡ FORÇAR REDESENHO
+  }
+
+  const handleLetterSpacingChange = (value: number) => {
+    setLetterSpacing(value)
+    // Aplicar em tempo real quando o valor é válido (não esperar o blur)
+    if (Number.isFinite(value) && value >= -10 && value <= 50) {
+      applyLetterSpacing(value)
+    }
+  }
+
+  const handleLetterSpacingCommit = (value: number) => {
+    const finalValue = Number.isFinite(value) ? clamp(value, -10, 50) : 0
+    setLetterSpacing(finalValue)
+    applyLetterSpacing(finalValue)
   }
 
   const handleOpacityChange = (values: number[]) => {
@@ -284,8 +316,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
   }
 
   return (
-    <div className="flex-shrink-0 border-b border-border/40 bg-card shadow-sm">
-      <div className="flex items-center gap-2 px-4 py-2 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+    <div className="flex-shrink-0 rounded-lg border border-border/40 bg-card/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-card/80">
+      <div className="flex items-center gap-2 px-3 py-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
         {/* Fonte e Tamanho */}
         <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Select value={fontDisplayName} onValueChange={handleFontFamilyChange}>

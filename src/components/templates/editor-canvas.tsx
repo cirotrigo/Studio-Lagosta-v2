@@ -220,40 +220,13 @@ export function EditorCanvas() {
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full">
-      {/*
-        Toolbar Container - Espaço reservado para evitar layout shift
-        IMPORTANTE: Sempre manter altura e estrutura EXATAS para prevenir reflow
-        Usar position absolute para sobrepor toolbars e evitar mudanças de layout
-      */}
-      <div className="flex-shrink-0 h-[52px] relative">
-        {/* Text Toolbar - position absolute para não afetar layout */}
-        <div className={`absolute inset-0 overflow-x-auto transition-opacity duration-150 ${isTextSelected && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-          {isTextSelected && selectedLayer && (
-            <TextToolbar
-              selectedLayer={selectedLayer}
-              onUpdateLayer={(id, updates) => {
-                updateLayer(id, (layer) => ({ ...layer, ...updates }))
-              }}
-            />
-          )}
-        </div>
-
-        {/* Image Toolbar - position absolute para não afetar layout */}
-        <div className={`absolute inset-0 overflow-x-auto transition-opacity duration-150 ${showImageToolbar && selectedLayer ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
-          {showImageToolbar && selectedLayer && (
-            <ImageToolbar
-              selectedLayer={selectedLayer}
-              onUpdateLayer={(id, updates) => {
-                updateLayer(id, (layer) => ({ ...layer, ...updates }))
-              }}
-            />
-          )}
-        </div>
-      </div>
-
-      {/* Alignment Toolbar - sempre visível no topo do canvas */}
-      <div className="overflow-x-auto border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="flex items-center justify-center p-2 min-w-max">
+      {/* Canvas Konva + toolbars flutuantes + Effects Panel */}
+      <div className="flex-1 flex relative overflow-hidden">
+        {/* Toolbars flutuam sobre o canvas — não ocupam altura de layout */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col items-center gap-1.5 px-2 pt-2">
+          {/* Alignment Toolbar - sempre visível */}
+          <div className="pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80">
+            <div className="flex items-center justify-center p-1.5 min-w-max">
           <AlignmentToolbar
             selectedCount={selectedLayerIds.length}
             onAlignLeft={alignSelectedLeft}
@@ -283,11 +256,34 @@ export function EditorCanvas() {
                 : undefined
             }
           />
-        </div>
-      </div>
+            </div>
+          </div>
 
-      {/* Canvas Konva + Effects Panel */}
-      <div className="flex-1 flex relative overflow-hidden">
+          {/* Toolbar contextual de texto */}
+          {isTextSelected && selectedLayer && (
+            <div className="pointer-events-auto max-w-full">
+              <TextToolbar
+                selectedLayer={selectedLayer}
+                onUpdateLayer={(id, updates) => {
+                  updateLayer(id, (layer) => ({ ...layer, ...updates }))
+                }}
+              />
+            </div>
+          )}
+
+          {/* Toolbar contextual de imagem/logo */}
+          {showImageToolbar && selectedLayer && (
+            <div className="pointer-events-auto max-w-full">
+              <ImageToolbar
+                selectedLayer={selectedLayer}
+                onUpdateLayer={(id, updates) => {
+                  updateLayer(id, (layer) => ({ ...layer, ...updates }))
+                }}
+              />
+            </div>
+          )}
+        </div>
+
         {/* Canvas Konva */}
         <div className="flex-1 h-full w-full">
           <KonvaEditorStage />
