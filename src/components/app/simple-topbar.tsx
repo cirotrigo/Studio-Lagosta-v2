@@ -8,7 +8,7 @@ export function SimpleTopbar() {
   return (
     <header
       className={cn(
-        "sticky top-0 z-20 w-full border-b border-border/40 bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20 glass-panel"
+        "pt-safe sticky top-0 z-20 w-full border-b border-border/40 bg-background/30 backdrop-blur-xl supports-[backdrop-filter]:bg-background/20 glass-panel"
       )}
       role="banner"
     >

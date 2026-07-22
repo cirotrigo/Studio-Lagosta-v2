@@ -42,7 +42,7 @@ export function CookieConsent() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50">
-      <div className="mx-auto max-w-[900px] rounded-t-xl border bg-card/95 p-4 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/75">
+      <div className="mx-auto max-w-[900px] rounded-t-xl border bg-card/95 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-lg backdrop-blur supports-[backdrop-filter]:bg-card/75">
         <div className="flex flex-col items-start gap-3 md:flex-row md:items-center md:justify-between">
           <p className="text-sm text-muted-foreground">
             Nós usamos cookies para melhorar sua experiência, analisar o uso e entregar conteúdo relevante. Ao clicar em Aceitar, você concorda com nosso uso de cookies.

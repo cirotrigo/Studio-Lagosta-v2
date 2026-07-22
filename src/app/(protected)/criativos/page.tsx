@@ -583,7 +583,7 @@ export default function GlobalCreativesPage() {
 
       {/* Mobile Action Bar */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur border-t md:hidden z-50">
+        <div className="fixed bottom-0 left-0 right-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-background/95 backdrop-blur border-t md:hidden z-50">
           <div className="flex gap-3 max-w-lg mx-auto">
             <Button className="flex-1 h-12" onClick={handleBulkDownload}>
               <Download className="mr-2 h-5 w-5" /> Baixar ({selectedIds.size})
