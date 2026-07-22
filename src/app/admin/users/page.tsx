@@ -186,12 +186,12 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Usuários</h1>
+          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Usuários</h1>
           <p className="text-muted-foreground mt-2">Gerenciar todos os usuários registrados</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={()=> setSyncOpen(true)}>Sincronizar do Clerk</Button>
           <Dialog open={syncOpen} onOpenChange={setSyncOpen}>
             <DialogContent>

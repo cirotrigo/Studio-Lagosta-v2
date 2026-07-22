@@ -166,7 +166,7 @@ export function PlanEditDrawer({
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent side="right" className="w-[600px] sm:w-[800px] p-0 flex flex-col h-screen max-h-screen">
+      <SheetContent side="right" className="w-full sm:w-[600px] sm:max-w-[90vw] lg:w-[800px] lg:max-w-[800px] p-0 flex flex-col h-dvh max-h-dvh">
         <SheetHeader className="px-6 py-6 border-b shrink-0">
           <div className="flex items-center gap-3">
             <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -371,7 +371,7 @@ export function PlanEditDrawer({
             >
               {isClerkPlan ? (
                 <div className="space-y-3">
-                  <FieldGroup className="grid-cols-3">
+                  <FieldGroup className="grid-cols-1 sm:grid-cols-3">
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Moeda</Label>
                       <Input disabled className="bg-muted font-mono" value={currencyDisplay || '—'} />

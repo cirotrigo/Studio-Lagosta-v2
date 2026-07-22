@@ -218,7 +218,7 @@ export default function SiteSettingsPage() {
       {/* Form */}
       <form onSubmit={handleSubmit}>
         <Tabs defaultValue="brand" className="w-full">
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="flex w-full justify-start overflow-x-auto md:grid md:grid-cols-5">
             <TabsTrigger value="brand">
               <Globe className="mr-2 h-4 w-4" />
               Marca

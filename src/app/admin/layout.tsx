@@ -15,7 +15,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <SidebarInset>
           <div className="flex min-h-svh flex-col">
             <AdminTopbar />
-            <main className="flex-1 overflow-y-auto p-6">
+            <main className="flex-1 overflow-y-auto p-4 md:p-6">
               <div className="container mx-auto max-w-7xl">
                 <AdminBreadcrumbs />
                 {children}
@@ -39,7 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       <SidebarInset>
         <div className="flex min-h-svh flex-col">
           <AdminTopbar />
-          <main className="flex-1 overflow-y-auto p-6">
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
             <div className="container mx-auto max-w-7xl">
               <AdminBreadcrumbs />
               {children}
