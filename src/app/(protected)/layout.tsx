@@ -79,6 +79,21 @@ export default function ProtectedLayout({
     );
   }
 
+  // Editor de templates ocupa a tela inteira, sem topbar/breadcrumb/painel
+  const isFullBleedRoute = /^\/templates\/[^/]+\/editor/.test(pathname);
+  if (isFullBleedRoute) {
+    return (
+      <AudioPlayerProvider>
+        <PageMetadataProvider>
+          <div className="min-h-dvh w-full text-foreground overflow-x-hidden">
+            {children}
+          </div>
+          <ImproveQueueProvider />
+        </PageMetadataProvider>
+      </AudioPlayerProvider>
+    );
+  }
+
   // Authenticated layout with sidebar
   return (
     <AudioPlayerProvider>

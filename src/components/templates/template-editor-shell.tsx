@@ -12,7 +12,8 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check } from 'lucide-react'
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
 import { EditorSidebar } from './sidebar/editor-sidebar'
@@ -210,8 +211,18 @@ function TemplateEditorContent({
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
   const [showScheduleModal, setShowScheduleModal] = React.useState(false)
+  const [mobileFinishOpen, setMobileFinishOpen] = React.useState(false)
 
   const canSchedule = templateType === 'STORY' && !!currentPageId
+
+  const handleBack = React.useCallback(() => {
+    if (dirty && !window.confirm('Você tem alterações não salvas. Sair mesmo assim?')) return
+    if (agendaMode) {
+      router.back()
+      return
+    }
+    router.push(`/projects/${projectId}?tab=templates`)
+  }, [dirty, agendaMode, router, projectId])
 
   usePageConfig(
     `${name || 'Editor de Template'}`,
@@ -505,21 +516,25 @@ function TemplateEditorContent({
   const mobileEditorContent = (
     <div className="polotno-editor flex overflow-hidden bg-background h-[100dvh] flex-col">
       {/* Minimal Mobile Header - Only name and save */}
-      <header className="flex h-12 flex-shrink-0 items-center justify-between border-b border-border/40 bg-card px-3 shadow-sm">
+      <header className="flex h-12 flex-shrink-0 items-center gap-1 border-b border-border/40 bg-card px-2 pt-safe shadow-sm">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={handleBack}
+          className="h-9 w-9 flex-shrink-0"
+          aria-label="Voltar para os templates"
+        >
+          <ArrowLeft className="h-5 w-5" />
+        </Button>
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <FileText className="h-4 w-4 text-primary flex-shrink-0" />
           <Input
-            className="h-7 flex-1 border-0 bg-transparent text-xs font-medium focus-visible:ring-0 px-1"
+            className="h-7 flex-1 border-0 bg-transparent text-sm font-medium focus-visible:ring-0 px-1"
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="Nome do template"
           />
-          {dirty && <span className="text-xs text-orange-500 flex-shrink-0">●</span>}
+          {dirty && <span className="text-xs text-orange-500 flex-shrink-0" title="Alterações não salvas">●</span>}
         </div>
-        <Button size="sm" variant="ghost" onClick={handleSave} disabled={isSaving || !dirty} className="h-7 text-xs px-2">
-          <Save className="mr-1 h-3 w-3" />
-          {isSaving ? 'Salvando...' : 'Salvar'}
-        </Button>
       </header>
 
       {/* Main Canvas Area - Full Screen */}
@@ -662,11 +677,21 @@ function TemplateEditorContent({
 
   // Desktop Layout
   const editorContent = (
-    <div className={`polotno-editor flex overflow-hidden bg-background ${isFullscreen ? 'h-screen w-screen' : 'h-[calc(100vh-4rem)]'} flex-col`}>
+    <div className={`polotno-editor flex overflow-hidden bg-background ${isFullscreen ? 'h-screen w-screen' : 'h-dvh'} flex-col`}>
       {/* Top Toolbar - Polotno Style */}
       <header className={`flex h-14 flex-shrink-0 items-center justify-between gap-2 border-b border-border/40 bg-card px-4 shadow-sm ${isFullscreen ? 'hidden' : ''}`}>
         {/* Left: Logo + Template Name */}
-        <div className="flex min-w-0 flex-shrink items-center gap-3">
+        <div className="flex min-w-0 flex-shrink items-center gap-2">
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={handleBack}
+            className="h-8 w-8 flex-shrink-0"
+            aria-label="Voltar para os templates"
+            title="Voltar para os templates"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <FileText className="h-5 w-5 flex-shrink-0 text-primary" />
           <Input
             className="h-8 w-32 min-w-0 border-0 bg-transparent text-sm font-medium focus-visible:ring-0 lg:w-64"
@@ -696,8 +721,8 @@ function TemplateEditorContent({
                 {isSaving ? 'Salvando...' : dirty ? 'Salvar Template' : 'Salvo'}
               </Button>
               <Button size="sm" onClick={handleExport} disabled={isExporting || isGeneratingMultiple}>
-                <Save className="mr-2 h-4 w-4" />
-                {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar Criativo'}
+                <FileImage className="mr-2 h-4 w-4" />
+                {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Gerar Criativo'}
               </Button>
               {canSchedule && (
                 <Button size="sm" variant="outline" onClick={() => setShowScheduleModal(true)}>
@@ -1046,20 +1071,88 @@ function TemplateEditorContent({
                   )}
                 </div>
 
-                {/* Right: Save Creative Button */}
+                {/* Right: Finish Button (abre menu de ações) */}
                 <Button
                   className="h-14 px-6 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-base font-medium"
-                  onClick={handleExport}
+                  onClick={() => setMobileFinishOpen(true)}
                   disabled={isExporting || isGeneratingMultiple}
                 >
-                  <Save className="mr-2 h-5 w-5" />
-                  {isExporting || isGeneratingMultiple ? 'Salvando...' : 'Salvar'}
+                  <Check className="mr-2 h-5 w-5" />
+                  {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Concluir'}
                 </Button>
               </div>
             </div>
           </>,
           document.body
         )}
+
+        {/* Menu Concluir — ações de salvamento explicadas */}
+        <Sheet open={mobileFinishOpen} onOpenChange={setMobileFinishOpen}>
+          <SheetContent side="bottom" className="z-[10001] rounded-t-2xl p-0 gap-0">
+            <SheetTitle className="px-4 pt-4 pb-2 text-sm font-semibold text-muted-foreground">
+              O que você quer fazer?
+            </SheetTitle>
+            <div className="flex flex-col p-2">
+              <button
+                type="button"
+                className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                disabled={isSaving}
+                onClick={() => {
+                  setMobileFinishOpen(false)
+                  void handleSave()
+                }}
+              >
+                <Save className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">
+                    {isSaving ? 'Salvando...' : dirty ? 'Salvar template' : 'Template salvo'}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    Guarda as alterações deste modelo para continuar depois
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent disabled:opacity-50"
+                disabled={isExporting || isGeneratingMultiple}
+                onClick={() => {
+                  setMobileFinishOpen(false)
+                  void handleExport()
+                }}
+              >
+                <FileImage className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">Gerar criativo</span>
+                  <span className="block text-xs text-muted-foreground">
+                    Cria a imagem final e salva na galeria de criativos
+                  </span>
+                </span>
+              </button>
+              {canSchedule && (
+                <button
+                  type="button"
+                  className="flex items-start gap-3 rounded-lg p-3 text-left transition-colors hover:bg-accent"
+                  onClick={() => {
+                    setMobileFinishOpen(false)
+                    setShowScheduleModal(true)
+                  }}
+                >
+                  <Calendar className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Agendar story</span>
+                    <span className="block text-xs text-muted-foreground">
+                      Gera o criativo e agenda a publicação na agenda
+                    </span>
+                  </span>
+                </button>
+              )}
+              <div className="px-3 py-1 [&>button]:w-full">
+                <VideoExportButton />
+              </div>
+            </div>
+          </SheetContent>
+        </Sheet>
 
         <GenerateCreativesModal
           open={showGenerateModal}
