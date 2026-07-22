@@ -526,8 +526,8 @@ export default function ProjectCreativesPage() {
       </div>
 
       <Card className="flex flex-wrap items-center gap-3 p-4">
-        <div className="flex flex-1 items-center gap-2">
-          <div className="relative w-full max-w-sm">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-1">
+          <div className="relative w-full sm:max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por template ou ID"
@@ -537,7 +537,7 @@ export default function ProjectCreativesPage() {
             />
           </div>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
-            <SelectTrigger className="w-[160px]">
+            <SelectTrigger className="w-full sm:w-[160px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -561,7 +561,7 @@ export default function ProjectCreativesPage() {
             <label htmlFor="only-result">Somente com arquivo</label>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto">
           <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
             <Grid3X3 className="h-4 w-4" />
           </Button>
@@ -717,7 +717,8 @@ export default function ProjectCreativesPage() {
       ) : (
         <Card className="overflow-hidden">
           <ScrollArea className="h-[600px]">
-            <table className="w-full table-fixed text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] table-fixed text-sm">
               <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-32 px-4 py-2 text-left">Criativo</th>
@@ -830,6 +831,7 @@ export default function ProjectCreativesPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </ScrollArea>
         </Card>
       )}

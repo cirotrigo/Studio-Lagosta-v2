@@ -923,7 +923,8 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       ) : (
         <Card className="overflow-hidden">
           <ScrollArea className="h-[600px]">
-            <table className="w-full table-fixed text-sm">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[720px] table-fixed text-sm">
               <thead className="bg-muted/60 text-xs uppercase text-muted-foreground">
                 <tr>
                   <th className="w-32 px-4 py-2 text-left">Criativo</th>
@@ -1052,6 +1053,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 })}
               </tbody>
             </table>
+            </div>
           </ScrollArea>
         </Card>
       )}
