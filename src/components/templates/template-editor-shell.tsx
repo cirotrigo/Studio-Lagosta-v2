@@ -207,7 +207,10 @@ function TemplateEditorContent({
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
   const [activeRightPanel, setActiveRightPanel] = React.useState<RightPanel>(null)
   const [isFullscreen, setIsFullscreen] = React.useState(false)
-  const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(false)
+  // Em telas baixas (notebooks pequenos), inicia com a barra de páginas colapsada
+  const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(
+    () => typeof window !== 'undefined' && window.innerHeight < 640,
+  )
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
   const [showScheduleModal, setShowScheduleModal] = React.useState(false)
@@ -1279,33 +1282,32 @@ function SortablePageThumbnail({ page, index, isActive, onClick }: SortablePageT
       {...attributes}
       {...listeners}
       onClick={onClick}
-      className={`group relative flex flex-shrink-0 cursor-move flex-col items-center gap-1 transition-all ${isActive ? 'scale-105' : 'hover:scale-102'
+      className={`group relative flex flex-shrink-0 cursor-move items-center transition-all ${isActive ? 'scale-105' : 'hover:scale-102'
         } ${isDragging ? 'z-50' : ''}`}
-      title="Clique para selecionar, arraste para reordenar"
+      title={`Página ${index + 1} — clique para selecionar, arraste para reordenar`}
     >
       {/* Miniatura */}
       <div
-        className={`flex h-14 w-14 items-center justify-center overflow-hidden rounded border-2 transition-all ${isActive
+        className={`relative flex h-12 w-12 items-center justify-center overflow-hidden rounded border-2 transition-all ${isActive
             ? 'border-primary shadow-md'
             : 'border-border/60 hover:border-primary/60'
           } ${isDragging ? 'ring-2 ring-primary ring-offset-2' : ''}`}
       >
         {page.thumbnail ? (
-          <Image src={page.thumbnail} alt={page.name} width={56} height={56} className="object-cover" unoptimized />
+          <Image src={page.thumbnail} alt={page.name} width={48} height={48} className="object-cover" unoptimized />
         ) : (
           <div className="flex h-full w-full items-center justify-center bg-muted/50">
             <span className="text-xs font-semibold text-muted-foreground">{index + 1}</span>
           </div>
         )}
+        {/* Número da página sobreposto */}
+        <span
+          className={`absolute bottom-0 right-0 rounded-tl bg-black/70 px-1 text-[9px] font-semibold leading-4 ${isActive ? 'text-primary' : 'text-white/80'
+            }`}
+        >
+          {index + 1}
+        </span>
       </div>
-
-      {/* Label */}
-      <span
-        className={`text-[10px] transition-colors ${isActive ? 'font-semibold text-primary' : 'text-muted-foreground'
-          }`}
-      >
-        Pág. {index + 1}
-      </span>
     </div>
   )
 }
@@ -1503,7 +1505,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   }, [sortedPages, currentPageId, setCurrentPageId])
 
   return (
-    <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${isCollapsed ? 'h-10' : 'h-32'
+    <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${isCollapsed ? 'h-10' : 'h-[4.5rem]'
       }`}>
       {/* Estado colapsado - apenas contador e botão de expandir */}
       {isCollapsed ? (
@@ -1522,110 +1524,25 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           </Button>
         </div>
       ) : (
-        <>
-          {/* Controles de navegação e ações */}
-          <div className="flex items-center justify-between border-b border-border/40 px-4 py-2">
-            <div className="flex items-center gap-2">
-              {/* Navegação anterior/próxima */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
-                  if (currentIndex > 0) {
-                    setCurrentPageId(sortedPages[currentIndex - 1].id)
-                  }
-                }}
-                disabled={sortedPages.findIndex((p) => p.id === currentPageId) === 0}
-                className="h-8 w-8 p-0"
-                title="Página anterior (Ctrl+PageUp)"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-
-              <span className="whitespace-nowrap text-xs text-muted-foreground">
-                {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
-              </span>
-
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
-                  if (currentIndex < sortedPages.length - 1) {
-                    setCurrentPageId(sortedPages[currentIndex + 1].id)
-                  }
-                }}
-                disabled={sortedPages.findIndex((p) => p.id === currentPageId) === sortedPages.length - 1}
-                className="h-8 w-8 p-0"
-                title="Próxima página (Ctrl+PageDown)"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </Button>
-
-              {/* Botão de colapsar */}
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={onToggleCollapse}
-                className="ml-2 h-8 w-8 p-0"
-                title="Ocultar barra de páginas"
-              >
-                <ChevronDown className="h-4 w-4" />
-              </Button>
-            </div>
-
-            {/* Ações da página atual */}
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (currentPageId) {
-                    handleDuplicatePage(currentPageId, e)
-                  }
-                }}
-                className="h-8"
-                title="Duplicar página"
-              >
-                <Copy className="mr-2 h-3.5 w-3.5" />
-                Duplicar
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  if (currentPageId) {
-                    handleDeletePage(currentPageId, e)
-                  }
-                }}
-                disabled={pages.length <= 1}
-                className="h-8"
-                title="Deletar página"
-              >
-                <Trash2 className="mr-2 h-3.5 w-3.5" />
-                Deletar
-              </Button>
-
-              <Button
-                size="sm"
-                variant="default"
-                onClick={handleAddPage}
-                className="h-8"
-                title="Adicionar nova página"
-              >
-                <Plus className="mr-2 h-3.5 w-3.5" />
-                Nova Página
-              </Button>
-
-            </div>
+        <div className="flex h-full items-center gap-2 px-3">
+          {/* Colapsar + contador */}
+          <div className="flex flex-shrink-0 items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={onToggleCollapse}
+              className="h-8 w-8 p-0"
+              title="Ocultar barra de páginas"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+            <span className="whitespace-nowrap text-xs text-muted-foreground">
+              {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
+            </span>
           </div>
 
           {/* Miniaturas das páginas */}
-          <div className="flex flex-1 items-center gap-3 overflow-x-auto px-4 py-2">
+          <div className="flex flex-1 items-center gap-2 overflow-x-auto px-1 py-1">
             <DndContext
               sensors={sensors}
               collisionDetection={closestCenter}
@@ -1651,13 +1568,58 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
             {/* Botão para adicionar página */}
             <button
               onClick={handleAddPage}
-              className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
+              className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
               title="Adicionar nova página"
             >
               <Plus className="h-5 w-5 text-muted-foreground" />
             </button>
           </div>
-        </>
+
+          {/* Ações da página atual */}
+          <div className="flex flex-shrink-0 items-center gap-1.5">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (currentPageId) {
+                  handleDuplicatePage(currentPageId, e)
+                }
+              }}
+              className="h-8 w-8 p-0"
+              title="Duplicar página"
+            >
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(e) => {
+                e.stopPropagation()
+                if (currentPageId) {
+                  handleDeletePage(currentPageId, e)
+                }
+              }}
+              disabled={pages.length <= 1}
+              className="h-8 w-8 p-0"
+              title="Deletar página"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleAddPage}
+              className="h-8"
+              title="Adicionar nova página (Ctrl+PageUp/PageDown navega)"
+            >
+              <Plus className="h-3.5 w-3.5 xl:mr-2" />
+              <span className="hidden xl:inline">Nova Página</span>
+            </Button>
+          </div>
+        </div>
       )}
     </div>
   )
