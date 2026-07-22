@@ -20,6 +20,7 @@ import {
   AlignCenter,
   AlignRight,
   Type,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -321,7 +322,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
         {/* Fonte e Tamanho */}
         <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Select value={fontDisplayName} onValueChange={handleFontFamilyChange}>
-            <SelectTrigger className="h-8 w-[180px] text-xs">
+            <SelectTrigger className="h-8 w-[150px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="max-h-[400px]">
@@ -391,147 +392,148 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           </Button>
         </div>
 
-        {/* Alinhamento */}
+        {/* Cor do texto - acesso rápido */}
         <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
-          <Button
-            variant={textAlign === 'left' ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => handleAlignChange('left')}
-            title="Alinhar à esquerda"
-          >
-            <AlignLeft className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={textAlign === 'center' ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => handleAlignChange('center')}
-            title="Centralizar"
-          >
-            <AlignCenter className="h-4 w-4" />
-          </Button>
-          <Button
-            variant={textAlign === 'right' ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 w-8 p-0"
-            onClick={() => handleAlignChange('right')}
-            title="Alinhar à direita"
-          >
-            <AlignRight className="h-4 w-4" />
-          </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="h-8 w-10 rounded border border-border cursor-pointer hover:border-primary transition"
+                style={{ backgroundColor: color }}
+                title="Cor do texto"
+              />
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <ColorPicker
+                label="Cor do Texto"
+                value={color}
+                onChange={handleColorChange}
+              />
+            </PopoverContent>
+          </Popover>
         </div>
 
-        {/* Uppercase Toggle */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
-          <Button
-            variant={isUppercase ? 'default' : 'outline'}
-            size="sm"
-            className="h-8 px-2 font-semibold"
-            onClick={toggleUppercase}
-            title={isUppercase ? 'Desativar maiúsculas (Aa)' : 'Ativar maiúsculas (AA)'}
-          >
-            <span className="text-xs">{isUppercase ? 'AA' : 'Aa'}</span>
-          </Button>
-        </div>
+        {/* Mais opções: alinhamento, maiúsculas, contorno, espaçamento, opacidade */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="outline" size="sm" className="h-8 px-2 flex-shrink-0" title="Mais opções de texto">
+              <SlidersHorizontal className="h-4 w-4" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-3">
+            {/* Alinhamento e maiúsculas */}
+            <div className="flex items-center gap-1">
+              <Button
+                variant={textAlign === 'left' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleAlignChange('left')}
+                title="Alinhar à esquerda"
+              >
+                <AlignLeft className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={textAlign === 'center' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleAlignChange('center')}
+                title="Centralizar"
+              >
+                <AlignCenter className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={textAlign === 'right' ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={() => handleAlignChange('right')}
+                title="Alinhar à direita"
+              >
+                <AlignRight className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={isUppercase ? 'default' : 'outline'}
+                size="sm"
+                className="ml-auto h-8 px-2 font-semibold"
+                onClick={toggleUppercase}
+                title={isUppercase ? 'Desativar maiúsculas (Aa)' : 'Ativar maiúsculas (AA)'}
+              >
+                <span className="text-xs">{isUppercase ? 'AA' : 'Aa'}</span>
+              </Button>
+            </div>
 
-        {/* Cores */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
-          <div className="flex items-center gap-1">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Cor:</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  className="h-8 w-12 rounded border border-border cursor-pointer hover:border-primary transition"
-                  style={{ backgroundColor: color }}
-                  title="Cor do texto"
-                />
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <ColorPicker
-                  label="Cor do Texto"
-                  value={color}
-                  onChange={handleColorChange}
-                />
-              </PopoverContent>
-            </Popover>
-          </div>
-          <div className="flex items-center gap-1">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Contorno:</Label>
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  className="h-8 w-12 rounded border border-border cursor-pointer hover:border-primary transition"
-                  style={{ backgroundColor: strokeColor }}
-                  title="Cor do contorno"
-                />
-              </PopoverTrigger>
-              <PopoverContent className="w-80">
-                <ColorPicker
-                  label="Cor do Contorno"
-                  value={strokeColor}
-                  onChange={handleStrokeColorChange}
-                />
-              </PopoverContent>
-            </Popover>
-            <Input
-              type="number"
-              min={0}
-              max={20}
-              value={strokeWidth}
-              onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
-              onBlur={(e) => handleStrokeWidthCommit(Number(e.target.value))}
-              className="h-8 w-14 text-xs"
-              title="Espessura do contorno"
-            />
-          </div>
-        </div>
+            {/* Contorno */}
+            <div className="flex items-center gap-2">
+              <Label className="w-16 text-xs text-muted-foreground">Contorno</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    className="h-8 w-10 rounded border border-border cursor-pointer hover:border-primary transition"
+                    style={{ backgroundColor: strokeColor }}
+                    title="Cor do contorno"
+                  />
+                </PopoverTrigger>
+                <PopoverContent className="w-80">
+                  <ColorPicker
+                    label="Cor do Contorno"
+                    value={strokeColor}
+                    onChange={handleStrokeColorChange}
+                  />
+                </PopoverContent>
+              </Popover>
+              <Input
+                type="number"
+                min={0}
+                max={20}
+                value={strokeWidth}
+                onChange={(e) => handleStrokeWidthChange(Number(e.target.value))}
+                onBlur={(e) => handleStrokeWidthCommit(Number(e.target.value))}
+                className="h-8 w-16 text-xs"
+                title="Espessura do contorno"
+              />
+            </div>
 
-        {/* Espaçamento */}
-        <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
-          <div className="flex items-center gap-1">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Altura:</Label>
-            <Input
-              type="number"
-              min={0.5}
-              max={3}
-              step={0.1}
-              value={lineHeight}
-              onChange={(e) => handleLineHeightChange(Number(e.target.value))}
-              onBlur={(e) => handleLineHeightCommit(Number(e.target.value))}
-              className="h-8 w-16 text-xs"
-              title="Altura da linha"
-            />
-          </div>
-          <div className="flex items-center gap-1">
-            <Label className="text-xs text-muted-foreground whitespace-nowrap">Espaço:</Label>
-            <Input
-              type="number"
-              min={-10}
-              max={50}
-              value={letterSpacing}
-              onChange={(e) => handleLetterSpacingChange(Number(e.target.value))}
-              onBlur={(e) => handleLetterSpacingCommit(Number(e.target.value))}
-              className="h-8 w-16 text-xs"
-              title="Espaçamento entre letras"
-            />
-          </div>
-        </div>
+            {/* Espaçamento */}
+            <div className="flex items-center gap-2">
+              <Label className="w-16 text-xs text-muted-foreground">Altura</Label>
+              <Input
+                type="number"
+                min={0.5}
+                max={3}
+                step={0.1}
+                value={lineHeight}
+                onChange={(e) => handleLineHeightChange(Number(e.target.value))}
+                onBlur={(e) => handleLineHeightCommit(Number(e.target.value))}
+                className="h-8 w-16 text-xs"
+                title="Altura da linha"
+              />
+              <Label className="text-xs text-muted-foreground">Espaço</Label>
+              <Input
+                type="number"
+                min={-10}
+                max={50}
+                value={letterSpacing}
+                onChange={(e) => handleLetterSpacingChange(Number(e.target.value))}
+                onBlur={(e) => handleLetterSpacingCommit(Number(e.target.value))}
+                className="h-8 w-16 text-xs"
+                title="Espaçamento entre letras"
+              />
+            </div>
 
-        {/* Opacidade */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <Label className="text-xs text-muted-foreground whitespace-nowrap">Opacidade:</Label>
-          <Slider
-            value={[opacity]}
-            onValueChange={handleOpacityChange}
-            min={0}
-            max={1}
-            step={0.1}
-            className="w-24"
-            title="Opacidade"
-          />
-          <span className="text-xs text-muted-foreground w-8">{Math.round(opacity * 100)}%</span>
-        </div>
+            {/* Opacidade */}
+            <div className="flex items-center gap-2">
+              <Label className="w-16 text-xs text-muted-foreground">Opacidade</Label>
+              <Slider
+                value={[opacity]}
+                onValueChange={handleOpacityChange}
+                min={0}
+                max={1}
+                step={0.1}
+                className="flex-1"
+                title="Opacidade"
+              />
+              <span className="w-8 text-xs text-muted-foreground">{Math.round(opacity * 100)}%</span>
+            </div>
+          </PopoverContent>
+        </Popover>
 
       </div>
     </div>
