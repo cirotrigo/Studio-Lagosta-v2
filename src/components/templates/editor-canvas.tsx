@@ -239,8 +239,8 @@ export function EditorCanvas() {
       <div className="flex-1 flex relative overflow-hidden">
         {/* Toolbars flutuam sobre o canvas — não ocupam altura de layout */}
         <div ref={toolbarOverlayRef} className="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col items-center gap-1.5 px-2 pt-2">
-          {/* Alignment Toolbar - sempre visível */}
-          <div className="pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80">
+          {/* Alignment Toolbar - no mobile só aparece com camada selecionada; desktop sempre */}
+          <div className={`pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80 ${selectedLayerIds.length > 0 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center justify-center p-1.5 min-w-max">
           <AlignmentToolbar
             selectedCount={selectedLayerIds.length}

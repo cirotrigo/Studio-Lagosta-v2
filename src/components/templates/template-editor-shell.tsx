@@ -160,7 +160,25 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'ai-creative' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'ai-creative' | 'layers' | null
+
+// Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
+const MOBILE_TOOL_ITEMS: Array<{
+  key: Exclude<SidePanel, null | 'templates'>
+  label: string
+  icon: React.ComponentType<{ className?: string }>
+}> = [
+  { key: 'text', label: 'Texto', icon: TypeIcon },
+  { key: 'images', label: 'Imagens', icon: ImageIcon },
+  { key: 'videos', label: 'Vídeos', icon: Film },
+  { key: 'elements', label: 'Elementos', icon: Square },
+  { key: 'logo', label: 'Logo', icon: Award },
+  { key: 'colors', label: 'Cores', icon: Palette },
+  { key: 'gradients', label: 'Gradientes', icon: Sparkles },
+  { key: 'layers', label: 'Camadas', icon: Layers2 },
+  { key: 'ai-images', label: 'IA ✨', icon: Wand2 },
+  { key: 'ai-creative', label: 'Editor', icon: Sparkles },
+]
 type RightPanel = 'properties' | 'effects' | 'layers' | 'chat' | 'creatives' | 'agenda' | null
 
 function TemplateEditorContent({
@@ -196,6 +214,9 @@ function TemplateEditorContent({
     zoomOut,
     setZoom,
     setPendingAIImageEdit,
+    selectedLayerIds,
+    removeLayer,
+    selectLayers,
   } = useTemplateEditor()
 
   const { pages, currentPageId, setCurrentPageId, isLoading: isPagesLoading } = useMultiPage()
@@ -551,98 +572,43 @@ function TemplateEditorContent({
         onOpenChange={setMobileToolsOpen}
         title="Ferramentas"
       >
-        {/* Tool selection buttons */}
-        <div className="grid grid-cols-3 gap-2 p-4">
-          <Button
-            variant={activePanel === 'text' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('text')}
-          >
-            <TypeIcon className="h-5 w-5" />
-            <span className="text-xs">Texto</span>
-          </Button>
-          <Button
-            variant={activePanel === 'images' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('images')}
-          >
-            <ImageIcon className="h-5 w-5" />
-            <span className="text-xs">Imagens</span>
-          </Button>
-          <Button
-            variant={activePanel === 'videos' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('videos')}
-          >
-            <Film className="h-5 w-5" />
-            <span className="text-xs">Vídeos</span>
-          </Button>
-          <Button
-            variant={activePanel === 'elements' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('elements')}
-          >
-            <Square className="h-5 w-5" />
-            <span className="text-xs">Elementos</span>
-          </Button>
-          <Button
-            variant={activePanel === 'logo' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('logo')}
-          >
-            <Award className="h-5 w-5" />
-            <span className="text-xs">Logo</span>
-          </Button>
-          <Button
-            variant={activePanel === 'colors' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('colors')}
-          >
-            <Palette className="h-5 w-5" />
-            <span className="text-xs">Cores</span>
-          </Button>
-          <Button
-            variant={activePanel === 'gradients' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('gradients')}
-          >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-xs">Gradientes</span>
-          </Button>
-          <Button
-            variant={activePanel === 'ai-images' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('ai-images')}
-          >
-            <Wand2 className="h-5 w-5" />
-            <span className="text-xs">IA ✨</span>
-          </Button>
-          <Button
-            variant={activePanel === 'ai-creative' ? 'default' : 'outline'}
-            className="h-16 flex flex-col gap-1"
-            onClick={() => setActivePanel('ai-creative')}
-          >
-            <Sparkles className="h-5 w-5" />
-            <span className="text-xs">Editor</span>
-          </Button>
-        </div>
+        {/* Seleção de ferramenta: grid quando nada ativo, linha de chips quando um painel está aberto */}
+        {activePanel ? (
+          <div className="flex-shrink-0 px-4 pb-2">
+            <div className="flex gap-1.5 overflow-x-auto scrollbar-hide">
+              {MOBILE_TOOL_ITEMS.map((tool) => (
+                <Button
+                  key={tool.key}
+                  variant={activePanel === tool.key ? 'default' : 'outline'}
+                  size="sm"
+                  className="h-9 flex-shrink-0 gap-1.5 px-3"
+                  onClick={() => setActivePanel(tool.key)}
+                >
+                  <tool.icon className="h-4 w-4" />
+                  <span className="text-xs">{tool.label}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-3 gap-2 p-4">
+            {MOBILE_TOOL_ITEMS.map((tool) => (
+              <Button
+                key={tool.key}
+                variant="outline"
+                className="h-16 flex flex-col gap-1"
+                onClick={() => setActivePanel(tool.key)}
+              >
+                <tool.icon className="h-5 w-5" />
+                <span className="text-xs">{tool.label}</span>
+              </Button>
+            ))}
+          </div>
+        )}
 
         {/* Tool Panel Content */}
         {activePanel && (
           <div className="flex-1 overflow-y-auto px-4 pb-4">
-            <div className="mb-3 pb-2 border-b border-border/40">
-              <h3 className="text-sm font-semibold">
-                {activePanel === 'text' && 'Texto & Fontes'}
-                {activePanel === 'images' && 'Imagens'}
-                {activePanel === 'videos' && 'Vídeos'}
-                {activePanel === 'elements' && 'Elementos'}
-                {activePanel === 'logo' && 'Logo da Marca'}
-                {activePanel === 'colors' && 'Cores da Marca'}
-                {activePanel === 'gradients' && 'Gradientes'}
-                {activePanel === 'ai-images' && 'Imagens IA ✨'}
-                {activePanel === 'ai-creative' && 'Editor'}
-              </h3>
-            </div>
             {activePanel === 'text' && <TextToolsPanel />}
             {activePanel === 'images' && <ImagesPanelContent />}
             {activePanel === 'videos' && <VideosPanel />}
@@ -651,6 +617,7 @@ function TemplateEditorContent({
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
+            {activePanel === 'layers' && <LayersPanelAdvanced />}
             {activePanel === 'ai-creative' && (
               <CreativeGeneratorPanel
                 projectId={projectId}
@@ -994,19 +961,21 @@ function TemplateEditorContent({
         {/* Floating Controls - Renderizados com Portal fora da hierarquia do editor */}
         {typeof window !== 'undefined' && createPortal(
           <>
-            {/* Zoom Controls - Componente minimalista otimizado */}
-            <ZoomControlsMobile
-              zoom={zoom}
-              onZoomChange={(newZoom) => {
-                setZoom(newZoom)
-                // Trigger resize event para ajustar canvas
-                if (newZoom === 0.25) {
-                  setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
-                }
-              }}
-              minZoom={0.1}
-              maxZoom={2}
-            />
+            {/* Zoom Controls - ocultos enquanto drawer/menu estão abertos (evita sobreposição) */}
+            {!mobileToolsOpen && !mobileFinishOpen && (
+              <ZoomControlsMobile
+                zoom={zoom}
+                onZoomChange={(newZoom) => {
+                  setZoom(newZoom)
+                  // Trigger resize event para ajustar canvas
+                  if (newZoom === 0.25) {
+                    setTimeout(() => window.dispatchEvent(new Event('resize')), 50)
+                  }
+                }}
+                minZoom={0.1}
+                maxZoom={2}
+              />
+            )}
 
             {/* Bottom Toolbar - Ferramentas e Salvar */}
             <div className="fixed bottom-4 left-4 right-4 z-[10000]">
@@ -1024,8 +993,8 @@ function TemplateEditorContent({
                     {mobileToolsOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
                   </Button>
 
-                  {/* Pages Navigation (if multiple pages) */}
-                  {pages.length > 1 && !mobileToolsOpen && (
+                  {/* Pages Navigation (esconde com camada selecionada — a lixeira ocupa o espaço) */}
+                  {pages.length > 1 && !mobileToolsOpen && selectedLayerIds.length === 0 && (
                     <div className="bg-background/95 backdrop-blur-lg rounded-full shadow-xl px-3 py-2 flex items-center gap-2 border border-border/40">
                       <Button
                         size="icon"
@@ -1074,15 +1043,33 @@ function TemplateEditorContent({
                   )}
                 </div>
 
-                {/* Right: Finish Button (abre menu de ações) */}
-                <Button
-                  className="h-14 px-6 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-base font-medium"
-                  onClick={() => setMobileFinishOpen(true)}
-                  disabled={isExporting || isGeneratingMultiple}
-                >
-                  <Check className="mr-2 h-5 w-5" />
-                  {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Concluir'}
-                </Button>
+                {/* Right: Excluir camada selecionada + Finish Button */}
+                <div className="flex items-center gap-2">
+                  {selectedLayerIds.length > 0 && !mobileToolsOpen && (
+                    <Button
+                      size="icon"
+                      variant="destructive"
+                      className="h-12 w-12 rounded-full shadow-xl"
+                      onClick={() => {
+                        const label = selectedLayerIds.length === 1 ? 'esta camada' : `estas ${selectedLayerIds.length} camadas`
+                        if (!window.confirm(`Excluir ${label}?`)) return
+                        selectedLayerIds.forEach((id) => removeLayer(id))
+                        selectLayers([])
+                      }}
+                      aria-label="Excluir camada selecionada"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </Button>
+                  )}
+                  <Button
+                    className="h-14 px-6 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-base font-medium"
+                    onClick={() => setMobileFinishOpen(true)}
+                    disabled={isExporting || isGeneratingMultiple}
+                  >
+                    <Check className="mr-2 h-5 w-5" />
+                    {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Concluir'}
+                  </Button>
+                </div>
               </div>
             </div>
           </>,

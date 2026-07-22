@@ -322,7 +322,7 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
         {/* Fonte e Tamanho */}
         <div className="flex items-center gap-2 pr-2 border-r border-border/40 flex-shrink-0">
           <Select value={fontDisplayName} onValueChange={handleFontFamilyChange}>
-            <SelectTrigger className="h-8 w-[150px] text-xs">
+            <SelectTrigger className="h-8 w-[120px] sm:w-[150px] text-xs">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="max-h-[400px]">
@@ -356,6 +356,24 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
             </SelectContent>
           </Select>
 
+          {/* Cor do texto - acesso rápido, logo após a fonte */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                className="h-8 w-10 flex-shrink-0 rounded border border-border cursor-pointer hover:border-primary transition"
+                style={{ backgroundColor: color }}
+                title="Cor do texto"
+              />
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <ColorPicker
+                label="Cor do Texto"
+                value={color}
+                onChange={handleColorChange}
+              />
+            </PopoverContent>
+          </Popover>
+
           <div className="flex items-center gap-1">
             <Type className="h-3 w-3 text-muted-foreground" />
             <Input
@@ -370,8 +388,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           </div>
         </div>
 
-        {/* Estilo */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
+        {/* Estilo - no mobile fica dentro do popover de mais opções */}
+        <div className="hidden sm:flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button
             variant={isBold ? 'default' : 'outline'}
             size="sm"
@@ -392,26 +410,6 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           </Button>
         </div>
 
-        {/* Cor do texto - acesso rápido */}
-        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
-          <Popover>
-            <PopoverTrigger asChild>
-              <button
-                className="h-8 w-10 rounded border border-border cursor-pointer hover:border-primary transition"
-                style={{ backgroundColor: color }}
-                title="Cor do texto"
-              />
-            </PopoverTrigger>
-            <PopoverContent className="w-80">
-              <ColorPicker
-                label="Cor do Texto"
-                value={color}
-                onChange={handleColorChange}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-
         {/* Mais opções: alinhamento, maiúsculas, contorno, espaçamento, opacidade */}
         <Popover>
           <PopoverTrigger asChild>
@@ -420,6 +418,28 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-72 space-y-3">
+            {/* Negrito/Itálico - apenas mobile (no desktop ficam na barra) */}
+            <div className="flex items-center gap-1 sm:hidden">
+              <Button
+                variant={isBold ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={toggleBold}
+                title="Negrito"
+              >
+                <Bold className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={isItalic ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 w-8 p-0"
+                onClick={toggleItalic}
+                title="Itálico"
+              >
+                <Italic className="h-4 w-4" />
+              </Button>
+            </div>
+
             {/* Alinhamento e maiúsculas */}
             <div className="flex items-center gap-1">
               <Button
