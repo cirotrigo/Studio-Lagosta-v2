@@ -120,7 +120,7 @@ export function ImageUploader({ postType, images, onChange, maxImages = 10 }: Im
     <div className="space-y-3">
       {/* Image thumbnails (for carousel or single) */}
       {images.length > 0 && (
-        <div className={cn('flex gap-2 flex-wrap', isCarousel && 'grid grid-cols-5 gap-2')}>
+        <div className={cn('flex gap-2 flex-wrap', isCarousel && 'grid grid-cols-3 sm:grid-cols-5 gap-2')}>
           {images.map((img, i) => (
             <div
               key={i}

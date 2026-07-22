@@ -111,7 +111,7 @@ export function CalendarView({ projectId, month, onMonthChange }: CalendarViewPr
                   key={key}
                   href={dayPosts.length > 0 ? `/tools/scheduler/${dayPosts[0].id}` : `/tools/scheduler/new?date=${key}`}
                   className={cn(
-                    'relative min-h-[90px] border-b border-r border-[#27272A] p-1.5 transition-colors duration-200',
+                    'relative min-h-[56px] p-1 sm:min-h-[90px] sm:p-1.5 border-b border-r border-[#27272A] transition-colors duration-200',
                     inMonth ? 'bg-[#0a0a0a]' : 'bg-[#0a0a0a]/50',
                     'hover:bg-[#161616]'
                   )}
@@ -135,7 +135,7 @@ export function CalendarView({ projectId, month, onMonthChange }: CalendarViewPr
                         className="flex items-center gap-1 rounded px-1 py-0.5 bg-[#161616]"
                       >
                         <div className={cn('h-1.5 w-1.5 rounded-full flex-shrink-0', STATUS_COLORS[post.status] || 'bg-zinc-500')} />
-                        <span className="text-[9px] text-[#A1A1AA] truncate">
+                        <span className="hidden sm:inline text-[9px] text-[#A1A1AA] truncate">
                           {post.scheduledDatetime
                             ? format(new Date(post.scheduledDatetime), 'HH:mm')
                             : '--:--'}

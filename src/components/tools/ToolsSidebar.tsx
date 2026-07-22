@@ -28,6 +28,8 @@ import { UserButton } from '@clerk/nextjs'
 interface ToolsSidebarProps {
   collapsed: boolean
   onToggle: () => void
+  /** 'mobile' renderiza dentro do Sheet (drawer), sem colapso e ocupando toda a largura */
+  variant?: 'desktop' | 'mobile'
 }
 
 const toolNavItems = [
@@ -37,14 +39,15 @@ const toolNavItems = [
   { name: 'Hashtag Manager', href: '/tools/hashtags', icon: Hash, enabled: false },
 ]
 
-export function ToolsSidebar({ collapsed, onToggle }: ToolsSidebarProps) {
+export function ToolsSidebar({ collapsed, onToggle, variant = 'desktop' }: ToolsSidebarProps) {
   const pathname = usePathname()
 
   return (
     <aside
       className={cn(
-        'relative flex flex-col h-full bg-[#111111] border-r border-[#1a1a1a] transition-[width] duration-200 ease-in-out flex-shrink-0',
-        collapsed ? 'w-[64px]' : 'w-[240px]'
+        'relative flex-col h-full bg-[#111111] border-r border-[#1a1a1a] transition-[width] duration-200 ease-in-out flex-shrink-0',
+        variant === 'desktop' ? 'hidden md:flex' : 'flex w-full border-r-0',
+        variant === 'desktop' && (collapsed ? 'w-[64px]' : 'w-[240px]')
       )}
     >
       {/* Header: Logo + collapse toggle */}
@@ -71,14 +74,16 @@ export function ToolsSidebar({ collapsed, onToggle }: ToolsSidebarProps) {
             </Link>
           </>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onToggle}
-          className="h-7 w-7 text-[#71717A] hover:text-[#A1A1AA] flex-shrink-0"
-        >
-          {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
-        </Button>
+        {variant === 'desktop' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onToggle}
+            className="h-7 w-7 text-[#71717A] hover:text-[#A1A1AA] flex-shrink-0"
+          >
+            {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronLeft className="h-3.5 w-3.5" />}
+          </Button>
+        )}
       </div>
 
       {/* Project Selector */}
