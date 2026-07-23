@@ -38,7 +38,6 @@ function PopoverContent({
         sideOffset={sideOffset}
         style={{
           zIndex: 99999,
-          position: 'fixed',
           ...props.style,
         }}
         className={cn(

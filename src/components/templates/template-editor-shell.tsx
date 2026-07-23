@@ -239,6 +239,16 @@ function TemplateEditorContent({
 
   const canSchedule = templateType === 'STORY' && !!currentPageId
 
+  // Fecha o drawer de ferramentas assim que um elemento é aplicado no canvas
+  const layerCount = design.layers.length
+  const prevLayerCountRef = React.useRef(layerCount)
+  React.useEffect(() => {
+    if (layerCount > prevLayerCountRef.current && mobileToolsOpen) {
+      setMobileToolsOpen(false)
+    }
+    prevLayerCountRef.current = layerCount
+  }, [layerCount, mobileToolsOpen])
+
   const handleBack = React.useCallback(() => {
     if (dirty && !window.confirm('Você tem alterações não salvas. Sair mesmo assim?')) return
     if (agendaMode) {
@@ -559,6 +569,15 @@ function TemplateEditorContent({
           />
           {dirty && <span className="text-xs text-orange-500 flex-shrink-0" title="Alterações não salvas">●</span>}
         </div>
+        <Button
+          size="sm"
+          className="h-8 flex-shrink-0 px-3 text-xs"
+          onClick={() => setMobileFinishOpen(true)}
+          disabled={isExporting || isGeneratingMultiple}
+        >
+          <Check className="mr-1 h-4 w-4" />
+          {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Concluir'}
+        </Button>
       </header>
 
       {/* Main Canvas Area - Full Screen */}
@@ -993,8 +1012,8 @@ function TemplateEditorContent({
                     {mobileToolsOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
                   </Button>
 
-                  {/* Pages Navigation (esconde com camada selecionada — a lixeira ocupa o espaço) */}
-                  {pages.length > 1 && !mobileToolsOpen && selectedLayerIds.length === 0 && (
+                  {/* Pages Navigation (if multiple pages) */}
+                  {pages.length > 1 && !mobileToolsOpen && (
                     <div className="bg-background/95 backdrop-blur-lg rounded-full shadow-xl px-3 py-2 flex items-center gap-2 border border-border/40">
                       <Button
                         size="icon"
@@ -1043,33 +1062,23 @@ function TemplateEditorContent({
                   )}
                 </div>
 
-                {/* Right: Excluir camada selecionada + Finish Button */}
-                <div className="flex items-center gap-2">
-                  {selectedLayerIds.length > 0 && !mobileToolsOpen && (
-                    <Button
-                      size="icon"
-                      variant="destructive"
-                      className="h-12 w-12 rounded-full shadow-xl"
-                      onClick={() => {
-                        const label = selectedLayerIds.length === 1 ? 'esta camada' : `estas ${selectedLayerIds.length} camadas`
-                        if (!window.confirm(`Excluir ${label}?`)) return
-                        selectedLayerIds.forEach((id) => removeLayer(id))
-                        selectLayers([])
-                      }}
-                      aria-label="Excluir camada selecionada"
-                    >
-                      <Trash2 className="h-5 w-5" />
-                    </Button>
-                  )}
+                {/* Right: Excluir camada selecionada (Concluir fica no header) */}
+                {selectedLayerIds.length > 0 && !mobileToolsOpen && (
                   <Button
-                    className="h-14 px-6 rounded-full shadow-xl bg-primary hover:bg-primary/90 text-base font-medium"
-                    onClick={() => setMobileFinishOpen(true)}
-                    disabled={isExporting || isGeneratingMultiple}
+                    size="icon"
+                    variant="destructive"
+                    className="h-12 w-12 rounded-full shadow-xl"
+                    onClick={() => {
+                      const label = selectedLayerIds.length === 1 ? 'esta camada' : `estas ${selectedLayerIds.length} camadas`
+                      if (!window.confirm(`Excluir ${label}?`)) return
+                      selectedLayerIds.forEach((id) => removeLayer(id))
+                      selectLayers([])
+                    }}
+                    aria-label="Excluir camada selecionada"
                   >
-                    <Check className="mr-2 h-5 w-5" />
-                    {isExporting || isGeneratingMultiple ? 'Gerando...' : 'Concluir'}
+                    <Trash2 className="h-5 w-5" />
                   </Button>
-                </div>
+                )}
               </div>
             </div>
           </>,

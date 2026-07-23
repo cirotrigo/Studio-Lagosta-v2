@@ -417,7 +417,11 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
               <SlidersHorizontal className="h-4 w-4" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-72 space-y-3">
+          <PopoverContent
+            align="end"
+            collisionPadding={12}
+            className="w-72 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] space-y-3 overflow-y-auto"
+          >
             {/* Negrito/Itálico - apenas mobile (no desktop ficam na barra) */}
             <div className="flex items-center gap-1 sm:hidden">
               <Button

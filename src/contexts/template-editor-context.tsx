@@ -72,6 +72,7 @@ export interface TemplateEditorContextValue {
     designData: DesignData
     dynamicFields?: DynamicField[] | null
     name?: string
+    markDirty?: boolean
   }) => void
   forceUpdate?: () => void
   // Alignment & Organization
@@ -155,10 +156,8 @@ export function TemplateEditorProvider({ template, children }: TemplateEditorPro
   const [dynamicFields, setDynamicFieldsState] = React.useState<DynamicField[]>(() =>
     Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [],
   )
-const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>(() => {
-  const firstId = template.designData.layers?.[0]?.id
-  return firstId ? [firstId] : []
-})
+// Começa sem seleção — evita toolbar contextual/lixeira armadas para uma camada que o usuário não escolheu
+const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>([])
 const [dirty, setDirty] = React.useState(false)
 // Zoom inicial depende do dispositivo
 const [zoom, setZoomState] = React.useState(() => getDefaultZoom())
@@ -190,8 +189,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       layers: normalizeLayerOrder(template.designData.layers ?? []),
     })
     setDynamicFieldsState(Array.isArray(template.dynamicFields) ? [...template.dynamicFields] : [])
-    const firstId = template.designData.layers?.[0]?.id
-    setSelectedLayerIds(firstId ? [firstId] : [])
+    setSelectedLayerIds([])
     setDirty(false)
     setZoomState(DEFAULT_ZOOM)
     historyRef.current = { past: [], future: [] }
@@ -458,12 +456,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateHistoryMeta()
       const nextDesign = cloneDesign(previous)
       const existingIds = new Set(nextDesign.layers.map((layer) => layer.id))
-      setSelectedLayerIds((current) => {
-        const filtered = current.filter((id) => existingIds.has(id))
-        if (filtered.length > 0) return filtered
-        const first = nextDesign.layers[0]?.id
-        return first ? [first] : []
-      })
+      setSelectedLayerIds((current) => current.filter((id) => existingIds.has(id)))
       return nextDesign
     })
   }, [updateHistoryMeta])
@@ -479,12 +472,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       updateHistoryMeta()
       const nextDesign = cloneDesign(nextState)
       const existingIds = new Set(nextDesign.layers.map((layer) => layer.id))
-      setSelectedLayerIds((current) => {
-        const filtered = current.filter((id) => existingIds.has(id))
-        if (filtered.length > 0) return filtered
-        const first = nextDesign.layers[0]?.id
-        return first ? [first] : []
-      })
+      setSelectedLayerIds((current) => current.filter((id) => existingIds.has(id)))
       return nextDesign
     })
   }, [updateHistoryMeta])
@@ -895,10 +883,12 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [])
 
   const loadTemplate = React.useCallback(
-    ({ designData, dynamicFields: nextDynamicFields, name: nextName }: {
+    ({ designData, dynamicFields: nextDynamicFields, name: nextName, markDirty = true }: {
       designData: DesignData
       dynamicFields?: DynamicField[] | null
       name?: string
+      /** false = carga de navegação (troca de página), não conta como edição */
+      markDirty?: boolean
     }) => {
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
@@ -911,12 +901,14 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       } else {
         setDynamicFieldsState([])
       }
-      const firstLayerId = clonedDesign.layers[0]?.id
-      setSelectedLayerIds(firstLayerId ? [firstLayerId] : [])
+      // Não auto-selecionar camada ao carregar página — evita toolbar/lixeira armadas sem ação do usuário
+      setSelectedLayerIds([])
       if (nextName) {
         setName(nextName)
       }
-      setDirty(true)
+      if (markDirty) {
+        setDirty(true)
+      }
     },
     [applyDesign, updateHistoryMeta],
   )

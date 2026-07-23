@@ -67,6 +67,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
           layers: (currentPage.layers as Layer[]) || [],
         },
         // name: currentPage.name, // ❌ NÃO PASSAR - isso sobrescreve o nome do template
+        markDirty: false, // trocar/carregar página não é edição do usuário
       })
 
       lastSavedLayersRef.current = serializeLayersForPersistence((currentPage.layers as Layer[]) || [])
