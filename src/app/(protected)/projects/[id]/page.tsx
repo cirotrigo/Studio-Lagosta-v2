@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
-import { Plus } from 'lucide-react'
+import { ArrowLeft, Plus } from 'lucide-react'
+import { usePageMetadata } from '@/contexts/page-metadata'
 import { api } from '@/lib/api-client'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -59,6 +60,14 @@ export default function ProjectDetailPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const projectId = Number(params.id)
+
+  // Header próprio compacto — esconde o breadcrumb automático do layout
+  // (restaura ao sair para não afetar outras páginas)
+  const { setMetadata } = usePageMetadata()
+  useEffect(() => {
+    setMetadata({ showBreadcrumbs: false })
+    return () => setMetadata({ showBreadcrumbs: true })
+  }, [setMetadata])
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [selectedType, setSelectedType] = useState<string>('STORY')
   const queryClient = useQueryClient()
@@ -160,24 +169,25 @@ export default function ProjectDetailPage() {
 
   return (
     <div className="w-full max-w-full overflow-x-hidden px-0">
-      <div className="mb-6 md:mb-8 flex flex-col gap-3 md:gap-4 max-w-full overflow-hidden">
+      <div className="mb-3 flex max-w-full items-center gap-2 overflow-hidden md:mb-4">
         <Button
           variant="ghost"
+          size="icon"
           onClick={() => router.push('/projects')}
-          className="self-start flex-shrink-0"
+          className="h-9 w-9 flex-shrink-0"
+          aria-label="Voltar para projetos"
+          title="Voltar para projetos"
         >
-          ← Voltar para Projetos
+          <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="max-w-full overflow-hidden">
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground break-words overflow-wrap-anywhere">
-            {projectDetails.name}
-          </h1>
-          {projectDetails.description && (
-            <p className="mt-1 text-sm text-muted-foreground break-words overflow-wrap-anywhere">
-              {projectDetails.description}
-            </p>
-          )}
-        </div>
+        <h1 className="min-w-0 truncate text-lg font-semibold text-foreground md:text-xl">
+          {projectDetails.name}
+        </h1>
+        {projectDetails.description && (
+          <span className="hidden min-w-0 truncate text-sm text-muted-foreground lg:inline">
+            — {projectDetails.description}
+          </span>
+        )}
       </div>
 
       <Tabs
