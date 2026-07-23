@@ -51,45 +51,63 @@ interface SelectionState {
   end: number
 }
 
-interface Token {
+interface TokenSegment {
   text: string
-  start: number
-  end: number
-  isWord: boolean
   style?: RichTextStyle
 }
 
-/** Divide o conteúdo em tokens de palavra/espACO respeitando os limites dos estilos */
-function buildTokens(content: string, styles: RichTextStyle[]): Token[] {
-  // 1. Segmentos por limite de estilo
-  const boundaries = new Set<number>([0, content.length])
-  for (const s of styles) {
-    boundaries.add(Math.max(0, Math.min(content.length, s.start)))
-    boundaries.add(Math.max(0, Math.min(content.length, s.end)))
+interface Token {
+  /** Sub-trechos da palavra, divididos nos limites dos estilos (para renderização fiel) */
+  segments: TokenSegment[]
+  start: number
+  end: number
+  isWord: boolean
+}
+
+/** Estilo efetivo em um trecho: o ÚLTIMO estilo aplicado que contém o trecho vence */
+function styleAt(styles: RichTextStyle[], start: number, end: number): RichTextStyle | undefined {
+  for (let i = styles.length - 1; i >= 0; i--) {
+    const s = styles[i]
+    if (s.start <= start && s.end >= end) return s
   }
-  const sorted = [...boundaries].sort((a, b) => a - b)
+  return undefined
+}
 
+/**
+ * Divide o conteúdo em tokens de PALAVRA INTEIRA (unidade de seleção).
+ * Estilos que terminam no meio de uma palavra não quebram o token — a palavra
+ * continua selecionável por inteiro; a renderização usa sub-segmentos.
+ */
+function buildTokens(content: string, styles: RichTextStyle[]): Token[] {
+  const parts = content.split(/(\s+)/).filter((p) => p.length > 0)
   const tokens: Token[] = []
-  for (let i = 0; i < sorted.length - 1; i++) {
-    const segStart = sorted[i]
-    const segEnd = sorted[i + 1]
-    if (segEnd <= segStart) continue
-    const segText = content.substring(segStart, segEnd)
-    const segStyle = styles.find((s) => s.start <= segStart && s.end >= segEnd)
+  let offset = 0
 
-    // 2. Dentro do segmento, separar palavras e espaços/quebras
-    const parts = segText.split(/(\s+)/).filter((p) => p.length > 0)
-    let offset = segStart
-    for (const part of parts) {
-      tokens.push({
-        text: part,
-        start: offset,
-        end: offset + part.length,
-        isWord: !/^\s+$/.test(part),
-        style: segStyle,
-      })
-      offset += part.length
+  for (const part of parts) {
+    const start = offset
+    const end = offset + part.length
+    offset = end
+
+    // Limites de estilo dentro desta palavra
+    const boundaries = new Set<number>([start, end])
+    for (const s of styles) {
+      if (s.start > start && s.start < end) boundaries.add(s.start)
+      if (s.end > start && s.end < end) boundaries.add(s.end)
     }
+    const sorted = [...boundaries].sort((a, b) => a - b)
+
+    const segments: TokenSegment[] = []
+    for (let i = 0; i < sorted.length - 1; i++) {
+      const segStart = sorted[i]
+      const segEnd = sorted[i + 1]
+      if (segEnd <= segStart) continue
+      segments.push({
+        text: content.substring(segStart, segEnd),
+        style: styleAt(styles, segStart, segEnd),
+      })
+    }
+
+    tokens.push({ segments, start, end, isWord: !/^\s+$/.test(part) })
   }
   return tokens
 }
@@ -165,39 +183,36 @@ export function RichTextEditorModal({
   }, [])
 
   // ---- Aplicação de estilos (imediata, sobre a seleção atual) ----
+  // Estilos antigos que se sobrepõem à seleção são RECORTADOS (a parte fora da
+  // seleção sobrevive; a parte dentro é substituída pelo novo estilo). Isso
+  // garante que toda a seleção mude — sem sobras de estilos anteriores.
   const applyStyle = React.useCallback(
     (styleUpdate: Partial<RichTextStyle>) => {
       if (selection.end <= selection.start) return
+      const { start, end } = selection
       setStyles((prevStyles) => {
-        const existingIndex = prevStyles.findIndex(
-          (s) => s.start === selection.start && s.end === selection.end
-        )
-        if (existingIndex !== -1) {
-          const merged: RichTextStyle = {
-            ...prevStyles[existingIndex],
-            ...styleUpdate,
-            start: selection.start,
-            end: selection.end,
+        // Herdar propriedades do estilo efetivo (para não perder cor ao aplicar negrito, etc.)
+        const containing = styleAt(prevStyles, start, end)
+
+        const next: RichTextStyle[] = []
+        for (const s of prevStyles) {
+          if (s.end <= start || s.start >= end) {
+            // Sem sobreposição — mantém intacto
+            next.push(s)
+            continue
           }
-          const next = [...prevStyles]
-          next[existingIndex] = merged
-          return next
+          // Sobreposição: preserva só as partes fora da seleção
+          if (s.start < start) next.push({ ...s, end: start })
+          if (s.end > end) next.push({ ...s, start: end })
         }
-        // Herdar propriedades de um estilo que contenha a seleção (para não perder cor ao aplicar negrito, etc.)
-        const containing = prevStyles.find(
-          (s) => s.start <= selection.start && s.end >= selection.end
-        )
-        const newStyle: RichTextStyle = {
+
+        next.push({
           ...(containing ? { ...containing } : {}),
           ...styleUpdate,
-          start: selection.start,
-          end: selection.end,
-        }
-        // Remover estilos totalmente cobertos pela nova seleção
-        const filtered = prevStyles.filter(
-          (s) => !(s.start >= selection.start && s.end <= selection.end)
-        )
-        return [...filtered, newStyle]
+          start,
+          end,
+        })
+        return next
       })
     },
     [selection]
@@ -206,7 +221,7 @@ export function RichTextEditorModal({
   // Estilo efetivo na seleção atual (para toggles e feedback dos botões)
   const effectiveStyle = React.useMemo(() => {
     if (!hasSelection) return undefined
-    return styles.find((s) => s.start <= selection.start && s.end >= selection.end)
+    return styleAt(styles, selection.start, selection.end)
   }, [styles, selection, hasSelection])
 
   const fontStyleParts = React.useMemo(
@@ -545,27 +560,32 @@ function SelectableRichText({
       }}
     >
       {tokens.map((token, index) => {
-        const style: React.CSSProperties = token.style
-          ? {
-              color: token.style.fill ?? undefined,
-              fontFamily: token.style.fontFamily ?? undefined,
-              fontSize: token.style.fontSize ? `${token.style.fontSize * scale}px` : undefined,
-              fontWeight: token.style.fontStyle?.includes('bold') ? 'bold' : undefined,
-              fontStyle: token.style.fontStyle?.includes('italic') ? 'italic' : undefined,
-              textDecoration: token.style.textDecoration,
-              letterSpacing:
-                token.style.letterSpacing !== undefined
-                  ? `${token.style.letterSpacing * scale}px`
+        const renderSegments = token.segments.map((segment, segIndex) => {
+          const style: React.CSSProperties = segment.style
+            ? {
+                color: segment.style.fill ?? undefined,
+                fontFamily: segment.style.fontFamily ?? undefined,
+                fontSize: segment.style.fontSize
+                  ? `${segment.style.fontSize * scale}px`
                   : undefined,
-            }
-          : {}
-
-        if (!token.isWord) {
+                fontWeight: segment.style.fontStyle?.includes('bold') ? 'bold' : undefined,
+                fontStyle: segment.style.fontStyle?.includes('italic') ? 'italic' : undefined,
+                textDecoration: segment.style.textDecoration,
+                letterSpacing:
+                  segment.style.letterSpacing !== undefined
+                    ? `${segment.style.letterSpacing * scale}px`
+                    : undefined,
+              }
+            : {}
           return (
-            <span key={index} style={style}>
-              {token.text}
+            <span key={segIndex} style={style}>
+              {segment.text}
             </span>
           )
+        })
+
+        if (!token.isWord) {
+          return <span key={index}>{renderSegments}</span>
         }
 
         const isSelected =
@@ -589,9 +609,8 @@ function SelectableRichText({
                 ? 'bg-primary/40 ring-2 ring-primary/70'
                 : 'hover:bg-primary/15'
             )}
-            style={style}
           >
-            {token.text}
+            {renderSegments}
           </span>
         )
       })}
