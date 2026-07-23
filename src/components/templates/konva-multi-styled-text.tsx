@@ -345,29 +345,44 @@ export function KonvaMultiStyledText({
       )}
 
       {/* Renderizar segments de texto */}
-      {layout.segments.map((segment, index) => (
-        <Text
-          key={`segment-${index}-${segment.start}`}
-          x={segment.x ?? 0}
-          y={segment.y ?? 0}
-          text={segment.text}
-          fontSize={segment.style.fontSize}
-          fontFamily={segment.style.fontFamily}
-          fontStyle={segment.style.fontStyle}
-          fill={segment.style.fill}
-          textDecoration={segment.style.textDecoration}
-          letterSpacing={segment.style.letterSpacing ?? 0}
-          stroke={segment.style.stroke?.color}
-          strokeWidth={segment.style.stroke?.width}
-          shadowColor={segment.style.shadow?.color}
-          shadowBlur={segment.style.shadow?.blur}
-          shadowOffsetX={segment.style.shadow?.offset.x}
-          shadowOffsetY={segment.style.shadow?.offset.y}
-          listening={false} // Eventos no Group pai
-          perfectDrawEnabled={true}
-          imageSmoothingEnabled={true}
-        />
-      ))}
+      {layout.segments.map((segment, index) => {
+        // Faux-bold: o canvas NÃO sintetiza negrito para fontes customizadas
+        // (carregadas via FontFace com um único peso). Engrossamos com um
+        // stroke da própria cor do texto quando o trecho é bold e não há
+        // contorno explícito configurado.
+        const isBold = segment.style.fontStyle?.includes('bold') ?? false
+        const hasCustomStroke =
+          !!segment.style.stroke?.color && (segment.style.stroke?.width ?? 0) > 0
+        const fauxBoldWidth =
+          isBold && !hasCustomStroke
+            ? Math.max(0.6, (segment.style.fontSize ?? 16) * 0.03)
+            : undefined
+
+        return (
+          <Text
+            key={`segment-${index}-${segment.start}`}
+            x={segment.x ?? 0}
+            y={segment.y ?? 0}
+            text={segment.text}
+            fontSize={segment.style.fontSize}
+            fontFamily={segment.style.fontFamily}
+            fontStyle={segment.style.fontStyle}
+            fill={segment.style.fill}
+            textDecoration={segment.style.textDecoration}
+            letterSpacing={segment.style.letterSpacing ?? 0}
+            stroke={hasCustomStroke ? segment.style.stroke?.color : (fauxBoldWidth ? segment.style.fill : undefined)}
+            strokeWidth={hasCustomStroke ? segment.style.stroke?.width : fauxBoldWidth}
+            fillAfterStrokeEnabled={true}
+            shadowColor={segment.style.shadow?.color}
+            shadowBlur={segment.style.shadow?.blur}
+            shadowOffsetX={segment.style.shadow?.offset.x}
+            shadowOffsetY={segment.style.shadow?.offset.y}
+            listening={false} // Eventos no Group pai
+            perfectDrawEnabled={true}
+            imageSmoothingEnabled={true}
+          />
+        )
+      })}
     </Group>
   )
 }

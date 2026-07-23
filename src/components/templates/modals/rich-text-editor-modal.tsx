@@ -123,7 +123,9 @@ export function RichTextEditorModal({
   const [styles, setStyles] = React.useState<RichTextStyle[]>(
     layer.richTextStyles ?? []
   )
-  const [selection, setSelection] = React.useState<SelectionState>({ start: 0, end: 0 })
+  // Seleção múltipla: cada toque em uma palavra adiciona/remove a palavra
+  // (permite estilizar palavras separadas na mesma frase de uma vez)
+  const [selectedRanges, setSelectedRanges] = React.useState<SelectionState[]>([])
   const [isEditingText, setIsEditingText] = React.useState(false)
 
   const fontManager = React.useMemo(() => getFontManager(), [])
@@ -138,7 +140,7 @@ export function RichTextEditorModal({
   const [currentFont, setCurrentFont] = React.useState(layer.style?.fontFamily ?? 'Inter')
   const [currentFontSize, setCurrentFontSize] = React.useState(layer.style?.fontSize ?? 16)
 
-  const hasSelection = selection.end > selection.start
+  const hasSelection = selectedRanges.length > 0
 
   const baseStyle = React.useMemo(() => ({
     fontFamily: layer.style?.fontFamily ?? 'Inter',
@@ -156,73 +158,68 @@ export function RichTextEditorModal({
 
   const tokens = React.useMemo(() => buildTokens(content, styles), [content, styles])
 
-  // ---- Seleção por toque nas palavras ----
+  // ---- Seleção por toque nas palavras (toggle) ----
   const handleTokenClick = React.useCallback((token: Token) => {
     if (!token.isWord) return
-    setSelection((prev) => {
-      const empty = prev.end <= prev.start
-      const insideSelection = !empty && token.start >= prev.start && token.end <= prev.end
-      if (empty || insideSelection) {
-        // Começa (ou recomeça) a seleção nesta palavra
-        return { start: token.start, end: token.end }
+    setSelectedRanges((prev) => {
+      const exists = prev.some((r) => r.start === token.start && r.end === token.end)
+      if (exists) {
+        return prev.filter((r) => !(r.start === token.start && r.end === token.end))
       }
-      // Estende o intervalo até incluir a palavra tocada
-      return {
-        start: Math.min(prev.start, token.start),
-        end: Math.max(prev.end, token.end),
-      }
+      return [...prev, { start: token.start, end: token.end }].sort((a, b) => a.start - b.start)
     })
   }, [])
 
   const selectAll = React.useCallback(() => {
-    setSelection({ start: 0, end: content.length })
-  }, [content.length])
+    setSelectedRanges(
+      tokens.filter((t) => t.isWord).map((t) => ({ start: t.start, end: t.end }))
+    )
+  }, [tokens])
 
   const clearSelection = React.useCallback(() => {
-    setSelection({ start: 0, end: 0 })
+    setSelectedRanges([])
   }, [])
 
-  // ---- Aplicação de estilos (imediata, sobre a seleção atual) ----
-  // Estilos antigos que se sobrepõem à seleção são RECORTADOS (a parte fora da
-  // seleção sobrevive; a parte dentro é substituída pelo novo estilo). Isso
-  // garante que toda a seleção mude — sem sobras de estilos anteriores.
+  // ---- Aplicação de estilos (imediata, sobre TODAS as palavras selecionadas) ----
+  // Estilos antigos que se sobrepõem a cada trecho são RECORTADOS (a parte fora
+  // sobrevive; a parte dentro é substituída). Garante que toda a seleção mude.
   const applyStyle = React.useCallback(
     (styleUpdate: Partial<RichTextStyle>) => {
-      if (selection.end <= selection.start) return
-      const { start, end } = selection
+      if (selectedRanges.length === 0) return
       setStyles((prevStyles) => {
-        // Herdar propriedades do estilo efetivo (para não perder cor ao aplicar negrito, etc.)
-        const containing = styleAt(prevStyles, start, end)
-
-        const next: RichTextStyle[] = []
-        for (const s of prevStyles) {
-          if (s.end <= start || s.start >= end) {
-            // Sem sobreposição — mantém intacto
-            next.push(s)
-            continue
+        let next = [...prevStyles]
+        for (const { start, end } of selectedRanges) {
+          // Herdar propriedades do estilo efetivo (para não perder cor ao aplicar negrito, etc.)
+          const containing = styleAt(next, start, end)
+          const out: RichTextStyle[] = []
+          for (const s of next) {
+            if (s.end <= start || s.start >= end) {
+              out.push(s)
+              continue
+            }
+            if (s.start < start) out.push({ ...s, end: start })
+            if (s.end > end) out.push({ ...s, start: end })
           }
-          // Sobreposição: preserva só as partes fora da seleção
-          if (s.start < start) next.push({ ...s, end: start })
-          if (s.end > end) next.push({ ...s, start: end })
+          out.push({
+            ...(containing ? { ...containing } : {}),
+            ...styleUpdate,
+            start,
+            end,
+          })
+          next = out
         }
-
-        next.push({
-          ...(containing ? { ...containing } : {}),
-          ...styleUpdate,
-          start,
-          end,
-        })
         return next
       })
     },
-    [selection]
+    [selectedRanges]
   )
 
   // Estilo efetivo na seleção atual (para toggles e feedback dos botões)
   const effectiveStyle = React.useMemo(() => {
     if (!hasSelection) return undefined
-    return styleAt(styles, selection.start, selection.end)
-  }, [styles, selection, hasSelection])
+    const first = selectedRanges[0]
+    return styleAt(styles, first.start, first.end)
+  }, [styles, selectedRanges, hasSelection])
 
   const fontStyleParts = React.useMemo(
     () => new Set((effectiveStyle?.fontStyle ?? '').split(' ').filter((p) => p && p !== 'normal')),
@@ -267,9 +264,23 @@ export function RichTextEditorModal({
 
   const handleRemoveStyles = () => {
     if (!hasSelection) return
-    setStyles((prevStyles) =>
-      prevStyles.filter((s) => s.end <= selection.start || s.start >= selection.end)
-    )
+    setStyles((prevStyles) => {
+      let next = [...prevStyles]
+      for (const { start, end } of selectedRanges) {
+        const out: RichTextStyle[] = []
+        for (const s of next) {
+          if (s.end <= start || s.start >= end) {
+            out.push(s)
+            continue
+          }
+          // Preserva as partes do estilo fora do trecho selecionado
+          if (s.start < start) out.push({ ...s, end: start })
+          if (s.end > end) out.push({ ...s, start: end })
+        }
+        next = out
+      }
+      return next
+    })
   }
 
   const handleSave = () => {
@@ -279,12 +290,14 @@ export function RichTextEditorModal({
 
   const hasStylesInSelection = React.useMemo(() => {
     if (!hasSelection) return false
-    return styles.some(
-      (s) => s.start < selection.end && s.end > selection.start
+    return styles.some((s) =>
+      selectedRanges.some((r) => s.start < r.end && s.end > r.start)
     )
-  }, [styles, selection, hasSelection])
+  }, [styles, selectedRanges, hasSelection])
 
-  const selectedText = content.substring(selection.start, selection.end)
+  const selectedText = selectedRanges
+    .map((r) => content.substring(r.start, r.end))
+    .join(' · ')
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -296,8 +309,8 @@ export function RichTextEditorModal({
           <DialogTitle className="text-lg font-semibold">Editor de Rich Text</DialogTitle>
           <p className="text-sm text-muted-foreground">
             {hasSelection
-              ? `"${selectedText.length > 40 ? `${selectedText.slice(0, 40)}…` : selectedText}" selecionado`
-              : 'Toque em uma palavra para selecioná-la; toque em outra para estender a seleção.'}
+              ? `${selectedRanges.length} palavra${selectedRanges.length > 1 ? 's' : ''}: "${selectedText.length > 60 ? `${selectedText.slice(0, 60)}…` : selectedText}"`
+              : 'Toque nas palavras para selecionar — cada toque adiciona ou remove a palavra.'}
           </p>
         </DialogHeader>
 
@@ -464,7 +477,7 @@ export function RichTextEditorModal({
               value={content}
               onChange={(e) => {
                 setContent(e.target.value)
-                setSelection({ start: 0, end: 0 })
+                setSelectedRanges([])
               }}
               className="h-20 w-full resize-none rounded-md border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Digite o texto aqui..."
@@ -479,7 +492,7 @@ export function RichTextEditorModal({
             <SelectableRichText
               tokens={tokens}
               baseStyle={baseStyle}
-              selection={selection}
+              selectedRanges={selectedRanges}
               onTokenClick={handleTokenClick}
               originalWidth={layer.size?.width ?? 240}
             />
@@ -516,7 +529,7 @@ interface SelectableRichTextProps {
     lineHeight: number
     letterSpacing: number
   }
-  selection: SelectionState
+  selectedRanges: SelectionState[]
   onTokenClick: (token: Token) => void
   originalWidth?: number
 }
@@ -524,7 +537,7 @@ interface SelectableRichTextProps {
 function SelectableRichText({
   tokens,
   baseStyle,
-  selection,
+  selectedRanges,
   onTokenClick,
   originalWidth,
 }: SelectableRichTextProps) {
@@ -543,7 +556,7 @@ function SelectableRichText({
     }
   }, [originalWidth])
 
-  const hasSelection = selection.end > selection.start
+  const hasSelection = selectedRanges.length > 0
 
   return (
     <div
@@ -561,6 +574,7 @@ function SelectableRichText({
     >
       {tokens.map((token, index) => {
         const renderSegments = token.segments.map((segment, segIndex) => {
+          const isBoldSeg = segment.style?.fontStyle?.includes('bold') ?? false
           const style: React.CSSProperties = segment.style
             ? {
                 color: segment.style.fill ?? undefined,
@@ -568,13 +582,15 @@ function SelectableRichText({
                 fontSize: segment.style.fontSize
                   ? `${segment.style.fontSize * scale}px`
                   : undefined,
-                fontWeight: segment.style.fontStyle?.includes('bold') ? 'bold' : undefined,
+                fontWeight: isBoldSeg ? 'bold' : undefined,
                 fontStyle: segment.style.fontStyle?.includes('italic') ? 'italic' : undefined,
                 textDecoration: segment.style.textDecoration,
                 letterSpacing:
                   segment.style.letterSpacing !== undefined
                     ? `${segment.style.letterSpacing * scale}px`
                     : undefined,
+                // Fontes customizadas têm um único peso — engrossa igual ao canvas
+                WebkitTextStroke: isBoldSeg ? '0.03em currentcolor' : undefined,
               }
             : {}
           return (
@@ -589,7 +605,8 @@ function SelectableRichText({
         }
 
         const isSelected =
-          hasSelection && token.start >= selection.start && token.end <= selection.end
+          hasSelection &&
+          selectedRanges.some((r) => token.start >= r.start && token.end <= r.end)
 
         return (
           <span
