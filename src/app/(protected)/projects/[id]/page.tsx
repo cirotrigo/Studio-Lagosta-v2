@@ -36,8 +36,6 @@ import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-con
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
-import { InstagramTabContent } from '@/components/projects/instagram-tab-content'
-import { AnalyticsTabContent } from '@/components/projects/analytics-tab-content'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
 
@@ -202,12 +200,6 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
-          {projectDetails.instagramAccountId && (
-            <TabsTrigger value="instagram">Instagram</TabsTrigger>
-          )}
-          {projectDetails.laterAccountId && (
-            <TabsTrigger value="analytics">Analytics</TabsTrigger>
-          )}
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
@@ -332,14 +324,6 @@ export default function ProjectDetailPage() {
 
         <TabsContent value="assets" className="mt-3 md:mt-4">
           <ProjectAssetsPanel projectId={projectId} />
-        </TabsContent>
-
-        <TabsContent value="instagram" className="mt-3 md:mt-4">
-          <InstagramTabContent projectId={projectId} />
-        </TabsContent>
-
-        <TabsContent value="analytics" className="mt-3 md:mt-4">
-          <AnalyticsTabContent projectId={projectId} projectName={projectDetails?.name} />
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-3 md:mt-4">

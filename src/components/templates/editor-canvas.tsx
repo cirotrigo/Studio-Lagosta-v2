@@ -82,20 +82,6 @@ export function EditorCanvas() {
   // Mostrar toolbar de imagem para imagem OU logo
   const showImageToolbar = isImageSelected || isLogoSelected
 
-  // Deslocamento do canvas: as toolbars flutuantes empurram o stage para baixo
-  // para a arte não ficar escondida atrás delas (o stage refit via ResizeObserver)
-  const toolbarOverlayRef = React.useRef<HTMLDivElement>(null)
-  const [toolbarOffset, setToolbarOffset] = React.useState(0)
-
-  React.useEffect(() => {
-    const el = toolbarOverlayRef.current
-    if (!el) return
-    const update = () => setToolbarOffset(Math.ceil(el.getBoundingClientRect().height))
-    update()
-    const observer = new ResizeObserver(update)
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
 
   // Atualizar node selecionado quando layer muda
   React.useEffect(() => {
@@ -235,10 +221,11 @@ export function EditorCanvas() {
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full">
-      {/* Canvas Konva + toolbars flutuantes + Effects Panel */}
-      <div className="flex-1 flex relative overflow-hidden">
-        {/* Toolbars flutuam sobre o canvas — não ocupam altura de layout */}
-        <div ref={toolbarOverlayRef} className="pointer-events-none absolute inset-x-0 top-0 z-30 flex flex-col items-center gap-1.5 px-2 pt-2">
+      {/* Zona de toolbars com altura FIXA — o canvas nunca se move ao selecionar uma camada */}
+      <div
+        className="flex-shrink-0 z-30 flex flex-col items-center justify-start gap-1 overflow-hidden px-2 pt-2"
+        style={{ height: 118 }}
+      >
           {/* Alignment Toolbar - no mobile só aparece com camada selecionada; desktop sempre */}
           <div className={`pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80 ${selectedLayerIds.length > 0 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center justify-center p-1.5 min-w-max">
@@ -299,8 +286,10 @@ export function EditorCanvas() {
           )}
         </div>
 
-        {/* Canvas Konva - padding-top acompanha a altura das toolbars flutuantes */}
-        <div className="flex-1 h-full w-full" style={{ paddingTop: toolbarOffset ? toolbarOffset + 8 : 0 }}>
+      {/* Canvas Konva + Effects Panel */}
+      <div className="flex-1 flex relative overflow-hidden">
+        {/* Canvas Konva */}
+        <div className="flex-1 h-full w-full">
           <KonvaEditorStage />
         </div>
 

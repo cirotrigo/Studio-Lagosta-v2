@@ -24,24 +24,18 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
-import { Bold, Italic, Underline, Strikethrough, Type, XIcon } from 'lucide-react'
+import { Bold, Italic, Underline, Strikethrough, Type, TextSelect, Eraser } from 'lucide-react'
 import type { Layer, RichTextStyle } from '@/types/template'
-import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
+import { cn } from '@/lib/utils'
 
 /**
- * RichTextEditorModal - Modal para editar texto com múltiplos estilos
+ * RichTextEditorModal - Editor de texto com múltiplos estilos
  *
- * Permite aplicar diferentes cores, fontes e formatações em trechos específicos.
- *
- * Funcionalidades:
- * - Edição de texto em textarea
- * - Seleção de trechos com mouse
- * - Toolbar inline para aplicar estilos
- * - Preview visual com estilos aplicados
- * - Gerenciamento de estilos (adicionar, remover, merge)
- *
- * @component
+ * Redesign: a seleção é feita direto no texto estilizado, tocando nas
+ * palavras (toque seleciona a palavra; toque em outra estende o intervalo;
+ * toque dentro da seleção reinicia nela). Os estilos aplicam na hora sobre
+ * a seleção — sem botões "Aplicar" separados.
  */
 
 interface RichTextEditorModalProps {
@@ -55,7 +49,49 @@ interface RichTextEditorModalProps {
 interface SelectionState {
   start: number
   end: number
-  selectedText: string
+}
+
+interface Token {
+  text: string
+  start: number
+  end: number
+  isWord: boolean
+  style?: RichTextStyle
+}
+
+/** Divide o conteúdo em tokens de palavra/espACO respeitando os limites dos estilos */
+function buildTokens(content: string, styles: RichTextStyle[]): Token[] {
+  // 1. Segmentos por limite de estilo
+  const boundaries = new Set<number>([0, content.length])
+  for (const s of styles) {
+    boundaries.add(Math.max(0, Math.min(content.length, s.start)))
+    boundaries.add(Math.max(0, Math.min(content.length, s.end)))
+  }
+  const sorted = [...boundaries].sort((a, b) => a - b)
+
+  const tokens: Token[] = []
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const segStart = sorted[i]
+    const segEnd = sorted[i + 1]
+    if (segEnd <= segStart) continue
+    const segText = content.substring(segStart, segEnd)
+    const segStyle = styles.find((s) => s.start <= segStart && s.end >= segEnd)
+
+    // 2. Dentro do segmento, separar palavras e espaços/quebras
+    const parts = segText.split(/(\s+)/).filter((p) => p.length > 0)
+    let offset = segStart
+    for (const part of parts) {
+      tokens.push({
+        text: part,
+        start: offset,
+        end: offset + part.length,
+        isWord: !/^\s+$/.test(part),
+        style: segStyle,
+      })
+      offset += part.length
+    }
+  }
+  return tokens
 }
 
 export function RichTextEditorModal({
@@ -69,13 +105,9 @@ export function RichTextEditorModal({
   const [styles, setStyles] = React.useState<RichTextStyle[]>(
     layer.richTextStyles ?? []
   )
-  const [selection, setSelection] = React.useState<SelectionState>({
-    start: 0,
-    end: 0,
-    selectedText: '',
-  })
+  const [selection, setSelection] = React.useState<SelectionState>({ start: 0, end: 0 })
+  const [isEditingText, setIsEditingText] = React.useState(false)
 
-  const textareaRef = React.useRef<HTMLTextAreaElement>(null)
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [availableFonts, setAvailableFonts] = React.useState<{
     system: string[]
@@ -83,18 +115,13 @@ export function RichTextEditorModal({
     all: string[]
   }>(() => fontManager.getAvailableFonts(projectId))
 
-  // Estado dos controles de estilo - inicializar com valores do layer
-  const [currentColor, setCurrentColor] = React.useState(
-    layer.style?.color ?? '#000000'
-  )
-  const [currentFont, setCurrentFont] = React.useState(
-    layer.style?.fontFamily ?? 'Inter'
-  )
-  const [currentFontSize, setCurrentFontSize] = React.useState(
-    layer.style?.fontSize ?? 16
-  )
+  // Controles de estilo (valores atuais dos pickers)
+  const [currentColor, setCurrentColor] = React.useState(layer.style?.color ?? '#000000')
+  const [currentFont, setCurrentFont] = React.useState(layer.style?.fontFamily ?? 'Inter')
+  const [currentFontSize, setCurrentFontSize] = React.useState(layer.style?.fontSize ?? 16)
 
-  // Estilo base do layer para preview
+  const hasSelection = selection.end > selection.start
+
   const baseStyle = React.useMemo(() => ({
     fontFamily: layer.style?.fontFamily ?? 'Inter',
     fontSize: layer.style?.fontSize ?? 16,
@@ -104,455 +131,351 @@ export function RichTextEditorModal({
     letterSpacing: layer.style?.letterSpacing ?? 0,
   }), [layer.style])
 
-  // Atualizar lista de fontes
   React.useEffect(() => {
     const fonts = fontManager.getAvailableFonts(projectId)
     setAvailableFonts(fonts)
   }, [fontManager, projectId])
 
-  // Atualizar seleção quando usuário seleciona texto
-  const handleSelectionChange = React.useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea) return
+  const tokens = React.useMemo(() => buildTokens(content, styles), [content, styles])
 
-    // Usar setTimeout para garantir que a seleção está completa
-    setTimeout(() => {
-      const start = textarea.selectionStart
-      const end = textarea.selectionEnd
-      const selectedText = content.substring(start, end)
-
-      console.log('✂️ Seleção capturada:', { start, end, selectedText })
-
-      setSelection({ start, end, selectedText })
-
-      // Detectar estilo atual na seleção (se houver)
-      if (start !== end && styles.length > 0) {
-        const styleAtSelection = styles.find(
-          (s) => s.start <= start && s.end >= end
-        )
-        if (styleAtSelection) {
-          if (styleAtSelection.fill) setCurrentColor(styleAtSelection.fill)
-          if (styleAtSelection.fontFamily) setCurrentFont(styleAtSelection.fontFamily)
-          if (styleAtSelection.fontSize) setCurrentFontSize(styleAtSelection.fontSize)
-        }
+  // ---- Seleção por toque nas palavras ----
+  const handleTokenClick = React.useCallback((token: Token) => {
+    if (!token.isWord) return
+    setSelection((prev) => {
+      const empty = prev.end <= prev.start
+      const insideSelection = !empty && token.start >= prev.start && token.end <= prev.end
+      if (empty || insideSelection) {
+        // Começa (ou recomeça) a seleção nesta palavra
+        return { start: token.start, end: token.end }
       }
-    }, 0)
-  }, [content, styles])
+      // Estende o intervalo até incluir a palavra tocada
+      return {
+        start: Math.min(prev.start, token.start),
+        end: Math.max(prev.end, token.end),
+      }
+    })
+  }, [])
 
-  // Aplicar estilo ao trecho selecionado
-  // Aceita selection como parâmetro para evitar usar state stale
+  const selectAll = React.useCallback(() => {
+    setSelection({ start: 0, end: content.length })
+  }, [content.length])
+
+  const clearSelection = React.useCallback(() => {
+    setSelection({ start: 0, end: 0 })
+  }, [])
+
+  // ---- Aplicação de estilos (imediata, sobre a seleção atual) ----
   const applyStyle = React.useCallback(
-    (styleUpdate: Partial<RichTextStyle>, currentSelection: SelectionState) => {
-      if (currentSelection.start === currentSelection.end) {
-        // Nada selecionado
-        console.warn('⚠️ Tentou aplicar estilo sem seleção')
-        return
-      }
-
-      console.log('🎨 Aplicando estilo:', {
-        range: `${currentSelection.start}-${currentSelection.end}`,
-        texto: currentSelection.selectedText,
-        estilo: styleUpdate,
-      })
-
+    (styleUpdate: Partial<RichTextStyle>) => {
+      if (selection.end <= selection.start) return
       setStyles((prevStyles) => {
-        // Encontrar estilo existente na mesma range exata
-        const existingStyleIndex = prevStyles.findIndex(
-          (s) => s.start === currentSelection.start && s.end === currentSelection.end
+        const existingIndex = prevStyles.findIndex(
+          (s) => s.start === selection.start && s.end === selection.end
         )
-
-        if (existingStyleIndex !== -1) {
-          // Merge com estilo existente (acumular propriedades)
-          const existingStyle = prevStyles[existingStyleIndex]
-          const mergedStyle: RichTextStyle = {
-            ...existingStyle,
+        if (existingIndex !== -1) {
+          const merged: RichTextStyle = {
+            ...prevStyles[existingIndex],
             ...styleUpdate,
-            start: currentSelection.start,
-            end: currentSelection.end,
+            start: selection.start,
+            end: selection.end,
           }
-
-          console.log('🔀 Fazendo merge de estilos:', {
-            existente: existingStyle,
-            novo: styleUpdate,
-            resultado: mergedStyle,
-          })
-
-          // Substituir o estilo existente
-          const newStyles = [...prevStyles]
-          newStyles[existingStyleIndex] = mergedStyle
-          return newStyles
-        } else {
-          // Criar novo estilo
-          const newStyle: RichTextStyle = {
-            start: currentSelection.start,
-            end: currentSelection.end,
-            ...styleUpdate,
-          }
-
-          // Remover estilos que se sobrepõem completamente
-          const filteredStyles = prevStyles.filter(
-            (s) =>
-              s.end <= currentSelection.start || s.start >= currentSelection.end
-          )
-
-          return [...filteredStyles, newStyle]
+          const next = [...prevStyles]
+          next[existingIndex] = merged
+          return next
         }
+        // Herdar propriedades de um estilo que contenha a seleção (para não perder cor ao aplicar negrito, etc.)
+        const containing = prevStyles.find(
+          (s) => s.start <= selection.start && s.end >= selection.end
+        )
+        const newStyle: RichTextStyle = {
+          ...(containing ? { ...containing } : {}),
+          ...styleUpdate,
+          start: selection.start,
+          end: selection.end,
+        }
+        // Remover estilos totalmente cobertos pela nova seleção
+        const filtered = prevStyles.filter(
+          (s) => !(s.start >= selection.start && s.end <= selection.end)
+        )
+        return [...filtered, newStyle]
       })
     },
-    []
+    [selection]
   )
 
-  // Atualizar seleção imediatamente antes de aplicar estilo
-  const refreshSelection = React.useCallback(() => {
-    const textarea = textareaRef.current
-    if (!textarea) return selection
+  // Estilo efetivo na seleção atual (para toggles e feedback dos botões)
+  const effectiveStyle = React.useMemo(() => {
+    if (!hasSelection) return undefined
+    return styles.find((s) => s.start <= selection.start && s.end >= selection.end)
+  }, [styles, selection, hasSelection])
 
-    const start = textarea.selectionStart
-    const end = textarea.selectionEnd
-    const selectedText = content.substring(start, end)
+  const fontStyleParts = React.useMemo(
+    () => new Set((effectiveStyle?.fontStyle ?? '').split(' ').filter((p) => p && p !== 'normal')),
+    [effectiveStyle]
+  )
+  const isBoldActive = fontStyleParts.has('bold')
+  const isItalicActive = fontStyleParts.has('italic')
+  const isUnderlineActive = effectiveStyle?.textDecoration === 'underline'
+  const isStrikeActive = effectiveStyle?.textDecoration === 'line-through'
 
-    const newSelection = { start, end, selectedText }
-    setSelection(newSelection)
+  const toggleFontStyleFlag = (flag: 'bold' | 'italic') => {
+    const bold = flag === 'bold' ? !isBoldActive : isBoldActive
+    const italic = flag === 'italic' ? !isItalicActive : isItalicActive
+    const value: RichTextStyle['fontStyle'] =
+      bold && italic ? 'bold italic' : bold ? 'bold' : italic ? 'italic' : 'normal'
+    applyStyle({ fontStyle: value })
+  }
 
-    // Log detalhado para debug
-    const context = 5
-    const beforeContext = content.substring(Math.max(0, start - context), start)
-    const afterContext = content.substring(end, Math.min(content.length, end + context))
-
-    console.log('🔄 Seleção atualizada:', {
-      start,
-      end,
-      length: end - start,
-      selectedText: `"${selectedText}"`,
-      context: `...${beforeContext}[${selectedText}]${afterContext}...`,
-      indices: `[${start}:${end}]`,
-      charAtStart: `content[${start}] = "${content[start]}"`,
-      charBeforeStart: start > 0 ? `content[${start - 1}] = "${content[start - 1]}"` : 'início do texto',
-      charAtEnd: end < content.length ? `content[${end}] = "${content[end]}"` : 'fim do texto',
+  const toggleDecoration = (value: 'underline' | 'line-through') => {
+    applyStyle({
+      textDecoration: effectiveStyle?.textDecoration === value ? undefined : value,
     })
-    return newSelection
-  }, [content, selection])
-
-  // Handlers de estilo
-  const handleApplyColor = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    applyStyle({ fill: currentColor }, currentSelection)
   }
 
-  const handleApplyFont = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    applyStyle({ fontFamily: currentFont }, currentSelection)
+  // Aplicação imediata dos pickers
+  const handleColorChange = (color: string) => {
+    setCurrentColor(color)
+    applyStyle({ fill: color })
   }
 
-  const handleApplyFontSize = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    console.log('🔤 Aplicando fontSize:', currentFontSize)
-    applyStyle({ fontSize: currentFontSize }, currentSelection)
+  const handleFontChange = (font: string) => {
+    setCurrentFont(font)
+    applyStyle({ fontFamily: font })
   }
 
-  const handleToggleBold = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
+  const handleFontSizeChange = (size: number) => {
+    setCurrentFontSize(size)
+    if (Number.isFinite(size) && size >= 8 && size <= 200) {
+      applyStyle({ fontSize: size })
     }
-    applyStyle({ fontStyle: 'bold' }, currentSelection)
   }
 
-  const handleToggleItalic = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    applyStyle({ fontStyle: 'italic' }, currentSelection)
-  }
-
-  const handleToggleUnderline = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    applyStyle({ textDecoration: 'underline' }, currentSelection)
-  }
-
-  const handleToggleStrikethrough = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado')
-      return
-    }
-    applyStyle({ textDecoration: 'line-through' }, currentSelection)
-  }
-
-  // Remover estilos do trecho selecionado
   const handleRemoveStyles = () => {
-    const currentSelection = refreshSelection()
-    if (currentSelection.start === currentSelection.end) {
-      console.warn('⚠️ Nenhum texto selecionado para remover estilos')
-      return
-    }
-
-    console.log('🗑️ Removendo estilos da seleção:', {
-      range: `${currentSelection.start}-${currentSelection.end}`,
-      texto: currentSelection.selectedText,
-    })
-
+    if (!hasSelection) return
     setStyles((prevStyles) =>
-      prevStyles.filter(
-        (s) =>
-          s.end <= currentSelection.start || s.start >= currentSelection.end
-      )
+      prevStyles.filter((s) => s.end <= selection.start || s.start >= selection.end)
     )
   }
 
-  // Salvar mudanças
   const handleSave = () => {
     onSave(content, styles)
     onClose()
   }
 
-  // Verificar se há estilos aplicados na seleção atual
   const hasStylesInSelection = React.useMemo(() => {
+    if (!hasSelection) return false
     return styles.some(
-      (s) =>
-        (s.start >= selection.start && s.start < selection.end) ||
-        (s.end > selection.start && s.end <= selection.end) ||
-        (s.start <= selection.start && s.end >= selection.end)
+      (s) => s.start < selection.end && s.end > selection.start
     )
-  }, [styles, selection])
+  }, [styles, selection, hasSelection])
+
+  const selectedText = content.substring(selection.start, selection.end)
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
       <DialogContent
-        className="max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] overflow-hidden flex flex-col"
+        className="max-w-[95vw] w-[95vw] max-h-[95dvh] h-[95dvh] overflow-hidden flex flex-col gap-3"
         style={{ zIndex: 10001 }}
       >
-        <DialogHeader className="border-b pb-4">
-          <DialogTitle className="text-xl font-semibold">Editor de Rich Text</DialogTitle>
-          <p className="text-sm text-muted-foreground mt-1">
-            {selection.start === selection.end
-              ? 'Selecione um trecho de texto para aplicar estilos personalizados'
-              : `"${selection.selectedText}" selecionado (${selection.end - selection.start} caracteres)`}
+        <DialogHeader className="border-b pb-3">
+          <DialogTitle className="text-lg font-semibold">Editor de Rich Text</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {hasSelection
+              ? `"${selectedText.length > 40 ? `${selectedText.slice(0, 40)}…` : selectedText}" selecionado`
+              : 'Toque em uma palavra para selecioná-la; toque em outra para estender a seleção.'}
           </p>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden py-2">
-          {/* Toolbar de Estilos - Reorganizada e Centralizada */}
-          <div className="bg-muted/50 dark:bg-muted/20 rounded-lg p-4 border">
-            <div className="flex flex-col gap-3">
-              {/* Linha 1: Texto e Fonte */}
-              <div className="flex items-center justify-center gap-2 flex-wrap">
-                {/* Cor do Texto */}
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="gap-2 h-9"
-                      disabled={selection.start === selection.end}
-                    >
-                      <div
-                        className="w-4 h-4 rounded border border-border"
-                        style={{ backgroundColor: currentColor }}
-                      />
-                      Cor
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-80">
-                    <ColorPicker
-                      label="Cor do Texto"
-                      value={currentColor}
-                      onChange={setCurrentColor}
-                      projectId={projectId}
-                    />
-                    <Button
-                      className="w-full mt-2"
-                      size="sm"
-                      onClick={handleApplyColor}
-                    >
-                      Aplicar Cor
-                    </Button>
-                  </PopoverContent>
-                </Popover>
-
-                {/* Fonte */}
-                <Select value={currentFont} onValueChange={setCurrentFont}>
-                  <SelectTrigger className="w-[160px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[300px]">
-                    {availableFonts.system.length > 0 && (
-                      <>
-                        <div className="px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                          Sistema
-                        </div>
-                        {availableFonts.system.map((font) => (
-                          <SelectItem key={font} value={font}>
-                            <span style={{ fontFamily: font }}>{font}</span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                    {availableFonts.custom.length > 0 && (
-                      <>
-                        <div className="mt-2 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase">
-                          Minhas Fontes
-                        </div>
-                        {availableFonts.custom.map((font) => (
-                          <SelectItem key={font} value={font}>
-                            <span style={{ fontFamily: font }}>{font}</span>
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9"
-                  onClick={handleApplyFont}
-                  disabled={selection.start === selection.end}
-                >
-                  Aplicar
-                </Button>
-
-                {/* Tamanho da Fonte */}
-                <div className="flex items-center gap-1.5">
-                  <Type className="h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="number"
-                    min={8}
-                    max={200}
-                    value={currentFontSize}
-                    onChange={(e) => setCurrentFontSize(Number(e.target.value))}
-                    className="w-16 h-9"
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-9"
-                    onClick={handleApplyFontSize}
-                    disabled={selection.start === selection.end}
-                  >
-                    Aplicar
-                  </Button>
-                </div>
-              </div>
-
-              {/* Linha 2: Formatação e Ações */}
-              <div className="flex items-center justify-center gap-2">
-                {/* Estilos de Texto */}
-                <div className="flex items-center gap-1 bg-background rounded-md p-1 border">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-8 h-8 p-0"
-                    onClick={handleToggleBold}
-                    disabled={selection.start === selection.end}
-                    title="Negrito"
-                  >
-                    <Bold className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-8 h-8 p-0"
-                    onClick={handleToggleItalic}
-                    disabled={selection.start === selection.end}
-                    title="Itálico"
-                  >
-                    <Italic className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-8 h-8 p-0"
-                    onClick={handleToggleUnderline}
-                    disabled={selection.start === selection.end}
-                    title="Sublinhado"
-                  >
-                    <Underline className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="w-8 h-8 p-0"
-                    onClick={handleToggleStrikethrough}
-                    disabled={selection.start === selection.end}
-                    title="Tachado"
-                  >
-                    <Strikethrough className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                {/* Remover Estilos */}
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  className="h-9"
-                  onClick={handleRemoveStyles}
-                  disabled={!hasStylesInSelection}
-                >
-                  Limpar Estilos
-                </Button>
-              </div>
-            </div>
-          </div>
-
-          {/* Editor e Preview - Layout Vertical */}
-          <div className="flex-1 flex flex-col gap-4 overflow-hidden min-h-0">
-            {/* Textarea */}
-            <div className="flex flex-col gap-2">
-              <Label className="text-sm font-medium">Editar Texto</Label>
-              <textarea
-                ref={textareaRef}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                onSelect={handleSelectionChange}
-                onMouseUp={handleSelectionChange}
-                onKeyUp={handleSelectionChange}
-                className="w-full h-16 p-3 border rounded-md resize-none font-mono text-sm bg-background focus:outline-none focus:ring-2 focus:ring-ring transition-shadow"
-                placeholder="Digite o texto aqui..."
-                spellCheck={false}
-              />
-            </div>
-
-            {/* Preview */}
-            <div className="flex-1 flex flex-col gap-2 overflow-hidden min-h-0">
-              <div className="flex items-center justify-between">
-                <Label className="text-sm font-medium">Preview</Label>
-                <p className="text-xs text-muted-foreground">
-                  {styles.length} estilo{styles.length !== 1 ? 's' : ''} aplicado{styles.length !== 1 ? 's' : ''}
-                </p>
-              </div>
-              <div className="flex-1 border rounded-md p-6 overflow-auto bg-slate-900 dark:bg-slate-950 min-h-0">
-                <RichTextPreview
-                  content={content}
-                  styles={styles}
-                  baseStyle={baseStyle}
-                  originalWidth={layer.size?.width ?? 240}
+        {/* Toolbar de estilos - aplica na hora sobre a seleção */}
+        <div className="flex flex-wrap items-center justify-center gap-2 rounded-lg border bg-muted/40 p-2">
+          {/* Cor */}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button variant="outline" size="sm" className="h-9 gap-2" disabled={!hasSelection}>
+                <div
+                  className="h-4 w-4 rounded border border-border"
+                  style={{ backgroundColor: currentColor }}
                 />
-              </div>
-            </div>
+                Cor
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-80">
+              <ColorPicker
+                label="Cor do trecho selecionado"
+                value={currentColor}
+                onChange={handleColorChange}
+                projectId={projectId}
+              />
+            </PopoverContent>
+          </Popover>
+
+          {/* Fonte */}
+          <Select value={currentFont} onValueChange={handleFontChange} disabled={!hasSelection}>
+            <SelectTrigger className="h-9 w-[140px] sm:w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              {availableFonts.system.length > 0 && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                    Sistema
+                  </div>
+                  {availableFonts.system.map((font) => (
+                    <SelectItem key={font} value={font}>
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+              {availableFonts.custom.length > 0 && (
+                <>
+                  <div className="mt-2 px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                    Minhas Fontes
+                  </div>
+                  {availableFonts.custom.map((font) => (
+                    <SelectItem key={font} value={font}>
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+            </SelectContent>
+          </Select>
+
+          {/* Tamanho */}
+          <div className="flex items-center gap-1.5">
+            <Type className="h-4 w-4 text-muted-foreground" />
+            <Input
+              type="number"
+              min={8}
+              max={200}
+              value={currentFontSize}
+              onChange={(e) => handleFontSizeChange(Number(e.target.value))}
+              disabled={!hasSelection}
+              className="h-9 w-16"
+            />
           </div>
+
+          {/* Formatação */}
+          <div className="flex items-center gap-1 rounded-md border bg-background p-1">
+            <Button
+              variant={isBoldActive ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => toggleFontStyleFlag('bold')}
+              disabled={!hasSelection}
+              title="Negrito"
+            >
+              <Bold className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={isItalicActive ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => toggleFontStyleFlag('italic')}
+              disabled={!hasSelection}
+              title="Itálico"
+            >
+              <Italic className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={isUnderlineActive ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => toggleDecoration('underline')}
+              disabled={!hasSelection}
+              title="Sublinhado"
+            >
+              <Underline className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={isStrikeActive ? 'default' : 'ghost'}
+              size="sm"
+              className="h-8 w-8 p-0"
+              onClick={() => toggleDecoration('line-through')}
+              disabled={!hasSelection}
+              title="Tachado"
+            >
+              <Strikethrough className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Limpar estilos da seleção */}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={handleRemoveStyles}
+            disabled={!hasStylesInSelection}
+            title="Remove os estilos do trecho selecionado"
+          >
+            <Eraser className="h-4 w-4" />
+            Limpar estilos
+          </Button>
         </div>
 
-        <DialogFooter className="border-t pt-4 gap-2">
+        {/* Barra de seleção */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" className="h-8 gap-1.5" onClick={selectAll}>
+            <TextSelect className="h-4 w-4" />
+            Selecionar tudo
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-8"
+            onClick={clearSelection}
+            disabled={!hasSelection}
+          >
+            Limpar seleção
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto h-8"
+            onClick={() => setIsEditingText((v) => !v)}
+          >
+            {isEditingText ? 'Ocultar edição de texto' : 'Editar texto'}
+          </Button>
+        </div>
+
+        {/* Campo de texto bruto (opcional, recolhido por padrão) */}
+        {isEditingText && (
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs text-muted-foreground">
+              Alterar o texto pode desalinhar estilos existentes
+            </Label>
+            <textarea
+              value={content}
+              onChange={(e) => {
+                setContent(e.target.value)
+                setSelection({ start: 0, end: 0 })
+              }}
+              className="h-20 w-full resize-none rounded-md border bg-background p-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              placeholder="Digite o texto aqui..."
+              spellCheck={false}
+            />
+          </div>
+        )}
+
+        {/* Superfície de seleção = preview estilizado com palavras tocáveis */}
+        <div className="min-h-0 flex-1 overflow-auto rounded-md border bg-slate-900 p-4 dark:bg-slate-950 sm:p-6">
+          {content ? (
+            <SelectableRichText
+              tokens={tokens}
+              baseStyle={baseStyle}
+              selection={selection}
+              onTokenClick={handleTokenClick}
+              originalWidth={layer.size?.width ?? 240}
+            />
+          ) : (
+            <p className="text-sm italic text-muted-foreground">
+              Sem texto — use &quot;Editar texto&quot; para digitar.
+            </p>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2 border-t pt-3">
           <Button variant="outline" onClick={onClose} className="min-w-[100px]">
             Cancelar
           </Button>
@@ -566,11 +489,10 @@ export function RichTextEditorModal({
 }
 
 /**
- * Componente de preview que renderiza o texto com estilos aplicados
+ * Texto estilizado com palavras tocáveis para seleção
  */
-interface RichTextPreviewProps {
-  content: string
-  styles: RichTextStyle[]
+interface SelectableRichTextProps {
+  tokens: Token[]
   baseStyle: {
     fontFamily: string
     fontSize: number
@@ -579,138 +501,97 @@ interface RichTextPreviewProps {
     lineHeight: number
     letterSpacing: number
   }
-  originalWidth?: number // Largura original da caixa de texto
+  selection: SelectionState
+  onTokenClick: (token: Token) => void
+  originalWidth?: number
 }
 
-function RichTextPreview({ content, styles, baseStyle, originalWidth }: RichTextPreviewProps) {
+function SelectableRichText({
+  tokens,
+  baseStyle,
+  selection,
+  onTokenClick,
+  originalWidth,
+}: SelectableRichTextProps) {
   const containerRef = React.useRef<HTMLDivElement>(null)
   const [scale, setScale] = React.useState(1)
 
-  // Calcular scale baseado na largura disponível
   React.useEffect(() => {
     if (!originalWidth || !containerRef.current) {
       setScale(1)
       return
     }
-
     const containerWidth = containerRef.current.clientWidth
-    // Subtrair padding (6px de cada lado = 12px total) do container preview
-    const availableWidth = containerWidth - 48 // 24px padding de cada lado
-
+    const availableWidth = containerWidth - 8
     if (availableWidth > 0 && originalWidth > 0) {
-      // Calcular scale para que a largura seja similar
-      const calculatedScale = Math.min(1, availableWidth / originalWidth)
-      setScale(calculatedScale)
+      setScale(Math.min(1, availableWidth / originalWidth))
     }
   }, [originalWidth])
 
-  // Aplicar scale nos estilos
-  const scaledBaseStyle = {
-    ...baseStyle,
-    fontSize: baseStyle.fontSize * scale,
-    letterSpacing: baseStyle.letterSpacing * scale,
-  }
-  if (!content) {
-    return (
-      <p className="text-muted-foreground text-sm italic">
-        O preview aparecerá aqui...
-      </p>
-    )
-  }
-
-  // Se não há estilos, mostrar texto simples com estilo base
-  if (styles.length === 0) {
-    return (
-      <div
-        ref={containerRef}
-        className="whitespace-pre-wrap"
-        style={{
-          fontFamily: scaledBaseStyle.fontFamily,
-          fontSize: `${scaledBaseStyle.fontSize}px`,
-          color: scaledBaseStyle.color,
-          textAlign: scaledBaseStyle.textAlign as any,
-          lineHeight: scaledBaseStyle.lineHeight,
-          letterSpacing: `${scaledBaseStyle.letterSpacing}px`,
-          width: originalWidth ? `${originalWidth * scale}px` : 'auto',
-        }}
-      >
-        {content}
-      </div>
-    )
-  }
-
-  // Ordenar estilos por posição
-  const sortedStyles = [...styles].sort((a, b) => a.start - b.start)
-
-  // Criar segments para renderização
-  const segments: Array<{ text: string; style?: RichTextStyle }> = []
-  let currentPos = 0
-
-  for (const style of sortedStyles) {
-    const start = Math.max(0, style.start)
-    const end = Math.min(content.length, style.end)
-
-    // Adicionar texto sem estilo antes deste segment
-    if (start > currentPos) {
-      segments.push({
-        text: content.substring(currentPos, start),
-      })
-    }
-
-    // Adicionar segment com estilo
-    if (end > start) {
-      segments.push({
-        text: content.substring(start, end),
-        style,
-      })
-    }
-
-    currentPos = Math.max(currentPos, end)
-  }
-
-  // Adicionar texto restante sem estilo
-  if (currentPos < content.length) {
-    segments.push({
-      text: content.substring(currentPos),
-    })
-  }
+  const hasSelection = selection.end > selection.start
 
   return (
     <div
       ref={containerRef}
-      className="whitespace-pre-wrap"
+      className="whitespace-pre-wrap select-none"
       style={{
-        fontFamily: scaledBaseStyle.fontFamily,
-        fontSize: `${scaledBaseStyle.fontSize}px`,
-        color: scaledBaseStyle.color,
-        textAlign: scaledBaseStyle.textAlign as any,
-        lineHeight: scaledBaseStyle.lineHeight,
-        letterSpacing: `${scaledBaseStyle.letterSpacing}px`,
+        fontFamily: baseStyle.fontFamily,
+        fontSize: `${baseStyle.fontSize * scale}px`,
+        color: baseStyle.color,
+        textAlign: baseStyle.textAlign as React.CSSProperties['textAlign'],
+        lineHeight: baseStyle.lineHeight,
+        letterSpacing: `${baseStyle.letterSpacing * scale}px`,
         width: originalWidth ? `${originalWidth * scale}px` : 'auto',
       }}
     >
-      {segments.map((segment, index) => {
-        if (!segment.style) {
-          // Texto sem estilo customizado - herda do container
-          return <span key={index}>{segment.text}</span>
+      {tokens.map((token, index) => {
+        const style: React.CSSProperties = token.style
+          ? {
+              color: token.style.fill ?? undefined,
+              fontFamily: token.style.fontFamily ?? undefined,
+              fontSize: token.style.fontSize ? `${token.style.fontSize * scale}px` : undefined,
+              fontWeight: token.style.fontStyle?.includes('bold') ? 'bold' : undefined,
+              fontStyle: token.style.fontStyle?.includes('italic') ? 'italic' : undefined,
+              textDecoration: token.style.textDecoration,
+              letterSpacing:
+                token.style.letterSpacing !== undefined
+                  ? `${token.style.letterSpacing * scale}px`
+                  : undefined,
+            }
+          : {}
+
+        if (!token.isWord) {
+          return (
+            <span key={index} style={style}>
+              {token.text}
+            </span>
+          )
         }
 
-        // Texto com estilo customizado - override sobre o base (com scale aplicado)
-        const style: React.CSSProperties = {
-          color: segment.style.fill ?? scaledBaseStyle.color,
-          fontFamily: segment.style.fontFamily ?? scaledBaseStyle.fontFamily,
-          fontSize: segment.style.fontSize ? `${segment.style.fontSize * scale}px` : undefined,
-          fontWeight: segment.style.fontStyle?.includes('bold') ? 'bold' : undefined,
-          fontStyle: segment.style.fontStyle?.includes('italic') ? 'italic' : undefined,
-          textDecoration: segment.style.textDecoration,
-          letterSpacing: segment.style.letterSpacing !== undefined
-            ? `${segment.style.letterSpacing * scale}px`
-            : undefined,
-        }
+        const isSelected =
+          hasSelection && token.start >= selection.start && token.end <= selection.end
 
         return (
-          <span key={index} style={style}>
-            {segment.text}
+          <span
+            key={index}
+            role="button"
+            tabIndex={0}
+            onClick={() => onTokenClick(token)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onTokenClick(token)
+              }
+            }}
+            className={cn(
+              'cursor-pointer rounded-sm transition-colors duration-100',
+              isSelected
+                ? 'bg-primary/40 ring-2 ring-primary/70'
+                : 'hover:bg-primary/15'
+            )}
+            style={style}
+          >
+            {token.text}
           </span>
         )
       })}
