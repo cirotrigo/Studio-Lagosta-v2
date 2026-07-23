@@ -705,8 +705,13 @@ function calculateLayoutFromKonvaLines(
     }
   }
 
-  // Reconstruir texto completo das linhas do Konva
-  const fullText = konvaLines.map(line => line.text).join('')
+  // Texto ORIGINAL reconstruído dos segments (contíguos, cobrindo o texto todo).
+  // NÃO usar konvaLines.join(''): o Konva descarta o espaço consumido em cada
+  // quebra de linha, o que desloca todos os índices seguintes e faz estilos
+  // "perderem" a primeira letra de palavras após a quebra.
+  const originalText = segments.length > 0
+    ? segments.map((s) => s.text).join('')
+    : konvaLines.map((line) => line.text).join('')
 
   const lines: Array<{
     segments: TextStyleSegment[]
@@ -716,14 +721,17 @@ function calculateLayoutFromKonvaLines(
   }> = []
 
   const positionedSegments: TextStyleSegment[] = []
-  let textPosition = 0 // Posição no texto completo
+  let searchCursor = 0 // Posição no texto ORIGINAL (avança pulando espaços consumidos nas quebras)
   let yOffset = padding
   let maxLineWidth = 0
 
   for (const konvaLine of konvaLines) {
     const lineText = konvaLine.text
-    const lineStart = textPosition
-    const lineEnd = textPosition + lineText.length
+    // Localiza a linha no texto original a partir do cursor — assim os índices
+    // dos estilos (start/end no texto original) continuam alinhados
+    let lineStart = lineText.length > 0 ? originalText.indexOf(lineText, searchCursor) : searchCursor
+    if (lineStart === -1) lineStart = searchCursor
+    const lineEnd = lineStart + lineText.length
 
     // Encontrar todos os segments que pertencem a esta linha
     const lineSegments: TextStyleSegment[] = []
@@ -741,7 +749,7 @@ function calculateLayoutFromKonvaLines(
       // Calcular a parte do segment que pertence a esta linha
       const intersectStart = Math.max(segmentStart, lineStart)
       const intersectEnd = Math.min(segmentEnd, lineEnd)
-      const intersectText = fullText.substring(intersectStart, intersectEnd)
+      const intersectText = originalText.substring(intersectStart, intersectEnd)
 
       if (intersectText.length === 0) continue
 
@@ -783,7 +791,7 @@ function calculateLayoutFromKonvaLines(
 
     maxLineWidth = Math.max(maxLineWidth, lineWidth)
     yOffset += lineHeight * options.lineHeight
-    textPosition = lineEnd
+    searchCursor = lineEnd
   }
 
   // Aplicar alinhamento e posicionar segments
