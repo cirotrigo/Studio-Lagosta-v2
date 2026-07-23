@@ -388,25 +388,34 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
           </div>
         </div>
 
-        {/* Estilo - no mobile fica dentro do popover de mais opções */}
+        {/* Alinhamento do texto - no mobile fica dentro do popover de mais opções */}
         <div className="hidden sm:flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button
-            variant={isBold ? 'default' : 'outline'}
+            variant={textAlign === 'left' ? 'default' : 'outline'}
             size="sm"
             className="h-8 w-8 p-0"
-            onClick={toggleBold}
-            title="Negrito"
+            onClick={() => handleAlignChange('left')}
+            title="Alinhar à esquerda"
           >
-            <Bold className="h-4 w-4" />
+            <AlignLeft className="h-4 w-4" />
           </Button>
           <Button
-            variant={isItalic ? 'default' : 'outline'}
+            variant={textAlign === 'center' ? 'default' : 'outline'}
             size="sm"
             className="h-8 w-8 p-0"
-            onClick={toggleItalic}
-            title="Itálico"
+            onClick={() => handleAlignChange('center')}
+            title="Centralizar"
           >
-            <Italic className="h-4 w-4" />
+            <AlignCenter className="h-4 w-4" />
+          </Button>
+          <Button
+            variant={textAlign === 'right' ? 'default' : 'outline'}
+            size="sm"
+            className="h-8 w-8 p-0"
+            onClick={() => handleAlignChange('right')}
+            title="Alinhar à direita"
+          >
+            <AlignRight className="h-4 w-4" />
           </Button>
         </div>
 
@@ -422,8 +431,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
             collisionPadding={12}
             className="w-72 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] space-y-3 overflow-y-auto"
           >
-            {/* Negrito/Itálico - apenas mobile (no desktop ficam na barra) */}
-            <div className="flex items-center gap-1 sm:hidden">
+            {/* Negrito, itálico e maiúsculas */}
+            <div className="flex items-center gap-1">
               <Button
                 variant={isBold ? 'default' : 'outline'}
                 size="sm"
@@ -442,10 +451,19 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
               >
                 <Italic className="h-4 w-4" />
               </Button>
+              <Button
+                variant={isUppercase ? 'default' : 'outline'}
+                size="sm"
+                className="ml-auto h-8 px-2 font-semibold"
+                onClick={toggleUppercase}
+                title={isUppercase ? 'Desativar maiúsculas (Aa)' : 'Ativar maiúsculas (AA)'}
+              >
+                <span className="text-xs">{isUppercase ? 'AA' : 'Aa'}</span>
+              </Button>
             </div>
 
-            {/* Alinhamento e maiúsculas */}
-            <div className="flex items-center gap-1">
+            {/* Alinhamento - apenas mobile (no desktop está na barra) */}
+            <div className="flex items-center gap-1 sm:hidden">
               <Button
                 variant={textAlign === 'left' ? 'default' : 'outline'}
                 size="sm"
@@ -472,15 +490,6 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
                 title="Alinhar à direita"
               >
                 <AlignRight className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={isUppercase ? 'default' : 'outline'}
-                size="sm"
-                className="ml-auto h-8 px-2 font-semibold"
-                onClick={toggleUppercase}
-                title={isUppercase ? 'Desativar maiúsculas (Aa)' : 'Ativar maiúsculas (AA)'}
-              >
-                <span className="text-xs">{isUppercase ? 'AA' : 'Aa'}</span>
               </Button>
             </div>
 
