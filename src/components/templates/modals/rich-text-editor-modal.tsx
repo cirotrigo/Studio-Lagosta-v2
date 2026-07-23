@@ -28,6 +28,7 @@ import { Bold, Italic, Underline, Strikethrough, Type, TextSelect, Eraser } from
 import type { Layer, RichTextStyle } from '@/types/template'
 import { getFontManager } from '@/lib/font-manager'
 import { cn } from '@/lib/utils'
+import { flattenRichTextStyles } from '@/lib/rich-text-styles'
 
 /**
  * RichTextEditorModal - Editor de texto com múltiplos estilos
@@ -284,7 +285,8 @@ export function RichTextEditorModal({
   }
 
   const handleSave = () => {
-    onSave(content, styles)
+    // Salvar normalizado: sem sobreposições, ordenado e com adjacentes mesclados
+    onSave(content, flattenRichTextStyles(content.length, styles))
     onClose()
   }
 

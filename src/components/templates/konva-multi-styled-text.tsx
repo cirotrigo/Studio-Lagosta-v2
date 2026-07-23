@@ -7,6 +7,7 @@ import { Group, Text, Rect } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer, LayerStyle, RichTextStyle } from '@/types/template'
 import type { TextStyleSegment, RichTextRenderOptions, LayoutResult } from '@/types/rich-text'
+import { flattenRichTextStyles } from '@/lib/rich-text-styles'
 import { RichTextEditorModal } from './modals/rich-text-editor-modal'
 
 /**
@@ -405,8 +406,13 @@ function parseRichTextSegments(
 ): TextStyleSegment[] {
   if (!text) return []
 
+  // Normalizar: remove sobreposições (o estilo aplicado por último vence) e
+  // ordena — o algoritmo abaixo assume intervalos ordenados sem sobreposição.
+  // Sem isso, estilos legados sobrepostos pintam letras com o estilo errado.
+  const sortedStyles = flattenRichTextStyles(text.length, styles ?? [])
+
   // Se não há estilos customizados, retornar texto todo com estilo base
-  if (!styles || styles.length === 0) {
+  if (sortedStyles.length === 0) {
     return [
       {
         text,
@@ -416,9 +422,6 @@ function parseRichTextSegments(
       },
     ]
   }
-
-  // Ordenar estilos por posição inicial
-  const sortedStyles = [...styles].sort((a, b) => a.start - b.start)
 
   const segments: TextStyleSegment[] = []
   let currentPos = 0
