@@ -211,7 +211,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="drive" className="mt-6 space-y-4">
+        <TabsContent value="drive" className="mt-3 md:mt-4 space-y-4">
           {!driveConfigured && (
             <Card className="p-4 text-sm text-muted-foreground">
               <p>
@@ -226,15 +226,8 @@ export default function ProjectDetailPage() {
           <ProjectDrivePage initialProjectId={projectDetails.id} showProjectSelector={false} disableUrlSync />
         </TabsContent>
 
-        <TabsContent value="templates" className="mt-6">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-semibold">Templates</h2>
-              <p className="text-sm text-muted-foreground">
-                Modelos reutilizáveis para criar criativos
-              </p>
-            </div>
-
+        <TabsContent value="templates" className="mt-3 md:mt-4">
+          <div className="mb-3 flex justify-end">
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
               <DialogTrigger asChild>
                 <Button>
@@ -307,28 +300,19 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
-        <TabsContent value="modelos" className="mt-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold">Modelos</h2>
-            <p className="text-sm text-muted-foreground">
-              Curadoria de templates por tema. Aplique tags para que a skill
-              /arte-rapida encontre o template certo a partir de uma frase em PT.
-            </p>
-          </div>
+        <TabsContent value="modelos" className="mt-3 md:mt-4">
+          <p className="mb-3 text-sm text-muted-foreground">
+            Curadoria de templates por tema. Aplique tags para que a skill
+            /arte-rapida encontre o template certo a partir de uma frase em PT.
+          </p>
           <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
         </TabsContent>
 
-        <TabsContent value="criativos" className="mt-6">
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Galeria de Criativos</h2>
-            <p className="text-sm text-muted-foreground">
-              Visualize e baixe todos os criativos exportados neste projeto. Os criativos são salvos automaticamente quando você faz export no editor Konva.
-            </p>
-          </div>
+        <TabsContent value="criativos" className="mt-3 md:mt-4">
           <CreativesGallery projectId={projectId} />
         </TabsContent>
 
-        <TabsContent value="agenda" className="mt-6">
+        <TabsContent value="agenda" className="mt-3 md:mt-4">
           {isLoadingProject ? (
             <Card className="p-6">
               <Skeleton className="h-6 w-60" />
@@ -346,27 +330,20 @@ export default function ProjectDetailPage() {
           )}
         </TabsContent>
 
-        <TabsContent value="assets" className="mt-6">
+        <TabsContent value="assets" className="mt-3 md:mt-4">
           <ProjectAssetsPanel projectId={projectId} />
         </TabsContent>
 
-        <TabsContent value="instagram" className="mt-6">
+        <TabsContent value="instagram" className="mt-3 md:mt-4">
           <InstagramTabContent projectId={projectId} />
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-6">
+        <TabsContent value="analytics" className="mt-3 md:mt-4">
           <AnalyticsTabContent projectId={projectId} projectName={projectDetails?.name} />
         </TabsContent>
 
-        <TabsContent value="configuracoes" className="mt-6">
+        <TabsContent value="configuracoes" className="mt-3 md:mt-4">
           <div className="space-y-6">
-            <Card className="p-6">
-              <h3 className="text-lg font-semibold">Configurações do Projeto</h3>
-              <p className="text-sm text-muted-foreground">
-                Ajuste integrações e recursos extras para este projeto
-              </p>
-            </Card>
-
             {isLoadingProject ? (
               <Card className="p-6">
                 <Skeleton className="h-6 w-60" />
