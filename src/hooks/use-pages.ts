@@ -47,6 +47,17 @@ export function usePages(templateId: number | null) {
     gcTime: 10 * 60_000, // 10 minutos
     refetchOnWindowFocus: false, // Não re-fetch ao focar janela
     refetchOnMount: false, // Não re-fetch ao montar se já tem cache válido
+    // O cache pode ficar com a mesma página duas vezes quando um refetch em voo resolve
+    // entre o POST de criação e o append do onSuccess — ids duplicados quebram as keys
+    // do React e o SortableContext das barras de páginas
+    select: (pages) => {
+      const seen = new Set<string>()
+      return pages.filter((page) => {
+        if (seen.has(page.id)) return false
+        seen.add(page.id)
+        return true
+      })
+    },
   })
 }
 
@@ -68,10 +79,14 @@ export function useCreatePage() {
   return useMutation({
     mutationFn: ({ templateId, data }: { templateId: number; data: CreatePageData }) =>
       api.post(`/api/templates/${templateId}/pages`, data),
-    onSuccess: (newPage, { templateId }) => {
+    onSuccess: (newPage: PageResponse, { templateId }) => {
       // Atualizar cache manualmente sem invalidar (sem re-fetch)
       queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return [newPage]
+        // Um refetch em voo pode já ter trazido a página criada — substituir em vez de duplicar
+        if (oldPages.some((page) => page.id === newPage.id)) {
+          return oldPages.map((page) => (page.id === newPage.id ? newPage : page))
+        }
         return [...oldPages, newPage]
       })
     },

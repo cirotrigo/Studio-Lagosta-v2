@@ -57,18 +57,23 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   }, [pagesData])
 
   // Definir página inicial quando páginas carregarem
+  // IMPORTANTE: initialPageId é aplicado UMA única vez. Este efeito roda de novo a cada
+  // mudança do cache de pages (todo autosave), e forçar a volta ao initialPageId aqui
+  // trocava a página no meio da edição — edições subsequentes vazavam para a página do link.
+  const appliedInitialPageIdRef = React.useRef(false)
   React.useEffect(() => {
     if (pages.length === 0) return
 
-    // Se initialPageId foi fornecido e existe nas pages, usar ele
-    if (initialPageId && pages.some((p) => p.id === initialPageId)) {
+    // Se initialPageId foi fornecido e existe nas pages, usar ele (apenas na primeira vez)
+    if (initialPageId && !appliedInitialPageIdRef.current && pages.some((p) => p.id === initialPageId)) {
+      appliedInitialPageIdRef.current = true
       if (currentPageId !== initialPageId) {
         setCurrentPageIdState(initialPageId)
       }
       return
     }
 
-    // Fallback: se não tem página selecionada, usar a primeira
+    // Fallback: se não tem página selecionada (ou ela deixou de existir), usar a primeira
     if (!currentPageId || !pages.some((p) => p.id === currentPageId)) {
       setCurrentPageIdState(pages[0].id)
     }

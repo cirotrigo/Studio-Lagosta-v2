@@ -28,6 +28,12 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       return
     }
 
+    // design.layers só pode ser salvo em currentPageId se foi essa página que o PageSync
+    // carregou por último — caso contrário o par (página, layers) está desalinhado
+    if (lastPageIdRef.current !== currentPageId) {
+      return
+    }
+
     const layersToSave = serializeLayersForPersistence(design.layers)
     if (layersToSave === lastSavedLayersRef.current) {
       return
@@ -35,7 +41,9 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
     void savePageLayers(currentPageId, design.layers)
       .then(() => {
-        lastSavedLayersRef.current = layersToSave
+        if (lastPageIdRef.current === currentPageId) {
+          lastSavedLayersRef.current = layersToSave
+        }
       })
       .catch((error) => {
         console.error('[PageSync] Erro ao salvar layers no flush:', error)
@@ -51,6 +59,18 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     // Apenas atualizar se a página realmente mudou
     if (lastPageIdRef.current !== currentPageId) {
       console.log(`[PageSync] Trocando para página ${currentPage.name} (${currentPageId})`)
+
+      // Edições da página anterior ainda não persistidas (debounce de 800ms em voo)
+      // eram descartadas na troca — salvar antes de carregar a nova página
+      const previousPageId = lastPageIdRef.current
+      if (previousPageId) {
+        const pendingLayers = serializeLayersForPersistence(design.layers)
+        if (pendingLayers !== lastSavedLayersRef.current) {
+          void savePageLayers(previousPageId, design.layers).catch((error) => {
+            console.error('[PageSync] Erro ao salvar layers pendentes da página anterior:', error)
+          })
+        }
+      }
 
       isSyncingRef.current = true
 
@@ -82,21 +102,32 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       // Se a página não tem thumbnail, gerar um após carregar
       if (!currentPage.thumbnail) {
         console.log(`[PageSync] Página sem thumbnail, gerando...`)
+        const pageIdForThumbnail = currentPageId
         setTimeout(async () => {
+          // Se o usuário trocou de página durante a espera, o stage mostra outra página —
+          // gerar agora salvaria o thumbnail errado
+          if (lastPageIdRef.current !== pageIdForThumbnail) return
           const thumbnail = await generateThumbnail(150)
-          if (thumbnail) {
-            updatePageThumbnail(currentPageId, thumbnail).catch(err =>
+          if (thumbnail && lastPageIdRef.current === pageIdForThumbnail) {
+            updatePageThumbnail(pageIdForThumbnail, thumbnail).catch(err =>
               console.error('[PageSync] Erro ao gerar thumbnail inicial:', err)
             )
           }
         }, 1000) // Aguardar 1 segundo para garantir que o canvas foi renderizado
       }
     }
-  }, [currentPage, currentPageId, loadTemplate, generateThumbnail, serializeLayersForPersistence, updatePageThumbnail])
+  }, [currentPage, currentPageId, design.layers, loadTemplate, generateThumbnail, savePageLayers, serializeLayersForPersistence, updatePageThumbnail])
 
   // 2. Salvar layers da página atual quando o design muda (debounced e otimizado)
   React.useEffect(() => {
     if (!currentPageId || isSyncingRef.current) {
+      return
+    }
+
+    // Só salvar se o design em memória corresponde à página atual (foi ela que o efeito 1
+    // carregou por último). Sem isso, no mount/transições o design ainda é de outra página
+    // (ou do designData do template) e o save gravaria layers na página errada.
+    if (lastPageIdRef.current !== currentPageId) {
       return
     }
 
@@ -108,6 +139,10 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
     const timeoutId = setTimeout(async () => {
       try {
+        if (lastPageIdRef.current !== currentPageId) {
+          return
+        }
+
         // Verificar novamente se ainda é diferente (pode ter mudado durante debounce)
         const layersToSave = serializeLayersForPersistence(design.layers)
         if (layersToSave === lastSavedLayersRef.current) {
@@ -118,11 +153,17 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
         // Salvar sem invalidar queries (evita re-render)
         await savePageLayers(currentPageId, design.layers)
+
+        // Se trocou de página durante o await, lastSavedLayersRef já pertence à nova página
+        // e o stage mostra outro conteúdo — não sobrescrever nem gerar thumbnail
+        if (lastPageIdRef.current !== currentPageId) {
+          return
+        }
         lastSavedLayersRef.current = layersToSave
 
         // Gerar thumbnail de forma silenciosa (não invalida cache)
         const thumbnail = await generateThumbnail(150)
-        if (thumbnail) {
+        if (thumbnail && lastPageIdRef.current === currentPageId) {
           console.log(`[PageSync] Thumbnail gerado (será salvo em background)`)
           // Salvar thumbnail sem aguardar (fire and forget)
           updatePageThumbnail(currentPageId, thumbnail).catch(err =>

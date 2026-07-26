@@ -181,8 +181,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     selectedLayerIdsRef.current = selectedLayerIds
   }, [selectedLayerIds])
 
-  // Sync when template prop changes (e.g., refetch)
+  // Sync only when switching to ANOTHER template (id change).
+  // Não resetar em refetch/save do mesmo template: no editor multi-página o design em memória
+  // vem das Pages (via PageSync); repor template.designData aqui trocava o design por um
+  // snapshot velho no meio da edição, e o autosave persistia isso na página atual.
+  const lastSyncedTemplateIdRef = React.useRef(template.id)
   React.useEffect(() => {
+    if (lastSyncedTemplateIdRef.current === template.id) {
+      return
+    }
+    lastSyncedTemplateIdRef.current = template.id
     setName(template.name)
     setDesign({
       canvas: { ...template.designData.canvas },
@@ -195,7 +203,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     historyRef.current = { past: [], future: [] }
     setHistoryMeta({ canUndo: false, canRedo: false })
     setExportHistory([])
-  }, [template.id, template.updatedAt, template.name, template.designData, template.dynamicFields])
+  }, [template.id, template.name, template.designData, template.dynamicFields])
 
   const updateHistoryMeta = React.useCallback(() => {
     setHistoryMeta({
@@ -914,12 +922,9 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   )
 
   const markSaved = React.useCallback((nextTemplate?: Partial<TemplateResource>) => {
-    if (nextTemplate?.designData) {
-      setDesign({
-        canvas: { ...nextTemplate.designData.canvas },
-        layers: normalizeLayerOrder(nextTemplate.designData.layers ?? []),
-      })
-    }
+    // Não repor nextTemplate.designData no design: é o snapshot enviado no clique de salvar.
+    // Se o usuário trocou de página (ou continuou editando) durante o round-trip, repor aqui
+    // colocaria layers de outra página no design — e o autosave gravaria na página errada.
     if (nextTemplate?.name) {
       setName(nextTemplate.name)
     }
