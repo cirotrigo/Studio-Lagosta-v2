@@ -55,6 +55,15 @@ export function applySlotValues(
   designData: DesignData,
   slotValues: Record<string, unknown>,
 ): DesignData {
+  // Conteúdo endereçado a um slot inexistente era descartado em silêncio:
+  // a arte saía sem o texto e ninguém ficava sabendo
+  const unmatched = findUnmatchedSlotKeys(designData.layers, slotValues)
+  if (unmatched.length > 0) {
+    console.warn(
+      `[applySlotValues] ${unmatched.length} slot(s) sem layer correspondente — o conteúdo não será aplicado: ${unmatched.join(', ')}`,
+    )
+  }
+
   const layers = designData.layers.map((layer) => {
     // Match by layer ID or name
     const slot = slotValues[layer.id] ?? slotValues[layer.name]
@@ -79,6 +88,34 @@ export function applySlotValues(
   })
 
   return { ...designData, layers }
+}
+
+/**
+ * Chaves de controle não endereçam layers — são lidas por outros pontos do
+ * pipeline (ex.: `_driveImageId`, resolvido na preparação do criativo).
+ * Convenção: prefixo `_`.
+ */
+function isControlKey(key: string): boolean {
+  return key.startsWith('_')
+}
+
+/**
+ * Chaves de slotValues que não casam com nenhuma layer da página, nem por id
+ * nem por nome. São conteúdo que seria descartado silenciosamente na renderização
+ * — normalmente um texto (CTA, pré-título) endereçado a um layout que não tem
+ * aquele elemento.
+ */
+export function findUnmatchedSlotKeys(
+  layers: Array<Pick<Layer, 'id' | 'name'>>,
+  slotValues: Record<string, unknown>,
+): string[] {
+  const known = new Set<string>()
+  for (const layer of layers) {
+    if (layer?.id) known.add(layer.id)
+    if (layer?.name) known.add(layer.name)
+  }
+
+  return Object.keys(slotValues).filter((key) => !isControlKey(key) && !known.has(key))
 }
 
 function parseLayers(layers: unknown): Layer[] {

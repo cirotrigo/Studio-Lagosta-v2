@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { PostScheduler } from '@/lib/posts/scheduler'
+import { convertPageToDesignData, findUnmatchedSlotKeys } from '@/lib/posts/page-to-design-data'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
@@ -159,6 +160,25 @@ export async function POST(
       )
     }
 
+    // Slots endereçados a layers que a página não tem seriam descartados na
+    // renderização sem aviso — devolvidos como warning para quem agenda
+    const slotWarnings: string[] = []
+    if (data.pageId && data.slotValues && Object.keys(data.slotValues).length > 0) {
+      const page = await db.page.findUnique({
+        where: { id: data.pageId },
+        select: { id: true, name: true, width: true, height: true, layers: true, background: true },
+      })
+      if (page) {
+        const { layers } = convertPageToDesignData(page)
+        const unmatched = findUnmatchedSlotKeys(layers, data.slotValues)
+        if (unmatched.length > 0) {
+          const message = `A página "${page.name}" não tem os elementos: ${unmatched.join(', ')}. Esse conteúdo não vai aparecer na arte.`
+          slotWarnings.push(message)
+          console.warn(`[API Route] slotValues sem correspondente — ${message}`)
+        }
+      }
+    }
+
     // Create post using the scheduler
     console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
     console.log('[API Route] BEFORE calling PostScheduler.createPost()')
@@ -202,7 +222,7 @@ export async function POST(
     console.log('[API Route] Result:', JSON.stringify(result))
     console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥')
 
-    return NextResponse.json(result)
+    return NextResponse.json(slotWarnings.length > 0 ? { ...result, warnings: slotWarnings } : result)
 
   } catch (error) {
     console.error('Error creating post:', error)
