@@ -26,6 +26,7 @@ import {
   ArrowDown,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
 import { ImageEditorModal } from './modals/image-editor-modal'
@@ -36,8 +37,6 @@ import {
   applyOpacityToEditableColor,
   parseColorOpacity,
 } from '@/lib/shape-style'
-
-const FONT_OPTIONS = FONT_CONFIG.AVAILABLE_FONTS
 
 // Image filter presets removed - professional adjustments should be configured manually
 
@@ -530,6 +529,43 @@ interface TextControlsProps {
 }
 
 function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControlsProps) {
+  const { projectId } = useTemplateEditor()
+  const fontManager = React.useMemo(() => getFontManager(), [])
+  // Mesma fonte de dados do toolbar flutuante: sistema + fontes do projeto
+  const availableFonts = React.useMemo(
+    () => fontManager.getAvailableFonts(projectId),
+    [fontManager, projectId],
+  )
+
+  // Os itens do select são variantes ("Montserrat Bold"), enquanto a layer
+  // guarda família + peso separados — converte para casar com o item
+  const fontDisplayName = React.useMemo(() => {
+    const family = layer.style?.fontFamily ?? FONT_CONFIG.DEFAULT_FONT
+    const weight = layer.style?.fontWeight
+    if (weight) {
+      const variant = Object.entries(FONT_CONFIG.MONTSERRAT_VARIANTS).find(
+        ([, config]) => config.family === family && config.weight === String(weight),
+      )
+      if (variant) return variant[0]
+    }
+    return family
+  }, [layer.style?.fontFamily, layer.style?.fontWeight])
+
+  const handleFontChange = React.useCallback(
+    async (value: string) => {
+      const { family, weight } = FONT_CONFIG.parseFontVariant(value)
+      if (fontManager.isCustomFont(value, projectId)) {
+        try {
+          await fontManager.loadFont(family)
+        } catch (error) {
+          console.error(`[PropertiesPanel] Falha ao carregar fonte "${value}":`, error)
+        }
+      }
+      setStyleValue(layer, weight ? { fontFamily: family, fontWeight: weight } : { fontFamily: family })
+    },
+    [fontManager, projectId, layer, setStyleValue],
+  )
+
   return (
     <div className="space-y-2">
       <div className="space-y-1">
@@ -546,19 +582,35 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
       <div className="grid grid-cols-2 gap-2">
         <div className="space-y-1">
           <Label className="text-[10px]">Fonte</Label>
-          <Select
-            value={layer.style?.fontFamily ?? FONT_CONFIG.DEFAULT_FONT}
-            onValueChange={(value) => setStyleValue(layer, { fontFamily: value })}
-          >
+          <Select value={fontDisplayName} onValueChange={handleFontChange}>
             <SelectTrigger className="h-8 text-xs">
               <SelectValue placeholder="Fonte" />
             </SelectTrigger>
-            <SelectContent>
-              {FONT_OPTIONS.map((font) => (
-                <SelectItem key={font.name} value={font.name}>
-                  {font.label}
-                </SelectItem>
-              ))}
+            <SelectContent className="max-h-[400px]">
+              {availableFonts.system.length > 0 && (
+                <>
+                  <div className="px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                    Sistema
+                  </div>
+                  {availableFonts.system.map((font) => (
+                    <SelectItem key={font} value={font} className="text-xs">
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
+              {availableFonts.custom.length > 0 && (
+                <>
+                  <div className="mt-2 px-2 py-1 text-[10px] font-semibold uppercase text-muted-foreground">
+                    ✨ Minhas Fontes
+                  </div>
+                  {availableFonts.custom.map((font) => (
+                    <SelectItem key={font} value={font} className="text-xs">
+                      <span style={{ fontFamily: font }}>{font}</span>
+                    </SelectItem>
+                  ))}
+                </>
+              )}
             </SelectContent>
           </Select>
         </div>

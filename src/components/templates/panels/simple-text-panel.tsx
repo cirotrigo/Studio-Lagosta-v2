@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Button } from '@/components/ui/button'
 import { Heading1, Heading2, Heading3, AlignLeft } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
+import { FONT_CONFIG } from '@/lib/font-config'
 import { useToast } from '@/hooks/use-toast'
 
 export function SimpleTextPanel() {
@@ -44,18 +45,27 @@ export function SimpleTextPanel() {
           break
       }
 
+      // Caixa proporcional ao canvas e alta o bastante para a fonte escolhida,
+      // já que o modo padrão é auto-wrap-fixed (o texto quebra dentro da caixa)
+      const width = Math.round(canvasWidth * 0.8)
+      const height = Math.round(fontSize * 1.2 * 2)
+
       const layer = {
         ...base,
         name: `Texto - ${text}`,
-        text,
-        position: { x: canvasWidth / 2, y: canvasHeight / 2 },
+        content: text,
+        position: {
+          x: Math.round((canvasWidth - width) / 2),
+          y: Math.round((canvasHeight - height) / 2),
+        },
+        size: { width, height },
         style: {
           ...base.style,
           fontSize,
           fontWeight,
-          fontFamily: 'Montserrat',
+          fontFamily: FONT_CONFIG.DEFAULT_FONT,
           color: '#FFFFFF',
-          align: 'center' as const,
+          textAlign: 'center' as const,
         },
       }
 
