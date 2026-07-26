@@ -82,6 +82,14 @@ export interface LayerStyle {
   gradientType?: 'linear' | 'radial'
   gradientAngle?: number
   gradientStops?: GradientStop[]
+  /**
+   * Início/fim do gradiente linear, relativos à layer (0..1). Quando ausentes,
+   * o eixo é derivado de gradientAngle cobrindo a layer inteira.
+   */
+  gradientStartX?: number
+  gradientStartY?: number
+  gradientEndX?: number
+  gradientEndY?: number
   /** Centro do gradiente radial, relativo à layer (0..1). Default 0.5 (centro). */
   gradientCenterX?: number
   gradientCenterY?: number

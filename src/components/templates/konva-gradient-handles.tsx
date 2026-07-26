@@ -6,7 +6,7 @@ import { Circle, Group, Line } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
-import { calculateGradientFromAngle } from './konva-layer-factory'
+import { resolveLinearGradientPoints } from './konva-layer-factory'
 
 /**
  * KonvaGradientHandles - Handles arrastáveis para editar gradientes
@@ -252,9 +252,9 @@ function LinearHandles({ layer, zoom, stageRef, updateLayerStyle }: HandleProps)
 
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
-  const angle = layer.style?.gradientAngle ?? 0
 
-  const { start, end } = calculateGradientFromAngle(angle, width, height)
+  // Segmento efetivo: customizado (área de aplicação) ou derivado do ângulo
+  const { start, end } = resolveLinearGradientPoints(layer.style, width, height)
   const startPos = localToCanvas(start.x, start.y)
   const endPos = localToCanvas(end.x, end.y)
   const scale = Math.max(zoom, 0.01)
@@ -262,34 +262,43 @@ function LinearHandles({ layer, zoom, stageRef, updateLayerStyle }: HandleProps)
   const applyDrag = React.useCallback(
     (node: Konva.Node, kind: 'start' | 'end', commit: boolean) => {
       const local = canvasToLocal(node.x(), node.y())
-      let vx = local.x - width / 2
-      let vy = local.y - height / 2
-      if (kind === 'start') {
-        vx = -vx
-        vy = -vy
-      }
+      const relX = clamp01(local.x / width)
+      const relY = clamp01(local.y / height)
 
-      // Sem direção definida (handle exatamente no centro): mantém o ângulo atual
-      if (Math.abs(vx) < 0.001 && Math.abs(vy) < 0.001) {
-        const current = calculateGradientFromAngle(angle, width, height)
-        const pos = kind === 'start' ? current.start : current.end
-        node.position(localToCanvas(pos.x, pos.y))
-        return
-      }
+      // Mantém o handle dentro dos limites da layer
+      node.position(localToCanvas(width * relX, height * relY))
 
-      // Inverso de calculateGradientFromAngle: direção do fim = (sin θ, cos θ),
-      // com θ = ((180 - ânguloCSS) / 180) · π
-      const theta = Math.atan2(vx, vy)
-      const cssAngle = Math.round((((180 - (theta * 180) / Math.PI) % 360) + 360) % 360)
+      const current = resolveLinearGradientPoints(layer.style, width, height)
+      const startRel =
+        kind === 'start'
+          ? { x: relX, y: relY }
+          : { x: current.start.x / width, y: current.start.y / height }
+      const endRel =
+        kind === 'end'
+          ? { x: relX, y: relY }
+          : { x: current.end.x / width, y: current.end.y / height }
 
-      // Reposiciona o handle na extremidade do eixo para o novo ângulo
-      const next = calculateGradientFromAngle(cssAngle, width, height)
-      const pos = kind === 'start' ? next.start : next.end
-      node.position(localToCanvas(pos.x, pos.y))
+      // Mantém gradientAngle coerente com o segmento (usado por previews CSS
+      // e como fallback em layers sem segmento customizado)
+      const dx = (endRel.x - startRel.x) * width
+      const dy = (endRel.y - startRel.y) * height
+      const cssAngle =
+        Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001
+          ? undefined
+          : Math.round((((180 - (Math.atan2(dx, dy) * 180) / Math.PI) % 360) + 360) % 360)
 
-      scheduleUpdate({ gradientAngle: cssAngle }, commit)
+      scheduleUpdate(
+        {
+          gradientStartX: startRel.x,
+          gradientStartY: startRel.y,
+          gradientEndX: endRel.x,
+          gradientEndY: endRel.y,
+          ...(cssAngle !== undefined ? { gradientAngle: cssAngle } : {}),
+        },
+        commit,
+      )
     },
-    [canvasToLocal, localToCanvas, width, height, angle, scheduleUpdate],
+    [canvasToLocal, localToCanvas, width, height, layer.style, scheduleUpdate],
   )
 
   const handleEvents = (kind: 'start' | 'end') => ({

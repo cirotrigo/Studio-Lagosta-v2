@@ -171,6 +171,54 @@ export function GradientEditor({ layerId }: GradientEditorProps) {
       ? `linear-gradient(${angle}deg, ${cssStops})`
       : `radial-gradient(circle at ${centerX * 100}% ${centerY * 100}%, ${cssStops})`
 
+  const hasCustomSpan =
+    typeof layer.style?.gradientStartX === 'number' &&
+    typeof layer.style?.gradientStartY === 'number' &&
+    typeof layer.style?.gradientEndX === 'number' &&
+    typeof layer.style?.gradientEndY === 'number'
+
+  const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
+
+  /**
+   * Ajusta a direção do linear. Com segmento customizado (área de aplicação),
+   * gira o segmento em torno do próprio centro preservando o comprimento;
+   * sem ele, apenas grava o ângulo (eixo cobre a layer inteira).
+   */
+  const setLinearAngle = (nextAngle: number) => {
+    if (!hasCustomSpan) {
+      updateLayerStyle(layerId, { gradientAngle: nextAngle })
+      return
+    }
+    const width = Math.max(20, layer.size?.width ?? 0)
+    const height = Math.max(20, layer.size?.height ?? 0)
+    const sx = (layer.style?.gradientStartX ?? 0) * width
+    const sy = (layer.style?.gradientStartY ?? 0) * height
+    const ex = (layer.style?.gradientEndX ?? 1) * width
+    const ey = (layer.style?.gradientEndY ?? 1) * height
+    const midX = (sx + ex) / 2
+    const midY = (sy + ey) / 2
+    const halfLength = Math.hypot(ex - sx, ey - sy) / 2
+    const theta = ((180 - nextAngle) / 180) * Math.PI
+    const dx = Math.sin(theta) * halfLength
+    const dy = Math.cos(theta) * halfLength
+    updateLayerStyle(layerId, {
+      gradientAngle: nextAngle,
+      gradientStartX: clamp01((midX - dx) / width),
+      gradientStartY: clamp01((midY - dy) / height),
+      gradientEndX: clamp01((midX + dx) / width),
+      gradientEndY: clamp01((midY + dy) / height),
+    })
+  }
+
+  const resetLinearSpan = () => {
+    updateLayerStyle(layerId, {
+      gradientStartX: undefined,
+      gradientStartY: undefined,
+      gradientEndX: undefined,
+      gradientEndY: undefined,
+    })
+  }
+
   const setType = (value: 'linear' | 'radial') => {
     if (value === gradientType) return
     updateLayerStyle(layerId, {
@@ -305,21 +353,37 @@ export function GradientEditor({ layerId }: GradientEditorProps) {
 
       {/* Controles específicos do tipo */}
       {gradientType === 'linear' ? (
-        <div className="space-y-1">
-          <Label className="text-[11px] uppercase tracking-wide" htmlFor="gradient-angle">
-            Direção: {angle}°
-          </Label>
-          <input
-            id="gradient-angle"
-            type="range"
-            min={0}
-            max={360}
-            value={angle}
-            onChange={(event) =>
-              updateLayerStyle(layerId, { gradientAngle: Math.max(0, Math.min(360, Number(event.target.value))) })
-            }
-            className="w-full"
-          />
+        <div className="space-y-2">
+          <div className="space-y-1">
+            <Label className="text-[11px] uppercase tracking-wide" htmlFor="gradient-angle">
+              Direção: {angle}°
+            </Label>
+            <input
+              id="gradient-angle"
+              type="range"
+              min={0}
+              max={360}
+              value={angle}
+              onChange={(event) => setLinearAngle(Math.max(0, Math.min(360, Number(event.target.value))))}
+              className="w-full"
+            />
+          </div>
+          {hasCustomSpan && (
+            <div className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-muted/30 px-2.5 py-2">
+              <span className="text-[10px] leading-snug text-muted-foreground">
+                Área ajustada pelas bolinhas no canvas
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 shrink-0 px-2 text-[10px]"
+                onClick={resetLinearSpan}
+              >
+                Preencher camada
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="space-y-3">

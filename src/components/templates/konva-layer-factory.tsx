@@ -5,7 +5,7 @@ import Konva from 'konva'
 import { Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
-import type { Layer } from '@/types/template'
+import type { Layer, LayerStyle } from '@/types/template'
 import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
@@ -38,6 +38,30 @@ export function calculateGradientFromAngle(
     start: { x: cx - halfx, y: cy - halfy },
     end: { x: cx + halfx, y: cy + halfy },
   }
+}
+
+/**
+ * Resolve os pontos de início/fim do gradiente linear em pixels da layer.
+ * Usa o segmento customizado (gradientStartX/Y..EndX/Y, 0..1) quando definido;
+ * caso contrário deriva do ângulo cobrindo a layer inteira.
+ */
+export function resolveLinearGradientPoints(
+  style: LayerStyle | undefined,
+  width: number,
+  height: number,
+): { start: { x: number; y: number }; end: { x: number; y: number } } {
+  if (
+    typeof style?.gradientStartX === 'number' &&
+    typeof style?.gradientStartY === 'number' &&
+    typeof style?.gradientEndX === 'number' &&
+    typeof style?.gradientEndY === 'number'
+  ) {
+    return {
+      start: { x: width * style.gradientStartX, y: height * style.gradientStartY },
+      end: { x: width * style.gradientEndX, y: height * style.gradientEndY },
+    }
+  }
+  return calculateGradientFromAngle(style?.gradientAngle ?? 0, width, height)
 }
 
 /**
@@ -1007,8 +1031,8 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
     )
   }
 
-  // Usa a função calculateGradientFromAngle para calcular corretamente os pontos
-  const gradientPoints = calculateGradientFromAngle(angle, width, height)
+  // Segmento customizado (área de aplicação) quando definido; senão eixo pelo ângulo
+  const gradientPoints = resolveLinearGradientPoints(layer.style, width, height)
 
   return (
     <Rect

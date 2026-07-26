@@ -690,6 +690,20 @@ export class RenderEngine {
       const centerY = height * (style.gradientCenterY ?? 0.5)
       const radius = (Math.max(width, height) / 2) * (style.gradientRadiusScale ?? 1)
       gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
+    } else if (
+      typeof style.gradientStartX === 'number' &&
+      typeof style.gradientStartY === 'number' &&
+      typeof style.gradientEndX === 'number' &&
+      typeof style.gradientEndY === 'number'
+    ) {
+      // Segmento customizado (área de aplicação), relativo à layer (0..1)
+      // Must match Konva editor's resolveLinearGradientPoints
+      gradient = ctx.createLinearGradient(
+        width * style.gradientStartX,
+        height * style.gradientStartY,
+        width * style.gradientEndX,
+        height * style.gradientEndY,
+      )
     } else {
       // CSS-style gradient angle: 0° = bottom-to-top, 180° = top-to-bottom
       // Must match Konva editor's calculateGradientPoints formula
