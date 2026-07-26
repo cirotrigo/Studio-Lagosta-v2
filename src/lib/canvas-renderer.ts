@@ -1,6 +1,8 @@
 // src/lib/canvas-renderer.ts
 // Backend Canvas Renderer using @napi-rs/canvas
 
+import * as nodeFs from 'node:fs'
+import * as nodePath from 'node:path'
 import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
 import type { Canvas, SKRSContext2D, Image } from '@napi-rs/canvas'
 import { RenderEngine } from './render-engine'
@@ -33,6 +35,27 @@ export class CanvasRenderer {
    * Registra fontes padrão do sistema
    */
   private registerDefaultFonts(): void {
+    // Montserrat vem empacotada no repositório, um arquivo por peso — o
+    // matcher do napi-rs escolhe o arquivo certo pelo peso pedido.
+    // (fs/path ficam aqui, e não em font-config, que também roda no client)
+    const baseDir = nodePath.join(process.cwd(), FONT_CONFIG.BUNDLED_MONTSERRAT_DIR)
+    let montserratCount = 0
+    for (const weight of FONT_CONFIG.BUNDLED_MONTSERRAT_WEIGHTS) {
+      const filePath = nodePath.join(baseDir, `Montserrat-${weight}.ttf`)
+      if (!nodeFs.existsSync(filePath)) continue
+      try {
+        GlobalFonts.registerFromPath(filePath, 'Montserrat')
+        montserratCount++
+      } catch (error) {
+        console.warn(`[CanvasRenderer] Failed to register Montserrat ${weight}:`, error)
+      }
+    }
+    if (montserratCount > 0) {
+      console.log(`[CanvasRenderer] Montserrat registered (${montserratCount} weights)`)
+    } else {
+      console.warn('[CanvasRenderer] Montserrat files not found — falling back to system font')
+    }
+
     const fontPaths = FONT_CONFIG.getSystemFontPaths()
     const registeredFamilies = new Set<string>()
 

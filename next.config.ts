@@ -35,6 +35,10 @@ const ffmpegStaticGlobs = [
   './node_modules/ffmpeg-static/**/*',
 ];
 
+const montserratFontGlobs = [
+  './assets/fonts/montserrat/*.ttf',
+];
+
 const nextConfig: NextConfig = {
   /* config options here */
   typescript: {
@@ -98,6 +102,12 @@ const nextConfig: NextConfig = {
     // IMPORTANT: Keep ffmpeg-static binary for video processing
     '/api/video-processing/process': ffmpegStaticGlobs,
     '/api/test-ffmpeg': ffmpegStaticGlobs,
+    // Fontes Montserrat lidas em runtime pelo CanvasRenderer: sem isto o
+    // tracing não as inclui (não são importadas, são abertas por path) e a
+    // arte exportada sai com a fonte de fallback do sistema
+    '/api/cron/render-stories': montserratFontGlobs,
+    '/api/projects/[projectId]/generations/carousel': montserratFontGlobs,
+    '/api/templates/[id]/thumbnail': montserratFontGlobs,
   },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe

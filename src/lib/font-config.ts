@@ -45,7 +45,25 @@ export const FONT_CONFIG = {
   },
 
   /**
+   * Pesos do Montserrat empacotados no repositório (assets/fonts/montserrat).
+   *
+   * Antes, "Montserrat" era apontada para o arquivo do Arial (macOS) ou do
+   * DejaVu Sans (Linux) — ou seja, a arte exportada saía com outra tipografia
+   * da que o editor mostra. Os arquivos reais eliminam essa divergência.
+   *
+   * Cada peso é um arquivo estático: o napi-rs canvas não aplica o eixo de
+   * peso de fontes variáveis (testado — todos os pesos saem idênticos).
+   */
+  BUNDLED_MONTSERRAT_WEIGHTS: ['100', '300', '400', '500', '600', '700', '800', '900'] as const,
+
+  /** Diretório dos arquivos, relativo à raiz do app (resolvido no servidor) */
+  BUNDLED_MONTSERRAT_DIR: 'assets/fonts/montserrat',
+
+  /**
    * Obtém paths de fontes do sistema (Node.js)
+   *
+   * Montserrat não entra aqui — vem de getBundledMontserratPaths(), com um
+   * arquivo por peso.
    */
   getSystemFontPaths(): Record<string, string> {
     const platform = process.platform
@@ -53,7 +71,6 @@ export const FONT_CONFIG = {
     if (platform === 'darwin') {
       // macOS
       return {
-        Montserrat: '/System/Library/Fonts/Supplemental/Arial.ttf',
         Arial: '/System/Library/Fonts/Supplemental/Arial.ttf',
         Helvetica: '/System/Library/Fonts/Helvetica.ttc',
         'Times New Roman': '/System/Library/Fonts/Supplemental/Times New Roman.ttf',
@@ -63,7 +80,6 @@ export const FONT_CONFIG = {
     } else if (platform === 'linux') {
       // Linux (comum em servidores)
       return {
-        Montserrat: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
         Arial: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         Helvetica: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
         'Times New Roman': '/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf',
@@ -73,7 +89,6 @@ export const FONT_CONFIG = {
     } else if (platform === 'win32') {
       // Windows
       return {
-        Montserrat: 'C:\\Windows\\Fonts\\Arial.ttf',
         Arial: 'C:\\Windows\\Fonts\\Arial.ttf',
         Helvetica: 'C:\\Windows\\Fonts\\Arial.ttf',
         'Times New Roman': 'C:\\Windows\\Fonts\\times.ttf',
@@ -84,7 +99,6 @@ export const FONT_CONFIG = {
 
     // Fallback
     return {
-      Montserrat: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
       Arial: '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf',
     }
   },
