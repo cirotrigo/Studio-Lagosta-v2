@@ -26,12 +26,27 @@ export function KonvaSelectionTransformer({ selectedLayerIds, stageRef }: KonvaS
       return
     }
 
-    const nodes = selectedLayerIds
-      .map((id) => stage.findOne(`#${id}`))
-      .filter((node): node is Konva.Node => Boolean(node))
+    // Layers recém-adicionadas podem ainda não estar no stage (render adiado
+    // via useDeferredValue e fontes carregando) — tenta resolver por alguns
+    // frames até todos os nós selecionados existirem
+    let rafId = 0
+    let attempts = 0
+    const resolveNodes = () => {
+      const nodes = selectedLayerIds
+        .map((id) => stage.findOne(`#${id}`))
+        .filter((node): node is Konva.Node => Boolean(node))
 
-    transformer.nodes(nodes)
-    transformer.getLayer()?.batchDraw()
+      transformer.nodes(nodes)
+      transformer.getLayer()?.batchDraw()
+
+      if (nodes.length < selectedLayerIds.length && attempts < 90) {
+        attempts += 1
+        rafId = requestAnimationFrame(resolveNodes)
+      }
+    }
+    resolveNodes()
+
+    return () => cancelAnimationFrame(rafId)
   }, [design.layers, selectedLayerIds, stageRef])
 
   // Detectar Shift para preservar aspect ratio em elementos não-imagem

@@ -506,13 +506,62 @@ export function KonvaEditorStage() {
     [updateLayer],
   )
 
+  // Rastreia o gesto atual para o comportamento de grupo estilo Canva:
+  // 1º clique seleciona o grupo inteiro; clique seguinte entra no elemento.
+  // (mousedown e click do mesmo gesto disparam onSelect duas vezes)
+  const selectGestureRef = React.useRef<{ layerId: string; groupWasSelected: boolean } | null>(null)
+
   const handleLayerSelect = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>, layer: Layer) => {
       event.cancelBubble = true
-      const additive = event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey
-      selectLayer(layer.id, { additive, toggle: additive })
+      const additive = !!(event.evt && (event.evt.shiftKey || event.evt.metaKey || event.evt.ctrlKey))
+      if (additive) {
+        selectLayer(layer.id, { additive: true, toggle: true })
+        return
+      }
+
+      const groupId = typeof layer.metadata?.groupId === 'string' ? layer.metadata.groupId : null
+      const groupIds = groupId
+        ? design.layers.filter((item) => item.metadata?.groupId === groupId).map((item) => item.id)
+        : []
+      const isGrouped = groupIds.length > 1
+      // event.type é o nome do evento Konva ('click', 'mousedown', 'dragstart');
+      // event.evt.type seria o nativo (o 'click' do Konva chega com evt 'mouseup')
+      const evtType = event.type ?? event.evt?.type ?? ''
+      const isClickPhase = evtType === 'click' || evtType === 'tap'
+
+      if (!isGrouped) {
+        selectLayer(layer.id)
+        return
+      }
+
+      if (!isClickPhase) {
+        // Fase mousedown/dragstart do gesto
+        const groupFullySelected = groupIds.every((id) => selectedLayerIds.includes(id))
+        const anySelected = groupIds.some((id) => selectedLayerIds.includes(id))
+        selectGestureRef.current = { layerId: layer.id, groupWasSelected: groupFullySelected }
+        if (groupFullySelected) {
+          // Mantém o grupo selecionado — permite arrastar em conjunto;
+          // o drill-in acontece na fase de click (se não houver drag)
+          return
+        }
+        if (anySelected) {
+          // Já "dentro" do grupo: seleção direta do elemento clicado
+          selectLayer(layer.id)
+          return
+        }
+        selectLayers(groupIds)
+        return
+      }
+
+      // Fase click (só dispara se não houve drag): entra no elemento
+      // individual quando o grupo já estava selecionado antes do gesto
+      if (selectGestureRef.current?.layerId === layer.id && selectGestureRef.current.groupWasSelected) {
+        selectLayer(layer.id)
+      }
+      selectGestureRef.current = null
     },
-    [selectLayer],
+    [selectLayer, selectLayers, selectedLayerIds, design.layers],
   )
 
   const handleLayerDragMove = React.useCallback(
@@ -567,14 +616,51 @@ export function KonvaEditorStage() {
         node.position(position)
       }
 
+      // Seleção múltipla (ex.: grupo de combinação de fontes): move as demais
+      // layers selecionadas junto, mantendo o deslocamento relativo.
+      // node.isDragging() filtra chamadas atrasadas do throttle pós-dragend,
+      // que reaplicariam o delta sobre posições já persistidas
+      if (node.isDragging() && selectedLayerIds.length > 1 && selectedLayerIds.includes(layer.id)) {
+        const stage = node.getStage()
+        const deltaX = node.x() - (layer.position?.x ?? 0)
+        const deltaY = node.y() - (layer.position?.y ?? 0)
+        for (const id of selectedLayerIds) {
+          if (id === layer.id) continue
+          const other = design.layers.find((item) => item.id === id)
+          const otherNode = stage?.findOne(`#${id}`)
+          if (other && otherNode) {
+            otherNode.position({
+              x: (other.position?.x ?? 0) + deltaX,
+              y: (other.position?.y ?? 0) + deltaY,
+            })
+          }
+        }
+      }
+
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds],
   )
 
   const handleLayerDragEnd = React.useCallback(() => {
     setGuides([])
-  }, [])
+    // Persiste as posições das demais layers movidas no arraste em grupo
+    // (a layer arrastada é gravada pelo próprio KonvaLayerFactory)
+    if (selectedLayerIds.length > 1) {
+      const stage = stageRef.current
+      if (!stage) return
+      for (const id of selectedLayerIds) {
+        const layer = design.layers.find((item) => item.id === id)
+        const node = stage.findOne(`#${id}`)
+        if (!layer || !node) continue
+        const nextX = Math.round(node.x())
+        const nextY = Math.round(node.y())
+        if (nextX !== Math.round(layer.position?.x ?? 0) || nextY !== Math.round(layer.position?.y ?? 0)) {
+          updateLayer(id, (prev) => ({ ...prev, position: { x: nextX, y: nextY } }))
+        }
+      }
+    }
+  }, [selectedLayerIds, design.layers, updateLayer])
 
   // Atalhos de teclado para zoom, copy/paste, undo/redo
   React.useEffect(() => {
