@@ -54,6 +54,25 @@ export async function POST(
       },
     })
 
+    // Regenerar ids das layers — overrides por layerId (agendamento, editor)
+    // assumem ids únicos por página
+    const originalLayers = typeof pageToDuplicate.layers === 'string'
+      ? JSON.parse(pageToDuplicate.layers)
+      : pageToDuplicate.layers
+
+    let duplicatedLayers = originalLayers
+    if (Array.isArray(originalLayers)) {
+      const idMap = new Map<string, string>(
+        originalLayers.map((layer: any) => [layer.id, crypto.randomUUID()]),
+      )
+      duplicatedLayers = originalLayers.map((layer: any) => ({
+        ...layer,
+        id: idMap.get(layer.id),
+        // parentId referencia outra layer da mesma página (agrupamento)
+        parentId: layer.parentId ? idMap.get(layer.parentId) ?? layer.parentId : layer.parentId,
+      }))
+    }
+
     // Criar cópia da página logo após a original
     // IMPORTANTE: Não copiar thumbnail - será gerado automaticamente pelo editor
     const newPage = await db.page.create({
@@ -61,7 +80,7 @@ export async function POST(
         name: pageToDuplicate.name, // Manter o mesmo nome sem "(cópia)"
         width: pageToDuplicate.width,
         height: pageToDuplicate.height,
-        layers: pageToDuplicate.layers, // Já está serializado no banco
+        layers: JSON.stringify(duplicatedLayers),
         background: pageToDuplicate.background,
         thumbnail: null, // Não copiar thumbnail - será gerado ao abrir a página
         order: newOrder, // Logo após a página original
