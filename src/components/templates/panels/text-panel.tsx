@@ -3,7 +3,7 @@
 import * as React from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { FontsPanel } from '../sidebar/fonts-panel'
-import { TextPresetsPanel } from '../presets/text-presets-panel'
+import { FontCombinationsPanel } from './font-combinations-panel'
 import { SimpleTextPanel } from './simple-text-panel'
 import { Type, Sparkles, Plus } from 'lucide-react'
 
@@ -23,7 +23,7 @@ export function TextToolsPanel() {
           className="gap-1.5 text-xs font-medium data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm transition-all"
         >
           <Type className="h-3.5 w-3.5" />
-          Presets
+          Combinações
         </TabsTrigger>
         <TabsTrigger
           value="fonts"
@@ -39,7 +39,7 @@ export function TextToolsPanel() {
       </TabsContent>
 
       <TabsContent value="presets" className="mt-4">
-        <TextPresetsPanel />
+        <FontCombinationsPanel />
       </TabsContent>
 
       <TabsContent value="fonts" className="mt-4">
