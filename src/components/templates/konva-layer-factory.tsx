@@ -17,7 +17,7 @@ import '@/lib/konva/filters'
 /**
  * Converte ângulo CSS para pontos de início e fim do gradiente Konva
  */
-function calculateGradientFromAngle(
+export function calculateGradientFromAngle(
   angleInDegrees: number,
   width: number,
   height: number
@@ -985,6 +985,10 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
   const height = Math.max(20, layer.size?.height ?? 0)
 
   if (gradientType === 'radial') {
+    // Centro relativo (0..1) e escala do raio — mesmos defaults do render-engine (export)
+    const centerX = width * (layer.style?.gradientCenterX ?? 0.5)
+    const centerY = height * (layer.style?.gradientCenterY ?? 0.5)
+    const radius = (Math.max(width, height) / 2) * (layer.style?.gradientRadiusScale ?? 1)
     return (
       <Rect
         {...commonProps}
@@ -992,10 +996,10 @@ function GradientNode({ layer, commonProps, shapeRef, borderColor, borderWidth, 
         width={width}
         height={height}
         cornerRadius={borderRadius}
-        fillRadialGradientStartPoint={{ x: 0, y: 0 }}
+        fillRadialGradientStartPoint={{ x: centerX, y: centerY }}
         fillRadialGradientStartRadius={0}
-        fillRadialGradientEndPoint={{ x: 0, y: 0 }}
-        fillRadialGradientEndRadius={Math.max(width, height) / 2}
+        fillRadialGradientEndPoint={{ x: centerX, y: centerY }}
+        fillRadialGradientEndRadius={radius}
         fillRadialGradientColorStops={colorStops}
         stroke={borderWidth > 0 ? borderColor : undefined}
         strokeWidth={borderWidth > 0 ? borderWidth : undefined}

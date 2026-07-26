@@ -685,8 +685,11 @@ export class RenderEngine {
     let gradient: CanvasGradient
 
     if (gradientType === 'radial') {
-      const radius = Math.max(width, height) / 2
-      gradient = ctx.createRadialGradient(width / 2, height / 2, 0, width / 2, height / 2, radius)
+      // Centro relativo (0..1) e escala do raio — mesmos defaults do editor Konva
+      const centerX = width * (style.gradientCenterX ?? 0.5)
+      const centerY = height * (style.gradientCenterY ?? 0.5)
+      const radius = (Math.max(width, height) / 2) * (style.gradientRadiusScale ?? 1)
+      gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius)
     } else {
       // CSS-style gradient angle: 0° = bottom-to-top, 180° = top-to-bottom
       // Must match Konva editor's calculateGradientPoints formula

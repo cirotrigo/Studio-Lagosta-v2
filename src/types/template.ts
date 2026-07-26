@@ -82,6 +82,11 @@ export interface LayerStyle {
   gradientType?: 'linear' | 'radial'
   gradientAngle?: number
   gradientStops?: GradientStop[]
+  /** Centro do gradiente radial, relativo à layer (0..1). Default 0.5 (centro). */
+  gradientCenterX?: number
+  gradientCenterY?: number
+  /** Escala do raio do gradiente radial. Default 1 (metade da maior dimensão). */
+  gradientRadiusScale?: number
   objectFit?: 'contain' | 'cover' | 'fill'
   cropPosition?: 'left-top' | 'center-top' | 'right-top' | 'left-middle' | 'center-middle' | 'right-middle' | 'left-bottom' | 'center-bottom' | 'right-bottom'
   opacity?: number

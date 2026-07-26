@@ -13,6 +13,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
 import { KonvaLayerFactory } from './konva-layer-factory'
 import { KonvaSelectionTransformer } from './konva-transformer'
+import { KonvaGradientHandles } from './konva-gradient-handles'
 import {
   computeAlignmentGuides,
   type RectInfo,
@@ -945,6 +946,7 @@ export function KonvaEditorStage() {
               />
             ))}
             <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />
+            <KonvaGradientHandles stageRef={stageRef} />
           </KonvaLayer>
 
           {/* Smart Guides layer - DEVE estar por último para aparecer na frente */}
