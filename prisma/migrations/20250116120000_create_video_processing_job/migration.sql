@@ -1,2 +1,0 @@
--- Placeholder migration.
--- Original migration file was missing; use the next migration to create VideoProcessingJob if needed.
