@@ -43,10 +43,15 @@ export interface FontComboElement {
   textAlign?: 'left' | 'center' | 'right'
   color?: string
   effects?: FontComboEffects
-  /** Posição e largura relativas ao canvas (0..1) */
+  /** Posição e tamanho relativos ao canvas (0..1) */
   x: number
   y: number
   width: number
+  /**
+   * Altura da caixa. Opcional para combinações salvas antes deste campo —
+   * nesses casos cai na estimativa por linhas.
+   */
+  height?: number
 }
 
 export interface FontComboLayout {

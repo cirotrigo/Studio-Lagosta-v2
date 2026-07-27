@@ -42,6 +42,7 @@ const elementoSchema = z.object({
   x: z.number().min(-1).max(2),
   y: z.number().min(-1).max(2),
   width: z.number().min(0.01).max(2),
+  height: z.number().min(0.001).max(2).optional(),
 })
 
 export const criarSchema = z.object({

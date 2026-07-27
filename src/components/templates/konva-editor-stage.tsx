@@ -60,6 +60,7 @@ export function KonvaEditorStage() {
     canUndo,
     canRedo,
     setStageInstance,
+    focusTextMode,
     alignSelectedLeft,
     alignSelectedCenterH,
     alignSelectedRight,
@@ -1023,6 +1024,7 @@ export function KonvaEditorStage() {
                 key={layer.id}
                 layer={layer}
                 disableInteractions={false}
+                dimmed={focusTextMode && layer.type !== 'text'}
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
                 onDragMove={(event) => handleLayerDragMove(event, layer)}

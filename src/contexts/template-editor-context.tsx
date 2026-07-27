@@ -51,6 +51,9 @@ export interface TemplateEditorContextValue {
   markSaved: (nextTemplate?: Partial<TemplateResource>) => void
   zoom: number
   setZoom: (value: number) => void
+  /** Escurece camadas não-texto para avaliar a tipografia sem a foto distraindo */
+  focusTextMode: boolean
+  setFocusTextMode: (value: boolean) => void
   zoomIn: () => void
   zoomOut: () => void
   copySelectedLayers: () => void
@@ -161,6 +164,7 @@ const [selectedLayerIds, setSelectedLayerIds] = React.useState<string[]>([])
 const [dirty, setDirty] = React.useState(false)
 // Zoom inicial depende do dispositivo
 const [zoom, setZoomState] = React.useState(() => getDefaultZoom())
+  const [focusTextMode, setFocusTextMode] = React.useState(false)
 const [isExporting, setIsExporting] = React.useState(false)
 const [exportHistory, setExportHistory] = React.useState<ExportRecord[]>([])
 const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })
@@ -1339,6 +1343,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       dirty,
       markSaved,
       zoom,
+      focusTextMode,
+      setFocusTextMode,
       setZoom,
       zoomIn,
       zoomOut,
@@ -1402,6 +1408,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       dirty,
       markSaved,
       zoom,
+      focusTextMode,
       setZoom,
       zoomIn,
       zoomOut,

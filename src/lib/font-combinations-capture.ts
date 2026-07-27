@@ -94,6 +94,11 @@ export function capturarCombinacao({
       x: Math.round(((layer.position?.x ?? 0) / canvasWidth) * 1000) / 1000,
       y: Math.round(((layer.position?.y ?? 0) / canvasHeight) * 1000) / 1000,
       width: Math.round(((layer.size?.width ?? canvasWidth * 0.8) / canvasWidth) * 1000) / 1000,
+      // Altura vem do que o usuário ajustou na caixa; sem ela, a aplicação
+      // voltava a estimar por número de linhas e desfazia o redimensionamento
+      ...(layer.size?.height
+        ? { height: Math.round((layer.size.height / canvasHeight) * 10000) / 10000 }
+        : {}),
     }
   })
 }

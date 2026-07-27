@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Pencil, Plus, Check, X, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Check, X, Trash2, Eye, EyeOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useBrandFonts, useUpdateBrandFonts } from '@/hooks/use-brand-fonts'
@@ -39,7 +39,8 @@ import type { Layer } from '@/types/template'
  * e aplicar/editar/criar combinações tipográficas do projeto.
  */
 export function FontCombinationsPanel() {
-  const { projectId, design, selectedLayerIds, addLayer, selectLayers } = useTemplateEditor()
+  const { projectId, design, selectedLayerIds, addLayer, selectLayers, focusTextMode, setFocusTextMode } =
+    useTemplateEditor()
   const { data: brand } = useBrandFonts(projectId)
   const updateBrand = useUpdateBrandFonts(projectId)
   const { data: combinacoes, isLoading } = useFontCombinations(projectId)
@@ -108,7 +109,9 @@ export function FontCombinationsPanel() {
             },
             size: {
               width: Math.round(element.width * canvasWidth),
-              height: estimateComboElementHeight(element, escala),
+              height: element.height
+                ? Math.round(element.height * canvasHeight)
+                : estimateComboElementHeight(element, escala),
             },
             style: {
               ...base.style,
@@ -376,6 +379,21 @@ export function FontCombinationsPanel() {
           Salvar seleção como combinação
         </Button>
       )}
+
+      {/* Focar textos: avalia a tipografia sem a foto distraindo */}
+      <Button
+        variant={focusTextMode ? 'default' : 'outline'}
+        size="sm"
+        className="h-8 w-full text-[11px]"
+        onClick={() => setFocusTextMode(!focusTextMode)}
+      >
+        {focusTextMode ? (
+          <EyeOff className="mr-1 h-3.5 w-3.5" />
+        ) : (
+          <Eye className="mr-1 h-3.5 w-3.5" />
+        )}
+        {focusTextMode ? 'Mostrar imagens' : 'Focar textos'}
+      </Button>
 
       {/* Galeria */}
       <div className="space-y-2">

@@ -208,6 +208,8 @@ interface KonvaLayerFactoryProps {
   onDragMove?: (event: KonvaEventObject<DragEvent>) => void
   onDragEnd?: () => void
   disableInteractions?: boolean
+  /** Escurecida pelo modo "focar textos" — segue interativa, só perde destaque */
+  dimmed?: boolean
   stageRef?: React.RefObject<Konva.Stage | null>
   projectId?: number
 }
@@ -230,13 +232,14 @@ interface CommonProps {
   onTransformEnd: (event: KonvaEventObject<Event>) => void
 }
 
-export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, stageRef, projectId = 0 }: KonvaLayerFactoryProps) {
+export function KonvaLayerFactory({ layer, onSelect, onChange, onDragMove, onDragEnd, disableInteractions = false, dimmed = false, stageRef, projectId = 0 }: KonvaLayerFactoryProps) {
   const shapeRef = React.useRef<Konva.Shape | null>(null)
   const dragStateRef = React.useRef<{ startX: number; startY: number; hasMoved: boolean } | null>(null)
 
   const isVisible = layer.visible !== false
   const isLocked = !!layer.locked
-  const opacity = isVisible ? layer.style?.opacity ?? 1 : 0.25
+  const opacityBase = isVisible ? layer.style?.opacity ?? 1 : 0.25
+  const opacity = dimmed ? opacityBase * 0.12 : opacityBase
   const interactionsDisabled = disableInteractions || !isVisible
 
   const handleSelect = React.useCallback(
