@@ -326,6 +326,38 @@ export class GoogleDriveService {
     return response.data
   }
 
+  /** Acha um arquivo pelo nome exato dentro de uma pasta. */
+  async findFileInFolder(folderId: string, name: string): Promise<string | null> {
+    this.ensureEnabled()
+
+    const response = await this.withRetry('findFileInFolder', async () =>
+      this.drive.files.list(
+        {
+          q: `'${escapeQueryValue(folderId)}' in parents and name = '${escapeQueryValue(name)}' and trashed = false`,
+          fields: 'files(id)',
+          pageSize: 1,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        },
+        { timeout: LIST_TIMEOUT },
+      ),
+    )
+    return response.data.files?.[0]?.id ?? null
+  }
+
+  /** Lê um arquivo do Drive já desserializado como JSON (catálogo de imagens). */
+  async readFileAsJson<T>(fileId: string): Promise<T> {
+    this.ensureEnabled()
+
+    const response = await this.withRetry('readFileAsJson', async () =>
+      this.drive.files.get(
+        { fileId, alt: 'media', supportsAllDrives: true },
+        { responseType: 'json', timeout: LIST_TIMEOUT },
+      ),
+    )
+    return response.data as T
+  }
+
   async getFolderBreadcrumbs(folderId: string) {
     this.ensureEnabled()
 

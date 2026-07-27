@@ -12,6 +12,8 @@ import { db } from '@/lib/db'
 import { prepareCreative, createArteRapida } from '@/lib/creatives/arte-rapida'
 import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
+import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
+import { agendarPost } from '@/lib/creatives/agendar'
 import { KnowledgeCategory } from '@prisma/client'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
 
@@ -297,6 +299,91 @@ export const MCP_TOOLS: McpTool[] = [
         textosLivres: args.textosLivres,
         logo: args.logo,
         name: args.name,
+      })
+    },
+  },
+  {
+    name: 'search-acervo',
+    description:
+      'Busca fotos no acervo do projeto (catálogo do Google Drive) por tema, categoria de cardápio, tags ou qualidade. Devolve o driveFileId de cada foto, que você passa em create-arte-livre/create-arte-rapida. Ordena pelas MENOS usadas recentemente, para não repetir a mesma foto toda semana. Use antes de criar arte, para escolher a foto pelo tema.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do projeto.' },
+        theme: { type: 'string', description: 'Tema — casa com tags, bestFor e o caminho da pasta (ex: "ambiente", "picanha", "chopp").' },
+        folder: { type: 'string', description: 'Pasta exata ou prefixo (ex: "01_cortes/picanha-bovina", "02_ambiente"). Veja pastasDisponiveis no retorno.' },
+        menuCategory: { type: 'string', description: 'Categoria do cardápio (ex: PRATOS_PRINCIPAIS, BEBIDAS).' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Tags a casar.' },
+        quality: { type: 'string', enum: ['alta', 'media', 'baixa'], description: 'Qualidade mínima.' },
+        limit: { type: 'number', description: 'Máximo de resultados (default 20).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return buscarNoAcervo({
+        projectId,
+        theme: args.theme,
+        folder: args.folder,
+        menuCategory: args.menuCategory,
+        tags: args.tags,
+        quality: args.quality,
+        limit: args.limit,
+      })
+    },
+  },
+
+  {
+    name: 'list-drive-images',
+    description:
+      'Lista as imagens da pasta do Drive do projeto. Use quando o projeto ainda não tem catálogo (search-acervo devolve SEM_CATALOGO).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do projeto.' },
+        limit: { type: 'number', description: 'Máximo de imagens (default 30).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return listarImagensDoDrive(projectId, typeof args.limit === 'number' ? args.limit : undefined)
+    },
+  },
+
+  {
+    name: 'agendar-post',
+    description:
+      'Agenda um post a partir de uma arte já criada (pageId de create-arte-livre/create-arte-rapida) ou de mediaUrls prontas.\n\nATENÇÃO: nasce como DRAFT — aparece na agenda mas NÃO publica. Só entra na fila de publicação do Instagram com status="SCHEDULED", e isso sai para a conta real do cliente. Confirme a data, o horário e a arte com a pessoa antes de usar SCHEDULED.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do projeto.' },
+        postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo (default STORY).' },
+        caption: { type: 'string', description: 'Legenda. Stories podem ficar sem.' },
+        scheduledDatetime: { type: 'string', description: 'Quando publicar: "YYYY-MM-DD HH:mm" no horário de Brasília.' },
+        pageId: { type: 'string', description: 'Página da arte criada aqui.' },
+        mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma página.' },
+        status: { type: 'string', enum: ['DRAFT', 'SCHEDULED'], description: 'DRAFT (default) só na agenda; SCHEDULED entra na fila de publicação.' },
+      },
+      required: ['projectId', 'scheduledDatetime'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return agendarPost({
+        projectId,
+        postType: args.postType,
+        caption: args.caption,
+        scheduledDatetime: requireString(args, 'scheduledDatetime'),
+        pageId: args.pageId,
+        mediaUrls: args.mediaUrls,
+        status: args.status,
       })
     },
   },
