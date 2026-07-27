@@ -27,11 +27,11 @@ import { getFontManager } from '@/lib/font-manager'
 import { FONT_CONFIG } from '@/lib/font-config'
 import {
   COMBO_BASE_CANVAS_WIDTH,
-  estimateComboElementHeight,
   resolveComboFontFamily,
   type FontComboElement,
   type FontComboPair,
 } from '@/lib/font-combinations'
+import { buildComboLayers } from '@/lib/font-combinations-layers'
 import type { Layer } from '@/types/template'
 
 /**
@@ -112,51 +112,13 @@ export function FontCombinationsPanel() {
       try {
         await garantirFontes(combo.elements)
 
-        const canvasWidth = design.canvas.width
-        const canvasHeight = design.canvas.height
-        const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
-        const groupId = `combo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-
-        const criadas: Layer[] = combo.elements.map((element: FontComboElement) => {
-          const base = createDefaultLayer('text')
-          return {
-            ...base,
-            name: `${combo.name} - ${element.label}`,
-            content: element.text,
-            position: {
-              x: Math.round(element.x * canvasWidth),
-              y: Math.round(element.y * canvasHeight),
-            },
-            size: {
-              width: Math.round(element.width * canvasWidth),
-              height: element.height
-                ? Math.round(element.height * canvasHeight)
-                : estimateComboElementHeight(element, escala),
-            },
-            style: {
-              ...base.style,
-              fontSize: Math.round(element.fontSize * escala),
-              fontFamily: element.fontFamily ?? resolveComboFontFamily(element.role, pair),
-              fontWeight: element.fontWeight,
-              fontStyle: element.fontStyle ?? 'normal',
-              color: element.color ?? '#FFFFFF',
-              textAlign: element.textAlign ?? 'center',
-              lineHeight: element.lineHeight,
-              letterSpacing: element.letterSpacing
-                ? Math.round(element.letterSpacing * escala)
-                : undefined,
-              textTransform: element.textTransform ?? 'none',
-            },
-            ...(element.rotation ? { rotation: element.rotation } : {}),
-            ...(element.effects ? { effects: element.effects } : {}),
-            metadata: {
-              presetId: combo.id,
-              presetName: combo.name,
-              elementId: element.id,
-              elementLabel: element.label,
-              groupId,
-            },
-          }
+        const criadas: Layer[] = buildComboLayers({
+          elements: combo.elements,
+          pair,
+          canvasWidth: design.canvas.width,
+          canvasHeight: design.canvas.height,
+          comboId: combo.id,
+          comboName: combo.name,
         })
 
         criadas.forEach((layer) => addLayer(layer))

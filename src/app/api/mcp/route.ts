@@ -1,24 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { isExternalApiAuthorized } from '@/lib/external-api/auth'
 import { MCP_TOOLS, runMcpTool } from '@/lib/mcp/tools'
+import { oauthIssuer, resolveAccessToken, type McpPrincipal } from '@/lib/mcp/oauth'
 
-// Renders happen inside create-arte-rapida.
+// Renders happen inside create-arte-rapida / create-arte-livre.
 export const maxDuration = 120
 
 /**
- * Remote MCP endpoint (Streamable HTTP, stateless).
+ * Endpoint MCP remoto (Streamable HTTP, stateless).
  *
- * Lets any MCP client reach the Studio without this repo checked out — a
- * second machine, the CLI, a phone. Same tools and same libs as the local
- * stdio server in scripts/mcp-server.ts.
+ * Duas formas de autenticar:
+ *  - Bearer com EXTERNAL_API_SECRET — serviço (Claudinho, scripts, CLI).
+ *  - Bearer com token OAuth — conector do claude.ai, amarrado a um usuário
+ *    Clerk; as tools só enxergam os projetos daquele usuário.
  *
- * Auth is a bearer token (EXTERNAL_API_SECRET), which works with clients that
- * accept a custom header, e.g.:
- *   claude mcp add --transport http studio https://<host>/api/mcp \
- *     --header "Authorization: Bearer <EXTERNAL_API_SECRET>"
- *
- * Stateless by design: no session ids, no server→client stream. GET/DELETE
- * answer 405, which the spec allows for servers that don't offer SSE.
+ * Stateless de propósito: sem session id e sem stream servidor→cliente. GET e
+ * DELETE respondem 405, o que o protocolo permite para quem não oferece SSE.
  */
 
 const SUPPORTED_PROTOCOL_VERSIONS = ['2024-11-05', '2025-03-26', '2025-06-18']
@@ -36,7 +33,29 @@ function failure(id: JsonRpcId, code: number, message: string) {
   return { jsonrpc: '2.0' as const, id, error: { code, message } }
 }
 
-async function handleMessage(message: any) {
+/**
+ * 401 no formato que o cliente MCP espera: o header aponta para os metadados
+ * do recurso, e é por ali que o claude.ai descobre onde fazer o login.
+ */
+function unauthorized() {
+  return NextResponse.json(failure(null, -32001, 'Unauthorized'), {
+    status: 401,
+    headers: {
+      'WWW-Authenticate': `Bearer realm="studio-lagosta", resource_metadata="${oauthIssuer()}/.well-known/oauth-protected-resource"`,
+    },
+  })
+}
+
+async function autenticar(req: NextRequest): Promise<McpPrincipal | null> {
+  const header = req.headers.get('authorization')
+  if (!header?.startsWith('Bearer ')) return null
+
+  if (isExternalApiAuthorized(header)) return { kind: 'service' }
+
+  return resolveAccessToken(header.slice('Bearer '.length).trim())
+}
+
+async function handleMessage(message: any, principal: McpPrincipal) {
   const { id = null, method, params } = message ?? {}
 
   switch (method) {
@@ -65,7 +84,7 @@ async function handleMessage(message: any) {
       if (typeof name !== 'string') {
         return failure(id, -32602, 'params.name é obrigatório')
       }
-      return result(id, await runMcpTool(name, params?.arguments ?? {}))
+      return result(id, await runMcpTool(name, params?.arguments ?? {}, principal))
     }
 
     default:
@@ -74,9 +93,8 @@ async function handleMessage(message: any) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!isExternalApiAuthorized(req.headers.get('authorization'))) {
-    return NextResponse.json(failure(null, -32001, 'Unauthorized'), { status: 401 })
-  }
+  const principal = await autenticar(req)
+  if (!principal) return unauthorized()
 
   let body: unknown
   try {
@@ -87,13 +105,13 @@ export async function POST(req: NextRequest) {
 
   const messages = Array.isArray(body) ? body : [body]
 
-  // Notifications and responses carry no id and expect no reply.
+  // Notificações e respostas não têm id e não esperam resposta.
   const requests = messages.filter((m: any) => m && typeof m === 'object' && 'method' in m && m.id !== undefined)
   if (requests.length === 0) {
     return new NextResponse(null, { status: 202 })
   }
 
-  const replies = await Promise.all(requests.map(handleMessage))
+  const replies = await Promise.all(requests.map((m) => handleMessage(m, principal)))
   return NextResponse.json(Array.isArray(body) ? replies : replies[0])
 }
 

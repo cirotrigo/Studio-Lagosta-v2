@@ -214,7 +214,7 @@ model Project {
   webhookReminderUrl          String?
   brandStyleDescription       String?
   brandVisualElements         Json?
-  brandReferenceUrls          String[]              @default([])
+  brandReferenceUrls          String[]                @default([])
   cuisineType                 String?
   titleFontFamily             String?
   bodyFontFamily              String?
@@ -446,22 +446,22 @@ model SubscriptionEvent {
 }
 
 model Template {
-  id            Int          @id @default(autoincrement())
-  name          String
-  type          TemplateType
-  dimensions    String
-  designData    Json
-  dynamicFields Json         @default("[]")
-  thumbnailUrl  String?
-  projectId     Int
-  createdBy     String
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  category      String?
-  isPremium     Boolean      @default(false)
-  isPublic      Boolean      @default(false)
-  tags          String[]     @default([])
-  localId       String?      // ID from desktop-app for sync tracking
+  id             Int          @id @default(autoincrement())
+  name           String
+  type           TemplateType
+  dimensions     String
+  designData     Json
+  dynamicFields  Json         @default("[]")
+  thumbnailUrl   String?
+  projectId      Int
+  createdBy      String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  category       String?
+  isPremium      Boolean      @default(false)
+  isPublic       Boolean      @default(false)
+  tags           String[]     @default([])
+  localId        String? // ID from desktop-app for sync tracking
   Generation     Generation[]
   Page           Page[]
   scheduledPosts SocialPost[] @relation("ScheduledPosts")
@@ -1458,4 +1458,51 @@ enum RenderStatus {
   RENDERING
   RENDERED
   RENDER_FAILED
+}
+
+/// Cliente OAuth registrado dinamicamente (RFC 7591) por um conector MCP —
+/// é assim que o claude.ai se apresenta antes do primeiro login.
+model McpOAuthClient {
+  id           String          @id @default(cuid())
+  name         String
+  redirectUris String[]
+  createdAt    DateTime        @default(now())
+  codes        McpOAuthCode[]
+  tokens       McpOAuthToken[]
+}
+
+/// Código de autorização (curta duração, uso único) com o desafio PKCE.
+model McpOAuthCode {
+  code          String         @id
+  clientId      String
+  /// Clerk userId de quem aprovou
+  userId        String
+  redirectUri   String
+  codeChallenge String
+  scope         String?
+  expiresAt     DateTime
+  usedAt        DateTime?
+  createdAt     DateTime       @default(now())
+  client        McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+  @@index([expiresAt])
+}
+
+/// Token de acesso e refresh. Guardamos só o hash — o valor em claro só
+/// existe na resposta ao cliente.
+model McpOAuthToken {
+  id          String         @id @default(cuid())
+  tokenHash   String         @unique
+  refreshHash String?        @unique
+  clientId    String
+  userId      String
+  scope       String?
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime       @default(now())
+  client      McpOAuthClient @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
 }

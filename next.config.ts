@@ -108,6 +108,33 @@ const nextConfig: NextConfig = {
     '/api/cron/render-stories': montserratFontGlobs,
     '/api/projects/[projectId]/generations/carousel': montserratFontGlobs,
     '/api/templates/[id]/thumbnail': montserratFontGlobs,
+    // Artes pedidas de fora (Claudinho, conector do claude.ai) renderizam aqui
+    '/api/external/creatives': montserratFontGlobs,
+    '/api/mcp': montserratFontGlobs,
+  },
+
+  // Descoberta OAuth do conector MCP. Os caminhos /.well-known/* são fixados
+  // pelas RFCs 8414/9728, e uma pasta iniciada por ponto dentro de app/ não
+  // vira rota — daí o rewrite para as rotas reais sob /api/oauth.
+  async rewrites() {
+    return [
+      {
+        source: '/.well-known/oauth-authorization-server',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-authorization-server/api/mcp',
+        destination: '/api/oauth/metadata/authorization-server',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
+      {
+        source: '/.well-known/oauth-protected-resource/api/mcp',
+        destination: '/api/oauth/metadata/protected-resource',
+      },
+    ]
   },
 
   // Headers necessários para FFmpeg.wasm (SharedArrayBuffer) e PhotoSwipe

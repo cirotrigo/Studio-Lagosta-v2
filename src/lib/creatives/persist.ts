@@ -1,0 +1,203 @@
+/**
+ * Persistência comum das artes geradas fora do editor.
+ *
+ * Tanto a arte a partir de modelo (arte-rapida) quanto a arte montada do zero
+ * (arte-livre) terminam igual: viram uma Page editável dentro do template
+ * coletor do projeto, são renderizadas para o Blob e entram na galeria de
+ * Criativos. Só o miolo das camadas muda.
+ */
+
+import { put } from '@vercel/blob'
+import { db } from '@/lib/db'
+import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import { googleDriveService } from '@/server/google-drive-service'
+import type { TemplateType } from '@prisma/client'
+
+/**
+ * Template coletor por formato. O nome do story ficou sem sufixo porque já
+ * existe em produção desde o primeiro arte-rápida.
+ */
+export const ARTE_TEMPLATE_NAMES: Record<TemplateType, string> = {
+  STORY: 'Arte Rápida',
+  FEED: 'Arte Rápida — Feed',
+  SQUARE: 'Arte Rápida — Quadrado',
+}
+
+export const FORMAT_PRESETS = {
+  story: { width: 1080, height: 1920, type: 'STORY' as TemplateType },
+  feed: { width: 1080, height: 1350, type: 'FEED' as TemplateType },
+  quadrado: { width: 1080, height: 1080, type: 'SQUARE' as TemplateType },
+}
+
+export type FormatoArte = keyof typeof FORMAT_PRESETS
+
+/** Deduz o formato a partir das dimensões, para artes com tamanho custom. */
+export function inferTemplateType(width: number, height: number): TemplateType {
+  if (height > width) return 'STORY'
+  if (height === width) return 'SQUARE'
+  return 'FEED'
+}
+
+/** Acha (ou cria no primeiro uso) o template coletor do projeto para o formato. */
+export async function ensureArteTemplate(
+  projectId: number,
+  userId: string,
+  type: TemplateType,
+  dimensions: string,
+) {
+  const name = ARTE_TEMPLATE_NAMES[type]
+  const existing = await db.template.findFirst({ where: { projectId, name } })
+  if (existing) return existing
+
+  return db.template.create({
+    data: {
+      name,
+      type,
+      dimensions,
+      projectId,
+      createdBy: userId,
+      designData: {} as any,
+      dynamicFields: [] as any,
+      tags: ['arte-rapida'],
+      category: 'arte-rapida',
+    },
+  })
+}
+
+/**
+ * Resolve a URL da imagem de fundo — URL direta ou arquivo do Drive.
+ *
+ * Falha no Drive não é fatal: a arte ainda renderiza. O motivo volta junto
+ * para o chamador poder avisar, em vez de entregar a foto errada calado.
+ */
+export async function resolveImageUrl(
+  imageUrl?: string,
+  driveImageId?: string | null,
+): Promise<{ url: string | null; warning?: string }> {
+  if (imageUrl) return { url: imageUrl }
+  if (!driveImageId) return { url: null }
+
+  if (!googleDriveService.isEnabled()) {
+    return {
+      url: null,
+      warning: 'Google Drive não configurado neste ambiente (GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN)',
+    }
+  }
+
+  try {
+    const file = await googleDriveService.getFileMetadata(driveImageId, 'thumbnailLink')
+    const thumbnailLink = (file as { thumbnailLink?: string }).thumbnailLink
+    if (thumbnailLink) return { url: thumbnailLink.replace(/=s\d+$/, '=s1920') }
+    return { url: null, warning: `Arquivo ${driveImageId} do Drive não tem thumbnailLink (não é imagem?)` }
+  } catch (error) {
+    const message = (error as Error).message
+    console.error('[creatives] Drive resolve failed:', message)
+    return { url: null, warning: `Falha ao resolver a imagem no Drive: ${message}` }
+  }
+}
+
+export function getPublicAppUrl(): string {
+  const url =
+    process.env.STUDIO_LAGOSTA_PUBLIC_URL ?? process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3000'
+  return url.replace(/\/$/, '')
+}
+
+export interface PersistCreativeInput {
+  project: { id: number; name: string; userId: string }
+  templateId: number
+  templateName: string
+  pageName: string
+  width: number
+  height: number
+  layers: unknown[]
+  background?: string | null
+  /** Procedência guardada na Generation (o que gerou a arte) */
+  fieldValues: Record<string, unknown>
+  authorName: string
+}
+
+export interface PersistCreativeResult {
+  generationId: string
+  pageId: string
+  templateId: number
+  templateName: string
+  url: string
+  editUrl: string
+  galleryUrl: string
+  width: number
+  height: number
+  sizeKB: number
+}
+
+/** Cria a Page, renderiza o PNG, sobe pro Blob e registra a Generation. */
+export async function persistAndRenderCreative(
+  input: PersistCreativeInput,
+): Promise<PersistCreativeResult> {
+  const { project, templateId, templateName, pageName, width, height, layers, background } = input
+
+  const page = await db.page.create({
+    data: {
+      name: pageName,
+      width,
+      height,
+      layers: layers as any,
+      background: background ?? null,
+      order: 0,
+      templateId,
+      isTemplate: false, // arte renderizada, não um modelo reutilizável
+      tags: ['arte-rapida'],
+    },
+  })
+
+  const designData = convertPageToDesignData({
+    id: page.id,
+    name: page.name,
+    width: page.width,
+    height: page.height,
+    layers: page.layers,
+    background: page.background,
+  })
+
+  await registerProjectFonts(project.id)
+
+  const { CanvasRenderer } = await import('@/lib/canvas-renderer')
+  const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
+  const buffer = await renderer.renderDesign(designData, {})
+
+  const blobPath = `arte-rapida/${project.id}/${page.id}-${Date.now()}.png`
+  const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
+
+  await db.page.update({ where: { id: page.id }, data: { thumbnail: blob.url } })
+
+  const generation = await db.generation.create({
+    data: {
+      status: 'COMPLETED' as any,
+      templateId,
+      fieldValues: { ...input.fieldValues, thumbnailUrl: blob.url } as any,
+      resultUrl: blob.url,
+      projectId: project.id,
+      createdBy: project.userId,
+      authorName: input.authorName,
+      templateName,
+      projectName: project.name,
+      completedAt: new Date(),
+      fileName: `${pageName}.png`,
+    },
+  })
+
+  const appUrl = getPublicAppUrl()
+
+  return {
+    generationId: generation.id,
+    pageId: page.id,
+    templateId,
+    templateName,
+    url: blob.url,
+    editUrl: `${appUrl}/templates/${templateId}/editor?pageId=${encodeURIComponent(page.id)}`,
+    galleryUrl: `${appUrl}/projects/${project.id}?tab=criativos`,
+    width: designData.canvas.width,
+    height: designData.canvas.height,
+    sizeKB: Math.round(buffer.length / 1024),
+  }
+}

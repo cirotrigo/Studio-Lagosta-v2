@@ -10,7 +10,17 @@ const isPublicRoute = createRouteMatcher([
   '/api/webhooks(.*)',
   '/api/cron(.*)', // Allow Vercel Cron jobs (authenticated via Bearer token in route handler)
   '/api/external(.*)', // Service-to-service API (authenticated via EXTERNAL_API_SECRET in route handler)
-  '/api/mcp(.*)', // Remote MCP endpoint (authenticated via EXTERNAL_API_SECRET in route handler)
+  '/api/mcp(.*)', // Remote MCP endpoint (authenticated via EXTERNAL_API_SECRET or OAuth token in route handler)
+  // Descoberta e registro OAuth do conector MCP: precisam responder sem sessão.
+  // A tela de consentimento (/oauth/authorize) fica de fora de propósito — ela
+  // exige login, e é lá que o acesso é concedido.
+  '/.well-known(.*)',
+  '/api/oauth/metadata(.*)',
+  '/api/oauth/register',
+  '/api/oauth/token',
+  // Faz a própria checagem de sessão e responde 401 em JSON — redirecionar uma
+  // chamada de API para o sign-in devolveria HTML para um fetch
+  '/api/oauth/authorize/approve',
   '/google-drive-callback(.*)',
   // CMS dynamic pages (catch-all for non-protected routes)
   '/about(.*)',
@@ -29,7 +39,10 @@ const isAdminRoute = createRouteMatcher([
 
 export default clerkMiddleware(async (auth, req) => {
   const { userId } = await auth()
-  const { pathname } = req.nextUrl
+  const { pathname, search } = req.nextUrl
+  // Volta para a URL inteira: a tela de consentimento do OAuth carrega
+  // client_id/redirect_uri/PKCE na query, e perdê-los no login inutiliza o link
+  const destinoAposLogin = `${pathname}${search}`
 
   // Allow public routes (logged users can also access public pages)
   if (isPublicRoute(req)) {
@@ -40,7 +53,7 @@ export default clerkMiddleware(async (auth, req) => {
   if (isAdminRoute(req)) {
     if (!userId) {
       const signInUrl = new URL('/sign-in', req.url)
-      signInUrl.searchParams.set('redirect_url', pathname)
+      signInUrl.searchParams.set('redirect_url', destinoAposLogin)
       return NextResponse.redirect(signInUrl)
     }
     // Let the admin layout handle the actual admin permission check
@@ -50,7 +63,7 @@ export default clerkMiddleware(async (auth, req) => {
   // For all other protected routes, require authentication
   if (!userId && !isPublicRoute(req)) {
     const signInUrl = new URL('/sign-in', req.url)
-    signInUrl.searchParams.set('redirect_url', pathname)
+    signInUrl.searchParams.set('redirect_url', destinoAposLogin)
     return NextResponse.redirect(signInUrl)
   }
 

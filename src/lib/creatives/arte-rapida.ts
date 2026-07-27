@@ -15,12 +15,18 @@
  *      render to PNG and register it in the Criativos gallery.
  */
 
-import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
-import { convertPageToDesignData } from '@/lib/posts/page-to-design-data'
-import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
-import { googleDriveService } from '@/server/google-drive-service'
 import { KnowledgeCategory } from '@prisma/client'
+import { CreativeError } from '@/lib/creatives/errors'
+import {
+  ARTE_TEMPLATE_NAMES,
+  ensureArteTemplate,
+  getPublicAppUrl,
+  persistAndRenderCreative,
+  resolveImageUrl,
+} from '@/lib/creatives/persist'
+
+export { CreativeError, getPublicAppUrl }
 
 /** Name of the per-project template that collects every arte-rápida output. */
 export const ARTE_RAPIDA_TEMPLATE_NAME = 'Arte Rápida'
@@ -44,47 +50,12 @@ const KB_KEYS: Record<string, string> = {
   CAMPANHAS: 'campanhas',
 }
 
-/**
- * Domain error with a stable machine-readable code, so HTTP routes can map it
- * to a status and MCP tools can surface it as structured JSON.
- */
-export class CreativeError extends Error {
-  readonly code: string
-  readonly status: number
-  readonly details?: Record<string, unknown>
-
-  constructor(code: string, message: string, status = 400, details?: Record<string, unknown>) {
-    super(message)
-    this.name = 'CreativeError'
-    this.code = code
-    this.status = status
-    this.details = details
-  }
-
-  toJSON() {
-    return { error: this.code, message: this.message, ...(this.details ?? {}) }
-  }
-}
-
 function normalize(value: string): string {
   return value
     .toLowerCase()
     .normalize('NFD')
     .replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, '-')
-}
-
-/**
- * Public URL used to build clickable links (editor, gallery). Priority:
- * STUDIO_LAGOSTA_PUBLIC_URL (lets a locally-run MCP point at production),
- * then NEXT_PUBLIC_APP_URL, then localhost.
- */
-export function getPublicAppUrl(): string {
-  const url =
-    process.env.STUDIO_LAGOSTA_PUBLIC_URL ??
-    process.env.NEXT_PUBLIC_APP_URL ??
-    'http://localhost:3000'
-  return url.replace(/\/$/, '')
 }
 
 function parseLayers(raw: unknown): any[] {
@@ -424,36 +395,6 @@ export interface CreateArteRapidaResult {
 }
 
 /**
- * Resolve the background image URL from either a direct URL or a Drive file id.
- *
- * Drive failures are non-fatal — the creative still renders, just with whatever
- * image the template carried. The reason is returned so the caller can say so
- * instead of silently shipping the wrong photo.
- */
-async function resolveImageUrl(
-  imageUrl?: string,
-  driveImageId?: string | null,
-): Promise<{ url: string | null; warning?: string }> {
-  if (imageUrl) return { url: imageUrl }
-  if (!driveImageId) return { url: null }
-
-  if (!googleDriveService.isEnabled()) {
-    return { url: null, warning: 'Google Drive não configurado neste ambiente (GOOGLE_DRIVE_CLIENT_ID/SECRET/REFRESH_TOKEN)' }
-  }
-
-  try {
-    const file = await googleDriveService.getFileMetadata(driveImageId, 'thumbnailLink')
-    const thumbnailLink = (file as { thumbnailLink?: string }).thumbnailLink
-    if (thumbnailLink) return { url: thumbnailLink.replace(/=s\d+$/, '=s1920') }
-    return { url: null, warning: `Arquivo ${driveImageId} do Drive não tem thumbnailLink (não é imagem?)` }
-  } catch (error) {
-    const message = (error as Error).message
-    console.error('[arte-rapida] Drive resolve failed:', message)
-    return { url: null, warning: `Falha ao resolver a imagem no Drive: ${message}` }
-  }
-}
-
-/**
  * Bake slot values and the background image into a copy of the source layers.
  *
  * Image placement: an explicit `fileUrl` slot always wins. Otherwise the photo
@@ -499,28 +440,6 @@ function bakeLayers(
   return { layers, imageApplied: true }
 }
 
-/** Find (or create on first use) the project's "Arte Rápida" template. */
-async function ensureArteRapidaTemplate(projectId: number, userId: string, sourceTemplate: any) {
-  const existing = await db.template.findFirst({
-    where: { projectId, name: ARTE_RAPIDA_TEMPLATE_NAME },
-  })
-  if (existing) return existing
-
-  return db.template.create({
-    data: {
-      name: ARTE_RAPIDA_TEMPLATE_NAME,
-      type: sourceTemplate.type,
-      dimensions: sourceTemplate.dimensions,
-      projectId,
-      createdBy: userId,
-      designData: {} as any,
-      dynamicFields: [] as any,
-      tags: ['arte-rapida'],
-      category: 'arte-rapida',
-    },
-  })
-}
-
 /**
  * Generate a creative from a source template page: bakes copy and image into
  * the layers, persists an editable Page under the project's "Arte Rápida"
@@ -552,7 +471,12 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     )
   }
 
-  const arteTemplate = await ensureArteRapidaTemplate(projectId, project.userId, sourcePage.Template)
+  const arteTemplate = await ensureArteTemplate(
+    projectId,
+    project.userId,
+    sourcePage.Template.type,
+    sourcePage.Template.dimensions,
+  )
 
   const driveImageId = typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null
   const directUrl =
@@ -568,81 +492,34 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       : undefined)
 
   const pageName = input.name ?? `${sourcePage.name} — ${new Date().toLocaleString('pt-BR')}`
-  const newPage = await db.page.create({
-    data: {
-      name: pageName,
-      width: sourcePage.width,
-      height: sourcePage.height,
-      layers: layers as any,
-      background: sourcePage.background,
-      order: 0,
-      templateId: arteTemplate.id,
-      isTemplate: false, // rendered artwork, not a reusable modelo
-      tags: ['arte-rapida'],
+
+  const persisted = await persistAndRenderCreative({
+    project,
+    templateId: arteTemplate.id,
+    templateName: arteTemplate.name,
+    pageName,
+    width: sourcePage.width,
+    height: sourcePage.height,
+    layers,
+    background: sourcePage.background,
+    authorName: 'arte-rapida',
+    fieldValues: {
+      source: 'arte-rapida',
+      sourceTemplateId: sourcePage.Template.id,
+      sourceTemplateName: sourcePage.Template.name,
+      sourcePageId: sourcePage.id,
+      sourcePageName: sourcePage.name,
+      sourceTags: sourcePage.tags ?? [],
+      driveImageId,
+      imageUrl: resolved.url ?? directUrl ?? null,
+      slotValues,
     },
   })
-
-  const designData = convertPageToDesignData({
-    id: newPage.id,
-    name: newPage.name,
-    width: newPage.width,
-    height: newPage.height,
-    layers: newPage.layers,
-    background: newPage.background,
-  })
-
-  await registerProjectFonts(projectId)
-
-  const { CanvasRenderer } = await import('@/lib/canvas-renderer')
-  const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
-  const buffer = await renderer.renderDesign(designData, {})
-
-  const blobPath = `arte-rapida/${projectId}/${newPage.id}-${Date.now()}.png`
-  const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
-
-  await db.page.update({ where: { id: newPage.id }, data: { thumbnail: blob.url } })
-
-  const generation = await db.generation.create({
-    data: {
-      status: 'COMPLETED' as any,
-      templateId: arteTemplate.id,
-      fieldValues: {
-        source: 'arte-rapida',
-        sourceTemplateId: sourcePage.Template.id,
-        sourceTemplateName: sourcePage.Template.name,
-        sourcePageId: sourcePage.id,
-        sourcePageName: sourcePage.name,
-        sourceTags: sourcePage.tags ?? [],
-        driveImageId,
-        imageUrl: resolved.url ?? directUrl ?? null,
-        slotValues,
-        thumbnailUrl: blob.url,
-      } as any,
-      resultUrl: blob.url,
-      projectId,
-      createdBy: project.userId,
-      authorName: 'arte-rapida',
-      templateName: ARTE_RAPIDA_TEMPLATE_NAME,
-      projectName: project.name,
-      completedAt: new Date(),
-      fileName: `${pageName}.png`,
-    },
-  })
-
-  const appUrl = getPublicAppUrl()
 
   return {
     created: true,
-    generationId: generation.id,
-    pageId: newPage.id,
-    templateId: arteTemplate.id,
+    ...persisted,
     templateName: ARTE_RAPIDA_TEMPLATE_NAME,
-    url: blob.url,
-    editUrl: `${appUrl}/templates/${arteTemplate.id}/editor?pageId=${encodeURIComponent(newPage.id)}`,
-    galleryUrl: `${appUrl}/projects/${projectId}?tab=criativos`,
-    width: designData.canvas.width,
-    height: designData.canvas.height,
-    sizeKB: Math.round(buffer.length / 1024),
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
   }
