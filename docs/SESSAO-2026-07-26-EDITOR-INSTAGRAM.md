@@ -277,6 +277,17 @@ saíram do repositório (seguem no histórico do git).
 
 ---
 
+## Continuação
+
+O dia seguinte tratou de texto e alinhamento no editor — padrão do texto novo,
+setas do teclado, margem de segurança, âncora vertical e fim do negrito.
+Ver [SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md](./SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md).
+
+A nota de processo abaixo foi seguida: os testes de 27/07 rodaram todos em
+templates descartáveis.
+
+---
+
 ## Estado ao fim da sessão
 
 | Área | Situação |

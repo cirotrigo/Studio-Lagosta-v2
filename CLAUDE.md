@@ -368,6 +368,19 @@ em gradientes, vazamento entre páginas, fontes no export, integração do
 Instagram, métricas, combinações tipográficas e histórico de migrations — com as
 armadilhas descobertas em cada área.
 
+`docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
+texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
+vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá
+valem para qualquer mexida no editor:
+
+- **Camada de texto é cacheada como bitmap** quando `fontSize > 24`. Campo novo
+  que afete o desenho precisa entrar na assinatura de invalidação em
+  `konva-editable-text.tsx`, senão o controle simplesmente não funciona.
+- **Alinhamento vive em duas telas** (painel de propriedades e
+  `alignment-toolbar`); mudou a regra, mude nas duas.
+- **O crescimento automático da caixa é do editor**, não do `render-engine`: um
+  `slotValues` mais longo que o texto do template é cortado na altura gravada.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

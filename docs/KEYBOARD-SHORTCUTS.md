@@ -11,6 +11,17 @@ Esses atalhos funcionam em qualquer momento dentro do editor, desde que você n�
 | `Cmd + J` (Mac)<br>`Ctrl + J` (Windows) | **Duplicar Layer** | Duplica a layer selecionada com offset de 16px |
 | `Delete`<br>`Backspace` | **Deletar Layer** | Remove a(s) layer(s) selecionada(s) |
 
+### 🎯 Posicionamento
+
+| Atalho | Ação | Descrição |
+|--------|------|-----------|
+| `↑` `↓` `←` `→` | **Mover 1px** | Move a seleção um pixel; vale para seleção múltipla |
+| `Shift + seta` | **Mover 10px** | Mesmo movimento, passo maior |
+
+Camadas travadas ficam de fora. **Sem nada selecionado a seta volta a rolar a
+página** — o `preventDefault` só acontece quando há o que mover, e quem mexer
+nesse handler precisa manter essa saída.
+
 ### 🔒 Proteção de Inputs
 
 Os atalhos **não funcionam** quando você está:

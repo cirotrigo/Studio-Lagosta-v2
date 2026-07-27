@@ -1,5 +1,9 @@
 # Controles de Alinhamento no Painel de Propriedades - Resumo
 
+> **Atualizado em 27/07/2026.** A regra de habilitação mudou: alinhar passou a
+> valer com um elemento só, mirando a página. Ver
+> [SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md](./SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md) § 3 e 4.
+
 ## ✅ Implementação Completa
 
 Os **controles de alinhamento completo** foram implementados com sucesso no painel de propriedades do editor Konva.js.
@@ -125,7 +129,10 @@ Os **controles de alinhamento completo** foram implementados com sucesso no pain
 ```
 
 ### Estados dos Botões
-- **Alinhamento**: Disabled se `selectedCount < 2`
+- **Alinhamento**: Disabled se `selectedCount === 0`. Com **1** elemento o alvo
+  é a **página** (encostando nas guias de margem, `CANVAS_MARGIN`); com **2 ou
+  mais**, os elementos se alinham **entre si**. Vale para as duas telas: este
+  painel e a `alignment-toolbar` no topo do canvas.
 - **Distribuição**: Disabled se `selectedCount < 3`
 - **Organização**: Disabled se `selectedCount === 0`
 
@@ -207,7 +214,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
   } = useTemplateEditor()
 
   // Calcula estados
-  const alignDisabled = selectedCount < 2
+  const alignDisabled = selectedCount === 0 // 1 = alinha na página; 2+ = entre si
   const distributeDisabled = selectedCount < 3
   const orderDisabled = selectedCount === 0
 
