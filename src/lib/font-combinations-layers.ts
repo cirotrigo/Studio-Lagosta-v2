@@ -85,7 +85,13 @@ export function buildComboLayers({
       },
       textboxConfig: {
         textMode: 'auto-wrap-fixed',
-        autoWrap: { lineHeight: 1, breakMode: 'word', autoExpand: false },
+        // A entrelinha precisa ser a MESMA nos dois campos: o render
+        // server-side prefere `autoWrap.lineHeight` sobre `style.lineHeight`,
+        // então o 1 fixo que estava aqui apertava toda combinação do catálogo
+        // (1.02 a 1.5) na arte agendada, enquanto o editor mostrava o valor
+        // certo. `autoExpand` fica desligado de propósito: a altura salva na
+        // combinação é a que o usuário ajustou.
+        autoWrap: { lineHeight: element.lineHeight, breakMode: 'word', autoExpand: false },
       },
       ...(element.rotation ? { rotation: element.rotation } : {}),
       ...(element.effects ? { effects: element.effects } : {}),

@@ -194,7 +194,8 @@ function buildTextoLivreLayer(
     },
     textboxConfig: {
       textMode: 'auto-wrap-fixed',
-      autoWrap: { lineHeight: 1, breakMode: 'word', autoExpand: false },
+      // Mesmo valor do style: o render prefere este campo (ver render-engine)
+      autoWrap: { lineHeight, breakMode: 'word', autoExpand: false },
     },
     ...(usaSombra ? { effects: { shadow: SOMBRA_LEGIBILIDADE } } : {}),
   } as Layer
