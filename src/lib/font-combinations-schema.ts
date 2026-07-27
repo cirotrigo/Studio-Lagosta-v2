@@ -29,6 +29,7 @@ const elementoSchema = z.object({
   id: z.string(),
   label: z.string(),
   role: z.enum(['title', 'body']),
+  fontFamily: z.string().max(120).optional(),
   text: z.string(),
   fontSize: z.number(),
   fontWeight: z.string(),

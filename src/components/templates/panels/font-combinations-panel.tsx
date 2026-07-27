@@ -79,13 +79,26 @@ export function FontCombinationsPanel() {
   // Se o usuário trocar de painel no meio da edição, o modo não pode ficar preso
   React.useEffect(() => () => setFocusTextMode(false), [setFocusTextMode])
 
-  const garantirFontes = React.useCallback(async () => {
-    await Promise.all(
-      [pair.title, pair.body]
-        .filter((family) => fontManager.isCustomFont(family))
-        .map((family) => fontManager.loadFont(family)),
-    )
-  }, [pair, fontManager])
+  /**
+   * Carrega as fontes necessárias antes de criar as layers. Inclui as famílias
+   * gravadas na própria combinação: sem isso, uma combinação com fonte própria
+   * seria desenhada com a fonte de fallback do Konva.
+   */
+  const garantirFontes = React.useCallback(
+    async (elements: FontComboElement[] = []) => {
+      const familias = new Set<string>([
+        pair.title,
+        pair.body,
+        ...elements.map((e) => e.fontFamily).filter((f): f is string => !!f),
+      ])
+      await Promise.all(
+        [...familias]
+          .filter((family) => fontManager.isCustomFont(family))
+          .map((family) => fontManager.loadFont(family)),
+      )
+    },
+    [pair, fontManager],
+  )
 
   /** Cria as layers de uma combinação no canvas e as deixa selecionadas */
   const aplicar = React.useCallback(
@@ -93,7 +106,7 @@ export function FontCombinationsPanel() {
       if (aplicando) return []
       setAplicando(true)
       try {
-        await garantirFontes()
+        await garantirFontes(combo.elements)
 
         const canvasWidth = design.canvas.width
         const canvasHeight = design.canvas.height
@@ -119,7 +132,7 @@ export function FontCombinationsPanel() {
             style: {
               ...base.style,
               fontSize: Math.round(element.fontSize * escala),
-              fontFamily: resolveComboFontFamily(element.role, pair),
+              fontFamily: element.fontFamily ?? resolveComboFontFamily(element.role, pair),
               fontWeight: element.fontWeight,
               fontStyle: element.fontStyle ?? 'normal',
               color: element.color ?? '#FFFFFF',
@@ -478,7 +491,7 @@ function ComboCard({
                 left: `${element.x * 100}%`,
                 top: `${element.y * 100}%`,
                 width: `${element.width * 100}%`,
-                fontFamily: resolveComboFontFamily(element.role, pair),
+                fontFamily: element.fontFamily ?? resolveComboFontFamily(element.role, pair),
                 fontSize: emCqw(element.fontSize),
                 fontWeight: Number(element.fontWeight) || 400,
                 fontStyle: element.fontStyle ?? 'normal',

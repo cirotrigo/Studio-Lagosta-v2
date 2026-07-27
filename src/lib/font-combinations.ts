@@ -32,6 +32,13 @@ export interface FontComboElement {
   label: string
   /** Define de qual fonte da marca o elemento herda a família */
   role: FontComboRole
+  /**
+   * Família específica escolhida pelo usuário. Só é gravada quando difere da
+   * fonte da marca daquele papel — assim uma combinação que usa a fonte da
+   * marca continua acompanhando quando a marca troca de fonte, e uma escolha
+   * deliberada é preservada.
+   */
+  fontFamily?: string
   text: string
   /** px na base 1080 de largura de canvas */
   fontSize: number

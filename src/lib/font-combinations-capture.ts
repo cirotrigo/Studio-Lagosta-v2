@@ -73,14 +73,25 @@ export function capturarCombinacao({
   const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
   const papeis = resolverPapeis(textos, pair)
 
+  const normalizarFamilia = (v?: string | null) => (v ?? '').trim().toLowerCase()
+
   return textos.map((layer, index) => {
     const style = layer.style ?? {}
     const efeitos = extrairEfeitos(layer)
+    const papel = papeis[index]
+    const familiaDoPapel = papel === 'title' ? pair.title : pair.body
+    const familiaUsada = style.fontFamily
+    // Só grava a família quando o usuário escolheu outra que não a da marca
+    const familiaOverride =
+      familiaUsada && normalizarFamilia(familiaUsada) !== normalizarFamilia(familiaDoPapel)
+        ? familiaUsada
+        : undefined
 
     return {
       id: (layer.metadata?.elementId as string) ?? `el-${index + 1}`,
       label: (layer.metadata?.elementLabel as string) ?? `Texto ${index + 1}`,
-      role: papeis[index],
+      role: papel,
+      ...(familiaOverride ? { fontFamily: familiaOverride } : {}),
       text: layer.content ?? '',
       fontSize: Math.round((style.fontSize ?? 36) / escala),
       fontWeight: String(style.fontWeight ?? '400'),
