@@ -37,7 +37,7 @@ Foi assim que **dois** defeitos passaram, ambos invisíveis no editor:
 
 1. O botão Auto gravava `autoWrap.lineHeight: ... ?? 1`. Ligar o Auto numa
    camada antiga sem `style.lineHeight` apertava a entrelinha da arte de 1.2
-   para 1. Corrigido em `df0a105` — o fallback do botão virou 1.2, o mesmo do
+   para 1. Corrigido em `77bcea9` — o fallback do botão virou 1.2, o mesmo do
    renderer.
 2. `buildComboLayers` gravava o valor do catálogo no `style` e um **1 fixo** no
    `autoWrap`. Como o render prefere o `autoWrap`, **toda combinação aplicada
@@ -247,7 +247,7 @@ bug do Montserrat/Arial documentado na sessão anterior.
 `fontWeight` quando a variante trazia um peso; para família simples o peso
 antigo sobrevivia no `...selectedLayer.style`. Enquanto existia o botão de
 negrito isso passava despercebido — dava para desligar por ali. Sem ele, **uma
-camada em 700 não tinha mais como voltar a regular**. Corrigido em `df0a105`: o
+camada em 700 não tinha mais como voltar a regular**. Corrigido em `77bcea9`: o
 peso é sempre reescrito, como o seletor do painel de propriedades já fazia.
 
 Saiu junto o `simple-text-panel.tsx`, órfão desde que a aba Texto virou o
@@ -297,7 +297,7 @@ só; o segundo efeito ficou apenas com o `transformer.forceUpdate()`.
 | Âncora vertical | ✅ editor e render server-side de acordo |
 | Crescimento automático | ✅ no editor; ⚠️ o render não cresce |
 | Negrito | ✅ removido; peso vem da variante |
-| Regressões da releitura | ✅ peso e entrelinha corrigidos (`df0a105`) |
+| Regressões da releitura | ✅ peso e entrelinha corrigidos (`77bcea9`) |
 | Entrelinha das combinações no render | ✅ os dois campos batem (`82e09c4`) |
 
 ### Próximos passos sugeridos
@@ -322,10 +322,10 @@ adversarial (agentes tentando derrubar cada afirmação lendo o código atual):
 - a barra de alinhamento do topo, que tinha ficado para trás (`fff1467`);
 - 165 linhas órfãs em `konva-alignment.ts` (`0151182`);
 - o `simple-text-panel.tsx` órfão, 148 linhas ainda aplicando peso 700
-  (`df0a105`);
+  (`77bcea9`);
 - o peso preso em 700 sem caminho de volta, aberto pela remoção do negrito
-  (`df0a105`);
-- a entrelinha apertada ao ligar o Auto em camada antiga (`df0a105`);
+  (`77bcea9`);
+- a entrelinha apertada ao ligar o Auto em camada antiga (`77bcea9`);
 - **a entrelinha de toda combinação achatada no render agendado** (`82e09c4`) —
   o mais grave, e o mais invisível: só aparecia em arte que passa pelo
   `RenderEngine`, nunca no editor;
