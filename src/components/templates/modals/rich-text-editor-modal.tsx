@@ -24,7 +24,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
-import { Bold, Italic, Underline, Strikethrough, Type, TextSelect, Eraser } from 'lucide-react'
+import { Italic, Underline, Strikethrough, Type, TextSelect, Eraser } from 'lucide-react'
 import type { Layer, RichTextStyle } from '@/types/template'
 import { getFontManager } from '@/lib/font-manager'
 import { cn } from '@/lib/utils'
@@ -226,13 +226,13 @@ export function RichTextEditorModal({
     () => new Set((effectiveStyle?.fontStyle ?? '').split(' ').filter((p) => p && p !== 'normal')),
     [effectiveStyle]
   )
-  const isBoldActive = fontStyleParts.has('bold')
   const isItalicActive = fontStyleParts.has('italic')
   const isUnderlineActive = effectiveStyle?.textDecoration === 'underline'
   const isStrikeActive = effectiveStyle?.textDecoration === 'line-through'
 
-  const toggleFontStyleFlag = (flag: 'bold' | 'italic') => {
-    const bold = flag === 'bold' ? !isBoldActive : isBoldActive
+  const toggleFontStyleFlag = (flag: 'italic') => {
+    // Negrito saiu da UI: o peso vem da variante da fonte, não de um flag
+    const bold = fontStyleParts.has('bold')
     const italic = flag === 'italic' ? !isItalicActive : isItalicActive
     const value: RichTextStyle['fontStyle'] =
       bold && italic ? 'bold italic' : bold ? 'bold' : italic ? 'italic' : 'normal'
@@ -388,16 +388,6 @@ export function RichTextEditorModal({
 
           {/* Formatação */}
           <div className="flex items-center gap-1 rounded-md border bg-background p-1">
-            <Button
-              variant={isBoldActive ? 'default' : 'ghost'}
-              size="sm"
-              className="h-8 w-8 p-0"
-              onClick={() => toggleFontStyleFlag('bold')}
-              disabled={!hasSelection}
-              title="Negrito"
-            >
-              <Bold className="h-4 w-4" />
-            </Button>
             <Button
               variant={isItalicActive ? 'default' : 'ghost'}
               size="sm"

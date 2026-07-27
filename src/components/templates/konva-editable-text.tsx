@@ -209,6 +209,92 @@ export function KonvaEditableText({
     }
   }, [shapeRef, layer.style, layer.size, onChange])
 
+  /**
+   * Ajusta a altura da caixa ao texto quebrado, quando ligado.
+   *
+   * A direção do crescimento vem da âncora: com o texto encostado na base, a
+   * borda de baixo fica parada e a caixa sobe; no meio, abre para os dois
+   * lados; no topo (padrão), desce — que é o comportamento de sempre.
+   */
+  const autoExpand = layer.textboxConfig?.autoWrap?.autoExpand === true
+  const anchor = layer.textboxConfig?.anchor ?? 'top'
+
+  // `onChange` nasce de uma arrow inline lá em cima, então muda de identidade a
+  // cada render; num efeito que escreve no estado, isso é combustível de loop
+  const onChangeRef = React.useRef(onChange)
+  onChangeRef.current = onChange
+
+  // Assinatura das entradas que mudam a quebra de linha. Um ajuste por
+  // assinatura: o efeito escreve no mesmo estado que o dispara, e sem essa
+  // trava um único pixel de divergência vira "Maximum update depth exceeded"
+  const assinaturaQuebra = [
+    layer.content,
+    layer.size?.width,
+    layer.style?.fontSize,
+    layer.style?.lineHeight,
+    layer.style?.fontFamily,
+    layer.style?.fontWeight,
+    layer.style?.letterSpacing,
+    anchor,
+    autoExpand,
+  ].join('|')
+  const ultimoAjusteRef = React.useRef<string | null>(null)
+
+  React.useLayoutEffect(() => {
+    if (!autoExpand || editingState) {
+      ultimoAjusteRef.current = null
+      return
+    }
+    if (ultimoAjusteRef.current === assinaturaQuebra) return
+
+    const textNode = shapeRef.current
+    if (!textNode) return
+    if (!(textNode.text() ?? '').trim()) return
+
+    ultimoAjusteRef.current = assinaturaQuebra
+
+    // Medir num nó descartável, e não no próprio: com altura fixa o Konva
+    // **para de quebrar** ao encher a caixa, então o nó da tela nunca revela
+    // que o texto precisa de mais linhas — a caixa jamais cresceria
+    const medidor = new Konva.Text({
+      text: textNode.text(),
+      width: textNode.width(),
+      fontSize: textNode.fontSize(),
+      fontFamily: textNode.fontFamily(),
+      fontStyle: textNode.fontStyle(),
+      fontVariant: textNode.fontVariant(),
+      lineHeight: textNode.lineHeight(),
+      letterSpacing: textNode.letterSpacing(),
+      padding: textNode.padding(),
+      align: textNode.align(),
+      wrap: textNode.wrap(),
+    })
+    const natural = Math.round(medidor.height())
+    medidor.destroy()
+
+    const atual = layer.size?.height ?? 0
+    const diff = natural - atual
+    if (Math.abs(diff) < 1) return
+
+    const y = layer.position?.y ?? 0
+    const novoY = anchor === 'bottom' ? y - diff : anchor === 'middle' ? y - diff / 2 : y
+
+    onChangeRef.current({
+      size: { width: layer.size?.width ?? textNode.width(), height: natural },
+      position: { x: layer.position?.x ?? 0, y: Math.round(novoY) },
+    })
+  }, [
+    assinaturaQuebra,
+    autoExpand,
+    anchor,
+    editingState,
+    shapeRef,
+    layer.size?.width,
+    layer.size?.height,
+    layer.position?.x,
+    layer.position?.y,
+  ])
+
   const startEditing = React.useCallback(() => {
     if (editingState) return
 
@@ -1167,6 +1253,9 @@ export function KonvaEditableText({
         fontVariant={layer.style?.fontWeight ? String(layer.style.fontWeight) : undefined}
         fill={layer.style?.color ?? '#000000'}
         align={layer.style?.textAlign ?? 'left'}
+        // Espelha o `anchor` que o render server-side já respeitava; sem isso
+        // o editor mostrava o texto no topo e a arte exportada, embaixo
+        verticalAlign={layer.textboxConfig?.anchor ?? 'top'}
         padding={6}
         lineHeight={layer.style?.lineHeight ?? 1.2}
         letterSpacing={layer.style?.letterSpacing ?? 0}

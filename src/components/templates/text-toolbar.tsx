@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/select'
 import { Slider } from '@/components/ui/slider'
 import {
-  Bold,
   Italic,
   AlignLeft,
   AlignCenter,
@@ -27,6 +26,10 @@ import {
   AlignHorizontalJustifyStart,
   AlignHorizontalJustifyCenter,
   AlignHorizontalJustifyEnd,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  FoldVertical,
+  MoveVertical,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -55,6 +58,19 @@ import {
  *
  * @component
  */
+
+/** Alinhamento vertical do texto dentro da caixa */
+const ANCORAS = [
+  { valor: 'top' as const, rotulo: 'Texto no topo da caixa', Icone: ArrowUpToLine },
+  { valor: 'middle' as const, rotulo: 'Texto no meio da caixa', Icone: FoldVertical },
+  { valor: 'bottom' as const, rotulo: 'Texto na base da caixa', Icone: ArrowDownToLine },
+]
+
+const DIRECAO_CRESCIMENTO = {
+  top: 'para baixo',
+  middle: 'para os dois lados',
+  bottom: 'para cima',
+} as const
 
 interface TextToolbarProps {
   selectedLayer: Layer
@@ -146,8 +162,9 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
 
   const fontDisplayName = getFontDisplayName()
 
-  // Verificar se está bold ou italic
-  const isBold = fontWeight === 'bold' || fontWeight === 700 || fontWeight === '700'
+  // Negrito saiu de propósito: o peso vem da variante da fonte escolhida no
+  // seletor de família, não de um botão que finge um peso que a fonte pode não
+  // ter (o navegador sintetiza e o render server-side não)
   const isItalic = fontStyle === 'italic'
   const isUppercase = textTransform === 'uppercase'
 
@@ -200,19 +217,6 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 
-  const toggleBold = () => {
-    const newStyle: 'normal' | 'italic' = isItalic ? 'italic' : 'normal'
-
-    onUpdateLayer(selectedLayer.id, {
-      style: {
-        ...selectedLayer.style,
-        fontStyle: newStyle,
-        fontWeight: isBold ? 'normal' : 'bold',
-      },
-    })
-    forceRedraw() // ⚡ FORÇAR REDESENHO
-  }
-
   const toggleItalic = () => {
     const newStyle: 'normal' | 'italic' = isItalic ? 'normal' : 'italic'
 
@@ -220,6 +224,32 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
       style: { ...selectedLayer.style, fontStyle: newStyle },
     })
     forceRedraw() // ⚡ FORÇAR REDESENHO
+  }
+
+  /** Onde o texto encosta dentro da caixa; também define para que lado ela cresce */
+  const anchor = selectedLayer.textboxConfig?.anchor ?? 'top'
+  const autoExpand = selectedLayer.textboxConfig?.autoWrap?.autoExpand === true
+
+  const handleAnchorChange = (value: 'top' | 'middle' | 'bottom') => {
+    onUpdateLayer(selectedLayer.id, {
+      textboxConfig: { ...selectedLayer.textboxConfig, anchor: value },
+    })
+    forceRedraw()
+  }
+
+  const toggleAutoExpand = () => {
+    const atual = selectedLayer.textboxConfig?.autoWrap
+    onUpdateLayer(selectedLayer.id, {
+      textboxConfig: {
+        ...selectedLayer.textboxConfig,
+        autoWrap: {
+          lineHeight: atual?.lineHeight ?? selectedLayer.style?.lineHeight ?? 1,
+          breakMode: atual?.breakMode ?? 'word',
+          autoExpand: !autoExpand,
+        },
+      },
+    })
+    forceRedraw()
   }
 
   const handleAlignChange = (align: 'left' | 'center' | 'right') => {
@@ -457,17 +487,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
             collisionPadding={12}
             className="w-72 max-w-[calc(100vw-1.5rem)] max-h-[70dvh] space-y-3 overflow-y-auto"
           >
-            {/* Negrito, itálico e maiúsculas */}
+            {/* Itálico e maiúsculas */}
             <div className="flex items-center gap-1">
-              <Button
-                variant={isBold ? 'default' : 'outline'}
-                size="sm"
-                className="h-8 w-8 p-0"
-                onClick={toggleBold}
-                title="Negrito"
-              >
-                <Bold className="h-4 w-4" />
-              </Button>
               <Button
                 variant={isItalic ? 'default' : 'outline'}
                 size="sm"
@@ -517,6 +538,39 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
               >
                 <AlignRight className="h-4 w-4" />
               </Button>
+            </div>
+
+            {/* Alinhamento vertical dentro da caixa + crescimento automático */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Texto na caixa</Label>
+              <div className="flex items-center gap-1">
+                {ANCORAS.map(({ valor, rotulo, Icone }) => (
+                  <Button
+                    key={valor}
+                    variant={anchor === valor ? 'default' : 'outline'}
+                    size="sm"
+                    className="h-8 w-8 p-0"
+                    onClick={() => handleAnchorChange(valor)}
+                    title={rotulo}
+                  >
+                    <Icone className="h-4 w-4" />
+                  </Button>
+                ))}
+                <Button
+                  variant={autoExpand ? 'default' : 'outline'}
+                  size="sm"
+                  className="ml-auto h-8 gap-1 px-2"
+                  onClick={toggleAutoExpand}
+                  title={
+                    autoExpand
+                      ? `A caixa acompanha o texto (cresce ${DIRECAO_CRESCIMENTO[anchor]})`
+                      : 'A caixa mantém a altura que você desenhou'
+                  }
+                >
+                  <MoveVertical className="h-4 w-4" />
+                  <span className="text-[10px]">Auto</span>
+                </Button>
+              </div>
             </div>
 
             {/* Posição da caixa: alinha a caixa de texto na página (ou às outras

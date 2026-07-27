@@ -7,6 +7,7 @@
 
 import type Konva from 'konva'
 import type { Layer } from '@/types/template'
+import { CANVAS_MARGIN } from './canvas-margin'
 
 export interface AlignmentNode {
   node: Konva.Node
@@ -253,7 +254,11 @@ export type AlignAxis = 'x' | 'y'
 export type AlignMode = 'start' | 'center' | 'end'
 
 /**
- * Alinha a seleção às bordas ou ao centro do canvas, num dos eixos.
+ * Alinha a seleção às margens de segurança ou ao centro do canvas, num eixo.
+ *
+ * As bordas são as **guias azuis** (`CANVAS_MARGIN`), não a borda da página:
+ * é onde o conteúdo deve parar para não ser cortado pela interface do
+ * Instagram. Centralizar dá no mesmo, já que a margem é simétrica.
  *
  * A seleção é tratada como um bloco só: calcula-se a bounding box combinada e
  * aplica-se o mesmo deslocamento a todos os nodes, preservando as posições
@@ -284,7 +289,15 @@ export function alignToCanvas(
   })
 
   const size = max - min
-  const target = mode === 'start' ? 0 : mode === 'end' ? canvasSize - size : (canvasSize - size) / 2
+  // Um bloco maior que a área útil não tem para onde encostar sem estourar a
+  // margem oposta; nesse caso centraliza, que é o menor dos males
+  const margem = size > canvasSize - CANVAS_MARGIN * 2 ? 0 : CANVAS_MARGIN
+  const target =
+    mode === 'start'
+      ? margem
+      : mode === 'end'
+        ? canvasSize - margem - size
+        : (canvasSize - size) / 2
   const delta = target - min
   if (delta === 0) return
 

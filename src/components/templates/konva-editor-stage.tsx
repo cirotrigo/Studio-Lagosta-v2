@@ -21,6 +21,7 @@ import {
   type SnapConfig,
   DEFAULT_SNAP_CONFIG,
 } from '@/lib/konva-smart-guides'
+import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 import { useIsMobile } from '@/hooks/use-device-detection'
 
 /**
@@ -588,7 +589,7 @@ export function KonvaEditorStage() {
 
       // Se as guias de margem estiverem ativas, adicionar retângulos invisíveis nas margens
       if (showMarginGuides) {
-        const MARGIN = 70
+        const MARGIN = CANVAS_MARGIN
         // Adicionar guias de margem como se fossem objetos invisíveis
         otherRects.push(
           { id: 'margin-left', x: MARGIN, y: 0, width: 0, height: canvasHeight },
@@ -1063,7 +1064,7 @@ export function KonvaEditorStage() {
               <>
                 {/* Borda esquerda - 70px */}
                 <Line
-                  points={[70, 0, 70, canvasHeight]}
+                  points={[CANVAS_MARGIN, 0, CANVAS_MARGIN, canvasHeight]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1073,7 +1074,7 @@ export function KonvaEditorStage() {
                 />
                 {/* Borda direita - 70px */}
                 <Line
-                  points={[canvasWidth - 70, 0, canvasWidth - 70, canvasHeight]}
+                  points={[canvasWidth - CANVAS_MARGIN, 0, canvasWidth - CANVAS_MARGIN, canvasHeight]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1083,7 +1084,7 @@ export function KonvaEditorStage() {
                 />
                 {/* Borda superior - 70px */}
                 <Line
-                  points={[0, 70, canvasWidth, 70]}
+                  points={[0, CANVAS_MARGIN, canvasWidth, CANVAS_MARGIN]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1093,7 +1094,7 @@ export function KonvaEditorStage() {
                 />
                 {/* Borda inferior - 70px */}
                 <Line
-                  points={[0, canvasHeight - 70, canvasWidth, canvasHeight - 70]}
+                  points={[0, canvasHeight - CANVAS_MARGIN, canvasWidth, canvasHeight - CANVAS_MARGIN]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
