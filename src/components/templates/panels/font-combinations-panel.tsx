@@ -127,6 +127,7 @@ export function FontCombinationsPanel() {
                 : undefined,
               textTransform: element.textTransform ?? 'none',
             },
+            ...(element.rotation ? { rotation: element.rotation } : {}),
             ...(element.effects ? { effects: element.effects } : {}),
             metadata: {
               presetId: combo.id,

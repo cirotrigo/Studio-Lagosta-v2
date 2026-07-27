@@ -43,6 +43,7 @@ const elementoSchema = z.object({
   y: z.number().min(-1).max(2),
   width: z.number().min(0.01).max(2),
   height: z.number().min(0.001).max(2).optional(),
+  rotation: z.number().min(-360).max(360).optional(),
 })
 
 export const criarSchema = z.object({

@@ -99,6 +99,7 @@ export function capturarCombinacao({
       ...(layer.size?.height
         ? { height: Math.round((layer.size.height / canvasHeight) * 10000) / 10000 }
         : {}),
+      ...(layer.rotation ? { rotation: Math.round(layer.rotation) } : {}),
     }
   })
 }

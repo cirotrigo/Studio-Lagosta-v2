@@ -52,6 +52,8 @@ export interface FontComboElement {
    * nesses casos cai na estimativa por linhas.
    */
   height?: number
+  /** Inclinação em graus */
+  rotation?: number
 }
 
 export interface FontComboLayout {

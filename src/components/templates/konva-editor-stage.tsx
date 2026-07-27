@@ -988,7 +988,9 @@ export function KonvaEditorStage() {
               y={0}
               width={canvasWidth}
               height={canvasHeight}
-              fill={design.canvas.backgroundColor ?? '#ffffff'}
+              // No modo focar textos o fundo vai a escuro: com fundo branco e
+              // texto branco não sobrava contraste para avaliar nada
+              fill={focusTextMode ? '#141414' : design.canvas.backgroundColor ?? '#ffffff'}
               cornerRadius={8}
               shadowBlur={12}
               shadowOpacity={0.1}
