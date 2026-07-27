@@ -45,6 +45,23 @@ npm run db:reset     # Reset database (drop all data and recreate schema)
 npm run db:studio    # Open Prisma Studio for database management
 ```
 
+**Migration history (consolidated in July 2026)**: the 31 previous migrations
+were squashed into a single `prisma/migrations/0_init/migration.sql`. The old
+history could not be replayed — the baseline never created the `Prompt` and
+`Organization` tables that `add_prompt_organization_visibility` tried to alter,
+so every `prisma migrate dev` failed on the shadow database. That is why some
+tables used to be created with direct SQL or `db push`.
+
+Consequences:
+- **Schema changes now go through `npx prisma migrate dev --name <change>`.**
+  Reserve `db:push` for local experiments — do not use it to ship schema changes.
+- `0_init` is idempotent (`IF NOT EXISTS`, `DO` blocks for enums and FKs), so it
+  is a no-op on databases that already have the schema.
+- Old clones must pull `main` before running any migration command, since the
+  previous migration folders no longer exist on disk.
+
+See `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` § 9 for the full diagnosis.
+
 ## Architecture Overview
 
 ### Tech Stack
@@ -346,10 +363,10 @@ alcance do token global. Cada projeto pode ter o seu:
 
 ### Registro de mudanças recentes
 
-`docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` detalha as 28 mudanças de julho/2026
+`docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` detalha as 29 mudanças de julho/2026
 em gradientes, vazamento entre páginas, fontes no export, integração do
-Instagram, métricas e combinações tipográficas — com as armadilhas descobertas
-em cada área.
+Instagram, métricas, combinações tipográficas e histórico de migrations — com as
+armadilhas descobertas em cada área.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`

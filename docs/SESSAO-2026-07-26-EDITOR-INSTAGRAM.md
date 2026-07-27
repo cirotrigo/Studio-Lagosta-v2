@@ -1,6 +1,6 @@
 # Sessão 26–27/07/2026 — Editor, Instagram e métricas
 
-Registro das 28 mudanças desta sessão, organizado por área. Cada item diz **o que
+Registro das 29 mudanças desta sessão, organizado por área. Cada item diz **o que
 mudou**, **por que** e, quando houver, **a armadilha que ficou documentada** —
 essa última parte é o que costuma se perder e voltar a morder depois.
 
@@ -237,6 +237,46 @@ MCP logam, e a criação de post devolve `warnings` sem bloquear.
 
 ---
 
+## 9. Histórico de migrations do Prisma
+
+**Commit:** `404ba4b`
+
+O histórico não podia ser reproduzido do zero: o `00000000000001_baseline`
+criava os enums e algumas tabelas, mas **não criava `Prompt` nem
+`Organization`** — e `20241123120000_add_prompt_organization_visibility`
+tentava alterá-las. O shadow database falhava com *"The underlying table for
+model `Prompt` does not exist"*.
+
+Em produção nada quebrava, porque as tabelas existiam (criadas por `db push`).
+Quebrava só o `prisma migrate dev` — foi por isso que as tabelas desta sessão
+(`FontCombination`, colunas de token do Instagram) precisaram ser criadas por
+SQL direto.
+
+**Correção:** as 31 migrations foram consolidadas num único `0_init`, gerado do
+schema atual (54 tabelas), e o histórico do banco reescrito para o registro
+correspondente.
+
+**Pré-condição que tornou isso seguro:** o banco já estava **exatamente igual**
+ao schema (`migrate diff` vazio, verificado antes e depois). Sem isso, o squash
+congelaria qualquer divergência em silêncio — se for preciso repetir a operação
+um dia, essa verificação vem primeiro.
+
+O `0_init` é **idempotente** (`IF NOT EXISTS` e blocos `DO` para enums e chaves
+estrangeiras), mantendo a convenção do baseline anterior: aplicar num banco já
+populado vira no-op em vez de erro.
+
+**Verificação:** `migrate status` limpo, `migrate deploy` sem pendências, e
+`migrate dev --create-only` — a operação que falhava — gerando migration vazia,
+o que prova que o shadow reproduz o histórico e que ele corresponde ao banco.
+Dados intactos: 11 projetos, 119 templates, 963 páginas, 7.577 posts.
+
+**Consequência prática:** mudanças de schema voltam ao fluxo normal
+(`prisma migrate dev --name ...`), sem SQL manual. Clones antigos precisam
+puxar a `main` antes de rodar comandos de migration, porque as pastas antigas
+saíram do repositório (seguem no histórico do git).
+
+---
+
 ## Estado ao fim da sessão
 
 | Área | Situação |
@@ -250,6 +290,7 @@ MCP logam, e a criação de post devolve `warnings` sem bloquear.
 | Combinações | ✅ por projeto, editáveis |
 | Add-on Zernio | ⏸️ decisão comercial pendente |
 | App secret exposto | ⚠️ confirmar se o app arquivado ainda existe |
+| Migrations do Prisma | ✅ consolidadas; `migrate dev` funcional |
 
 ### Próximos passos sugeridos
 
@@ -257,9 +298,6 @@ MCP logam, e a criação de post devolve `warnings` sem bloquear.
    gerar token → colar na aba Configurações).
 2. Definir fontes de marca dos projetos que exibem o aviso amarelo.
 3. Conferir Meus apps → Arquivados quanto ao app `616046264322031`.
-4. Consertar o histórico de migrations do Prisma: a migration
-   `20241123120000_add_prompt_organization_visibility` falha no shadow database,
-   o que obrigou a aplicar as tabelas desta sessão por SQL direto.
 
 ### Nota de processo
 
