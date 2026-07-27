@@ -127,6 +127,35 @@ export class LaterAuthorizationError extends LaterApiError {
 }
 
 /**
+ * Recurso exige add-on pago no Zernio (HTTP 402)
+ *
+ * Não é falha transitória: enquanto o add-on não for contratado, toda chamada
+ * ao recurso responde 402. Ex.: `/analytics` exige o add-on de Analytics
+ * (código `analytics_addon_required`).
+ */
+export class LaterPaymentRequiredError extends LaterApiError {
+  /** Código do provedor, ex.: 'analytics_addon_required' */
+  public readonly reasonCode?: string
+
+  constructor(
+    message = 'Este recurso exige um add-on pago no Zernio.',
+    reasonCode?: string,
+    response?: LaterErrorResponse
+  ) {
+    super(message, 402, response)
+    this.name = 'LaterPaymentRequiredError'
+    this.reasonCode = reasonCode
+  }
+
+  toJSON() {
+    return {
+      ...super.toJSON(),
+      reasonCode: this.reasonCode,
+    }
+  }
+}
+
+/**
  * Resource not found error (HTTP 404)
  */
 export class LaterNotFoundError extends LaterApiError {

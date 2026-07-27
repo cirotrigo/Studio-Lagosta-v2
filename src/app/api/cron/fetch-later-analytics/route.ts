@@ -7,6 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getLaterClient } from '@/lib/later/client'
+import { LaterPaymentRequiredError } from '@/lib/later/errors'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes max
@@ -167,6 +168,22 @@ export async function GET(req: NextRequest) {
         }
       }
     } catch (error) {
+      // Add-on de Analytics não contratado no Zernio: enquanto não for, toda
+      // execução responde 402. Não é falha de execução — sai limpo, sem 500
+      // e sem stack trace a cada 6 horas.
+      if (error instanceof LaterPaymentRequiredError) {
+        console.warn(
+          `[Later Analytics Cron] Add-on de Analytics não contratado no Zernio (${error.reasonCode ?? 'payment_required'}) — nada a fazer até a assinatura ser ativada`
+        )
+
+        return NextResponse.json({
+          success: true,
+          skipped: true,
+          reason: error.reasonCode ?? 'payment_required',
+          message: 'Analytics indisponível: add-on não contratado no Zernio',
+        })
+      }
+
       console.error(
         '[Later Analytics Cron] ❌ Failed to fetch analytics from Later API:',
         error

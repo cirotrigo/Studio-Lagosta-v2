@@ -11,6 +11,7 @@ import {
   LaterAuthorizationError,
   LaterNetworkError,
   LaterNotFoundError,
+  LaterPaymentRequiredError,
   LaterRateLimitError,
   LaterValidationError,
   LaterMediaUploadError,
@@ -37,6 +38,30 @@ import type {
   LaterAnalyticsData,
   AnalyticsQueryParams,
 } from './types'
+
+/**
+ * O corpo de erro do Zernio varia: em geral `error` é objeto
+ * ({ code, message }), mas no 402 vem como string com `code` na raiz —
+ * ex.: { error: 'Analytics add-on required', code: 'analytics_addon_required' }.
+ */
+function parsePaymentRequiredBody(body: unknown): { message?: string; reasonCode: string } {
+  const raw = body as { error?: unknown; code?: unknown } | undefined
+  const errorObj = raw?.error as { message?: unknown; code?: unknown } | undefined
+
+  const message =
+    typeof raw?.error === 'string'
+      ? raw.error
+      : typeof errorObj?.message === 'string'
+        ? errorObj.message
+        : undefined
+
+  const reasonCode =
+    (typeof raw?.code === 'string' ? raw.code : undefined) ??
+    (typeof errorObj?.code === 'string' ? errorObj.code : undefined) ??
+    'payment_required'
+
+  return { message, reasonCode }
+}
 
 /**
  * Later API Client
@@ -312,15 +337,25 @@ export class LaterClient {
     })
 
     const sanitized = errorResponse ? this.redactSensitive(errorResponse) : undefined
-    console.error('[Later Client] API Error Response:', JSON.stringify({
-      endpoint,
-      method,
-      statusCode,
-      statusText: response.statusText,
-      headers: responseHeaders,
-      parsed: sanitized,
-      rawBody: rawBody && rawBody.length > 2000 ? rawBody.slice(0, 2000) + '...[truncated]' : rawBody,
-    }, null, 2))
+
+    // 402 é estado de conta (add-on não contratado), não incidente: uma linha
+    // basta. O dump completo a cada 6h só polui o log.
+    if (statusCode === 402) {
+      const { reasonCode } = parsePaymentRequiredBody(errorResponse)
+      console.warn(
+        `[Later Client] ${method} ${endpoint} — add-on necessário no Zernio (${reasonCode})`
+      )
+    } else {
+      console.error('[Later Client] API Error Response:', JSON.stringify({
+        endpoint,
+        method,
+        statusCode,
+        statusText: response.statusText,
+        headers: responseHeaders,
+        parsed: sanitized,
+        rawBody: rawBody && rawBody.length > 2000 ? rawBody.slice(0, 2000) + '...[truncated]' : rawBody,
+      }, null, 2))
+    }
 
     const errorMessage =
       errorResponse?.error?.message ||
@@ -331,6 +366,11 @@ export class LaterClient {
     switch (statusCode) {
       case 401:
         throw new LaterAuthError(errorMessage)
+
+      case 402: {
+        const { message, reasonCode } = parsePaymentRequiredBody(errorResponse)
+        throw new LaterPaymentRequiredError(message || errorMessage, reasonCode, errorResponse)
+      }
 
       case 403:
         throw new LaterAuthorizationError(errorMessage)

@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { getLaterClient } from '@/lib/later/client'
+import { LaterPaymentRequiredError } from '@/lib/later/errors'
 
 export const runtime = 'nodejs'
 export const maxDuration = 30
@@ -180,6 +181,18 @@ export async function POST(
       analyticsFetchedAt: updatedPost.analyticsFetchedAt,
     })
   } catch (error) {
+    // Add-on não contratado: 402 com mensagem acionável, em vez de 500 genérico
+    if (error instanceof LaterPaymentRequiredError) {
+      console.warn(`[Post Analytics API] add-on necessário (${error.reasonCode ?? 'payment_required'})`)
+      return NextResponse.json(
+        {
+          error: 'Métricas indisponíveis: o add-on de Analytics não está contratado no Zernio.',
+          code: error.reasonCode ?? 'payment_required',
+        },
+        { status: 402 }
+      )
+    }
+
     console.error('[Post Analytics API] POST error:', error)
 
     if (error instanceof Error) {
