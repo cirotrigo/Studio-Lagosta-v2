@@ -2,11 +2,13 @@
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ExternalLink } from 'lucide-react'
+import { Eye, Edit, RefreshCw, Video, Layers, MoreHorizontal, Trash2, Copy, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ExternalLink, FileEdit, CalendarCheck } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
+import { useState } from 'react'
 import { formatPostTime } from '../calendar/calendar-utils'
 import { usePostActions } from '@/hooks/use-post-actions'
+import { ApprovePostsDialog } from '../post-actions/approve-posts-dialog'
 import { toast } from 'sonner'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import {
@@ -22,6 +24,7 @@ interface MobilePostCardProps {
     Project?: {
       id: number
       name: string
+      instagramUsername?: string | null
       logoUrl?: string | null
       Logo?: Array<{
         fileUrl: string
@@ -35,6 +38,10 @@ interface MobilePostCardProps {
 export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps) {
   const time = formatPostTime(post)
   const { deletePost, duplicatePost } = usePostActions(post.projectId)
+  const [approveOpen, setApproveOpen] = useState(false)
+
+  const isRascunho = post.status === 'DRAFT'
+  const contaLabel = post.Project?.instagramUsername || post.Project?.name || 'do cliente'
 
   // Helper para detectar se é vídeo
   const isVideoUrl = (url: string) => {
@@ -75,6 +82,10 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
         return 'border-green-500/40 bg-green-500/5'
       case 'FAILED':
         return 'border-red-500/40 bg-red-500/5'
+      case 'DRAFT':
+        // Tracejado e âmbar, igual ao card do calendário: "não vai publicar"
+        // tem que se ler antes do badge.
+        return 'border-dashed border-amber-500/60 bg-amber-500/5'
       default:
         return 'border-border bg-card'
     }
@@ -164,6 +175,17 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
 
             {post.isRecurring && (
               <RefreshCw className="w-3 h-3 text-muted-foreground" />
+            )}
+
+            {/* Badge de Rascunho - ainda não entrou na fila de publicação */}
+            {post.status === 'DRAFT' && (
+              <Badge
+                className="text-[10px] sm:text-xs bg-amber-500 text-white hover:bg-amber-500 flex items-center gap-0.5 sm:gap-1 px-1.5 py-0.5"
+                title="Rascunho: aparece na agenda mas não publica até ser aprovado"
+              >
+                <FileEdit className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                <span>Rascunho</span>
+              </Badge>
             )}
 
             {/* Badge de Status - Publicando/Publicado/Falhou */}
@@ -312,6 +334,20 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
           </Button>
         )}
 
+        {/* Aprovar vira a ação principal do rascunho: é o que falta para ele
+            sair no Instagram, e sem isso a única saída seria "Publicar agora",
+            que é outra coisa. */}
+        {isRascunho && (
+          <Button
+            size="sm"
+            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+            onClick={() => setApproveOpen(true)}
+          >
+            <CalendarCheck className="w-4 h-4 mr-2" />
+            Aprovar
+          </Button>
+        )}
+
         <Button
           variant="outline"
           size="sm"
@@ -322,17 +358,29 @@ export function MobilePostCard({ post, onPreview, onEdit }: MobilePostCardProps)
           Preview
         </Button>
 
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-1"
-          onClick={onEdit}
-          disabled={post.status === 'POSTED' || post.status === 'POSTING'}
-        >
-          <Edit className="w-4 h-4 mr-2" />
-          Editar
-        </Button>
+        {!isRascunho && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1"
+            onClick={onEdit}
+            disabled={post.status === 'POSTED' || post.status === 'POSTING'}
+          >
+            <Edit className="w-4 h-4 mr-2" />
+            Editar
+          </Button>
+        )}
       </div>
+
+      {approveOpen && (
+        <ApprovePostsDialog
+          posts={[post]}
+          projectId={post.projectId}
+          contaLabel={contaLabel}
+          open={approveOpen}
+          onClose={() => setApproveOpen(false)}
+        />
+      )}
     </div>
   )
 }

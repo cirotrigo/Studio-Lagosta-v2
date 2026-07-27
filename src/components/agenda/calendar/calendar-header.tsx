@@ -42,6 +42,12 @@ import type { ProjectResponse } from '@/hooks/use-project'
 
 type ViewMode = 'month' | 'week' | 'day'
 
+/**
+ * Filtro de situação da agenda. "DRAFT" isola os rascunhos, que aparecem no
+ * calendário junto com os agendados mas não publicam até serem aprovados.
+ */
+export type StatusFilter = 'ALL' | 'DRAFT' | 'FAILED' | 'POSTING'
+
 interface CalendarHeaderProps {
   selectedDate: Date
   onDateChange: (date: Date) => void
@@ -51,8 +57,8 @@ interface CalendarHeaderProps {
   onCreatePost?: () => void
   postTypeFilter: PostType | 'ALL'
   onPostTypeFilterChange: (postType: PostType | 'ALL') => void
-  statusFilter: 'ALL' | 'FAILED' | 'POSTING'
-  onStatusFilterChange: (status: 'ALL' | 'FAILED' | 'POSTING') => void
+  statusFilter: StatusFilter
+  onStatusFilterChange: (status: StatusFilter) => void
   timingFilter: 'ALL' | 'UPCOMING' | 'OVERDUE'
   onTimingFilterChange: (timing: 'ALL' | 'UPCOMING' | 'OVERDUE') => void
   onOpenChannels?: () => void
@@ -347,13 +353,14 @@ export function CalendarHeader({
 
             <Select
               value={statusFilter}
-              onValueChange={(value) => onStatusFilterChange(value as 'ALL' | 'FAILED' | 'POSTING')}
+              onValueChange={(value) => onStatusFilterChange(value as StatusFilter)}
             >
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Situação" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="ALL">Todos os status</SelectItem>
+                <SelectItem value="ALL">Todas as situações</SelectItem>
+                <SelectItem value="DRAFT">Rascunhos</SelectItem>
                 <SelectItem value="FAILED">Falhou</SelectItem>
                 <SelectItem value="POSTING">Processando</SelectItem>
               </SelectContent>
@@ -438,10 +445,13 @@ export function CalendarHeader({
               </DropdownMenuItem>
 
               <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground border-t mt-1 pt-2">
-                Status
+                Situação
               </div>
               <DropdownMenuItem onClick={() => onStatusFilterChange('ALL')}>
-                Todos os status
+                Todas as situações
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStatusFilterChange('DRAFT')}>
+                Rascunhos
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => onStatusFilterChange('FAILED')}>
                 Falhou

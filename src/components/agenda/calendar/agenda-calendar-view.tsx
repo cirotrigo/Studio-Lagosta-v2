@@ -11,7 +11,8 @@ import { DndContext, DragOverlay, useSensor, useSensors, MouseSensor, TouchSenso
 import { PostMiniCard } from './post-mini-card'
 import { toast } from 'sonner'
 import { Portal } from '@/components/ui/portal'
-import { CalendarHeader } from './calendar-header'
+import { CalendarHeader, type StatusFilter } from './calendar-header'
+import { DraftsBanner } from '../drafts-banner'
 
 
 // Removed invalid top-level return block
@@ -76,7 +77,7 @@ export function AgendaCalendarView() {
   const [isComposerOpen, setIsComposerOpen] = useState(false)
   const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true) // Sidebar colapsada por padrão
@@ -357,6 +358,16 @@ export function AgendaCalendarView() {
             isMobile={isMobile}
             nextScheduledDate={isNextScheduledOutOfRange ? nextScheduledDate : null}
             onGoToNextScheduled={handleGoToNextScheduled}
+          />
+
+          <DraftsBanner
+            posts={(posts ?? []) as SocialPost[]}
+            projectId={selectedProjectId}
+            contaLabel={
+              selectedProject?.instagramUsername || selectedProject?.name || 'do cliente'
+            }
+            filtroAtivo={statusFilter === 'DRAFT'}
+            onVerRascunhos={() => setStatusFilter('DRAFT')}
           />
 
           {/* Calendário/Lista */}

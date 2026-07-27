@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon, FileEdit } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
@@ -58,6 +58,10 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
         return 'bg-green-500/10 border-green-500/40 hover:bg-green-500/20'
       case 'FAILED':
         return 'bg-red-500/10 border-red-500/40 hover:bg-red-500/20'
+      case 'DRAFT':
+        // Borda tracejada + âmbar: no meio de um calendário cheio, "não vai
+        // publicar" precisa ser visível sem ler o badge.
+        return 'bg-amber-500/10 border-dashed border-amber-500/60 hover:bg-amber-500/20'
       default:
         return 'bg-muted/10 border-border hover:bg-muted/20'
     }
@@ -135,6 +139,18 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
           </Badge>
           {getIcon()}
           {post.isRecurring && <RefreshCw className="w-3 h-3 text-muted-foreground" />}
+
+          {/* Badge de Rascunho - ainda não entrou na fila de publicação */}
+          {post.status === 'DRAFT' && (
+            <Badge
+              className="h-3.5 sm:h-4 px-0.5 sm:px-1 text-[8px] sm:text-[10px] bg-amber-500 text-white hover:bg-amber-500 flex items-center gap-0.5"
+              title="Rascunho: aparece na agenda mas não publica até ser aprovado"
+            >
+              <FileEdit className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
+              <span className="hidden sm:inline">Rascunho</span>
+              <span className="sm:hidden">✎</span>
+            </Badge>
+          )}
 
           {/* Badge de Status - Publicando/Publicado/Falhou */}
           {post.status === 'POSTING' && (

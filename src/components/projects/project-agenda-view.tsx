@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAgendaPosts } from '@/hooks/use-agenda-posts'
 import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
-import { CalendarHeader } from '@/components/agenda/calendar/calendar-header'
+import { CalendarHeader, type StatusFilter } from '@/components/agenda/calendar/calendar-header'
+import { DraftsBanner } from '@/components/agenda/drafts-banner'
 import { CalendarGrid } from '@/components/agenda/calendar/calendar-grid'
 import { CalendarWeekView } from '@/components/agenda/calendar/calendar-week-view'
 import { CalendarDayView } from '@/components/agenda/calendar/calendar-day-view'
@@ -145,7 +146,7 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
     }
   }, [postIdParam, projectId, router])
   const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
-  const [statusFilter, setStatusFilter] = useState<'ALL' | 'FAILED' | 'POSTING'>('ALL')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
   const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
   const [activePost, setActivePost] = useState<SocialPost | null>(null)
   const queryClient = useQueryClient()
@@ -329,6 +330,14 @@ export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps
           onTimingFilterChange={setTimingFilter}
           nextScheduledDate={nextScheduledDate}
           onGoToNextScheduled={handleGoToNextScheduled}
+        />
+
+        <DraftsBanner
+          posts={(posts ?? []) as SocialPost[]}
+          projectId={projectId}
+          contaLabel={project.instagramUsername || project.name}
+          filtroAtivo={statusFilter === 'DRAFT'}
+          onVerRascunhos={() => setStatusFilter('DRAFT')}
         />
 
         <div className="flex-1 overflow-auto">

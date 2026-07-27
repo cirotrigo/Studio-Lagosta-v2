@@ -22,7 +22,10 @@ import {
   ShieldCheck,
   ShieldAlert,
   Bell,
-  XCircle
+  XCircle,
+  CalendarCheck,
+  FileEdit,
+  Undo2
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -33,12 +36,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { usePostActions } from '@/hooks/use-post-actions'
+import { usePostApproval } from '@/hooks/use-post-approval'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { useProject } from '@/hooks/use-project'
 import { RescheduleDialog } from './reschedule-dialog'
 import { DuplicateDialog } from './duplicate-dialog'
+import { ApprovePostsDialog } from './approve-posts-dialog'
 import { toast } from 'sonner'
-import { getPostDate } from '../calendar/calendar-utils'
+import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
 import { cn, isExternalImage } from '@/lib/utils'
@@ -53,10 +58,15 @@ interface PostPreviewModalProps {
 export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewModalProps) {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
+  const [approveOpen, setApproveOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
   const { publishNow, deletePost } = usePostActions(post.projectId)
+  const { revertToDraft } = usePostApproval(post.projectId)
   const { data: project } = useProject(post.projectId)
+
+  const isRascunho = post.status === 'DRAFT'
+  const contaLabel = project?.instagramUsername || project?.name || 'do cliente'
 
   // Poll for post status updates after publishing
   usePostStatusPolling({
@@ -173,6 +183,15 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   }
 
   const handlePublishNow = async () => {
+    // Rascunho nunca foi aprovado, então publicar agora pula a revisão E o
+    // horário combinado de uma vez. Vale um aviso que diga as duas coisas.
+    if (isRascunho) {
+      const confirmado = confirm(
+        `Este rascunho ainda não foi aprovado.\n\nPublicar agora manda o post para o Instagram de ${contaLabel} imediatamente, sem esperar ${formatPostDateTimeBR(post)}.\n\nQuer publicar agora mesmo assim?`,
+      )
+      if (!confirmado) return
+    }
+
     try {
       await publishNow.mutateAsync(post.id)
       const message = post.status === 'FAILED'
@@ -192,14 +211,46 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   }
 
   const handleDelete = async () => {
-    if (!confirm('Tem certeza que deseja deletar este post?')) return
+    const pergunta = isRascunho
+      ? 'Excluir este rascunho? Ele some da agenda e não dá para desfazer.'
+      : 'Tem certeza que deseja deletar este post?'
+    if (!confirm(pergunta)) return
 
     try {
       await deletePost.mutateAsync(post.id)
-      toast.success('Post deletado')
+      toast.success(isRascunho ? 'Rascunho excluído' : 'Post deletado')
       onClose()
     } catch (_error) {
-      toast.error('Erro ao deletar post')
+      toast.error(isRascunho ? 'Erro ao excluir rascunho' : 'Erro ao deletar post')
+    }
+  }
+
+  /** Tira o post da fila de publicação e devolve para revisão. */
+  const handleVoltarParaRascunho = async () => {
+    if (
+      !confirm(
+        `Voltar este post para rascunho?\n\nEle sai da fila e não publica em ${formatPostDateTimeBR(post)}. Continua na agenda até você aprovar de novo.`,
+      )
+    ) {
+      return
+    }
+
+    try {
+      const resultado = await revertToDraft.mutateAsync([post.id])
+
+      if (resultado.processados.length > 0) {
+        toast.success('Voltou para rascunho', {
+          description: 'Não vai publicar até ser aprovado de novo.',
+        })
+        onClose()
+        return
+      }
+
+      toast.error(
+        resultado.ignorados[0]?.motivo ?? 'Não foi possível voltar para rascunho.',
+      )
+    } catch (_error) {
+      toast.error('Não foi possível voltar para rascunho.')
     }
   }
 
@@ -271,9 +322,13 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   <span className="text-sm font-medium">
                     {scheduledTimeLabel}
                   </span>
+                  {/* Num rascunho este badge diria "Agendado" (o modo de
+                      agendamento) logo ao lado do status "Rascunho" — duas
+                      palavras se contradizendo na mesma linha. */}
                   <Badge variant="outline" className="text-xs">
                     {post.scheduleType === 'IMMEDIATE' && 'Imediato'}
-                    {post.scheduleType === 'SCHEDULED' && 'Agendado'}
+                    {post.scheduleType === 'SCHEDULED' &&
+                      (isRascunho ? 'Horário marcado' : 'Agendado')}
                     {post.scheduleType === 'RECURRING' && 'Recorrente'}
                   </Badge>
                 </div>
@@ -445,6 +500,9 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
             {/* Status Badge */}
             <div className="flex items-center gap-2 flex-wrap">
               <Badge
+                className={cn(
+                  isRascunho && 'bg-amber-500 text-white hover:bg-amber-500 flex items-center gap-1',
+                )}
                 variant={
                   post.status === 'SCHEDULED' ? 'default' :
                     post.status === 'POSTING' ? 'default' :
@@ -453,6 +511,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                           'outline'
                 }
               >
+                {isRascunho && <FileEdit className="w-3 h-3" />}
                 {post.status === 'SCHEDULED' && 'Agendado'}
                 {post.status === 'POSTING' && 'Postando...'}
                 {post.status === 'POSTED' && 'Postado'}
@@ -515,6 +574,21 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               )}
             </div>
 
+            {/* Rascunho: o estado mais fácil de confundir com "vai publicar" */}
+            {isRascunho && (
+              <div className="border border-amber-400/60 bg-amber-50 dark:bg-amber-950/20 rounded-md p-3 text-sm">
+                <div className="font-semibold text-amber-900 dark:text-amber-200 mb-1 flex items-center gap-2">
+                  <FileEdit className="w-4 h-4" />
+                  Este post ainda não vai publicar
+                </div>
+                <p className="text-amber-800 dark:text-amber-200/90 text-xs leading-relaxed">
+                  Está guardado como rascunho para revisão. Se você aprovar, ele
+                  publica no Instagram de <strong>{contaLabel}</strong> em{' '}
+                  {formatPostDateTimeBR(post)}.
+                </p>
+              </div>
+            )}
+
             {post.status === 'FAILED' && post.errorMessage && (
               <div className="border border-red-300 bg-red-50 dark:bg-red-950/20 rounded-md p-3 text-sm">
                 <div className="font-semibold text-red-700 dark:text-red-300 mb-1 flex items-center gap-2">
@@ -565,16 +639,30 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                     Re-agendar
                   </Button>
 
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="flex-1"
-                    onClick={handlePublishNow}
-                    disabled={publishNow.isPending}
-                  >
-                    <Send className="w-4 h-4 mr-2" />
-                    {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar Agora'}
-                  </Button>
+                  {/* No rascunho o que falta é aprovar, não publicar na hora:
+                      "Publicar agora" ignoraria o horário combinado. Ele
+                      continua no menu, para quem realmente quiser. */}
+                  {isRascunho ? (
+                    <Button
+                      size="sm"
+                      className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      onClick={() => setApproveOpen(true)}
+                    >
+                      <CalendarCheck className="w-4 h-4 mr-2" />
+                      Aprovar
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1"
+                      onClick={handlePublishNow}
+                      disabled={publishNow.isPending}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      {post.status === 'FAILED' ? 'Tentar novamente' : 'Publicar Agora'}
+                    </Button>
+                  )}
                 </>
               )}
 
@@ -608,6 +696,26 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
+                  {isRascunho && (
+                    <DropdownMenuItem
+                      onClick={handlePublishNow}
+                      disabled={publishNow.isPending}
+                    >
+                      <Send className="w-4 h-4 mr-2" />
+                      Publicar agora
+                    </DropdownMenuItem>
+                  )}
+
+                  {post.status === 'SCHEDULED' && (
+                    <DropdownMenuItem
+                      onClick={handleVoltarParaRascunho}
+                      disabled={revertToDraft.isPending}
+                    >
+                      <Undo2 className="w-4 h-4 mr-2" />
+                      Voltar para rascunho
+                    </DropdownMenuItem>
+                  )}
+
                   <DropdownMenuItem onClick={handleDuplicate}>
                     <Copy className="w-4 h-4 mr-2" />
                     Duplicar
@@ -622,7 +730,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                     disabled={deletePost.isPending}
                   >
                     <Trash2 className="w-4 h-4 mr-2" />
-                    Deletar
+                    {isRascunho ? 'Excluir rascunho' : 'Deletar'}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -644,6 +752,18 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
         open={duplicateOpen}
         onClose={() => setDuplicateOpen(false)}
       />
+
+      {/* Confirmação de aprovação — sai para a conta do cliente */}
+      {approveOpen && (
+        <ApprovePostsDialog
+          posts={[post]}
+          projectId={post.projectId}
+          contaLabel={contaLabel}
+          open={approveOpen}
+          onClose={() => setApproveOpen(false)}
+          onApproved={onClose}
+        />
+      )}
     </>
   )
 }
