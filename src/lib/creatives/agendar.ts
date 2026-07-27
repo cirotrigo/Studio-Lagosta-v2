@@ -41,8 +41,11 @@ export interface AgendarPostInput {
   pageId?: string
   /** Imagens prontas, quando não vier de uma página */
   mediaUrls?: string[]
-  /** DRAFT (padrão) fica só na agenda; SCHEDULED entra na fila de publicação */
-  status?: 'DRAFT' | 'SCHEDULED'
+  /**
+   * "rascunho" (padrão) só aparece na agenda; "agendado" entra na fila e
+   * publica de verdade. O vocabulário é o da pessoa, não o do banco.
+   */
+  situacao?: 'rascunho' | 'agendado'
 }
 
 export async function agendarPost(input: AgendarPostInput) {
@@ -85,20 +88,24 @@ export async function agendarPost(input: AgendarPostInput) {
     if (mediaUrls.length === 0 && page.thumbnail) mediaUrls = [page.thumbnail]
   }
 
-  const status = (input.status ?? 'DRAFT') as PostStatus
+  const vaiPublicar = input.situacao === 'agendado'
+  const status = (vaiPublicar ? 'SCHEDULED' : 'DRAFT') as PostStatus
   const quando = parseBRT(input.scheduledDatetime)
 
-  if (status === 'SCHEDULED' && quando.getTime() < Date.now()) {
+  const formatarBRT = (d: Date) =>
+    d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' })
+
+  if (vaiPublicar && quando.getTime() < Date.now()) {
     throw new CreativeError(
       'DATA_NO_PASSADO',
-      `Não dá para agendar no passado: ${quando.toISOString()}.`,
+      `Esse horário já passou (${formatarBRT(quando)}). Escolha uma data à frente.`,
       400,
     )
   }
-  if (status === 'SCHEDULED' && !project.instagramAccountId) {
+  if (vaiPublicar && !project.instagramAccountId) {
     throw new CreativeError(
       'SEM_CONTA_INSTAGRAM',
-      `O projeto "${project.name}" não tem conta do Instagram conectada — dá para deixar como DRAFT, mas não publicar.`,
+      `O projeto "${project.name}" ainda não tem conta do Instagram conectada, então não dá para publicar. Dá para deixar como rascunho na agenda.`,
       400,
     )
   }
@@ -120,17 +127,19 @@ export async function agendarPost(input: AgendarPostInput) {
     select: { id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true },
   })
 
+  const quandoBRT = formatarBRT(post.scheduledDatetime!)
+  const tipo = post.postType === 'STORY' ? 'story' : post.postType.toLowerCase()
+
   return {
-    agendado: true,
     postId: post.id,
-    status: post.status,
-    postType: post.postType,
-    scheduledDatetime: post.scheduledDatetime,
-    mediaUrls: post.mediaUrls,
+    situacao: vaiPublicar ? 'agendado' : 'rascunho',
+    tipo,
+    quando: quandoBRT,
+    imagens: post.mediaUrls,
     agendaUrl: `${getPublicAppUrl()}/projects/${project.id}?tab=agenda`,
-    aviso:
-      post.status === 'DRAFT'
-        ? 'Criado como rascunho: aparece na agenda mas NÃO será publicado. Reenvie com status "SCHEDULED" para entrar na fila.'
-        : undefined,
+    // Frase pronta para o modelo repetir: evita que ele traduza "DRAFT" sozinho
+    mensagem: vaiPublicar
+      ? `Agendado: este ${tipo} vai ser publicado no Instagram de ${project.name} em ${quandoBRT}.`
+      : `Deixei como rascunho na agenda de ${project.name}, para ${quandoBRT}. Rascunho não publica — é só avisar quando quiser que eu agende de verdade.`,
   }
 }

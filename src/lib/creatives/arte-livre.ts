@@ -114,6 +114,8 @@ export interface CreateArteLivreResult {
   imageWarning?: string
   /** Avisa quando a marca não tem par de fontes definido e houve escolha automática */
   avisoFontes?: string
+  /** Lembra o assistente do passo seguinte, para a arte não ficar órfã */
+  proximoPasso: string
 }
 
 /** Gradiente de escurecimento, para o texto continuar legível sobre a foto. */
@@ -368,6 +370,10 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
     camadasDeTexto,
     ...(resolved.warning ? { imageWarning: resolved.warning } : {}),
     ...(avisoFontes ? { avisoFontes } : {}),
+    // Lembra o passo seguinte: sem isso a arte fica pronta e ninguém a coloca
+    // na agenda, e a pessoa não sabe que ainda falta esse passo.
+    proximoPasso:
+      'Mostre a arte para a pessoa (link acima) e, se ela aprovar, use colocar-na-agenda como rascunho. Só agende de verdade com confirmação explícita.',
   }
 }
 

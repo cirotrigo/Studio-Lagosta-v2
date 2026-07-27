@@ -71,9 +71,9 @@ function requireNumber(args: Record<string, any>, key: string): number {
 
 export const MCP_TOOLS: McpTool[] = [
   {
-    name: 'list-projects',
+    name: 'listar-clientes',
     description:
-      'Lista os projetos ativos do Studio Lagosta com id, nome, @ do Instagram e pastas do Drive. Use para descobrir o projectId antes das outras tools.',
+      'Lista os clientes (projetos) do Studio Lagosta. Comece por aqui quando a pessoa citar um cliente pelo nome — é onde você descobre o id que as outras ferramentas pedem.',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     handler: async (_args, principal) => {
       const permitidos = await projetosVisiveis(principal)
@@ -93,9 +93,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'prepare-creative',
+    name: 'escolher-modelo',
     description:
-      'PASSO 1 da arte: resolve o projeto e a página de template que melhor casa com um tema (e dia opcional), devolvendo os slots a preencher, os assets da marca e o tom de voz. Escreva a copy a partir daqui e depois chame create-arte-rapida.',
+      'Acha o modelo pronto do cliente que combina com um tema (e dia), devolvendo os campos de texto a preencher e a identidade da marca. Use quando o cliente tem modelo cadastrado para aquele tema; depois use criar-arte-de-modelo. Se não houver modelo, prefira criar-arte, que monta do zero.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -119,9 +119,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'create-arte-rapida',
+    name: 'criar-arte-de-modelo',
     description:
-      'PASSO 2 da arte: aplica a copy e a imagem na página de template, cria uma página EDITÁVEL no template "Arte Rápida" do projeto, renderiza o PNG e registra na galeria de Criativos. Devolve a url da imagem e a editUrl (abre no editor de templates). A imagem vem por imageUrl (URL pública) ou por _driveImageId dentro de slotValues.',
+      'Monta a arte em cima de um modelo pronto do cliente (o que veio de escolher-modelo). Devolve a imagem e um link para abrir e ajustar no editor.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -152,9 +152,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'list-posts',
+    name: 'ver-agenda',
     description:
-      'Lista os posts agendados de um projeto numa janela de datas, para saber o que já está na agenda antes de criar algo novo.',
+      'Mostra o que já está na agenda do cliente num período. Consulte antes de propor uma data, para não repetir tema nem empilhar posts no mesmo horário.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -192,9 +192,9 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'get-knowledge',
+    name: 'consultar-base',
     description:
-      'Base de conhecimento do projeto — tom de voz, informações do estabelecimento, horários, cardápio, diferenciais, campanhas. Consulte ANTES de escrever qualquer copy, para o texto sair na voz da marca e com dados corretos (nada de inventar preço ou horário).',
+      'Base de conhecimento do cliente: tom de voz, horário de funcionamento, cardápio, diferenciais e campanhas. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -225,9 +225,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'list-font-combinations',
+    name: 'listar-combinacoes-de-texto',
     description:
-      'Combinações tipográficas do projeto — composições de texto prontas, com posição, tamanho, cor e efeitos já ajustados à marca. Use antes de create-arte-livre: escolher uma combinação e só trocar os textos costuma dar um resultado melhor que posicionar tudo na mão. No primeiro uso, o catálogo base é semeado no projeto.',
+      'Composições de texto prontas do cliente, com posição, tamanho e cor já ajustados à marca. Escolher uma e só trocar as palavras costuma dar resultado melhor do que posicionar tudo na mão. Repare em quantos campos cada uma tem: texto longo demais para os campos disponíveis fica sobreposto na arte.',
     inputSchema: {
       type: 'object',
       properties: { projectId: { type: 'number', description: 'ID do projeto.' } },
@@ -242,9 +242,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'create-arte-livre',
+    name: 'criar-arte',
     description:
-      'Cria uma arte SEM modelo: você monta a composição. Escolha o formato, o fundo (foto por URL/Drive ou cor), e componha o texto de um destes jeitos — (a) combinationId + textos, herdando posições e estilo da combinação (recomendado), ou (b) textosLivres, posicionando cada bloco em coordenadas relativas ao canvas (0..1). O logo da marca entra por padrão e um sombreado é aplicado sobre a foto para o texto continuar legível. Sai uma página editável no editor de templates.',
+      'Cria a arte do zero, sem depender de modelo cadastrado — é o caminho padrão. Escolha a foto, o formato e componha o texto: o mais seguro é usar uma das composições prontas (listar-combinacoes-de-texto) e só trocar as palavras. O logo entra sozinho e a foto recebe um sombreado para o texto não sumir. Mantenha os textos curtos: story se lê em dois segundos, e frase comprida estoura a caixa. Devolve a imagem e um link para ajustar no editor.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -303,9 +303,9 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'search-acervo',
+    name: 'buscar-fotos',
     description:
-      'Busca fotos no acervo do projeto (catálogo do Google Drive) por tema, categoria de cardápio, tags ou qualidade. Devolve o driveFileId de cada foto, que você passa em create-arte-livre/create-arte-rapida. Ordena pelas MENOS usadas recentemente, para não repetir a mesma foto toda semana. Use antes de criar arte, para escolher a foto pelo tema.',
+      'Busca fotos no acervo do cliente. Traz primeiro as menos usadas, para não repetir a mesma foto toda semana. O acervo é organizado em pastas por assunto (cortes, ambiente, bebidas, sobremesas...) — a resposta lista as pastas disponíveis, então se a busca por tema vier vazia, tente de novo pela pasta. Ao montar vários posts de uma vez, use pastas diferentes para variar.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -336,9 +336,9 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'list-drive-images',
+    name: 'listar-fotos-da-pasta',
     description:
-      'Lista as imagens da pasta do Drive do projeto. Use quando o projeto ainda não tem catálogo (search-acervo devolve SEM_CATALOGO).',
+      'Lista as fotos da pasta do cliente no Drive. Use quando o acervo ainda não foi catalogado (buscar-fotos avisa quando é o caso).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -356,19 +356,23 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   {
-    name: 'agendar-post',
+    name: 'colocar-na-agenda',
     description:
-      'Agenda um post a partir de uma arte já criada (pageId de create-arte-livre/create-arte-rapida) ou de mediaUrls prontas.\n\nATENÇÃO: nasce como DRAFT — aparece na agenda mas NÃO publica. Só entra na fila de publicação do Instagram com status="SCHEDULED", e isso sai para a conta real do cliente. Confirme a data, o horário e a arte com a pessoa antes de usar SCHEDULED.',
+      'Coloca a arte na agenda do cliente, na data e hora escolhidas.\n\nPor padrão entra como RASCUNHO: aparece na agenda e NÃO publica. Só vira publicação de verdade com situacao="agendado", e isso sai para o Instagram real do cliente na hora marcada.\n\nNunca use "agendado" por conta própria. Mostre antes a arte, a data e o horário, e pergunte de forma direta — "isso vai publicar no Instagram na segunda às 16h, confirma?". Rascunho primeiro é sempre o caminho seguro.',
     inputSchema: {
       type: 'object',
       properties: {
-        projectId: { type: 'number', description: 'ID do projeto.' },
-        postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo (default STORY).' },
-        caption: { type: 'string', description: 'Legenda. Stories podem ficar sem.' },
-        scheduledDatetime: { type: 'string', description: 'Quando publicar: "YYYY-MM-DD HH:mm" no horário de Brasília.' },
-        pageId: { type: 'string', description: 'Página da arte criada aqui.' },
-        mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma página.' },
-        status: { type: 'string', enum: ['DRAFT', 'SCHEDULED'], description: 'DRAFT (default) só na agenda; SCHEDULED entra na fila de publicação.' },
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo de publicação (padrão STORY).' },
+        caption: { type: 'string', description: 'Legenda. Story costuma ir sem.' },
+        scheduledDatetime: { type: 'string', description: 'Quando: "AAAA-MM-DD HH:mm" no horário de Brasília.' },
+        pageId: { type: 'string', description: 'A arte criada aqui (veio de criar-arte ou criar-arte-de-modelo).' },
+        mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
+        situacao: {
+          type: 'string',
+          enum: ['rascunho', 'agendado'],
+          description: 'rascunho (padrão) só aparece na agenda; agendado publica de verdade no Instagram do cliente. Use "agendado" apenas após confirmação explícita da pessoa.',
+        },
       },
       required: ['projectId', 'scheduledDatetime'],
       additionalProperties: false,
@@ -383,7 +387,7 @@ export const MCP_TOOLS: McpTool[] = [
         scheduledDatetime: requireString(args, 'scheduledDatetime'),
         pageId: args.pageId,
         mediaUrls: args.mediaUrls,
-        status: args.status,
+        situacao: args.situacao,
       })
     },
   },
