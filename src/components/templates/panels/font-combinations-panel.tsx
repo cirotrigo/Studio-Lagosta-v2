@@ -403,6 +403,8 @@ export function FontCombinationsPanel() {
                 key={combo.id}
                 combo={combo}
                 pair={pair}
+                canvasWidth={design.canvas.width}
+                canvasHeight={design.canvas.height}
                 onApply={() => aplicar(combo)}
                 onEdit={() => iniciarEdicao(combo)}
                 onDelete={
@@ -422,47 +424,79 @@ export function FontCombinationsPanel() {
   )
 }
 
-const PREVIEW_SCALE = 0.19
-
+/**
+ * Miniatura fiel da combinação: reproduz o canvas em escala, com cada texto na
+ * sua posição, tamanho, cor e inclinação reais. Antes o card empilhava os
+ * textos, o que escondia justamente o que a edição de posicionamento define.
+ *
+ * As medidas usam `cqw` (1% da largura do container), então a miniatura
+ * acompanha qualquer largura de card sem recalcular nada em JS.
+ */
 function ComboCard({
   combo,
   pair,
+  canvasWidth,
+  canvasHeight,
   onApply,
   onEdit,
   onDelete,
 }: {
   combo: FontCombination
   pair: FontComboPair
+  canvasWidth: number
+  canvasHeight: number
   onApply: () => void
   onEdit: () => void
   onDelete?: () => void
 }) {
+  // fontSize está em px na base 1080 de largura → vira % da largura do canvas
+  const emCqw = (px: number) => `${(px / COMBO_BASE_CANVAS_WIDTH) * 100}cqw`
+
   return (
     <div className="group relative">
       <button
         type="button"
         onClick={onApply}
         title={combo.name}
-        className="flex min-h-[110px] w-full flex-col items-center justify-center gap-1 rounded-md border border-border/40 bg-card p-3 text-center transition hover:border-primary/60 hover:bg-muted/40"
+        className="block w-full overflow-hidden rounded-md border border-border/40 transition hover:border-primary/60"
       >
-        {combo.elements.map((element) => (
-          <span
-            key={element.id}
-            className="block max-w-full text-foreground"
-            style={{
-              fontFamily: resolveComboFontFamily(element.role, pair),
-              fontSize: Math.max(8, Math.round(element.fontSize * PREVIEW_SCALE)),
-              fontWeight: Number(element.fontWeight) || 400,
-              fontStyle: element.fontStyle ?? 'normal',
-              letterSpacing: element.letterSpacing ? element.letterSpacing * PREVIEW_SCALE : undefined,
-              lineHeight: element.lineHeight,
-              textTransform: element.textTransform === 'uppercase' ? 'uppercase' : 'none',
-              whiteSpace: 'pre-line',
-            }}
-          >
-            {element.text}
-          </span>
-        ))}
+        <div
+          className="relative w-full"
+          style={{
+            containerType: 'inline-size',
+            aspectRatio: `${canvasWidth} / ${canvasHeight}`,
+            // inline: a classe arbitrária do Tailwind não estava sendo gerada,
+            // e sem fundo escuro o texto branco some no card
+            backgroundColor: '#141414',
+          }}
+        >
+          {combo.elements.map((element) => (
+            <span
+              key={element.id}
+              className="absolute block"
+              style={{
+                left: `${element.x * 100}%`,
+                top: `${element.y * 100}%`,
+                width: `${element.width * 100}%`,
+                fontFamily: resolveComboFontFamily(element.role, pair),
+                fontSize: emCqw(element.fontSize),
+                fontWeight: Number(element.fontWeight) || 400,
+                fontStyle: element.fontStyle ?? 'normal',
+                color: element.color ?? '#FFFFFF',
+                textAlign: element.textAlign ?? 'center',
+                lineHeight: element.lineHeight,
+                letterSpacing: element.letterSpacing ? emCqw(element.letterSpacing) : undefined,
+                textTransform: element.textTransform === 'uppercase' ? 'uppercase' : 'none',
+                transform: element.rotation ? `rotate(${element.rotation}deg)` : undefined,
+                transformOrigin: 'top left',
+                whiteSpace: 'pre-line',
+              }}
+            >
+              {element.text}
+            </span>
+          ))}
+        </div>
+        <p className="truncate px-1.5 py-1 text-[10px] text-muted-foreground">{combo.name}</p>
       </button>
 
       {/* Ações discretas, só no hover */}
