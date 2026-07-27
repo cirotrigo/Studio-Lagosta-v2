@@ -27,6 +27,18 @@ propósito. Camadas antigas sem `lineHeight` explícito seguem em 1.2 — mudar 
 fallback reflowaria silenciosamente o texto de todos os templates já existentes.
 Só o que nasce a partir de agora usa 1.
 
+**Armadilha maior — a entrelinha mora em dois campos.** No `render-engine`
+(server-side) a precedência é `textboxConfig.autoWrap.lineHeight ?? style.lineHeight ?? 1.2`,
+ou seja, **o `autoWrap` ganha do `style`**. Todo texto criado pelo editor grava
+os dois. Quem escrever em só um deles produz editor e arte exportada com
+entrelinhas diferentes.
+
+Foi assim que um defeito passou: o botão Auto gravava
+`autoWrap.lineHeight: ... ?? 1`, então **ligar o Auto numa camada antiga sem
+`style.lineHeight` apertava a entrelinha da arte exportada de 1.2 para 1** — sem
+mudar nada no editor, que lê o outro campo. Corrigido em `df0a105`; o fallback
+do botão agora é 1.2, o mesmo do renderer.
+
 ---
 
 ## 2. Setas do teclado posicionam a seleção
@@ -37,9 +49,12 @@ As setas rolavam a página. Agora movem a seleção: **1px**, ou **10px com
 Shift**, em `editor-canvas.tsx` junto dos atalhos que já existiam (Cmd+J,
 Delete). Vale para seleção múltipla e ignora camadas travadas.
 
-**Armadilha:** o `preventDefault` só acontece quando há algo selecionado para
-mover. Sem seleção, a seta volta a rolar a página normalmente — o atalho não
-sequestra a tecla à toa. Quem mexer nisso precisa manter essa saída.
+**Armadilha:** o `preventDefault` vem **depois** do filtro de camadas travadas e
+do `if (alvos.length === 0) return`, então a tecla só é consumida quando há algo
+destravado para mover. Hoje isso não protege scroll nenhum — o editor é
+`h-dvh` e não rola —, mas mantém a seta livre para quem estiver focado em outro
+elemento e para qualquer painel rolável que venha a existir. Quem mexer no
+handler precisa manter essa ordem.
 
 ---
 
@@ -183,6 +198,17 @@ ter. O navegador **sintetiza** um falso negrito nesse caso e o render
 server-side **não** — as duas telas divergiam em silêncio. É a mesma família do
 bug do Montserrat/Arial documentado na sessão anterior.
 
+**Armadilha que a remoção abriu:** `handleFontFamilyChange` só gravava
+`fontWeight` quando a variante trazia um peso; para família simples o peso
+antigo sobrevivia no `...selectedLayer.style`. Enquanto existia o botão de
+negrito isso passava despercebido — dava para desligar por ali. Sem ele, **uma
+camada em 700 não tinha mais como voltar a regular**. Corrigido em `df0a105`: o
+peso é sempre reescrito, como o seletor do painel de propriedades já fazia.
+
+Saiu junto o `simple-text-panel.tsx`, órfão desde que a aba Texto virou o
+`TextToolsPanel` — 148 linhas que ainda aplicavam peso 700/600/500/400 e
+rotulavam os botões de "Bold".
+
 ---
 
 ## 7. A armadilha que atravessa tudo: o cache do Konva
@@ -226,11 +252,13 @@ só; o segundo efeito ficou apenas com o `transformer.forceUpdate()`.
 | Âncora vertical | ✅ editor e render server-side de acordo |
 | Crescimento automático | ✅ no editor; ⚠️ o render não cresce |
 | Negrito | ✅ removido; peso vem da variante |
+| Regressões da releitura | ✅ peso e entrelinha corrigidos (`df0a105`) |
 
 ### Próximos passos sugeridos
 
 1. Decidir se o render server-side deve crescer a caixa como o editor. Hoje um
-   `slotValues` mais longo que o texto do template é cortado em silêncio.
+   `slotValues` mais longo que o texto do template é cortado em silêncio. É o
+   único item desta sessão que continua sendo um defeito conhecido.
 2. `docs/alignment-controls-summary.md` descreve a regra antiga
    (`selectedCount < 2`); foi atualizado, mas o documento é de 2025 e merece uma
    revisão completa.
@@ -241,9 +269,18 @@ Todos os testes desta sessão rodaram em **templates descartáveis**, criados e
 apagados na hora — a correção do procedimento que a sessão anterior recomendou
 depois de perder camadas de um template de produção.
 
-Três defeitos desta lista (`fff1467`, `0151182` e o corte no render) **não
-apareceram em teste**: saíram de conferir o código antes de escrever esta
-documentação.
+Cinco achados desta lista **não apareceram em teste** — saíram de reler o código
+com ceticismo antes de escrever esta documentação:
+
+- a barra de alinhamento do topo, que tinha ficado para trás (`fff1467`);
+- 165 linhas órfãs em `konva-alignment.ts` (`0151182`);
+- o peso preso em 700 sem caminho de volta (`df0a105`);
+- a entrelinha apertada ao ligar o Auto em camada antiga (`df0a105`);
+- o corte do texto no render server-side, ainda em aberto.
+
+Os três primeiros passariam por qualquer teste manual rápido. Vale a pena manter
+o hábito: depois de mexer no editor, reler o que mudou procurando **a segunda
+tela** e **o campo que ficou de fora da lista**.
 
 O ambiente atrapalhou: o `.next` corrompeu três vezes — numa delas havia um
 `next build` rodando junto do `next dev`, e os dois escrevem na mesma pasta — e
