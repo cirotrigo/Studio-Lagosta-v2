@@ -45,6 +45,27 @@ model CustomFont {
   @@index([projectId])
 }
 
+/// Combinação tipográfica de um projeto (título + corpo + detalhes).
+/// Os seis modelos base são semeados por projeto no primeiro acesso, para que
+/// cada marca ajuste o seu sem afetar as outras.
+model FontCombination {
+  id        String   @id @default(cuid())
+  projectId Int
+  name      String
+  /// Ordem de exibição na galeria
+  order     Int      @default(0)
+  /// FontComboElement[]: papel, texto, tipografia, cor, efeitos e posição
+  /// relativa ao canvas (0..1), para sobreviver a formatos diferentes
+  elements  Json
+  /// Veio do catálogo base (não foi criada pelo usuário)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  Project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
 model Element {
   id         Int      @id @default(autoincrement())
   name       String
@@ -205,6 +226,7 @@ model Project {
   Element                     Element[]
   Generation                  Generation[]
   instagramDailySummary       InstagramDailySummary[]
+  fontCombinations            FontCombination[]
   instagramFeeds              InstagramFeed[]
   instagramGoalSettings       InstagramGoalSettings?
   instagramStories            InstagramStory[]
