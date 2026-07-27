@@ -85,11 +85,14 @@ export async function GET(
         analyticsEngagement: true,
         analyticsFetchedAt: true,
       },
+      // `nulls: 'last'` é essencial: no Postgres, ORDER BY ... DESC coloca
+      // nulos PRIMEIRO. Sem isso, ordenar por engajamento trazia só posts sem
+      // métrica e o limite descartava justamente os que têm dados.
       orderBy:
         sortBy === 'engagement'
-          ? { analyticsEngagement: order }
+          ? { analyticsEngagement: { sort: order, nulls: 'last' } }
           : sortBy === 'reach'
-          ? { analyticsReach: order }
+          ? { analyticsReach: { sort: order, nulls: 'last' } }
           : { sentAt: order },
       take: limit,
     })

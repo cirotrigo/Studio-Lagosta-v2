@@ -35,6 +35,7 @@ import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-co
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
+import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { useProject } from '@/hooks/use-project'
@@ -200,6 +201,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="modelos">Modelos</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
+          <TabsTrigger value="metricas">Métricas</TabsTrigger>
           <TabsTrigger value="assets">Assets</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
@@ -325,6 +327,10 @@ export default function ProjectDetailPage() {
 
         <TabsContent value="assets" className="mt-3 md:mt-4">
           <ProjectAssetsPanel projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="metricas" className="mt-3 md:mt-4">
+          <ProjectAnalyticsPanel projectId={projectId} projectName={projectDetails?.name} />
         </TabsContent>
 
         <TabsContent value="configuracoes" className="mt-3 md:mt-4">
