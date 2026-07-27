@@ -196,6 +196,18 @@ function getPublicAppUrl(): string {
   return url.replace(/\/$/, '')
 }
 
+/**
+ * Render an error from the shared creatives lib. CreativeError carries a
+ * machine-readable code plus context (candidate projects, available tags),
+ * so it is surfaced as JSON; anything else falls back to a plain message.
+ */
+function formatCreativeError(error: any): string {
+  if (error?.name === 'CreativeError' && typeof error.toJSON === 'function') {
+    return JSON.stringify(error.toJSON(), null, 2)
+  }
+  return `Error: ${error?.message ?? String(error)}`
+}
+
 function fetchBuffer(url: string): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http
@@ -1797,15 +1809,15 @@ server.tool(
           bodyFontFamily: true,
           brandStyleDescription: true,
           cuisineType: true,
-          brandColors: {
+          BrandColor: {
             select: { id: true, name: true, hexCode: true },
             orderBy: { id: 'asc' },
           },
-          customFonts: {
+          CustomFont: {
             select: { id: true, name: true, fontFamily: true, fileUrl: true },
             orderBy: { id: 'asc' },
           },
-          logos: {
+          Logo: {
             select: { id: true, name: true, fileUrl: true, isProjectLogo: true },
             orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }],
           },
@@ -1849,9 +1861,9 @@ server.tool(
         titleFontFamily: project.titleFontFamily,
         bodyFontFamily: project.bodyFontFamily,
         logoUrl: project.logoUrl,
-        logos: project.logos,
-        colors: project.brandColors,
-        fonts: project.customFonts,
+        logos: project.Logo,
+        colors: project.BrandColor,
+        fonts: project.CustomFont,
         knowledge,
       }
 
@@ -1962,205 +1974,18 @@ server.tool(
   'prepare-creative',
   'Resolve project + best matching template page for a theme/day. Returns the page layers, exact slot fields to fill, brand assets and tone-of-voice context. Use this as the FIRST call in the arte-rapida flow before generating copy.',
   {
-    projectHint: z.string().describe('Project name or substring (e.g., "Tero", "By Rock")'),
-    theme: z.string().describe('Theme of the creative (e.g., "almoço executivo", "happy hour", "delivery")'),
+    projectHint: z.string().optional().describe('Project name or substring (e.g., "Tero", "By Rock"). Optional if projectId is given.'),
+    projectId: z.number().optional().describe('Exact project ID — skips name matching'),
+    theme: z.string().describe('Theme of the creative (e.g., "almo\u00e7o executivo", "happy hour", "delivery")'),
     day: z.string().optional().describe('Optional day of week in PT (e.g., "sexta", "sabado", "sexta-feira")'),
   },
-  async ({ projectHint, theme, day }) => {
+  async ({ projectHint, projectId, theme, day }) => {
     try {
-      const normalize = (s: string) => s.toLowerCase()
-        .normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .replace(/\s+/g, '-')
-
-      // 1. Resolve project by name (case-insensitive contains)
-      const projects = await prisma.project.findMany({
-        where: {
-          status: 'ACTIVE',
-          name: { contains: projectHint, mode: 'insensitive' },
-        },
-        select: {
-          id: true, name: true, userId: true,
-          googleDriveImagesFolderId: true, googleDriveFolderId: true,
-          instagramUsername: true,
-          logoUrl: true, titleFontFamily: true, bodyFontFamily: true,
-          brandStyleDescription: true, cuisineType: true,
-          BrandColor: { select: { name: true, hexCode: true }, orderBy: { id: 'asc' } },
-          CustomFont: { select: { name: true, fontFamily: true, fileUrl: true }, orderBy: { id: 'asc' } },
-          Logo: { select: { name: true, fileUrl: true, isProjectLogo: true }, orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }] },
-        },
-        orderBy: { name: 'asc' },
-      })
-
-      if (projects.length === 0) {
-        return { content: [{ type: 'text' as const, text: `Error: No active project matching "${projectHint}"` }], isError: true }
-      }
-      if (projects.length > 1) {
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: 'AMBIGUOUS_PROJECT',
-              message: `Multiple projects match "${projectHint}". Re-run with a more specific hint.`,
-              candidates: projects.map((p: any) => ({ id: p.id, name: p.name })),
-            }, null, 2),
-          }],
-          isError: true,
-        }
-      }
-      const project = projects[0]
-
-      // 2. Load all template pages for the project (STORY)
-      const { pages: allPages } = await getTemplatePages(project.id)
-      if (allPages.length === 0) {
-        return { content: [{ type: 'text' as const, text: `Error: No template pages found for project "${project.name}". Create templates first.` }], isError: true }
-      }
-
-      // 3. Theme matching: try full normalized form, main word, individual words
-      const themeNorm = normalize(theme)
-      const themeWords = themeNorm.split('-').filter((w) => w.length > 2)
-      const themeVariants = Array.from(new Set([themeNorm, themeWords[0], ...themeWords].filter(Boolean)))
-
-      const themeMatches = allPages.filter((p: any) => {
-        const tags = [...(p.tags ?? []), ...(p.templateTags ?? [])].map(normalize)
-        return themeVariants.some((v) => tags.some((t) => t === v || t.includes(v) || v.includes(t)))
-      })
-
-      // 4. Optional day filter (legacy: page.name / template.name contains day)
-      const dayNorm = day ? normalize(day).replace(/-feira$/, '') : null
-      let candidates = themeMatches
-      if (dayNorm) {
-        const dayMatches = themeMatches.filter((p: any) =>
-          normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
-        )
-        if (dayMatches.length > 0) candidates = dayMatches
-      }
-
-      // 5. Fallback: if no theme matches, try day-of-week alone (legacy templates without tags)
-      if (candidates.length === 0 && dayNorm) {
-        candidates = allPages.filter((p: any) =>
-          normalize(p.name).includes(dayNorm) || normalize(p.templateName).includes(dayNorm),
-        )
-      }
-
-      if (candidates.length === 0) {
-        const availableTags = Array.from(new Set(
-          allPages.flatMap((p: any) => [...(p.tags ?? []), ...(p.templateTags ?? [])]),
-        )).slice(0, 30)
-        const availableTemplates = Array.from(new Set(allPages.map((p: any) => p.templateName)))
-        return {
-          content: [{
-            type: 'text' as const,
-            text: JSON.stringify({
-              error: 'NO_TEMPLATE_MATCH',
-              message: `No template page found for theme "${theme}"${day ? ` and day "${day}"` : ''} in project "${project.name}".`,
-              project: { id: project.id, name: project.name },
-              availableTags,
-              availableTemplates,
-              suggestion: 'Tag a template page with the theme (e.g., "almoco-executivo") via the admin, or pick from availableTemplates and re-run.',
-            }, null, 2),
-          }],
-          isError: true,
-        }
-      }
-
-      // 6. Pick best candidate; rest go to alternatives
-      const bestRef = candidates[0]
-      const alternatives = candidates.slice(1, 5).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        templateId: p.templateId,
-        templateName: p.templateName,
-        tags: p.tags ?? [],
-        templateTags: p.templateTags ?? [],
-      }))
-
-      // 7. Load full page (with layers) to extract slot fields
-      const page = await prisma.page.findUnique({
-        where: { id: bestRef.id },
-        select: {
-          id: true, templateId: true, name: true, tags: true,
-          layers: true, width: true, height: true, background: true,
-        },
-      })
-      if (!page) {
-        return { content: [{ type: 'text' as const, text: `Error: Page not found: ${bestRef.id}` }], isError: true }
-      }
-
-      const layers: any[] = Array.isArray(page.layers)
-        ? (page.layers as any[])
-        : (typeof page.layers === 'string' ? JSON.parse(page.layers) : [])
-
-      const slotFields = layers
-        .filter((l: any) => l.type === 'text' || (l.type === 'image' && l.isDynamic))
-        .map((l: any) => ({
-          layerId: l.id,
-          name: l.name,
-          type: l.type,
-          isDynamic: !!l.isDynamic,
-          currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
-        }))
-
-      // 8. Knowledge base: tom de voz + categorias relevantes
-      const kbEntries = await prisma.knowledgeBaseEntry.findMany({
-        where: {
-          projectId: project.id,
-          status: 'ACTIVE',
-          category: { in: ['TOM_DE_VOZ', 'ESTABELECIMENTO_INFO', 'HORARIOS', 'DIFERENCIAIS', 'CARDAPIO', 'CAMPANHAS'] },
-        },
-        select: { category: true, title: true, content: true },
-        orderBy: { category: 'asc' },
-      })
-
-      const knowledge: Record<string, string> = {}
-      for (const entry of kbEntries) {
-        const key = entry.category === 'TOM_DE_VOZ' ? 'tomDeVoz'
-          : entry.category === 'ESTABELECIMENTO_INFO' ? 'estabelecimento'
-          : entry.category === 'HORARIOS' ? 'horarios'
-          : entry.category === 'DIFERENCIAIS' ? 'diferenciais'
-          : entry.category === 'CARDAPIO' ? 'cardapio'
-          : entry.category === 'CAMPANHAS' ? 'campanhas'
-          : entry.category
-        knowledge[key] = knowledge[key] ? `${knowledge[key]}\n---\n${entry.content}` : entry.content
-      }
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            project: {
-              id: project.id,
-              name: project.name,
-              instagramUsername: project.instagramUsername,
-              googleDriveImagesFolderId: project.googleDriveImagesFolderId ?? project.googleDriveFolderId,
-            },
-            page: {
-              id: page.id,
-              templateId: page.templateId,
-              templateName: bestRef.templateName,
-              name: page.name,
-              width: page.width,
-              height: page.height,
-              tags: page.tags ?? [],
-              templateTags: bestRef.templateTags ?? [],
-              slotFields,
-            },
-            alternatives,
-            brand: {
-              brandStyle: project.brandStyleDescription,
-              cuisineType: project.cuisineType,
-              titleFontFamily: project.titleFontFamily,
-              bodyFontFamily: project.bodyFontFamily,
-              logoUrl: project.logoUrl,
-              logos: project.Logo,
-              colors: project.BrandColor,
-              fonts: project.CustomFont,
-            },
-            knowledge,
-          }, null, 2),
-        }],
-      }
+      const { prepareCreative } = await import('../src/lib/creatives/arte-rapida')
+      const result = await prepareCreative({ projectHint, projectId, theme, day })
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     } catch (error: any) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
     }
   },
 )
@@ -2239,209 +2064,22 @@ server.tool(
 
 server.tool(
   'create-arte-rapida',
-  'Generate a one-shot creative from a source template page for the arte-rapida flow. Bakes slot values + Drive image into the layers, creates a new Page inside the project\'s special "Arte Rápida" template (auto-created on first use), renders to Vercel Blob, and registers a Generation visible in the Criativos gallery. Replaces create-post + render-story for arte-rapida outputs (the result is NOT a SocialPost, so it never shows up in the Agenda calendar). Filter Criativos by searching "Arte Rápida" to see all outputs.',
+  'Generate a one-shot creative from a source template page for the arte-rapida flow. Bakes slot values + image (Google Drive id or direct URL) into the layers, creates a new Page inside the project\'s special "Arte R\u00e1pida" template (auto-created on first use), renders to Vercel Blob, and registers a Generation visible in the Criativos gallery. Replaces create-post + render-story for arte-rapida outputs (the result is NOT a SocialPost, so it never shows up in the Agenda calendar). Filter Criativos by searching "Arte R\u00e1pida" to see all outputs.',
   {
     projectId: z.number().describe('Project ID'),
     sourcePageId: z.string().describe('Source template page ID (from prepare-creative.page.id)'),
-    slotValues: z.string().describe('JSON of slot values, including optional _driveImageId'),
+    slotValues: z.string().describe('JSON of slot values, including optional _driveImageId or _imageUrl'),
     name: z.string().optional().describe('Name for the generated page (default: "<source name> — <timestamp>")'),
+    imageUrl: z.string().optional().describe('Direct image URL (wins over _driveImageId). Use for images already hosted outside Drive.'),
   },
-  async ({ projectId, sourcePageId, slotValues, name }) => {
+  async ({ projectId, sourcePageId, slotValues, name, imageUrl }) => {
     try {
       const parsedSlots = JSON.parse(slotValues) as Record<string, unknown>
-      const driveImageId = typeof parsedSlots._driveImageId === 'string' ? parsedSlots._driveImageId : null
-
-      // 1. Resolve project
-      const project = await prisma.project.findUnique({
-        where: { id: projectId },
-        select: { id: true, name: true, userId: true },
-      })
-      if (!project) {
-        return { content: [{ type: 'text' as const, text: 'Error: Project not found' }], isError: true }
-      }
-
-      // 2. Resolve source page (with template for type/dimensions)
-      const sourcePage = await prisma.page.findUnique({
-        where: { id: sourcePageId },
-        include: { Template: true },
-      })
-      if (!sourcePage) {
-        return { content: [{ type: 'text' as const, text: `Error: Source page not found: ${sourcePageId}` }], isError: true }
-      }
-
-      // 3. Find or create the project's "Arte Rápida" template (single per project)
-      const ARTE_RAPIDA_NAME = 'Arte Rápida'
-      let arteTemplate = await prisma.template.findFirst({
-        where: { projectId, name: ARTE_RAPIDA_NAME },
-      })
-      if (!arteTemplate) {
-        arteTemplate = await prisma.template.create({
-          data: {
-            name: ARTE_RAPIDA_NAME,
-            type: sourcePage.Template.type,
-            dimensions: sourcePage.Template.dimensions,
-            projectId,
-            createdBy: project.userId,
-            designData: {} as any,
-            dynamicFields: [] as any,
-            tags: ['arte-rapida'],
-            category: 'arte-rapida',
-          },
-        })
-      }
-
-      // 4. Resolve Drive image to high-res thumbnail URL (used for image layers)
-      let driveImageUrl: string | null = null
-      if (driveImageId) {
-        try {
-          const drive = getDrive()
-          const file = await drive.files.get({ fileId: driveImageId, fields: 'thumbnailLink' })
-          if (file.data.thumbnailLink) {
-            driveImageUrl = file.data.thumbnailLink.replace(/=s\d+$/, '=s1920')
-          }
-        } catch (driveErr: any) {
-          console.error('[create-arte-rapida] Drive resolve failed:', driveErr.message)
-        }
-      }
-
-      // 5. Bake slot values + image into source layers (resolved layers, not overrides)
-      const sourceLayers: any[] = Array.isArray(sourcePage.layers)
-        ? (sourcePage.layers as any[])
-        : (typeof sourcePage.layers === 'string' ? JSON.parse(sourcePage.layers) : [])
-
-      const resolvedLayers = sourceLayers.map((layer: any) => {
-        const slot = parsedSlots[layer.id] ?? parsedSlots[layer.name]
-        const updated = { ...layer }
-        if (typeof slot === 'string') {
-          updated.content = slot
-        } else if (slot && typeof slot === 'object') {
-          const slotObj = slot as Record<string, unknown>
-          if (typeof slotObj.content === 'string') updated.content = slotObj.content
-          if (typeof slotObj.fileUrl === 'string') updated.fileUrl = slotObj.fileUrl
-        }
-        // Apply Drive image to dynamic image layers (or the conventional bg-img id)
-        if (
-          driveImageUrl &&
-          layer.type === 'image' &&
-          (layer.isDynamic || layer.id === 'bg-img') &&
-          (!updated.fileUrl || updated.fileUrl === '')
-        ) {
-          updated.fileUrl = driveImageUrl
-        }
-        return updated
-      })
-
-      // 6. Create the new Page inside "Arte Rápida" template
-      const pageName = name ?? `${sourcePage.name} — ${new Date().toLocaleString('pt-BR')}`
-      const newPage = await prisma.page.create({
-        data: {
-          name: pageName,
-          width: sourcePage.width,
-          height: sourcePage.height,
-          layers: resolvedLayers as any,
-          background: sourcePage.background,
-          order: 0,
-          templateId: arteTemplate.id,
-          isTemplate: false, // these are rendered artworks, not modelos
-          tags: ['arte-rapida'],
-        },
-      })
-
-      // 7. Render
-      const { convertPageToDesignData } = await import('../src/lib/posts/page-to-design-data')
-      const designData = convertPageToDesignData({
-        id: newPage.id,
-        name: newPage.name,
-        width: newPage.width,
-        height: newPage.height,
-        layers: newPage.layers,
-        background: newPage.background,
-      })
-
-      // Register custom fonts (same pattern as render-story)
-      const fonts = await prisma.customFont.findMany({ where: { projectId } })
-      if (fonts.length > 0) {
-        const { GlobalFonts } = await import('@napi-rs/canvas')
-        const fontDir = `/tmp/studio-lagosta-fonts/${projectId}`
-        if (!fs.existsSync(fontDir)) fs.mkdirSync(fontDir, { recursive: true })
-        for (const font of fonts) {
-          const ext = path.extname(font.fileUrl) || '.otf'
-          const filePath = path.join(fontDir, `${font.fontFamily}${ext}`)
-          if (!fs.existsSync(filePath)) {
-            try {
-              const buf = await fetchBuffer(font.fileUrl)
-              fs.writeFileSync(filePath, buf)
-            } catch { continue }
-          }
-          try { GlobalFonts.registerFromPath(filePath, font.fontFamily) } catch { /* already registered */ }
-        }
-      }
-
-      const { CanvasRenderer } = await import('../src/lib/canvas-renderer')
-      const renderer = new CanvasRenderer(designData.canvas.width, designData.canvas.height)
-      const buffer = await renderer.renderDesign(designData, {})
-
-      const timestamp = Date.now()
-      const blobPath = `arte-rapida/${projectId}/${newPage.id}-${timestamp}.png`
-      const blob = await put(blobPath, buffer, { access: 'public', contentType: 'image/png' })
-
-      // 8. Update page thumbnail (so it shows in template grids too)
-      await prisma.page.update({
-        where: { id: newPage.id },
-        data: { thumbnail: blob.url },
-      })
-
-      // 9. Create Generation record (visible in Criativos gallery)
-      const generation = await prisma.generation.create({
-        data: {
-          status: 'COMPLETED' as any,
-          templateId: arteTemplate.id,
-          fieldValues: {
-            source: 'arte-rapida',
-            sourceTemplateId: sourcePage.Template.id,
-            sourceTemplateName: sourcePage.Template.name,
-            sourcePageId: sourcePage.id,
-            sourcePageName: sourcePage.name,
-            sourceTags: sourcePage.tags ?? [],
-            driveImageId,
-            slotValues: parsedSlots,
-            thumbnailUrl: blob.url,
-          } as any,
-          resultUrl: blob.url,
-          projectId,
-          createdBy: project.userId,
-          authorName: 'arte-rapida',
-          templateName: ARTE_RAPIDA_NAME,
-          projectName: project.name,
-          completedAt: new Date(),
-          fileName: `${pageName}.png`,
-        },
-      })
-
-      const appUrl = getPublicAppUrl()
-      const editUrl = `${appUrl}/templates/${arteTemplate.id}/editor?pageId=${encodeURIComponent(newPage.id)}`
-      const galleryUrl = `${appUrl}/projects/${projectId}?tab=criativos`
-
-      return {
-        content: [{
-          type: 'text' as const,
-          text: JSON.stringify({
-            created: true,
-            generationId: generation.id,
-            pageId: newPage.id,
-            templateId: arteTemplate.id,
-            templateName: ARTE_RAPIDA_NAME,
-            url: blob.url,
-            editUrl,
-            galleryUrl,
-            width: designData.canvas.width,
-            height: designData.canvas.height,
-            sizeKB: Math.round(buffer.length / 1024),
-          }, null, 2),
-        }],
-      }
+      const { createArteRapida } = await import('../src/lib/creatives/arte-rapida')
+      const result = await createArteRapida({ projectId, sourcePageId, slotValues: parsedSlots, name, imageUrl })
+      return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
     } catch (error: any) {
-      return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
+      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
     }
   },
 )
