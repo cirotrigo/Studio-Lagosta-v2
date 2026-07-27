@@ -42,21 +42,32 @@ export async function listClientProjects(filters: ClientProjectFilters = {}) {
     where.status = filters.status as ProjectStatus
   }
 
-  return db.project.findMany({
+  const projetos = await db.project.findMany({
     where,
     include: clientProjectInclude,
     orderBy: { updatedAt: 'desc' },
   })
+  return projetos.map(semToken)
+}
+
+/**
+ * Remove o token do Instagram antes de devolver o projeto.
+ * É credencial: a UI só precisa saber se existe, não o valor.
+ */
+function semToken<T extends { instagramAccessToken?: string | null }>(projeto: T) {
+  const { instagramAccessToken, ...resto } = projeto
+  return { ...resto, hasInstagramToken: Boolean(instagramAccessToken) }
 }
 
 export async function getClientProjectById(projectId: number) {
-  return db.project.findFirst({
+  const projeto = await db.project.findFirst({
     where: {
       id: projectId,
       isClientProject: true,
     },
     include: clientProjectInclude,
   })
+  return projeto ? semToken(projeto) : null
 }
 
 export async function updateClientProject(projectId: number, data: UpdateClientProjectInput) {

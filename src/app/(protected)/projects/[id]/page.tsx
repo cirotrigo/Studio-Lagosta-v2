@@ -34,6 +34,7 @@ import { LaterProviderConfig } from '@/components/projects/later-provider-config
 import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
+import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { useProject } from '@/hooks/use-project'
@@ -349,6 +350,14 @@ export default function ProjectDetailPage() {
                 <InstagramAccountConfig
                   projectId={projectId}
                   instagramAccountId={projectDetails.instagramAccountId}
+                  instagramUsername={projectDetails.instagramUsername}
+                />
+
+                {/* Token do Instagram (métricas e verificação) */}
+                <InstagramTokenConfig
+                  projectId={projectId}
+                  hasToken={projectDetails.hasInstagramToken}
+                  expiresAt={projectDetails.instagramTokenExpiresAt}
                   instagramUsername={projectDetails.instagramUsername}
                 />
 

@@ -37,10 +37,13 @@ export async function GET(
 
     const canCurate = hasProjectOwnership(project, { userId, orgId, orgRole })
 
-    const { organizationProjects, ...rest } = project
+    // O token do Instagram nunca vai para o cliente: a UI só precisa saber se
+    // existe e quando expira. Sem isso, o spread abaixo o enviaria ao navegador.
+    const { organizationProjects, instagramAccessToken, ...rest } = project
 
     return NextResponse.json({
       ...rest,
+      hasInstagramToken: Boolean(instagramAccessToken),
       canCurate,
       organizationShares: organizationProjects.map((share) => ({
         organizationId: share.organization.clerkOrgId,

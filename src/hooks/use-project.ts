@@ -16,6 +16,9 @@ export interface ProjectResponse {
   logoUrl: string | null
   instagramAccountId: string | null
   instagramUsername: string | null
+  /** O token em si nunca vem do servidor — só a indicação de que existe */
+  hasInstagramToken?: boolean
+  instagramTokenExpiresAt?: string | null
   zapierWebhookUrl: string | null
   webhookReminderUrl: string | null
   laterAccountId: string | null
