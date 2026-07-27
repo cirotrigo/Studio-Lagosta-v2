@@ -105,6 +105,7 @@ export async function GET(
           select: {
             id: true,
             name: true,
+            instagramUsername: true,
             logoUrl: true,
             Logo: {
               where: {
@@ -174,6 +175,7 @@ export async function GET(
           select: {
             id: true,
             name: true,
+            instagramUsername: true,
             logoUrl: true,
             Logo: {
               where: {

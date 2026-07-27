@@ -52,6 +52,33 @@ export function formatPostTime(
   })
 }
 
+/**
+ * Rascunho aparece na agenda mas está fora da fila de publicação: só vai para
+ * o Instagram depois de aprovado. Como fica lado a lado com post que vai
+ * publicar de verdade, todo card precisa marcar essa diferença.
+ */
+export function isRascunho(post: Pick<SocialPost, 'status'>): boolean {
+  return post.status === 'DRAFT'
+}
+
+/** "seg, 04/08 às 16:00" — como a data é dita ao confirmar uma aprovação. */
+export function formatPostDateTimeBR(post: SocialPost): string {
+  const date = getPostDate(post)
+  if (!date) return 'horário não definido'
+
+  const dia = date.toLocaleDateString('pt-BR', {
+    weekday: 'short',
+    day: '2-digit',
+    month: '2-digit',
+  })
+  const hora = date.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  return `${dia} às ${hora}`
+}
+
 export function sortPostsByDate(posts: SocialPost[]): SocialPost[] {
   return [...posts].sort((a, b) => {
     const dateA = getPostDate(a)

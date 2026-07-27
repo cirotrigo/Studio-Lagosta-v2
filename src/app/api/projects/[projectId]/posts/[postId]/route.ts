@@ -141,6 +141,7 @@ export async function PUT(
         scheduledDatetime: true,
         postType: true,
         mediaUrls: true,
+        status: true,
       },
     })
 
@@ -209,12 +210,19 @@ export async function PUT(
       }
     }
 
-    // If rescheduling, reset status to SCHEDULED and clear failure fields
+    // If rescheduling, reset status to SCHEDULED and clear failure fields.
+    //
+    // Rascunho é a exceção: arrastar o card no calendário ou usar "Re-agendar"
+    // manda scheduleType SCHEDULED, e promover o status aqui aprovaria o post
+    // para publicação sem ninguém ter pedido. Mudar a data não é aprovar — a
+    // promoção DRAFT → SCHEDULED só acontece em /posts/approval.
     if (
       scheduleType === 'SCHEDULED' ||
       (scheduleType === undefined && scheduledDatetime !== undefined)
     ) {
-      updateData.status = PostStatus.SCHEDULED
+      if (existingPost.status !== PostStatus.DRAFT) {
+        updateData.status = PostStatus.SCHEDULED
+      }
       updateData.errorMessage = null
       updateData.failedAt = null
       updateData.processingStartedAt = null
