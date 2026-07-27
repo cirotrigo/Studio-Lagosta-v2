@@ -380,6 +380,10 @@ valem para qualquer mexida no editor:
   `alignment-toolbar`); mudou a regra, mude nas duas.
 - **O crescimento automático da caixa é do editor**, não do `render-engine`: um
   `slotValues` mais longo que o texto do template é cortado na altura gravada.
+- **A entrelinha mora em dois campos** e o render server-side prefere
+  `textboxConfig.autoWrap.lineHeight` sobre `style.lineHeight`. Escreva sempre
+  nos dois — escrever em um só faz o editor e a arte agendada divergirem, e o
+  download do editor (`stage.toDataURL()`, que lê o `style`) **não** revela isso.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
