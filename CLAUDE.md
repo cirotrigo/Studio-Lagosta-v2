@@ -249,7 +249,10 @@ The application includes an independent verification system for Instagram Storie
 - `src/lib/posts/verification/tag-generator.ts` - Generates and validates unique tags
 - `src/lib/posts/verification/story-verifier.ts` - Main verification logic with fallback
 - `src/lib/instagram/graph-api-client.ts` - Instagram Graph API client
-- `src/app/api/cron/verify-stories/route.ts` - Cron job endpoint (runs every 5 minutes)
+- `src/app/api/cron/verify-stories/route.ts` - Cron job endpoint (a cada 5 min;
+  só passou a ser agendado no `vercel.json` em julho/2026 — antes o código
+  existia mas nunca rodava, e o status VERIFIED vinha do sync do Zernio, isto é,
+  do relato do próprio agendador)
 - `src/app/api/webhooks/buffer/post-sent/route.ts` - Webhook handler that schedules verification
 
 **Database Fields** (SocialPost model):
@@ -295,10 +298,44 @@ The fallback verification is robust and production-ready:
 - **API Errors**: Generic errors trigger standard retry logic
 
 #### Environment Variables
-- `INSTAGRAM_ACCESS_TOKEN` - Long-lived Instagram Graph API token
-- `INSTAGRAM_GRAPH_API_VERSION` - API version (default: v18.0)
+- `INSTAGRAM_ACCESS_TOKEN` - Token global (usuário do sistema, via Facebook).
+  Usado só para projetos **sem** token próprio.
+- `INSTAGRAM_GRAPH_API_VERSION` - API version (default: v25.0)
+- `INSTAGRAM_GRAPH_API_BASE_URL` - Override do host; normalmente não é preciso,
+  o host é derivado do prefixo do token
 - `VERIFICATION_FEATURE_LAUNCH_DATE` - Feature activation date (default: 2024-12-01)
 - `CRON_SECRET` - Authentication for cron endpoints
+
+#### Token por projeto (Instagram Login)
+
+As contas dos clientes ficam em portfólios empresariais separados, fora do
+alcance do token global. Cada projeto pode ter o seu:
+
+- Campos: `Project.instagramAccessToken`, `instagramTokenExpiresAt`,
+  `instagramAppScopedId`
+- Cadastro: aba **Configurações** do projeto, ou
+  `npm run ig:token -- <projectId> <TOKEN>`
+- **Expiram em 60 dias**; `/api/cron/refresh-instagram-tokens` renova
+  diariamente. Foi a falta disso que derrubou a integração em março/2026,
+  sem ninguém perceber por meses.
+- O id do Instagram Login é de outro espaço que o id de conta business
+  (`1784...`) — não são intercambiáveis. Com token próprio, a conta é
+  endereçada por `me`.
+- **O token nunca deve chegar ao cliente**: `GET /api/projects/[id]` e o
+  service de client-projects expõem apenas `hasInstagramToken`. Campos
+  sensíveis novos no `Project` precisam do mesmo cuidado.
+
+#### Métricas de story (atenção às mudanças da API)
+
+- `impressions` foi **descontinuada** em março/2025; para stories use `views`.
+- `exits`, `taps_forward` e `taps_back` **não existem mais** — substituídas por
+  `navigation`.
+- O Instagram rejeita a requisição **inteira** se uma métrica não existir na
+  versão. `getInsights()` remove a recusada e refaz, intersectando com a lista
+  que a própria API devolve no erro.
+- Insights de story só existem nas 24h em que ele está no ar; `fetch-story-insights`
+  roda de hora em hora e **recolhe** enquanto o story vive, porque os números
+  crescem. Perdida a janela, o dado é irrecuperável.
 
 #### Important Notes
 - **PostStatus.VERIFYING**: Enum value exists but is NOT used; system uses `verificationStatus` field instead
@@ -306,6 +343,13 @@ The fallback verification is robust and production-ready:
 - **Grouping Optimization**: Posts grouped by Instagram account to minimize API calls
 - **Security**: All error messages sanitized to remove tokens before logging
 - **Monitoring**: Verification results logged with structured data for debugging
+
+### Registro de mudanças recentes
+
+`docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` detalha as 28 mudanças de julho/2026
+em gradientes, vazamento entre páginas, fontes no export, integração do
+Instagram, métricas e combinações tipográficas — com as armadilhas descobertas
+em cada área.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
