@@ -10,6 +10,7 @@
     "tunnel:ngrok": "ngrok http 3000",
     "tunnel:cf": "cloudflared tunnel --url http://localhost:3000",
     "env:pull": "vercel env pull .env.local",
+    "ig:token": "npx dotenv-cli -e .env -- npx tsx scripts/set-project-instagram-token.ts",
     "postinstall": "prisma generate",
     "build": "prisma generate && next build",
     "prebuild": "rm -rf .next/cache",

@@ -6,8 +6,8 @@
  * 60 dias. Este script valida contra a API, converte para longa duração quando
  * necessário e grava no projeto — sem imprimir o token na tela.
  *
- * Uso:
- *   npx dotenv-cli -e .env -- npx tsx scripts/set-project-instagram-token.ts <projectId> <TOKEN>
+ * Uso (a partir da raiz do projeto):
+ *   npm run ig:token -- <projectId> <TOKEN>
  *
  * Depois disso o projeto passa a usar o token próprio na verificação de
  * stories e na coleta de métricas; os demais continuam no token global.
@@ -22,9 +22,9 @@ async function main() {
   const token = process.argv[3]
 
   if (!projectId || !token) {
-    console.error(
-      'Uso: npx dotenv-cli -e .env -- npx tsx scripts/set-project-instagram-token.ts <projectId> <TOKEN>'
-    )
+    console.error('Uso: npm run ig:token -- <projectId> <TOKEN>')
+    console.error('\nProjetos: 1 Real Gelateria | 2 O Quintal | 3 TERO | 4 Seu Quinto')
+    console.error('          5 Bacana | 6 Espeto Gaúcho | 7 By Rock | 11 Wine Vix | 12 Empório Fonseca')
     process.exit(1)
   }
 
