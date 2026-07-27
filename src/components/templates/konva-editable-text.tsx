@@ -85,6 +85,22 @@ export function KonvaEditableText({
     return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth <= 768
   }, [])
 
+  /**
+   * Assinatura de tudo que muda o desenho da camada.
+   *
+   * Antes as invalidações de cache tinham listas de dependências escritas à
+   * mão, e foi assim que a âncora vertical quebrou: `textboxConfig` não estava
+   * na lista, então trocar topo/meio/base não invalidava o bitmap e a tela
+   * continuava mostrando o desenho antigo — o controle parecia morto.
+   */
+  const assinaturaRender = JSON.stringify([
+    layer.content,
+    layer.size,
+    layer.style,
+    layer.effects,
+    layer.textboxConfig,
+  ])
+
   // Cache for high quality rendering (especially for ornate/decorative fonts)
   React.useEffect(() => {
     const textNode = shapeRef.current
@@ -113,7 +129,7 @@ export function KonvaEditableText({
     }
 
     textNode.getLayer()?.batchDraw()
-  }, [layer.effects?.blur, layer.effects?.shadow, layer.style?.fontSize, layer.style?.fontFamily, shapeRef])
+  }, [assinaturaRender, layer.effects?.blur, layer.effects?.shadow, layer.style?.fontSize, shapeRef])
 
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
@@ -1098,38 +1114,14 @@ export function KonvaEditableText({
       transformer.forceUpdate()
     }
 
-    // ⚡ LIMPAR E RECRIAR CACHE para alta qualidade
-    if (textNode.isCached()) {
-      textNode.clearCache()
-      textNode.cache({
-        pixelRatio: Math.max(2, window.devicePixelRatio || 2),
-        imageSmoothingEnabled: true,
-      })
-    }
+    // O cache é responsabilidade do efeito lá de cima, que roda antes deste
 
     // Force layer redraw to apply changes immediately
     const konvaLayer = textNode.getLayer()
     if (konvaLayer) {
       konvaLayer.batchDraw()
     }
-  }, [
-    layer.style?.fontSize,
-    layer.style?.fontFamily,
-    layer.style?.fontStyle,
-    layer.style?.fontWeight,
-    layer.style?.color,
-    layer.style?.textAlign,
-    layer.style?.lineHeight,
-    layer.style?.letterSpacing,
-    layer.style?.opacity,
-    layer.style?.border?.color,
-    layer.style?.border?.width,
-    layer.style?.textTransform,
-    layer.content,
-    layer.size?.width,
-    layer.size?.height,
-    shapeRef,
-  ])
+  }, [assinaturaRender, shapeRef])
 
   // Calculate background dimensions if background effect is enabled
   const backgroundPadding = layer.effects?.background?.enabled ? (layer.effects.background.padding || 10) : 0

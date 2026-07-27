@@ -542,7 +542,9 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
 
             {/* Alinhamento vertical dentro da caixa + crescimento automático */}
             <div className="space-y-1">
-              <Label className="text-xs text-muted-foreground">Texto na caixa</Label>
+              <Label className="text-xs text-muted-foreground">
+                {autoExpand ? 'Texto na caixa — a caixa cresce ao contrário' : 'Texto na caixa'}
+              </Label>
               <div className="flex items-center gap-1">
                 {ANCORAS.map(({ valor, rotulo, Icone }) => (
                   <Button
@@ -551,7 +553,11 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
                     size="sm"
                     className="h-8 w-8 p-0"
                     onClick={() => handleAnchorChange(valor)}
-                    title={rotulo}
+                    title={
+                      autoExpand
+                        ? `${rotulo} — cresce ${DIRECAO_CRESCIMENTO[valor]}`
+                        : rotulo
+                    }
                   >
                     <Icone className="h-4 w-4" />
                   </Button>

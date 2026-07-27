@@ -1344,10 +1344,13 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         },
         textboxConfig: {
           textMode: 'auto-wrap-fixed',
+          anchor: 'top',
           autoWrap: {
             lineHeight: 1,
             breakMode: 'word',
-            autoExpand: false,
+            // Texto novo já acompanha a quebra de linha. Combinações e artes
+            // geradas continuam desligando, para não perder a altura salva
+            autoExpand: true,
           },
         },
       }
