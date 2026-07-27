@@ -23,6 +23,14 @@ const KonvaEditorStage = dynamic(
   },
 )
 
+/** Deslocamento unitário de cada seta, em pixels do canvas */
+const NUDGE_DELTAS: Record<string, { x: number; y: number }> = {
+  ArrowUp: { x: 0, y: -1 },
+  ArrowDown: { x: 0, y: 1 },
+  ArrowLeft: { x: -1, y: 0 },
+  ArrowRight: { x: 1, y: 0 },
+}
+
 export function EditorCanvas() {
   const containerRef = React.useRef<HTMLDivElement>(null)
 
@@ -45,6 +53,7 @@ export function EditorCanvas() {
     updateLayer,
     duplicateLayer,
     removeLayer,
+    moveLayer,
     alignSelectedLeft,
     alignSelectedCenterH,
     alignSelectedRight,
@@ -175,11 +184,25 @@ export function EditorCanvas() {
           console.log('🗑️ Layer(s) deletado(s) via Delete/Backspace')
         }
       }
+
+      // Setas - Posicionar a seleção 1px por vez (10px com Shift).
+      // Sem seleção, a seta segue rolando a página como de costume.
+      const nudge = NUDGE_DELTAS[e.key]
+      if (nudge && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const alvos = selectedLayerIds.filter(
+          (id) => !design.layers.find((layer) => layer.id === id)?.locked,
+        )
+        if (alvos.length === 0) return
+
+        e.preventDefault()
+        const passo = e.shiftKey ? 10 : 1
+        alvos.forEach((id) => moveLayer(id, nudge.x * passo, nudge.y * passo))
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, duplicateLayer, removeLayer])
+  }, [selectedLayerIds, design.layers, duplicateLayer, removeLayer, moveLayer])
 
   const handleEffectsClick = () => {
     console.log('[EditorCanvas] Effects button clicked. Current state:', isEffectsPanelOpen)
