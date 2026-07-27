@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Pencil, Plus, Check, X, Trash2, Eye, EyeOff } from 'lucide-react'
+import { Pencil, Plus, Check, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useBrandFonts, useUpdateBrandFonts } from '@/hooks/use-brand-fonts'
@@ -75,6 +75,9 @@ export function FontCombinationsPanel() {
     () => design.layers.filter((l) => selectedLayerIds.includes(l.id) && l.type === 'text'),
     [design.layers, selectedLayerIds],
   )
+
+  // Se o usuário trocar de painel no meio da edição, o modo não pode ficar preso
+  React.useEffect(() => () => setFocusTextMode(false), [setFocusTextMode])
 
   const garantirFontes = React.useCallback(async () => {
     await Promise.all(
@@ -156,11 +159,14 @@ export function FontCombinationsPanel() {
       // Guarda os ids: durante a edição o usuário clica em cada texto, e
       // depender da seleção no momento de salvar perderia o conjunto
       setEditando({ id: combo.id, nome: combo.name, layerIds: criadas.map((l) => l.id) })
+      // Só durante a edição: miniaturas e export leem o stage ao vivo, então
+      // deixar o escurecimento ligado sujaria a arte exportada
+      setFocusTextMode(true)
       toast.info(`Editando "${combo.name}"`, {
         description: 'Ajuste no canvas e clique em Salvar alterações.',
       })
     },
-    [aplicar],
+    [aplicar, setFocusTextMode],
   )
 
   const capturarPorIds = React.useCallback(
@@ -196,10 +202,11 @@ export function FontCombinationsPanel() {
         description: `${elements.length} elementos salvos`,
       })
       setEditando(null)
+      setFocusTextMode(false)
     } catch {
       toast.error('Erro ao salvar alterações')
     }
-  }, [editando, capturarPorIds, atualizar])
+  }, [editando, capturarPorIds, atualizar, setFocusTextMode])
 
   const salvarNova = React.useCallback(async () => {
     const nome = nomeNovo.trim()
@@ -314,7 +321,7 @@ export function FontCombinationsPanel() {
           <div className="min-w-0">
             <p className="truncate text-xs font-medium">Editando “{editando.nome}”</p>
             <p className="text-[10px] text-muted-foreground">
-              {editando.layerIds.length} texto(s) — ajuste no canvas e salve
+              {editando.layerIds.length} texto(s) — imagens escurecidas durante o ajuste
             </p>
           </div>
           <div className="flex shrink-0 gap-1">
@@ -326,7 +333,10 @@ export function FontCombinationsPanel() {
               size="sm"
               variant="ghost"
               className="h-7 px-2 text-[11px]"
-              onClick={() => setEditando(null)}
+              onClick={() => {
+                setEditando(null)
+                setFocusTextMode(false)
+              }}
             >
               <X className="h-3 w-3" />
             </Button>
@@ -380,21 +390,6 @@ export function FontCombinationsPanel() {
           Salvar seleção como combinação
         </Button>
       )}
-
-      {/* Focar textos: avalia a tipografia sem a foto distraindo */}
-      <Button
-        variant={focusTextMode ? 'default' : 'outline'}
-        size="sm"
-        className="h-8 w-full text-[11px]"
-        onClick={() => setFocusTextMode(!focusTextMode)}
-      >
-        {focusTextMode ? (
-          <EyeOff className="mr-1 h-3.5 w-3.5" />
-        ) : (
-          <Eye className="mr-1 h-3.5 w-3.5" />
-        )}
-        {focusTextMode ? 'Mostrar imagens' : 'Focar textos'}
-      </Button>
 
       {/* Galeria */}
       <div className="space-y-2">
