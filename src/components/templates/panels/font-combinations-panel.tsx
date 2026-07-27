@@ -71,8 +71,9 @@ export function FontCombinationsPanel() {
     () => ({
       title: brand?.titleFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
       body: brand?.bodyFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
+      subtitle: brand?.subtitleFontFamily,
     }),
-    [brand?.titleFontFamily, brand?.bodyFontFamily],
+    [brand?.titleFontFamily, brand?.bodyFontFamily, brand?.subtitleFontFamily],
   )
 
   const layersSelecionadas = React.useMemo(

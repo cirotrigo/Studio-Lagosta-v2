@@ -813,9 +813,11 @@ function useProjectFontFaces(fonts: FontRecord[] | undefined) {
 }
 
 const SEM_FONTE = '__nenhuma__'
+/** Subtítulo vazio herda o corpo — marcas de duas fontes não repetem nada aqui. */
+const HERDA_CORPO = '__corpo__'
 
 /**
- * Par de fontes da marca (título/corpo).
+ * Fontes da marca (título, subtítulo e corpo).
  *
  * Vale para as artes geradas fora do editor — arte livre e combinações
  * tipográficas herdam daqui. Sem o par definido elas saem na fonte padrão,
@@ -826,20 +828,26 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
   const { data: brand, isLoading } = useBrandFonts(projectId)
   const atualizar = useUpdateBrandFonts(projectId)
 
+  // Inclui o que já está configurado, e não só as fontes carregadas: senão o
+  // seletor aparece vazio enquanto a lista não chega — e continua vazio para
+  // sempre se a fonte configurada for removida do projeto depois.
   const familias = React.useMemo(() => {
     const doProjeto = (fonts ?? []).map((f) => f.fontFamily)
-    return [...new Set([FONT_CONFIG.DEFAULT_FONT, ...doProjeto])]
-  }, [fonts])
+    const configuradas = [brand?.titleFontFamily, brand?.subtitleFontFamily, brand?.bodyFontFamily]
+    return [...new Set([FONT_CONFIG.DEFAULT_FONT, ...doProjeto, ...configuradas].filter((f): f is string => Boolean(f)))]
+  }, [fonts, brand?.titleFontFamily, brand?.subtitleFontFamily, brand?.bodyFontFamily])
 
-  const salvar = (campo: 'titleFontFamily' | 'bodyFontFamily', valor: string) => {
-    const familia = valor === SEM_FONTE ? null : valor
+  const salvar = (campo: 'titleFontFamily' | 'subtitleFontFamily' | 'bodyFontFamily', valor: string) => {
+    const familia = valor === SEM_FONTE || valor === HERDA_CORPO ? null : valor
     atualizar.mutate(
       { [campo]: familia },
       {
         onSuccess: () =>
           toast({
-            title: 'Par de fontes atualizado',
-            description: `${campo === 'titleFontFamily' ? 'Título' : 'Corpo'}: ${familia ?? 'sem definição'}.`,
+            title: 'Fontes da marca atualizadas',
+            description: `${
+              campo === 'titleFontFamily' ? 'Título' : campo === 'subtitleFontFamily' ? 'Subtítulo' : 'Corpo'
+            }: ${familia ?? (campo === 'subtitleFontFamily' ? 'mesma do corpo' : 'sem definição')}.`,
           }),
         onError: (error) =>
           toast({
@@ -854,17 +862,20 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
   const completo = Boolean(brand?.titleFontFamily && brand?.bodyFontFamily)
 
   const seletor = (
-    campo: 'titleFontFamily' | 'bodyFontFamily',
+    campo: 'titleFontFamily' | 'subtitleFontFamily' | 'bodyFontFamily',
     rotulo: string,
     exemplo: string,
     tamanho: string,
   ) => {
+    const opcional = campo === 'subtitleFontFamily'
     const valor = brand?.[campo] ?? null
+    // Subtítulo sem definição própria renderiza na fonte do corpo
+    const familiaExibida = valor ?? (opcional ? brand?.bodyFontFamily ?? null : null)
     return (
       <div className="space-y-2">
         <Label>{rotulo}</Label>
         <Select
-          value={valor ?? SEM_FONTE}
+          value={valor ?? (opcional ? HERDA_CORPO : SEM_FONTE)}
           onValueChange={(v) => salvar(campo, v)}
           disabled={isLoading || atualizar.isPending}
         >
@@ -872,7 +883,9 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
             <SelectValue placeholder="Escolha uma fonte" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value={SEM_FONTE}>Sem definição</SelectItem>
+            <SelectItem value={opcional ? HERDA_CORPO : SEM_FONTE}>
+              {opcional ? 'Mesma do corpo' : 'Sem definição'}
+            </SelectItem>
             {familias.map((familia) => (
               <SelectItem key={familia} value={familia}>
                 <span style={{ fontFamily: familia }}>{familia}</span>
@@ -883,7 +896,7 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
         <div className="rounded-md border border-border/40 bg-muted/30 px-3 py-2">
           <p
             className={`line-clamp-2 ${tamanho}`}
-            style={{ fontFamily: valor ?? FONT_CONFIG.DEFAULT_FONT }}
+            style={{ fontFamily: familiaExibida ?? FONT_CONFIG.DEFAULT_FONT }}
           >
             {exemplo}
           </p>
@@ -896,10 +909,11 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
     <Card className="space-y-4 border border-border/40 bg-card/70 p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h3 className="text-sm font-semibold">Par de fontes da marca</h3>
+          <h3 className="text-sm font-semibold">Fontes da marca</h3>
           <p className="text-sm text-muted-foreground">
             Usado nas artes geradas fora do editor — arte rápida, arte livre e combinações
-            tipográficas. Os templates já montados não mudam.
+            tipográficas. Os templates já montados não mudam. O subtítulo é opcional: marcas
+            de duas fontes deixam em &ldquo;mesma do corpo&rdquo;.
           </p>
         </div>
         {completo && (
@@ -916,8 +930,9 @@ function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRec
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-4 md:grid-cols-3">
             {seletor('titleFontFamily', 'Fonte de título', 'HAPPY HOUR', 'text-2xl font-semibold')}
+            {seletor('subtitleFontFamily', 'Fonte de subtítulo', 'Toda quarta, a partir das 17h', 'text-base')}
             {seletor('bodyFontFamily', 'Fonte de corpo', 'Chope gelado e petiscos até as 20h', 'text-sm')}
           </div>
 

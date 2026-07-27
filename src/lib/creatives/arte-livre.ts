@@ -55,7 +55,7 @@ export interface TextoLivre {
   /** Corpo do texto em px na base de 1080 de largura */
   fontSize: number
   /** De qual fonte da marca herda a família (default 'body') */
-  role?: 'title' | 'body'
+  role?: 'title' | 'subtitle' | 'body'
   /** Família específica; sobrepõe o role */
   fontFamily?: string
   fontWeight?: string
@@ -182,7 +182,7 @@ function buildTextoLivreLayer(
     style: {
       fontSize,
       fontFamily: texto.fontFamily ?? resolveComboFontFamily(texto.role ?? 'body', pair),
-      fontWeight: texto.fontWeight ?? (texto.role === 'title' ? '700' : '400'),
+      fontWeight: texto.fontWeight ?? (texto.role === 'title' ? '700' : texto.role === 'subtitle' ? '600' : '400'),
       fontStyle: texto.fontStyle ?? 'normal',
       color: texto.color ?? '#FFFFFF',
       textAlign: texto.textAlign ?? 'center',
@@ -210,6 +210,7 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
       name: true,
       userId: true,
       titleFontFamily: true,
+      subtitleFontFamily: true,
       bodyFontFamily: true,
       CustomFont: { select: { fontFamily: true }, orderBy: { id: 'asc' } },
       Logo: {
@@ -247,6 +248,9 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
   const pair: FontComboPair = {
     title: project.titleFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
     body: project.bodyFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
+    // Ausente de propósito quando a marca só tem duas fontes: o papel de
+    // subtítulo cai no corpo em vez de repetir a mesma família num campo.
+    subtitle: project.subtitleFontFamily,
   }
   const avisoFontes =
     !project.titleFontFamily || !project.bodyFontFamily

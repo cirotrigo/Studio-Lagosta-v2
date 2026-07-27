@@ -11,7 +11,12 @@
  * seguem em px na base de 1080 de largura.
  */
 
-export type FontComboRole = 'title' | 'body'
+/**
+ * Papel tipográfico do elemento. 'subtitle' é opcional na marca: quando o
+ * projeto não define uma fonte própria de subtítulo, ele cai na do corpo —
+ * marcas de duas fontes não precisam repetir nada.
+ */
+export type FontComboRole = 'title' | 'subtitle' | 'body'
 
 /** Efeitos que sobrevivem à combinação — os que mantêm texto legível sobre foto */
 export interface FontComboEffects {
@@ -342,10 +347,14 @@ export interface FontComboPair {
   title: string
   /** Família aplicada aos elementos com papel 'body' */
   body: string
+  /** Família de subtítulo. Ausente = a marca usa a do corpo também no subtítulo */
+  subtitle?: string | null
 }
 
 export function resolveComboFontFamily(role: FontComboRole, pair: FontComboPair): string {
-  return role === 'title' ? pair.title : pair.body
+  if (role === 'title') return pair.title
+  if (role === 'subtitle') return pair.subtitle || pair.body
+  return pair.body
 }
 
 /** Altura estimada de um elemento (nº de linhas x fontSize x lineHeight) */

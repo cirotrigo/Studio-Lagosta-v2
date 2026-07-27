@@ -27,6 +27,7 @@ interface BrandAssetsResponse {
   fonts: Array<{ name: string; fontFamily: string; fileUrl: string }>
   // Art generation preferences
   titleFontFamily: string | null
+  subtitleFontFamily: string | null
   bodyFontFamily: string | null
   textColorPreferences: TextColorPreferences | null
   overlayStyle: 'gradient' | 'solid' | null
@@ -76,6 +77,7 @@ export async function GET(
     brandVisualElements?: Record<string, unknown> | null
     cuisineType?: string | null
     titleFontFamily?: string | null
+    subtitleFontFamily?: string | null
     bodyFontFamily?: string | null
   }
 
@@ -99,6 +101,7 @@ export async function GET(
     colors: colors.map((c) => c.hexCode),
     fonts: fonts.map((f) => ({ name: f.name, fontFamily: f.fontFamily, fileUrl: f.fileUrl })),
     titleFontFamily: projectData.titleFontFamily ?? null,
+    subtitleFontFamily: projectData.subtitleFontFamily ?? null,
     bodyFontFamily: projectData.bodyFontFamily ?? null,
     textColorPreferences: textColorPreferences ?? null,
     overlayStyle: overlayStyle ?? null,
@@ -117,6 +120,7 @@ const textColorPreferencesSchema = z.object({
 
 const updatePreferencesSchema = z.object({
   titleFontFamily: z.string().nullable().optional(),
+  subtitleFontFamily: z.string().nullable().optional(),
   bodyFontFamily: z.string().nullable().optional(),
   textColorPreferences: textColorPreferencesSchema.nullable().optional(),
   overlayStyle: z.enum(['gradient', 'solid']).nullable().optional(),
@@ -159,6 +163,9 @@ export async function PATCH(
   const updateData: Record<string, unknown> = {}
   if (body.titleFontFamily !== undefined) {
     updateData.titleFontFamily = body.titleFontFamily
+  }
+  if (body.subtitleFontFamily !== undefined) {
+    updateData.subtitleFontFamily = body.subtitleFontFamily
   }
   if (body.bodyFontFamily !== undefined) {
     updateData.bodyFontFamily = body.bodyFontFamily

@@ -218,6 +218,8 @@ model Project {
   cuisineType                 String?
   titleFontFamily             String?
   bodyFontFamily              String?
+  /// Fonte de subtítulo. Nulo = a marca usa a do corpo também no subtítulo.
+  subtitleFontFamily          String?
   AIGeneratedImage            AIGeneratedImage[]
   BrandColor                  BrandColor[]
   chatConversations           ChatConversation[]

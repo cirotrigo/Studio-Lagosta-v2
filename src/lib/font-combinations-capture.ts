@@ -16,15 +16,23 @@ import type { Layer } from '@/types/template'
  * tamanho: um pré-título pequeno pode usar a fonte de título de propósito.
  * Sem correspondência, o maior texto vira título e o resto, corpo.
  */
-function resolverPapeis(layers: Layer[], pair: FontComboPair): Array<'title' | 'body'> {
+function resolverPapeis(layers: Layer[], pair: FontComboPair): Array<'title' | 'subtitle' | 'body'> {
   const normalizar = (v?: string | null) => (v ?? '').trim().toLowerCase()
   const familiaTitulo = normalizar(pair.title)
   const familiaCorpo = normalizar(pair.body)
+  // Marcas de três fontes: reconhecer o subtítulo evita que ele seja gravado
+  // como corpo e perca a família própria quando a marca trocar de fonte
+  const familiaSubtitulo = pair.subtitle ? normalizar(pair.subtitle) : null
 
   const casaAlgum = layers.some((l) => normalizar(l.style?.fontFamily) === familiaTitulo)
 
   if (casaAlgum && familiaTitulo !== familiaCorpo) {
-    return layers.map((l) => (normalizar(l.style?.fontFamily) === familiaTitulo ? 'title' : 'body'))
+    return layers.map((l) => {
+      const familia = normalizar(l.style?.fontFamily)
+      if (familia === familiaTitulo) return 'title'
+      if (familiaSubtitulo && familia === familiaSubtitulo && familiaSubtitulo !== familiaCorpo) return 'subtitle'
+      return 'body'
+    })
   }
 
   const maior = layers.reduce(

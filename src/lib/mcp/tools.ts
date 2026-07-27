@@ -265,7 +265,7 @@ export const MCP_TOOLS: McpTool[] = [
               y: { type: 'number', description: 'Topo, fração da altura (0..1).' },
               width: { type: 'number', description: 'Largura da caixa, fração da largura (0..1).' },
               fontSize: { type: 'number', description: 'Corpo em px na base de 1080 de largura.' },
-              role: { type: 'string', enum: ['title', 'body'], description: 'De qual fonte da marca herda.' },
+              role: { type: 'string', enum: ['title', 'subtitle', 'body'], description: 'De qual fonte da marca herda. subtitle cai na fonte de corpo quando a marca não define uma própria.' },
               fontFamily: { type: 'string' },
               fontWeight: { type: 'string' },
               textTransform: { type: 'string', enum: ['none', 'uppercase'] },

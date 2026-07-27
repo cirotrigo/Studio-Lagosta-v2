@@ -3,6 +3,7 @@ import { api } from '@/lib/api-client'
 
 export interface BrandAssetsResponse {
   titleFontFamily: string | null
+  subtitleFontFamily: string | null
   bodyFontFamily: string | null
   fonts: Array<{ name: string; fontFamily: string; fileUrl: string }>
 }
@@ -20,6 +21,8 @@ export function useBrandFonts(projectId: number | string | undefined) {
 
 export interface UpdateBrandFontsInput {
   titleFontFamily?: string | null
+  /** Nulo = usa a fonte de corpo também no subtítulo */
+  subtitleFontFamily?: string | null
   bodyFontFamily?: string | null
 }
 
