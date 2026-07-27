@@ -9,6 +9,7 @@ import {
   PublishType,
 } from '../../../prisma/generated/client'
 import { LaterPostScheduler } from './later-scheduler'
+import { handlePublishFailure, RETRY_DELAY_MS } from './failure-handler'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -78,8 +79,8 @@ export class PostScheduler {
   }
 
   async scheduleRetry(postId: string, attemptNumber: number = 1) {
-    // Schedule retry for 5 minutes from now
-    const scheduledFor = new Date(Date.now() + 5 * 60 * 1000)
+    // Nova tentativa 1 minuto depois (o cron de posts roda a cada minuto)
+    const scheduledFor = new Date(Date.now() + RETRY_DELAY_MS)
 
     await db.postRetry.create({
       data: {
@@ -189,6 +190,16 @@ export class PostScheduler {
           )
         )
       )
+
+      // Nunca chegaram ao Zernio (laterPostId null), então reenviar é seguro.
+      // Rodar só depois do updateMany: enquanto o status for POSTING o
+      // sendToLater do retry sairia pelo guard de duplicidade.
+      for (const post of stuckPosts) {
+        await handlePublishFailure(
+          post.id,
+          new Error('O envio ficou travado e não foi confirmado pelo agendador')
+        )
+      }
     }
 
     if (orphans.length > 0) {
@@ -210,6 +221,15 @@ export class PostScheduler {
           )
         )
       )
+
+      // Estes já têm laterPostId — handlePublishFailure avisa a equipe em vez
+      // de reenviar, porque não dá para saber se o Zernio chegou a publicar.
+      for (const id of orphans) {
+        await handlePublishFailure(
+          id,
+          new Error('O agendador descartou o post e não publicou')
+        )
+      }
     }
 
     console.log(`✅ Updated ${updatedCount} stuck posts to FAILED (direct: ${stuckPosts.length}, orphans: ${orphans.length})`)

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PostExecutor } from '@/lib/posts/executor'
+import { withFailureNotificationBatch } from '@/lib/notifications/post-failure-notifier'
 
 export async function GET(req: NextRequest) {
   try {
@@ -11,11 +12,19 @@ export async function GET(req: NextRequest) {
 
     const executor = new PostExecutor()
 
-    // Execute scheduled posts
-    const scheduledResult = await executor.executeScheduledPosts()
+    // Um só aviso no WhatsApp por rodada, cobrindo envios e novas tentativas —
+    // sem isso, 5 posts falhando viram 5 mensagens no grupo.
+    const { scheduledResult, retryResult } = await withFailureNotificationBatch(
+      async () => {
+        // Execute scheduled posts
+        const scheduledResult = await executor.executeScheduledPosts()
 
-    // Execute retries
-    const retryResult = await executor.executeRetries()
+        // Execute retries
+        const retryResult = await executor.executeRetries()
+
+        return { scheduledResult, retryResult }
+      }
+    )
 
     return NextResponse.json({
       success: true,

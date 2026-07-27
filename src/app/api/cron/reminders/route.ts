@@ -7,6 +7,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { PostStatus, PublishType } from '../../../../../prisma/generated/client'
+import {
+  notifyPostFailure,
+  withFailureNotificationBatch,
+} from '@/lib/notifications/post-failure-notifier'
 
 export async function GET(req: NextRequest) {
   try {
@@ -100,74 +104,98 @@ export async function GET(req: NextRequest) {
     let sent = 0
     let failed = 0
 
-    for (const post of postsNeedingReminder) {
-      // Skip if project doesn't have webhook configured
-      if (!post.Project.webhookReminderUrl) {
-        console.warn(`⚠️ [Reminders] Post ${post.id} - Project ${post.Project.name} has no webhook URL configured`)
-        continue
-      }
-
-      try {
-        // Prepare webhook payload
-        const payload = {
-          type: 'reminder',
-          post: {
-            id: post.id,
-            content: post.caption,
-            scheduledFor: post.scheduledDatetime?.toISOString(),
-            platform: 'instagram',
+    // Agrupa os avisos da rodada numa mensagem só no grupo do WhatsApp
+    await withFailureNotificationBatch(async () => {
+      for (const post of postsNeedingReminder) {
+        // Skip if project doesn't have webhook configured
+        if (!post.Project.webhookReminderUrl) {
+          console.warn(`⚠️ [Reminders] Post ${post.id} - Project ${post.Project.name} has no webhook URL configured`)
+          await notifyPostFailure({
+            postId: post.id,
+            projectId: post.Project.id,
+            projectName: post.Project.name,
             postType: post.postType,
-            mediaUrls: post.mediaUrls,
-            extraInfo: post.reminderExtraInfo || null,
-            firstComment: post.firstComment || null
-          },
-          project: {
-            id: post.Project.id,
-            name: post.Project.name,
-            instagramUsername: post.Project.instagramUsername
+            scheduledFor: post.scheduledDatetime,
+            reason: 'O projeto não tem canal de aviso configurado',
+            attempts: 1,
+            kind: 'LEMBRETE',
+          })
+          continue
+        }
+
+        try {
+          // Prepare webhook payload
+          const payload = {
+            type: 'reminder',
+            post: {
+              id: post.id,
+              content: post.caption,
+              scheduledFor: post.scheduledDatetime?.toISOString(),
+              platform: 'instagram',
+              postType: post.postType,
+              mediaUrls: post.mediaUrls,
+              extraInfo: post.reminderExtraInfo || null,
+              firstComment: post.firstComment || null
+            },
+            project: {
+              id: post.Project.id,
+              name: post.Project.name,
+              instagramUsername: post.Project.instagramUsername
+            }
           }
+
+          // Send webhook
+          console.log(`📤 [Reminders] Sending webhook to: ${post.Project.webhookReminderUrl}`)
+          console.log(`📦 [Reminders] Payload:`, JSON.stringify(payload, null, 2))
+
+          const response = await fetch(post.Project.webhookReminderUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'User-Agent': 'Studio-Lagosta-Reminders/1.0'
+            },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(10000) // 10s timeout
+          })
+
+          console.log(`📥 [Reminders] Webhook response status: ${response.status}`)
+
+          if (!response.ok) {
+            const errorText = await response.text()
+            console.error(`❌ [Reminders] Webhook error response:`, errorText)
+            throw new Error(`Webhook returned ${response.status}: ${response.statusText}`)
+          }
+
+          // Mark reminder as sent
+          console.log(`💾 [Reminders] Updating reminderSentAt for post ${post.id}`)
+          await db.socialPost.update({
+            where: { id: post.id },
+            data: { reminderSentAt: new Date() }
+          })
+          console.log(`✅ [Reminders] reminderSentAt updated successfully`)
+
+          sent++
+          console.log(`✅ [Reminders] Sent reminder for post ${post.id} (${post.Project.name})`)
+
+        } catch (error) {
+          console.error(`❌ [Reminders] Failed to send reminder for post ${post.id}:`, error)
+          failed++
+
+          await notifyPostFailure({
+            postId: post.id,
+            projectId: post.Project.id,
+            projectName: post.Project.name,
+            postType: post.postType,
+            scheduledFor: post.scheduledDatetime,
+            reason: error instanceof Error ? error.message : 'Erro desconhecido',
+            attempts: 1,
+            kind: 'LEMBRETE',
+          })
+
+          // Don't mark as sent if it failed - will retry next cron run
         }
-
-        // Send webhook
-        console.log(`📤 [Reminders] Sending webhook to: ${post.Project.webhookReminderUrl}`)
-        console.log(`📦 [Reminders] Payload:`, JSON.stringify(payload, null, 2))
-
-        const response = await fetch(post.Project.webhookReminderUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Studio-Lagosta-Reminders/1.0'
-          },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(10000) // 10s timeout
-        })
-
-        console.log(`📥 [Reminders] Webhook response status: ${response.status}`)
-
-        if (!response.ok) {
-          const errorText = await response.text()
-          console.error(`❌ [Reminders] Webhook error response:`, errorText)
-          throw new Error(`Webhook returned ${response.status}: ${response.statusText}`)
-        }
-
-        // Mark reminder as sent
-        console.log(`💾 [Reminders] Updating reminderSentAt for post ${post.id}`)
-        await db.socialPost.update({
-          where: { id: post.id },
-          data: { reminderSentAt: new Date() }
-        })
-        console.log(`✅ [Reminders] reminderSentAt updated successfully`)
-
-        sent++
-        console.log(`✅ [Reminders] Sent reminder for post ${post.id} (${post.Project.name})`)
-
-      } catch (error) {
-        console.error(`❌ [Reminders] Failed to send reminder for post ${post.id}:`, error)
-        failed++
-
-        // Don't mark as sent if it failed - will retry next cron run
       }
-    }
+    })
 
     console.log(`✅ [Reminders] Complete: ${sent} sent, ${failed} failed`)
 

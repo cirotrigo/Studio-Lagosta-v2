@@ -6,6 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { PostExecutor } from '@/lib/posts/executor'
+import { withFailureNotificationBatch } from '@/lib/notifications/post-failure-notifier'
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +19,10 @@ export async function GET(req: NextRequest) {
     console.log('[Cron Status Sync] Starting Late status sync (fallback)...')
 
     const executor = new PostExecutor()
-    const syncResult = await executor.syncLateStatus()
+    // Agrupa os avisos da rodada numa mensagem só
+    const syncResult = await withFailureNotificationBatch(() =>
+      executor.syncLateStatus()
+    )
 
     console.log('[Cron Status Sync] Complete:', syncResult)
 

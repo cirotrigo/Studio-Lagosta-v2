@@ -26,6 +26,7 @@ import {
   isRateLimitError,
 } from '@/lib/later/errors'
 import { cropToInstagramFeed } from '@/lib/images/auto-crop'
+import { handlePublishFailure } from './failure-handler'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -324,6 +325,9 @@ export class LaterPostScheduler {
 
         // Update status to FAILED (sendToLater already wrote a more specific
         // errorMessage in most paths; this is the safety net for everything else).
+        // Retry/aviso NÃO entram aqui: o único caminho deste try é sendToLater,
+        // cujo catch já chamou handlePublishFailure. Repetir aqui duplicaria o
+        // aviso no WhatsApp.
         await db.socialPost.update({
           where: { id: post.id },
           data: {
@@ -1035,6 +1039,10 @@ export class LaterPostScheduler {
           `Error: ${error instanceof Error ? error.message : 'Unknown'}`
         )
       }
+
+      // Todos os ramos acima já marcaram o post como FAILED. Um único ponto de
+      // ligação para o retry/aviso cobre os quatro sem risco de duplicar.
+      await handlePublishFailure(postId, error)
 
       throw error
     }

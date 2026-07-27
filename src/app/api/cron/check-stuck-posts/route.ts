@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PostScheduler } from '@/lib/posts/scheduler'
+import { withFailureNotificationBatch } from '@/lib/notifications/post-failure-notifier'
 
 /**
  * GET /api/cron/check-stuck-posts
@@ -18,7 +19,10 @@ export async function GET(req: NextRequest) {
     console.log('🔍 Checking for stuck posts...')
 
     const scheduler = new PostScheduler()
-    const result = await scheduler.checkStuckPosts()
+    // Agrupa os avisos da varredura numa mensagem só
+    const result = await withFailureNotificationBatch(() =>
+      scheduler.checkStuckPosts()
+    )
 
     console.log(`✅ Check complete. Updated ${result.updated} stuck posts.`)
 

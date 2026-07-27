@@ -11,6 +11,7 @@ import {
 } from '../../../prisma/generated/client'
 import { getLaterClient } from '@/lib/later/client'
 import { LaterNotFoundError } from '@/lib/later/errors'
+import { NOTIFY_AFTER_ATTEMPT, notifyPublishFailure } from './failure-handler'
 
 export class PostExecutor {
   private scheduler: PostScheduler
@@ -168,6 +169,12 @@ export class PostExecutor {
                 message: 'Story image rendering failed after 3 attempts',
               },
             })
+            // Sem retry: a arte já falhou nas 3 tentativas de render, reenviar
+            // não muda nada. Avisa a equipe direto.
+            await notifyPublishFailure(
+              post.id,
+              'Não foi possível gerar a arte do story depois de 3 tentativas'
+            )
             failureCount++
             continue
           }
@@ -280,6 +287,17 @@ export class PostExecutor {
           // 2. Error is NOT InsufficientCreditsError (no point retrying)
           const isInsufficientCredits = error instanceof Error && error.name === 'InsufficientCreditsError'
 
+          // A equipe é avisada quando a primeira nova tentativa também falha
+          // (ou seja, 2 falhas no total). As tentativas seguintes não avisam
+          // de novo — o time já sabe e a mensagem viraria repetição.
+          if (retry.attemptNumber === NOTIFY_AFTER_ATTEMPT) {
+            await notifyPublishFailure(
+              retry.postId,
+              error instanceof Error ? error.message : 'Erro desconhecido',
+              { attempts: retry.attemptNumber + 1 }
+            )
+          }
+
           if (retry.attemptNumber < 3 && !isInsufficientCredits) {
             await this.scheduler.scheduleRetry(retry.postId, retry.attemptNumber + 1)
             console.log(`🔄 Scheduled retry ${retry.attemptNumber + 1}/3 for post ${retry.postId}`)
@@ -377,6 +395,12 @@ export class PostExecutor {
                 },
               },
             })
+            // Sem retry: o post chegou a existir no Zernio e sumiu, então não
+            // dá para saber se ele publicou. Reenviar arriscaria post dobrado.
+            await notifyPublishFailure(
+              post.id,
+              'O agendador descartou o post e ele não foi publicado'
+            )
             updated++
             failed--
           } catch (dbErr) {
@@ -527,6 +551,13 @@ export class PostExecutor {
               }
             }
           })
+
+          // Sem retry: o post já tem laterPostId e `sendToLater` ignora esses
+          // posts — a nova tentativa seria um no-op contado como sucesso.
+          await notifyPublishFailure(
+            postId,
+            fallbackError || 'O agendador não conseguiu publicar'
+          )
         }
         break
     }
