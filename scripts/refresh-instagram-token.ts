@@ -1,8 +1,13 @@
 /**
  * Script para renovar o Instagram Access Token
  *
- * Este token deveria ser permanente, mas parece que expirou.
- * Vamos gerar um novo Page Access Token que nunca expira.
+ * Troca um User Access Token (curto, 1h) por um Page Access Token, que não
+ * expira — diferente do token de Instagram Login, que vence em 60 dias.
+ *
+ * Uso:
+ *   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [USER_ACCESS_TOKEN]
+ *
+ * Requer META_APP_ID e META_APP_SECRET no ambiente.
  */
 
 const userToken = process.argv[2]
@@ -12,7 +17,7 @@ if (!userToken) {
 🔑 Script para Renovar Instagram Access Token
 
 USO:
-  npx tsx scripts/refresh-instagram-token.ts [USER_ACCESS_TOKEN]
+  npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [USER_ACCESS_TOKEN]
 
 PASSO A PASSO:
 
@@ -32,8 +37,8 @@ PASSO A PASSO:
 
 6. Copie o token gerado
 
-7. Execute:
-   npx tsx scripts/refresh-instagram-token.ts [TOKEN_COPIADO]
+7. Execute (META_APP_ID e META_APP_SECRET precisam estar no .env):
+   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [TOKEN_COPIADO]
 
 ---
 
@@ -49,8 +54,18 @@ async function refreshToken() {
   // Step 1: Exchange for long-lived token (60 days)
   console.log('📝 Passo 1: Trocando por token de longa duração (60 dias)...')
 
-  const appId = '616046264322031' // Do .env.local
-  const appSecret = '2bcf01f6dd800e06fc35f64d16224d68' // Do .env.local
+  // Credenciais vêm do ambiente. Estiveram hardcoded aqui num repositório
+  // público — se ainda não foram rotacionadas no painel da Meta, rotacione.
+  const appId = process.env.META_APP_ID
+  const appSecret = process.env.META_APP_SECRET
+
+  if (!appId || !appSecret) {
+    console.error(
+      '❌ Defina META_APP_ID e META_APP_SECRET no .env antes de rodar.\n' +
+        '   Encontre em: https://developers.facebook.com/apps → seu app → Configurações → Básico'
+    )
+    process.exit(1)
+  }
 
   const exchangeUrl = `https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${userToken}`
 
