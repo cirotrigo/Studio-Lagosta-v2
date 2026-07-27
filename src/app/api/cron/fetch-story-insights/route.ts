@@ -136,7 +136,8 @@ export async function GET(req: NextRequest) {
         await db.socialPost.update({
           where: { id: story.id },
           data: {
-            analyticsImpressions: insights.impressions || 0,
+            // `views` substituiu `impressions`, descontinuada em março/2025
+            analyticsImpressions: insights.views || 0,
             analyticsReach: insights.reach || 0,
             analyticsComments: insights.replies || 0, // Using replies as comments
             analyticsEngagement: engagement,
@@ -147,7 +148,7 @@ export async function GET(req: NextRequest) {
         console.log(
           `[Story Insights Cron] ✅ Updated Story ${story.id}:`,
           {
-            impressions: insights.impressions,
+            views: insights.views,
             reach: insights.reach,
             replies: insights.replies,
             engagement,
