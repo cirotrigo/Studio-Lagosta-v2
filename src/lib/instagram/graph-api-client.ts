@@ -90,6 +90,16 @@ function sanitizeErrorMessage(message: string): string {
 }
 
 export class InstagramGraphApiClient {
+  private readonly tokenOverride?: string
+
+  /**
+   * @param token Token específico de uma conta (Instagram Login). Sem ele,
+   *   usa o INSTAGRAM_ACCESS_TOKEN global (usuário do sistema via Facebook).
+   */
+  constructor(token?: string | null) {
+    this.tokenOverride = token ?? undefined
+  }
+
   /**
    * O host depende do tipo do token:
    * - `IGAA...` → Instagram API with Instagram Login, responde em graph.instagram.com
@@ -101,15 +111,28 @@ export class InstagramGraphApiClient {
   private get baseUrl(): string {
     const override = process.env.INSTAGRAM_GRAPH_API_BASE_URL
     if (override) return override.replace(/\/+$/, '')
-    return this.accessToken.startsWith('IGAA')
+    return this.isInstagramLoginToken
       ? 'https://graph.instagram.com'
       : 'https://graph.facebook.com'
+  }
+
+  /**
+   * Tokens do Instagram Login endereçam a própria conta por `me` — o id de
+   * conta business (1784...) não vale nesse espaço de ids.
+   */
+  get isInstagramLoginToken(): boolean {
+    return this.accessToken.startsWith('IGAA')
+  }
+
+  /** Caminho da conta: `me` no Instagram Login, id explícito no Facebook */
+  private accountPath(igUserId: string): string {
+    return this.isInstagramLoginToken ? 'me' : igUserId
   }
 
   private readonly version = process.env.INSTAGRAM_GRAPH_API_VERSION || 'v25.0'
 
   private get accessToken(): string {
-    const token = process.env.INSTAGRAM_ACCESS_TOKEN
+    const token = this.tokenOverride || process.env.INSTAGRAM_ACCESS_TOKEN
     if (!token) {
       throw new InstagramApiException('INSTAGRAM_ACCESS_TOKEN is not configured', 500)
     }
@@ -154,7 +177,7 @@ export class InstagramGraphApiClient {
   }
 
   async getStories(igUserId: string): Promise<InstagramStory[]> {
-    const body = await this.get(`${igUserId}/stories`, {
+    const body = await this.get(`${this.accountPath(igUserId)}/stories`, {
       fields: 'id,caption,permalink,timestamp,media_type,media_url',
     })
 
@@ -219,6 +242,24 @@ export class InstagramGraphApiClient {
     }
 
     return {}
+  }
+
+  /** Dados da conta dona do token (usado ao cadastrar/validar) */
+  async getOwnAccount(): Promise<{ id: string; username: string; media_count?: number }> {
+    return this.get(this.accountPath('me'), { fields: 'id,username,media_count' })
+  }
+
+  /**
+   * Renova um token do Instagram Login por mais 60 dias.
+   *
+   * Só funciona com token IGAA e com pelo menos 24h de vida. Tokens do
+   * Facebook (usuário do sistema) não expiram e não precisam disso.
+   */
+  async refreshToken(): Promise<{ access_token: string; expires_in: number }> {
+    if (!this.isInstagramLoginToken) {
+      throw new InstagramApiException('refreshToken só se aplica a tokens do Instagram Login', 400)
+    }
+    return this.get('refresh_access_token', { grant_type: 'ig_refresh_token' })
   }
 
   /**

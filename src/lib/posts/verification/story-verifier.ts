@@ -13,7 +13,10 @@ const DEFAULT_LAUNCH_DATE = '2024-12-01T00:00:00Z'
 
 type VerificationTarget = {
   post: SocialPostWithProject
+  /** Id da conta business, ou 'me' quando o projeto tem token próprio */
   igUserId: string
+  /** Token do Instagram Login do projeto; null usa o token global */
+  projectToken: string | null
   baseTimestamp: Date
 }
 
@@ -65,6 +68,7 @@ export class StoryVerifier {
             instagramAccountId: true,
             instagramUsername: true,
             instagramUserId: true,
+            instagramAccessToken: true,
           },
         },
       },
@@ -113,33 +117,41 @@ export class StoryVerifier {
         continue
       }
 
+      // Com token próprio do projeto (Instagram Login) a conta é endereçada
+      // por `me` — o id nem entra na chamada. Sem token, cai no token global
+      // via Facebook, que exige id de conta business válido.
       // instagramAccountId é campo legado e guarda lixo em vários projetos
-      // ("12345", "winevix", ObjectId do Zernio). Usar como fallback fazia o
-      // verificador chamar a Graph API com valor inválido e falhar sem
-      // explicar o motivo. Só aceita ID de conta business do Instagram.
+      // ("12345", "winevix", ObjectId do Zernio), por isso a validação.
+      const projectToken = post.Project.instagramAccessToken ?? null
       const candidato = post.Project.instagramUserId || post.Project.instagramAccountId
       const igUserId = candidato && /^\d{15,20}$/.test(candidato) ? candidato : null
-      if (!igUserId) {
+
+      if (!projectToken && !igUserId) {
         await this.markFailure(post, 'NO_IG_ACCOUNT', now)
         summary.failed++
         continue
       }
 
-      targets.push({ post, igUserId, baseTimestamp })
+      targets.push({ post, igUserId: igUserId ?? 'me', projectToken, baseTimestamp })
     }
 
+    // Agrupa por conta: o token identifica a conta melhor que o id, já que
+    // com Instagram Login todos os ids viram `me`
     const grouped = targets.reduce<Map<string, VerificationTarget[]>>((acc, target) => {
-      const list = acc.get(target.igUserId) || []
+      const chave = target.projectToken ?? target.igUserId
+      const list = acc.get(chave) || []
       list.push(target)
-      acc.set(target.igUserId, list)
+      acc.set(chave, list)
       return acc
     }, new Map())
 
-    for (const [igUserId, accountTargets] of grouped.entries()) {
+    for (const accountTargets of grouped.values()) {
+      const { igUserId, projectToken } = accountTargets[0]
+      const client = projectToken ? new InstagramGraphApiClient(projectToken) : this.client
       let stories: InstagramStory[] = []
 
       try {
-        stories = await this.client.getStories(igUserId)
+        stories = await client.getStories(igUserId)
       } catch (error) {
         if (error instanceof InstagramApiException) {
           if (error.isTokenError) {

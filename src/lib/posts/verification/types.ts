@@ -22,5 +22,5 @@ export interface VerificationSummary {
 }
 
 export interface SocialPostWithProject extends SocialPost {
-  Project: Pick<Project, 'instagramAccountId' | 'instagramUsername' | 'instagramUserId'>
+  Project: Pick<Project, 'instagramAccountId' | 'instagramUsername' | 'instagramUserId' | 'instagramAccessToken'>
 }

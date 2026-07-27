@@ -178,6 +178,14 @@ model Project {
   zapierWebhookUrl            String?
   isClientProject             Boolean                 @default(false)
   instagramUserId             String?
+  /// Token do Instagram Login (IGAA...), válido só para esta conta.
+  /// Quando presente, tem precedência sobre INSTAGRAM_ACCESS_TOKEN e as
+  /// chamadas usam /me/... em graph.instagram.com — o id da conta não é usado.
+  instagramAccessToken        String?
+  /// Expira em 60 dias; o cron de refresh renova antes disso
+  instagramTokenExpiresAt     DateTime?
+  /// Id com escopo de app, devolvido por /me (diferente de instagramUserId)
+  instagramAppScopedId        String?
   aiChatBehavior              String?
   laterAccountId              String?
   laterProfileId              String?

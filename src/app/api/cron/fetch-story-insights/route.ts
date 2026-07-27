@@ -68,6 +68,7 @@ export async function GET(req: NextRequest) {
           select: {
             id: true,
             name: true,
+            instagramAccessToken: true,
           },
         },
       },
@@ -90,7 +91,19 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch insights from Instagram Graph API
-    const igClient = new InstagramGraphApiClient()
+    // Um cliente por token: projetos com token próprio (Instagram Login)
+    // usam o dele; os demais caem no token global via Facebook
+    const clientePadrao = new InstagramGraphApiClient()
+    const clientesPorToken = new Map<string, InstagramGraphApiClient>()
+    const clienteDoProjeto = (token: string | null) => {
+      if (!token) return clientePadrao
+      let c = clientesPorToken.get(token)
+      if (!c) {
+        c = new InstagramGraphApiClient(token)
+        clientesPorToken.set(token, c)
+      }
+      return c
+    }
     const results = {
       success: 0,
       failed: 0,
@@ -124,7 +137,9 @@ export async function GET(req: NextRequest) {
         console.log(`   Age: ${hoursOld.toFixed(1)} hours`)
 
         // Fetch insights from Instagram
-        const insights = await igClient.getStoryInsights(story.verifiedStoryId)
+        const insights = await clienteDoProjeto(
+          story.Project.instagramAccessToken ?? null
+        ).getStoryInsights(story.verifiedStoryId)
 
         // total_interactions já soma as interações; sem ele, cai nas respostas
         const engagement = insights.total_interactions ?? insights.replies ?? 0

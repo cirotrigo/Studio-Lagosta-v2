@@ -101,6 +101,10 @@
       "schedule": "*/5 * * * *"
     },
     {
+      "path": "/api/cron/refresh-instagram-tokens",
+      "schedule": "0 4 * * *"
+    },
+    {
       "path": "/api/cron/reminders",
       "schedule": "*/5 * * * *"
     },
