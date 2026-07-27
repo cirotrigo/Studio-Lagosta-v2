@@ -159,6 +159,66 @@ const nextConfig: NextConfig = {
           },
         ],
       },
+
+      // O conector do claude.ai fala com estes endpoints do navegador dele:
+      // sem CORS a descoberta e o registro são bloqueados antes de sair.
+      {
+        source: '/.well-known/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+          { key: 'Access-Control-Max-Age', value: '86400' },
+        ],
+      },
+      {
+        source: '/api/oauth/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization' },
+          { key: 'Access-Control-Max-Age', value: '86400' },
+        ],
+      },
+      {
+        source: '/api/mcp',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'POST, OPTIONS' },
+          // MCP-Protocol-Version é mandado pelos clientes a partir da revisão 2025-06-18
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, Authorization, MCP-Protocol-Version, Mcp-Session-Id',
+          },
+          { key: 'Access-Control-Expose-Headers', value: 'WWW-Authenticate' },
+          { key: 'Access-Control-Max-Age', value: '86400' },
+        ],
+      },
+
+      // A autorização abre numa janela popup e o claude.ai depende do vínculo
+      // com a janela que a abriu para saber que o login terminou. O COOP
+      // 'same-origin' global corta esse vínculo — aqui ele precisa ser afrouxado.
+      // Não afeta o SharedArrayBuffer do FFmpeg, que roda em outras páginas.
+      {
+        source: '/oauth/:path*',
+        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' }],
+      },
+      {
+        source: '/sign-in',
+        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' }],
+      },
+      {
+        source: '/sign-in/:path*',
+        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' }],
+      },
+      {
+        source: '/sign-up',
+        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' }],
+      },
+      {
+        source: '/sign-up/:path*',
+        headers: [{ key: 'Cross-Origin-Opener-Policy', value: 'unsafe-none' }],
+      },
     ]
   },
   images: {

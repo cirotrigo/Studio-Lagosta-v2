@@ -56,3 +56,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'server_error' }, { status: 500 })
   }
 }
+
+/** Preflight do navegador do conector. Os headers de CORS vêm do next.config. */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 })
+}

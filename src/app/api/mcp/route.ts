@@ -127,3 +127,8 @@ export async function DELETE() {
     status: 405,
   })
 }
+
+/** Preflight do navegador do conector. Os headers de CORS vêm do next.config. */
+export async function OPTIONS() {
+  return new NextResponse(null, { status: 204 })
+}
