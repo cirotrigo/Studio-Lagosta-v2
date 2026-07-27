@@ -1480,14 +1480,15 @@ export function createDefaultLayer(type: Layer['type']): Layer {
         style: {
           fontSize: 36,
           fontFamily: FONT_CONFIG.DEFAULT_FONT,
+          fontWeight: '400',
           color: '#111111',
           textAlign: 'left',
-          lineHeight: 1.2,
+          lineHeight: 1,
         },
         textboxConfig: {
           textMode: 'auto-wrap-fixed',
           autoWrap: {
-            lineHeight: 1.2,
+            lineHeight: 1,
             breakMode: 'word',
             autoExpand: false,
           },

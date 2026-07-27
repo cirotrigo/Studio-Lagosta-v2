@@ -246,7 +246,6 @@ export function FontCombinationsPanel() {
   const adicionarTexto = React.useCallback(
     (tipo: 'titulo' | 'subtitulo' | 'corpo') => {
       const tamanhos = { titulo: 72, subtitulo: 36, corpo: 24 }
-      const pesos = { titulo: '700', subtitulo: '500', corpo: '400' }
       const rotulos = { titulo: 'Título', subtitulo: 'Subtítulo', corpo: 'Texto do corpo' }
 
       const canvasWidth = design.canvas.width
@@ -254,9 +253,12 @@ export function FontCombinationsPanel() {
       const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
       const fontSize = Math.round(tamanhos[tipo] * escala)
       const width = Math.round(canvasWidth * 0.8)
-      const height = Math.round(fontSize * 1.2 * 2)
 
+      // Peso e entrelinha vêm do padrão do editor (regular, 1.0); o que muda
+      // entre título, subtítulo e corpo é só o tamanho e a família
       const base = createDefaultLayer('text')
+      const height = Math.round(fontSize * (base.style?.lineHeight ?? 1) * 2)
+
       addLayer({
         ...base,
         name: `Texto - ${rotulos[tipo]}`,
@@ -269,7 +271,6 @@ export function FontCombinationsPanel() {
         style: {
           ...base.style,
           fontSize,
-          fontWeight: pesos[tipo],
           fontFamily: tipo === 'titulo' ? pair.title : pair.body,
           color: '#FFFFFF',
           textAlign: 'center',
