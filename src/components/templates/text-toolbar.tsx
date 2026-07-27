@@ -21,6 +21,12 @@ import {
   AlignRight,
   Type,
   SlidersHorizontal,
+  AlignVerticalJustifyStart,
+  AlignVerticalJustifyCenter,
+  AlignVerticalJustifyEnd,
+  AlignHorizontalJustifyStart,
+  AlignHorizontalJustifyCenter,
+  AlignHorizontalJustifyEnd,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { getFontManager } from '@/lib/font-manager'
@@ -57,7 +63,27 @@ interface TextToolbarProps {
 
 export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) {
   const templateEditor = useTemplateEditor()
-  const { projectId } = templateEditor
+  const {
+    projectId,
+    selectedLayerIds,
+    alignSelectedLeft,
+    alignSelectedCenterH,
+    alignSelectedRight,
+    alignSelectedTop,
+    alignSelectedMiddleV,
+    alignSelectedBottom,
+  } = templateEditor
+
+  // Um elemento só se posiciona na página; vários se alinham entre si
+  const alvoPagina = selectedLayerIds.length === 1
+  const posicionarBotoes = [
+    { rotulo: 'esquerda', Icone: AlignHorizontalJustifyStart, acao: alignSelectedLeft },
+    { rotulo: 'centro horizontal', Icone: AlignHorizontalJustifyCenter, acao: alignSelectedCenterH },
+    { rotulo: 'direita', Icone: AlignHorizontalJustifyEnd, acao: alignSelectedRight },
+    { rotulo: 'topo', Icone: AlignVerticalJustifyStart, acao: alignSelectedTop },
+    { rotulo: 'centro vertical', Icone: AlignVerticalJustifyCenter, acao: alignSelectedMiddleV },
+    { rotulo: 'base', Icone: AlignVerticalJustifyEnd, acao: alignSelectedBottom },
+  ]
   const fontManager = React.useMemo(() => getFontManager(), [])
   const [availableFonts, setAvailableFonts] = React.useState<{
     system: string[]
@@ -491,6 +517,28 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
               >
                 <AlignRight className="h-4 w-4" />
               </Button>
+            </div>
+
+            {/* Posição da caixa: alinha a caixa de texto na página (ou às outras
+                selecionadas), diferente do alinhamento do texto dentro dela */}
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">
+                {alvoPagina ? 'Posicionar na página' : 'Alinhar entre si'}
+              </Label>
+              <div className="grid grid-cols-6 gap-1">
+                {posicionarBotoes.map(({ rotulo, Icone, acao }) => (
+                  <Button
+                    key={rotulo}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 w-full p-0"
+                    onClick={acao}
+                    title={`Alinhar ${rotulo}${alvoPagina ? ' na página' : ' entre si'}`}
+                  >
+                    <Icone className="h-4 w-4" />
+                  </Button>
+                ))}
+              </div>
             </div>
 
             {/* Contorno */}

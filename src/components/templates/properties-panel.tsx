@@ -1601,7 +1601,12 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
     alignSelectedToCanvasCenterV,
   } = useTemplateEditor()
 
-  const alignDisabled = selectedCount < 2
+  // Com um elemento só o alvo é a página; com dois ou mais, os elementos se
+  // alinham entre si. Antes esses botões ficavam desativados na seleção única,
+  // e clicar não fazia nada.
+  const alvoPagina = selectedCount === 1
+  const sufixo = alvoPagina ? ' na página' : ' entre si'
+  const alignDisabled = selectedCount === 0
   const distributeDisabled = selectedCount < 3
   const orderDisabled = selectedCount === 0
   const canvasAlignDisabled = selectedCount === 0
@@ -1611,7 +1616,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
       <div className="flex items-center justify-between">
         <span className="font-semibold text-[10px]">Alinhamento</span>
         <span className="text-[9px] text-muted-foreground">
-          {selectedCount} sel.
+          {selectedCount} sel. · {alvoPagina ? 'na página' : 'entre si'}
         </span>
       </div>
 
@@ -1625,7 +1630,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedLeft}
             className="h-7 w-full p-0"
-            title="Alinhar à esquerda (Shift+Ctrl+L)"
+            title={`Alinhar à esquerda${sufixo} (Shift+Ctrl+L)`}
           >
             <AlignLeft className="h-3 w-3" />
           </Button>
@@ -1635,7 +1640,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedCenterH}
             className="h-7 w-full p-0"
-            title="Centralizar horizontalmente (Shift+Ctrl+C)"
+            title={`Centralizar horizontalmente${sufixo} (Shift+Ctrl+C)`}
           >
             <AlignCenter className="h-3 w-3" />
           </Button>
@@ -1645,7 +1650,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedRight}
             className="h-7 w-full p-0"
-            title="Alinhar à direita (Shift+Ctrl+R)"
+            title={`Alinhar à direita${sufixo} (Shift+Ctrl+R)`}
           >
             <AlignRight className="h-3 w-3" />
           </Button>
@@ -1662,7 +1667,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedTop}
             className="h-7 w-full p-0"
-            title="Alinhar ao topo (Shift+Ctrl+T)"
+            title={`Alinhar ao topo${sufixo} (Shift+Ctrl+T)`}
           >
             <AlignVerticalJustifyStart className="h-3 w-3" />
           </Button>
@@ -1672,7 +1677,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedMiddleV}
             className="h-7 w-full p-0"
-            title="Centralizar verticalmente (Shift+Ctrl+M)"
+            title={`Centralizar verticalmente${sufixo} (Shift+Ctrl+M)`}
           >
             <AlignVerticalJustifyCenter className="h-3 w-3" />
           </Button>
@@ -1682,7 +1687,7 @@ function AlignmentControls({ selectedCount }: AlignmentControlsProps) {
             disabled={alignDisabled}
             onClick={alignSelectedBottom}
             className="h-7 w-full p-0"
-            title="Alinhar ao fundo (Shift+Ctrl+B)"
+            title={`Alinhar ao fundo${sufixo} (Shift+Ctrl+B)`}
           >
             <AlignVerticalJustifyEnd className="h-3 w-3" />
           </Button>

@@ -3,6 +3,7 @@
 import * as React from 'react'
 import type { DesignData, DynamicField, Layer } from '@/types/template'
 import type Konva from 'konva'
+import type { AlignAxis, AlignMode } from '@/lib/konva-alignment'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { createId } from '@/lib/id'
 import { useQueryClient } from '@tanstack/react-query'
@@ -943,12 +944,17 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [])
 
   // Alignment & Organization Methods
-  const alignSelectedLeft = React.useCallback(() => {
+
+  /**
+   * Coleta os nodes do stage correspondentes à seleção, junto das layers.
+   * Devolve null quando o stage ainda não montou.
+   */
+  const colherNodesSelecionados = React.useCallback(() => {
     const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
+    if (!stage) return null
 
     const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
+    if (!contentLayer) return null
 
     const nodes = selectedLayerIds
       .map((id) => {
@@ -958,160 +964,59 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       })
       .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
 
-    if (nodes.length < 2) return
+    return nodes.length > 0 ? { contentLayer, nodes } : null
+  }, [selectedLayerIds, design.layers])
 
-    // Import alignment functions dynamically
-    import('@/lib/konva-alignment').then(({ alignLeft }) => {
-      alignLeft(nodes, contentLayer)
-      // Update layer positions in state
+  /** Grava no estado a posição que o Konva acabou de calcular */
+  const persistirPosicoes = React.useCallback(
+    (nodes: Array<{ node: Konva.Node; layer: Layer }>) => {
       nodes.forEach(({ node, layer }) => {
         updateLayer(layer.id, (l) => ({
           ...l,
-          position: { x: node.x(), y: node.y() },
+          position: { x: Math.round(node.x()), y: Math.round(node.y()) },
         }))
       })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
+    },
+    [updateLayer],
+  )
 
-  const alignSelectedCenterH = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
+  /**
+   * Alinha a seleção num eixo.
+   *
+   * Com dois ou mais elementos, alinha uns aos outros (a borda de referência é
+   * a do conjunto). Com um só, o alvo passa a ser a página — antes esse caso
+   * simplesmente não fazia nada, que era o comportamento que os usuários
+   * reportavam como "o alinhamento não funciona".
+   */
+  const alinharSelecao = React.useCallback(
+    (axis: AlignAxis, mode: AlignMode, forcarCanvas = false) => {
+      const colhido = colherNodesSelecionados()
+      if (!colhido) return
+      const { contentLayer, nodes } = colhido
 
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
+      import('@/lib/konva-alignment').then((alinhamento) => {
+        if (!forcarCanvas && nodes.length >= 2) {
+          const entreSi = {
+            x: { start: alinhamento.alignLeft, center: alinhamento.alignCenterH, end: alinhamento.alignRight },
+            y: { start: alinhamento.alignTop, center: alinhamento.alignMiddleV, end: alinhamento.alignBottom },
+          }[axis][mode]
+          entreSi(nodes, contentLayer)
+        } else {
+          const canvasSize = axis === 'x' ? design.canvas.width : design.canvas.height
+          alinhamento.alignToCanvas(nodes, contentLayer, axis, mode, canvasSize)
+        }
+        persistirPosicoes(nodes)
       })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
+    },
+    [colherNodesSelecionados, persistirPosicoes, design.canvas.width, design.canvas.height],
+  )
 
-    if (nodes.length < 2) return
-
-    import('@/lib/konva-alignment').then(({ alignCenterH }) => {
-      alignCenterH(nodes, contentLayer)
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
-
-  const alignSelectedRight = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length < 2) return
-
-    import('@/lib/konva-alignment').then(({ alignRight }) => {
-      alignRight(nodes, contentLayer)
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
-
-  const alignSelectedTop = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length < 2) return
-
-    import('@/lib/konva-alignment').then(({ alignTop }) => {
-      alignTop(nodes, contentLayer)
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
-
-  const alignSelectedMiddleV = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length < 2) return
-
-    import('@/lib/konva-alignment').then(({ alignMiddleV }) => {
-      alignMiddleV(nodes, contentLayer)
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
-
-  const alignSelectedBottom = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length < 2) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length < 2) return
-
-    import('@/lib/konva-alignment').then(({ alignBottom }) => {
-      alignBottom(nodes, contentLayer)
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, updateLayer])
+  const alignSelectedLeft = React.useCallback(() => alinharSelecao('x', 'start'), [alinharSelecao])
+  const alignSelectedCenterH = React.useCallback(() => alinharSelecao('x', 'center'), [alinharSelecao])
+  const alignSelectedRight = React.useCallback(() => alinharSelecao('x', 'end'), [alinharSelecao])
+  const alignSelectedTop = React.useCallback(() => alinharSelecao('y', 'start'), [alinharSelecao])
+  const alignSelectedMiddleV = React.useCallback(() => alinharSelecao('y', 'center'), [alinharSelecao])
+  const alignSelectedBottom = React.useCallback(() => alinharSelecao('y', 'end'), [alinharSelecao])
 
   const distributeSelectedH = React.useCallback(() => {
     const stage = stageInstanceRef.current
@@ -1241,64 +1146,16 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     })
   }, [selectedLayerIds, design, applyDesign])
 
-  // Canvas Alignment Methods
-  const alignSelectedToCanvasCenterH = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length === 0) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length === 0) return
-
-    import('@/lib/konva-alignment').then(({ alignToCanvasCenterH }) => {
-      alignToCanvasCenterH(nodes, contentLayer, design.canvas.width)
-      // Update layer positions in state
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, design.canvas.width, updateLayer])
-
-  const alignSelectedToCanvasCenterV = React.useCallback(() => {
-    const stage = stageInstanceRef.current
-    if (!stage || selectedLayerIds.length === 0) return
-
-    const contentLayer = stage.findOne('.content-layer') as Konva.Layer | undefined
-    if (!contentLayer) return
-
-    const nodes = selectedLayerIds
-      .map((id) => {
-        const node = stage.findOne(`#${id}`)
-        const layer = design.layers.find((l) => l.id === id)
-        return node && layer ? { node, layer } : null
-      })
-      .filter((item): item is { node: Konva.Node; layer: Layer } => Boolean(item))
-
-    if (nodes.length === 0) return
-
-    import('@/lib/konva-alignment').then(({ alignToCanvasCenterV }) => {
-      alignToCanvasCenterV(nodes, contentLayer, design.canvas.height)
-      // Update layer positions in state
-      nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: node.x(), y: node.y() },
-        }))
-      })
-    })
-  }, [selectedLayerIds, design.layers, design.canvas.height, updateLayer])
+  // Centralizar na página, independente de quantos elementos estão
+  // selecionados (com vários, move o conjunto sem desmanchar o arranjo)
+  const alignSelectedToCanvasCenterH = React.useCallback(
+    () => alinharSelecao('x', 'center', true),
+    [alinharSelecao],
+  )
+  const alignSelectedToCanvasCenterV = React.useCallback(
+    () => alinharSelecao('y', 'center', true),
+    [alinharSelecao],
+  )
 
   const selectedLayerId = selectedLayerIds[selectedLayerIds.length - 1] ?? null
 

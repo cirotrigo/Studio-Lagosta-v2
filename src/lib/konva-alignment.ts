@@ -248,6 +248,53 @@ export function distributeVertical(nodes: AlignmentNode[], layerInstance: Konva.
  * CANVAS ALIGNMENT (Align to canvas center/edges)
  */
 
+export type AlignAxis = 'x' | 'y'
+/** Início (esquerda/topo), centro ou fim (direita/base) */
+export type AlignMode = 'start' | 'center' | 'end'
+
+/**
+ * Alinha a seleção às bordas ou ao centro do canvas, num dos eixos.
+ *
+ * A seleção é tratada como um bloco só: calcula-se a bounding box combinada e
+ * aplica-se o mesmo deslocamento a todos os nodes, preservando as posições
+ * relativas. Com um elemento só, a bounding box é a dele — é o mesmo caminho,
+ * sem caso especial.
+ *
+ * `getClientRect({ relativeTo })` é obrigatório: sem isso a caixa vem em
+ * coordenadas de tela (afetadas pelo zoom) e o alinhamento erra proporcional
+ * ao nível de zoom.
+ */
+export function alignToCanvas(
+  nodes: AlignmentNode[],
+  layerInstance: Konva.Layer,
+  axis: AlignAxis,
+  mode: AlignMode,
+  canvasSize: number,
+) {
+  if (nodes.length === 0) return
+
+  const dimension = axis === 'x' ? 'width' : 'height'
+
+  let min = Infinity
+  let max = -Infinity
+  nodes.forEach(({ node }) => {
+    const box = node.getClientRect({ relativeTo: layerInstance })
+    min = Math.min(min, box[axis])
+    max = Math.max(max, box[axis] + box[dimension])
+  })
+
+  const size = max - min
+  const target = mode === 'start' ? 0 : mode === 'end' ? canvasSize - size : (canvasSize - size) / 2
+  const delta = target - min
+  if (delta === 0) return
+
+  nodes.forEach(({ node }) => {
+    node[axis](node[axis]() + delta)
+  })
+
+  layerInstance.batchDraw()
+}
+
 /**
  * Alinha elemento(s) ao centro horizontal do canvas
  *
