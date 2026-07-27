@@ -182,17 +182,17 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
       }
     }
 
-    // Aplicar fonte e peso no layer
+    // O peso é sempre reescrito, inclusive para 'normal'. Antes só era gravado
+    // quando a variante trazia um peso; com o botão de negrito removido, uma
+    // camada presa em 700 não tinha mais como voltar a regular — o peso antigo
+    // sobrevivia no `...selectedLayer.style`. Mesmo comportamento do seletor do
+    // painel de propriedades.
     const updates: Partial<Layer> = {
       style: {
         ...selectedLayer.style,
         fontFamily: family,
+        fontWeight: weight,
       },
-    }
-
-    // Se a variante tiver peso específico, aplicar também
-    if (weight !== 'normal') {
-      updates.style.fontWeight = weight
     }
 
     onUpdateLayer(selectedLayer.id, updates)
@@ -243,7 +243,11 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
       textboxConfig: {
         ...selectedLayer.textboxConfig,
         autoWrap: {
-          lineHeight: atual?.lineHeight ?? selectedLayer.style?.lineHeight ?? 1,
+          // 1.2 é o fallback do render-engine, e `autoWrap.lineHeight` tem
+          // precedência sobre `style.lineHeight` lá. Cair em 1 aqui apertaria
+          // a entrelinha de camada antiga sem `style.lineHeight` só por ligar
+          // o Auto — e só apareceria na arte exportada
+          lineHeight: atual?.lineHeight ?? selectedLayer.style?.lineHeight ?? 1.2,
           breakMode: atual?.breakMode ?? 'word',
           autoExpand: !autoExpand,
         },
