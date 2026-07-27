@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
 
     // Find Stories posted in the last 24 hours that need insights
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+    const umaHoraAtras = new Date(Date.now() - 60 * 60 * 1000)
 
     const storiesToFetch = await db.socialPost.findMany({
       where: {
@@ -54,9 +55,14 @@ export async function GET(req: NextRequest) {
         sentAt: {
           gte: twentyFourHoursAgo, // Posted within last 24 hours
         },
+        // Recolhe enquanto o story está no ar: os números crescem ao longo das
+        // 24h, e colher uma única vez congelava um total parcial. Como o cron
+        // roda de hora em hora, a última coleta antes de expirar fica próxima
+        // do número final.
         OR: [
-          { analyticsFetchedAt: null }, // Never fetched
-          { analyticsReach: null }, // No analytics data
+          { analyticsFetchedAt: null }, // nunca coletado
+          { analyticsReach: null }, // coletado sem dados
+          { analyticsFetchedAt: { lt: umaHoraAtras } }, // dado defasado
         ],
       },
       select: {
@@ -75,7 +81,10 @@ export async function GET(req: NextRequest) {
       orderBy: {
         sentAt: 'desc',
       },
-      take: 100, // Limit to avoid rate limits
+      // Com recoleta horária o volume sobe: ~8 stories/dia por cliente
+      // ainda cabe aqui. Os limites do Instagram são por conta, e cada projeto
+      // usa o token da sua.
+      take: 200,
     })
 
     console.log(
