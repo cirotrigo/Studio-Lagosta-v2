@@ -85,7 +85,12 @@ export function AlignmentToolbar({
   selectedLayerType,
   onConvertToRichText,
 }: AlignmentToolbarProps) {
-  const alignDisabled = disabled || selectedCount < 2
+  // Com um elemento o alvo é a página; com dois ou mais, o conjunto. Mesma
+  // regra do painel de propriedades — aqui tinha ficado para trás, e os botões
+  // continuavam mortos na seleção única
+  const alvoPagina = selectedCount === 1
+  const sufixo = alvoPagina ? ' na página' : ' entre si'
+  const alignDisabled = disabled || selectedCount === 0
   const distributeDisabled = disabled || selectedCount < 3
   const orderDisabled = disabled || selectedCount === 0
   const canvasAlignDisabled = disabled || selectedCount === 0
@@ -228,31 +233,33 @@ export function AlignmentToolbar({
               </PopoverTrigger>
             </TooltipTrigger>
             <TooltipContent side="bottom">
-              <p>Alinhar seleção múltipla</p>
-              <p className="text-xs text-muted-foreground">Requer 2+ camadas selecionadas</p>
+              <p>Alinhar</p>
+              <p className="text-xs text-muted-foreground">
+                {alvoPagina ? 'Um elemento: alinha na página' : 'Vários: alinha entre si'}
+              </p>
             </TooltipContent>
           </Tooltip>
           <PopoverContent align="start" className="w-auto space-y-3 p-3">
             <div className="flex items-center gap-2">
               <Label className="w-16 text-xs text-muted-foreground">Alinhar</Label>
               <div className="flex items-center gap-0.5">
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignLeft} className="h-8 w-8 p-0" title="Alinhar à esquerda (Shift+Ctrl+L)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignLeft} className="h-8 w-8 p-0" title={`Alinhar à esquerda${sufixo} (Shift+Ctrl+L)`}>
                   <AlignLeft className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignCenterH} className="h-8 w-8 p-0" title="Centralizar horizontalmente (Shift+Ctrl+C)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignCenterH} className="h-8 w-8 p-0" title={`Centralizar horizontalmente${sufixo} (Shift+Ctrl+C)`}>
                   <AlignCenter className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignRight} className="h-8 w-8 p-0" title="Alinhar à direita (Shift+Ctrl+R)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignRight} className="h-8 w-8 p-0" title={`Alinhar à direita${sufixo} (Shift+Ctrl+R)`}>
                   <AlignRight className="h-4 w-4" />
                 </Button>
                 <Separator orientation="vertical" className="mx-1 h-6" />
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignTop} className="h-8 w-8 p-0" title="Alinhar ao topo (Shift+Ctrl+T)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignTop} className="h-8 w-8 p-0" title={`Alinhar ao topo${sufixo} (Shift+Ctrl+T)`}>
                   <AlignVerticalJustifyStart className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignMiddleV} className="h-8 w-8 p-0" title="Centralizar verticalmente (Shift+Ctrl+M)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignMiddleV} className="h-8 w-8 p-0" title={`Centralizar verticalmente${sufixo} (Shift+Ctrl+M)`}>
                   <AlignVerticalJustifyCenter className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignBottom} className="h-8 w-8 p-0" title="Alinhar ao fundo (Shift+Ctrl+B)">
+                <Button variant="ghost" size="sm" disabled={alignDisabled} onClick={onAlignBottom} className="h-8 w-8 p-0" title={`Alinhar ao fundo${sufixo} (Shift+Ctrl+B)`}>
                   <AlignVerticalJustifyEnd className="h-4 w-4" />
                 </Button>
               </div>
