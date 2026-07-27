@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
+import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { z } from 'zod'
 
 export const runtime = 'nodejs'
@@ -139,7 +139,8 @@ export async function PATCH(
   }
 
   const project = await fetchProjectWithShares(projectIdNum)
-  if (!project || !hasProjectReadAccess(project, { userId, orgId })) {
+  // Alterar o par de fontes é escrita: acesso somente-leitura não pode mudar a marca
+  if (!project || !hasProjectWriteAccess(project, { userId, orgId })) {
     return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
   }
 

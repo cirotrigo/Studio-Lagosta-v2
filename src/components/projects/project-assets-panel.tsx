@@ -10,12 +10,15 @@ import { Label } from '@/components/ui/label'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Switch } from '@/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
-import { Download, Trash2, Upload, HardDrive, Loader2, Plus } from 'lucide-react'
+import { Download, Trash2, Upload, HardDrive, Loader2, Plus, AlertTriangle, Check } from 'lucide-react'
 import { DesktopGoogleDriveModal } from '@/components/projects/google-drive-folder-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { useProject } from '@/hooks/use-project'
+import { useBrandFonts, useUpdateBrandFonts } from '@/hooks/use-brand-fonts'
+import { FONT_CONFIG } from '@/lib/font-config'
 
 type DriveStatus = 'loading' | 'available' | 'unavailable'
 
@@ -793,6 +796,152 @@ function ElementSection({
   )
 }
 
+/**
+ * Carrega as fontes do projeto na página via @font-face, para os previews
+ * saírem na fonte de verdade em vez do fallback do sistema.
+ */
+function useProjectFontFaces(fonts: FontRecord[] | undefined) {
+  React.useEffect(() => {
+    if (!fonts?.length) return
+    const style = document.createElement('style')
+    style.textContent = fonts
+      .map((f) => `@font-face{font-family:"${f.fontFamily}";src:url("${f.fileUrl}");font-display:swap;}`)
+      .join('\n')
+    document.head.appendChild(style)
+    return () => style.remove()
+  }, [fonts])
+}
+
+const SEM_FONTE = '__nenhuma__'
+
+/**
+ * Par de fontes da marca (título/corpo).
+ *
+ * Vale para as artes geradas fora do editor — arte livre e combinações
+ * tipográficas herdam daqui. Sem o par definido elas saem na fonte padrão,
+ * porque o sistema não escolhe uma fonte da marca por conta própria.
+ */
+function BrandFontPair({ projectId, fonts }: { projectId: number; fonts: FontRecord[] | undefined }) {
+  const { toast } = useToast()
+  const { data: brand, isLoading } = useBrandFonts(projectId)
+  const atualizar = useUpdateBrandFonts(projectId)
+
+  const familias = React.useMemo(() => {
+    const doProjeto = (fonts ?? []).map((f) => f.fontFamily)
+    return [...new Set([FONT_CONFIG.DEFAULT_FONT, ...doProjeto])]
+  }, [fonts])
+
+  const salvar = (campo: 'titleFontFamily' | 'bodyFontFamily', valor: string) => {
+    const familia = valor === SEM_FONTE ? null : valor
+    atualizar.mutate(
+      { [campo]: familia },
+      {
+        onSuccess: () =>
+          toast({
+            title: 'Par de fontes atualizado',
+            description: `${campo === 'titleFontFamily' ? 'Título' : 'Corpo'}: ${familia ?? 'sem definição'}.`,
+          }),
+        onError: (error) =>
+          toast({
+            title: 'Não foi possível salvar',
+            description: error instanceof Error ? error.message : 'Tente novamente.',
+            variant: 'destructive',
+          }),
+      },
+    )
+  }
+
+  const completo = Boolean(brand?.titleFontFamily && brand?.bodyFontFamily)
+
+  const seletor = (
+    campo: 'titleFontFamily' | 'bodyFontFamily',
+    rotulo: string,
+    exemplo: string,
+    tamanho: string,
+  ) => {
+    const valor = brand?.[campo] ?? null
+    return (
+      <div className="space-y-2">
+        <Label>{rotulo}</Label>
+        <Select
+          value={valor ?? SEM_FONTE}
+          onValueChange={(v) => salvar(campo, v)}
+          disabled={isLoading || atualizar.isPending}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Escolha uma fonte" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={SEM_FONTE}>Sem definição</SelectItem>
+            {familias.map((familia) => (
+              <SelectItem key={familia} value={familia}>
+                <span style={{ fontFamily: familia }}>{familia}</span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <div className="rounded-md border border-border/40 bg-muted/30 px-3 py-2">
+          <p
+            className={`line-clamp-2 ${tamanho}`}
+            style={{ fontFamily: valor ?? FONT_CONFIG.DEFAULT_FONT }}
+          >
+            {exemplo}
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <Card className="space-y-4 border border-border/40 bg-card/70 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold">Par de fontes da marca</h3>
+          <p className="text-sm text-muted-foreground">
+            Usado nas artes geradas fora do editor — arte rápida, arte livre e combinações
+            tipográficas. Os templates já montados não mudam.
+          </p>
+        </div>
+        {completo && (
+          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Check className="h-3.5 w-3.5" /> configurado
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          <Skeleton className="h-24" />
+          <Skeleton className="h-24" />
+        </div>
+      ) : (
+        <>
+          <div className="grid gap-4 md:grid-cols-2">
+            {seletor('titleFontFamily', 'Fonte de título', 'HAPPY HOUR', 'text-2xl font-semibold')}
+            {seletor('bodyFontFamily', 'Fonte de corpo', 'Chope gelado e petiscos até as 20h', 'text-sm')}
+          </div>
+
+          {!completo && (
+            <p className="flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              <span>
+                Enquanto o par não estiver completo, as artes novas saem em {FONT_CONFIG.DEFAULT_FONT}.
+                O sistema não escolhe uma fonte da marca sozinho — a escolha é sua.
+              </span>
+            </p>
+          )}
+
+          {(fonts?.length ?? 0) === 0 && (
+            <p className="text-xs text-muted-foreground">
+              Envie as fontes da marca abaixo para que apareçam nesta lista.
+            </p>
+          )}
+        </>
+      )}
+    </Card>
+  )
+}
+
 function FontSection({ projectId }: { projectId: number }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -809,6 +958,8 @@ function FontSection({ projectId }: { projectId: number }) {
       return res.json()
     }),
   })
+
+  useProjectFontFaces(fonts)
 
   const uploadFont = useMutation({
     mutationFn: async ({ file, family, name }: { file: File; family: string; name?: string }) => {
@@ -943,6 +1094,8 @@ function FontSection({ projectId }: { projectId: number }) {
           </DialogContent>
         </Dialog>
       </div>
+
+      <BrandFontPair projectId={projectId} fonts={fonts} />
 
       {isLoading ? (
         <div className="grid gap-3 md:grid-cols-2">
