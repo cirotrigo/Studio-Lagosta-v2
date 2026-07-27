@@ -63,12 +63,16 @@ export function FontCombinationsPanel() {
     [customFamilies],
   )
 
+  // Sem fonte configurada cai no padrão do sistema, e não na primeira fonte
+  // enviada: adivinhar fazia uma fonte qualquer virar o título da marca sem
+  // ninguém escolher, e as combinações nasciam com essa escolha invisível
+  const marcaConfigurada = Boolean(brand?.titleFontFamily && brand?.bodyFontFamily)
   const pair: FontComboPair = React.useMemo(
     () => ({
-      title: brand?.titleFontFamily ?? customFamilies[0] ?? FONT_CONFIG.DEFAULT_FONT,
+      title: brand?.titleFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
       body: brand?.bodyFontFamily ?? FONT_CONFIG.DEFAULT_FONT,
     }),
-    [brand?.titleFontFamily, brand?.bodyFontFamily, customFamilies],
+    [brand?.titleFontFamily, brand?.bodyFontFamily],
   )
 
   const layersSelecionadas = React.useMemo(
@@ -326,6 +330,17 @@ export function FontCombinationsPanel() {
             </div>
           ))}
         </div>
+        {!marcaConfigurada && (
+          <p className="text-[10px] leading-snug text-amber-500">
+            Defina as duas fontes acima. Enquanto isso, as combinações usam{' '}
+            {FONT_CONFIG.DEFAULT_FONT} em vez da identidade da marca.
+          </p>
+        )}
+        {customFamilies.length === 0 && !isLoading && (
+          <p className="text-[10px] leading-snug text-muted-foreground">
+            Envie fontes na aba <strong>Fontes</strong> para usá-las aqui.
+          </p>
+        )}
       </div>
 
       {/* Barra de edição em andamento */}
