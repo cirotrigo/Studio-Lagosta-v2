@@ -5,10 +5,17 @@
  * expira — diferente do token de Instagram Login, que vence em 60 dias.
  *
  * Uso:
- *   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [USER_ACCESS_TOKEN]
+ *   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts <USER_TOKEN> [--page=<id|nome>] [--skip-vercel]
  *
  * Requer META_APP_ID e META_APP_SECRET no ambiente.
+ *
+ * O token resultante nunca é impresso: vai direto para o .env (com backup) e
+ * para as variáveis de produção da Vercel.
  */
+
+import * as fs from 'fs'
+import * as path from 'path'
+import { execFileSync } from 'child_process'
 
 const userToken = process.argv[2]
 
@@ -17,33 +24,39 @@ if (!userToken) {
 🔑 Script para Renovar Instagram Access Token
 
 USO:
-  npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [USER_ACCESS_TOKEN]
+  npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts <TOKEN> [--page=<id ou nome>] [--skip-vercel]
 
 PASSO A PASSO:
 
+0. Garanta que o .env tem:
+   META_APP_ID=1476916907060374
+   META_APP_SECRET=<Configurações do app → Básico → Chave Secreta>
+
 1. Acesse: https://developers.facebook.com/tools/explorer/
 
-2. Selecione seu App: "ciro_trigo"
+2. Selecione o App: "Studio Lagosta"
 
 3. Clique em "Get Token" → "Get User Access Token"
 
 4. Selecione as permissões:
    - instagram_basic
+   - instagram_manage_insights     (métricas)
    - instagram_content_publish
    - pages_read_engagement
    - pages_show_list
 
-5. Clique em "Generate Access Token"
+5. Clique em "Generate Access Token" e copie
 
-6. Copie o token gerado
+6. Execute:
+   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts <TOKEN>
 
-7. Execute (META_APP_ID e META_APP_SECRET precisam estar no .env):
-   npx dotenv-cli -e .env -- npx tsx scripts/refresh-instagram-token.ts [TOKEN_COPIADO]
+   O script grava no .env e envia para a Vercel sozinho — o token não
+   aparece na tela nem precisa ser copiado de novo.
 
 ---
 
-⚠️ IMPORTANTE: O token de usuário expira em 1 hora!
-Este script vai convertê-lo em um Page Access Token que nunca expira.
+⚠️ O token de usuário expira em 1 hora — rode o script logo após gerar.
+Ele converte num Page Access Token, que não expira.
 `)
   process.exit(1)
 }
@@ -94,18 +107,39 @@ async function refreshToken() {
 
   console.log(`✅ ${pagesData.data.length} página(s) encontrada(s)\n`)
 
-  // Find "Estúdio Ciro Trigo" page
-  const targetPage = pagesData.data.find((page: any) =>
-    page.name.includes('Estúdio') || page.name.includes('Ciro Trigo')
-  )
+  // Página escolhida por --page=<id|trecho do nome>; sem isso, usa a única
+  // disponível, ou lista as opções quando houver ambiguidade
+  const pageArg = process.argv.find((a) => a.startsWith('--page='))?.split('=')[1]
+  const pages = pagesData.data as Array<{ id: string; name: string; access_token: string }>
 
-  if (!targetPage) {
-    console.log('❌ Página "Estúdio Ciro Trigo" não encontrada')
+  const listarPaginas = () => {
     console.log('\n📋 Páginas disponíveis:')
-    pagesData.data.forEach((page: any, index: number) => {
-      console.log(`  ${index + 1}. ${page.name} (ID: ${page.id})`)
-    })
-    console.log('\n💡 Execute o script novamente e modifique o código para usar a página correta.\n')
+    pages.forEach((p, i) => console.log(`  ${i + 1}. ${p.name} (ID: ${p.id})`))
+    console.log('\n💡 Rode de novo com --page=<ID ou parte do nome>\n')
+  }
+
+  let targetPage: (typeof pages)[number] | undefined
+  if (pageArg) {
+    const alvo = pageArg.toLowerCase()
+    const matches = pages.filter(
+      (p) => p.id === pageArg || p.name.toLowerCase().includes(alvo)
+    )
+    if (matches.length === 0) {
+      console.error(`❌ Nenhuma página corresponde a "${pageArg}"`)
+      listarPaginas()
+      process.exit(1)
+    }
+    if (matches.length > 1) {
+      console.error(`❌ "${pageArg}" corresponde a ${matches.length} páginas — seja mais específico`)
+      listarPaginas()
+      process.exit(1)
+    }
+    targetPage = matches[0]
+  } else if (pages.length === 1) {
+    targetPage = pages[0]
+  } else {
+    console.error('❌ Há mais de uma página; escolha qual usar')
+    listarPaginas()
     process.exit(1)
   }
 
@@ -143,18 +177,60 @@ async function refreshToken() {
     console.log(`⚠️ Token expira em: ${new Date(expiresAt * 1000).toLocaleString()}\n`)
   }
 
-  // Summary
+  // Passo 5: gravar no .env local (o token nunca é impresso na tela)
+  console.log('📝 Passo 5: Gravando no .env local...')
+  const envPath = path.resolve(process.cwd(), '.env')
+  const valores: Record<string, string> = {
+    INSTAGRAM_ACCESS_TOKEN: pageAccessToken,
+    INSTAGRAM_ACCOUNT_ID: instagramAccountId,
+  }
+
+  if (fs.existsSync(envPath)) {
+    fs.copyFileSync(envPath, `${envPath}.bak-${Date.now()}`)
+    let conteudo = fs.readFileSync(envPath, 'utf8')
+    for (const [chave, valor] of Object.entries(valores)) {
+      const linha = `${chave}=${valor}`
+      const re = new RegExp(`^${chave}=.*$`, 'm')
+      conteudo = re.test(conteudo) ? conteudo.replace(re, linha) : `${conteudo.replace(/\n*$/, '\n')}${linha}\n`
+    }
+    fs.writeFileSync(envPath, conteudo)
+    console.log('✅ .env atualizado (backup criado ao lado)\n')
+  } else {
+    console.log('⚠️  .env não encontrado — pulando gravação local\n')
+  }
+
+  // Passo 6: enviar para a Vercel (produção), se o CLI estiver autenticado
+  if (process.argv.includes('--skip-vercel')) {
+    console.log('⏭️  --skip-vercel: não enviei para a Vercel\n')
+  } else {
+    console.log('📝 Passo 6: Enviando para a Vercel (produção)...')
+    for (const [chave, valor] of Object.entries(valores)) {
+      try {
+        // remove o valor antigo (falha se não existir — tudo bem)
+        execFileSync('vercel', ['env', 'rm', chave, 'production', '-y'], { stdio: 'ignore' })
+      } catch {
+        // variável ainda não existia
+      }
+      try {
+        execFileSync('vercel', ['env', 'add', chave, 'production'], {
+          input: valor,
+          stdio: ['pipe', 'ignore', 'pipe'],
+        })
+        console.log(`✅ ${chave} enviada`)
+      } catch (error: any) {
+        console.error(`❌ Falha ao enviar ${chave}:`, error?.stderr?.toString?.().trim() || error?.message)
+        console.error('   Rode "vercel login" e tente de novo, ou use --skip-vercel e configure pelo painel.')
+      }
+    }
+    console.log()
+  }
+
   console.log('━'.repeat(60))
-  console.log('📋 RESUMO - Copie estes valores para o .env.local:\n')
-  console.log('INSTAGRAM_ACCESS_TOKEN=' + pageAccessToken)
-  console.log('INSTAGRAM_ACCOUNT_ID=' + instagramAccountId)
-  console.log('\n━'.repeat(60))
-  console.log('\n💡 PRÓXIMOS PASSOS:\n')
-  console.log('1. Copie o INSTAGRAM_ACCESS_TOKEN acima')
-  console.log('2. Cole no arquivo .env.local (substitua o token antigo)')
-  console.log('3. Adicione também no Vercel Dashboard em Environment Variables')
-  console.log('4. Execute: vercel env pull (para sincronizar localmente)')
-  console.log('5. Teste novamente o webhook!\n')
+  console.log(`Conta Instagram conectada: ${instagramAccountId}`)
+  console.log(`Página: ${targetPage.name} (${targetPage.id})`)
+  console.log('━'.repeat(60))
+  console.log('\n💡 PRÓXIMO PASSO: redeploy na Vercel para a variável entrar em vigor.')
+  console.log('   vercel --prod\n')
   console.log('✅ Token renovado com sucesso!\n')
 }
 

@@ -27,6 +27,9 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+# backups do .env (o refresh de token cria .env.bak-<timestamp> com credenciais)
+.env.bak-*
+.env.backup-*
 
 # vercel
 .vercel
