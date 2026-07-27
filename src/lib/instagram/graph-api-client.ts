@@ -15,11 +15,10 @@ export interface InstagramStoryInsights {
   views: number
   reach: number
   replies?: number
-  exits?: number
-  taps_forward?: number
-  taps_back?: number
-  /** @deprecated mantido só para leitura de dados antigos; a API não retorna mais */
-  impressions?: number
+  /** Soma de interações (respostas, compartilhamentos, etc.) */
+  total_interactions?: number
+  /** Substituiu exits/taps_forward/taps_back, que deixaram de existir */
+  navigation?: number
 }
 
 /** Métricas de post de feed (carrossel, imagem, reel) — não expiram como stories */
@@ -189,11 +188,33 @@ export class InstagramGraphApiClient {
         return result
       } catch (error) {
         if (!(error instanceof InstagramApiException)) throw error
-        // Erro de métrica inválida cita o nome dela na mensagem
-        const rejected = candidates.find((m) => error.message.includes(m))
-        if (!rejected) throw error
-        console.warn(`[Instagram API] métrica "${rejected}" não suportada nesta versão — ignorando`)
-        candidates = candidates.filter((m) => m !== rejected)
+
+        // Caso 1: a mensagem traz a lista de métricas aceitas
+        // ("metric[0] must be one of the following values: a, b, c").
+        // Basta intersectar — não dá para procurar nomes soltos na mensagem,
+        // porque essa própria lista contém métricas válidas.
+        const lista = error.message.match(/must be one of the following values:\s*([^"]+)/i)?.[1]
+        if (lista) {
+          const validas = new Set(lista.split(',').map((m) => m.trim()))
+          const sobreviventes = candidates.filter((m) => validas.has(m))
+          const removidas = candidates.filter((m) => !validas.has(m))
+          if (removidas.length > 0) {
+            console.warn(`[Instagram API] métricas inexistentes nesta versão: ${removidas.join(', ')}`)
+            candidates = sobreviventes
+            continue
+          }
+        }
+
+        // Caso 2: métrica existe mas foi descontinuada para esta mídia
+        // ("the impressions metric is no longer supported")
+        const descontinuada = error.message.match(/the (\w+) metric is no longer supported/i)?.[1]
+        if (descontinuada && candidates.includes(descontinuada)) {
+          console.warn(`[Instagram API] métrica "${descontinuada}" descontinuada para esta mídia — ignorando`)
+          candidates = candidates.filter((m) => m !== descontinuada)
+          continue
+        }
+
+        throw error
       }
     }
 
@@ -212,18 +233,16 @@ export class InstagramGraphApiClient {
       'views',
       'reach',
       'replies',
-      'exits',
-      'taps_forward',
-      'taps_back',
+      'total_interactions',
+      'navigation',
     ])
 
     const result: InstagramStoryInsights = {
       views: values.views ?? 0,
       reach: values.reach ?? 0,
       replies: values.replies,
-      exits: values.exits,
-      taps_forward: values.taps_forward,
-      taps_back: values.taps_back,
+      total_interactions: values.total_interactions,
+      navigation: values.navigation,
     }
 
     console.log('[Instagram API] Story insights fetched:', storyId, result)

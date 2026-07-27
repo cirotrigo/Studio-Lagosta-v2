@@ -126,11 +126,8 @@ export async function GET(req: NextRequest) {
         // Fetch insights from Instagram
         const insights = await igClient.getStoryInsights(story.verifiedStoryId)
 
-        // Calculate engagement (replies + taps)
-        const engagement =
-          (insights.replies || 0) +
-          (insights.taps_forward || 0) +
-          (insights.taps_back || 0)
+        // total_interactions já soma as interações; sem ele, cai nas respostas
+        const engagement = insights.total_interactions ?? insights.replies ?? 0
 
         // Update database
         await db.socialPost.update({
