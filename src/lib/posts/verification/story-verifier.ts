@@ -113,7 +113,12 @@ export class StoryVerifier {
         continue
       }
 
-      const igUserId = post.Project.instagramUserId || post.Project.instagramAccountId
+      // instagramAccountId é campo legado e guarda lixo em vários projetos
+      // ("12345", "winevix", ObjectId do Zernio). Usar como fallback fazia o
+      // verificador chamar a Graph API com valor inválido e falhar sem
+      // explicar o motivo. Só aceita ID de conta business do Instagram.
+      const candidato = post.Project.instagramUserId || post.Project.instagramAccountId
+      const igUserId = candidato && /^\d{15,20}$/.test(candidato) ? candidato : null
       if (!igUserId) {
         await this.markFailure(post, 'NO_IG_ACCOUNT', now)
         summary.failed++
