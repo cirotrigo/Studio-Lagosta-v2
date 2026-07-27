@@ -33,11 +33,33 @@ ou seja, **o `autoWrap` ganha do `style`**. Todo texto criado pelo editor grava
 os dois. Quem escrever em só um deles produz editor e arte exportada com
 entrelinhas diferentes.
 
-Foi assim que um defeito passou: o botão Auto gravava
-`autoWrap.lineHeight: ... ?? 1`, então **ligar o Auto numa camada antiga sem
-`style.lineHeight` apertava a entrelinha da arte exportada de 1.2 para 1** — sem
-mudar nada no editor, que lê o outro campo. Corrigido em `df0a105`; o fallback
-do botão agora é 1.2, o mesmo do renderer.
+Foi assim que **dois** defeitos passaram, ambos invisíveis no editor:
+
+1. O botão Auto gravava `autoWrap.lineHeight: ... ?? 1`. Ligar o Auto numa
+   camada antiga sem `style.lineHeight` apertava a entrelinha da arte de 1.2
+   para 1. Corrigido em `df0a105` — o fallback do botão virou 1.2, o mesmo do
+   renderer.
+2. `buildComboLayers` gravava o valor do catálogo no `style` e um **1 fixo** no
+   `autoWrap`. Como o render prefere o `autoWrap`, **toda combinação aplicada
+   saía achatada na arte agendada**: 9 das 10 entrelinhas do catálogo divergiam
+   (1.5 → 1, 1.3 → 1); só quem já era 1 escapava. Mesmo problema em
+   `arte-livre.ts` (style 1.1, autoWrap 1). Corrigido em `82e09c4`.
+
+**Por que ninguém viu:** o download direto do editor é `stage.toDataURL()` — o
+próprio Konva, que lê `style.lineHeight`. Só o que passa pelo `RenderEngine`
+(story agendado, thumbnail, carrossel) usava o campo errado. **Conferir a arte
+pelo botão de exportar do editor não pega essa classe de bug** — é a mesma
+armadilha do Montserrat/Arial da sessão anterior, em outro campo.
+
+Camadas já gravadas mantêm `autoWrap: 1`; a correção vale para o que for
+aplicado a partir de agora.
+
+**Armadilha vizinha — o peso não viaja por `fontStyle`.** No Konva o peso vai na
+prop `fontVariant` (`fontVariant={String(layer.style.fontWeight)}`), porque a
+font string montada é `${fontStyle} ${fontVariant} ${fontSize}px ${fontFamily}`
+— `normal 400 36px Montserrat` é CSS válido e funciona por isso. Trocar para
+`fontStyle` "para consertar o peso" **derruba o itálico**. O render server-side
+monta a string por outro caminho (`buildFontString`).
 
 ---
 
@@ -55,6 +77,29 @@ destravado para mover. Hoje isso não protege scroll nenhum — o editor é
 `h-dvh` e não rola —, mas mantém a seta livre para quem estiver focado em outro
 elemento e para qualquer painel rolável que venha a existir. Quem mexer no
 handler precisa manter essa ordem.
+
+A seta chama `moveLayer` direto e **não passa pelo snap nem pelas guias
+inteligentes** — essas só rodam no `onDragMove`/`onDragEnd` do ponteiro. É o
+comportamento desejado (a seta existe justamente para o ajuste fino que o snap
+atrapalharia), mas explica por que arrastar e teclar dão resultados diferentes
+perto de uma guia. Também não há limite de canvas: dá para empurrar a camada
+inteira para fora da área visível sem aviso.
+
+Mais três coisas que só aparecem lendo o `moveLayer`:
+
+- **Ele não checa `locked`** — nem ele nem o `updateLayer` que chama. A
+  verificação vive só no chamador. Chamador novo que esqueça o filtro move
+  camada travada em silêncio.
+- **O arredondamento é do resultado, não do delta:** `Math.round(x + delta)`.
+  Camada em `x = 100.4` vai para 101 na primeira seta — deslocamento real de
+  0.6px. Posições fracionárias herdadas de arraste se normalizam no primeiro
+  toque.
+- **Cada seta empilha um item de histórico**, e o handler chama `moveLayer` uma
+  vez por camada: uma tecla com 3 selecionadas exige 3 Cmd+Z. Como o `past` é
+  limitado a 50, segurar a seta apaga o undo anterior em poucos segundos.
+
+Cmd/Ctrl/Alt+seta não são interceptados de propósito — só o Shift, que é o
+multiplicador.
 
 ---
 
@@ -253,6 +298,7 @@ só; o segundo efeito ficou apenas com o `transformer.forceUpdate()`.
 | Crescimento automático | ✅ no editor; ⚠️ o render não cresce |
 | Negrito | ✅ removido; peso vem da variante |
 | Regressões da releitura | ✅ peso e entrelinha corrigidos (`df0a105`) |
+| Entrelinha das combinações no render | ✅ os dois campos batem (`82e09c4`) |
 
 ### Próximos passos sugeridos
 
@@ -269,18 +315,26 @@ Todos os testes desta sessão rodaram em **templates descartáveis**, criados e
 apagados na hora — a correção do procedimento que a sessão anterior recomendou
 depois de perder camadas de um template de produção.
 
-Cinco achados desta lista **não apareceram em teste** — saíram de reler o código
-com ceticismo antes de escrever esta documentação:
+Sete achados desta lista **não apareceram em teste** — saíram de reler o código
+com ceticismo antes de escrever esta documentação, boa parte com verificação
+adversarial (agentes tentando derrubar cada afirmação lendo o código atual):
 
 - a barra de alinhamento do topo, que tinha ficado para trás (`fff1467`);
 - 165 linhas órfãs em `konva-alignment.ts` (`0151182`);
-- o peso preso em 700 sem caminho de volta (`df0a105`);
+- o `simple-text-panel.tsx` órfão, 148 linhas ainda aplicando peso 700
+  (`df0a105`);
+- o peso preso em 700 sem caminho de volta, aberto pela remoção do negrito
+  (`df0a105`);
 - a entrelinha apertada ao ligar o Auto em camada antiga (`df0a105`);
+- **a entrelinha de toda combinação achatada no render agendado** (`82e09c4`) —
+  o mais grave, e o mais invisível: só aparecia em arte que passa pelo
+  `RenderEngine`, nunca no editor;
 - o corte do texto no render server-side, ainda em aberto.
 
-Os três primeiros passariam por qualquer teste manual rápido. Vale a pena manter
-o hábito: depois de mexer no editor, reler o que mudou procurando **a segunda
-tela** e **o campo que ficou de fora da lista**.
+Todos passariam por qualquer teste manual rápido no editor. Vale manter o
+hábito: depois de mexer no editor, reler o que mudou procurando **a segunda
+tela**, **o campo que ficou de fora da lista** e **o que o editor desenha por um
+caminho e o servidor por outro**.
 
 O ambiente atrapalhou: o `.next` corrompeu três vezes — numa delas havia um
 `next build` rodando junto do `next dev`, e os dois escrevem na mesma pasta — e
