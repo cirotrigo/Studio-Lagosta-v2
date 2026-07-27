@@ -380,6 +380,11 @@ export const MCP_TOOLS: McpTool[] = [
     handler: async (args, principal) => {
       const projectId = requireNumber(args, 'projectId')
       await assertProjetoPermitido(projectId, principal)
+      // status: DRAFT/SCHEDULED é o nome antigo, ainda vindo de conectores
+      // que guardaram o esquema anterior
+      const situacao =
+        args.situacao ?? (args.status === 'SCHEDULED' ? 'agendado' : args.status ? 'rascunho' : undefined)
+
       return agendarPost({
         projectId,
         postType: args.postType,
@@ -387,7 +392,7 @@ export const MCP_TOOLS: McpTool[] = [
         scheduledDatetime: requireString(args, 'scheduledDatetime'),
         pageId: args.pageId,
         mediaUrls: args.mediaUrls,
-        situacao: args.situacao,
+        situacao,
       })
     },
   },
@@ -395,16 +400,36 @@ export const MCP_TOOLS: McpTool[] = [
 
 export const MCP_TOOL_MAP = new Map(MCP_TOOLS.map((tool) => [tool.name, tool]))
 
+/**
+ * Nomes antigos, de antes da tradução para português.
+ *
+ * O cliente MCP guarda a lista de ferramentas de quando o conector foi
+ * instalado: sem estes apelidos, renomear derruba todas as conversas já
+ * existentes com "Tool desconhecida" até alguém reconectar.
+ */
+const APELIDOS: Record<string, string> = {
+  'list-projects': 'listar-clientes',
+  'prepare-creative': 'escolher-modelo',
+  'create-arte-rapida': 'criar-arte-de-modelo',
+  'list-posts': 'ver-agenda',
+  'get-knowledge': 'consultar-base',
+  'list-font-combinations': 'listar-combinacoes-de-texto',
+  'create-arte-livre': 'criar-arte',
+  'search-acervo': 'buscar-fotos',
+  'list-drive-images': 'listar-fotos-da-pasta',
+  'agendar-post': 'colocar-na-agenda',
+}
+
 /** Runs a tool and shapes the MCP `tools/call` result, errors included. */
 export async function runMcpTool(
   name: string,
   args: Record<string, any>,
   principal: McpPrincipal = { kind: 'service' },
 ) {
-  const tool = MCP_TOOL_MAP.get(name)
+  const tool = MCP_TOOL_MAP.get(name) ?? MCP_TOOL_MAP.get(APELIDOS[name] ?? '')
   if (!tool) {
     return {
-      content: [{ type: 'text' as const, text: `Tool desconhecida: ${name}` }],
+      content: [{ type: 'text' as const, text: `Ferramenta desconhecida: ${name}` }],
       isError: true,
     }
   }
