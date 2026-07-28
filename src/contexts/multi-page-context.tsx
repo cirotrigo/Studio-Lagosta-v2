@@ -56,6 +56,9 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
   const pages = React.useMemo<Page[]>(() => {
     const seen = new Set<string>()
     return pagesData.filter((p) => {
+      // Entrada sem id nunca deveria chegar aqui (ver isPageResponse em
+      // use-pages) — mas se chegar, é melhor sumir do que quebrar as keys
+      if (!p || typeof p.id !== 'string') return false
       if (seen.has(p.id)) return false
       seen.add(p.id)
       return true

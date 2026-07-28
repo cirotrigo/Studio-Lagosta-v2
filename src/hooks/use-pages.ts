@@ -37,6 +37,19 @@ interface PageResponse {
   updatedAt: string
 }
 
+/**
+ * A resposta é uma Page de verdade?
+ *
+ * O apiClient devolve `response.text()` quando o corpo não é JSON — e uma
+ * sessão expirada faz o PATCH voltar o HTML da tela de login com status 200.
+ * Sem esta checagem, essa string ia parar no cache no lugar do objeto da
+ * página: uma "página fantasma" sem id, que quebrava as keys do React e o
+ * SortableContext da barra de páginas.
+ */
+function isPageResponse(value: unknown): value is PageResponse {
+  return typeof value === 'object' && value !== null && typeof (value as PageResponse).id === 'string'
+}
+
 // Query: Buscar páginas de um template
 export function usePages(templateId: number | null) {
   return useQuery<PageResponse[]>({
@@ -80,6 +93,10 @@ export function useCreatePage() {
     mutationFn: ({ templateId, data }: { templateId: number; data: CreatePageData }) =>
       api.post(`/api/templates/${templateId}/pages`, data),
     onSuccess: (newPage: PageResponse, { templateId }) => {
+      if (!isPageResponse(newPage)) {
+        console.warn('[useCreatePage] Resposta não é uma página (sessão expirada?) — cache preservado')
+        return
+      }
       // Atualizar cache manualmente sem invalidar (sem re-fetch)
       queryClient.setQueryData(['pages', templateId], (oldPages: PageResponse[] | undefined) => {
         if (!oldPages) return [newPage]
@@ -108,6 +125,10 @@ export function useUpdatePage(options?: { skipInvalidation?: boolean }) {
       data: UpdatePageData
     }) => api.patch(`/api/templates/${templateId}/pages/${pageId}`, data),
     onSuccess: (updatedPage, { templateId, pageId }) => {
+      if (!isPageResponse(updatedPage)) {
+        console.warn('[useUpdatePage] Resposta não é uma página (sessão expirada?) — cache preservado')
+        return
+      }
       if (options?.skipInvalidation) {
         // Atualizar cache manualmente sem invalidar (sem re-fetch)
         queryClient.setQueryData(['page', templateId, pageId], updatedPage)
