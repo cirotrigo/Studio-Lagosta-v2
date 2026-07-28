@@ -16,6 +16,7 @@ import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
 import { agendarPost } from '@/lib/creatives/agendar'
 import { KnowledgeCategory } from '@prisma/client'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
+import { processarAprovacao, reagendarPost, cancelarPost } from '@/lib/posts/agenda-acoes'
 
 export interface McpTool {
   name: string
@@ -394,6 +395,121 @@ export const MCP_TOOLS: McpTool[] = [
         mediaUrls: args.mediaUrls,
         situacao,
       })
+    },
+  },
+  {
+    name: 'aprovar-rascunhos',
+    description:
+      'Aprova rascunhos: eles entram na fila e PUBLICAM DE VERDADE no Instagram do cliente, cada um no seu horário marcado.\n\nNunca chame por conta própria. Antes, mostre à pessoa o que vai ser aprovado (artes, datas e horários) e faça a pergunta direta — "isso vai publicar no Instagram de X, confirma?". Só chame depois do sim explícito.\n\nA resposta traz processados e ignorados (com o motivo de cada um, ex.: horário vencido, sem arte) — sempre repasse os ignorados à pessoa em vez de relatar sucesso genérico.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ids dos posts a aprovar (de ver-agenda ou do retorno de colocar-na-agenda).',
+        },
+      },
+      required: ['projectId', 'postIds'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const brutos: unknown[] = Array.isArray(args.postIds) ? args.postIds : []
+      if (brutos.length === 0) {
+        throw new Error('Informe ao menos um post em postIds (os ids vêm de ver-agenda).')
+      }
+      // Id inválido é erro, não descarte silencioso: um post que some da lista
+      // sem aparecer em ignorados viraria "sucesso" falso no relato do modelo.
+      if (!brutos.every((id): id is string => typeof id === 'string')) {
+        throw new Error('Lista de posts inválida: todos os ids precisam ser textos (vindos de ver-agenda).')
+      }
+      const postIds = brutos
+      return processarAprovacao({ projectId, postIds, action: 'APPROVE' })
+    },
+  },
+
+  {
+    name: 'voltar-para-rascunho',
+    description:
+      'Tira posts agendados da fila de publicação e os devolve à condição de rascunho — continuam na agenda, mas não publicam até nova aprovação. Use quando a pessoa quiser segurar algo que já foi aprovado. Se o post já tiver ido para a fila remota, ele é removido de lá antes; se a remoção falhar, o post aparece em ignorados com o motivo e SEGUE agendado.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postIds: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Ids dos posts a devolver para rascunho.',
+        },
+      },
+      required: ['projectId', 'postIds'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const brutos: unknown[] = Array.isArray(args.postIds) ? args.postIds : []
+      if (brutos.length === 0) {
+        throw new Error('Informe ao menos um post em postIds (os ids vêm de ver-agenda).')
+      }
+      // Id inválido é erro, não descarte silencioso: um post que some da lista
+      // sem aparecer em ignorados viraria "sucesso" falso no relato do modelo.
+      if (!brutos.every((id): id is string => typeof id === 'string')) {
+        throw new Error('Lista de posts inválida: todos os ids precisam ser textos (vindos de ver-agenda).')
+      }
+      const postIds = brutos
+      return processarAprovacao({ projectId, postIds, action: 'REVERT' })
+    },
+  },
+
+  {
+    name: 'reagendar-post',
+    description:
+      'Muda a data e a hora de um post da agenda. A situação é preservada: rascunho continua rascunho (mudar horário não aprova), agendado continua agendado e passa a publicar no horário novo — confirme o horário novo com a pessoa quando o post já estiver agendado. Só aceita horário futuro.\n\nNão reagenda post publicado, em publicação, nem FALHADO — post que falhou é caso para a interface ("Tentar novamente") ou para um post novo, nunca para rearme silencioso. Post de publicação manual (lembrete) tem o lembrete reenviado no WhatsApp perto do novo horário.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postId: { type: 'string', description: 'Id do post (de ver-agenda).' },
+        novaDataHora: {
+          type: 'string',
+          description: 'Novo horário: "AAAA-MM-DD HH:mm" no horário de Brasília.',
+        },
+      },
+      required: ['projectId', 'postId', 'novaDataHora'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return reagendarPost({
+        projectId,
+        postId: requireString(args, 'postId'),
+        novaDataHora: requireString(args, 'novaDataHora'),
+      })
+    },
+  },
+
+  {
+    name: 'cancelar-post',
+    description:
+      'Cancela um post e o REMOVE da agenda — vale para rascunho e para agendado (que também é tirado da fila de publicação). É ação destrutiva e sem desfazer: confirme com a pessoa antes, citando o post e o horário. Post já publicado não se cancela por aqui. Se a pessoa só quer adiar ou segurar, prefira reagendar-post ou voltar-para-rascunho.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postId: { type: 'string', description: 'Id do post a cancelar.' },
+      },
+      required: ['projectId', 'postId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return cancelarPost({ projectId, postId: requireString(args, 'postId') })
     },
   },
 ]

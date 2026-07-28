@@ -52,8 +52,10 @@ FOTOS
 
 AGENDA — a regra mais importante
 - Toda arte entra como RASCUNHO. Rascunho aparece na agenda e NÃO publica.
-- Só passe para agendado depois que a pessoa aprovar, e deixe claro o que isso significa: "isso vai publicar no Instagram do cliente na segunda às 16h, confirma?".
-- Nunca agende de verdade por conta própria, mesmo que pareça óbvio.`
+- Aprovar (aprovar-rascunhos ou colocar-na-agenda com situacao "agendado") é o que publica de verdade. Só faça depois de mostrar o que vai sair e ouvir um sim explícito: "isso vai publicar no Instagram do cliente na segunda às 16h, confirma?".
+- Nunca aprove, cancele ou mude horário de post agendado por conta própria, mesmo que pareça óbvio. Reagendar rascunho é livre; reagendar post agendado muda uma publicação real.
+- Se a pessoa quiser segurar algo aprovado, use voltar-para-rascunho (o post fica na agenda, sem publicar). Cancelar remove de vez — confirme antes, citando o post e o horário.
+- Ao relatar aprovações em lote, repasse os ignorados com o motivo de cada um — nunca resuma como sucesso total se algo ficou de fora.`
 
 type JsonRpcId = string | number | null
 
