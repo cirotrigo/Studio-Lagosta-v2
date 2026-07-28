@@ -97,6 +97,9 @@ export interface TemplateEditorContextValue {
   alignSelectedToCanvasCenterH: () => void
   alignSelectedToCanvasCenterV: () => void
   // AI Image Edit Integration
+  /** Camada de imagem em modo de recorte in-canvas (null = fora do modo) */
+  croppingLayerId: string | null
+  setCroppingLayerId: (id: string | null) => void
   pendingAIImageEdit: {
     url: string
     name: string
@@ -182,6 +185,7 @@ const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
 const selectedLayerIdsRef = React.useRef<string[]>(selectedLayerIds)
 const [, setUpdateCounter] = React.useState(0)
+const [croppingLayerId, setCroppingLayerId] = React.useState<string | null>(null)
 const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   url: string
   name: string
@@ -1299,6 +1303,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       alignSelectedToCanvasCenterV,
       pendingAIImageEdit,
       setPendingAIImageEdit,
+      croppingLayerId,
+      setCroppingLayerId,
     }),
     [
       template.id,
@@ -1363,6 +1369,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       alignSelectedToCanvasCenterH,
       alignSelectedToCanvasCenterV,
       pendingAIImageEdit,
+      croppingLayerId,
     ],
   )
 

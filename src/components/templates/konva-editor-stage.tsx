@@ -13,6 +13,7 @@ import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer } from '@/types/template'
 import { KonvaLayerFactory } from './konva-layer-factory'
 import { KonvaSelectionTransformer } from './konva-transformer'
+import { KonvaImageCropOverlay } from './konva-image-crop'
 import { KonvaGradientHandles } from './konva-gradient-handles'
 import {
   computeAlignmentGuides,
@@ -74,6 +75,7 @@ export function KonvaEditorStage() {
     sendSelectedToBack,
     moveSelectedForward,
     moveSelectedBackward,
+    croppingLayerId,
   } = useTemplateEditor()
 
   // OTIMIZAÇÃO MOBILE: Detectar dispositivo para desabilitar features pesadas
@@ -339,6 +341,8 @@ export function KonvaEditorStage() {
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+      // Modo de recorte: o overlay é dono de todos os gestos (nada de marquee)
+      if (croppingLayerId) return
       const stage = event.target.getStage()
       if (!stage) return
 
@@ -360,7 +364,7 @@ export function KonvaEditorStage() {
         })
       }
     },
-    [],
+    [croppingLayerId],
   )
 
   const handleStagePointerMove = React.useCallback(
@@ -681,6 +685,10 @@ export function KonvaEditorStage() {
         return
       }
 
+      // Modo de recorte: Enter/Esc pertencem ao overlay; setas/atalhos não
+      // podem mexer na camada por baixo
+      if (croppingLayerId) return
+
       const key = event.key.toLowerCase()
       const isModifier = event.metaKey || event.ctrlKey
 
@@ -848,6 +856,7 @@ export function KonvaEditorStage() {
     undo,
     showMarginGuides,
     showCanvasBounds,
+    croppingLayerId,
     alignSelectedLeft,
     alignSelectedCenterH,
     alignSelectedRight,
@@ -1024,8 +1033,10 @@ export function KonvaEditorStage() {
             {deferredLayers.map((layer) => (
               <KonvaLayerFactory
                 key={layer.id}
-                layer={layer}
-                disableInteractions={false}
+                // Em modo de recorte o node original sai de cena — o overlay
+                // mostra a imagem inteira com a janela por cima
+                layer={layer.id === croppingLayerId ? { ...layer, visible: false } : layer}
+                disableInteractions={croppingLayerId !== null}
                 dimmed={focusTextMode && layer.type !== 'text'}
                 onSelect={(event) => handleLayerSelect(event, layer)}
                 onChange={(updates) => handleLayerChange(layer.id, updates)}
@@ -1036,7 +1047,7 @@ export function KonvaEditorStage() {
               />
             ))}
             <KonvaSelectionTransformer
-              selectedLayerIds={selectedLayerIds}
+              selectedLayerIds={croppingLayerId ? [] : selectedLayerIds}
               stageRef={stageRef}
               snapEnabled={snappingEnabled}
               snapToMargins={showMarginGuides}
@@ -1044,6 +1055,13 @@ export function KonvaEditorStage() {
             />
             <KonvaGradientHandles stageRef={stageRef} />
           </KonvaLayer>
+
+          {/* Overlay de recorte de imagem (acima do conteúdo, abaixo das guias) */}
+          {croppingLayerId && (
+            <KonvaLayer name="crop-layer">
+              <KonvaImageCropOverlay key={croppingLayerId} />
+            </KonvaLayer>
+          )}
 
           {/* Smart Guides layer - DEVE estar por último para aparecer na frente */}
           <KonvaLayer name="guides-layer" listening={false}>

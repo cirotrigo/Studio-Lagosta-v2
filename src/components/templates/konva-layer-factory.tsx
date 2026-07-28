@@ -12,6 +12,7 @@ import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { resolveImageSourceRect } from '@/lib/image-fit'
 import { traceSvgPath } from '@/lib/konva/svg-path-clip'
+import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 // Import custom Konva filters
 import '@/lib/konva/filters'
@@ -788,6 +789,13 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const flipV = layer.style?.flipV === true
   const maskPath = layer.style?.mask?.path
   const hasWrapper = Boolean(maskPath || flipH || flipV)
+  const { setCroppingLayerId } = useTemplateEditor()
+
+  // Duplo clique entra no recorte in-canvas (v1 não suporta camada rotacionada)
+  const handleDblClick = React.useCallback(() => {
+    if (layer.rotation) return
+    setCroppingLayerId(layer.id)
+  }, [layer.rotation, layer.id, setCroppingLayerId])
 
   // Transformer/seleção anexam no node com o id da camada: o Group quando há
   // wrapper, o próprio KonvaImage caso contrário
@@ -1004,6 +1012,8 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
             : undefined
         }
         onTransformEnd={handleTransformEnd}
+        onDblClick={handleDblClick}
+        onDblTap={handleDblClick}
       >
         <KonvaImage
           ref={imageRef}
@@ -1029,6 +1039,8 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       height={height}
       onTransform={handleTransform}
       onTransformEnd={handleTransformEnd}
+      onDblClick={handleDblClick}
+      onDblTap={handleDblClick}
     />
   )
 }

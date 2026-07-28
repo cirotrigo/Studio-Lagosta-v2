@@ -10,7 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { FlipHorizontal2, FlipVertical2, Expand, Shapes, Ban } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, Expand, Shapes, Ban, Crop } from 'lucide-react'
 import { SHAPES_LIBRARY } from '@/lib/assets/shapes-library'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 
@@ -30,11 +30,13 @@ interface ImageToolbarProps {
 const MASK_SHAPES = SHAPES_LIBRARY.filter((shape) => shape.shapeType === 'svg-path' && shape.pathData)
 
 export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps) {
-  const { design } = useTemplateEditor()
+  const { design, setCroppingLayerId } = useTemplateEditor()
   const opacity = selectedLayer.style?.opacity ?? 1
   const flipH = selectedLayer.style?.flipH === true
   const flipV = selectedLayer.style?.flipV === true
   const maskId = selectedLayer.style?.mask?.shapeId
+  const hasManualCrop = Boolean(selectedLayer.style?.crop)
+  const isRotated = Boolean(selectedLayer.rotation)
 
   const patchStyle = (patch: Partial<NonNullable<Layer['style']>>) => {
     onUpdateLayer(selectedLayer.id, {
@@ -59,6 +61,32 @@ export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps
   return (
     <div className="flex-shrink-0 rounded-lg border border-border/40 bg-card/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-card/80">
       <div className="flex items-center gap-2 px-3 py-1.5 overflow-x-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
+        {/* Recorte in-canvas */}
+        <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
+          <Button
+            size="sm"
+            variant={hasManualCrop ? 'default' : 'ghost'}
+            className="h-8 gap-1.5 px-2"
+            title={isRotated ? 'Zere a rotação para recortar' : 'Recortar (duplo clique na imagem também entra)'}
+            disabled={isRotated}
+            onClick={() => setCroppingLayerId(selectedLayer.id)}
+          >
+            <Crop className="h-4 w-4" />
+            <span className="text-xs">Recortar</span>
+          </Button>
+          {hasManualCrop && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs text-muted-foreground"
+              title="Remover recorte manual (volta ao enquadramento automático)"
+              onClick={() => patchStyle({ crop: undefined })}
+            >
+              Remover
+            </Button>
+          )}
+        </div>
+
         {/* Flip + fit */}
         <div className="flex items-center gap-1 pr-2 border-r border-border/40 flex-shrink-0">
           <Button

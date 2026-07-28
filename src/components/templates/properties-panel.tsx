@@ -1243,7 +1243,9 @@ function ImageControls({ layer, setStyleValue, updateLayerPartial, resetFilters,
                       : 'bg-card hover:bg-accent hover:text-accent-foreground'
                     }
                   `}
-                  onClick={() => setStyleValue(layer, { cropPosition: pos.value as 'left-top' | 'center-top' | 'right-top' | 'left-middle' | 'center-middle' | 'right-middle' | 'left-bottom' | 'center-bottom' | 'right-bottom' })}
+                  // A grade escolhe o enquadramento automático — limpa o crop
+                  // manual, senão os dois controles brigariam pelo recorte
+                  onClick={() => setStyleValue(layer, { cropPosition: pos.value as 'left-top' | 'center-top' | 'right-top' | 'left-middle' | 'center-middle' | 'right-middle' | 'left-bottom' | 'center-bottom' | 'right-bottom', crop: undefined })}
                 >
                   {pos.label}
                 </button>

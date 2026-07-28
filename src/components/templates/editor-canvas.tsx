@@ -4,6 +4,8 @@ import * as React from 'react'
 import dynamic from 'next/dynamic'
 import Konva from 'konva'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Button } from '@/components/ui/button'
+import { Check, X } from 'lucide-react'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
 import { ImageToolbar } from './image-toolbar'
@@ -70,6 +72,7 @@ export function EditorCanvas() {
     alignSelectedToCanvasCenterV,
     zoom,
     setZoom,
+    croppingLayerId,
   } = useTemplateEditor()
   const [isEffectsPanelOpen, setIsEffectsPanelOpen] = React.useState(false)
   const [selectedTextNode, setSelectedTextNode] = React.useState<Konva.Text | Konva.TextPath | null>(null)
@@ -167,6 +170,9 @@ export function EditorCanvas() {
         return
       }
 
+      // Modo de recorte: Enter/Esc são do overlay; nada de deletar/mover aqui
+      if (croppingLayerId) return
+
       // Cmd+J (Mac) ou Ctrl+J (Windows) - Duplicar layer
       if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
         e.preventDefault()
@@ -202,7 +208,7 @@ export function EditorCanvas() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [selectedLayerIds, design.layers, duplicateLayer, removeLayer, moveLayer])
+  }, [selectedLayerIds, design.layers, duplicateLayer, removeLayer, moveLayer, croppingLayerId])
 
   const handleEffectsClick = () => {
     console.log('[EditorCanvas] Effects button clicked. Current state:', isEffectsPanelOpen)
@@ -249,6 +255,30 @@ export function EditorCanvas() {
         className="flex-shrink-0 z-30 flex flex-col items-center justify-start gap-1 overflow-hidden px-2 pt-2"
         style={{ height: 118 }}
       >
+          {/* Modo de recorte: as toolbars saem e entram Aplicar/Cancelar */}
+          {croppingLayerId ? (
+            <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/40 bg-background/95 p-2 shadow-md backdrop-blur">
+              <span className="px-1 text-xs text-muted-foreground">Ajuste a área de recorte</span>
+              <Button
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => window.dispatchEvent(new Event('lagosta:crop-confirm'))}
+              >
+                <Check className="h-4 w-4" />
+                Aplicar
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 gap-1.5"
+                onClick={() => window.dispatchEvent(new Event('lagosta:crop-cancel'))}
+              >
+                <X className="h-4 w-4" />
+                Cancelar
+              </Button>
+            </div>
+          ) : (
+          <>
           {/* Alignment Toolbar - no mobile só aparece com camada selecionada; desktop sempre */}
           <div className={`pointer-events-auto max-w-full overflow-x-auto rounded-lg border border-border/40 bg-background/95 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/80 ${selectedLayerIds.length > 0 ? '' : 'hidden md:block'}`}>
             <div className="flex items-center justify-center p-1.5 min-w-max">
@@ -306,6 +336,8 @@ export function EditorCanvas() {
                 }}
               />
             </div>
+          )}
+          </>
           )}
         </div>
 
