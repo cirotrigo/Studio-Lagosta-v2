@@ -294,7 +294,7 @@ export function VideoExportButton() {
             clearInterval(interval)
             toast({
               title: '🎉 Vídeo pronto!',
-              description: 'Seu MP4 está disponível na aba Criativos.',
+              description: 'MP4 na aba Criativos — abrimos ela para você agendar.',
               duration: 8000,
             })
             window.dispatchEvent(new CustomEvent('video-export-completed', { detail }))

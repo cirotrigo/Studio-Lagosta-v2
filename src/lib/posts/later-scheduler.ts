@@ -410,6 +410,16 @@ export class LaterPostScheduler {
       if (data.mediaUrls.length === 0) {
         throw new Error('Pelo menos uma mídia é necessária')
       }
+
+      // Tipo de mídia × tipo de post. Antes o guard de "reel exige vídeo"
+      // vivia só no client — a API MCP aceitava reel com imagem, que o Zernio
+      // rejeita na publicação (falha às 2h da manhã em vez de na criação).
+      if (data.postType === 'REEL' && !data.mediaUrls.some((url) => isVideoUrl(url))) {
+        throw new Error('Reel deve conter um vídeo (.mp4, .mov ou .webm)')
+      }
+      if (data.postType === 'CAROUSEL' && data.mediaUrls.some((url) => isVideoUrl(url))) {
+        throw new Error('Carrossel com vídeo ainda não é suportado — use Reel ou Story')
+      }
     }
 
     // Validate scheduled time is in the future

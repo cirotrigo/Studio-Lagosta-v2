@@ -233,6 +233,16 @@ function TemplateEditorContent({
   const isMobile = useIsMobile()
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
   const [activeRightPanel, setActiveRightPanel] = React.useState<RightPanel>(null)
+
+  // MP4 pronto na fila → abrir a aba Criativos para o usuário agendar na hora
+  // (o creatives-panel já escuta o mesmo evento para atualizar a lista)
+  React.useEffect(() => {
+    const handleVideoCompleted = () => {
+      setActiveRightPanel('creatives')
+    }
+    window.addEventListener('video-export-completed', handleVideoCompleted)
+    return () => window.removeEventListener('video-export-completed', handleVideoCompleted)
+  }, [])
   const [isFullscreen, setIsFullscreen] = React.useState(false)
   // Em telas baixas (notebooks pequenos), inicia com a barra de páginas colapsada
   const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(
