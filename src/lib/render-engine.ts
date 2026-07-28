@@ -68,6 +68,27 @@ export class RenderEngine {
     if (finalLayer.visible === false) return
 
     ctx.save()
+
+    // Fundo/pílula de texto: no editor é um Rect IRMÃO do Text (sem rotação e
+    // sem a opacidade da camada), desenhado logo abaixo dele — replicar antes
+    // do transform. Texto curvo não tem fundo no editor.
+    // (rich-text fica de fora: como na sombra, o konva-multi-styled-text lê
+    // efeitos por segmento e ignora layer.effects)
+    const backgroundFx = finalLayer.effects?.background
+    if (
+      finalLayer.type === 'text' &&
+      backgroundFx?.enabled &&
+      !finalLayer.effects?.curved?.enabled
+    ) {
+      const pad = (backgroundFx.padding ?? 0) * scaleFactor
+      const bgX = finalLayer.position.x * scaleFactor - pad
+      const bgY = finalLayer.position.y * scaleFactor - pad
+      const bgW = finalLayer.size.width * scaleFactor + pad * 2
+      const bgH = finalLayer.size.height * scaleFactor + pad * 2
+      ctx.fillStyle = backgroundFx.backgroundColor ?? '#000000'
+      ctx.fillRect(bgX, bgY, bgW, bgH)
+    }
+
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
     this.applyShadow(ctx, finalLayer, scaleFactor)
     this.applyOpacity(ctx, finalLayer.style)
@@ -346,12 +367,24 @@ export class RenderEngine {
     const boxWidth = Math.max(0, width - pad * 2)
     const boxHeight = Math.max(0, height - pad * 2)
 
+    // Contorno de texto: o editor stroka os glifos do Konva.Text quando
+    // effects.stroke está ligado (com fallback para style.border) — até aqui a
+    // arte publicada saía sem contorno nenhum.
+    const strokeFx = layer.type === 'text' ? layer.effects?.stroke : undefined
+    const scaleFactor = options.scaleFactor ?? 1
+    let textStroke: { color: string; width: number } | undefined
+    if (strokeFx?.enabled && (strokeFx.strokeWidth ?? 0) > 0) {
+      textStroke = { color: strokeFx.strokeColor ?? '#000000', width: strokeFx.strokeWidth * scaleFactor }
+    } else if (layer.type === 'text' && style.border?.width && style.border.width > 0) {
+      textStroke = { color: style.border.color ?? '#000000', width: style.border.width * scaleFactor }
+    }
+
     // Camada sem textboxConfig passa pelo mesmo caminho com quebra de linha:
     // o fallback antigo (fillText com maxWidth) espremia os glifos
     // horizontalmente em vez de quebrar, enquanto o editor Konva sempre quebra
     // (wrap="word") — 448 camadas publicavam texto deformado
     const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
-    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight)
+    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight, textStroke)
   }
 
   /**
@@ -383,6 +416,7 @@ export class RenderEngine {
     content: string,
     width: number,
     height: number,
+    textStroke?: { color: string; width: number },
   ): Promise<void> {
     const mode = config.textMode ?? 'auto-wrap-fixed'
 
@@ -391,11 +425,11 @@ export class RenderEngine {
         this.renderAutoResizeSingle(ctx, content, width, style)
         break
       case 'auto-resize-multi':
-        this.renderAutoResizeMulti(ctx, content, width, height, style, config)
+        this.renderAutoResizeMulti(ctx, content, width, height, style, config, textStroke)
         break
       case 'auto-wrap-fixed':
       default:
-        this.renderAutoWrapFixed(ctx, content, width, height, style, config)
+        this.renderAutoWrapFixed(ctx, content, width, height, style, config, textStroke)
         break
     }
   }
@@ -436,6 +470,7 @@ export class RenderEngine {
     height: number,
     style: LayerStyle,
     config: TextboxConfig,
+    textStroke?: { color: string; width: number },
   ): void {
     const minFontSize = Math.max(1, config.autoResize?.minFontSize ?? 12)
     const maxFontSize = Math.max(minFontSize, config.autoResize?.maxFontSize ?? style.fontSize ?? 48)
@@ -475,6 +510,7 @@ export class RenderEngine {
       config.anchor,
       height,
       config.autoWrap?.autoExpand === true,
+      textStroke,
     )
   }
 
@@ -485,6 +521,7 @@ export class RenderEngine {
     height: number,
     style: LayerStyle,
     config: TextboxConfig,
+    textStroke?: { color: string; width: number },
   ): void {
     const fontSize = Math.max(1, style.fontSize ?? 16)
     ctx.font = this.buildFontString(fontSize, style)
@@ -505,6 +542,7 @@ export class RenderEngine {
       config.anchor,
       height,
       config.autoWrap?.autoExpand === true,
+      textStroke,
     )
   }
 
@@ -517,6 +555,7 @@ export class RenderEngine {
     anchor: TextboxConfig['anchor'] = 'top',
     maxHeight?: number,
     autoExpand = false,
+    textStroke?: { color: string; width: number },
   ): void {
     if (!lines.length) return
 
@@ -552,10 +591,20 @@ export class RenderEngine {
     ctx.textBaseline = 'middle'
     let currentY = startY + lineHeight / 2
 
+    if (textStroke) {
+      ctx.strokeStyle = textStroke.color
+      ctx.lineWidth = textStroke.width
+      // O Konva stroka glifo com junções arredondadas (evita espículas em
+      // serifas/quinas com contorno grosso)
+      ctx.lineJoin = 'round'
+    }
+
     for (const line of drawLines) {
       // Sem o 4º argumento (maxWidth): ele COMPRIME os glifos quando a linha
       // passa da caixa. Palavra maior que a caixa transborda, como no editor
       ctx.fillText(line, x, currentY)
+      // Konva: fill primeiro, stroke por cima
+      if (textStroke) ctx.strokeText(line, x, currentY)
       currentY += lineHeight
     }
 
