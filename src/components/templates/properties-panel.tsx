@@ -33,6 +33,7 @@ import type { Layer, LayerStyle } from '@/types/template'
 import { ImageEditorModal } from './modals/image-editor-modal'
 import { GradientEditor } from './gradient-editor'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
+import { BrandColorSwatches } from './brand-color-swatches'
 import { VideoProperties } from './video-properties'
 import {
   applyOpacityToEditableColor,
@@ -324,6 +325,10 @@ function PropertiesContent({
               onChange={handleCanvasBackground}
             />
           </div>
+          <BrandColorSwatches
+            value={design.canvas.backgroundColor ?? '#ffffff'}
+            onSelect={(hex) => editor.updateCanvas({ backgroundColor: hex })}
+          />
         </div>
       </div>
       <div className="space-y-3">
@@ -813,6 +818,13 @@ function TextEffectsOnly({ layer }: TextEffectsOnlyProps) {
                   })}
                 />
               </div>
+              <BrandColorSwatches
+                value={effects.stroke.strokeColor}
+                onSelect={(hex) => updateEffect('stroke', {
+                  ...effects.stroke,
+                  strokeColor: hex
+                })}
+              />
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -875,6 +887,13 @@ function TextEffectsOnly({ layer }: TextEffectsOnlyProps) {
                   })}
                 />
               </div>
+              <BrandColorSwatches
+                value={effects.background.backgroundColor}
+                onSelect={(hex) => updateEffect('background', {
+                  ...effects.background,
+                  backgroundColor: hex
+                })}
+              />
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -940,6 +959,13 @@ function TextEffectsOnly({ layer }: TextEffectsOnlyProps) {
                   })}
                 />
               </div>
+              <BrandColorSwatches
+                value={effects.shadow.shadowColor}
+                onSelect={(hex) => updateEffect('shadow', {
+                  ...effects.shadow,
+                  shadowColor: hex
+                })}
+              />
             </div>
             <div className="space-y-1">
               <div className="flex items-center justify-between">
@@ -1416,6 +1442,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
             })}
           />
         </div>
+        <BrandColorSwatches
+          value={toColorInputValue(layer.style?.fill, '#2563eb')}
+          onSelect={(hex) => setStyleValue(layer, {
+            fill: applyOpacityToEditableColor(hex, fillOpacity / 100, '#2563eb'),
+            fillOpacity: 1,
+          })}
+        />
         <p className="text-[10px] text-muted-foreground break-all">
           Valor salvo: {layer.style?.fill ?? '#2563eb'}
         </p>
@@ -1461,6 +1494,13 @@ function ShapeControls({ layer, setStyleValue }: ShapeControlsProps) {
               })}
             />
           </div>
+          <BrandColorSwatches
+            value={toColorInputValue(layer.style?.strokeColor, '#1e3a8a')}
+            onSelect={(hex) => setStyleValue(layer, {
+              strokeColor: applyOpacityToEditableColor(hex, strokeOpacity / 100, '#1e3a8a'),
+              strokeOpacity: 1,
+            })}
+          />
           <p className="text-[10px] text-muted-foreground break-all">
             Valor salvo: {layer.style?.strokeColor ?? '#1e3a8a'}
           </p>
@@ -1521,6 +1561,10 @@ function IconControls({ layer, setStyleValue }: IconControlsProps) {
             onChange={(event) => setStyleValue(layer, { fill: event.target.value })}
           />
         </div>
+        <BrandColorSwatches
+          value={layer.style?.fill ?? '#111111'}
+          onSelect={(hex) => setStyleValue(layer, { fill: hex })}
+        />
       </div>
       <div className="space-y-1">
         <Label>Espessura do traço</Label>

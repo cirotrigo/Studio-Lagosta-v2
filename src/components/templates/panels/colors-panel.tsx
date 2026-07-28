@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Plus, Loader2, X, Check } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 
@@ -21,6 +22,7 @@ interface BrandColor {
 export function ColorsPanelContent() {
   const { projectId } = useTemplateEditor()
   const { toast } = useToast()
+  const queryClient = useQueryClient()
 
   const [colors, setColors] = React.useState<BrandColor[]>([])
   const [isLoading, setIsLoading] = React.useState(true)
@@ -99,6 +101,9 @@ export function ColorsPanelContent() {
 
       const newColor = await response.json()
       setColors((prev) => [newColor, ...prev])
+      // As paletas (BrandColorSwatches/ColorPicker) leem do cache do React
+      // Query — sem invalidar, a cor nova só apareceria nelas após o stale
+      queryClient.invalidateQueries({ queryKey: ['brand-colors', projectId] })
 
       // Reset form
       setNewColorName('')
@@ -119,7 +124,7 @@ export function ColorsPanelContent() {
     } finally {
       setIsAdding(false)
     }
-  }, [projectId, newColorName, newColorHex, toast])
+  }, [projectId, newColorName, newColorHex, toast, queryClient])
 
   // Remove color
   const handleRemoveColor = React.useCallback(async (colorId: number, colorName: string) => {
@@ -136,6 +141,7 @@ export function ColorsPanelContent() {
       }
 
       setColors((prev) => prev.filter((c) => c.id !== colorId))
+      queryClient.invalidateQueries({ queryKey: ['brand-colors', projectId] })
 
       toast({
         title: 'Cor removida',
@@ -149,7 +155,7 @@ export function ColorsPanelContent() {
         variant: 'destructive',
       })
     }
-  }, [projectId, toast])
+  }, [projectId, toast, queryClient])
 
   return (
     <div className="space-y-4">
@@ -187,7 +193,7 @@ export function ColorsPanelContent() {
                   id="colorHex"
                   placeholder="#000000"
                   value={newColorHex}
-                  onChange={(e) => setNewColorHex(e.target.value)}
+                  onChange={(e) => setNewColorHex(e.target.value.trim())}
                   disabled={isAdding}
                   maxLength={7}
                   className="pr-10"

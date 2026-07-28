@@ -7,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Trash2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
+import { BrandColorSwatches } from './brand-color-swatches'
 import type { GradientStop } from '@/types/template'
 
 const MAX_STOPS = 6
@@ -335,6 +336,10 @@ export function GradientEditor({ layerId }: GradientEditorProps) {
               <Trash2 className="h-3.5 w-3.5" />
             </Button>
           </div>
+          <BrandColorSwatches
+            value={selectedStop.color}
+            onSelect={(hex) => updateSelectedStop({ color: hex })}
+          />
           <div className="space-y-1">
             <Label className="text-[10px] uppercase tracking-wide">
               Opacidade: {Math.round((selectedStop.opacity ?? 1) * 100)}%

@@ -4,6 +4,7 @@ import * as React from 'react'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { TemplateEditorContext } from '@/contexts/template-editor-context'
+import { useBrandColors } from '@/hooks/use-brand-colors'
 
 interface ColorPickerProps {
   label: string
@@ -11,12 +12,6 @@ interface ColorPickerProps {
   onChange: (color: string) => void
   disabled?: boolean
   projectId?: number  // Opcional: se não fornecido, pega do context
-}
-
-interface BrandColor {
-  id: number
-  name: string
-  hexCode: string
 }
 
 /**
@@ -31,21 +26,11 @@ export function ColorPicker({ label, value, onChange, disabled, projectId: proje
   // If neither available, brand colors won't load (graceful degradation)
   const projectId = projectIdProp ?? context?.projectId
   const [localValue, setLocalValue] = React.useState(value)
-  const [brandColors, setBrandColors] = React.useState<BrandColor[]>([])
+  const { data: brandColors = [] } = useBrandColors(projectId ?? null)
 
   React.useEffect(() => {
     setLocalValue(value)
   }, [value])
-
-  // Load brand colors
-  React.useEffect(() => {
-    if (!projectId) return
-
-    fetch(`/api/projects/${projectId}/colors`)
-      .then((res) => res.ok ? res.json() : [])
-      .then((data) => setBrandColors(data))
-      .catch(() => setBrandColors([]))
-  }, [projectId])
 
   const handleColorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newColor = e.target.value
@@ -54,7 +39,9 @@ export function ColorPicker({ label, value, onChange, disabled, projectId: proje
   }
 
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newColor = e.target.value
+    // Trim aqui: hex colado com espaços já derrubou o canvas inteiro
+    // (rgba(NaN…) no addColorStop do Konva, template 160)
+    const newColor = e.target.value.trim()
     setLocalValue(newColor)
 
     // Validate hex color before calling onChange
