@@ -8,10 +8,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
+const MVSEP_API_KEY = process.env.MVSEP_API_KEY?.trim()
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
+  if (!MVSEP_API_KEY) {
+    return NextResponse.json(
+      { error: 'MVSEP_API_KEY environment variable is not set' },
+      { status: 500 }
+    )
+  }
+
   try {
     const { searchParams } = new URL(req.url)
     const musicIdStr = searchParams.get('musicId')
