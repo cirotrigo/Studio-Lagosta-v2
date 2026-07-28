@@ -157,6 +157,37 @@ export function KonvaEditableText({
     textNode.getLayer()?.batchDraw()
   }, [assinaturaRender, layer.effects?.blur, layer.effects?.shadow, layer.style?.fontSize, shapeRef])
 
+  // Tooltip DOM com o fontSize ao vivo durante o corner-resize (plano § 4.2.4).
+  // Vive fora do ciclo do React: o transform dispara onChange a cada frame e
+  // qualquer estado aqui viraria um re-render por movimento de mouse.
+  const fontSizeTipRef = React.useRef<HTMLDivElement | null>(null)
+  const hideFontSizeTip = React.useCallback(() => {
+    fontSizeTipRef.current?.remove()
+    fontSizeTipRef.current = null
+  }, [])
+  React.useEffect(() => hideFontSizeTip, [hideFontSizeTip])
+
+  const showFontSizeTip = React.useCallback((stage: Konva.Stage | null, fontSize: number) => {
+    if (!stage) return
+    let el = fontSizeTipRef.current
+    if (!el) {
+      el = document.createElement('div')
+      el.style.cssText =
+        'position:fixed;z-index:10000;pointer-events:none;background:rgba(15,15,15,0.9);' +
+        'color:#fff;font:12px/1.7 system-ui,sans-serif;padding:1px 8px;border-radius:6px;' +
+        'transform:translate(-50%,-130%);white-space:nowrap;'
+      document.body.appendChild(el)
+      fontSizeTipRef.current = el
+    }
+    const pointer = stage.getPointerPosition()
+    if (pointer) {
+      const box = stage.container().getBoundingClientRect()
+      el.style.left = `${box.left + pointer.x}px`
+      el.style.top = `${box.top + pointer.y - 12}px`
+    }
+    el.textContent = `${fontSize}px`
+  }, [])
+
   // Setup transform handler para ajustar fontSize baseado no scale (comportamento tipo Canva)
   React.useEffect(() => {
     const textNode = shapeRef.current
@@ -204,6 +235,8 @@ export function KonvaEditableText({
         const pixelRatio = Math.max(2, window.devicePixelRatio || 2)
         textNode.cache({ pixelRatio, imageSmoothingEnabled: true })
 
+        showFontSizeTip(textNode.getStage(), newFontSize)
+
         onChange({
           size: {
             width: newWidth,
@@ -245,11 +278,14 @@ export function KonvaEditableText({
     }
 
     textNode.on('transform', handleTransform)
+    // namespace próprio: o off() genérico de outro efeito não pode derrubar este
+    textNode.on('transformend.fontsizetip', hideFontSizeTip)
 
     return () => {
       textNode.off('transform', handleTransform)
+      textNode.off('transformend.fontsizetip')
     }
-  }, [shapeRef, layer.style, layer.size, onChange])
+  }, [shapeRef, layer.style, layer.size, onChange, showFontSizeTip, hideFontSizeTip])
 
   /**
    * Ajusta a altura da caixa ao texto quebrado, quando ligado.
@@ -386,11 +422,20 @@ export function KonvaEditableText({
     // OFICIAL KONVA PATTERN: Calcular posição absoluta na tela
     const textPosition = textNode.absolutePosition()
     const stageBox = stage.container().getBoundingClientRect()
+    const rotation = textNode.rotation()
+
+    // O conteúdo do Konva.Text começa `padding` px para DENTRO da origem do
+    // node (e o offset gira junto com ele). O demo oficial não tem padding;
+    // sem compensar, o textarea abria ~6px acima/à esquerda do texto e ele
+    // "pulava" ao entrar e sair da edição.
+    const absScale = textNode.getAbsoluteScale().x
+    const rad = (rotation * Math.PI) / 180
+    const padOffsetX = padding * absScale * (Math.cos(rad) - Math.sin(rad))
+    const padOffsetY = padding * absScale * (Math.sin(rad) + Math.cos(rad))
 
     // OFICIAL KONVA: Absolute position SEM multiplicar por scale
-    const absoluteX = stageBox.left + textPosition.x
-    const absoluteY = stageBox.top + textPosition.y
-    const rotation = textNode.rotation()
+    const absoluteX = stageBox.left + textPosition.x + padOffsetX
+    const absoluteY = stageBox.top + textPosition.y + padOffsetY
 
     setEditingState({
       value: currentValue,
@@ -1099,9 +1144,16 @@ export function KonvaEditableText({
       const textPosition = textNode.absolutePosition()
       const stageBox = stage.container().getBoundingClientRect()
 
+      // Mesma compensação do padding feita ao abrir a edição (ver startEditing)
+      const absScale = textNode.getAbsoluteScale().x
+      const rad = (textNode.rotation() * Math.PI) / 180
+      const pad = textNode.padding()
+      const padOffsetX = pad * absScale * (Math.cos(rad) - Math.sin(rad))
+      const padOffsetY = pad * absScale * (Math.sin(rad) + Math.cos(rad))
+
       // FIXED: Atualizar posição usando fixed positioning
-      const absoluteX = stageBox.left + textPosition.x
-      const absoluteY = stageBox.top + textPosition.y
+      const absoluteX = stageBox.left + textPosition.x + padOffsetX
+      const absoluteY = stageBox.top + textPosition.y + padOffsetY
 
       textarea.style.top = `${absoluteY}px`
       textarea.style.left = `${absoluteX}px`
