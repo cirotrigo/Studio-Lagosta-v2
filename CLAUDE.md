@@ -465,6 +465,26 @@ em gradientes, vazamento entre páginas, fontes no export, integração do
 Instagram, métricas, combinações tipográficas e histórico de migrations — com as
 armadilhas descobertas em cada área.
 
+`docs/SESSAO-2026-07-28-RENDER-AGENDADOS.md` fecha o arco: sombra que o
+render nunca desenhou, invalidação automática da arte agendada ao editar
+página/camada, e a troca de fonte com medição de caixa. Regras que ficaram:
+
+- **O cron `render-stories` nunca revisita um post RENDERED.** Quem grava
+  `Page.layers` em rota nova PRECISA chamar `invalidateScheduledRenders`
+  (`src/lib/posts/invalidate-renders.ts`) — senão o post publica a arte
+  antiga em silêncio. O PATCH de página só invalida em mudança visual REAL
+  (o mesmo endpoint recebe thumbnail e autosave do PageSync).
+- **Mudou o código de render?** `scripts/rerender-agendados.ts` força o
+  re-render do que já está RENDERED — só com o deploy no ar.
+- **Fonte de projeto exige arquivo enviado** (`CustomFont` + blob): o
+  `addGoogleFont` do editor carrega do CDN só no navegador, e o render cai em
+  fallback. Arquivo TTF **estático** (napi-rs canvas não aplica eixo variável)
+  e o peso pedido tem de existir no arquivo — faux-bold só existe no browser.
+- **Trocar fonte muda a métrica**: medir a caixa com a fonte nova, senão o
+  texto quebra e a linha extra é cortada pela altura.
+- O RenderEngine ainda ignora `letterSpacing`, fundo de texto, contorno,
+  curved/blur e `richTextStyles` — lista completa e alcances na § 3 do doc.
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá

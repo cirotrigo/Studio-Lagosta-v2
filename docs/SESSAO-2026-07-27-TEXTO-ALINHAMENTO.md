@@ -286,6 +286,15 @@ só; o segundo efeito ficou apenas com o `transformer.forceUpdate()`.
 
 ---
 
+## Continuação
+
+A noite seguinte seguiu o fio da divergência editor×render até o fim: sombra
+que nunca renderizava, invalidação automática da arte agendada e a troca
+Konsteady→Caveat. Ver
+[SESSAO-2026-07-28-RENDER-AGENDADOS.md](./SESSAO-2026-07-28-RENDER-AGENDADOS.md).
+
+---
+
 ## Estado ao fim da sessão
 
 | Área | Situação |
