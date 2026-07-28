@@ -8,8 +8,21 @@ import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import type { MusicStemJob } from '@prisma/client'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
+
+/**
+ * Resolve a API key em tempo de chamada (não no load do módulo, para não
+ * quebrar o build). Sem MVSEP_API_KEY no ambiente, falha com erro claro.
+ */
+export function getMvsepApiKey(): string {
+  const key = process.env.MVSEP_API_KEY
+  if (!key) {
+    throw new Error(
+      'MVSEP_API_KEY environment variable is not set. Get a key at https://mvsep.com/pt/full_api and add it to the environment.'
+    )
+  }
+  return key
+}
 
 interface MvsepCreateResponse {
   success: boolean
@@ -38,6 +51,8 @@ interface MvsepStatusResponse {
  */
 export async function startStemSeparation(job: MusicStemJob & { music: any }) {
   try {
+    const apiKey = getMvsepApiKey()
+
     console.log(`[MVSEP] Starting stem separation for job ${job.id}, music ${job.musicId}`)
 
     // Atualizar status para processing
@@ -63,7 +78,7 @@ export async function startStemSeparation(job: MusicStemJob & { music: any }) {
 
     // Criar FormData para upload multipart
     const formData = new FormData()
-    formData.append('api_token', MVSEP_API_KEY)
+    formData.append('api_token', apiKey)
     formData.append('audiofile', audioBlob, 'audio.mp3')
     formData.append('sep_type', '48') // MelBand Roformer (vocals, instrumental)
     formData.append('output_format', '0') // 0 = mp3 320kbps
@@ -140,10 +155,12 @@ export async function checkMvsepJobStatus(job: MusicStemJob) {
   }
 
   try {
+    const apiKey = getMvsepApiKey()
+
     console.log(`[MVSEP] Checking status for job ${job.id}, hash: ${job.mvsepJobHash}`)
 
     const response = await fetch(
-      `${MVSEP_API_URL}/separation/get?api_token=${MVSEP_API_KEY}&hash=${job.mvsepJobHash}`
+      `${MVSEP_API_URL}/separation/get?api_token=${apiKey}&hash=${job.mvsepJobHash}`
     )
 
     const responseText = await response.text()

@@ -7,12 +7,13 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getMvsepApiKey } from '@/lib/mvsep/mvsep-client'
 
-const MVSEP_API_KEY = process.env.MVSEP_API_KEY || 'BrIkx8zYQbvc4TggAZbsL96Mag9WN5'
 const MVSEP_API_URL = 'https://mvsep.com/api'
 
 export async function GET(req: NextRequest) {
   try {
+    const MVSEP_API_KEY = getMvsepApiKey()
     const { searchParams } = new URL(req.url)
     const musicIdStr = searchParams.get('musicId')
 
