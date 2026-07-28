@@ -31,7 +31,6 @@ import { ModelosTab } from '@/components/projects/modelos-tab'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
-import { ReminderWebhookConfig } from '@/components/projects/reminder-webhook-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
@@ -374,12 +373,6 @@ export default function ProjectDetailPage() {
                   laterProfileId={projectDetails.laterProfileId}
                   postingProvider={projectDetails.postingProvider}
                   instagramUsername={projectDetails.instagramUsername}
-                />
-
-                {/* Reminder Webhook Configuration */}
-                <ReminderWebhookConfig
-                  projectId={projectId}
-                  webhookReminderUrl={projectDetails.webhookReminderUrl}
                 />
 
                 {/* Google Drive Folders */}

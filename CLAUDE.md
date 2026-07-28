@@ -417,8 +417,26 @@ termina em `@g.us`.
   SCHEDULED): cliente, tipo de post, horário que era para sair no fuso de
   Brasília, motivo e link para `{APP_URL}/projects/{projectId}?tab=agenda`.
   Motivos longos do Zernio são colapsados e cortados em 220 caracteres.
-- Lembretes (`publishType: REMINDER`) avisam pelo mesmo canal quando o webhook
-  falha ou quando o projeto não tem `webhookReminderUrl` configurado.
+#### Lembretes de publicação manual
+
+Post com `publishType: REMINDER` não é publicado pelo sistema — alguém publica
+na mão. `/api/cron/reminders` (a cada 5 min) manda pelo WhatsApp, 5 a 10 minutos
+antes do horário, tudo que essa pessoa precisa: a arte, a legenda, o primeiro
+comentário e a observação. Ver `src/lib/notifications/reminder-notifier.ts`.
+
+- **Até julho/2026 isso era um webhook por projeto** (`Project.webhookReminderUrl`),
+  e os 11 projetos apontavam para o mesmo n8n. A coluna, a rota
+  `/api/projects/[projectId]/test-webhook` e o componente
+  `reminder-webhook-config.tsx` foram **removidos** — não reintroduza o campo
+  achando que sumiu por engano.
+- **Uma mídia vai como imagem legendada** (uma mensagem só); com várias, o texto
+  vai primeiro e as artes em seguida, numeradas, para a ordem do carrossel ficar
+  clara.
+- `reminderSentAt` só é gravado quando a mensagem principal sai. Arte extra que
+  falha é apenas logada — reenviar tudo na rodada seguinte duplicaria o lembrete.
+- A janela é de 5 a 10 minutos à frente. **Lembrete criado com data já passada
+  nunca entra nessa janela** e fica SCHEDULED para sempre; havia 5 posts assim
+  em produção, de janeiro a maio de 2026.
 
 #### Environment Variables
 

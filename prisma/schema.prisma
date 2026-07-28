@@ -211,7 +211,6 @@ model Project {
   laterAccountId              String?
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)
-  webhookReminderUrl          String?
   brandStyleDescription       String?
   brandVisualElements         Json?
   brandReferenceUrls          String[]                @default([])

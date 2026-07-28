@@ -5,15 +5,17 @@
  * logado e engolido — uma publicação não pode falhar porque o WhatsApp estava
  * fora do ar. Por isso `sendWhatsAppText` devolve boolean em vez de lançar.
  *
- * Envio de texto na Evolution v2:
- *   POST {EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}
+ * Envio na Evolution v2:
+ *   POST {EVOLUTION_API_URL}/message/sendText/{EVOLUTION_INSTANCE}   body { number, text }
+ *   POST {EVOLUTION_API_URL}/message/sendMedia/{EVOLUTION_INSTANCE}  body { number, mediatype, media, caption }
  *   header: apikey
- *   body:   { number, text }
  *
  * Para grupo, `number` é o JID do grupo (termina em `@g.us`).
  */
 
 const SEND_TIMEOUT_MS = 10_000
+/** Mídia é baixada pela Evolution a partir da URL, então demora mais que texto. */
+const SEND_MEDIA_TIMEOUT_MS = 60_000
 
 interface EvolutionConfig {
   apiUrl: string
@@ -53,27 +55,23 @@ function sanitize(text: string, apiKey: string): string {
   return apiKey ? text.split(apiKey).join('***') : text
 }
 
-/**
- * Envia uma mensagem de texto pelo WhatsApp.
- *
- * @param recipient JID do destinatário. Omitido, usa EVOLUTION_NOTIFY_GROUP_ID.
- * @returns true se a Evolution aceitou o envio; false em qualquer outro caso.
- */
-export async function sendWhatsAppText(
-  text: string,
+async function post(
+  path: string,
+  payload: Record<string, unknown>,
+  timeoutMs: number,
   recipient?: string
 ): Promise<boolean> {
   const config = readConfig()
 
   if (!config) {
     console.warn(
-      '[Evolution] Notificação ignorada: configure EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE e EVOLUTION_NOTIFY_GROUP_ID'
+      '[Evolution] Envio ignorado: configure EVOLUTION_API_URL, EVOLUTION_API_KEY, EVOLUTION_INSTANCE e EVOLUTION_NOTIFY_GROUP_ID'
     )
     return false
   }
 
   const number = recipient?.trim() || config.defaultRecipient
-  const endpoint = `${config.apiUrl}/message/sendText/${encodeURIComponent(config.instance)}`
+  const endpoint = `${config.apiUrl}/${path}/${encodeURIComponent(config.instance)}`
 
   try {
     const response = await fetch(endpoint, {
@@ -82,8 +80,8 @@ export async function sendWhatsAppText(
         'Content-Type': 'application/json',
         apikey: config.apiKey,
       },
-      body: JSON.stringify({ number, text }),
-      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
+      body: JSON.stringify({ number, ...payload }),
+      signal: AbortSignal.timeout(timeoutMs),
     })
 
     if (!response.ok) {
@@ -95,14 +93,57 @@ export async function sendWhatsAppText(
       return false
     }
 
-    console.log(`[Evolution] ✅ Aviso enviado para ${number}`)
+    console.log(`[Evolution] ✅ Mensagem enviada para ${number}`)
     return true
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     console.error(
-      `[Evolution] Falha ao enviar aviso para ${number}:`,
+      `[Evolution] Falha ao enviar para ${number}:`,
       sanitize(message, config.apiKey)
     )
     return false
   }
+}
+
+/**
+ * Envia uma mensagem de texto pelo WhatsApp.
+ *
+ * @param recipient JID do destinatário. Omitido, usa EVOLUTION_NOTIFY_GROUP_ID.
+ * @returns true se a Evolution aceitou o envio; false em qualquer outro caso.
+ */
+export async function sendWhatsAppText(
+  text: string,
+  recipient?: string
+): Promise<boolean> {
+  return post('message/sendText', { text }, SEND_TIMEOUT_MS, recipient)
+}
+
+function isVideoUrl(url: string): boolean {
+  return /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url)
+}
+
+/**
+ * Envia uma imagem ou vídeo pelo WhatsApp. A Evolution baixa a mídia da URL,
+ * que por isso precisa ser pública — as nossas ficam no Vercel Blob.
+ *
+ * @param caption Texto que acompanha a mídia (opcional).
+ */
+export async function sendWhatsAppMedia(
+  mediaUrl: string,
+  options?: { caption?: string; recipient?: string; fileName?: string }
+): Promise<boolean> {
+  const isVideo = isVideoUrl(mediaUrl)
+
+  return post(
+    'message/sendMedia',
+    {
+      mediatype: isVideo ? 'video' : 'image',
+      mimetype: isVideo ? 'video/mp4' : 'image/jpeg',
+      media: mediaUrl,
+      fileName: options?.fileName || (isVideo ? 'arte.mp4' : 'arte.jpg'),
+      ...(options?.caption ? { caption: options.caption } : {}),
+    },
+    SEND_MEDIA_TIMEOUT_MS,
+    options?.recipient
+  )
 }

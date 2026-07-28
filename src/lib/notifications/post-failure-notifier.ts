@@ -108,7 +108,7 @@ function dedupeByPost(notices: PostFailureNotice[]): PostFailureNotice[] {
   return [...porPost.values()]
 }
 
-function postTypeLabel(postType: PostType): string {
+export function postTypeLabel(postType: PostType): string {
   switch (postType) {
     case PostType.STORY:
       return 'story'
