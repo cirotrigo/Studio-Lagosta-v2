@@ -110,11 +110,13 @@ Arquivos: `template-editor-context.tsx`, `page-sync-wrapper.tsx`, `multi-page-co
 
 ---
 
-## 5. Fase 2 — Imagem e formas (2 semanas, quando a Fase 1 estiver estável)
+## 5. Fase 2 — Imagem e formas ✅ CONCLUÍDA (28/07/2026)
 
-1. **Crop in-canvas por duplo clique** — reformar o órfão `konva-image-crop.tsx` (overlay em coordenadas locais, área inicial = recorte visível, imagem esmaecida por baixo); estado `croppingLayerId` no context; campo novo `style.crop` em frações 0..1; grade 3×3 limpa o crop manual.
-2. **Formas svg-path (20–30 curadas) + linhas com setas** — `shapeType: 'svg-path'` + `pathData` normalizado; render via `Path2D` (suportado pelo @napi-rs/canvas); painel "Formas" único substituindo os órfãos; case `icon` do render pelo mesmo helper.
-3. **Máscara de forma + flip + toolbar de imagem** — wrapper Group com `clipFunc`; flip nunca no scale (o `handleTransformEnd` reseta); toolbar `[Recortar][Flip][Fit][Máscara][Substituir][Opacidade]`.
+1. ✅ **Crop in-canvas por duplo clique** — overlay novo em coordenadas do canvas (zoom/scroll de graça), janela nasce no recorte visível, imagem inteira esmaecida por baixo, alças circulares, grade de terços, Enter/Esc + Aplicar/Cancelar. `croppingLayerId` no context bloqueia marquee/atalhos/transformer; confirma em UM `updateLayer` gravando `style.crop` em frações. Grade 3×3 do painel limpa o crop manual.
+2. ✅ **Formas svg-path (~35) + linhas com setas** — `shapeType: 'svg-path'` + `pathData` (viewBox 0 0 100 100); editor via `sceneFunc` (stroke não distorce), render via `Path2D` do @napi-rs/canvas; painel "Formas" único com busca e categorias substituindo os órfãos; case `icon` do render pelo mesmo caminho.
+3. ✅ **Máscara de forma + flip + toolbar de imagem** — wrapper `Group` com `clipFunc` (replay do path pelo `Konva.Path.parsePathData`), flip por scale negativo no node INTERNO; toolbar `[Recortar][Remover][Flip H][Flip V][Ajustar à página][Máscara ▾][Opacidade]`.
+
+**Fica registrado como limitação** (render server-side ainda não desenha): blur e texto curvo, `richTextStyles` por segmento, filtros de imagem e camada `video`.
 
 ---
 
