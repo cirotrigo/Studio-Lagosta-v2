@@ -151,6 +151,10 @@ export async function generateThumbnail(template: Template): Promise<string> {
         fontSize: layer.style?.fontSize
           ? Math.round(layer.style.fontSize * scaleFactor)
           : undefined,
+        // Sem arredondar: num thumbnail o espaçamento escalado é fracionário
+        letterSpacing: layer.style?.letterSpacing
+          ? layer.style.letterSpacing * scaleFactor
+          : layer.style?.letterSpacing,
       },
     })),
   }
@@ -225,6 +229,9 @@ export async function generatePreview(
         fontSize: layer.style?.fontSize
           ? Math.round(layer.style.fontSize * scaleFactor)
           : undefined,
+        letterSpacing: layer.style?.letterSpacing
+          ? layer.style.letterSpacing * scaleFactor
+          : layer.style?.letterSpacing,
       },
     })),
   }

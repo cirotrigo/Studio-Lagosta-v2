@@ -324,40 +324,57 @@ export class RenderEngine {
       }
     }
 
+    // O fallback de fonte precisa valer também nos sub-renderers, que remontam
+    // ctx.font a partir do style — sem isso o fallback só existia na primeira
+    // atribuição e o measureText dos caminhos com config media outra fonte
+    const resolvedStyle = { ...style, fontFamily }
     const fontSize = Math.max(1, style.fontSize ?? 16)
-    ctx.font = this.buildFontString(fontSize, { ...style, fontFamily })
+    ctx.font = this.buildFontString(fontSize, resolvedStyle)
     ctx.fillStyle = style.color ?? '#000000'
     ctx.textAlign = (style.textAlign ?? 'left') as CanvasTextAlign
     ctx.textBaseline = 'top'
+    this.applyLetterSpacing(ctx, resolvedStyle, options.scaleFactor ?? 1)
 
     const content = this.applyTextTransform(layer.content ?? '', style)
 
-    if (layer.textboxConfig) {
-      await this.renderTextWithConfig(ctx, layer, content, width, height)
-      return
-    }
+    // Camada sem textboxConfig passa pelo mesmo caminho com quebra de linha:
+    // o fallback antigo (fillText com maxWidth) espremia os glifos
+    // horizontalmente em vez de quebrar, enquanto o editor Konva sempre quebra
+    // (wrap="word") — 448 camadas publicavam texto deformado
+    const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
+    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, width, height)
+  }
 
-    const x = this.getTextX(width, ctx.textAlign)
-    const lineHeight = (style.lineHeight ?? 1.2) * fontSize
-    const lines = content.split(/\r?\n/)
-
-    let currentY = 0
-    for (const line of lines) {
-      ctx.fillText(line, x, currentY, width)
-      currentY += lineHeight
-      if (currentY > height) break
-    }
+  /**
+   * Espaçamento entre letras, presente em 752 camadas e até aqui ignorado
+   * pelo render — o editor Konva aplica sempre.
+   *
+   * O `ctx.letterSpacing` do canvas conta um espaçamento após CADA caractere,
+   * inclusive o último — a mesma contagem do Konva, que mede
+   * `measureText + letterSpacing × length` e alinha center/right incluindo o
+   * espaçamento final. Por isso setar o atributo cobre medição de quebra,
+   * alinhamento e desenho de uma vez. Resta só o kerning: o Konva desenha
+   * letra a letra e o descarta; o canvas desenha a linha inteira e o mantém —
+   * diferença de ~1px por par kernado, invisível na arte.
+   */
+  private static applyLetterSpacing(
+    ctx: CanvasRenderingContext2D,
+    style: LayerStyle,
+    scaleFactor: number,
+  ): void {
+    const spacing = (style.letterSpacing ?? 0) * scaleFactor
+    if (!spacing) return
+    ;(ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${spacing}px`
   }
 
   private static async renderTextWithConfig(
     ctx: CanvasRenderingContext2D,
-    layer: Layer,
+    style: LayerStyle,
+    config: TextboxConfig,
     content: string,
     width: number,
     height: number,
   ): Promise<void> {
-    const style = layer.style ?? {}
-    const config = layer.textboxConfig as TextboxConfig
     const mode = config.textMode ?? 'auto-wrap-fixed'
 
     switch (mode) {
@@ -400,7 +417,7 @@ export class RenderEngine {
 
     ctx.font = this.buildFontString(best, style)
     const x = this.getTextX(width, ctx.textAlign)
-    ctx.fillText(content, x, 0, width)
+    ctx.fillText(content, x, 0)
   }
 
   private static renderAutoResizeMulti(
@@ -505,7 +522,9 @@ export class RenderEngine {
     let currentY = startY
 
     for (const line of lines) {
-      ctx.fillText(line, x, currentY, width)
+      // Sem o 4º argumento (maxWidth): ele COMPRIME os glifos quando a linha
+      // passa da caixa. Palavra maior que a caixa transborda, como no editor
+      ctx.fillText(line, x, currentY)
       currentY += lineHeight
       if (maxHeight !== undefined && currentY > maxHeight) break
     }
