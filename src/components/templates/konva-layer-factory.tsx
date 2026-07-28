@@ -71,7 +71,14 @@ export function resolveLinearGradientPoints(
  * Converte hex para rgba
  */
 function hexToRgba(hex: string, opacity: number): string {
-  const normalized = hex.replace('#', '')
+  // Cor malformada não pode derrubar o drawScene do Konva: um "  #977807"
+  // colado com espaços virava rgba(NaN, …), o addColorStop lançava e a página
+  // inteira abria em branco. Se depois do trim ainda não for hex, devolve um
+  // fallback neutro em vez de propagar NaN.
+  const normalized = hex.trim().replace('#', '')
+  if (!/^([0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.test(normalized)) {
+    return `rgba(0, 0, 0, ${Math.max(0, Math.min(1, opacity))})`
+  }
 
   if (normalized.length === 8) {
     const r = parseInt(normalized.slice(0, 2), 16)
@@ -136,22 +143,25 @@ function withAdjustedFunctionalColor(
 
 function applyOpacityToColor(color: string, opacity: number): string {
   const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+  // Espaço nas pontas fazia o hex cair fora do startsWith('#') e a opacidade
+  // ser ignorada — mesmo dado que quebra o hexToRgba acima.
+  const trimmed = color.trim()
 
-  if (color.startsWith('#') && [4, 5, 7, 9].includes(color.length)) {
-    return hexToRgba(color, normalizedOpacity)
+  if (trimmed.startsWith('#') && [4, 5, 7, 9].includes(trimmed.length)) {
+    return hexToRgba(trimmed, normalizedOpacity)
   }
 
-  const rgbMatch = color.match(/rgba?\(([^)]+)\)/i)
+  const rgbMatch = trimmed.match(/rgba?\(([^)]+)\)/i)
   if (rgbMatch) {
     return withAdjustedFunctionalColor('rgb', rgbMatch[1], normalizedOpacity)
   }
 
-  const hslMatch = color.match(/hsla?\(([^)]+)\)/i)
+  const hslMatch = trimmed.match(/hsla?\(([^)]+)\)/i)
   if (hslMatch) {
     return withAdjustedFunctionalColor('hsl', hslMatch[1], normalizedOpacity)
   }
 
-  return color
+  return trimmed
 }
 
 function normalizeOpacityValue(value: unknown): number | undefined {

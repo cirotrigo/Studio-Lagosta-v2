@@ -226,8 +226,11 @@ export class RenderEngine {
     return 1
   }
 
-  private static applyOpacityToColor(color: string, opacity = 1): string {
+  private static applyOpacityToColor(rawColor: string, opacity = 1): string {
     const normalizedOpacity = Math.max(0, Math.min(1, opacity))
+    // Espaço nas pontas ("  #977807") fazia o hex cair fora do startsWith('#')
+    // e a opacidade ser ignorada — stop transparente saía opaco na arte.
+    const color = rawColor.trim()
 
     if (color.startsWith('#')) {
       const hex = color.slice(1)

@@ -321,7 +321,7 @@ export function GradientEditor({ layerId }: GradientEditorProps) {
             <Input
               className="h-8 flex-1 text-xs uppercase"
               value={selectedStop.color}
-              onChange={(event) => updateSelectedStop({ color: event.target.value })}
+              onChange={(event) => updateSelectedStop({ color: event.target.value.trim() })}
             />
             <Button
               type="button"
