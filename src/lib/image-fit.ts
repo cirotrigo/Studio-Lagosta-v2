@@ -25,9 +25,26 @@ export type { CropData, ImageSize, CropPosition }
 export function resolveImageSourceRect(
   natural: ImageSize,
   box: ImageSize,
-  style?: Pick<LayerStyle, 'objectFit' | 'cropPosition'>,
+  style?: Pick<LayerStyle, 'objectFit' | 'cropPosition' | 'crop'>,
 ): CropData | undefined {
   if (!natural.width || !natural.height || !box.width || !box.height) return undefined
+
+  // Crop manual (frações 0..1 da imagem original) tem precedência sobre tudo:
+  // é o que o crop in-canvas grava. Clampado para sobreviver a trocas de
+  // arquivo e valores fora de faixa.
+  const manual = style?.crop
+  if (manual && manual.width > 0 && manual.height > 0) {
+    const x = Math.min(Math.max(manual.x, 0), 1)
+    const y = Math.min(Math.max(manual.y, 0), 1)
+    const w = Math.min(Math.max(manual.width, 0.01), 1 - x)
+    const h = Math.min(Math.max(manual.height, 0.01), 1 - y)
+    return {
+      cropX: x * natural.width,
+      cropY: y * natural.height,
+      cropWidth: w * natural.width,
+      cropHeight: h * natural.height,
+    }
+  }
 
   // O editor só recorta quando objectFit é EXPLICITAMENTE 'cover' (ImageNode);
   // sem objectFit o KonvaImage estica — o render precisa fazer o mesmo, não

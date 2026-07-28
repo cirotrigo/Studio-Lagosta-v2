@@ -97,6 +97,18 @@ export interface LayerStyle {
   gradientRadiusScale?: number
   objectFit?: 'contain' | 'cover' | 'fill'
   cropPosition?: 'left-top' | 'center-top' | 'right-top' | 'left-middle' | 'center-middle' | 'right-middle' | 'left-bottom' | 'center-bottom' | 'right-bottom'
+  /**
+   * Recorte manual da imagem, em FRAÇÕES (0..1) da imagem original.
+   * Quando presente, tem precedência sobre objectFit/cropPosition.
+   * Fração (e não pixel) porque imagem dinâmica troca o arquivo por outro de
+   * resolução diferente — a fração sobrevive à troca.
+   */
+  crop?: { x: number; y: number; width: number; height: number }
+  /** Espelhamento — desenhado no node interno, NUNCA no scale (o transformEnd reseta o scale) */
+  flipH?: boolean
+  flipV?: boolean
+  /** Máscara de forma aplicada à imagem. path é um SVG path CONGELADO em viewBox 0 0 100 100. */
+  mask?: { shapeId: string; path: string }
   opacity?: number
   filter?: string
   shadow?: ShadowStyle
@@ -106,7 +118,15 @@ export interface LayerStyle {
   strokeColor?: string
   strokeOpacity?: number
   strokeWidth?: number
-  shapeType?: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line'
+  shapeType?: 'rectangle' | 'rounded-rectangle' | 'circle' | 'triangle' | 'star' | 'arrow' | 'line' | 'svg-path'
+  /** Forma vetorial genérica: SVG path d normalizado (viewBox 0 0 100 100 por padrão) */
+  pathData?: string
+  pathViewBox?: [number, number, number, number]
+  pathFillRule?: 'nonzero' | 'evenodd'
+  /** Estilo do traço de shapeType 'line' */
+  lineStyle?: 'solid' | 'dashed' | 'dotted'
+  lineStartCap?: 'none' | 'arrow'
+  lineEndCap?: 'none' | 'arrow'
   iconId?: string
   // Image filters and adjustments
   blur?: number
