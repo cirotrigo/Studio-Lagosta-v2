@@ -43,8 +43,17 @@ import { useIsMobile } from '@/hooks/use-device-detection'
 const MIN_ZOOM = 0.1
 const MAX_ZOOM = 5
 
+interface KonvaEditorStageProps {
+  /**
+   * Modo embutido (workspace contínuo): o stage vive num slot da coluna de
+   * páginas — sem container de scroll próprio, dimensionado já escalado
+   * (width×zoom por height×zoom) e sem os efeitos de centralização/auto-fit
+   * (a coluna centraliza via CSS e é dona do scroll).
+   */
+  embedded?: boolean
+}
 
-export function KonvaEditorStage() {
+export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {}) {
   const {
     projectId,
     design,
@@ -185,7 +194,7 @@ export function KonvaEditorStage() {
 
   // MOBILE: Calcular zoom inicial para caber na tela
   React.useEffect(() => {
-    if (!isMobile) return
+    if (!isMobile || embedded) return
 
     const stage = stageRef.current
     if (!stage) return
@@ -243,11 +252,11 @@ export function KonvaEditorStage() {
       clearTimeout(timeoutId)
       resizeObserver.disconnect()
     }
-  }, [isMobile, canvasWidth, canvasHeight, setZoom])
+  }, [isMobile, embedded, canvasWidth, canvasHeight, setZoom])
 
   // DESKTOP: Resize Observer para recentralizar quando o container mudar
   React.useEffect(() => {
-    if (isMobile) return
+    if (isMobile || embedded) return
 
     const stage = stageRef.current
     if (!stage) return
@@ -289,12 +298,14 @@ export function KonvaEditorStage() {
     return () => {
       resizeObserver.disconnect()
     }
-  }, [isMobile, canvasWidth])
+  }, [isMobile, embedded, canvasWidth])
 
   // Sincronizar estado zoom com Konva stage.scale()
   // Desktop: mantém canvas centralizado horizontalmente
   // Mobile: aplica zoom mantendo margem fixa
+  // Embutido: o zoom entra por props do Stage (width/height/scale) — nada aqui
   React.useEffect(() => {
+    if (embedded) return
     const stage = stageRef.current
     if (!stage) return
 
@@ -337,7 +348,7 @@ export function KonvaEditorStage() {
       stage.position({ x: newX, y: newY })
       stage.batchDraw()
     }
-  }, [zoom, canvasWidth, canvasHeight, isMobile])
+  }, [zoom, canvasWidth, canvasHeight, isMobile, embedded])
 
   const handleStagePointerDown = React.useCallback(
     (event: KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -959,16 +970,18 @@ export function KonvaEditorStage() {
     }
   }, [])
 
-  return (
-    <div
-      className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-auto"
-      style={{ padding: isMobile ? '0.5rem' : '2rem' }}
-    >
-      <div className={`flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+  // Embutido: o slot da coluna já tem o tamanho escalado — o stage nasce
+  // pequeno (buffer proporcional ao que aparece na tela, não à página bruta)
+  const scaledWidth = Math.max(1, Math.round(canvasWidth * zoom))
+  const scaledHeight = Math.max(1, Math.round(canvasHeight * zoom))
+
+  const stageElement = (
         <Stage
           ref={stageRef}
-          width={canvasWidth}
-          height={canvasHeight}
+          width={embedded ? scaledWidth : canvasWidth}
+          height={embedded ? scaledHeight : canvasHeight}
+          scaleX={embedded ? zoom : undefined}
+          scaleY={embedded ? zoom : undefined}
           className="rounded-md shadow-2xl ring-1 ring-border/20"
           pixelRatio={window.devicePixelRatio || 2}
           onMouseDown={handleStagePointerDown}
@@ -1188,6 +1201,23 @@ export function KonvaEditorStage() {
             )}
           </KonvaLayer>
         </Stage>
+  )
+
+  if (embedded) {
+    return (
+      <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
+        {stageElement}
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="h-full w-full bg-[#f5f5f5] dark:bg-[#1a1a1a] overflow-y-auto overflow-x-auto"
+      style={{ padding: isMobile ? '0.5rem' : '2rem' }}
+    >
+      <div className={`flex ${isMobile ? 'justify-start' : 'justify-center'} min-h-full`}>
+        {stageElement}
       </div>
     </div>
   )
