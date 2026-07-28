@@ -86,6 +86,31 @@ export function KonvaEditableText({
   }, [])
 
   /**
+   * As fontes chegam por FontFace, assíncronas — tanto as de projeto no boot
+   * quanto as do Google na troca de família. Tudo que mede ou desenha texto
+   * com a fonte "do momento" fica errado quando ela termina de carregar
+   * DEPOIS, sem que nenhum campo da camada mude: o bitmap cacheado continua
+   * blitado com o fallback, e a caixa em modo Auto fica presa na altura
+   * medida com a métrica errada — só "consertava" recarregando a página
+   * (fonte já em cache). O tick entra nas duas assinaturas para redesenhar e
+   * re-medir nesse momento.
+   */
+  const [fontsTick, setFontsTick] = React.useState(0)
+  React.useEffect(() => {
+    if (typeof document === 'undefined' || !('fonts' in document)) return
+    let ativo = true
+    const bump = () => { if (ativo) setFontsTick((t) => t + 1) }
+    document.fonts.addEventListener('loadingdone', bump)
+    // Cobre a janela entre a primeira medição e o listener: um tick garantido
+    // depois que o carregamento em andamento zera (idempotente se nada mudou)
+    document.fonts.ready.then(bump).catch(() => {})
+    return () => {
+      ativo = false
+      document.fonts.removeEventListener('loadingdone', bump)
+    }
+  }, [])
+
+  /**
    * Assinatura de tudo que muda o desenho da camada.
    *
    * Antes as invalidações de cache tinham listas de dependências escritas à
@@ -99,6 +124,7 @@ export function KonvaEditableText({
     layer.style,
     layer.effects,
     layer.textboxConfig,
+    fontsTick,
   ])
 
   // Cache for high quality rendering (especially for ornate/decorative fonts)
@@ -243,16 +269,26 @@ export function KonvaEditableText({
   // Assinatura das entradas que mudam a quebra de linha. Um ajuste por
   // assinatura: o efeito escreve no mesmo estado que o dispara, e sem essa
   // trava um único pixel de divergência vira "Maximum update depth exceeded"
+  // (o guard de |diff| < 1 segura o caso estável; a assinatura, o oscilante).
+  // `size.height` fica NA assinatura de propósito: altura mudada por fora
+  // (alça de baixo do transformer, undo) re-arma a medição — antes o efeito
+  // rodava, batia na assinatura já vista e a caixa ficava dessincronizada do
+  // texto até a próxima mudança de conteúdo. O ajuste do próprio efeito também
+  // re-executa uma vez, mas aí |diff| < 1 encerra sem escrever.
   const assinaturaQuebra = [
     layer.content,
+    layer.style?.textTransform,
     layer.size?.width,
+    layer.size?.height,
     layer.style?.fontSize,
     layer.style?.lineHeight,
     layer.style?.fontFamily,
     layer.style?.fontWeight,
+    layer.style?.fontStyle,
     layer.style?.letterSpacing,
     anchor,
     autoExpand,
+    fontsTick,
   ].join('|')
   const ultimoAjusteRef = React.useRef<string | null>(null)
 
