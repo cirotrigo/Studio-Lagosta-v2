@@ -497,7 +497,23 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const videoRef = React.useRef<HTMLVideoElement | null>(null)
   const autoplayRef = React.useRef(layer.videoMetadata?.autoplay)
   const loopRef = React.useRef(layer.videoMetadata?.loop)
+  // Trim em refs: o elemento <video> é criado uma vez por URL; mudar o trim
+  // não pode recriá-lo (perderia o frame atual e o estado de reprodução)
+  const trimStartRef = React.useRef(layer.videoMetadata?.trimStart ?? 0)
+  const trimEndRef = React.useRef(layer.videoMetadata?.trimEnd)
+  // Refs para o loadedmetadata (closure do effect [videoUrl]) enxergar o
+  // estado atual sem recriar o elemento
+  const onChangeRef = React.useRef(onChange)
+  const videoMetadataRef = React.useRef(layer.videoMetadata)
   const [videoMetaVersion, setVideoMetaVersion] = React.useState(0)
+
+  React.useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
+
+  React.useEffect(() => {
+    videoMetadataRef.current = layer.videoMetadata
+  }, [layer.videoMetadata])
 
   React.useEffect(() => {
     autoplayRef.current = layer.videoMetadata?.autoplay
@@ -506,6 +522,23 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   React.useEffect(() => {
     loopRef.current = layer.videoMetadata?.loop
   }, [layer.videoMetadata?.loop])
+
+  React.useEffect(() => {
+    trimStartRef.current = layer.videoMetadata?.trimStart ?? 0
+    trimEndRef.current = layer.videoMetadata?.trimEnd
+    // Trecho mudou: se o frame atual ficou fora do trim, reposicionar
+    const video = videoRef.current
+    if (!video) return
+    const start = trimStartRef.current
+    const end = trimEndRef.current
+    if (video.currentTime < start || (end !== undefined && video.currentTime > end)) {
+      try {
+        video.currentTime = start
+      } catch {
+        // metadados ainda não carregados — o loadedmetadata posiciona
+      }
+    }
+  }, [layer.videoMetadata?.trimStart, layer.videoMetadata?.trimEnd])
   const imageRef = React.useRef<Konva.Image>(null)
 
   React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
@@ -533,6 +566,26 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     // ✨ Configuração simples como exemplo oficial
     video.addEventListener('loadedmetadata', () => {
       console.log('[VideoNode] ✅ Metadados carregados')
+      // Persistir a duração real na camada: o trim do painel, o chip de
+      // duração e a aba Músicas dependem dela (ninguém mais grava esse campo)
+      const dur = video.duration
+      if (
+        Number.isFinite(dur) &&
+        dur > 0 &&
+        Math.abs((videoMetadataRef.current?.duration ?? 0) - dur) > 0.01
+      ) {
+        onChangeRef.current({
+          videoMetadata: { ...videoMetadataRef.current, duration: dur },
+        })
+      }
+      // Começar no início do trim (0 quando não há trim)
+      if (trimStartRef.current > 0) {
+        try {
+          video.currentTime = trimStartRef.current
+        } catch {
+          // ignore
+        }
+      }
       // Autoplay se configurado
       if (autoplayRef.current !== false) {
         video.play().catch((err) => console.warn('[VideoNode] Autoplay falhou:', err))
@@ -540,11 +593,23 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       setVideoMetaVersion((prev) => prev + 1)
     })
 
-    // Loop manual simples
+    // Loop manual simples (volta para o início do trim)
     video.addEventListener('ended', () => {
       if (loopRef.current ?? true) {
-        video.currentTime = 0
+        video.currentTime = trimStartRef.current
         video.play()
+      }
+    })
+
+    // Trim de fim: ao passar do trimEnd, loopa para o trimStart (ou pausa)
+    video.addEventListener('timeupdate', () => {
+      const end = trimEndRef.current
+      if (end === undefined || video.currentTime < end) return
+      if (loopRef.current ?? true) {
+        video.currentTime = trimStartRef.current
+      } else {
+        video.pause()
+        video.currentTime = trimStartRef.current
       }
     })
 
@@ -635,6 +700,13 @@ function VideoNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           break
         case 'playbackRate':
           video.playbackRate = value
+          break
+        case 'seek':
+          try {
+            video.currentTime = value
+          } catch (err) {
+            console.warn('[VideoNode] Seek falhou:', err)
+          }
           break
       }
     }

@@ -422,8 +422,22 @@ export function VideoExportButton() {
 
       setExportProgress({ phase: 'preparing', progress: 45 })
 
-      const thumbnailDataUrl = await generateVideoThumbnail(stage, videoLayer)
-      const thumbnailBlob = await dataUrlToBlob(thumbnailDataUrl)
+      // Capa definida no painel de vídeo tem prioridade; sem capa, captura o
+      // primeiro frame do trim
+      let thumbnailBlob: Blob
+      const posterUrl = videoLayer.videoMetadata?.posterUrl
+      if (posterUrl) {
+        try {
+          const posterResponse = await fetch(posterUrl)
+          if (!posterResponse.ok) throw new Error(`HTTP ${posterResponse.status}`)
+          thumbnailBlob = await posterResponse.blob()
+        } catch (error) {
+          console.warn('[Video Export] Falha ao usar posterUrl como capa, capturando frame:', error)
+          thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+        }
+      } else {
+        thumbnailBlob = await dataUrlToBlob(await generateVideoThumbnail(stage, videoLayer))
+      }
 
       const videoUploadPath = generateUploadPath(clerkUserId, designName)
       const thumbnailUploadPath = generateThumbnailUploadPath(clerkUserId, designName)
@@ -458,10 +472,20 @@ export function VideoExportButton() {
 
       setExportProgress({ phase: 'uploading', progress: 95 })
 
-      const exportedDuration =
-        audioConfig?.source === 'library'
+      // Mesma regra do export: trim do vídeo ∧ trecho da música
+      const trimStart = videoLayer.videoMetadata?.trimStart ?? 0
+      const trimEnd = videoLayer.videoMetadata?.trimEnd
+      const fullDur = videoDuration || videoLayer.videoMetadata?.duration || 10
+      const trimmedDur =
+        trimEnd !== undefined && trimEnd > trimStart
+          ? trimEnd - trimStart
+          : Math.max(0.5, fullDur - trimStart)
+      const musicSlice =
+        (audioConfig?.source === 'library' || audioConfig?.source === 'mix') && audioConfig.musicId
           ? audioConfig.endTime - audioConfig.startTime
-          : videoDuration || videoLayer.videoMetadata?.duration || 10
+          : null
+      const exportedDuration =
+        musicSlice && musicSlice > 0 ? Math.min(trimmedDur, musicSlice) : trimmedDur
 
       const queuePayload = {
         templateId,

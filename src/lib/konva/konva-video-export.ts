@@ -349,25 +349,42 @@ export async function exportVideoWithLayers(
       }
     }
 
-    // Calcular duração do vídeo
-    // Se usar música da biblioteca, usar duração do trecho selecionado
-    // Caso contrário, usar duração total do vídeo
-    let videoDuration: number
-    if (audioConfig?.source === 'library' && audioConfig.startTime !== undefined && audioConfig.endTime !== undefined) {
-      videoDuration = audioConfig.endTime - audioConfig.startTime
-      console.log(`[Video Export] Usando duração do trecho selecionado da música: ${videoDuration}s (${audioConfig.startTime}s - ${audioConfig.endTime}s)`)
+    // Duração efetiva = trim do vídeo ∧ trecho da música (quando houver).
+    // Regra única — o chip de duração do painel de vídeo calcula igual.
+    const videoTrimStart = videoLayer.videoMetadata?.trimStart ?? 0
+    const videoTrimEnd = videoLayer.videoMetadata?.trimEnd
+    const sourceDuration =
+      duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
+    const trimmedDuration =
+      videoTrimEnd !== undefined && videoTrimEnd > videoTrimStart
+        ? videoTrimEnd - videoTrimStart
+        : Math.max(0.5, sourceDuration - videoTrimStart)
+
+    let videoDuration = trimmedDuration
+    if (
+      (audioConfig?.source === 'library' || audioConfig?.source === 'mix') &&
+      audioConfig.musicId &&
+      audioConfig.startTime !== undefined &&
+      audioConfig.endTime !== undefined
+    ) {
+      const musicSlice = audioConfig.endTime - audioConfig.startTime
+      if (musicSlice > 0) {
+        videoDuration = Math.min(trimmedDuration, musicSlice)
+      }
+      console.log(
+        `[Video Export] Duração efetiva: ${videoDuration}s (trim ${trimmedDuration}s ∧ trecho da música ${musicSlice}s)`,
+      )
     } else {
-      videoDuration = duration || videoLayer.videoMetadata?.duration || videoElement.duration || 10
-      console.log(`[Video Export] Usando duração total do vídeo: ${videoDuration}s`)
+      console.log(`[Video Export] Duração efetiva (trim): ${videoDuration}s`)
     }
 
-    // Posicionar vídeo no início e garantir que o primeiro frame está renderizado
-    videoElement.currentTime = 0
+    // Posicionar vídeo no início do trim e garantir que o frame está renderizado
+    videoElement.currentTime = videoTrimStart
     await new Promise<void>((resolve) => {
       const handleSeeked = () => {
         resolve()
       }
-      if (videoElement.readyState >= 2 && videoElement.currentTime === 0) {
+      if (videoElement.readyState >= 2 && Math.abs(videoElement.currentTime - videoTrimStart) < 0.05) {
         resolve()
       } else {
         videoElement.addEventListener('seeked', handleSeeked, { once: true })
@@ -563,8 +580,8 @@ export async function exportVideoWithLayers(
         // 7. Iniciar reprodução da música
         musicSource.start(0)
 
-        // 8. Posicionar vídeo clone e NÃO reproduzir ainda
-        clonedVideoForOriginal.currentTime = 0
+        // 8. Posicionar vídeo clone no início do trim e NÃO reproduzir ainda
+        clonedVideoForOriginal.currentTime = videoTrimStart
         console.log('[Video Export] Mix preparado - aguardando início da gravação...')
 
         // 9. Combinar stream de vídeo com stream de áudio mixado
@@ -672,10 +689,10 @@ export async function exportVideoWithLayers(
           if (audioTracks.length > 0) {
             console.log('[Video Export] ✅ Áudio original capturado com sucesso')
 
-            // Posicionar clone no início mas NÃO reproduzir ainda
-            clonedVideo.currentTime = 0
+            // Posicionar clone no início do trim mas NÃO reproduzir ainda
+            clonedVideo.currentTime = videoTrimStart
             clonedVideo.muted = false
-            console.log('[Video Export] Clone posicionado em 0s, aguardando início da gravação...')
+            console.log(`[Video Export] Clone posicionado em ${videoTrimStart}s, aguardando início da gravação...`)
 
             // Combinar stream de vídeo (do canvas) com áudio (do clone)
             const videoTracks = canvasStream.getVideoTracks()
@@ -731,8 +748,8 @@ export async function exportVideoWithLayers(
     // Aguardar start com timeout
     await new Promise((resolve) => setTimeout(resolve, 200))
 
-    // Posicionar vídeo no início (novamente após start) e reproduzir
-    videoElement.currentTime = 0
+    // Posicionar vídeo no início do trim (novamente após start) e reproduzir
+    videoElement.currentTime = videoTrimStart
 
     try {
       await videoElement.play()
@@ -799,8 +816,8 @@ export async function exportVideoWithLayers(
     // Aguardar duração especificada
     await new Promise<void>((resolve) => {
       const progressInterval = setInterval(() => {
-        const currentProgress = (videoElement.currentTime / videoDuration) * 100
-        onProgress?.({ phase: 'recording', progress: 50 + currentProgress * 0.35 })
+        const currentProgress = ((videoElement.currentTime - videoTrimStart) / videoDuration) * 100
+        onProgress?.({ phase: 'recording', progress: 50 + Math.max(0, currentProgress) * 0.35 })
       }, 100)
 
       setTimeout(() => {
@@ -899,16 +916,17 @@ export async function generateVideoThumbnail(
     }
   })
 
-  // Garantir que o primeiro frame está renderizado antes de capturar o thumbnail
+  // Garantir que o primeiro frame do TRIM está renderizado antes do thumbnail
+  const thumbTime = videoLayer.videoMetadata?.trimStart ?? 0
   try {
-    video.currentTime = 0
+    video.currentTime = thumbTime
   } catch (error) {
-    console.warn('[generateVideoThumbnail] Não foi possível definir currentTime para 0:', error)
+    console.warn('[generateVideoThumbnail] Não foi possível definir currentTime:', error)
   }
 
   await new Promise<void>((resolve) => {
     video.addEventListener('seeked', () => resolve(), { once: true })
-    if (video.readyState >= 2 && video.currentTime === 0) {
+    if (video.readyState >= 2 && Math.abs(video.currentTime - thumbTime) < 0.05) {
       resolve()
     }
   })

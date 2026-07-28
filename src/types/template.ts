@@ -88,6 +88,9 @@ export interface Layer {
     currentTime?: number
     playbackRate?: number
     objectFit?: 'cover' | 'contain' | 'fill'
+    /** Trim do vídeo em segundos (editor E export reproduzem só o trecho). */
+    trimStart?: number
+    trimEnd?: number
   }
   // Rich text support - estilos aplicados a trechos específicos do texto
   richTextStyles?: RichTextStyle[]
