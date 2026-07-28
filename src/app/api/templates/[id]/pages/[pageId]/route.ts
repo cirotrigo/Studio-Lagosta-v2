@@ -125,15 +125,32 @@ export async function PATCH(
       (validatedData.width !== undefined && validatedData.width !== existingPage.width) ||
       (validatedData.height !== undefined && validatedData.height !== existingPage.height)
 
-    // Atualizar página (e invalidar renders na mesma transação)
-    const { page, invalidated } = await db.$transaction(async (tx) => {
-      const updated = await tx.page.update({
+    // Transação SÓ quando há mudança visual (update + invalidação atômicos).
+    // Thumbnail e autosave sem diff visual são a maioria dos PATCHes e abriam
+    // transação à toa — com o Accelerate, transações concorrentes estouravam
+    // "Unable to start a transaction in the given time" no meio da edição.
+    let page
+    let invalidated = 0
+    if (visualChanged) {
+      ;({ page, invalidated } = await db.$transaction(
+        async (tx) => {
+          const updated = await tx.page.update({
+            where: { id: pageId },
+            data: updateData,
+          })
+          const count = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+          return { page: updated, invalidated: count }
+        },
+        // Accelerate: o maxWait default (2s) estourava com autosaves em
+        // sequência — "Unable to start a transaction in the given time"
+        { maxWait: 10_000, timeout: 15_000 },
+      ))
+    } else {
+      page = await db.page.update({
         where: { id: pageId },
         data: updateData,
       })
-      const count = visualChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : 0
-      return { page: updated, invalidated: count }
-    })
+    }
 
     if (invalidated > 0) {
       console.log(`[API] Page ${pageId} changed — invalidated ${invalidated} scheduled render(s)`)
