@@ -485,6 +485,26 @@ página/camada, e a troca de fonte com medição de caixa. Regras que ficaram:
 - O RenderEngine ainda ignora `letterSpacing`, fundo de texto, contorno,
   curved/blur e `richTextStyles` — lista completa e alcances na § 3 do doc.
 
+`docs/SESSAO-2026-07-28-LETTERSPACING-AUTOEXPAND.md` (tarde do mesmo dia)
+fecha as duas divergências de maior alcance da tabela e o Auto da caixa:
+
+- **`letterSpacing` agora existe no render** — `ctx.letterSpacing` do napi-rs
+  tem a mesma contagem do Konva (espaçamento após cada caractere, inclusive o
+  último; medição, alinhamento e desenho de uma vez). Resta só o kerning, que
+  o Konva descarta e o canvas mantém (~1px por par kernado).
+- **Todo texto quebra linha no render**, com ou sem `textboxConfig` — o
+  fallback antigo espremia os glifos via maxWidth do `fillText`. Nenhum
+  `fillText` de texto usa mais maxWidth: palavra maior que a caixa transborda,
+  como no editor.
+- **O modo Auto re-mede quando o mundo muda sem mudar a camada**: fonte que
+  termina de carregar (`fontsTick` via `document.fonts`, nas DUAS assinaturas
+  — a de quebra e a de render/cache), altura alterada por fora (undo, alça do
+  transformer) e `textTransform`/`fontStyle`. A trava por assinatura + o guard
+  de |diff| < 1 são o que evita o loop de update — não remover nenhum dos dois.
+- **Auto-height nativo do Konva foi avaliado e rejeitado** (§4 do doc): a
+  altura fixa do nó na tela é o contrato visível com o render server-side, que
+  corta pela altura gravada; height auto esconderia a dessincronia.
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá

@@ -65,8 +65,8 @@ decisão consciente):
 
 | divergência | alcance medido |
 |---|---|
-| `letterSpacing` ignorado — erra desenho E medição de quebra | 752 camadas; 116 quebram linha em ponto diferente |
-| Texto sem `textboxConfig` não quebra — `fillText` com maxWidth **espreme** as letras | 448 camadas (142 em páginas com post) |
+| ~~`letterSpacing` ignorado — erra desenho E medição de quebra~~ **corrigida** ([sessão da tarde](./SESSAO-2026-07-28-LETTERSPACING-AUTOEXPAND.md) §1) | 752 camadas; 116 quebram linha em ponto diferente |
+| ~~Texto sem `textboxConfig` não quebra — `fillText` com maxWidth **espreme** as letras~~ **corrigida** ([sessão da tarde](./SESSAO-2026-07-28-LETTERSPACING-AUTOEXPAND.md) §2) | 448 camadas (142 em páginas com post) |
 | Corte de linhas pela altura — render desenha uma linha a mais que o editor | 293 camadas divergem |
 | Fundo/pílula de texto (`effects.background`) não existe no render | 25 camadas (badges/CTAs) |
 | Negrito parcial de rich-text some (render ignora `richTextStyles`) | 94 camadas |
