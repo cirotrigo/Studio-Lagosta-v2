@@ -6,6 +6,13 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  // Migrations NÃO podem passar pelo pooler do Neon. O `prisma migrate` usa um
+  // advisory lock de sessão, e o PgBouncer (modo transação) deixa esse lock
+  // preso num backend reaproveitado — a migration seguinte pega outra conexão,
+  // não consegue o lock e morre em "Timed out trying to acquire a postgres
+  // advisory lock". Aconteceu em produção em 28/07/2026.
+  // DIRECT_URL é a mesma URL do banco sem o sufixo `-pooler` no host.
+  directUrl = env("DIRECT_URL")
 }
 
 model AdminSettings {
