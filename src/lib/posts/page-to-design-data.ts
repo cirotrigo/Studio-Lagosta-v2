@@ -118,6 +118,15 @@ export function findUnmatchedSlotKeys(
   return Object.keys(slotValues).filter((key) => !isControlKey(key) && !known.has(key))
 }
 
+/**
+ * Página com camada de vídeo não pode ser renderizada server-side (o render é
+ * imagem estática — a camada sairia como buraco transparente). Usado como guard
+ * na criação de post template-based e no story-renderer.
+ */
+export function pageContainsVideoLayer(layers: unknown): boolean {
+  return parseLayers(layers).some((layer) => layer?.type === 'video')
+}
+
 function parseLayers(layers: unknown): Layer[] {
   if (typeof layers === 'string') {
     try {

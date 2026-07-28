@@ -27,6 +27,7 @@ import { Calendar, Repeat, Zap, Wand2, Loader2 } from 'lucide-react'
 import { useImproveCaption } from '@/hooks/use-improve-caption'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import { isVideoUrl } from '@/lib/media-type'
 
 // Base schema - caption is optional, we validate manually based on postType
 const postSchema = z.object({
@@ -318,11 +319,7 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
       // Validate REEL has video (not image)
       if (postType === 'REEL') {
-        const hasVideo = selectedMedia.some(media => {
-          const url = media.url.toLowerCase()
-          return url.includes('.mp4') || url.includes('.mov') || url.includes('.avi') ||
-                 url.includes('.webm') || url.includes('video') || url.includes('.m4v')
-        })
+        const hasVideo = selectedMedia.some((media) => isVideoUrl(media.url))
 
         if (!hasVideo) {
           isSubmittingRef.current = false

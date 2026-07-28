@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import { chavesMusica } from '@/hooks/use-music-library'
 
 export interface StartYoutubeDownloadInput {
   youtubeUrl: string
@@ -111,7 +112,7 @@ export function useUploadYoutubeMp3() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['youtube-jobs'] })
-      queryClient.invalidateQueries({ queryKey: ['music-library'] })
+      queryClient.invalidateQueries({ queryKey: chavesMusica.todas })
     },
   })
 }

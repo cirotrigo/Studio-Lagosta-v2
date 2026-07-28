@@ -395,7 +395,6 @@ export function VideoExportButton() {
         },
         {
           fps: 30,
-          format: 'webm',
           quality: 0.8,
           audioConfig,
         },

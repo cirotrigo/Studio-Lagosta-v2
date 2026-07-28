@@ -5,37 +5,9 @@
 import FormDataNode from 'form-data'
 import { LaterMediaUploadError } from './errors'
 import type { LaterMediaUpload, MediaUploadOptions } from './types'
+import { detectMediaType } from '@/lib/media-type'
 
-/**
- * Detect media type from URL or file extension
- */
-export function detectMediaType(
-  urlOrFilename: string
-): 'image' | 'video' | 'unknown' {
-  const url = urlOrFilename.toLowerCase()
-
-  // Image extensions
-  const imageExts = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.heic', '.heif']
-  if (imageExts.some((ext) => url.includes(ext))) {
-    return 'image'
-  }
-
-  // Video extensions
-  const videoExts = ['.mp4', '.mov', '.avi', '.webm', '.m4v', '.mkv']
-  if (videoExts.some((ext) => url.includes(ext))) {
-    return 'video'
-  }
-
-  // Check MIME type patterns in URL
-  if (url.includes('image/')) {
-    return 'image'
-  }
-  if (url.includes('video/')) {
-    return 'video'
-  }
-
-  return 'unknown'
-}
+export { detectMediaType }
 
 /**
  * Extract filename from URL

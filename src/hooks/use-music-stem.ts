@@ -4,6 +4,7 @@
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
+import { chavesMusica } from '@/hooks/use-music-library'
 
 interface StemJobStatus {
   id: number
@@ -64,7 +65,7 @@ export function useReprocessStem() {
       // Invalidar queries relacionadas
       queryClient.invalidateQueries({ queryKey: ['music-stem-status', musicId] })
       queryClient.invalidateQueries({ queryKey: ['music', musicId] })
-      queryClient.invalidateQueries({ queryKey: ['music-library'] })
+      queryClient.invalidateQueries({ queryKey: chavesMusica.todas })
     },
   })
 }

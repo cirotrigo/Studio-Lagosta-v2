@@ -229,14 +229,20 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
     const height = Number.isFinite(schedulingCreative.height) && schedulingCreative.height > 0 ? schedulingCreative.height : 1920
     const aspectRatio = width / height
 
-    // Detect post type based on dimensions
+    const isVideo =
+      schedulingCreative.isVideo === true ||
+      schedulingCreative.fieldValues?.isVideo === true ||
+      schedulingCreative.fieldValues?.isVideo === 'true'
+
+    // Detect post type based on dimensions (and media kind — o usuário pode
+    // trocar no composer; isto é só o default)
     let postType: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL' = 'POST'
-    if (aspectRatio < 0.7) {
+    if (isVideo) {
+      // Vídeo vertical → STORY; demais formatos de vídeo → REEL
+      postType = aspectRatio < 0.7 ? 'STORY' : 'REEL'
+    } else if (aspectRatio < 0.7) {
       // Vertical - Story (9:16)
       postType = 'STORY'
-    } else {
-      // Feed or Square
-      postType = 'POST'
     }
 
     const mediaUrl = schedulingCreative.resultUrl

@@ -405,17 +405,18 @@ export default function GlobalCreativesPage() {
     const height = parseInt(heightStr, 10) || 1080
     const aspectRatio = width / height
 
-    // Detect post type based on dimensions
+    const meta = generationMetaMap.get(schedulingGeneration.id) ?? buildGenerationMeta(schedulingGeneration)
+
+    // Detect post type based on dimensions (and media kind — o usuário pode
+    // trocar no composer; isto é só o default)
     let postType: 'POST' | 'STORY' | 'REEL' | 'CAROUSEL' = 'POST'
-    if (aspectRatio < 0.7) {
+    if (meta.isVideo) {
+      // Vídeo vertical → STORY; demais formatos de vídeo → REEL
+      postType = aspectRatio < 0.7 ? 'STORY' : 'REEL'
+    } else if (aspectRatio < 0.7) {
       // Vertical - Story (9:16)
       postType = 'STORY'
-    } else {
-      // Feed or Square
-      postType = 'POST'
     }
-
-    const meta = generationMetaMap.get(schedulingGeneration.id) ?? buildGenerationMeta(schedulingGeneration)
     const mediaUrl = meta.assetUrl ?? meta.displayUrl
 
     if (!mediaUrl) return undefined

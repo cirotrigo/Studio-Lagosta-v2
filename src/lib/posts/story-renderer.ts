@@ -55,6 +55,16 @@ export async function renderStoryImage(
     designData = applySlotValues(designData, slotValues)
   }
 
+  // Guard: o render server-side é imagem estática. Camada de vídeo sairia como
+  // buraco transparente em silêncio (render-engine ignora o type 'video') e o
+  // post publicaria arte furada com status RENDERED.
+  if (designData.layers.some((layer) => layer?.type === 'video')) {
+    throw new Error(
+      `Página ${pageId} contém camada de vídeo — o render server-side gera imagem estática. ` +
+        'Exporte o vídeo pelo editor e agende o MP4 pela aba Criativos.',
+    )
+  }
+
   // 4. Register project fonts (dynamic import to avoid static bundling)
   const projectId = page.Template.projectId
   await registerProjectFonts(projectId)

@@ -27,6 +27,8 @@ import {
 } from '@/lib/later/errors'
 import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 import { handlePublishFailure } from './failure-handler'
+import { isVideoUrl } from '@/lib/media-type'
+import { pageContainsVideoLayer } from './page-to-design-data'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -64,7 +66,7 @@ export class LaterPostScheduler {
   private laterClient = getLaterClient()
 
   private isVideoUrl(url: string) {
-    return /\.(mp4|mov|avi|webm)(\?.*)?$/i.test(url)
+    return isVideoUrl(url)
   }
 
   /**
@@ -249,7 +251,20 @@ export class LaterPostScheduler {
         // Image already rendered client-side (Konva export), mark as RENDERED
         renderStatusValue = RenderStatus.RENDERED
       } else {
-        // No image provided, cron will render server-side
+        // No image provided, cron will render server-side.
+        // Guard: o render server-side é IMAGEM — página com camada de vídeo
+        // sairia com um buraco transparente em silêncio. Falhar aqui, na
+        // criação, em vez de às 2h da manhã no cron.
+        const page = await db.page.findUnique({
+          where: { id: data.pageId! },
+          select: { layers: true },
+        })
+        if (page && pageContainsVideoLayer(page.layers)) {
+          throw new Error(
+            'Esta página contém uma camada de vídeo e o agendamento por template gera imagem estática. ' +
+              'Exporte o vídeo pelo editor (botão "Exportar Vídeo") e agende o MP4 pela aba Criativos.',
+          )
+        }
         renderStatusValue = RenderStatus.PENDING
         nextRenderAtValue = new Date()
       }
@@ -534,7 +549,7 @@ export class LaterPostScheduler {
       })
 
       // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
-      let post = await db.$transaction(async (tx) => {
+      const post = await db.$transaction(async (tx) => {
         console.log(`[Later Scheduler] Transaction started for post ${postId}`)
 
         // Busca e lock pessimista do post
@@ -658,10 +673,8 @@ export class LaterPostScheduler {
       // 1. Prepare media items with correct structure
       console.log(`[Later Scheduler] Preparing ${post.mediaUrls.length} media items`)
       const mediaItems = post.mediaUrls.map((url) => {
-        // Detect media type from URL
-        const isVideo = url.toLowerCase().match(/\.(mp4|mov|avi|webm)/)
         return {
-          type: (isVideo ? 'video' : 'image') as 'image' | 'video',
+          type: (isVideoUrl(url) ? 'video' : 'image') as 'image' | 'video',
           url, // Use simple "url" field (not image_url or video_url)
         }
       })
@@ -672,9 +685,13 @@ export class LaterPostScheduler {
           ? `${post.caption}\n\n${post.verificationTag}`
           : post.caption
 
-      // 3. Late docs only require contentType for Stories; feed/carousel are inferred
+      // 3. Late docs require contentType for Stories and Reels; feed/carousel are inferred
       const platformSpecificData =
-        post.postType === PostType.STORY ? { contentType: 'story' as const } : undefined
+        post.postType === PostType.STORY
+          ? { contentType: 'story' as const }
+          : post.postType === PostType.REEL
+            ? { contentType: 'reel' as const }
+            : undefined
 
       if (platformSpecificData) {
         console.log(

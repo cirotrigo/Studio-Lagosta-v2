@@ -5,7 +5,6 @@ import type { AudioConfig } from '@/components/audio/audio-selection-modal'
 export interface VideoExportOptions {
   fps?: number // Frames por segundo (padrão: 30)
   duration?: number // Duração em segundos
-  format?: 'webm' | 'mp4' // Formato de saída
   quality?: number // Qualidade (0-1)
   audioConfig?: AudioConfig // Configuração de áudio (padrão: áudio original)
 }
@@ -295,7 +294,6 @@ export async function exportVideoWithLayers(
   const {
     fps: requestedFps = 30,
     duration,
-    format = 'webm',
     quality: requestedQuality = 0.8,
     audioConfig,
   } = options
@@ -838,33 +836,9 @@ export async function exportVideoWithLayers(
       mediaRecorder.onstop = () => resolve()
     })
 
-    // Gerar blob WebM
+    // Gerar blob WebM — a conversão para MP4 é da fila server-side
+    // (/api/video-processing), nunca do browser.
     const webmBlob = new Blob(chunks, { type: finalMimeType })
-
-    // Se formato solicitado for MP4, converter usando FFmpeg.wasm
-    if (format === 'mp4') {
-      onProgress?.({ phase: 'converting', progress: 85 })
-      console.log('[exportVideoWithLayers] Convertendo WebM para MP4...')
-
-      try {
-        const { convertWebMToMP4 } = await import('@/lib/video/ffmpeg-converter')
-
-        const mp4Blob = await convertWebMToMP4(webmBlob, (conversionProgress) => {
-          // Mapear progresso da conversão (0-100) para progresso total (85-100)
-          const totalProgress = 85 + (conversionProgress / 100) * 15
-          onProgress?.({ phase: 'converting', progress: totalProgress })
-        })
-
-        onProgress?.({ phase: 'finalizing', progress: 100 })
-        return mp4Blob
-      } catch (error) {
-        console.error('[exportVideoWithLayers] Erro ao converter para MP4:', error)
-        console.warn('[exportVideoWithLayers] Retornando WebM como fallback')
-        // Fallback: retornar WebM se conversão falhar
-        onProgress?.({ phase: 'finalizing', progress: 100 })
-        return webmBlob
-      }
-    }
 
     onProgress?.({ phase: 'finalizing', progress: 100 })
     return webmBlob

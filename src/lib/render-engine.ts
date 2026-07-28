@@ -141,6 +141,12 @@ export class RenderEngine {
         await this.renderImage(ctx, finalLayer, width, height, options)
         break
       default:
+        // Nunca engolir camada em silêncio: o resultado é um buraco invisível
+        // na arte publicada. 'video' é o caso conhecido (corte assumido — o
+        // story-renderer barra antes de chegar aqui).
+        console.warn(
+          `[RenderEngine] Camada não suportada ignorada: type="${finalLayer.type}" id="${finalLayer.id}"`,
+        )
         break
     }
 
