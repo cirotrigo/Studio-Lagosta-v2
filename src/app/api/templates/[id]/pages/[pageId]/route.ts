@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { z } from 'zod'
 import {
   fetchTemplateWithProject,
@@ -111,11 +112,32 @@ export async function PATCH(
       updateData.layers = JSON.stringify(canonicalizeLayersForPersistence(validatedData.layers))
     }
 
-    // Atualizar página
-    const page = await db.page.update({
-      where: { id: pageId },
-      data: updateData,
+    // A arte agendada renderiza desta página; mudou o visual, o render antigo
+    // vale nada. Só campos visuais contam — este mesmo PATCH recebe thumbnail
+    // e autosave do PageSync a cada troca de página, e layers idênticas não
+    // podem invalidar (senão abrir o editor re-renderiza os agendados à toa).
+    const layersChanged =
+      validatedData.layers !== undefined &&
+      updateData.layers !== normalizeLayersString(existingPage.layers)
+    const visualChanged =
+      layersChanged ||
+      (validatedData.background !== undefined && validatedData.background !== existingPage.background) ||
+      (validatedData.width !== undefined && validatedData.width !== existingPage.width) ||
+      (validatedData.height !== undefined && validatedData.height !== existingPage.height)
+
+    // Atualizar página (e invalidar renders na mesma transação)
+    const { page, invalidated } = await db.$transaction(async (tx) => {
+      const updated = await tx.page.update({
+        where: { id: pageId },
+        data: updateData,
+      })
+      const count = visualChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : 0
+      return { page: updated, invalidated: count }
     })
+
+    if (invalidated > 0) {
+      console.log(`[API] Page ${pageId} changed — invalidated ${invalidated} scheduled render(s)`)
+    }
 
     // Deserializar layers na resposta
     const pageWithParsedLayers = {

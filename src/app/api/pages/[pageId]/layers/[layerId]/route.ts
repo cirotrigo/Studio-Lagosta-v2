@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import {
   fetchTemplateWithProject,
   hasTemplateWriteAccess,
@@ -70,17 +71,29 @@ export async function PATCH(
       }),
     })
 
+    // Mudança real? O mesmo endpoint recebe autosave; layer idêntica não pode
+    // invalidar o render dos posts agendados desta página
+    const layerChanged = JSON.stringify((layers as any[])[layerIndex]) !== JSON.stringify(updatedLayer)
+
     // Substituir a layer atualizada no array
     ;(layers as any[])[layerIndex] = updatedLayer
 
-    // Salvar de volta no banco
-    const updatedPage = await db.page.update({
-      where: { id: pageId },
-      data: {
-        layers: JSON.stringify(layers),
-        updatedAt: new Date(),
-      },
+    // Salvar de volta no banco (e invalidar renders na mesma transação)
+    const { updatedPage, invalidated } = await db.$transaction(async (tx) => {
+      const saved = await tx.page.update({
+        where: { id: pageId },
+        data: {
+          layers: JSON.stringify(layers),
+          updatedAt: new Date(),
+        },
+      })
+      const count = layerChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : 0
+      return { updatedPage: saved, invalidated: count }
     })
+
+    if (invalidated > 0) {
+      console.log(`[API] Layer ${layerId} changed — invalidated ${invalidated} scheduled render(s)`)
+    }
 
     return NextResponse.json({
       success: true,

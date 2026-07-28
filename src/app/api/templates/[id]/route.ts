@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
-import { PostStatus, RenderStatus } from '../../../../../prisma/generated/client'
+import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 
 export const runtime = 'nodejs'
 
@@ -236,36 +236,12 @@ export async function PUT(
         }
       }
 
-      // Invalidate rendered images for scheduled posts that reference this template
-      const now = new Date()
-      const affectedPosts = await tx.socialPost.findMany({
-        where: {
-          templateId,
-          status: PostStatus.SCHEDULED,
-          renderStatus: { in: [RenderStatus.RENDERED, RenderStatus.PENDING, RenderStatus.RENDERING] },
-          pageId: { not: null },
-        },
-        select: {
-          id: true,
-          scheduledDatetime: true,
-        },
-      })
-
-      if (affectedPosts.length > 0) {
-        for (const post of affectedPosts) {
-          await tx.socialPost.update({
-            where: { id: post.id },
-            data: {
-              renderStatus: RenderStatus.PENDING,
-              renderedImageUrl: null,
-              renderedAt: null,
-              renderAttempts: 0,
-              renderError: null,
-              nextRenderAt: new Date(), // Re-render immediately for fresh preview
-            },
-          })
-        }
-        console.log(`[API] Invalidated renders for ${affectedPosts.length} scheduled posts`)
+      // Salvar o template muda a arte: os posts agendados voltam para PENDING
+      // e o cron re-renderiza (a regra vive em invalidate-renders, compartilhada
+      // com as rotas de página)
+      const invalidated = await invalidateScheduledRenders(tx, { templateId })
+      if (invalidated > 0) {
+        console.log(`[API] Invalidated renders for ${invalidated} scheduled posts`)
       }
 
       return updatedTemplate

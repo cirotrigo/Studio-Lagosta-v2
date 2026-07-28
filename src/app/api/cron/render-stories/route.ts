@@ -51,9 +51,12 @@ export async function GET(req: NextRequest) {
           post.slotValues as Record<string, unknown> | undefined,
         )
 
-        // Success: update with rendered image
-        await db.socialPost.update({
-          where: { id: post.id },
+        // Success: gravar SÓ se o post ainda está RENDERING. Se uma edição
+        // invalidou o render no meio do voo (status voltou a PENDING), gravar
+        // aqui ressuscitaria a arte velha por cima da invalidação — o certo é
+        // descartar este resultado e deixar o próximo ciclo re-renderizar.
+        const confirmed = await db.socialPost.updateMany({
+          where: { id: post.id, renderStatus: RenderStatus.RENDERING },
           data: {
             renderStatus: RenderStatus.RENDERED,
             renderedImageUrl: result.url,
@@ -64,6 +67,11 @@ export async function GET(req: NextRequest) {
           },
         })
 
+        if (confirmed.count === 0) {
+          console.log(`[render-stories] ↩ ${post.id} invalidated mid-render — discarding, will re-render`)
+          continue
+        }
+
         console.log(`[render-stories] ✓ ${post.id} rendered → ${result.url}`)
         rendered++
       } catch (error) {
@@ -73,9 +81,11 @@ export async function GET(req: NextRequest) {
         const newAttempts = post.renderAttempts + 1
 
         if (newAttempts >= 3) {
-          // Max retries exceeded
-          await db.socialPost.update({
-            where: { id: post.id },
+          // Max retries exceeded. Condicional pelo mesmo motivo do sucesso:
+          // se uma edição invalidou no meio, o post voltou a PENDING com
+          // tentativas zeradas — o dado mudou, a falha antiga não vale mais.
+          await db.socialPost.updateMany({
+            where: { id: post.id, renderStatus: RenderStatus.RENDERING },
             data: {
               renderStatus: RenderStatus.RENDER_FAILED,
               renderAttempts: newAttempts,
@@ -85,8 +95,8 @@ export async function GET(req: NextRequest) {
         } else {
           // Schedule retry with exponential backoff: 2^attempts * 2 minutes
           const backoffMs = Math.pow(2, newAttempts) * 2 * 60 * 1000
-          await db.socialPost.update({
-            where: { id: post.id },
+          await db.socialPost.updateMany({
+            where: { id: post.id, renderStatus: RenderStatus.RENDERING },
             data: {
               renderStatus: RenderStatus.PENDING,
               renderAttempts: newAttempts,
