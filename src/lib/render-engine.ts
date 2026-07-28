@@ -7,6 +7,7 @@ import type {
   TextboxConfig,
 } from '@/types/template'
 import { resolveImageSourceRect } from './image-fit'
+import { ICON_PATHS } from './assets/icon-library'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -24,6 +25,12 @@ export interface RenderOptions {
   imageCache?: Map<string, CanvasImageSource>
   fontChecker?: FontChecker
   backgroundColor?: string
+  /**
+   * Fábrica de Path2D a partir de um SVG path (d). No browser o global serve;
+   * no Node o canvas-renderer injeta o Path2D do @napi-rs/canvas (o
+   * render-engine não pode importá-lo — quebraria o bundle client).
+   */
+  createPath2D?: (d: string) => Path2D
 }
 
 export class RenderEngine {
@@ -106,7 +113,10 @@ export class RenderEngine {
         this.renderGradient(ctx, finalLayer, width, height)
         break
       case 'shape':
-        this.renderShape(ctx, finalLayer, width, height)
+        this.renderShape(ctx, finalLayer, width, height, options)
+        break
+      case 'icon':
+        this.renderIcon(ctx, finalLayer, options)
         break
       case 'logo':
       case 'element':
@@ -701,14 +711,24 @@ export class RenderEngine {
 
     const cache = options.imageCache
     if (cache?.has(source)) {
-      this.drawImage(ctx, cache.get(source) as CanvasImageSource, width, height, layer.style)
+      this.drawImage(ctx, cache.get(source) as CanvasImageSource, width, height, layer.style, options)
       return
     }
 
     if (!options.imageLoader) return
     const image = await options.imageLoader(source)
     if (cache) cache.set(source, image)
-    this.drawImage(ctx, image, width, height, layer.style)
+    this.drawImage(ctx, image, width, height, layer.style, options)
+  }
+
+  private static getPath2D(d: string, options?: RenderOptions): Path2D | null {
+    try {
+      if (options?.createPath2D) return options.createPath2D(d)
+      if (typeof Path2D !== 'undefined') return new Path2D(d)
+    } catch (error) {
+      console.warn('[RenderEngine] Path SVG inválido — ignorando:', error)
+    }
+    return null
   }
 
   private static drawImage(
@@ -717,6 +737,7 @@ export class RenderEngine {
     width: number,
     height: number,
     style?: LayerStyle,
+    options?: RenderOptions,
   ): void {
     const opacityBefore = ctx.globalAlpha
 
@@ -728,23 +749,43 @@ export class RenderEngine {
       ;(ctx as unknown as { filter: string }).filter = style.filter
     }
 
+    ctx.save()
+
+    // Máscara de forma (mesma semântica do clipFunc do Group no editor):
+    // path congelado em viewBox 0 0 100 100, escalado para a caixa da camada.
+    // O clip acontece ANTES do flip — no editor a máscara vive no Group
+    // externo e o espelhamento no KonvaImage interno.
+    if (style?.mask?.path) {
+      const maskPath = this.getPath2D(style.mask.path, options)
+      if (maskPath) {
+        ctx.scale(width / 100, height / 100)
+        ctx.clip(maskPath)
+        ctx.scale(100 / width, 100 / height)
+      }
+    }
+
     // cornerRadius no editor RECORTA a imagem (KonvaImage.cornerRadius), com ou
     // sem borda — recortar aqui também, não só desenhar o traço arredondado.
     const radius = style?.border?.radius ?? 0
-    const hasRadiusClip = radius > 0
-    if (hasRadiusClip) {
-      ctx.save()
+    if (radius > 0) {
       ctx.beginPath()
       this.traceRoundedRectPath(ctx, width, height, radius)
       ctx.clip()
+    }
+
+    // Flip espelha o conteúdo DENTRO da caixa (nunca via scale do node — o
+    // transformEnd do editor reseta o scale e apagaria o espelhamento)
+    if (style?.flipH || style?.flipV) {
+      ctx.translate(style.flipH ? width : 0, style.flipV ? height : 0)
+      ctx.scale(style.flipH ? -1 : 1, style.flipV ? -1 : 1)
     }
 
     const natural = {
       width: (image as { width?: number }).width ?? width,
       height: (image as { height?: number }).height ?? height,
     }
-    // Mesma resolução de recorte do ImageNode do editor: cover recorta a fonte
-    // (nada de transbordar a caixa), demais casos esticam a imagem inteira.
+    // Mesma resolução de recorte do ImageNode do editor: crop manual > cover
+    // (recorta a fonte, nada de transbordar a caixa) > esticar a imagem inteira.
     const src = resolveImageSourceRect(natural, { width, height }, style)
     if (src) {
       ctx.drawImage(image, src.cropX, src.cropY, src.cropWidth, src.cropHeight, 0, 0, width, height)
@@ -752,9 +793,7 @@ export class RenderEngine {
       ctx.drawImage(image, 0, 0, width, height)
     }
 
-    if (hasRadiusClip) {
-      ctx.restore()
-    }
+    ctx.restore()
 
     if (style?.border?.width) {
       ctx.lineWidth = style.border.width
@@ -860,6 +899,7 @@ export class RenderEngine {
     layer: Layer,
     width: number,
     height: number,
+    options?: RenderOptions,
   ): void {
     const style = layer.style ?? {}
     const shapeType = style.shapeType ?? 'rectangle'
@@ -874,6 +914,78 @@ export class RenderEngine {
         : undefined
     const strokeWidth = style.strokeWidth ?? style.border?.width ?? 0
     const cornerRadius = style.border?.radius ?? 0
+
+    // Forma vetorial genérica: path normalizado escalado para a caixa da
+    // camada — espelha o <Path> dentro de Group do editor. Stroke compensado
+    // pela escala média (editor usa strokeScaleEnabled=false).
+    if (shapeType === 'svg-path') {
+      if (!style.pathData) return
+      const path = this.getPath2D(style.pathData, options)
+      if (!path) return
+      const [vx, vy, vw, vh] = style.pathViewBox ?? [0, 0, 100, 100]
+      const scaleX = width / (vw || 1)
+      const scaleY = height / (vh || 1)
+      ctx.save()
+      ctx.scale(scaleX, scaleY)
+      ctx.translate(-vx, -vy)
+      ctx.fillStyle = fill
+      ctx.fill(path, style.pathFillRule ?? 'nonzero')
+      if (stroke && strokeWidth > 0) {
+        ctx.strokeStyle = stroke
+        ctx.lineWidth = strokeWidth / ((scaleX + scaleY) / 2 || 1)
+        ctx.lineJoin = 'round'
+        ctx.stroke(path)
+      }
+      ctx.restore()
+      return
+    }
+
+    // Linha com estilo (sólida/tracejada/pontilhada) e pontas de seta —
+    // mesma geometria do ShapeNode do editor (Konva.Arrow encurta o segmento
+    // em pointerLength para o dash não vazar por baixo da ponta)
+    if (shapeType === 'line') {
+      const lineWidth = Math.max(1, style.strokeWidth ?? 4)
+      const y = height / 2
+      const pointer = Math.max(10, lineWidth * 3)
+      const startArrow = style.lineStartCap === 'arrow'
+      const endArrow = style.lineEndCap === 'arrow'
+
+      ctx.strokeStyle = fill
+      ctx.fillStyle = fill
+      ctx.lineWidth = lineWidth
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
+
+      if (style.lineStyle === 'dashed') {
+        ctx.setLineDash([lineWidth * 2.5, lineWidth * 2])
+      } else if (style.lineStyle === 'dotted') {
+        ctx.setLineDash([0.1, lineWidth * 2])
+      }
+
+      ctx.beginPath()
+      ctx.moveTo(startArrow ? pointer : 0, y)
+      ctx.lineTo(endArrow ? width - pointer : width, y)
+      ctx.stroke()
+      ctx.setLineDash([])
+
+      if (endArrow) {
+        ctx.beginPath()
+        ctx.moveTo(width, y)
+        ctx.lineTo(width - pointer, y - pointer / 2)
+        ctx.lineTo(width - pointer, y + pointer / 2)
+        ctx.closePath()
+        ctx.fill()
+      }
+      if (startArrow) {
+        ctx.beginPath()
+        ctx.moveTo(0, y)
+        ctx.lineTo(pointer, y - pointer / 2)
+        ctx.lineTo(pointer, y + pointer / 2)
+        ctx.closePath()
+        ctx.fill()
+      }
+      return
+    }
 
     ctx.beginPath()
 
@@ -923,11 +1035,6 @@ export class RenderEngine {
         ctx.closePath()
         break
       }
-      case 'line': {
-        ctx.moveTo(0, height / 2)
-        ctx.lineTo(width, height / 2)
-        break
-      }
       case 'rounded-rectangle': {
         this.traceRoundedRectPath(ctx, width, height, Math.min(cornerRadius || 24, Math.min(width, height) / 2))
         break
@@ -943,15 +1050,6 @@ export class RenderEngine {
       }
     }
 
-    if (shapeType === 'line') {
-      ctx.strokeStyle = fill
-      ctx.lineWidth = Math.max(1, style.strokeWidth ?? 4)
-      ctx.lineCap = 'round'
-      ctx.lineJoin = 'round'
-      ctx.stroke()
-      return
-    }
-
     ctx.fillStyle = fill
     ctx.fill()
 
@@ -959,6 +1057,32 @@ export class RenderEngine {
       ctx.strokeStyle = stroke
       ctx.lineWidth = strokeWidth
       ctx.stroke()
+    }
+  }
+
+  /**
+   * Camada `icon` (legado): o editor desenha o Konva.Path com as coordenadas
+   * CRUAS do path (Konva.Path não escala por width/height) — espelhar isso.
+   * Até aqui o case nem existia e o ícone simplesmente sumia da arte.
+   */
+  private static renderIcon(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    options?: RenderOptions,
+  ): void {
+    const style = layer.style ?? {}
+    const data = style.iconId ? ICON_PATHS[style.iconId] : undefined
+    if (!data) return
+    const path = this.getPath2D(data, options)
+    if (!path) return
+
+    ctx.fillStyle = style.fill ?? '#111111'
+    ctx.fill(path)
+    if (style.strokeColor && (style.strokeWidth ?? 0) > 0) {
+      ctx.strokeStyle = style.strokeColor
+      ctx.lineWidth = style.strokeWidth ?? 0
+      ctx.lineJoin = 'round'
+      ctx.stroke(path)
     }
   }
 

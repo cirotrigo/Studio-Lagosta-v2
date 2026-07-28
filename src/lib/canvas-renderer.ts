@@ -3,7 +3,7 @@
 
 import * as nodeFs from 'node:fs'
 import * as nodePath from 'node:path'
-import { createCanvas, loadImage, GlobalFonts } from '@napi-rs/canvas'
+import { createCanvas, loadImage, GlobalFonts, Path2D as NapiPath2D } from '@napi-rs/canvas'
 import type { Canvas, SKRSContext2D, Image } from '@napi-rs/canvas'
 import { RenderEngine } from './render-engine'
 import { FONT_CONFIG } from './font-config'
@@ -103,6 +103,9 @@ export class CanvasRenderer {
         imageLoader: this.nodeImageLoader.bind(this),
         imageCache: this.imageCache as unknown as Map<string, CanvasImageSource>,
         fontChecker: this.nodeFontChecker.bind(this),
+        // Máscaras, formas svg-path e ícones precisam de Path2D — no Node é o
+        // do @napi-rs/canvas (não existe global)
+        createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,
       },
     )
 
