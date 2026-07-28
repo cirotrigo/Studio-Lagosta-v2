@@ -30,6 +30,7 @@ import {
   ArrowDownToLine,
   FoldVertical,
   MoveVertical,
+  AlertTriangle,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
 import { patchLineHeight } from '@/lib/text-line-height'
@@ -162,6 +163,19 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
   }
 
   const fontDisplayName = getFontDisplayName()
+
+  // Fidelidade de fontes: o render server-side só enxerga a Montserrat
+  // empacotada, as fontes de sistema registradas e as fontes do projeto com
+  // ARQUIVO enviado (CustomFont + blob). Qualquer outra família cai em
+  // fallback na arte agendada/exportada — avisar aqui, onde a fonte é
+  // escolhida, em vez de deixar divergir em silêncio.
+  const SERVER_SAFE_FAMILIES = React.useMemo(
+    () => new Set(['montserrat', 'arial', 'helvetica', 'times new roman', 'georgia', 'verdana', 'sans-serif']),
+    [],
+  )
+  const isFontServerSafe =
+    SERVER_SAFE_FAMILIES.has(fontFamily.toLowerCase()) ||
+    fontManager.isCustomFont(fontFamily, projectId)
 
   // Negrito saiu de propósito: o peso vem da variante da fonte escolhida no
   // seletor de família, não de um botão que finge um peso que a fonte pode não
@@ -415,6 +429,15 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
               )}
             </SelectContent>
           </Select>
+
+          {!isFontServerSafe && (
+            <span
+              className="flex h-8 w-6 flex-shrink-0 items-center justify-center text-amber-500"
+              title={`A fonte "${fontFamily}" não tem arquivo enviado no projeto — a arte agendada/exportada sairá com outra fonte. Envie o .ttf/.otf no painel Texto → Fontes.`}
+            >
+              <AlertTriangle className="h-4 w-4" />
+            </span>
+          )}
 
           {/* Cor do texto - acesso rápido, logo após a fonte */}
           <Popover>

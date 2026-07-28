@@ -160,6 +160,9 @@ export class CanvasRenderer {
     return url
   }
 
+  /** Famílias já reclamadas neste processo — um aviso por fonte, não por camada */
+  private static warnedMissingFonts = new Set<string>()
+
   /**
    * Font checker para Node.js
    * Verifica se a fonte está registrada no GlobalFonts
@@ -181,8 +184,19 @@ export class CanvasRenderer {
       }
     }
 
-    // Fonte não encontrada, usar fallback
+    // Fonte não encontrada, usar fallback — e RECLAMAR alto: fallback
+    // silencioso foi o que deixou artes divergindo do editor por meses.
+    // O aviso aparece no log do cron render-stories e do generate-creatives.
     const fallback = FONT_CONFIG.getFontWithFallback(fontName)
+    const key = fontName.toLowerCase()
+    if (!CanvasRenderer.warnedMissingFonts.has(key)) {
+      CanvasRenderer.warnedMissingFonts.add(key)
+      console.warn(
+        `[CanvasRenderer] ⚠️ Fonte "${fontName}" NÃO está registrada no servidor — ` +
+          `renderizando com fallback "${fallback}". A arte publicada vai divergir do editor. ` +
+          `Envie o arquivo .ttf/.otf da fonte nas configurações de fontes do projeto.`,
+      )
+    }
 
     return {
       isValid: false,
