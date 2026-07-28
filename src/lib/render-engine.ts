@@ -68,7 +68,7 @@ export class RenderEngine {
 
     ctx.save()
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
-    this.applyShadow(ctx, finalLayer)
+    this.applyShadow(ctx, finalLayer, scaleFactor)
     this.applyOpacity(ctx, finalLayer.style)
 
     switch (finalLayer.type) {
@@ -272,12 +272,23 @@ export class RenderEngine {
    *
    * O caminho por `style.shadow` continua atendido por compatibilidade.
    */
-  private static applyShadow(ctx: CanvasRenderingContext2D, layer: Layer): void {
-    const efeito = layer.effects?.shadow
+  private static applyShadow(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    scaleFactor = 1,
+  ): void {
+    // `rich-text` fica de fora: o editor dele (konva-multi-styled-text) lê a
+    // sombra por segmento, em `segment.style.shadow`, e ignora
+    // `layer.effects.shadow`. Desenhar aqui criaria a divergência ao contrário
+    // — uma sombra na arte publicada que o usuário nunca viu e não sabe
+    // desligar.
+    const efeito = layer.type === 'rich-text' ? undefined : layer.effects?.shadow
     if (efeito?.enabled) {
-      ctx.shadowOffsetX = efeito.shadowOffsetX ?? 0
-      ctx.shadowOffsetY = efeito.shadowOffsetY ?? 0
-      ctx.shadowBlur = efeito.shadowBlur ?? 0
+      // Deslocamento e difusão são medidas em pixels do canvas: sem escalar,
+      // a miniatura sai com a sombra proporcionalmente gigante
+      ctx.shadowOffsetX = (efeito.shadowOffsetX ?? 0) * scaleFactor
+      ctx.shadowOffsetY = (efeito.shadowOffsetY ?? 0) * scaleFactor
+      ctx.shadowBlur = (efeito.shadowBlur ?? 0) * scaleFactor
       // O canvas não tem opacidade de sombra separada — ela vai no alfa da cor
       ctx.shadowColor = this.applyOpacityToColor(efeito.shadowColor ?? '#000000', efeito.shadowOpacity ?? 1)
       return
