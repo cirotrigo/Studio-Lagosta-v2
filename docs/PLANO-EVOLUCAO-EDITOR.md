@@ -164,7 +164,7 @@ kerning acima.
 
 ## 6. Backlog sob demanda e cortes
 
-**Sob demanda** (implementar quando o uso pedir, specs completas na rev. 1 via git): grupos com Cmd+G · copy style · Position dropdown · registro central de atalhos · magic resize · zoom por scroll/pinça + pan · export multi-página/PDF raster · AI write · gradiente universal + color picker unificado + eyedropper · presets de filtro com thumbnail · filtros server-side completos.
+**Sob demanda** (implementar quando o uso pedir, specs completas na rev. 1 via git): grupos com Cmd+G · copy style · Position dropdown · registro central de atalhos · magic resize · zoom por scroll/pinça + pan · export multi-página/PDF raster · AI write · gradiente universal + color picker unificado + eyedropper · presets de filtro com thumbnail. (Os "filtros server-side completos" saíram desta lista: entregues em 28/07/2026, § 5.1.)
 
 **Cortados** (não fazer, justificativa mantida da rev. 1): draw tool · fundos Unsplash · presets Facebook/YouTube/LinkedIn/Twitter · PDF vetorial server-side · blend modes · busca de templates estilo Polotno · render de camada `video`.
 
