@@ -106,6 +106,9 @@ export class CanvasRenderer {
         // Máscaras, formas svg-path e ícones precisam de Path2D — no Node é o
         // do @napi-rs/canvas (não existe global)
         createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,
+        // Filtros de imagem e blur de texto rodam num canvas offscreen —
+        // injetado pelo mesmo motivo do Path2D
+        createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement,
       },
     )
 

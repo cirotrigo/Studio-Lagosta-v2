@@ -3,11 +3,18 @@ import type {
   FieldValues,
   Layer,
   LayerStyle,
+  RichTextStyle,
   TextBreakMode,
   TextboxConfig,
 } from '@/types/template'
 import { resolveImageSourceRect } from './image-fit'
 import { ICON_PATHS } from './assets/icon-library'
+import {
+  applyImageFilterChain,
+  applyStackBlur,
+  hasImageFilters,
+} from './konva/filters/apply'
+import { flattenRichTextStyles } from './rich-text-styles'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -31,6 +38,14 @@ export interface RenderOptions {
    * render-engine não pode importá-lo — quebraria o bundle client).
    */
   createPath2D?: (d: string) => Path2D
+  /**
+   * Fábrica de canvas offscreen para os filtros de imagem e o blur de texto
+   * (o "cache" que o Konva usa no editor). No Node o canvas-renderer injeta o
+   * createCanvas do @napi-rs/canvas — mesmo motivo do createPath2D; no browser
+   * cai em document.createElement('canvas'). Sem nenhum dos dois, os filtros
+   * são silenciosamente ignorados (comportamento antigo).
+   */
+  createCanvas?: (width: number, height: number) => HTMLCanvasElement
 }
 
 export class RenderEngine {
@@ -78,14 +93,15 @@ export class RenderEngine {
 
     // Fundo/pílula de texto: no editor é um Rect IRMÃO do Text (sem rotação e
     // sem a opacidade da camada), desenhado logo abaixo dele — replicar antes
-    // do transform. Texto curvo não tem fundo no editor.
+    // do transform. Texto curvo não tem fundo no editor (mas curved com
+    // curvature 0 desenha como texto normal, fundo incluso — igual ao editor).
     // (rich-text fica de fora: como na sombra, o konva-multi-styled-text lê
     // efeitos por segmento e ignora layer.effects)
     const backgroundFx = finalLayer.effects?.background
     if (
       finalLayer.type === 'text' &&
       backgroundFx?.enabled &&
-      !finalLayer.effects?.curved?.enabled
+      !this.isCurvedTextLayer(finalLayer)
     ) {
       const pad = (backgroundFx.padding ?? 0) * scaleFactor
       const bgX = finalLayer.position.x * scaleFactor - pad
@@ -102,8 +118,10 @@ export class RenderEngine {
 
     switch (finalLayer.type) {
       case 'text':
-      case 'rich-text':
         await this.renderText(ctx, finalLayer, width, height, options)
+        break
+      case 'rich-text':
+        await this.renderRichText(ctx, finalLayer, options)
         break
       case 'image':
         await this.renderImage(ctx, finalLayer, width, height, options)
@@ -334,6 +352,15 @@ export class RenderEngine {
     ctx.shadowColor = color
   }
 
+  /** Curvo de verdade só com curvatura ≠ 0 — igual ao isCurvedText do editor */
+  private static isCurvedTextLayer(layer: Layer): boolean {
+    return Boolean(
+      layer.type === 'text' &&
+        layer.effects?.curved?.enabled &&
+        (layer.effects.curved.curvature ?? 0) !== 0,
+    )
+  }
+
   private static async renderText(
     ctx: CanvasRenderingContext2D,
     layer: Layer,
@@ -359,6 +386,41 @@ export class RenderEngine {
     // ctx.font a partir do style — sem isso o fallback só existia na primeira
     // atribuição e o measureText dos caminhos com config media outra fonte
     const resolvedStyle = { ...style, fontFamily }
+
+    // Texto curvo: caminho próprio, caractere a caractere no arco — a mesma
+    // geometria do editor. Não passa por padding, quebra nem alinhamento.
+    if (this.isCurvedTextLayer(layer)) {
+      this.renderCurvedText(ctx, layer, resolvedStyle, options)
+      return
+    }
+
+    // Blur de texto: desenhar o conteúdo num offscreen (o cache do editor),
+    // borrar os pixels com o stack blur do Konva e blitar o resultado
+    const blurFx = layer.type === 'text' ? layer.effects?.blur : undefined
+    const blurRadius = blurFx?.enabled ? Math.round(blurFx.blurRadius ?? 0) : 0
+    if (blurRadius > 0) {
+      const done = await this.renderTextBlurred(
+        ctx, layer, resolvedStyle, width, height, blurRadius, options,
+      )
+      if (done) return
+    }
+
+    await this.drawTextContent(ctx, layer, resolvedStyle, width, height, options)
+  }
+
+  /**
+   * Corpo do desenho de texto (fonte, cor, padding, quebra, contorno) — usado
+   * tanto no ctx principal quanto no offscreen do blur.
+   */
+  private static async drawTextContent(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    resolvedStyle: LayerStyle,
+    width: number,
+    height: number,
+    options: RenderOptions,
+  ): Promise<void> {
+    const style = layer.style ?? {}
     const fontSize = Math.max(1, style.fontSize ?? 16)
     ctx.font = this.buildFontString(fontSize, resolvedStyle)
     ctx.fillStyle = style.color ?? '#000000'
@@ -395,6 +457,335 @@ export class RenderEngine {
     // (wrap="word") — 448 camadas publicavam texto deformado
     const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
     await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight, textStroke)
+  }
+
+  /**
+   * effects.blur em texto — réplica do cache do editor: o Konva cacheia o
+   * node com pixelRatio 2 (client rect expandido por sombra/contorno), aplica
+   * o stack blur nos pixels do buffer e desenha o bitmap de volta em 1x. O
+   * raio NÃO é dividido pelo pixelRatio (o Konva também não divide), então o
+   * borrão visual é raio/2 — replicado aqui com o mesmo buffer 2x.
+   */
+  private static async renderTextBlurred(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    resolvedStyle: LayerStyle,
+    width: number,
+    height: number,
+    blurRadius: number,
+    options: RenderOptions,
+  ): Promise<boolean> {
+    const scaleFactor = options.scaleFactor ?? 1
+
+    // Client rect local como o Konva calcula para o cache: caixa expandida
+    // pela sombra (offset + blur) e pelo contorno — o blur é cortado aí.
+    const shadowFx = layer.effects?.shadow?.enabled ? layer.effects.shadow : undefined
+    const sOffX = (shadowFx?.shadowOffsetX ?? 0) * scaleFactor
+    const sOffY = (shadowFx?.shadowOffsetY ?? 0) * scaleFactor
+    const sBlur = (shadowFx?.shadowBlur ?? 0) * scaleFactor
+    const strokeFx = layer.effects?.stroke
+    const strokeW = strokeFx?.enabled && (strokeFx.strokeWidth ?? 0) > 0
+      ? strokeFx.strokeWidth * scaleFactor
+      : (layer.style?.border?.width ?? 0) * scaleFactor
+
+    const rectX = -(strokeW / 2 + sBlur) + Math.min(sOffX, 0)
+    const rectY = -(strokeW / 2 + sBlur) + Math.min(sOffY, 0)
+    const bx = Math.floor(rectX)
+    const by = Math.floor(rectY)
+    const extraX = Math.abs(Math.round(rectX) - bx) > 0.5 ? 1 : 0
+    const extraY = Math.abs(Math.round(rectY) - by) > 0.5 ? 1 : 0
+    const bw = Math.ceil(width + strokeW + Math.abs(sOffX) + sBlur * 2) + extraX
+    const bh = Math.ceil(height + strokeW + Math.abs(sOffY) + sBlur * 2) + extraY
+    if (bw <= 0 || bh <= 0) return false
+
+    // pixelRatio 2 = o max(2, devicePixelRatio) do cache de texto do editor
+    const pixelRatio = 2
+    const off = this.getOffscreen(bw * pixelRatio, bh * pixelRatio, options)
+    if (!off) return false
+
+    const octx = off.ctx
+    octx.scale(pixelRatio, pixelRatio)
+    octx.translate(-bx, -by)
+    // A sombra é desenhada DENTRO do cache (e borrada junto), como no editor
+    this.applyShadow(octx, layer, scaleFactor)
+    await this.drawTextContent(octx, layer, resolvedStyle, width, height, options)
+
+    const imageData = octx.getImageData(0, 0, off.width, off.height)
+    applyStackBlur(imageData.data, off.width, off.height, Math.round(blurRadius * scaleFactor))
+    octx.putImageData(imageData, 0, 0)
+
+    // A sombra já está no bitmap: blitar com a sombra do ctx ligada dobraria
+    ctx.save()
+    ctx.shadowColor = 'rgba(0,0,0,0)'
+    ctx.shadowBlur = 0
+    ctx.shadowOffsetX = 0
+    ctx.shadowOffsetY = 0
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, bx, by, bw, bh)
+    ctx.restore()
+    return true
+  }
+
+  /**
+   * effects.curved — réplica exata do editor (konva-editable-text.tsx):
+   * cada caractere é um Konva.Text posicionado no arco com espaçamento
+   * UNIFORME por índice (largura de glifo não entra na conta) e rotação
+   * tangente. O blur é ignorado de propósito: no editor os caracteres não são
+   * cacheados individualmente, então o filtro nunca chega a rodar; a sombra
+   * por caractere equivale à sombra que o renderLayer já deixou no ctx.
+   */
+  private static renderCurvedText(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    resolvedStyle: LayerStyle,
+    options: RenderOptions,
+  ): void {
+    const style = layer.style ?? {}
+    const scaleFactor = options.scaleFactor ?? 1
+    const content = this.applyTextTransform(layer.content ?? '', style)
+    if (!content) return
+
+    const curvature = layer.effects?.curved?.curvature || 0
+    const chars = content.split('')
+    const fontSize = Math.max(1, style.fontSize ?? 16)
+    const width = layer.size?.width ?? 240
+
+    const curvatureRadians = (curvature * Math.PI) / 180
+    const radius = curvatureRadians !== 0
+      ? width / (2 * Math.sin(Math.abs(curvatureRadians) / 2))
+      : 1000
+    const centerX = width / 2
+    const centerY = curvature > 0 ? -radius : radius
+
+    ctx.font = this.buildFontString(fontSize, resolvedStyle)
+    ctx.fillStyle = style.color ?? '#000000'
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+
+    const strokeFx = layer.effects?.stroke
+    const hasStroke = Boolean(strokeFx?.enabled && (strokeFx.strokeWidth ?? 0) > 0)
+    if (hasStroke) {
+      ctx.strokeStyle = strokeFx?.strokeColor ?? '#000000'
+      ctx.lineWidth = (strokeFx?.strokeWidth ?? 0) * scaleFactor
+      ctx.lineJoin = 'round'
+    }
+
+    for (let i = 0; i < chars.length; i++) {
+      const charAngle = (curvatureRadians * (i - chars.length / 2)) / chars.length
+      const x = centerX + radius * Math.sin(charAngle)
+      const y = centerY + radius * (1 - Math.cos(charAngle))
+
+      ctx.save()
+      ctx.translate(x * scaleFactor, y * scaleFactor)
+      ctx.rotate(charAngle)
+      // Konva.Text de um caractere: baseline middle no meio do line-box
+      // (lineHeight default 1 — o editor não passa lineHeight aos chars)
+      ctx.fillText(chars[i], 0, fontSize / 2)
+      if (hasStroke) ctx.strokeText(chars[i], 0, fontSize / 2)
+      ctx.restore()
+    }
+  }
+
+  /**
+   * Camada rich-text — réplica do konva-multi-styled-text.tsx: a quebra de
+   * linha usa o estilo BASE (o editor mede num Konva.Text temporário com
+   * padding 6 e wrap word), cada segmento é medido com a própria fonte SEM
+   * letterSpacing no ctx (o editor mede num canvas cru e soma
+   * letterSpacing × length) e desenhado com estilo, sombra, contorno,
+   * faux-bold e textDecoration POR SEGMENTO. Sem truncamento por altura: o
+   * Group do editor não recorta os filhos, o texto transborda igual.
+   */
+  private static async renderRichText(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+    options: RenderOptions,
+  ): Promise<void> {
+    const style = layer.style ?? {}
+    const scaleFactor = options.scaleFactor ?? 1
+    const content = this.applyTextTransform(layer.content ?? '', style)
+    if (!content) return
+
+    // fontChecker por família (base + cada segmento pode ter a sua)
+    const familyCache = new Map<string, string>()
+    const resolveFamily = async (family: string): Promise<string> => {
+      const requested = family || 'Inter'
+      const cached = familyCache.get(requested)
+      if (cached) return cached
+      let resolved = requested
+      if (options.fontChecker) {
+        try {
+          const result = await options.fontChecker(requested)
+          if (!result.isValid && result.fallbackFont) resolved = result.fallbackFont
+        } catch {
+          // ignore font checker failures
+        }
+      }
+      familyCache.set(requested, resolved)
+      return resolved
+    }
+
+    // 1. Segmentos — mesma normalização e preenchimento de lacunas do editor
+    const baseSeg: RichTextStyle = {
+      start: 0,
+      end: 0,
+      fontFamily: style.fontFamily ?? 'Inter',
+      fontSize: style.fontSize ?? 16,
+      fill: style.color ?? '#000000',
+      fontStyle: (style.fontStyle ?? 'normal') as RichTextStyle['fontStyle'],
+      textDecoration: 'none',
+      letterSpacing: style.letterSpacing ?? 0,
+    }
+    const flat = flattenRichTextStyles(content.length, (layer.richTextStyles ?? []) as RichTextStyle[])
+    const segments: RichTextStyle[] = []
+    if (flat.length === 0) {
+      segments.push({ ...baseSeg, start: 0, end: content.length })
+    } else {
+      let cursor = 0
+      for (const rich of flat) {
+        const start = Math.max(0, rich.start)
+        const end = Math.min(content.length, rich.end)
+        if (start > cursor) segments.push({ ...baseSeg, start: cursor, end: start })
+        if (end > start) {
+          segments.push({
+            start,
+            end,
+            fontFamily: rich.fontFamily ?? baseSeg.fontFamily,
+            fontSize: rich.fontSize ?? baseSeg.fontSize,
+            fill: rich.fill ?? baseSeg.fill,
+            fontStyle: rich.fontStyle ?? baseSeg.fontStyle,
+            textDecoration: rich.textDecoration ?? baseSeg.textDecoration,
+            letterSpacing: rich.letterSpacing ?? baseSeg.letterSpacing,
+            stroke: rich.stroke,
+            shadow: rich.shadow,
+          })
+        }
+        cursor = Math.max(cursor, end)
+      }
+      if (cursor < content.length) segments.push({ ...baseSeg, start: cursor, end: content.length })
+    }
+
+    const families = new Set<string>([baseSeg.fontFamily ?? 'Inter'])
+    for (const seg of segments) families.add(seg.fontFamily ?? 'Inter')
+    for (const family of families) await resolveFamily(family)
+    const familyOf = (seg: RichTextStyle) => familyCache.get(seg.fontFamily ?? 'Inter') ?? 'Inter'
+
+    // 2. Quebra de linha com o estilo base (tempText do editor: SEM peso,
+    // padding 6, wrap word, medindo com letterSpacing como o Konva)
+    const padding = 6
+    const layerWidth = layer.size?.width ?? 240
+    const wrapWidth = Math.max(0, layerWidth - padding * 2)
+    const baseFontSize = Math.max(1, style.fontSize ?? 16)
+    const spacingCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+    ctx.font = `${style.fontStyle ?? 'normal'} ${baseFontSize}px ${familyOf(baseSeg)}`
+    spacingCtx.letterSpacing = `${style.letterSpacing ?? 0}px`
+    const lines = this.breakTextIntoLines(ctx, content, wrapWidth, 'word', false)
+    // Segmentos são medidos SEM letterSpacing no ctx — o editor mede num
+    // canvas cru e soma letterSpacing × length por fora
+    spacingCtx.letterSpacing = '0px'
+
+    // 3. Layout: linhas → segmentos posicionados (índices no texto original)
+    const lineHeightMultiplier = style.lineHeight ?? 1.2
+    const align = style.textAlign ?? 'left'
+    type PlacedSegment = { text: string; x: number; y: number; width: number; seg: RichTextStyle }
+    const placed: PlacedSegment[] = []
+    let searchCursor = 0
+    let yOffset = padding
+
+    for (const lineText of lines) {
+      let lineStart = lineText.length > 0 ? content.indexOf(lineText, searchCursor) : searchCursor
+      if (lineStart === -1) lineStart = searchCursor
+      const lineEnd = lineStart + lineText.length
+
+      const lineSegs: Array<{ text: string; width: number; seg: RichTextStyle }> = []
+      for (const seg of segments) {
+        if (seg.end <= lineStart || seg.start >= lineEnd) continue
+        const intersectStart = Math.max(seg.start, lineStart)
+        const intersectEnd = Math.min(seg.end, lineEnd)
+        const text = content.substring(intersectStart, intersectEnd)
+        if (!text.length) continue
+        ctx.font = `${seg.fontStyle ?? 'normal'} ${seg.fontSize ?? 16}px ${familyOf(seg)}`
+        const segWidth = ctx.measureText(text).width + (seg.letterSpacing ?? 0) * text.length
+        lineSegs.push({ text, width: segWidth, seg })
+      }
+
+      const lineHeight = lineSegs.length > 0
+        ? Math.max(...lineSegs.map((s) => s.seg.fontSize ?? 16))
+        : lineHeightMultiplier * 16
+      const lineWidth = lineSegs.reduce((sum, s) => sum + s.width, 0)
+
+      let xOffset = padding
+      if (align === 'center') xOffset += (wrapWidth - lineWidth) / 2
+      else if (align === 'right') xOffset += wrapWidth - lineWidth
+
+      for (const s of lineSegs) {
+        placed.push({ text: s.text, x: xOffset, y: yOffset, width: s.width, seg: s.seg })
+        xOffset += s.width
+      }
+
+      yOffset += lineHeight * lineHeightMultiplier
+      searchCursor = lineEnd
+    }
+
+    // 4. Desenho por segmento
+    for (const p of placed) {
+      const seg = p.seg
+      const fontSize = seg.fontSize ?? 16
+      const fs = fontSize * scaleFactor
+      const fill = seg.fill ?? '#000000'
+      const x = p.x * scaleFactor
+      // Konva.Text de linha única: baseline middle no meio do line-box
+      // (lineHeight 1 — o editor não passa lineHeight aos segmentos)
+      const yMid = p.y * scaleFactor + fs / 2
+
+      ctx.save()
+      ctx.font = `${seg.fontStyle ?? 'normal'} ${fs}px ${familyOf(seg)}`
+      ctx.textAlign = 'left'
+      ctx.textBaseline = 'middle'
+      spacingCtx.letterSpacing = `${(seg.letterSpacing ?? 0) * scaleFactor}px`
+
+      // textDecoration ANTES do texto e SEM sombra, como o _sceneFunc do Konva
+      // (underline a +round(fs/2) do meio, line-through no meio, traço fs/15)
+      if (seg.textDecoration === 'underline' || seg.textDecoration === 'line-through') {
+        const yLine = seg.textDecoration === 'underline'
+          ? yMid + Math.round(fontSize / 2) * scaleFactor
+          : yMid
+        ctx.beginPath()
+        ctx.moveTo(x, yLine)
+        ctx.lineTo(x + Math.round(p.width) * scaleFactor, yLine)
+        ctx.lineWidth = (fontSize / 15) * scaleFactor
+        ctx.strokeStyle = fill
+        ctx.stroke()
+      }
+
+      // Sombra POR SEGMENTO (o Group não tem sombra; applyShadow pula rich-text)
+      if (seg.shadow) {
+        ctx.shadowColor = seg.shadow.color ?? '#000000'
+        ctx.shadowBlur = (seg.shadow.blur ?? 0) * scaleFactor
+        ctx.shadowOffsetX = (seg.shadow.offset?.x ?? 0) * scaleFactor
+        ctx.shadowOffsetY = (seg.shadow.offset?.y ?? 0) * scaleFactor
+      }
+
+      // Faux-bold do editor: bold sem contorno explícito ganha stroke da
+      // própria cor (o canvas não sintetiza negrito de fonte de peso único);
+      // fillAfterStrokeEnabled = stroke primeiro, fill por cima
+      const isBold = seg.fontStyle?.includes('bold') ?? false
+      const hasCustomStroke = Boolean(seg.stroke?.color && (seg.stroke?.width ?? 0) > 0)
+      const strokeColor = hasCustomStroke ? seg.stroke?.color : isBold ? fill : undefined
+      const strokeWidth = hasCustomStroke
+        ? (seg.stroke?.width ?? 0) * scaleFactor
+        : isBold
+          ? Math.max(0.6, fontSize * 0.03) * scaleFactor
+          : 0
+
+      if (strokeColor && strokeWidth > 0) {
+        ctx.strokeStyle = strokeColor
+        ctx.lineWidth = strokeWidth
+        ctx.lineJoin = 'round'
+        ctx.strokeText(p.text, x, yMid)
+      }
+      ctx.fillStyle = fill
+      ctx.fillText(p.text, x, yMid)
+      ctx.restore()
+    }
   }
 
   /**
@@ -731,6 +1122,38 @@ export class RenderEngine {
     return null
   }
 
+  /**
+   * Canvas offscreen para filtros (imagem e blur de texto). Vem de
+   * options.createCanvas (injetado pelo canvas-renderer no Node) ou de
+   * document.createElement no browser; sem nenhum dos dois, devolve null e o
+   * chamador segue sem filtro (comportamento antigo).
+   */
+  private static getOffscreen(
+    width: number,
+    height: number,
+    options?: RenderOptions,
+  ): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D; width: number; height: number } | null {
+    const w = Math.max(1, Math.ceil(width))
+    const h = Math.max(1, Math.ceil(height))
+    try {
+      let canvas: HTMLCanvasElement | null = null
+      if (options?.createCanvas) {
+        canvas = options.createCanvas(w, h)
+      } else if (typeof document !== 'undefined') {
+        canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+      }
+      if (!canvas) return null
+      const octx = canvas.getContext('2d') as CanvasRenderingContext2D | null
+      if (!octx) return null
+      return { canvas, ctx: octx, width: w, height: h }
+    } catch (error) {
+      console.warn('[RenderEngine] Canvas offscreen indisponível — filtro ignorado:', error)
+      return null
+    }
+  }
+
   private static drawImage(
     ctx: CanvasRenderingContext2D,
     image: CanvasImageSource,
@@ -749,21 +1172,103 @@ export class RenderEngine {
       ;(ctx as unknown as { filter: string }).filter = style.filter
     }
 
-    ctx.save()
+    // Ajustes/filtros de imagem: o conteúdo (crop/flip/radius/borda) é
+    // desenhado num offscreen do tamanho da caixa — o cache do Konva no
+    // editor —, a MESMA cadeia de pixels roda ali e o bitmap é blitado.
+    const filtered = hasImageFilters(style)
+      ? this.drawImageFiltered(ctx, image, width, height, style, options)
+      : false
 
-    // Máscara de forma (mesma semântica do clipFunc do Group no editor):
-    // path congelado em viewBox 0 0 100 100, escalado para a caixa da camada.
-    // O clip acontece ANTES do flip — no editor a máscara vive no Group
-    // externo e o espelhamento no KonvaImage interno.
-    if (style?.mask?.path) {
-      const maskPath = this.getPath2D(style.mask.path, options)
-      if (maskPath) {
-        ctx.scale(width / 100, height / 100)
-        ctx.clip(maskPath)
-        ctx.scale(100 / width, 100 / height)
+    if (!filtered) {
+      ctx.save()
+      this.applyImageMaskClip(ctx, style, width, height, options)
+      this.drawImageContent(ctx, image, width, height, style, options)
+      ctx.restore()
+
+      if (style?.border?.width) {
+        this.strokeImageBorder(ctx, width, height, style)
       }
     }
 
+    ctx.globalAlpha = opacityBefore
+    if ('filter' in ctx) {
+      ;(ctx as unknown as { filter: string }).filter = 'none'
+    }
+  }
+
+  /**
+   * Caminho com filtros: offscreen → cadeia de pixels → blit. A borda entra
+   * no bitmap ANTES dos filtros (no editor o stroke do node é cacheado e
+   * filtrado junto); a máscara fica no ctx principal, aplicada DEPOIS — no
+   * editor ela é clipFunc do Group externo, fora do cache do node.
+   */
+  private static drawImageFiltered(
+    ctx: CanvasRenderingContext2D,
+    image: CanvasImageSource,
+    width: number,
+    height: number,
+    style: LayerStyle | undefined,
+    options?: RenderOptions,
+  ): boolean {
+    const off = this.getOffscreen(width, height, options)
+    if (!off) return false
+
+    const octx = off.ctx
+    octx.save()
+    this.drawImageContent(octx, image, width, height, style, options)
+    octx.restore()
+    if (style?.border?.width) {
+      this.strokeImageBorder(octx, width, height, style)
+    }
+
+    try {
+      const imageData = octx.getImageData(0, 0, off.width, off.height)
+      applyImageFilterChain(imageData.data, off.width, off.height, style ?? {}, options?.scaleFactor ?? 1)
+      octx.putImageData(imageData, 0, 0)
+    } catch (error) {
+      // getImageData falha em canvas contaminado por imagem cross-origin (só
+      // no browser); no server nunca acontece. Sem pixels, sem filtro.
+      console.warn('[RenderEngine] Falha ao aplicar filtros de imagem:', error)
+      return false
+    }
+
+    ctx.save()
+    this.applyImageMaskClip(ctx, style, width, height, options)
+    ctx.drawImage(off.canvas as unknown as CanvasImageSource, 0, 0)
+    ctx.restore()
+    return true
+  }
+
+  /**
+   * Máscara de forma (mesma semântica do clipFunc do Group no editor):
+   * path congelado em viewBox 0 0 100 100, escalado para a caixa da camada.
+   * O clip acontece ANTES do flip — no editor a máscara vive no Group
+   * externo e o espelhamento no KonvaImage interno.
+   */
+  private static applyImageMaskClip(
+    ctx: CanvasRenderingContext2D,
+    style: LayerStyle | undefined,
+    width: number,
+    height: number,
+    options?: RenderOptions,
+  ): void {
+    if (!style?.mask?.path) return
+    const maskPath = this.getPath2D(style.mask.path, options)
+    if (!maskPath) return
+    ctx.scale(width / 100, height / 100)
+    ctx.clip(maskPath)
+    ctx.scale(100 / width, 100 / height)
+  }
+
+  /** Conteúdo da imagem: radius clip + flip + crop — igual nos dois caminhos */
+  private static drawImageContent(
+    ctx: CanvasRenderingContext2D,
+    image: CanvasImageSource,
+    width: number,
+    height: number,
+    style?: LayerStyle,
+    _options?: RenderOptions,
+  ): void {
     // cornerRadius no editor RECORTA a imagem (KonvaImage.cornerRadius), com ou
     // sem borda — recortar aqui também, não só desenhar o traço arredondado.
     const radius = style?.border?.radius ?? 0
@@ -792,22 +1297,20 @@ export class RenderEngine {
     } else {
       ctx.drawImage(image, 0, 0, width, height)
     }
+  }
 
-    ctx.restore()
-
-    if (style?.border?.width) {
-      ctx.lineWidth = style.border.width
-      ctx.strokeStyle = style.border.color ?? '#000000'
-      if (style.border.radius) {
-        this.strokeRoundedRect(ctx, width, height, style.border.radius)
-      } else {
-        ctx.strokeRect(0, 0, width, height)
-      }
-    }
-
-    ctx.globalAlpha = opacityBefore
-    if ('filter' in ctx) {
-      ;(ctx as unknown as { filter: string }).filter = 'none'
+  private static strokeImageBorder(
+    ctx: CanvasRenderingContext2D,
+    width: number,
+    height: number,
+    style: LayerStyle,
+  ): void {
+    ctx.lineWidth = style.border?.width ?? 1
+    ctx.strokeStyle = style.border?.color ?? '#000000'
+    if (style.border?.radius) {
+      this.strokeRoundedRect(ctx, width, height, style.border.radius)
+    } else {
+      ctx.strokeRect(0, 0, width, height)
     }
   }
 
@@ -1197,6 +1700,7 @@ export async function generateThumbnail(
     scaleFactor,
     imageLoader,
     imageCache: new Map(),
+    createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement,
   })
 
   return canvas.toBuffer('image/png')

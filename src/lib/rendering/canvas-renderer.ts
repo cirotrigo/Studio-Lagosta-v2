@@ -1,4 +1,4 @@
-import { createCanvas, GlobalFonts, loadImage } from '@napi-rs/canvas'
+import { createCanvas, GlobalFonts, loadImage, Path2D as NapiPath2D } from '@napi-rs/canvas'
 import type { DesignData, FieldValues } from '@/types/template'
 import { RenderEngine } from '@/lib/render-engine'
 
@@ -39,6 +39,12 @@ export async function renderDesignToPNG(
     imageLoader: async (source) => (await loadImage(source)) as unknown as CanvasImageSource,
     imageCache: options.imageCache,
     backgroundColor: options.backgroundColor,
+    // Mesmas injeções do caminho story-renderer (lib/canvas-renderer.ts):
+    // máscara/svg-path precisam de Path2D e os filtros de imagem/blur de
+    // texto precisam de canvas offscreen — sem isso este caminho
+    // (generate-creatives) divergiria do outro
+    createPath2D: (d: string) => new NapiPath2D(d) as unknown as Path2D,
+    createCanvas: (w: number, h: number) => createCanvas(w, h) as unknown as HTMLCanvasElement,
   })
 
   const buffer = canvas.toBuffer('image/png')
