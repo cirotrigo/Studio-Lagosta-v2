@@ -44,6 +44,23 @@ export function BackgroundsPanel() {
       </div>
       <ScrollArea className="flex-1">
         <div className="grid gap-3 pr-2 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => updateCanvas({ backgroundColor: 'transparent' })}
+            className="flex flex-col gap-2 rounded-lg border border-border/40 bg-muted/30 p-3 transition hover:border-primary"
+          >
+            <div
+              className="h-20 w-full rounded-md"
+              style={{
+                backgroundImage:
+                  'linear-gradient(45deg, #d4d4d8 25%, transparent 25%), linear-gradient(-45deg, #d4d4d8 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #d4d4d8 75%), linear-gradient(-45deg, transparent 75%, #d4d4d8 75%)',
+                backgroundSize: '16px 16px',
+                backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+                backgroundColor: '#fafafa',
+              }}
+            />
+            <span className="text-xs font-medium text-muted-foreground">Transparente</span>
+          </button>
           {BACKGROUND_PRESETS.map((preset) => (
             <button
               key={preset.id}

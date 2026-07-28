@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
@@ -24,6 +24,7 @@ import { LogoPanelContent } from './panels/logo-panel'
 import { ColorsPanelContent } from './panels/colors-panel'
 import { LayersPanelAdvanced } from './layers-panel-advanced'
 import { GradientsPanel } from './sidebar/gradients-panel'
+import { BackgroundsPanel } from './sidebar/backgrounds-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
 import { CreativesPanel } from './panels/creatives-panel'
@@ -160,7 +161,7 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'ai-images' | 'ai-creative' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
 
 // Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
 const MOBILE_TOOL_ITEMS: Array<{
@@ -175,6 +176,7 @@ const MOBILE_TOOL_ITEMS: Array<{
   { key: 'logo', label: 'Logo', icon: Award },
   { key: 'colors', label: 'Cores', icon: Palette },
   { key: 'gradients', label: 'Gradientes', icon: Sparkles },
+  { key: 'backgrounds', label: 'Fundo', icon: PaintBucket },
   { key: 'layers', label: 'Camadas', icon: Layers2 },
   { key: 'ai-images', label: 'IA ✨', icon: Wand2 },
   { key: 'ai-creative', label: 'Editor', icon: Sparkles },
@@ -635,6 +637,7 @@ function TemplateEditorContent({
             {activePanel === 'logo' && <LogoPanelContent />}
             {activePanel === 'colors' && <ColorsPanelContent />}
             {activePanel === 'gradients' && <GradientsPanel />}
+            {activePanel === 'backgrounds' && <BackgroundsPanel />}
             {activePanel === 'ai-images' && <AIImagesPanel />}
             {activePanel === 'layers' && <LayersPanelAdvanced />}
             {activePanel === 'ai-creative' && (
@@ -776,6 +779,12 @@ function TemplateEditorContent({
             onClick={() => togglePanel('gradients')}
           />
           <ToolbarButton
+            icon={<PaintBucket className="h-5 w-5" />}
+            label="Fundo"
+            active={activePanel === 'backgrounds'}
+            onClick={() => togglePanel('backgrounds')}
+          />
+          <ToolbarButton
             icon={<Wand2 className="h-5 w-5" />}
             label="IA ✨"
             active={activePanel === 'ai-images'}
@@ -809,6 +818,7 @@ function TemplateEditorContent({
                 {activePanel === 'logo' && 'Logo da Marca'}
                 {activePanel === 'colors' && 'Cores da Marca'}
                 {activePanel === 'gradients' && 'Gradientes'}
+                {activePanel === 'backgrounds' && 'Fundo da Página'}
                 {activePanel === 'ai-images' && 'Imagens IA ✨'}
                 {activePanel === 'ai-creative' && 'Editor'}
               </h2>
@@ -822,6 +832,7 @@ function TemplateEditorContent({
               {activePanel === 'logo' && <LogoPanelContent />}
               {activePanel === 'colors' && <ColorsPanelContent />}
               {activePanel === 'gradients' && <GradientsPanel />}
+              {activePanel === 'backgrounds' && <BackgroundsPanel />}
               {activePanel === 'ai-images' && <AIImagesPanel />}
               {activePanel === 'ai-creative' && (
                 <CreativeGeneratorPanel
