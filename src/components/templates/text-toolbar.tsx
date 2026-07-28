@@ -32,6 +32,7 @@ import {
   MoveVertical,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { patchLineHeight } from '@/lib/text-line-height'
 import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { ColorPicker } from '@/components/canvas/effects/ColorPicker'
@@ -317,9 +318,8 @@ export function TextToolbar({ selectedLayer, onUpdateLayer }: TextToolbarProps) 
   }
 
   const applyLineHeight = (value: number) => {
-    onUpdateLayer(selectedLayer.id, {
-      style: { ...selectedLayer.style, lineHeight: value },
-    })
+    // Nos dois campos: escrever só no style não chega ao render server-side
+    onUpdateLayer(selectedLayer.id, patchLineHeight(selectedLayer, value))
     forceRedraw() // ⚡ FORÇAR REDESENHO
   }
 

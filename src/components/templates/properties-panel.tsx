@@ -26,6 +26,7 @@ import {
   ArrowDown,
 } from 'lucide-react'
 import { FONT_CONFIG } from '@/lib/font-config'
+import { patchLineHeight } from '@/lib/text-line-height'
 import { getFontManager } from '@/lib/font-manager'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import type { Layer, LayerStyle } from '@/types/template'
@@ -636,7 +637,10 @@ function TextControls({ layer, setStyleValue, updateLayerPartial }: TextControls
             step="0.1"
             className="h-8 text-xs"
             value={layer.style?.lineHeight ?? 1.2}
-            onChange={(event) => setStyleValue(layer, { lineHeight: Number(event.target.value) })}
+            // Nos dois campos: só o style não chega ao render server-side
+            onChange={(event) =>
+              updateLayerPartial(layer.id, patchLineHeight(layer, Number(event.target.value)))
+            }
           />
         </div>
       </div>
