@@ -658,6 +658,8 @@ export function KonvaEditorStage() {
     if (selectedLayerIds.length > 1) {
       const stage = stageRef.current
       if (!stage) return
+      // Um gesto = um passo de undo, mesmo persistindo N camadas
+      const coalesceKey = `group-drag:${Date.now()}`
       for (const id of selectedLayerIds) {
         const layer = design.layers.find((item) => item.id === id)
         const node = stage.findOne(`#${id}`)
@@ -665,7 +667,7 @@ export function KonvaEditorStage() {
         const nextX = Math.round(node.x())
         const nextY = Math.round(node.y())
         if (nextX !== Math.round(layer.position?.x ?? 0) || nextY !== Math.round(layer.position?.y ?? 0)) {
-          updateLayer(id, (prev) => ({ ...prev, position: { x: nextX, y: nextY } }))
+          updateLayer(id, (prev) => ({ ...prev, position: { x: nextX, y: nextY } }), { coalesceKey })
         }
       }
     }

@@ -131,6 +131,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         },
         // name: currentPage.name, // ❌ NÃO PASSAR - isso sobrescreve o nome do template
         markDirty: false, // trocar/carregar página não é edição do usuário
+        historyKey: currentPageId ?? undefined, // undo por página sobrevive à navegação
       })
 
       lastSavedLayersRef.current = serializeLayersForPersistence((currentPage.layers as Layer[]) || [])

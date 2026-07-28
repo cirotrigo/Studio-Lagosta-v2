@@ -35,7 +35,7 @@ export interface TemplateEditorContextValue {
   selectLayers: (ids: string[]) => void
   toggleLayerSelection: (id: string) => void
   clearLayerSelection: () => void
-  updateLayer: (id: string, updater: (layer: Layer) => Layer) => void
+  updateLayer: (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => void
   updateLayerPartial: (id: string, partial: Partial<Layer>) => void
   updateLayerStyle: (id: string, style: Layer['style']) => void
   moveLayer: (id: string, deltaX: number, deltaY: number) => void
@@ -77,6 +77,7 @@ export interface TemplateEditorContextValue {
     dynamicFields?: DynamicField[] | null
     name?: string
     markDirty?: boolean
+    historyKey?: string
   }) => void
   forceUpdate?: () => void
   // Alignment & Organization
@@ -168,7 +169,14 @@ const [zoom, setZoomState] = React.useState(() => getDefaultZoom())
   const [focusTextMode, setFocusTextMode] = React.useState(false)
 const [isExporting, setIsExporting] = React.useState(false)
 const [exportHistory, setExportHistory] = React.useState<ExportRecord[]>([])
+// Histórico POR PÁGINA: um mapa de pilhas chaveado por historyKey (pageId no
+// editor multi-página). historyRef aponta para a entrada ativa — trocar de
+// página troca o ponteiro em vez de zerar, então o undo sobrevive à navegação.
+const historiesRef = React.useRef<Map<string, { past: DesignData[]; future: DesignData[] }>>(new Map())
 const historyRef = React.useRef<{ past: DesignData[]; future: DesignData[] }>({ past: [], future: [] })
+// Coalescing: gestos contínuos (digitação, slider, drag em grupo) empilham UM
+// snapshot por gesto, não um por evento — senão os 50 níveis esvaziam rápido
+const lastCoalesceRef = React.useRef<{ key: string | null; time: number }>({ key: null, time: 0 })
 const [historyMeta, setHistoryMeta] = React.useState<{ canUndo: boolean; canRedo: boolean }>({ canUndo: false, canRedo: false })
 const clipboardRef = React.useRef<Layer[] | null>(null)
 const stageInstanceRef = React.useRef<Konva.Stage | null>(null)
@@ -205,7 +213,9 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
     setSelectedLayerIds([])
     setDirty(false)
     setZoomState(DEFAULT_ZOOM)
+    historiesRef.current.clear()
     historyRef.current = { past: [], future: [] }
+    lastCoalesceRef.current = { key: null, time: 0 }
     setHistoryMeta({ canUndo: false, canRedo: false })
     setExportHistory([])
   }, [template.id, template.name, template.designData, template.dynamicFields])
@@ -229,13 +239,24 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [])
 
   const applyDesign = React.useCallback(
-    (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean }) => {
+    (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean; coalesceKey?: string }) => {
       setDesign((prev) => {
         const next = updater(prev)
         if (next === prev) return prev
         if (!options?.skipHistory) {
-          const snapshot = cloneDesign(prev)
-          historyRef.current.past = [...historyRef.current.past.slice(-49), snapshot]
+          // Mesma coalesceKey dentro da janela = mesmo gesto: o snapshot
+          // pré-gesto já está na pilha, não empilhar de novo
+          const now = Date.now()
+          const sameGesture =
+            options?.coalesceKey !== undefined &&
+            lastCoalesceRef.current.key === options.coalesceKey &&
+            now - lastCoalesceRef.current.time < 800
+
+          if (!sameGesture) {
+            const snapshot = cloneDesign(prev)
+            historyRef.current.past = [...historyRef.current.past.slice(-49), snapshot]
+          }
+          lastCoalesceRef.current = { key: options?.coalesceKey ?? null, time: now }
           historyRef.current.future = []
           setDirty(true)
         }
@@ -280,18 +301,24 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [])
 
   const updateLayer = React.useCallback(
-    (id: string, updater: (layer: Layer) => Layer) => {
-      applyDesign((prev) => {
-        let changed = false
-        const nextLayers = prev.layers.map((layer) => {
-          if (layer.id !== id) return layer
-          const next = updater(layer)
-          if (next !== layer) changed = true
-          return next
-        })
-        if (!changed) return prev
-        return { ...prev, layers: normalizeLayerOrder(nextLayers) }
-      })
+    (id: string, updater: (layer: Layer) => Layer, options?: { coalesceKey?: string }) => {
+      applyDesign(
+        (prev) => {
+          let changed = false
+          const nextLayers = prev.layers.map((layer) => {
+            if (layer.id !== id) return layer
+            const next = updater(layer)
+            if (next !== layer) changed = true
+            return next
+          })
+          if (!changed) return prev
+          return { ...prev, layers: normalizeLayerOrder(nextLayers) }
+        },
+        // Edições contínuas na mesma camada (digitação, slider) coalescem num
+        // undo só; quem precisa agrupar VÁRIAS camadas num gesto (drag em
+        // grupo, alinhamento) passa a própria chave
+        { coalesceKey: options?.coalesceKey ?? `layer:${id}` },
+      )
     },
     [applyDesign],
   )
@@ -459,6 +486,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [applyDesign])
 
   const undo = React.useCallback(() => {
+    lastCoalesceRef.current = { key: null, time: 0 }
     setDesign((prev) => {
       const past = historyRef.current.past
       if (!past.length) return prev
@@ -475,6 +503,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [updateHistoryMeta])
 
   const redo = React.useCallback(() => {
+    lastCoalesceRef.current = { key: null, time: 0 }
     setDesign((prev) => {
       const future = historyRef.current.future
       if (!future.length) return prev
@@ -896,18 +925,45 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   }, [])
 
   const loadTemplate = React.useCallback(
-    ({ designData, dynamicFields: nextDynamicFields, name: nextName, markDirty = true }: {
+    ({ designData, dynamicFields: nextDynamicFields, name: nextName, markDirty = true, historyKey }: {
       designData: DesignData
       dynamicFields?: DynamicField[] | null
       name?: string
       /** false = carga de navegação (troca de página), não conta como edição */
       markDirty?: boolean
+      /**
+       * Identidade do histórico (pageId no editor multi-página). Com a chave,
+       * trocar de página TROCA a pilha de undo em vez de descartá-la — voltar
+       * para a página recupera o histórico dela. Sem chave, comportamento
+       * antigo (zera).
+       */
+      historyKey?: string
     }) => {
       const clonedDesign: DesignData = cloneDesign(designData)
       clonedDesign.layers = normalizeLayerOrder(clonedDesign.layers ?? [])
 
       applyDesign(() => clonedDesign, { skipHistory: true })
-      historyRef.current = { past: [], future: [] }
+      if (historyKey) {
+        const histories = historiesRef.current
+        let entry = histories.get(historyKey)
+        if (entry) {
+          // Reinsere para virar a entrada mais recente do LRU
+          histories.delete(historyKey)
+        } else {
+          entry = { past: [], future: [] }
+        }
+        histories.set(historyKey, entry)
+        // LRU: 50 snapshots × N páginas pesam — manter só as 5 mais recentes
+        while (histories.size > 5) {
+          const oldest = histories.keys().next().value
+          if (oldest === undefined) break
+          histories.delete(oldest)
+        }
+        historyRef.current = entry
+      } else {
+        historyRef.current = { past: [], future: [] }
+      }
+      lastCoalesceRef.current = { key: null, time: 0 }
       updateHistoryMeta()
       if (Array.isArray(nextDynamicFields)) {
         setDynamicFieldsState([...nextDynamicFields])
@@ -970,11 +1026,17 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   /** Grava no estado a posição que o Konva acabou de calcular */
   const persistirPosicoes = React.useCallback(
     (nodes: Array<{ node: Konva.Node; layer: Layer }>) => {
+      // Uma chave por gesto: alinhar 5 camadas vira UM passo de undo, não 5
+      const coalesceKey = `align:${Date.now()}`
       nodes.forEach(({ node, layer }) => {
-        updateLayer(layer.id, (l) => ({
-          ...l,
-          position: { x: Math.round(node.x()), y: Math.round(node.y()) },
-        }))
+        updateLayer(
+          layer.id,
+          (l) => ({
+            ...l,
+            position: { x: Math.round(node.x()), y: Math.round(node.y()) },
+          }),
+          { coalesceKey },
+        )
       })
     },
     [updateLayer],
