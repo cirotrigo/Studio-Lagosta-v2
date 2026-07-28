@@ -3,6 +3,7 @@
 import * as React from 'react'
 import type { Page } from '@/types/template'
 import { usePages, useUpdatePage } from '@/hooks/use-pages'
+import { ApiError } from '@/lib/api-client'
 
 export interface PageStatePatch {
   layers?: unknown[]
@@ -46,9 +47,19 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
     }
   }, [initialPageId, refetch])
 
-  // Converter pages do banco para o formato Page
+  // Converter pages do banco para o formato Page.
+  // Dedupe por id AQUI (não só no select do usePages): um refetch em voo
+  // resolvendo entre o POST de criação e o append do onSuccess ainda produzia
+  // ids duplicados no cache — e chave duplicada quebra o React e o
+  // SortableContext das barras de páginas. No provider, cobre TODOS os
+  // consumidores de uma vez.
   const pages = React.useMemo<Page[]>(() => {
-    return pagesData.map((p) => ({
+    const seen = new Set<string>()
+    return pagesData.filter((p) => {
+      if (seen.has(p.id)) return false
+      seen.add(p.id)
+      return true
+    }).map((p) => ({
       id: p.id,
       name: p.name,
       width: p.width,
@@ -97,6 +108,12 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
 
   const updatePageThumbnail = React.useCallback(
     async (pageId: string, thumbnail: string) => {
+      // Guarda: um caller sem pageId virava PATCH /pages/undefined (404 no
+      // console a cada autosave). O trace identifica o caller em dev.
+      if (!pageId) {
+        console.warn('[MultiPage] updatePageThumbnail chamado sem pageId — ignorando.', new Error().stack)
+        return
+      }
       try {
         await updatePageMutation.mutateAsync({
           templateId,
@@ -104,6 +121,12 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
           data: { thumbnail },
         })
       } catch (error) {
+        // Thumbnail é fire-and-forget: se a página foi apagada (ou era uma
+        // entrada fantasma de cache) entre gerar e enviar, o 404 é esperado
+        // e não é um problema — sem stack vermelho no console por isso.
+        if (error instanceof ApiError && error.status === 404) {
+          return
+        }
         console.error('Error updating page thumbnail:', error)
         // Não lançar erro para não interromper o fluxo
       }
