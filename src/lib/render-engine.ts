@@ -68,7 +68,7 @@ export class RenderEngine {
 
     ctx.save()
     const { width, height } = this.applyTransforms(ctx, finalLayer, scaleFactor)
-    this.applyShadow(ctx, finalLayer.style)
+    this.applyShadow(ctx, finalLayer)
     this.applyOpacity(ctx, finalLayer.style)
 
     switch (finalLayer.type) {
@@ -261,7 +261,29 @@ export class RenderEngine {
     return color
   }
 
-  private static applyShadow(ctx: CanvasRenderingContext2D, style?: LayerStyle): void {
+  /**
+   * Sombra da camada.
+   *
+   * A fonte da verdade é `layer.effects.shadow` — é onde o editor grava e o que
+   * o painel de efeitos edita. Até aqui esta função só olhava `style.shadow`,
+   * um formato que nada escreve, então **nenhuma das 743 camadas com sombra
+   * aparecia na arte publicada**: o editor mostrava a sombra e o render saía
+   * sem ela, em silêncio.
+   *
+   * O caminho por `style.shadow` continua atendido por compatibilidade.
+   */
+  private static applyShadow(ctx: CanvasRenderingContext2D, layer: Layer): void {
+    const efeito = layer.effects?.shadow
+    if (efeito?.enabled) {
+      ctx.shadowOffsetX = efeito.shadowOffsetX ?? 0
+      ctx.shadowOffsetY = efeito.shadowOffsetY ?? 0
+      ctx.shadowBlur = efeito.shadowBlur ?? 0
+      // O canvas não tem opacidade de sombra separada — ela vai no alfa da cor
+      ctx.shadowColor = this.applyOpacityToColor(efeito.shadowColor ?? '#000000', efeito.shadowOpacity ?? 1)
+      return
+    }
+
+    const style = layer.style
     if (!style?.shadow) return
     const { offsetX, offsetY, blur, color } = style.shadow
     ctx.shadowOffsetX = offsetX
