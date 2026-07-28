@@ -1292,10 +1292,14 @@ export function KonvaEditableText({
       )}
 
       {/* Hover Border - Borda azul semi-transparente ao passar o mouse */}
+      {/* Este Rect é irmão do Text (não filho de um Group posicionado), então
+          precisa da posição/rotação da própria camada — com x/y fixos em 0 o
+          tracejado aparecia no canto do canvas, longe do elemento */}
       {isHovering && !isEditing && (
         <Rect
-          x={0}
-          y={0}
+          x={layer.position?.x ?? 0}
+          y={layer.position?.y ?? 0}
+          rotation={layer.rotation ?? 0}
           width={layer.size?.width ?? 240}
           height={layer.size?.height ?? 120}
           stroke="rgba(59, 130, 246, 0.5)" // Azul com 50% de opacidade
