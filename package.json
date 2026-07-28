@@ -14,7 +14,7 @@
     "postinstall": "prisma generate",
     "build": "prisma generate && next build",
     "prebuild": "rm -rf .next/cache",
-    "vercel-build": "rm -rf .next/cache && prisma migrate deploy && prisma generate && next build || (echo 'Migration failed, continuing with build...' && rm -rf .next/cache && prisma generate && next build)",
+    "vercel-build": "rm -rf .next/cache && (prisma migrate deploy || echo '=== ATENCAO: prisma migrate deploy FALHOU. O banco pode estar sem as mudancas desta versao. ===') && prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run test:e2e",

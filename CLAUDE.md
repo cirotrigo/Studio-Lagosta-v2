@@ -55,6 +55,11 @@ tables used to be created with direct SQL or `db push`.
 Consequences:
 - **Schema changes now go through `npx prisma migrate dev --name <change>`.**
   Reserve `db:push` for local experiments — do not use it to ship schema changes.
+- ⚠️ **`migrate dev` só é seguro contra um banco local.** O `.env` aponta para
+  PRODUÇÃO, e o banco tem drift (tabelas e colunas criadas fora do histórico por
+  `db push`), então o `migrate dev` pede para **resetar o banco** para
+  reconciliar. Contra produção, escreva o `migration.sql` à mão e aplique com
+  `npx prisma migrate deploy`, que não usa shadow database nem reseta nada.
 - `0_init` is idempotent (`IF NOT EXISTS`, `DO` blocks for enums and FKs), so it
   is a no-op on databases that already have the schema.
 - Old clones must pull `main` before running any migration command, since the
@@ -434,9 +439,17 @@ comentário e a observação. Ver `src/lib/notifications/reminder-notifier.ts`.
   clara.
 - `reminderSentAt` só é gravado quando a mensagem principal sai. Arte extra que
   falha é apenas logada — reenviar tudo na rodada seguinte duplicaria o lembrete.
-- A janela é de 5 a 10 minutos à frente. **Lembrete criado com data já passada
-  nunca entra nessa janela** e fica SCHEDULED para sempre; havia 5 posts assim
-  em produção, de janeiro a maio de 2026.
+- **A janela vai de 2 horas atrás até 10 minutos à frente.** Era só
+  `[+5min, +10min]`, e por isso lembrete criado com menos de 5 minutos de
+  antecedência nunca disparava — ficava SCHEDULED para sempre. Cinco posts
+  morreram assim entre janeiro e maio de 2026, todos apagados em 28/07.
+  O que estiver vencido além das 2 horas **não** é avisado (lembrete de ontem
+  só polui o grupo), mas sai no log em vez de sumir calado.
+- Lembrete fora da janela normal recebe `late: true` e a mensagem muda de
+  "Hora de publicar" para "Publicar agora".
+- **Falha de envio grava PostLog sempre, mas avisa o grupo uma vez só.** Como o
+  post continua elegível por 2 horas, sem essa trava a mesma falha viraria um
+  aviso a cada 5 minutos.
 
 #### Environment Variables
 

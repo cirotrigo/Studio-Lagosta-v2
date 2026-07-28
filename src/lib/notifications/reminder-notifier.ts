@@ -27,6 +27,12 @@ export interface PublishReminder {
   mediaUrls: string[]
   extraInfo: string | null
   firstComment: string | null
+  /**
+   * Lembrete que escapou da janela normal de 5-10 minutos: ou foi criado em
+   * cima da hora, ou o cron não rodou a tempo. Muda o tom da mensagem para
+   * quem recebe saber que é urgente.
+   */
+  late?: boolean
 }
 
 /** "hoje às 16:00" quando é no mesmo dia, senão "29/07 às 16:00". */
@@ -67,11 +73,25 @@ export function buildReminderMessage(reminder: PublishReminder): string {
     ? ` (@${reminder.instagramUsername.replace(/^@/, '')})`
     : ''
 
-  const partes = [
-    '📣 *Hora de publicar*',
-    '',
-    `${postTypeLabel(reminder.postType).toUpperCase()} do ${reminder.projectName}${perfil} — publicar ${formatQuando(reminder.scheduledFor)}.`,
-  ]
+  const tipo = postTypeLabel(reminder.postType).toUpperCase()
+  const quando = formatQuando(reminder.scheduledFor)
+  const jaPassou = Boolean(
+    reminder.scheduledFor && reminder.scheduledFor.getTime() < Date.now()
+  )
+
+  const partes = reminder.late
+    ? [
+        '⏰ *Publicar agora*',
+        '',
+        jaPassou
+          ? `${tipo} do ${reminder.projectName}${perfil} — o horário era ${quando} e ainda não saiu.`
+          : `${tipo} do ${reminder.projectName}${perfil} — publicar ${quando}, em cima da hora.`,
+      ]
+    : [
+        '📣 *Hora de publicar*',
+        '',
+        `${tipo} do ${reminder.projectName}${perfil} — publicar ${quando}.`,
+      ]
 
   if (reminder.caption?.trim()) {
     partes.push('', '*Legenda:*', reminder.caption.trim())
