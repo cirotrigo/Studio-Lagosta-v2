@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import Konva from 'konva'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
-import { Check, X } from 'lucide-react'
+import { Check, X, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { TextToolbar } from './text-toolbar'
 import { ImageToolbar } from './image-toolbar'
@@ -258,7 +258,38 @@ export function EditorCanvas() {
           {/* Modo de recorte: as toolbars saem e entram Aplicar/Cancelar */}
           {croppingLayerId ? (
             <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-border/40 bg-background/95 p-2 shadow-md backdrop-blur">
-              <span className="px-1 text-xs text-muted-foreground">Ajuste a área de recorte</span>
+              <span className="px-1 text-xs text-muted-foreground">
+                Arraste a imagem para reenquadrar
+              </span>
+              <div className="flex items-center gap-1 border-l border-border/40 pl-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0"
+                  title="Afastar"
+                  onClick={() => window.dispatchEvent(new Event('lagosta:crop-zoom-out'))}
+                >
+                  <ZoomOut className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 w-8 p-0"
+                  title="Aproximar"
+                  onClick={() => window.dispatchEvent(new Event('lagosta:crop-zoom-in'))}
+                >
+                  <ZoomIn className="h-4 w-4" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 px-2 text-xs"
+                  title="Voltar ao enquadramento atual"
+                  onClick={() => window.dispatchEvent(new Event('lagosta:crop-reset'))}
+                >
+                  Redefinir
+                </Button>
+              </div>
               <Button
                 size="sm"
                 className="h-8 gap-1.5"

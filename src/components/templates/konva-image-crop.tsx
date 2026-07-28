@@ -3,27 +3,37 @@
 import * as React from 'react'
 import Konva from 'konva'
 import { Group, Rect, Line, Circle, Image as KonvaImage } from 'react-konva'
+import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { resolveImageSourceRect } from '@/lib/image-fit'
 
+interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 /**
- * KonvaImageCropOverlay - Recorte de imagem in-canvas (estilo Polotno)
+ * KonvaImageCropOverlay - Reenquadramento de imagem in-canvas (estilo Canva)
  *
- * Entra por duplo clique na imagem (ou botão Recortar da toolbar). Mostra a
- * imagem INTEIRA como pano de fundo, com tudo fora da janela de recorte
- * esmaecido; a janela nasce exatamente no recorte visível atual da camada.
+ * Entra por duplo clique na imagem (ou botão Recortar da toolbar).
  *
- * - Arrastar a janela: move o enquadramento sobre a imagem
- * - Alças circulares nos cantos: redimensionam a janela
- * - Enter/botão Aplicar confirma; Esc/Cancelar sai sem mudar nada
+ * A MOLDURA NÃO SE MEXE: a área que a imagem ocupa no layout é o contrato do
+ * template (o texto ao redor foi posicionado contando com ela). Quem se move é
+ * a IMAGEM por dentro — arrastar reposiciona, as alças aproximam/afastam.
+ * Fora da moldura a imagem aparece esmaecida, para o usuário ver o que sobra.
  *
- * Confirmação grava em UM updateLayer (1 passo de undo): a caixa da camada
- * vira a janela escolhida e `style.crop` guarda as FRAÇÕES da imagem original
- * (o mesmo campo que o render server-side lê via resolveImageSourceRect).
+ * A imagem é obrigada a cobrir a moldura o tempo todo (não dá para deixar
+ * buraco), como no Canva.
  *
- * Tudo aqui vive em coordenadas do CANVAS (dentro do Stage), então zoom e
- * scroll funcionam de graça. v1 não suporta camada rotacionada — os pontos de
+ * Confirmar grava UM updateLayer (1 passo de undo) mexendo SÓ em `style.crop`
+ * — frações da imagem original, o mesmo campo que o render server-side lê.
+ * `position` e `size` da camada ficam intactos.
+ *
+ * Tudo vive em coordenadas do CANVAS (dentro do Stage), então zoom e scroll do
+ * editor funcionam de graça. v1 não suporta camada rotacionada — os pontos de
  * entrada bloqueiam antes.
  */
 export function KonvaImageCropOverlay() {
@@ -37,10 +47,8 @@ export function KonvaImageCropOverlay() {
   const fileUrl = layer?.fileUrl ?? ''
   const [image] = useImage(fileUrl, fileUrl.startsWith('http') ? 'anonymous' : undefined)
 
-  const cropRectRef = React.useRef<Konva.Rect | null>(null)
-
-  // Caixa atual da camada (canvas coords)
-  const box = React.useMemo(
+  // Moldura FIXA: a caixa da camada, exatamente como está no layout
+  const frame = React.useMemo<Rect>(
     () => ({
       x: layer?.position?.x ?? 0,
       y: layer?.position?.y ?? 0,
@@ -50,75 +58,101 @@ export function KonvaImageCropOverlay() {
     [layer],
   )
 
-  // Pano de fundo D: a imagem inteira posicionada de forma que o recorte
-  // VISÍVEL HOJE caia exatamente sobre a caixa da camada. kx/ky são
-  // "canvas px por pixel de imagem" POR EIXO — para cover são iguais; para
-  // imagem esticada (contain/fill) diferem, e o fundo aparece com a mesma
-  // distorção que o usuário já vê no node.
-  const backdrop = React.useMemo(() => {
+  const frameCenter = React.useMemo(
+    () => ({ x: frame.x + frame.width / 2, y: frame.y + frame.height / 2 }),
+    [frame],
+  )
+
+  /**
+   * Posição/tamanho da imagem INTEIRA em coordenadas do canvas, de forma que o
+   * recorte visível hoje caia exatamente sobre a moldura. kx/ky são "canvas px
+   * por pixel de imagem" por eixo — iguais no cover; diferentes numa imagem
+   * esticada (contain/fill), e aí o pano de fundo aparece com a mesma
+   * distorção que o usuário já vê.
+   */
+  const initialImageRect = React.useMemo<Rect | null>(() => {
     if (!image || !layer) return null
     const natural = { width: image.width, height: image.height }
     const src =
-      resolveImageSourceRect(natural, { width: box.width, height: box.height }, layer.style) ?? {
+      resolveImageSourceRect(natural, { width: frame.width, height: frame.height }, layer.style) ?? {
         cropX: 0,
         cropY: 0,
         cropWidth: natural.width,
         cropHeight: natural.height,
       }
-    const kx = box.width / src.cropWidth
-    const ky = box.height / src.cropHeight
+    const kx = frame.width / src.cropWidth
+    const ky = frame.height / src.cropHeight
     return {
-      x: box.x - src.cropX * kx,
-      y: box.y - src.cropY * ky,
+      x: frame.x - src.cropX * kx,
+      y: frame.y - src.cropY * ky,
       width: natural.width * kx,
       height: natural.height * ky,
     }
-  }, [image, layer, box])
+  }, [image, layer, frame])
 
-  // Janela de recorte (canvas coords) — nasce na caixa da camada
-  const [rect, setRect] = React.useState(box)
+  const [imageRect, setImageRect] = React.useState<Rect | null>(initialImageRect)
   React.useEffect(() => {
-    setRect(box)
-    // Reinicia só quando troca a camada em recorte
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [croppingLayerId])
+    setImageRect(initialImageRect)
+  }, [initialImageRect])
 
-  const clampToBackdrop = React.useCallback(
-    (next: { x: number; y: number; width: number; height: number }) => {
-      if (!backdrop) return next
-      const width = Math.min(next.width, backdrop.width)
-      const height = Math.min(next.height, backdrop.height)
-      const x = Math.min(Math.max(next.x, backdrop.x), backdrop.x + backdrop.width - width)
-      const y = Math.min(Math.max(next.y, backdrop.y), backdrop.y + backdrop.height - height)
+  /** A imagem sempre cobre a moldura — nada de buraco branco nas bordas */
+  const clampImage = React.useCallback(
+    (candidate: Rect): Rect => {
+      const aspect = candidate.width / candidate.height || 1
+      let width = candidate.width
+      let height = candidate.height
+      if (width < frame.width) {
+        width = frame.width
+        height = width / aspect
+      }
+      if (height < frame.height) {
+        height = frame.height
+        width = height * aspect
+      }
+      const x = Math.max(Math.min(candidate.x, frame.x), frame.x + frame.width - width)
+      const y = Math.max(Math.min(candidate.y, frame.y), frame.y + frame.height - height)
       return { x, y, width, height }
     },
-    [backdrop],
+    [frame],
+  )
+
+  const scaleAround = React.useCallback(
+    (rect: Rect, factor: number): Rect =>
+      clampImage({
+        width: rect.width * factor,
+        height: rect.height * factor,
+        x: frameCenter.x - (frameCenter.x - rect.x) * factor,
+        y: frameCenter.y - (frameCenter.y - rect.y) * factor,
+      }),
+    [clampImage, frameCenter],
   )
 
   const handleConfirm = React.useCallback(() => {
-    if (!layer || !backdrop) return
-    const finalRect = clampToBackdrop(rect)
+    if (!layer || !imageRect) return
+    // Frações da imagem original correspondentes à moldura (que não mudou)
     const crop = {
-      x: (finalRect.x - backdrop.x) / backdrop.width,
-      y: (finalRect.y - backdrop.y) / backdrop.height,
-      width: finalRect.width / backdrop.width,
-      height: finalRect.height / backdrop.height,
+      x: (frame.x - imageRect.x) / imageRect.width,
+      y: (frame.y - imageRect.y) / imageRect.height,
+      width: frame.width / imageRect.width,
+      height: frame.height / imageRect.height,
     }
-    // Um updateLayer = um snapshot de undo: caixa nova + frações do recorte
     updateLayer(layer.id, (prev) => ({
       ...prev,
-      position: { x: Math.round(finalRect.x), y: Math.round(finalRect.y) },
-      size: { width: Math.round(finalRect.width), height: Math.round(finalRect.height) },
+      // position/size intocados de propósito: o layout não pode se mexer
       style: { ...prev.style, crop },
     }))
     setCroppingLayerId(null)
-  }, [layer, backdrop, rect, clampToBackdrop, updateLayer, setCroppingLayerId])
+  }, [layer, imageRect, frame, updateLayer, setCroppingLayerId])
 
   const handleCancel = React.useCallback(() => {
     setCroppingLayerId(null)
   }, [setCroppingLayerId])
 
-  // Teclado (Enter/Esc) + eventos dos botões HTML (Aplicar/Cancelar)
+  const handleReset = React.useCallback(() => {
+    setImageRect(initialImageRect)
+  }, [initialImageRect])
+
+  // Teclado (Enter/Esc) + botões HTML da barra (Aplicar/Cancelar/zoom)
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Enter') {
@@ -131,139 +165,160 @@ export function KonvaImageCropOverlay() {
     }
     const onConfirmEvent = () => handleConfirm()
     const onCancelEvent = () => handleCancel()
+    const onZoomIn = () => setImageRect((prev) => (prev ? scaleAround(prev, 1.1) : prev))
+    const onZoomOut = () => setImageRect((prev) => (prev ? scaleAround(prev, 1 / 1.1) : prev))
+    const onReset = () => handleReset()
 
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('lagosta:crop-confirm', onConfirmEvent)
     window.addEventListener('lagosta:crop-cancel', onCancelEvent)
+    window.addEventListener('lagosta:crop-zoom-in', onZoomIn)
+    window.addEventListener('lagosta:crop-zoom-out', onZoomOut)
+    window.addEventListener('lagosta:crop-reset', onReset)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
       window.removeEventListener('lagosta:crop-confirm', onConfirmEvent)
       window.removeEventListener('lagosta:crop-cancel', onCancelEvent)
+      window.removeEventListener('lagosta:crop-zoom-in', onZoomIn)
+      window.removeEventListener('lagosta:crop-zoom-out', onZoomOut)
+      window.removeEventListener('lagosta:crop-reset', onReset)
     }
-  }, [handleConfirm, handleCancel])
+  }, [handleConfirm, handleCancel, handleReset, scaleAround])
 
-  const handleDragMove = React.useCallback(() => {
-    const node = cropRectRef.current
-    if (!node) return
-    const clamped = clampToBackdrop({
-      x: node.x(),
-      y: node.y(),
-      width: node.width(),
-      height: node.height(),
-    })
-    node.position({ x: clamped.x, y: clamped.y })
-    setRect(clamped)
-  }, [clampToBackdrop])
-
-  /**
-   * Redimensiona a janela arrastando uma alça de canto: o canto OPOSTO fica
-   * fixo, o arrastado segue o ponteiro (limitado ao backdrop e a 20px).
-   */
-  const handleCornerDrag = React.useCallback(
-    (corner: 'tl' | 'tr' | 'bl' | 'br') => (event: Konva.KonvaEventObject<DragEvent>) => {
-      if (!backdrop) return
-      const handle = event.target
-      // Posição da alça em coordenadas do canvas, presa ao backdrop
-      const px = Math.min(Math.max(handle.x(), backdrop.x), backdrop.x + backdrop.width)
-      const py = Math.min(Math.max(handle.y(), backdrop.y), backdrop.y + backdrop.height)
-
-      setRect((prev) => {
-        const fixedX = corner === 'tl' || corner === 'bl' ? prev.x + prev.width : prev.x
-        const fixedY = corner === 'tl' || corner === 'tr' ? prev.y + prev.height : prev.y
-        const x1 = Math.min(px, fixedX)
-        const x2 = Math.max(px, fixedX)
-        const y1 = Math.min(py, fixedY)
-        const y2 = Math.max(py, fixedY)
-        const next = {
-          x: x1,
-          y: y1,
-          width: Math.max(20, x2 - x1),
-          height: Math.max(20, y2 - y1),
-        }
+  /** Arrastar a imagem = reposicionar o enquadramento */
+  const handleImageDragMove = React.useCallback(
+    (event: KonvaEventObject<DragEvent>) => {
+      const node = event.target
+      setImageRect((prev) => {
+        if (!prev) return prev
+        const next = clampImage({ ...prev, x: node.x(), y: node.y() })
+        // Devolve o node para dentro do limite (senão a imagem "escapa" da
+        // moldura enquanto o ponteiro continua andando)
+        node.position({ x: next.x, y: next.y })
         return next
       })
     },
-    [backdrop],
+    [clampImage],
   )
 
-  if (!layer || !image || !backdrop) return null
+  // Alças de canto: aproximar/afastar a imagem (escala em torno do centro da
+  // moldura). Guardamos o estado do início do gesto para a conta ser estável.
+  const scaleStartRef = React.useRef<{ dist: number; rect: Rect } | null>(null)
 
-  // Área "infinita" para o esmaecido fora da janela
+  const pointerInCanvas = (node: Konva.Node) => {
+    const stage = node.getStage()
+    const pointer = stage?.getPointerPosition()
+    if (!stage || !pointer) return null
+    const scale = stage.scaleX() || 1
+    return { x: (pointer.x - stage.x()) / scale, y: (pointer.y - stage.y()) / scale }
+  }
+
+  const handleScaleStart = React.useCallback(
+    (event: KonvaEventObject<DragEvent>) => {
+      if (!imageRect) return
+      const point = pointerInCanvas(event.target)
+      if (!point) return
+      const dist = Math.hypot(point.x - frameCenter.x, point.y - frameCenter.y) || 1
+      scaleStartRef.current = { dist, rect: imageRect }
+    },
+    [imageRect, frameCenter],
+  )
+
+  const handleScaleMove = React.useCallback(
+    (event: KonvaEventObject<DragEvent>) => {
+      const start = scaleStartRef.current
+      if (!start) return
+      const point = pointerInCanvas(event.target)
+      if (!point) return
+      const dist = Math.hypot(point.x - frameCenter.x, point.y - frameCenter.y)
+      const factor = Math.max(0.05, dist / start.dist)
+      setImageRect(scaleAround(start.rect, factor))
+    },
+    [frameCenter, scaleAround],
+  )
+
+  const handleScaleEnd = React.useCallback(() => {
+    scaleStartRef.current = null
+  }, [])
+
+  if (!layer || !image || !imageRect) return null
+
+  // Área "infinita" para o esmaecido fora da moldura
   const BIG = 100000
+  const handleRadius = 8 / (zoom || 1)
 
   return (
     <Group name="crop-overlay">
-      {/* Imagem inteira por baixo (brilho total dentro da janela, o resto
-          fica sob os 4 retângulos escuros) */}
+      {/* Imagem inteira, arrastável */}
       <KonvaImage
         image={image}
-        x={backdrop.x}
-        y={backdrop.y}
-        width={backdrop.width}
-        height={backdrop.height}
-        listening={false}
+        x={imageRect.x}
+        y={imageRect.y}
+        width={imageRect.width}
+        height={imageRect.height}
+        draggable
+        onDragMove={handleImageDragMove}
       />
 
-      {/* Esmaecido fora da janela */}
-      <Rect x={-BIG} y={-BIG} width={BIG * 2} height={BIG + rect.y} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={-BIG} y={rect.y + rect.height} width={BIG * 2} height={BIG} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={-BIG} y={rect.y} width={BIG + rect.x} height={rect.height} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={rect.x + rect.width} y={rect.y} width={BIG} height={rect.height} fill="rgba(0,0,0,0.55)" listening={false} />
+      {/* Esmaecido fora da moldura (não captura clique: o arraste é da imagem) */}
+      <Rect x={-BIG} y={-BIG} width={BIG * 2} height={BIG + frame.y} fill="rgba(0,0,0,0.55)" listening={false} />
+      <Rect x={-BIG} y={frame.y + frame.height} width={BIG * 2} height={BIG} fill="rgba(0,0,0,0.55)" listening={false} />
+      <Rect x={-BIG} y={frame.y} width={BIG + frame.x} height={frame.height} fill="rgba(0,0,0,0.55)" listening={false} />
+      <Rect x={frame.x + frame.width} y={frame.y} width={BIG} height={frame.height} fill="rgba(0,0,0,0.55)" listening={false} />
 
-      {/* Grade de terços */}
+      {/* Grade de terços dentro da moldura */}
       {[1, 2].map((i) => (
         <React.Fragment key={`grid-${i}`}>
           <Line
-            points={[rect.x + (rect.width * i) / 3, rect.y, rect.x + (rect.width * i) / 3, rect.y + rect.height]}
-            stroke="rgba(255,255,255,0.5)"
-            strokeWidth={1}
+            points={[frame.x + (frame.width * i) / 3, frame.y, frame.x + (frame.width * i) / 3, frame.y + frame.height]}
+            stroke="rgba(255,255,255,0.4)"
+            strokeWidth={1 / (zoom || 1)}
             dash={[5, 5]}
             listening={false}
           />
           <Line
-            points={[rect.x, rect.y + (rect.height * i) / 3, rect.x + rect.width, rect.y + (rect.height * i) / 3]}
-            stroke="rgba(255,255,255,0.5)"
-            strokeWidth={1}
+            points={[frame.x, frame.y + (frame.height * i) / 3, frame.x + frame.width, frame.y + (frame.height * i) / 3]}
+            stroke="rgba(255,255,255,0.4)"
+            strokeWidth={1 / (zoom || 1)}
             dash={[5, 5]}
             listening={false}
           />
         </React.Fragment>
       ))}
 
-      {/* Janela de recorte */}
+      {/* Contorno da moldura fixa */}
       <Rect
-        ref={cropRectRef}
-        x={rect.x}
-        y={rect.y}
-        width={rect.width}
-        height={rect.height}
+        x={frame.x}
+        y={frame.y}
+        width={frame.width}
+        height={frame.height}
         stroke="#00a8ff"
         strokeWidth={2}
         strokeScaleEnabled={false}
-        draggable
-        onDragMove={handleDragMove}
+        listening={false}
       />
 
-      {/* Alças de canto (círculos com tamanho constante em tela) */}
+      {/* Alças nos cantos da IMAGEM: aproximar/afastar */}
       {(
         [
-          ['tl', rect.x, rect.y],
-          ['tr', rect.x + rect.width, rect.y],
-          ['bl', rect.x, rect.y + rect.height],
-          ['br', rect.x + rect.width, rect.y + rect.height],
-        ] as Array<['tl' | 'tr' | 'bl' | 'br', number, number]>
-      ).map(([corner, cx, cy]) => (
+          [imageRect.x, imageRect.y],
+          [imageRect.x + imageRect.width, imageRect.y],
+          [imageRect.x, imageRect.y + imageRect.height],
+          [imageRect.x + imageRect.width, imageRect.y + imageRect.height],
+        ] as Array<[number, number]>
+      ).map(([cx, cy], index) => (
         <Circle
-          key={corner}
+          key={`scale-${index}`}
           x={cx}
           y={cy}
-          radius={8 / (zoom || 1)}
-          fill="#00a8ff"
-          stroke="#ffffff"
+          radius={handleRadius}
+          fill="#ffffff"
+          stroke="#00a8ff"
           strokeWidth={2 / (zoom || 1)}
           draggable
-          onDragMove={handleCornerDrag(corner)}
-          onDragEnd={handleCornerDrag(corner)}
+          onDragStart={handleScaleStart}
+          onDragMove={handleScaleMove}
+          onDragEnd={handleScaleEnd}
         />
       ))}
     </Group>

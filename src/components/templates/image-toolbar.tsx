@@ -67,7 +67,7 @@ export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps
             size="sm"
             variant={hasManualCrop ? 'default' : 'ghost'}
             className="h-8 gap-1.5 px-2"
-            title={isRotated ? 'Zere a rotação para recortar' : 'Recortar (duplo clique na imagem também entra)'}
+            title={isRotated ? 'Zere a rotação para reenquadrar' : 'Reenquadrar a imagem sem mexer no layout (duplo clique também entra)'}
             disabled={isRotated}
             onClick={() => setCroppingLayerId(selectedLayer.id)}
           >
@@ -79,7 +79,7 @@ export function ImageToolbar({ selectedLayer, onUpdateLayer }: ImageToolbarProps
               size="sm"
               variant="ghost"
               className="h-8 px-2 text-xs text-muted-foreground"
-              title="Remover recorte manual (volta ao enquadramento automático)"
+              title="Voltar ao enquadramento automático"
               onClick={() => patchStyle({ crop: undefined })}
             >
               Remover
