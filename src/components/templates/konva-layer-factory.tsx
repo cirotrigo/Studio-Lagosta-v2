@@ -10,6 +10,7 @@ import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
+import { resolveImageSourceRect } from '@/lib/image-fit'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 // Import custom Konva filters
 import '@/lib/konva/filters'
@@ -838,27 +839,25 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     }
     imageRef.current.cache()
     imageRef.current.getLayer()?.batchDraw()
-  }, [filters, image, layer.size?.width, layer.size?.height])
+    // objectFit/cropPosition mudam o recorte desenhado — sem eles aqui, imagem
+    // com filtro (bitmap cacheado) não redesenha ao mudar o enquadramento
+  }, [filters, image, layer.size?.width, layer.size?.height, layer.style?.objectFit, layer.style?.cropPosition])
 
   const width = Math.max(20, layer.size?.width ?? 0)
   const height = Math.max(20, layer.size?.height ?? 0)
 
-  // Calcular crop automático baseado em objectFit: cover
-  // Usa a função getCrop do exemplo oficial do Konva
-  // SEMPRE usa center-middle para manter a imagem centralizada
+  // Crop automático (objectFit: cover) resolvido pelo MESMO helper do render
+  // server-side (src/lib/image-fit.ts) — inclusive o cropPosition da grade 3×3
+  // do painel, que antes era gravado e ignorado.
   const crop = React.useMemo(() => {
     if (!image) return undefined
 
-    if (layer.style?.objectFit === 'cover') {
-      return calculateImageCrop(
-        { width: image.width, height: image.height },
-        { width, height },
-        'center-middle'
-      )
-    }
-
-    return undefined
-  }, [image, width, height, layer.style?.objectFit])
+    return resolveImageSourceRect(
+      { width: image.width, height: image.height },
+      { width, height },
+      layer.style,
+    )
+  }, [image, width, height, layer.style])
 
   // Limpar cache durante transform para evitar conflito (Konva issue #835)
   const handleTransform = React.useCallback(() => {
@@ -892,19 +891,16 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     node.height(newHeight)
 
     // ✅ CRITICAL: Recalcular e aplicar crop IMEDIATAMENTE no node
-    if (layer.style?.objectFit === 'cover') {
-      const newCrop = calculateImageCrop(
-        { width: image.width, height: image.height },
-        { width: newWidth, height: newHeight },
-        'center-middle'
-      )
-
-      if (newCrop) {
-        node.cropX(newCrop.cropX)
-        node.cropY(newCrop.cropY)
-        node.cropWidth(newCrop.cropWidth)
-        node.cropHeight(newCrop.cropHeight)
-      }
+    const newCrop = resolveImageSourceRect(
+      { width: image.width, height: image.height },
+      { width: newWidth, height: newHeight },
+      layer.style,
+    )
+    if (newCrop) {
+      node.cropX(newCrop.cropX)
+      node.cropY(newCrop.cropY)
+      node.cropWidth(newCrop.cropWidth)
+      node.cropHeight(newCrop.cropHeight)
     }
 
     // ✅ Reaplicar cache após transform
@@ -927,7 +923,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, image, layer.style?.objectFit, filters.length])
+  }, [onChange, image, layer.style, filters.length])
 
   if (!image) {
     return (

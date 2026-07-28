@@ -6,6 +6,7 @@ import type {
   TextBreakMode,
   TextboxConfig,
 } from '@/types/template'
+import { resolveImageSourceRect } from './image-fit'
 
 export type ImageLoader = (url: string) => Promise<CanvasImageSource>
 export type FontChecker = (fontName: string) => Promise<FontValidationResult>
@@ -134,12 +135,11 @@ export class RenderEngine {
 
     ctx.translate(x, y)
 
+    // Konva rotaciona o node em torno da própria origem (x,y) — nenhum node do
+    // editor usa offset. Rotacionar em torno do centro da caixa (comportamento
+    // antigo daqui) deslocava toda camada rotacionada em relação ao editor.
     if (layer.rotation) {
-      const centerX = width / 2
-      const centerY = height / 2
-      ctx.translate(centerX, centerY)
       ctx.rotate((layer.rotation * Math.PI) / 180)
-      ctx.translate(-centerX, -centerY)
     }
 
     return { width, height }
@@ -637,7 +637,6 @@ export class RenderEngine {
     height: number,
     style?: LayerStyle,
   ): void {
-    const fit = style?.objectFit ?? 'cover'
     const opacityBefore = ctx.globalAlpha
 
     if (style?.opacity !== undefined) {
@@ -648,16 +647,32 @@ export class RenderEngine {
       ;(ctx as unknown as { filter: string }).filter = style.filter
     }
 
-    if (fit === 'fill') {
-      ctx.drawImage(image, 0, 0, width, height)
+    // cornerRadius no editor RECORTA a imagem (KonvaImage.cornerRadius), com ou
+    // sem borda — recortar aqui também, não só desenhar o traço arredondado.
+    const radius = style?.border?.radius ?? 0
+    const hasRadiusClip = radius > 0
+    if (hasRadiusClip) {
+      ctx.save()
+      ctx.beginPath()
+      this.traceRoundedRectPath(ctx, width, height, radius)
+      ctx.clip()
+    }
+
+    const natural = {
+      width: (image as { width?: number }).width ?? width,
+      height: (image as { height?: number }).height ?? height,
+    }
+    // Mesma resolução de recorte do ImageNode do editor: cover recorta a fonte
+    // (nada de transbordar a caixa), demais casos esticam a imagem inteira.
+    const src = resolveImageSourceRect(natural, { width, height }, style)
+    if (src) {
+      ctx.drawImage(image, src.cropX, src.cropY, src.cropWidth, src.cropHeight, 0, 0, width, height)
     } else {
-      const { sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight } = this.computeObjectFit(
-        image,
-        width,
-        height,
-        fit,
-      )
-      ctx.drawImage(image, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight)
+      ctx.drawImage(image, 0, 0, width, height)
+    }
+
+    if (hasRadiusClip) {
+      ctx.restore()
     }
 
     if (style?.border?.width) {
@@ -674,32 +689,6 @@ export class RenderEngine {
     if ('filter' in ctx) {
       ;(ctx as unknown as { filter: string }).filter = 'none'
     }
-  }
-
-  private static computeObjectFit(
-    image: CanvasImageSource,
-    targetWidth: number,
-    targetHeight: number,
-    fit: 'contain' | 'cover',
-  ) {
-    const imgWidth = (image as { width?: number }).width ?? targetWidth
-    const imgHeight = (image as { height?: number }).height ?? targetHeight
-
-    if (!imgWidth || !imgHeight) {
-      return { sx: 0, sy: 0, sWidth: targetWidth, sHeight: targetHeight, dx: 0, dy: 0, dWidth: targetWidth, dHeight: targetHeight }
-    }
-
-    const scale =
-      fit === 'contain'
-        ? Math.min(targetWidth / imgWidth, targetHeight / imgHeight)
-        : Math.max(targetWidth / imgWidth, targetHeight / imgHeight)
-
-    const dWidth = imgWidth * scale
-    const dHeight = imgHeight * scale
-    const dx = (targetWidth - dWidth) / 2
-    const dy = (targetHeight - dHeight) / 2
-
-    return { sx: 0, sy: 0, sWidth: imgWidth, sHeight: imgHeight, dx, dy, dWidth, dHeight }
   }
 
   private static strokeRoundedRect(
@@ -807,16 +796,49 @@ export class RenderEngine {
 
     ctx.beginPath()
 
+    // Circle/RegularPolygon/Star do Konva são desenhados CENTRADOS na posição
+    // do node (layer.position é o centro, não o canto). O transform já levou a
+    // origem até a posição — desenhar centrado em (0,0), como o editor.
     switch (shapeType) {
       case 'circle': {
         const radius = Math.min(width, height) / 2
-        ctx.arc(width / 2, height / 2, radius, 0, Math.PI * 2)
+        ctx.arc(0, 0, radius, 0, Math.PI * 2)
         break
       }
       case 'triangle': {
-        ctx.moveTo(width / 2, 0)
-        ctx.lineTo(width, height)
-        ctx.lineTo(0, height)
+        // Konva.RegularPolygon(sides=3): vértices em (r·sin(2πn/3), -r·cos(2πn/3))
+        const radius = Math.min(width, height) / 2
+        for (let n = 0; n < 3; n++) {
+          const px = radius * Math.sin((n * 2 * Math.PI) / 3)
+          const py = -radius * Math.cos((n * 2 * Math.PI) / 3)
+          if (n === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        break
+      }
+      case 'star': {
+        // Konva.Star(numPoints=5): 10 vértices alternando outer/inner a partir do topo
+        const outer = Math.min(width, height) / 2
+        const inner = Math.min(width, height) / 4
+        for (let n = 0; n < 10; n++) {
+          const radius = n % 2 === 0 ? outer : inner
+          const px = radius * Math.sin((n * Math.PI) / 5)
+          const py = -radius * Math.cos((n * Math.PI) / 5)
+          if (n === 0) ctx.moveTo(px, py)
+          else ctx.lineTo(px, py)
+        }
+        ctx.closePath()
+        break
+      }
+      case 'arrow': {
+        // Mesmo polígono fechado do editor (Line em espaço top-left)
+        ctx.moveTo(0, height / 2)
+        ctx.lineTo(width * 0.7, height / 2)
+        ctx.lineTo(width * 0.7, height * 0.2)
+        ctx.lineTo(width, height / 2)
+        ctx.lineTo(width * 0.7, height * 0.8)
+        ctx.lineTo(width * 0.7, height / 2)
         ctx.closePath()
         break
       }
