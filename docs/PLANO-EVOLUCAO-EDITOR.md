@@ -112,7 +112,7 @@ Arquivos: `template-editor-context.tsx`, `page-sync-wrapper.tsx`, `multi-page-co
 
 ## 5. Fase 2 — Imagem e formas ✅ CONCLUÍDA (28/07/2026)
 
-1. ✅ **Crop in-canvas por duplo clique** — overlay novo em coordenadas do canvas (zoom/scroll de graça), janela nasce no recorte visível, imagem inteira esmaecida por baixo, alças circulares, grade de terços, Enter/Esc + Aplicar/Cancelar. `croppingLayerId` no context bloqueia marquee/atalhos/transformer; confirma em UM `updateLayer` gravando `style.crop` em frações. Grade 3×3 do painel limpa o crop manual.
+1. ✅ **Reenquadramento in-canvas por duplo clique** — a **moldura não se mexe** (a área que a imagem ocupa é o contrato do layout): quem se move é a imagem por dentro, como no Canva. Arrastar reposiciona, alças nos cantos da imagem aproximam/afastam (escala pelo centro da moldura), botões de zoom e Redefinir na barra, e a imagem é obrigada a cobrir a moldura (sem buraco). Overlay em coordenadas do canvas (zoom/scroll de graça); `croppingLayerId` no context bloqueia marquee/atalhos/transformer; confirma em UM `updateLayer` gravando **só** `style.crop` em frações — `position`/`size` intactos. Grade 3×3 do painel limpa o crop manual.
 2. ✅ **Formas svg-path (~35) + linhas com setas** — `shapeType: 'svg-path'` + `pathData` (viewBox 0 0 100 100); editor via `sceneFunc` (stroke não distorce), render via `Path2D` do @napi-rs/canvas; painel "Formas" único com busca e categorias substituindo os órfãos; case `icon` do render pelo mesmo caminho.
 3. ✅ **Máscara de forma + flip + toolbar de imagem** — wrapper `Group` com `clipFunc` (replay do path pelo `Konva.Path.parsePathData`), flip por scale negativo no node INTERNO; toolbar `[Recortar][Remover][Flip H][Flip V][Ajustar à página][Máscara ▾][Opacidade]`.
 
