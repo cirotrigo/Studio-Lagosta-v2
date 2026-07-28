@@ -138,8 +138,8 @@ export function ResizePanel() {
 
       <div className="rounded-md border border-amber-200/60 bg-amber-50/50 p-3 dark:border-amber-900/60 dark:bg-amber-950/20">
         <p className="text-xs text-amber-900 dark:text-amber-200">
-          <strong>Atenção:</strong> Ao redimensionar o canvas, os elementos existentes não serão redimensionados
-          automaticamente. Você precisará ajustá-los manualmente.
+          <strong>Atenção:</strong> Os elementos existentes não serão redimensionados automaticamente —
+          ajuste-os manualmente. O novo tamanho é salvo na página e vale também para a arte agendada.
         </p>
       </div>
     </div>

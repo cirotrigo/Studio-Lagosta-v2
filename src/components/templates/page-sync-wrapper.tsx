@@ -1,54 +1,99 @@
 "use client"
 
 import * as React from 'react'
-import { useMultiPage } from '@/contexts/multi-page-context'
+import { useMultiPage, type PageStatePatch } from '@/contexts/multi-page-context'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
-import type { Layer } from '@/types/template'
+import type { Layer, Page } from '@/types/template'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
 
 /**
  * Componente que sincroniza o estado entre MultiPageContext e TemplateEditorContext
- * - Carrega layers da página atual quando ela muda
- * - Salva layers da página atual quando o design muda
+ * - Carrega layers + canvas da página atual quando ela muda
+ * - Salva layers + canvas (width/height/background) da página atual quando o design muda
+ *   sempre num PATCH único (dois writers na mesma página competiriam entre si)
  */
 export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
-  const { currentPage, currentPageId, savePageLayers, updatePageThumbnail } = useMultiPage()
+  const { currentPage, currentPageId, savePageState, updatePageThumbnail } = useMultiPage()
   const { design, loadTemplate, generateThumbnail } = useTemplateEditor()
 
   const lastPageIdRef = React.useRef<string | null>(null)
   const isSyncingRef = React.useRef(false)
   const lastSavedLayersRef = React.useRef<string>('')
+  const lastSavedCanvasRef = React.useRef<string>('')
 
   const serializeLayersForPersistence = React.useCallback((layers: Layer[]) => {
     return JSON.stringify(canonicalizeLayersForPersistence(layers as unknown[]))
   }, [])
+
+  // Canvas persistido na Page: width/height/background. O background pode ser
+  // null no banco e undefined no design — normalizar para comparar sem falso diff
+  const serializeCanvas = React.useCallback(
+    (width: number, height: number, background: string | null | undefined) => {
+      return `${width}x${height}|${background ?? ''}`
+    },
+    [],
+  )
+
+  const canvasFromPage = React.useCallback(
+    (page: Page) => serializeCanvas(page.width, page.height, page.background ?? null),
+    [serializeCanvas],
+  )
+
+  const canvasFromDesign = React.useCallback(
+    () => serializeCanvas(design.canvas.width, design.canvas.height, design.canvas.backgroundColor ?? null),
+    [design.canvas.width, design.canvas.height, design.canvas.backgroundColor, serializeCanvas],
+  )
+
+  // Monta o PATCH único com o que realmente mudou (layers e/ou canvas).
+  // Devolve null quando não há nada para salvar.
+  const buildPendingPatch = React.useCallback((): { patch: PageStatePatch; layersString: string; canvasString: string } | null => {
+    const layersString = serializeLayersForPersistence(design.layers)
+    const canvasString = canvasFromDesign()
+
+    const layersChanged = layersString !== lastSavedLayersRef.current
+    const canvasChanged = canvasString !== lastSavedCanvasRef.current
+
+    if (!layersChanged && !canvasChanged) return null
+
+    const patch: PageStatePatch = {}
+    if (layersChanged) patch.layers = design.layers
+    if (canvasChanged) {
+      patch.width = design.canvas.width
+      patch.height = design.canvas.height
+      // O PATCH não aceita null — background só entra quando é string.
+      // (Limpar o fundo grava a string 'transparent', nunca null.)
+      if (typeof design.canvas.backgroundColor === 'string') {
+        patch.background = design.canvas.backgroundColor
+      }
+    }
+    return { patch, layersString, canvasString }
+  }, [design.layers, design.canvas.width, design.canvas.height, canvasFromDesign, serializeLayersForPersistence])
 
   const flushPendingSave = React.useCallback(() => {
     if (!currentPageId || isSyncingRef.current) {
       return
     }
 
-    // design.layers só pode ser salvo em currentPageId se foi essa página que o PageSync
-    // carregou por último — caso contrário o par (página, layers) está desalinhado
+    // design só pode ser salvo em currentPageId se foi essa página que o PageSync
+    // carregou por último — caso contrário o par (página, design) está desalinhado
     if (lastPageIdRef.current !== currentPageId) {
       return
     }
 
-    const layersToSave = serializeLayersForPersistence(design.layers)
-    if (layersToSave === lastSavedLayersRef.current) {
-      return
-    }
+    const pending = buildPendingPatch()
+    if (!pending) return
 
-    void savePageLayers(currentPageId, design.layers)
+    void savePageState(currentPageId, pending.patch)
       .then(() => {
         if (lastPageIdRef.current === currentPageId) {
-          lastSavedLayersRef.current = layersToSave
+          lastSavedLayersRef.current = pending.layersString
+          lastSavedCanvasRef.current = pending.canvasString
         }
       })
       .catch((error) => {
-        console.error('[PageSync] Erro ao salvar layers no flush:', error)
+        console.error('[PageSync] Erro ao salvar página no flush:', error)
       })
-  }, [currentPageId, design.layers, savePageLayers, serializeLayersForPersistence])
+  }, [currentPageId, buildPendingPatch, savePageState])
 
   // 1. Carregar layers quando a página atual muda
   React.useEffect(() => {
@@ -58,16 +103,14 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
     // Apenas atualizar se a página realmente mudou
     if (lastPageIdRef.current !== currentPageId) {
-      console.log(`[PageSync] Trocando para página ${currentPage.name} (${currentPageId})`)
-
       // Edições da página anterior ainda não persistidas (debounce de 800ms em voo)
       // eram descartadas na troca — salvar antes de carregar a nova página
       const previousPageId = lastPageIdRef.current
       if (previousPageId) {
-        const pendingLayers = serializeLayersForPersistence(design.layers)
-        if (pendingLayers !== lastSavedLayersRef.current) {
-          void savePageLayers(previousPageId, design.layers).catch((error) => {
-            console.error('[PageSync] Erro ao salvar layers pendentes da página anterior:', error)
+        const pending = buildPendingPatch()
+        if (pending) {
+          void savePageState(previousPageId, pending.patch).catch((error) => {
+            console.error('[PageSync] Erro ao salvar página anterior:', error)
           })
         }
       }
@@ -91,6 +134,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
       })
 
       lastSavedLayersRef.current = serializeLayersForPersistence((currentPage.layers as Layer[]) || [])
+      lastSavedCanvasRef.current = canvasFromPage(currentPage)
 
       lastPageIdRef.current = currentPageId
 
@@ -101,7 +145,6 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
       // Se a página não tem thumbnail, gerar um após carregar
       if (!currentPage.thumbnail) {
-        console.log(`[PageSync] Página sem thumbnail, gerando...`)
         const pageIdForThumbnail = currentPageId
         setTimeout(async () => {
           // Se o usuário trocou de página durante a espera, o stage mostra outra página —
@@ -116,9 +159,9 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         }, 1000) // Aguardar 1 segundo para garantir que o canvas foi renderizado
       }
     }
-  }, [currentPage, currentPageId, design.layers, loadTemplate, generateThumbnail, savePageLayers, serializeLayersForPersistence, updatePageThumbnail])
+  }, [currentPage, currentPageId, buildPendingPatch, canvasFromPage, loadTemplate, generateThumbnail, savePageState, serializeLayersForPersistence, updatePageThumbnail])
 
-  // 2. Salvar layers da página atual quando o design muda (debounced e otimizado)
+  // 2. Salvar página atual quando o design muda (debounced e otimizado)
   React.useEffect(() => {
     if (!currentPageId || isSyncingRef.current) {
       return
@@ -126,14 +169,13 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
     // Só salvar se o design em memória corresponde à página atual (foi ela que o efeito 1
     // carregou por último). Sem isso, no mount/transições o design ainda é de outra página
-    // (ou do designData do template) e o save gravaria layers na página errada.
+    // (ou do designData do template) e o save gravaria na página errada.
     if (lastPageIdRef.current !== currentPageId) {
       return
     }
 
-    // Verificar se os layers realmente mudaram (evitar saves desnecessários)
-    const currentLayersString = serializeLayersForPersistence(design.layers)
-    if (currentLayersString === lastSavedLayersRef.current) {
+    // Verificar se algo realmente mudou (evitar saves desnecessários)
+    if (!buildPendingPatch()) {
       return
     }
 
@@ -143,40 +185,38 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
           return
         }
 
-        // Verificar novamente se ainda é diferente (pode ter mudado durante debounce)
-        const layersToSave = serializeLayersForPersistence(design.layers)
-        if (layersToSave === lastSavedLayersRef.current) {
+        // Verificar novamente (pode ter mudado durante o debounce)
+        const pending = buildPendingPatch()
+        if (!pending) {
           return
         }
 
-        console.log(`[PageSync] Salvando layers da página ${currentPageId}`)
-
         // Salvar sem invalidar queries (evita re-render)
-        await savePageLayers(currentPageId, design.layers)
+        await savePageState(currentPageId, pending.patch)
 
-        // Se trocou de página durante o await, lastSavedLayersRef já pertence à nova página
+        // Se trocou de página durante o await, os refs já pertencem à nova página
         // e o stage mostra outro conteúdo — não sobrescrever nem gerar thumbnail
         if (lastPageIdRef.current !== currentPageId) {
           return
         }
-        lastSavedLayersRef.current = layersToSave
+        lastSavedLayersRef.current = pending.layersString
+        lastSavedCanvasRef.current = pending.canvasString
 
         // Gerar thumbnail de forma silenciosa (não invalida cache)
         const thumbnail = await generateThumbnail(150)
         if (thumbnail && lastPageIdRef.current === currentPageId) {
-          console.log(`[PageSync] Thumbnail gerado (será salvo em background)`)
           // Salvar thumbnail sem aguardar (fire and forget)
           updatePageThumbnail(currentPageId, thumbnail).catch(err =>
             console.error('[PageSync] Erro ao atualizar thumbnail:', err)
           )
         }
       } catch (_error) {
-        console.error('[PageSync] Erro ao salvar layers:', _error)
+        console.error('[PageSync] Erro ao salvar página:', _error)
       }
     }, 800)
 
     return () => clearTimeout(timeoutId)
-  }, [design.layers, currentPageId, savePageLayers, generateThumbnail, serializeLayersForPersistence, updatePageThumbnail])
+  }, [design.layers, design.canvas.width, design.canvas.height, design.canvas.backgroundColor, currentPageId, buildPendingPatch, savePageState, generateThumbnail, updatePageThumbnail])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {

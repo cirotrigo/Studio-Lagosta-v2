@@ -4,6 +4,13 @@ import * as React from 'react'
 import type { Page } from '@/types/template'
 import { usePages, useUpdatePage } from '@/hooks/use-pages'
 
+export interface PageStatePatch {
+  layers?: unknown[]
+  width?: number
+  height?: number
+  background?: string
+}
+
 interface MultiPageContextValue {
   templateId: number
   pages: Page[]
@@ -13,6 +20,7 @@ interface MultiPageContextValue {
   isLoading: boolean
   updatePageThumbnail: (pageId: string, thumbnail: string) => Promise<void>
   savePageLayers: (pageId: string, layers: unknown[]) => Promise<void>
+  savePageState: (pageId: string, data: PageStatePatch) => Promise<void>
 }
 
 const MultiPageContext = React.createContext<MultiPageContextValue | null>(null)
@@ -119,6 +127,24 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
     [templateId, updatePageMutation]
   )
 
+  // Layers + canvas (width/height/background) num PATCH único: dois writers
+  // concorrentes na mesma página fariam o autosave e o resize competirem
+  const savePageState = React.useCallback(
+    async (pageId: string, data: PageStatePatch) => {
+      try {
+        await updatePageMutation.mutateAsync({
+          templateId,
+          pageId,
+          data,
+        })
+      } catch (error) {
+        console.error('Error saving page state:', error)
+        throw error
+      }
+    },
+    [templateId, updatePageMutation]
+  )
+
   const value = React.useMemo<MultiPageContextValue>(
     () => ({
       templateId,
@@ -129,8 +155,9 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       isLoading,
       updatePageThumbnail,
       savePageLayers,
+      savePageState,
     }),
-    [templateId, pages, currentPageId, currentPage, setCurrentPageId, isLoading, updatePageThumbnail, savePageLayers]
+    [templateId, pages, currentPageId, currentPage, setCurrentPageId, isLoading, updatePageThumbnail, savePageLayers, savePageState]
   )
 
   return <MultiPageContext.Provider value={value}>{children}</MultiPageContext.Provider>
