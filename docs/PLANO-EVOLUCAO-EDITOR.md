@@ -75,17 +75,17 @@ O que precisa de correção ou acabamento:
 1. **Paridade do autoExpand no render** — a caixa cresce só no editor; `slotValues` mais longo é **cortado na altura gravada** na arte agendada. O render precisa re-medir o texto quebrado e aplicar a mesma regra de crescimento por âncora (base sobe, meio abre, topo desce). É o item mais importante da fase: é fidelidade da arte publicada.
 2. **`padding: 6` hardcoded** no editor (`konva-editable-text.tsx:1251`) e ausente no render → textos deslocados ~6px na arte. Unificar (replicar no render ou zerar no editor e compensar nos templates).
 3. **Alinhamento vertical no render**: conferir que `verticalAlign` derivado de `textboxConfig.anchor` é aplicado igual no `renderText` (auditar com A/B das 9 combinações align×anchor).
-4. **Resize pelas alças com feedback**: mostrar o fontSize ao vivo durante corner-resize (tooltip no transformer); mínimo de caixa maior que 5×5 para texto (evitar caixa colapsada); Shift para manter proporção já existe — documentar.
-5. **textarea de edição fiel**: revisar se o overlay usa a MESMA métrica (lineHeight/letterSpacing/padding/transform) do node — qualquer diferença aparece como "texto pulou" ao entrar/sair da edição.
+4. ✅ **Resize pelas alças com feedback** (28/07): tooltip DOM com o fontSize ao vivo durante corner-resize (some no transformend); mínimo de caixa maior que 5×5 para texto (evitar caixa colapsada); Shift para manter proporção já existe — documentar.
+5. ✅ **textarea de edição fiel** (28/07): o overlay compensa o `padding=6` do Konva.Text (offset rotacionado junto com o node) — era a única métrica divergente; lineHeight/letterSpacing/fontWeight já batiam.
 6. **`textTransform` no render**: o editor aplica uppercase/lowercase/capitalize no display; auditar se `renderText` transforma o `content` igual (se não, é divergência silenciosa).
 
 Arquivos: `konva-editable-text.tsx`, `render-engine.ts` (renderText), `text-toolbar.tsx`, `konva-transformer.tsx`.
 **Armadilhas**: campo novo que afete desenho entra em `assinaturaRender`; entrelinha SEMPRE via `patchLineHeight` (dois campos).
 
 ### 4.3 Propriedades de texto — P/M
-1. **Auditoria dos caminhos de escrita de lineHeight**: garantir que todo caminho (toolbar, painel, rich-text modal, MCP/scripts) passa por `patchLineHeight` — um write fora dos dois campos faz editor e arte divergirem sem sintoma no download.
+1. ✅ **Auditoria dos caminhos de escrita de lineHeight** (28/07): toolbar e properties-panel usam `patchLineHeight`; MCP→`arte-livre`, `font-combinations-layers` e o default de texto novo do context gravam os dois campos; rich-text modal e font-combinations-panel só leem. Nenhum write fora dos dois campos.
 2. **letter case (Aa)** na toolbar (o campo `textTransform` já existe — é expor o botão como na demo).
-3. **Efeitos de texto no render** (stroke, fundo/pílula, blur, curvo): é a maior divergência restante — os efeitos existem no editor e a arte agendada não desenha nenhum. Fazer stroke e fundo primeiro (baratos: `strokeText` + rect atrás), blur e curvo depois. `richTextStyles` (segmentos) fica registrado como limitação se não couber na fase.
+3. ✅ **Efeitos de texto no render** (28/07): stroke e fundo (commit f5a5336), blur, curvo e `richTextStyles` por segmento — tudo desenhado pelo render server (ver § 5.1).
 4. Revisar defaults do texto novo (tamanho/fonte/posição pela margem) — já houve sessão sobre isso (27/07); só conferir regressões.
 
 Arquivos: `render-engine.ts`, `text-toolbar.tsx`, `properties-panel.tsx`, `src/lib/text-line-height.ts`.
@@ -116,7 +116,49 @@ Arquivos: `template-editor-context.tsx`, `page-sync-wrapper.tsx`, `multi-page-co
 2. ✅ **Formas svg-path (~35) + linhas com setas** — `shapeType: 'svg-path'` + `pathData` (viewBox 0 0 100 100); editor via `sceneFunc` (stroke não distorce), render via `Path2D` do @napi-rs/canvas; painel "Formas" único com busca e categorias substituindo os órfãos; case `icon` do render pelo mesmo caminho.
 3. ✅ **Máscara de forma + flip + toolbar de imagem** — wrapper `Group` com `clipFunc` (replay do path pelo `Konva.Path.parsePathData`), flip por scale negativo no node INTERNO; toolbar `[Recortar][Remover][Flip H][Flip V][Ajustar à página][Máscara ▾][Opacidade]`.
 
-**Fica registrado como limitação** (render server-side ainda não desenha): blur e texto curvo, `richTextStyles` por segmento, filtros de imagem e camada `video`.
+**Limitações fechadas em 28/07/2026** (§ 5.1): filtros de imagem, blur e texto curvo, `richTextStyles` por segmento. Resta só a camada `video`, que é corte assumido (§ 6).
+
+### 5.1 Paridade dos filtros e efeitos no render server ✅ (28/07/2026)
+
+O render server desenha o que o editor mostra nestes pontos:
+
+1. **Filtros de imagem** (exposure/brightness, contrast, highlights/shadows,
+   whites/blacks, saturation, blur, vignette + legados grayscale/sepia/invert):
+   pixel loops compartilhados em `src/lib/konva/filters/apply.ts` (isomórfico —
+   não importa `konva` nem `@napi-rs/canvas`). Os 3 filtros custom viraram
+   wrappers Konva sobre o apply; os do Konva core foram copiados 1:1 (MIT) e
+   **validados byte a byte** contra o node_modules. No `drawImage`, o conteúdo
+   (crop/flip/radius/borda) vai para um canvas offscreen (o cache do Konva),
+   a cadeia roda na MESMA ordem do useMemo do ImageNode e a máscara é aplicada
+   depois, como o clipFunc do Group. `options.imageCache` continua com a
+   imagem CRUA por URL (filtro é por camada — não cachear bitmap filtrado).
+2. **Blur de texto**: offscreen com pixelRatio 2 e client rect expandido por
+   sombra/contorno, replicando o cache do editor. O raio NÃO é dividido pelo
+   pixelRatio (o Konva também não divide) — blur visual = raio/2.
+3. **Texto curvo**: caractere a caractere com a geometria exata do editor
+   (espaçamento uniforme por índice — largura de glifo não entra —, rotação
+   tangente, arco deslocado em -radius·cos como no editor). Blur é ignorado
+   de propósito: no editor os chars não são cacheados, o filtro nunca roda.
+   Curved ligado com curvature 0 desenha como texto normal (fundo incluso).
+4. **richTextStyles**: quebra com o estilo base (padding 6, wrap word),
+   segmento medido cru + letterSpacing×length, desenho por segmento com cor,
+   fonte, sombra, faux-bold (stroke da própria cor, `fillAfterStrokeEnabled`)
+   e textDecoration na métrica do Konva (underline a +round(fs/2) do meio,
+   traço fs/15). Sem truncamento por altura — o Group do editor não recorta.
+
+**Injeção**: `RenderOptions.createCanvas` (napi no server, DOM no browser),
+mesmo padrão do `createPath2D` — injetado em `lib/canvas-renderer.ts`,
+`lib/rendering/canvas-renderer.ts` (generate-creatives) e `generateThumbnail`.
+
+**Validação**: `scripts/.tmp-parity-filtros.ts` (loops byte a byte + grade
+visual) e `scripts/.tmp-parity-filtros-ab.mjs` (A/B contra o Konva REAL no
+Chromium, wiring do editor, diff por região). Cadeia de filtros de imagem:
+média 0,34/255 (idêntica na prática). Texto: diff só de antialiasing/kerning
+de glifo entre Skia-Chrome e Skia-napi, sem deslocamento estrutural — é a
+mesma classe de divergência aceita do letterSpacing (~1px por par kernado).
+
+**Divergência restante conhecida**: camada `video` (corte assumido) e o
+kerning acima.
 
 ---
 

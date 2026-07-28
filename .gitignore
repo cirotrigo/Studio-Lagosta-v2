@@ -52,3 +52,6 @@ my-replicate-app/
 # Internal prompts and docs (may contain sensitive info)
 # Only ignore the root-level prompts/ directory, not src/app/(protected)/prompts/
 /prompts/
+
+# Saída dos scripts de paridade A/B (PNGs de inspeção)
+scripts/.tmp-parity-out/
