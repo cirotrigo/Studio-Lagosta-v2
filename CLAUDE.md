@@ -361,6 +361,72 @@ alcance do token global. Cada projeto pode ter o seu:
 - **Security**: All error messages sanitized to remove tokens before logging
 - **Monitoring**: Verification results logged with structured data for debugging
 
+### Retry de publicação e avisos de falha no WhatsApp
+
+Post que falha **continua FAILED** (não existe status novo, não volta para
+rascunho), ganha uma nova tentativa 1 minuto depois e, se a tentativa também
+falhar, a equipe é avisada num grupo de WhatsApp via Evolution API.
+
+`src/lib/posts/failure-handler.ts` é o ponto único: `handlePublishFailure`
+decide entre agendar retry e avisar. `executeRetries` (`executor.ts`) reexecuta
+e reagenda até 3 tentativas; `/api/cron/posts` roda a cada minuto e já chama os
+dois — não precisa de cron novo.
+
+#### Armadilhas
+
+- **O retry já foi código morto por meses.** `scheduleRetry` só era chamado de
+  dentro do próprio `executeRetries`, para agendar a tentativa seguinte. Nenhum
+  ponto de falha criava o primeiro `PostRetry`, então post que falhava nunca era
+  retentado. Quem liga o primeiro retry hoje é `handlePublishFailure`, chamado
+  do `catch` do `sendToLater` (cobre os quatro ramos de erro de uma vez) e da
+  varredura de posts travados. **Caminho novo que marque FAILED precisa chamar
+  `handlePublishFailure`**, senão o post volta a morrer em silêncio.
+- **`sendToLater` ignora qualquer post que já tenha `laterPostId`** e devolve
+  `{ success: true, skipped: true }`. Retry nesses posts é um no-op que
+  `executeRetries` grava como SUCCESS — pior que não retentar. Por isso
+  `handlePublishFailure` só agenda retry quando `laterPostId` é null; post que
+  já chegou ao Zernio é **notificado, nunca reenviado**. Limpar o `laterPostId`
+  para forçar reenvio arriscaria publicação dupla, porque não dá para saber se
+  o Zernio chegou a publicar.
+- **Erro determinístico não vira retry**: crédito insuficiente, projeto sem
+  conta do Instagram conectada, formato de imagem incompatível, e story cujo
+  render falhou nas 3 tentativas. Todos avisam direto (`nonRetryableReason`).
+- **Dedupe por janela de 30 minutos**: se já existe `PostRetry` recente para o
+  post, `handlePublishFailure` sai sem fazer nada. É o que evita retry duplicado
+  quando mais de um caminho marca o mesmo post como FAILED, e aviso duplicado
+  quando a falha vem de dentro do próprio `executeRetries` — nesse caso a cadeia
+  de retry é dona tanto da próxima tentativa quanto da mensagem.
+- **O aviso sai na 2ª falha**, não na 1ª nem na última: `executeRetries` avisa
+  quando o retry de `attemptNumber === 1` falha. As tentativas seguintes não
+  avisam de novo.
+- **Cron que pode falhar precisa ser embrulhado** em
+  `withFailureNotificationBatch`, senão 5 posts falhando viram 5 mensagens no
+  grupo em vez de uma. Já embrulhados: `posts`, `reminders`, `status-sync`,
+  `check-stuck-posts`.
+
+#### Notificação
+
+`src/lib/notifications/evolution.ts` (cliente) e `post-failure-notifier.ts`
+(mensagem e agrupamento). Envio: `POST {host}/message/sendText/{instancia}`,
+header `apikey`, body `{ number, text }`; para grupo o `number` é o JID que
+termina em `@g.us`.
+
+- **Falha de notificação nunca propaga.** `sendWhatsAppText` devolve boolean e
+  engole tudo — publicação não pode quebrar porque o WhatsApp caiu.
+- Mensagem **em português, sem jargão de banco** (nada de FAILED/DRAFT/
+  SCHEDULED): cliente, tipo de post, horário que era para sair no fuso de
+  Brasília, motivo e link para `{APP_URL}/projects/{projectId}?tab=agenda`.
+  Motivos longos do Zernio são colapsados e cortados em 220 caracteres.
+- Lembretes (`publishType: REMINDER`) avisam pelo mesmo canal quando o webhook
+  falha ou quando o projeto não tem `webhookReminderUrl` configurado.
+
+#### Environment Variables
+
+`EVOLUTION_API_URL`, `EVOLUTION_API_KEY`, `EVOLUTION_INSTANCE`,
+`EVOLUTION_NOTIFY_GROUP_ID`. **Sem as quatro preenchidas o aviso vira log e
+nada quebra** — o resto do fluxo segue normal. Valores só em ambiente, nunca no
+código; o `.env.example` tem apenas os nomes.
+
 ### Registro de mudanças recentes
 
 `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` detalha as 29 mudanças de julho/2026
