@@ -155,119 +155,6 @@ function restoreStageState(
 }
 
 /**
- * Carrega áudio de uma URL e retorna o ArrayBuffer
- */
-async function loadAudioFromUrl(url: string): Promise<ArrayBuffer> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`Falha ao carregar áudio: ${response.statusText}`)
-  }
-  return response.arrayBuffer()
-}
-
-/**
- * Cria um AudioBuffer processado com volume, fade e trim
- */
-async function createProcessedAudioBuffer(
-  audioContext: AudioContext,
-  arrayBuffer: ArrayBuffer,
-  audioConfig: AudioConfig,
-  videoDuration: number
-): Promise<AudioBuffer> {
-  // Decodificar áudio
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-
-  // Calcular duração do trecho selecionado
-  const { startTime, endTime, volume, fadeIn, fadeOut, fadeInDuration, fadeOutDuration } = audioConfig
-  const selectedDuration = endTime - startTime
-  const outputDuration = Math.min(selectedDuration, videoDuration)
-
-  // Criar novo buffer para o áudio processado
-  const processedBuffer = audioContext.createBuffer(
-    audioBuffer.numberOfChannels,
-    Math.ceil(outputDuration * audioBuffer.sampleRate),
-    audioBuffer.sampleRate
-  )
-
-  // Copiar e processar cada canal
-  for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
-    const inputData = audioBuffer.getChannelData(channel)
-    const outputData = processedBuffer.getChannelData(channel)
-
-    // Índices de início e fim no buffer original
-    const startSample = Math.floor(startTime * audioBuffer.sampleRate)
-    const samplesToProcess = outputData.length
-
-    for (let i = 0; i < samplesToProcess; i++) {
-      const inputIndex = startSample + i
-      if (inputIndex >= inputData.length) {
-        outputData[i] = 0 // Silêncio se ultrapassar o áudio original
-        continue
-      }
-
-      let sample = inputData[inputIndex]
-
-      // Aplicar volume (0-100 para 0-1)
-      sample *= volume / 100
-
-      // Aplicar fade in
-      if (fadeIn && i < fadeInDuration * audioBuffer.sampleRate) {
-        const fadeProgress = i / (fadeInDuration * audioBuffer.sampleRate)
-        sample *= fadeProgress
-      }
-
-      // Aplicar fade out
-      if (fadeOut && i > samplesToProcess - fadeOutDuration * audioBuffer.sampleRate) {
-        const fadeProgress =
-          (samplesToProcess - i) / (fadeOutDuration * audioBuffer.sampleRate)
-        sample *= fadeProgress
-      }
-
-      outputData[i] = sample
-    }
-  }
-
-  return processedBuffer
-}
-
-/**
- * Cria um MediaStream com áudio processado
- */
-function createAudioStreamFromBuffer(
-  audioContext: AudioContext,
-  audioBuffer: AudioBuffer
-): MediaStreamAudioDestinationNode {
-  const source = audioContext.createBufferSource()
-  source.buffer = audioBuffer
-
-  const destination = audioContext.createMediaStreamDestination()
-  source.connect(destination)
-
-  // Iniciar reprodução
-  source.start(0)
-
-  return destination
-}
-
-/**
- * Cria uma track de áudio silenciosa
- */
-function createSilentAudioTrack(audioContext: AudioContext): MediaStreamTrack {
-  const oscillator = audioContext.createOscillator()
-  const gainNode = audioContext.createGain()
-  const destination = audioContext.createMediaStreamDestination()
-
-  // Volume zero = silêncio
-  gainNode.gain.value = 0
-
-  oscillator.connect(gainNode)
-  gainNode.connect(destination)
-  oscillator.start()
-
-  return destination.stream.getAudioTracks()[0]
-}
-
-/**
  * Exporta o vídeo com todas as layers sobrepostas usando MediaRecorder API
  * IMPORTANTE: Requer funções do React Context para limpar seleção e zoom
  *
@@ -299,7 +186,6 @@ export async function exportVideoWithLayers(
   } = options
   const normalizedQuality = Math.min(Math.max(requestedQuality, 0.5), 1)
   const captureFps = Math.min(60, Math.max(24, Math.round(requestedFps)))
-  const audioSource = audioConfig?.source || 'original'
 
   onProgress?.({ phase: 'preparing', progress: 0 })
 
@@ -338,15 +224,16 @@ export async function exportVideoWithLayers(
     }
     baseVideoOriginalMuted = videoElement.muted
     baseVideoOriginalVolume = typeof videoElement.volume === 'number' ? videoElement.volume : 1
-    const shouldMuteBaseVideo = audioSource !== 'original'
 
-    if (shouldMuteBaseVideo) {
-      try {
-        videoElement.muted = true
-        videoElement.volume = 0
-      } catch (error) {
-        console.warn('[Video Export] Não foi possível mutar o áudio original:', error)
-      }
+    // O WebM gravado aqui é SEMPRE mudo — trilha, áudio original e mix são
+    // aplicados pelo ffmpeg na fila (/api/video-processing) a partir do
+    // audioConfig. Mutar o elemento evita o som vazar nas caixas durante a
+    // gravação.
+    try {
+      videoElement.muted = true
+      videoElement.volume = 0
+    } catch (error) {
+      console.warn('[Video Export] Não foi possível mutar o vídeo durante a gravação:', error)
     }
 
     // Duração efetiva = trim do vídeo ∧ trecho da música (quando houver).
@@ -486,236 +373,11 @@ export async function exportVideoWithLayers(
       }
     }
 
-    // Processar áudio de acordo com audioConfig
-    let stream = canvasStream
-    try {
-      const audioContext = new AudioContext()
-
-      if (audioSource === 'mix' && audioConfig?.musicId) {
-        // Caso 4: Mixar áudio original + música da biblioteca
-        console.log('[Video Export] Mixando áudio original + música da biblioteca')
-        onProgress?.({ phase: 'preparing', progress: 45 })
-
-        // 1. Capturar áudio original do vídeo
-        const clonedVideoForOriginal = document.createElement('video')
-        clonedVideoForOriginal.src = videoElement.src
-        clonedVideoForOriginal.crossOrigin = 'anonymous'
-        clonedVideoForOriginal.muted = false
-
-        await new Promise<void>((resolve, reject) => {
-          clonedVideoForOriginal.addEventListener('loadedmetadata', () => resolve(), { once: true })
-          clonedVideoForOriginal.addEventListener('error', () => reject(new Error('Falha ao carregar vídeo clone')), { once: true })
-          clonedVideoForOriginal.load()
-          setTimeout(() => reject(new Error('Timeout ao carregar vídeo clone')), 10000)
-        })
-
-        // @ts-expect-error - captureStream exists
-        const originalStream = clonedVideoForOriginal.captureStream() as MediaStream
-        const originalAudioTracks = originalStream.getAudioTracks()
-
-        if (originalAudioTracks.length === 0) {
-          throw new Error('Vídeo não possui áudio original para mixar')
-        }
-
-        // 2. Carregar música da biblioteca
-        console.log('[Video Export] Carregando música da biblioteca:', audioConfig.musicId)
-        const musicResponse = await fetch(`/api/biblioteca-musicas/${audioConfig.musicId}`)
-        if (!musicResponse.ok) {
-          throw new Error('Falha ao buscar informações da música')
-        }
-        const musicData = await musicResponse.json()
-
-        // Determinar qual URL usar baseado na versão selecionada (original vs instrumental)
-        const audioVersion = audioConfig.audioVersion || 'original'
-        let audioUrl: string
-
-        if (audioVersion === 'instrumental') {
-          if (!musicData.hasInstrumentalStem || !musicData.instrumentalUrl) {
-            throw new Error('A versão instrumental não está disponível ainda. Por favor, aguarde o processamento.')
-          }
-          audioUrl = musicData.instrumentalUrl
-          console.log('[Video Export] Usando versão instrumental:', audioUrl)
-        } else {
-          audioUrl = musicData.blobUrl
-          console.log('[Video Export] Usando versão original:', audioUrl)
-        }
-
-        const musicArrayBuffer = await loadAudioFromUrl(audioUrl)
-
-        // 3. Processar música (volume, fade, trim)
-        const processedMusicBuffer = await createProcessedAudioBuffer(
-          audioContext,
-          musicArrayBuffer,
-          {
-            ...audioConfig,
-            volume: audioConfig.volumeMusic || 60, // Volume da música
-          },
-          videoDuration
-        )
-
-        // 4. Criar nós de áudio no AudioContext
-        const musicSource = audioContext.createBufferSource()
-        musicSource.buffer = processedMusicBuffer
-
-        const originalSource = audioContext.createMediaStreamSource(
-          new MediaStream(originalAudioTracks)
-        )
-
-        // 5. Criar gain nodes para controlar volume individual
-        const originalGain = audioContext.createGain()
-        originalGain.gain.value = (audioConfig.volumeOriginal || 80) / 100
-
-        const musicGain = audioContext.createGain()
-        musicGain.gain.value = (audioConfig.volumeMusic || 60) / 100
-
-        // 6. Conectar ao destination
-        const destination = audioContext.createMediaStreamDestination()
-
-        originalSource.connect(originalGain)
-        originalGain.connect(destination)
-
-        musicSource.connect(musicGain)
-        musicGain.connect(destination)
-
-        // 7. Iniciar reprodução da música
-        musicSource.start(0)
-
-        // 8. Posicionar vídeo clone no início do trim e NÃO reproduzir ainda
-        clonedVideoForOriginal.currentTime = videoTrimStart
-        console.log('[Video Export] Mix preparado - aguardando início da gravação...')
-
-        // 9. Combinar stream de vídeo com stream de áudio mixado
-        const audioTracks = destination.stream.getAudioTracks()
-        const videoTracks = canvasStream.getVideoTracks()
-        stream = new MediaStream([...videoTracks, ...audioTracks])
-
-        // Manter referência do clone para sincronização
-        // @ts-expect-error - propriedade customizada
-        stream._clonedVideoElement = clonedVideoForOriginal
-
-        console.log('[Video Export] Mix de áudio criado com sucesso')
-      } else if (audioSource === 'mute') {
-        // Caso 1: Vídeo mudo - criar track silenciosa
-        console.log('[Video Export] Criando vídeo sem áudio (mudo)')
-        const silentTrack = createSilentAudioTrack(audioContext)
-        const videoTracks = canvasStream.getVideoTracks()
-        stream = new MediaStream([...videoTracks, silentTrack])
-      } else if (audioSource === 'library' && audioConfig?.musicId) {
-        // Caso 2: Música da biblioteca
-        console.log('[Video Export] Carregando música da biblioteca:', audioConfig.musicId)
-        onProgress?.({ phase: 'preparing', progress: 45 })
-
-        // Buscar informações da música
-        const musicResponse = await fetch(`/api/biblioteca-musicas/${audioConfig.musicId}`)
-        if (!musicResponse.ok) {
-          throw new Error('Falha ao buscar informações da música')
-        }
-        const musicData = await musicResponse.json()
-
-        // Determinar qual URL usar baseado na versão selecionada (original vs instrumental)
-        const audioVersion = audioConfig.audioVersion || 'original'
-        let audioUrl: string
-
-        if (audioVersion === 'instrumental') {
-          if (!musicData.hasInstrumentalStem || !musicData.instrumentalUrl) {
-            throw new Error('A versão instrumental não está disponível ainda. Por favor, aguarde o processamento.')
-          }
-          audioUrl = musicData.instrumentalUrl
-          console.log('[Video Export] Usando versão instrumental:', audioUrl)
-        } else {
-          audioUrl = musicData.blobUrl
-          console.log('[Video Export] Usando versão original:', audioUrl)
-        }
-
-        // Carregar áudio da biblioteca
-        const musicArrayBuffer = await loadAudioFromUrl(audioUrl)
-
-        // Processar áudio (volume, fade, trim)
-        const processedAudioBuffer = await createProcessedAudioBuffer(
-          audioContext,
-          musicArrayBuffer,
-          audioConfig,
-          videoDuration
-        )
-
-        // Criar stream de áudio processado
-        const audioDestination = createAudioStreamFromBuffer(audioContext, processedAudioBuffer)
-
-        // Combinar stream de vídeo com áudio processado
-        const audioTracks = audioDestination.stream.getAudioTracks()
-        const videoTracks = canvasStream.getVideoTracks()
-        stream = new MediaStream([...videoTracks, ...audioTracks])
-
-        console.log('[Video Export] Música da biblioteca adicionada com sucesso')
-      } else {
-        // Caso 3: Áudio original do vídeo (padrão)
-        console.log('[Video Export] Usando áudio original do vídeo')
-        console.log('[Video Export] URL do vídeo:', videoElement.src?.substring(0, 100))
-
-        try {
-          // Estratégia: Criar um vídeo clone para capturar áudio sem interferir no original
-          const clonedVideo = document.createElement('video')
-          clonedVideo.src = videoElement.src
-          clonedVideo.crossOrigin = 'anonymous'
-          clonedVideo.muted = false // Importante: não mutar o clone
-
-          console.log('[Video Export] Aguardando carregamento do vídeo clone...')
-
-          // Aguardar vídeo clone carregar
-          await new Promise<void>((resolve, reject) => {
-            clonedVideo.addEventListener('loadedmetadata', () => {
-              console.log('[Video Export] ✅ Vídeo clone carregado')
-              resolve()
-            }, { once: true })
-
-            clonedVideo.addEventListener('error', (e) => {
-              console.error('[Video Export] ❌ Erro ao carregar vídeo clone:', e)
-              reject(new Error('Falha ao carregar vídeo clone'))
-            }, { once: true })
-
-            clonedVideo.load()
-
-            // Timeout de segurança
-            setTimeout(() => reject(new Error('Timeout ao carregar vídeo clone')), 10000)
-          })
-
-          // Tentar capturar stream do clone
-          // @ts-expect-error - captureStream() existe em navegadores modernos
-          const cloneStream = clonedVideo.captureStream() as MediaStream
-          const audioTracks = cloneStream.getAudioTracks()
-
-          console.log('[Video Export] Audio tracks encontradas:', audioTracks.length)
-
-          if (audioTracks.length > 0) {
-            console.log('[Video Export] ✅ Áudio original capturado com sucesso')
-
-            // Posicionar clone no início do trim mas NÃO reproduzir ainda
-            clonedVideo.currentTime = videoTrimStart
-            clonedVideo.muted = false
-            console.log(`[Video Export] Clone posicionado em ${videoTrimStart}s, aguardando início da gravação...`)
-
-            // Combinar stream de vídeo (do canvas) com áudio (do clone)
-            const videoTracks = canvasStream.getVideoTracks()
-            stream = new MediaStream([...videoTracks, ...audioTracks])
-
-            // Manter referência do clone para sincronização durante a gravação
-            // @ts-expect-error - adicionar propriedade customizada
-            stream._clonedVideoElement = clonedVideo
-          } else {
-            console.log('[Video Export] ⚠️ Vídeo não possui faixas de áudio')
-            stream = canvasStream
-          }
-        } catch (error) {
-          console.error('[Video Export] ❌ Erro ao capturar áudio original:', error)
-          console.log('[Video Export] Continuando sem áudio')
-          stream = canvasStream
-        }
-      }
-    } catch (error) {
-      console.warn('[Video Export] Erro ao processar áudio:', error)
-      // Continuar sem áudio se falhar
-      stream = canvasStream
-    }
+    // Stream SEM áudio: a trilha (biblioteca/original/mix) é mixada pelo
+    // ffmpeg na fila server-side a partir do audioConfig persistido no job.
+    // Isso elimina o clone <video> ressincronizado e o mix WebAudio ao vivo
+    // — os pontos mais frágeis do export antigo.
+    const stream = canvasStream
 
     // Configurar MediaRecorder
     const targetVideoBitrate = Math.round(
@@ -724,7 +386,6 @@ export async function exportVideoWithLayers(
     const mediaRecorder = new MediaRecorder(stream, {
       mimeType: finalMimeType,
       videoBitsPerSecond: targetVideoBitrate,
-      audioBitsPerSecond: 256_000,
     })
 
     const chunks: Blob[] = []
@@ -766,32 +427,11 @@ export async function exportVideoWithLayers(
       }
     }
 
-    // Reproduzir vídeo clone simultaneamente (se existir) para capturar áudio
-    // @ts-expect-error - propriedade customizada
-    const clonedVideo = stream._clonedVideoElement as HTMLVideoElement | undefined
-    if (clonedVideo) {
-      try {
-        await clonedVideo.play()
-        console.log('[Video Export] 🎵 Clone iniciado - áudio sendo capturado')
-      } catch (error) {
-        console.warn('[Video Export] Erro ao reproduzir clone (áudio pode não funcionar):', error)
-      }
-    }
-
     // Loop de animação para copiar o stage para o canvas offscreen frame por frame
     let animationId: number | null = null
     const startTime = Date.now()
 
     const animationLoop = () => {
-      // Sincronizar tempo do clone com o vídeo original (se existir)
-      if (clonedVideo && !clonedVideo.paused) {
-        const timeDiff = Math.abs(clonedVideo.currentTime - videoElement.currentTime)
-        // Se diferença > 0.1s, ressincronizar
-        if (timeDiff > 0.1) {
-          clonedVideo.currentTime = videoElement.currentTime
-          console.log('[Video Export] 🔄 Clone ressincronizado:', videoElement.currentTime.toFixed(2), 's')
-        }
-      }
       // 1. Forçar redraw do stage para atualizar com frame atual do vídeo
       videoNode.getLayer()?.batchDraw()
       stage.batchDraw()
@@ -829,14 +469,6 @@ export async function exportVideoWithLayers(
         }
 
         videoElement.pause()
-
-        // Parar vídeo clone se existir
-        // @ts-expect-error - propriedade customizada
-        const clonedVideo = stream._clonedVideoElement as HTMLVideoElement | undefined
-        if (clonedVideo) {
-          clonedVideo.pause()
-          console.log('[Video Export] Vídeo clone pausado')
-        }
 
         // Aguardar um pouco antes de parar para garantir que último frame foi capturado
         setTimeout(() => {

@@ -7,17 +7,138 @@
  * browser morresse (aba fechada), o job ficava PENDING para sempre.
  */
 
+import { writeFile, unlink } from 'fs/promises'
+import { join, extname } from 'path'
+import { tmpdir } from 'os'
 import type { Prisma } from '../../../prisma/generated/client'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
 import { deductCreditsForFeature } from '@/lib/credits/deduct'
 import { googleDriveService } from '@/server/google-drive-service'
-import { convertWebMToMP4ServerSide } from '@/lib/video/ffmpeg-server-converter'
+import {
+  convertWebMToMP4ServerSide,
+  type AudioMixOptions,
+} from '@/lib/video/ffmpeg-server-converter'
 
 export type ProcessVideoJobResult =
   | { outcome: 'idle' }
   | { outcome: 'completed'; jobId: string; mp4Url: string; thumbnailUrl?: string }
   | { outcome: 'failed'; jobId: string; error: string }
+
+interface ExportAudioConfig {
+  source: 'original' | 'library' | 'mute' | 'mix'
+  musicId?: number
+  audioVersion?: 'original' | 'instrumental'
+  startTime?: number
+  endTime?: number
+  volume?: number
+  volumeOriginal?: number
+  volumeMusic?: number
+  fadeIn?: boolean
+  fadeOut?: boolean
+  fadeInDuration?: number
+  fadeOutDuration?: number
+}
+
+/**
+ * Fonte de verdade do mix: __exportAudioConfig gravado pela rota de queue
+ * (fallback: design.audio persistido na página). Jobs antigos, sem o campo,
+ * seguem o caminho legado — WebM com áudio embutido convertido direto.
+ */
+function resolveExportAudioConfig(
+  designData: Record<string, unknown> | null,
+): ExportAudioConfig | null {
+  const raw =
+    (designData?.__exportAudioConfig as ExportAudioConfig | null | undefined) ??
+    (designData?.audio as ExportAudioConfig | null | undefined) ??
+    null
+  if (!raw || typeof raw !== 'object') return null
+  if (!['original', 'library', 'mute', 'mix'].includes(raw.source)) return null
+  return raw
+}
+
+function findVideoLayer(designData: Record<string, unknown> | null): {
+  fileUrl?: string
+  videoMetadata?: { trimStart?: number }
+} | null {
+  const layers = designData?.layers
+  if (!Array.isArray(layers)) return null
+  return (
+    (layers.find(
+      (l) => l && typeof l === 'object' && (l as { type?: string }).type === 'video',
+    ) as { fileUrl?: string; videoMetadata?: { trimStart?: number } } | undefined) ?? null
+  )
+}
+
+async function downloadToTmp(url: string, label: string, tempFiles: string[]): Promise<string> {
+  const response = await fetch(url)
+  if (!response.ok) {
+    throw new Error(`Falha ao baixar ${label}: HTTP ${response.status}`)
+  }
+  const buffer = Buffer.from(await response.arrayBuffer())
+  let ext = '.bin'
+  try {
+    ext = extname(new URL(url).pathname) || '.bin'
+  } catch {
+    // mantém .bin
+  }
+  const filePath = join(
+    tmpdir(),
+    `audio-input-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`,
+  )
+  await writeFile(filePath, buffer)
+  tempFiles.push(filePath)
+  return filePath
+}
+
+/**
+ * Baixa os insumos (vídeo fonte e/ou música) e monta o AudioMixOptions.
+ * Devolve undefined quando não há o que mixar (ex.: 'original' sem arquivo).
+ */
+async function prepareAudioMix(
+  cfg: ExportAudioConfig,
+  designData: Record<string, unknown> | null,
+  tempFiles: string[],
+): Promise<AudioMixOptions | undefined> {
+  if (cfg.source === 'mute') return undefined
+  const mix: AudioMixOptions = { mode: cfg.source as AudioMixOptions['mode'] }
+
+  if (cfg.source === 'original' || cfg.source === 'mix') {
+    const videoLayer = findVideoLayer(designData)
+    const fileUrl = videoLayer?.fileUrl
+    if (typeof fileUrl === 'string' && fileUrl.startsWith('http')) {
+      mix.originalPath = await downloadToTmp(fileUrl, 'vídeo fonte', tempFiles)
+      mix.originalTrimStart = videoLayer?.videoMetadata?.trimStart ?? 0
+      mix.originalVolume = cfg.source === 'mix' ? (cfg.volumeOriginal ?? 80) / 100 : 1
+    } else if (cfg.source === 'original') {
+      console.warn('[Video Processor] Fonte de áudio "original" sem fileUrl — export sem áudio')
+      return undefined
+    }
+  }
+
+  if ((cfg.source === 'library' || cfg.source === 'mix') && cfg.musicId) {
+    const music = await db.musicLibrary.findUnique({ where: { id: cfg.musicId } })
+    if (!music) {
+      throw new Error(`Música ${cfg.musicId} não encontrada na biblioteca`)
+    }
+    const musicUrl =
+      cfg.audioVersion === 'instrumental' && music.instrumentalUrl
+        ? music.instrumentalUrl
+        : music.blobUrl
+    mix.musicPath = await downloadToTmp(musicUrl, `música ${music.name}`, tempFiles)
+    mix.musicStart = cfg.startTime ?? 0
+    mix.musicVolume =
+      (cfg.source === 'mix' ? cfg.volumeMusic ?? cfg.volume ?? 60 : cfg.volume ?? 80) / 100
+    mix.fadeInDuration = cfg.fadeIn ? cfg.fadeInDuration : undefined
+    mix.fadeOutDuration = cfg.fadeOut ? cfg.fadeOutDuration : undefined
+  } else if (cfg.source === 'library') {
+    console.warn('[Video Processor] Fonte "library" sem musicId — export sem áudio')
+    return undefined
+  }
+
+  if (!mix.originalPath && !mix.musicPath) return undefined
+  return mix
+}
 
 export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
   const job = await db.videoProcessingJob.findFirst({
@@ -143,29 +264,68 @@ export async function processNextVideoJob(): Promise<ProcessVideoJobResult> {
     })
     await persistGeneration({ progress: 20 })
 
+    // Trilha sonora (mix server-side): o WebM novo chega mudo; a trilha vem
+    // do __exportAudioConfig. Falha na preparação NÃO derruba o job — cai na
+    // conversão sem áudio (pior caso: vídeo silencioso, nunca job perdido).
+    const jobDesignData =
+      typeof job.designData === 'object' && job.designData !== null && !Array.isArray(job.designData)
+        ? (job.designData as Record<string, unknown>)
+        : null
+    const exportAudio = resolveExportAudioConfig(jobDesignData)
+    const audioTempFiles: string[] = []
+    let audioMix: AudioMixOptions | undefined
+    if (exportAudio) {
+      try {
+        audioMix = await prepareAudioMix(exportAudio, jobDesignData, audioTempFiles)
+      } catch (error) {
+        console.error('[Video Processor] Falha ao preparar trilha — seguindo sem áudio:', error)
+      }
+    }
+
     console.log('[Video Processor] Convertendo WebM → MP4 com FFmpeg...')
     console.log('[Video Processor] Dimensões de destino:', job.videoWidth, 'x', job.videoHeight)
-    const { mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
-      webmBuffer,
-      async (progress) => {
-        const dbProgress = 20 + progress.percent * 0.6
-        const roundedProgress = Math.min(80, Math.round(dbProgress))
-        await db.videoProcessingJob.update({
-          where: { id: job.id },
-          data: { progress: roundedProgress },
-        })
-        await persistGeneration({ progress: roundedProgress })
-      },
-      {
-        preset: 'fast',
-        crf: 23,
-        generateThumbnail: true,
-        durationSeconds: job.videoDuration,
-        // Passar dimensões de destino para garantir aspect ratio correto (crucial para Instagram Stories 9:16)
-        targetWidth: job.videoWidth ?? undefined,
-        targetHeight: job.videoHeight ?? undefined,
-      },
-    )
+    console.log('[Video Processor] Trilha:', audioMix ? audioMix.mode : 'nenhuma (conversão direta)')
+
+    const conversionOptions = {
+      preset: 'fast' as const,
+      crf: 23,
+      generateThumbnail: true,
+      durationSeconds: job.videoDuration,
+      // Passar dimensões de destino para garantir aspect ratio correto (crucial para Instagram Stories 9:16)
+      targetWidth: job.videoWidth ?? undefined,
+      targetHeight: job.videoHeight ?? undefined,
+    }
+    const onConversionProgress = async (progress: { percent: number }) => {
+      const dbProgress = 20 + progress.percent * 0.6
+      const roundedProgress = Math.min(80, Math.round(dbProgress))
+      await db.videoProcessingJob.update({
+        where: { id: job.id },
+        data: { progress: roundedProgress },
+      })
+      await persistGeneration({ progress: roundedProgress })
+    }
+
+    let mp4Buffer: Buffer
+    let thumbnailBuffer: Buffer | undefined
+    try {
+      ;({ mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
+        webmBuffer,
+        onConversionProgress,
+        { ...conversionOptions, audioMix },
+      ))
+    } catch (error) {
+      if (!audioMix) throw error
+      // Fallback: mix falhou (ex.: vídeo fonte sem faixa de áudio) — entrega
+      // o vídeo sem trilha em vez de perder o job e os créditos do usuário
+      console.error('[Video Processor] Mix de áudio falhou — reconvertendo sem trilha:', error)
+      ;({ mp4Buffer, thumbnailBuffer } = await convertWebMToMP4ServerSide(
+        webmBuffer,
+        onConversionProgress,
+        conversionOptions,
+      ))
+    } finally {
+      await Promise.all(audioTempFiles.map((file) => unlink(file).catch(() => {})))
+    }
 
     console.log('[Video Processor] Conversão concluída!')
 

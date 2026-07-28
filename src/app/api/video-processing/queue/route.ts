@@ -9,6 +9,23 @@ import { put } from '@vercel/blob'
 
 export const runtime = 'nodejs'
 
+const audioConfigSchema = z.object({
+  source: z.enum(['original', 'library', 'mute', 'mix']),
+  musicId: z.number().int().optional(),
+  audioVersion: z.enum(['original', 'instrumental']).optional(),
+  musicName: z.string().optional(),
+  musicThumbnailUrl: z.string().nullable().optional(),
+  startTime: z.number().min(0),
+  endTime: z.number().min(0),
+  volume: z.number().min(0).max(100),
+  volumeOriginal: z.number().min(0).max(100).optional(),
+  volumeMusic: z.number().min(0).max(100).optional(),
+  fadeIn: z.boolean(),
+  fadeOut: z.boolean(),
+  fadeInDuration: z.number().min(0),
+  fadeOutDuration: z.number().min(0),
+})
+
 const queueVideoSchema = z
   .object({
     templateId: z.coerce.number().int(),
@@ -17,6 +34,8 @@ const queueVideoSchema = z
     videoDuration: z.coerce.number().positive(),
     videoWidth: z.coerce.number().positive(),
     videoHeight: z.coerce.number().positive(),
+    // Trilha sonora do export: o WebM chega MUDO e o processor mixa via ffmpeg
+    audioConfig: audioConfigSchema.nullable().optional(),
     webmBlob: z.string().optional(), // Base64 encoded WebM video (legacy fallback)
     webmBlobUrl: z.string().url().optional(), // Direct Vercel Blob URL (preferred)
     webmBlobSize: z.coerce.number().int().positive().optional(), // Size in bytes when using webmBlobUrl
@@ -261,8 +280,28 @@ export async function POST(request: Request) {
 
     const designDataWithContext =
       typeof body.designData === 'object' && body.designData !== null && !Array.isArray(body.designData)
-        ? { ...body.designData, __organizationId: orgId ?? null }
-        : { value: body.designData, __organizationId: orgId ?? null }
+        ? { ...body.designData, __organizationId: orgId ?? null, __exportAudioConfig: body.audioConfig ?? null }
+        : { value: body.designData, __organizationId: orgId ?? null, __exportAudioConfig: body.audioConfig ?? null }
+
+    // Colunas de rastreio da trilha (fonte de verdade do mix é o
+    // __exportAudioConfig no designData; aqui é o que dá vida à relação
+    // MusicLibrary.usedInVideos e a métricas de uso)
+    const audioCfg = body.audioConfig ?? null
+    const usesMusic =
+      audioCfg != null && (audioCfg.source === 'library' || audioCfg.source === 'mix') && audioCfg.musicId
+    const audioTrackingColumns = audioCfg
+      ? {
+          audioSource: audioCfg.source,
+          musicId: usesMusic ? audioCfg.musicId : null,
+          musicStartTime: usesMusic ? audioCfg.startTime : null,
+          musicEndTime: usesMusic ? audioCfg.endTime : null,
+          audioVolume:
+            (audioCfg.source === 'mix' ? audioCfg.volumeMusic ?? audioCfg.volume : audioCfg.volume) / 100,
+          audioFadeIn: audioCfg.fadeIn ? audioCfg.fadeInDuration : null,
+          audioFadeOut: audioCfg.fadeOut ? audioCfg.fadeOutDuration : null,
+          audioLoop: false,
+        }
+      : {}
 
     const { job, generation } = await db.$transaction(async (tx) => {
       const createdGeneration = await tx.generation.create({
@@ -293,6 +332,7 @@ export async function POST(request: Request) {
           videoWidth: body.videoWidth,
           videoHeight: body.videoHeight,
           designData: designDataWithContext,
+          ...audioTrackingColumns,
           progress: 0,
           creditsDeducted: false,
           creditsUsed: 10,

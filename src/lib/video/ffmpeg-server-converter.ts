@@ -11,6 +11,29 @@ export type ConversionProgress = {
   timemark: string
 }
 
+/**
+ * Mix de áudio server-side: o WebM chega mudo do editor e a trilha é montada
+ * aqui, deterministicamente (sem clone <video> nem WebAudio ao vivo).
+ * Caminhos são ARQUIVOS LOCAIS já baixados pelo chamador.
+ */
+export type AudioMixOptions = {
+  mode: 'original' | 'library' | 'mix'
+  /** Vídeo fonte (áudio original) — obrigatório em original/mix */
+  originalPath?: string
+  /** Início do trecho no vídeo fonte (trim do editor), em segundos */
+  originalTrimStart?: number
+  /** Volume do áudio original 0–1 (mix; original puro fica 1) */
+  originalVolume?: number
+  /** Música — obrigatório em library/mix */
+  musicPath?: string
+  /** Início do trecho da música, em segundos */
+  musicStart?: number
+  /** Volume da música 0–1 */
+  musicVolume?: number
+  fadeInDuration?: number
+  fadeOutDuration?: number
+}
+
 export type ConversionOptions = {
   preset?:
   | 'ultrafast'
@@ -29,6 +52,76 @@ export type ConversionOptions = {
   targetWidth?: number
   /** Altura de destino do vídeo (ex: 1920 para Stories) */
   targetHeight?: number
+  /** Trilha sonora mixada pelo ffmpeg (WebM de entrada é mudo) */
+  audioMix?: AudioMixOptions
+}
+
+/**
+ * Monta inputs extras e o filter_complex de áudio para o AudioMixOptions.
+ * Todas as cadeias terminam em [aout] com exatamente `duration` segundos
+ * (atrim + apad), para o -t do output cortar vídeo e áudio juntos.
+ */
+function buildAudioMixArgs(
+  mix: AudioMixOptions,
+  duration: number | undefined,
+): { inputArgs: string[]; filterArgs: string[]; mapArgs: string[] } {
+  const inputArgs: string[] = []
+  const chains: string[] = []
+  let inputIndex = 1 // 0 é o WebM
+
+  const dur = duration && duration > 0 ? duration : undefined
+  const trimExpr = (start: number) =>
+    `atrim=start=${start.toFixed(3)}${dur ? `:duration=${dur.toFixed(3)}` : ''},asetpts=PTS-STARTPTS`
+
+  const fades: string[] = []
+  if (mix.fadeInDuration && mix.fadeInDuration > 0) {
+    fades.push(`afade=t=in:st=0:d=${mix.fadeInDuration.toFixed(3)}`)
+  }
+  if (mix.fadeOutDuration && mix.fadeOutDuration > 0 && dur) {
+    const st = Math.max(0, dur - mix.fadeOutDuration)
+    fades.push(`afade=t=out:st=${st.toFixed(3)}:d=${mix.fadeOutDuration.toFixed(3)}`)
+  }
+  const fadeExpr = fades.length ? `,${fades.join(',')}` : ''
+
+  let originalLabel: string | null = null
+  if ((mix.mode === 'original' || mix.mode === 'mix') && mix.originalPath) {
+    inputArgs.push('-i', mix.originalPath)
+    const vol = mix.originalVolume ?? 1
+    chains.push(
+      `[${inputIndex}:a]${trimExpr(mix.originalTrimStart ?? 0)},volume=${vol.toFixed(3)}[aorig]`,
+    )
+    originalLabel = '[aorig]'
+    inputIndex++
+  }
+
+  let musicLabel: string | null = null
+  if ((mix.mode === 'library' || mix.mode === 'mix') && mix.musicPath) {
+    inputArgs.push('-i', mix.musicPath)
+    const vol = mix.musicVolume ?? 0.8
+    chains.push(
+      `[${inputIndex}:a]${trimExpr(mix.musicStart ?? 0)},volume=${vol.toFixed(3)}${fadeExpr},apad[amus]`,
+    )
+    musicLabel = '[amus]'
+    inputIndex++
+  }
+
+  let outChain: string
+  if (originalLabel && musicLabel) {
+    outChain = `${originalLabel}${musicLabel}amix=inputs=2:duration=longest:normalize=0,apad[aout]`
+  } else if (musicLabel) {
+    outChain = `${musicLabel}anull[aout]`
+  } else if (originalLabel) {
+    outChain = `${originalLabel}apad[aout]`
+  } else {
+    return { inputArgs: [], filterArgs: [], mapArgs: [] }
+  }
+  chains.push(outChain)
+
+  return {
+    inputArgs,
+    filterArgs: ['-filter_complex', chains.join(';')],
+    mapArgs: ['-map', '0:v:0', '-map', '[aout]'],
+  }
 }
 
 let cachedFfmpegPath: string | null = null
@@ -237,6 +330,7 @@ export async function convertWebMToMP4ServerSide(
     durationSeconds,
     targetWidth,
     targetHeight,
+    audioMix,
   } = options
 
   const timestamp = Date.now()
@@ -256,11 +350,23 @@ export async function convertWebMToMP4ServerSide(
       'MB',
     )
 
+    const audioArgs = audioMix
+      ? buildAudioMixArgs(audioMix, durationSeconds)
+      : { inputArgs: [], filterArgs: [], mapArgs: [] }
+    if (audioMix) {
+      console.log('[FFmpeg Server] Mix de áudio:', audioMix.mode, audioArgs.filterArgs[1] ?? '(sem filtro)')
+    }
+
     await runFfmpegCommand(
       [
         '-y',
         '-i',
         inputPath,
+        ...audioArgs.inputArgs,
+        ...audioArgs.filterArgs,
+        ...audioArgs.mapArgs,
+        // Corta vídeo e áudio juntos na duração alvo (as cadeias têm apad)
+        ...(audioMix && durationSeconds ? ['-t', durationSeconds.toFixed(3)] : []),
         '-c:v',
         'libx264',
         '-preset',

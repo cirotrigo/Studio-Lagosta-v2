@@ -499,6 +499,8 @@ export function VideoExportButton() {
         thumbnailBlobUrl: thumbnailUpload.url,
         thumbnailBlobSize: thumbnailBlob.size,
         designData: design,
+        // O WebM acima é MUDO — a fila mixa a trilha via ffmpeg a partir daqui
+        audioConfig,
       }
 
       console.log('[Video Export] Enviando para fila:', {
