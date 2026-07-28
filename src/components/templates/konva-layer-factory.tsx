@@ -2,7 +2,7 @@
 
 import * as React from 'react'
 import Konva from 'konva'
-import { Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path } from 'react-konva'
+import { Rect, Image as KonvaImage, Circle, RegularPolygon, Line, Star, Path, Group, Arrow, Shape } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import useImage from 'use-image'
 import type { Layer, LayerStyle } from '@/types/template'
@@ -11,6 +11,7 @@ import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
 import { resolveImageSourceRect } from '@/lib/image-fit'
+import { traceSvgPath } from '@/lib/konva/svg-path-clip'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
 // Import custom Konva filters
 import '@/lib/konva/filters'
@@ -778,8 +779,23 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   const imageUrl = layer.fileUrl || ''
   const [image] = useImage(imageUrl, imageUrl.startsWith('http') ? 'anonymous' : undefined)
   const imageRef = React.useRef<Konva.Image>(null)
+  const groupRef = React.useRef<Konva.Group>(null)
 
-  React.useImperativeHandle(shapeRef, () => imageRef.current as Konva.Shape | null, [])
+  // Máscara e flip vivem num Group wrapper: a máscara é clipFunc do Group e o
+  // flip é scale NEGATIVO no KonvaImage interno — nunca no node transformado,
+  // porque o handleTransformEnd reseta o scale para 1 e apagaria o flip.
+  const flipH = layer.style?.flipH === true
+  const flipV = layer.style?.flipV === true
+  const maskPath = layer.style?.mask?.path
+  const hasWrapper = Boolean(maskPath || flipH || flipV)
+
+  // Transformer/seleção anexam no node com o id da camada: o Group quando há
+  // wrapper, o próprio KonvaImage caso contrário
+  React.useImperativeHandle(
+    shapeRef,
+    () => (hasWrapper ? (groupRef.current as unknown as Konva.Shape | null) : (imageRef.current as Konva.Shape | null)),
+    [hasWrapper],
+  )
 
   const filters = React.useMemo<KonvaFilter[]>(() => {
     const list: KonvaFilter[] = []
@@ -872,23 +888,30 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
 
   // Handler customizado - recalcular crop manualmente
   const handleTransformEnd = React.useCallback(() => {
-    const node = imageRef.current
-    if (!node || !image) return
+    const imageNode = imageRef.current
+    // Com wrapper, o transformer escala o GROUP (que não tem width próprio);
+    // a base do cálculo é o tamanho atual da imagem interna
+    const node = hasWrapper ? groupRef.current : imageRef.current
+    if (!node || !imageNode || !image) return
 
     const scaleX = node.scaleX()
     const scaleY = node.scaleY()
 
     // Calcular novas dimensões
-    const newWidth = Math.max(5, node.width() * scaleX)
-    const newHeight = Math.max(5, node.height() * scaleY)
+    const newWidth = Math.max(5, imageNode.width() * scaleX)
+    const newHeight = Math.max(5, imageNode.height() * scaleY)
 
     // Resetar scale
     node.scaleX(1)
     node.scaleY(1)
 
-    // Aplicar novas dimensões no node
-    node.width(newWidth)
-    node.height(newHeight)
+    // Aplicar novas dimensões na imagem (e reposicionar o pivô do flip)
+    imageNode.width(newWidth)
+    imageNode.height(newHeight)
+    if (hasWrapper) {
+      imageNode.x(flipH ? newWidth : 0)
+      imageNode.y(flipV ? newHeight : 0)
+    }
 
     // ✅ CRITICAL: Recalcular e aplicar crop IMEDIATAMENTE no node
     const newCrop = resolveImageSourceRect(
@@ -897,15 +920,15 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       layer.style,
     )
     if (newCrop) {
-      node.cropX(newCrop.cropX)
-      node.cropY(newCrop.cropY)
-      node.cropWidth(newCrop.cropWidth)
-      node.cropHeight(newCrop.cropHeight)
+      imageNode.cropX(newCrop.cropX)
+      imageNode.cropY(newCrop.cropY)
+      imageNode.cropWidth(newCrop.cropWidth)
+      imageNode.cropHeight(newCrop.cropHeight)
     }
 
     // ✅ Reaplicar cache após transform
     if (filters.length > 0) {
-      node.cache()
+      imageNode.cache()
     }
 
     // Forçar re-draw
@@ -923,7 +946,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, image, layer.style, filters.length])
+  }, [onChange, image, layer.style, filters.length, hasWrapper, flipH, flipV])
 
   if (!image) {
     return (
@@ -943,30 +966,67 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
   // Separar onTransformEnd do commonProps para usar nosso handler customizado
   const { onTransformEnd: _, ...imageProps } = commonProps
 
+  const visualProps = {
+    image,
+    ...crop,
+    filters: filters.length ? filters : undefined,
+    // Professional adjustments
+    brightness: layer.style?.exposure ?? layer.style?.brightness ?? 0,
+    contrast: layer.style?.contrast ?? 0,
+    highlights: layer.style?.highlights ?? 0,
+    shadows: layer.style?.shadows ?? 0,
+    whites: layer.style?.whites ?? 0,
+    blacks: layer.style?.blacks ?? 0,
+    saturation: layer.style?.saturation ?? 0,
+    // Effects filters
+    blurRadius: layer.style?.blur ?? 0,
+    vignette: layer.style?.vignette ?? 0,
+    // Styling
+    cornerRadius: borderRadius,
+    stroke: borderWidth > 0 ? borderColor : undefined,
+    strokeWidth: borderWidth > 0 ? borderWidth : undefined,
+  }
+
+  if (hasWrapper) {
+    return (
+      <Group
+        {...imageProps}
+        ref={groupRef}
+        clipFunc={
+          maskPath
+            ? (ctx: Konva.Context) => {
+                // Path congelado em viewBox 0 0 100 100 escalado para a caixa;
+                // desfaz a escala em seguida para não afetar os filhos
+                ctx.scale(width / 100, height / 100)
+                traceSvgPath(ctx, maskPath)
+                ctx.scale(100 / width, 100 / height)
+              }
+            : undefined
+        }
+        onTransformEnd={handleTransformEnd}
+      >
+        <KonvaImage
+          ref={imageRef}
+          {...visualProps}
+          x={flipH ? width : 0}
+          y={flipV ? height : 0}
+          scaleX={flipH ? -1 : 1}
+          scaleY={flipV ? -1 : 1}
+          width={width}
+          height={height}
+          onTransform={handleTransform}
+        />
+      </Group>
+    )
+  }
+
   return (
     <KonvaImage
       {...imageProps}
       ref={imageRef}
-      image={image}
+      {...visualProps}
       width={width}
       height={height}
-      {...crop}
-      filters={filters.length ? filters : undefined}
-      // Professional adjustments
-      brightness={layer.style?.exposure ?? layer.style?.brightness ?? 0}
-      contrast={layer.style?.contrast ?? 0}
-      highlights={layer.style?.highlights ?? 0}
-      shadows={layer.style?.shadows ?? 0}
-      whites={layer.style?.whites ?? 0}
-      blacks={layer.style?.blacks ?? 0}
-      saturation={layer.style?.saturation ?? 0}
-      // Effects filters
-      blurRadius={layer.style?.blur ?? 0}
-      vignette={layer.style?.vignette ?? 0}
-      // Styling
-      cornerRadius={borderRadius}
-      stroke={borderWidth > 0 ? borderColor : undefined}
-      strokeWidth={borderWidth > 0 ? borderWidth : undefined}
       onTransform={handleTransform}
       onTransformEnd={handleTransformEnd}
     />
@@ -1123,18 +1183,91 @@ function ShapeNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           strokeWidth={strokeWidth}
         />
       )
-    case 'line':
+    case 'svg-path': {
+      // Forma vetorial genérica: path normalizado (viewBox 0 0 100 100 por
+      // padrão) desenhado via sceneFunc — o path é traçado JÁ escalado para a
+      // caixa e o transform é restaurado antes do fill/stroke, então o stroke
+      // não distorce (equivalente a strokeScaleEnabled=false) e o
+      // handleTransformEnd genérico (width/height) continua valendo.
+      const pathData = layer.style?.pathData
+      if (!pathData) {
+        return (
+          <Rect
+            {...commonProps}
+            ref={shapeRef as React.RefObject<Konva.Rect>}
+            width={width}
+            height={height}
+            fill={fill}
+          />
+        )
+      }
+      const [vx, vy, vw, vh] = layer.style?.pathViewBox ?? [0, 0, 100, 100]
+      return (
+        <Shape
+          {...commonProps}
+          ref={shapeRef as React.RefObject<Konva.Shape>}
+          width={width}
+          height={height}
+          fill={fill}
+          stroke={stroke}
+          strokeWidth={strokeWidth}
+          lineJoin="round"
+          sceneFunc={(ctx, shape) => {
+            ctx.save()
+            ctx.scale(shape.width() / (vw || 1), shape.height() / (vh || 1))
+            ctx.translate(-vx, -vy)
+            ctx.beginPath()
+            traceSvgPath(ctx as unknown as Konva.Context, pathData)
+            ctx.restore()
+            ctx.fillStrokeShape(shape)
+          }}
+        />
+      )
+    }
+    case 'line': {
+      const lineWidth = layer.style?.strokeWidth ?? 4
+      const lineStyle = layer.style?.lineStyle ?? 'solid'
+      const dash =
+        lineStyle === 'dashed'
+          ? [lineWidth * 2.5, lineWidth * 2]
+          : lineStyle === 'dotted'
+            ? [0.1, lineWidth * 2]
+            : undefined
+      const startArrow = layer.style?.lineStartCap === 'arrow'
+      const endArrow = layer.style?.lineEndCap === 'arrow'
+      if (startArrow || endArrow) {
+        const pointer = Math.max(10, lineWidth * 3)
+        return (
+          <Arrow
+            {...commonProps}
+            ref={shapeRef as React.RefObject<Konva.Arrow>}
+            points={[0, height / 2, width, height / 2]}
+            stroke={fill}
+            fill={fill}
+            strokeWidth={lineWidth}
+            dash={dash}
+            pointerLength={pointer}
+            pointerWidth={pointer}
+            pointerAtBeginning={startArrow}
+            pointerAtEnding={endArrow}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )
+      }
       return (
         <Line
           {...commonProps}
           ref={shapeRef as React.RefObject<Konva.Line>}
           points={[0, height / 2, width, height / 2]}
           stroke={fill}
-          strokeWidth={layer.style?.strokeWidth ?? 4}
+          strokeWidth={lineWidth}
+          dash={dash}
           lineCap="round"
           lineJoin="round"
         />
       )
+    }
     case 'rounded-rectangle':
       return (
         <Rect
