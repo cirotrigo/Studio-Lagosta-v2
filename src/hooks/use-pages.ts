@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { toast } from '@/hooks/use-toast'
+import type { PageAudioConfig } from '@/types/template'
 
 interface CreatePageData {
   name: string
@@ -17,6 +18,7 @@ interface UpdatePageData {
   height?: number
   layers?: unknown[]
   background?: string
+  audio?: PageAudioConfig | null
   order?: number
   thumbnail?: string
 }
@@ -28,6 +30,7 @@ interface PageResponse {
   height: number
   layers: unknown
   background: string | null
+  audio?: PageAudioConfig | null
   order: number
   thumbnail: string | null
   templateId: number

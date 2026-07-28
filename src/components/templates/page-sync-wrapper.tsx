@@ -20,6 +20,14 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
   const isSyncingRef = React.useRef(false)
   const lastSavedLayersRef = React.useRef<string>('')
   const lastSavedCanvasRef = React.useRef<string>('')
+  const lastSavedAudioRef = React.useRef<string>('')
+
+  // Trilha da página (aba Músicas). null e undefined são o mesmo estado ("sem
+  // trilha") — normalizar para não gerar PATCH por falso diff.
+  const serializeAudio = React.useCallback(
+    (audio: Page['audio'] | undefined) => JSON.stringify(audio ?? null),
+    [],
+  )
 
   const serializeLayersForPersistence = React.useCallback((layers: Layer[]) => {
     return JSON.stringify(canonicalizeLayersForPersistence(layers as unknown[]))
@@ -46,14 +54,16 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
   // Monta o PATCH único com o que realmente mudou (layers e/ou canvas).
   // Devolve null quando não há nada para salvar.
-  const buildPendingPatch = React.useCallback((): { patch: PageStatePatch; layersString: string; canvasString: string } | null => {
+  const buildPendingPatch = React.useCallback((): { patch: PageStatePatch; layersString: string; canvasString: string; audioString: string } | null => {
     const layersString = serializeLayersForPersistence(design.layers)
     const canvasString = canvasFromDesign()
+    const audioString = serializeAudio(design.audio)
 
     const layersChanged = layersString !== lastSavedLayersRef.current
     const canvasChanged = canvasString !== lastSavedCanvasRef.current
+    const audioChanged = audioString !== lastSavedAudioRef.current
 
-    if (!layersChanged && !canvasChanged) return null
+    if (!layersChanged && !canvasChanged && !audioChanged) return null
 
     const patch: PageStatePatch = {}
     if (layersChanged) patch.layers = design.layers
@@ -66,8 +76,11 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         patch.background = design.canvas.backgroundColor
       }
     }
-    return { patch, layersString, canvasString }
-  }, [design.layers, design.canvas.width, design.canvas.height, canvasFromDesign, serializeLayersForPersistence])
+    // Trilha entra no MESMO PATCH (nunca dois writers na mesma página);
+    // null explícito limpa a coluna no banco.
+    if (audioChanged) patch.audio = design.audio ?? null
+    return { patch, layersString, canvasString, audioString }
+  }, [design.layers, design.canvas.width, design.canvas.height, design.audio, canvasFromDesign, serializeAudio, serializeLayersForPersistence])
 
   const flushPendingSave = React.useCallback(() => {
     if (!currentPageId || isSyncingRef.current) {
@@ -88,6 +101,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         if (lastPageIdRef.current === currentPageId) {
           lastSavedLayersRef.current = pending.layersString
           lastSavedCanvasRef.current = pending.canvasString
+          lastSavedAudioRef.current = pending.audioString
         }
       })
       .catch((error) => {
@@ -128,6 +142,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
             backgroundColor: currentPage.background,
           },
           layers: (currentPage.layers as Layer[]) || [],
+          audio: currentPage.audio ?? null,
         },
         // name: currentPage.name, // ❌ NÃO PASSAR - isso sobrescreve o nome do template
         markDirty: false, // trocar/carregar página não é edição do usuário
@@ -136,6 +151,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
 
       lastSavedLayersRef.current = serializeLayersForPersistence((currentPage.layers as Layer[]) || [])
       lastSavedCanvasRef.current = canvasFromPage(currentPage)
+      lastSavedAudioRef.current = serializeAudio(currentPage.audio)
 
       lastPageIdRef.current = currentPageId
 
@@ -202,6 +218,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
         }
         lastSavedLayersRef.current = pending.layersString
         lastSavedCanvasRef.current = pending.canvasString
+        lastSavedAudioRef.current = pending.audioString
 
         // Gerar thumbnail de forma silenciosa (não invalida cache)
         const thumbnail = await generateThumbnail(150)
@@ -217,7 +234,7 @@ export function PageSyncWrapper({ children }: { children: React.ReactNode }) {
     }, 800)
 
     return () => clearTimeout(timeoutId)
-  }, [design.layers, design.canvas.width, design.canvas.height, design.canvas.backgroundColor, currentPageId, buildPendingPatch, savePageState, generateThumbnail, updatePageThumbnail])
+  }, [design.layers, design.canvas.width, design.canvas.height, design.canvas.backgroundColor, design.audio, currentPageId, buildPendingPatch, savePageState, generateThumbnail, updatePageThumbnail])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') {

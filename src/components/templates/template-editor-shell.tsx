@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, Shapes } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, Shapes } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
@@ -28,6 +28,7 @@ import { BackgroundsPanel } from './sidebar/backgrounds-panel'
 import { ShapesPanel } from './panels/shapes-panel'
 import { AIImagesPanel } from './sidebar/ai-images-panel'
 import { VideosPanel } from './sidebar/videos-panel'
+import { MusicPanel } from './sidebar/music-panel'
 import { CreativesPanel } from './panels/creatives-panel'
 import { VideoExportButton } from './video-export-button'
 import { TemplateAIChat } from './template-ai-chat'
@@ -162,7 +163,7 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
   )
 }
 
-type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'elements' | 'shapes' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
+type SidePanel = 'templates' | 'text' | 'images' | 'videos' | 'music' | 'elements' | 'shapes' | 'logo' | 'colors' | 'gradients' | 'backgrounds' | 'ai-images' | 'ai-creative' | 'layers' | null
 
 // Ferramentas disponíveis no drawer mobile (grid inicial e linha de chips)
 const MOBILE_TOOL_ITEMS: Array<{
@@ -173,6 +174,7 @@ const MOBILE_TOOL_ITEMS: Array<{
   { key: 'text', label: 'Texto', icon: TypeIcon },
   { key: 'images', label: 'Imagens', icon: ImageIcon },
   { key: 'videos', label: 'Vídeos', icon: Film },
+  { key: 'music', label: 'Músicas', icon: Music },
   { key: 'elements', label: 'Elementos', icon: Square },
   { key: 'shapes', label: 'Formas', icon: Shapes },
   { key: 'logo', label: 'Logo', icon: Award },
@@ -635,6 +637,7 @@ function TemplateEditorContent({
             {activePanel === 'text' && <TextToolsPanel />}
             {activePanel === 'images' && <ImagesPanelContent />}
             {activePanel === 'videos' && <VideosPanel />}
+            {activePanel === 'music' && <MusicPanel />}
             {activePanel === 'elements' && <ElementsPanelContent />}
             {activePanel === 'shapes' && <ShapesPanel />}
             {activePanel === 'logo' && <LogoPanelContent />}
@@ -758,6 +761,12 @@ function TemplateEditorContent({
             onClick={() => togglePanel('videos')}
           />
           <ToolbarButton
+            icon={<Music className="h-5 w-5" />}
+            label="Músicas"
+            active={activePanel === 'music'}
+            onClick={() => togglePanel('music')}
+          />
+          <ToolbarButton
             icon={<Square className="h-5 w-5" />}
             label="Elementos"
             active={activePanel === 'elements'}
@@ -823,6 +832,7 @@ function TemplateEditorContent({
                 {activePanel === 'text' && 'Texto & Fontes'}
                 {activePanel === 'images' && 'Imagens'}
                 {activePanel === 'videos' && 'Vídeos'}
+                {activePanel === 'music' && 'Músicas'}
                 {activePanel === 'elements' && 'Elementos'}
                 {activePanel === 'shapes' && 'Formas'}
                 {activePanel === 'logo' && 'Logo da Marca'}
@@ -838,6 +848,7 @@ function TemplateEditorContent({
               {activePanel === 'text' && <TextToolsPanel />}
               {activePanel === 'images' && <ImagesPanelContent />}
               {activePanel === 'videos' && <VideosPanel />}
+              {activePanel === 'music' && <MusicPanel />}
               {activePanel === 'elements' && <ElementsPanelContent />}
               {activePanel === 'shapes' && <ShapesPanel />}
               {activePanel === 'logo' && <LogoPanelContent />}
@@ -912,6 +923,15 @@ function TemplateEditorContent({
 
           <div className="flex-1 h-full overflow-hidden relative">
             <EditorCanvas />
+            {/* Badge da trilha da página (estilo barra de áudio do Canva) */}
+            {design.audio?.musicId ? (
+              <div className="pointer-events-none absolute bottom-3 left-3 z-30 flex items-center gap-1.5 rounded-full border border-border/40 bg-background/90 px-3 py-1.5 text-xs font-medium shadow-lg backdrop-blur-sm">
+                <Music className="h-3.5 w-3.5 text-primary" />
+                <span className="max-w-[180px] truncate">
+                  {design.audio.musicName ?? 'Trilha da página'}
+                </span>
+              </div>
+            ) : null}
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}

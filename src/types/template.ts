@@ -1,7 +1,32 @@
 export interface DesignData {
   canvas: CanvasConfig
   layers: Layer[]
+  /** Trilha sonora da página (persistida em Page.audio). null/undefined = sem trilha configurada. */
+  audio?: PageAudioConfig | null
   [key: string]: unknown
+}
+
+/**
+ * Trilha sonora persistida por página. Mesmo shape do AudioConfig do
+ * AudioSelectionModal (que agora é um alias deste tipo) — a aba Músicas e o
+ * modal de export leem/gravam a MESMA config.
+ */
+export interface PageAudioConfig {
+  source: 'original' | 'library' | 'mute' | 'mix'
+  musicId?: number
+  audioVersion?: 'original' | 'instrumental'
+  /** Apenas para exibição no resumo (não afeta a renderização) */
+  musicName?: string
+  musicThumbnailUrl?: string | null
+  startTime: number
+  endTime: number
+  volume: number
+  volumeOriginal?: number
+  volumeMusic?: number
+  fadeIn: boolean
+  fadeOut: boolean
+  fadeInDuration: number
+  fadeOutDuration: number
 }
 
 export interface CanvasConfig {
@@ -244,6 +269,7 @@ export interface Page {
   height: number
   layers: Layer[]
   background?: string
+  audio?: PageAudioConfig | null
   order: number
   thumbnail?: string
   isTemplate?: boolean

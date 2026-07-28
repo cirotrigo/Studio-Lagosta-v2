@@ -68,16 +68,30 @@ export function VideoExportButton() {
   // Estados para configuração de áudio
   const [isAudioModalOpen, setIsAudioModalOpen] = React.useState(false)
   const [videoDuration, setVideoDuration] = React.useState<number | null>(null)
-  const [audioConfig, setAudioConfig] = React.useState<AudioConfig>({
-    source: 'original',
-    startTime: 0,
-    endTime: 10, // Será atualizado quando a duração real for detectada
-    volume: 80,
-    fadeIn: false,
-    fadeOut: false,
-    fadeInDuration: 0.5,
-    fadeOutDuration: 0.5,
-  })
+  const DEFAULT_AUDIO_CONFIG = React.useMemo<AudioConfig>(
+    () => ({
+      source: 'original',
+      startTime: 0,
+      endTime: 10, // Será atualizado quando a duração real for detectada
+      volume: 80,
+      fadeIn: false,
+      fadeOut: false,
+      fadeInDuration: 0.5,
+      fadeOutDuration: 0.5,
+    }),
+    [],
+  )
+  // A trilha persistida na página (aba Músicas / Page.audio) é o ponto de
+  // partida; sem trilha salva, cai no default (áudio original do vídeo).
+  const [audioConfig, setAudioConfig] = React.useState<AudioConfig>(
+    () => design.audio ?? DEFAULT_AUDIO_CONFIG,
+  )
+  const hasPersistedAudioRef = React.useRef(Boolean(design.audio))
+
+  React.useEffect(() => {
+    hasPersistedAudioRef.current = Boolean(design.audio)
+    setAudioConfig(design.audio ?? DEFAULT_AUDIO_CONFIG)
+  }, [design.audio, DEFAULT_AUDIO_CONFIG])
 
   // Refs para acessar selectedLayerIds e setZoom dentro da função de exportação
   const selectedLayerIdsRef = React.useRef<string[]>(editorContext.selectedLayerIds)
@@ -177,6 +191,9 @@ export function VideoExportButton() {
           setVideoDuration(realDuration)
 
           setAudioConfig(prev => {
+            // Trilha salva na página tem trecho escolhido pelo usuário — não
+            // sobrescrever com a duração do vídeo
+            if (hasPersistedAudioRef.current) return prev
             console.log('[Video Export] Atualizando audioConfig.endTime de', prev.endTime, 'para', realDuration)
             return {
               ...prev,
@@ -732,9 +749,12 @@ export function VideoExportButton() {
         currentConfig={audioConfig}
         onConfirm={(config) => {
           setAudioConfig(config)
+          // Persiste na página (Page.audio via PageSync) — é a mesma config
+          // que a aba Músicas edita
+          editorContext.setPageAudio(config)
           toast({
-            title: 'Configuração de áudio salva',
-            description: 'As configurações de áudio serão aplicadas na exportação',
+            title: 'Trilha sonora salva na página',
+            description: 'A configuração vale para este export e fica salva no template.',
           })
         }}
       />

@@ -46,6 +46,8 @@ export interface TemplateEditorContextValue {
   toggleLayerLock: (id: string) => void
   reorderLayers: (idsInOrder: string[]) => void
   updateCanvas: (canvas: Partial<DesignData['canvas']>) => void
+  /** Trilha sonora da página (persistida em Page.audio via PageSync); null limpa. */
+  setPageAudio: (audio: DesignData['audio']) => void
   dynamicFields: DynamicField[]
   setDynamicFields: React.Dispatch<React.SetStateAction<DynamicField[]>>
   dirty: boolean
@@ -441,6 +443,11 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
   const updateCanvas = React.useCallback((canvas: Partial<DesignData['canvas']>) => {
     applyDesign((prev) => ({ ...prev, canvas: { ...prev.canvas, ...canvas } }))
+  }, [applyDesign])
+
+  // Trilha da página. Sliders (volume/trim) coalescem num undo só por gesto.
+  const setPageAudio = React.useCallback((audio: DesignData['audio']) => {
+    applyDesign((prev) => ({ ...prev, audio: audio ?? null }), { coalesceKey: 'page-audio' })
   }, [applyDesign])
 
   const copySelectedLayers = React.useCallback(() => {
@@ -1255,6 +1262,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       toggleLayerLock,
       reorderLayers,
       updateCanvas,
+      setPageAudio,
       dynamicFields,
       setDynamicFields: (updater) => {
         setDynamicFieldsState((prev) => {
@@ -1329,6 +1337,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       toggleLayerLock,
       reorderLayers,
       updateCanvas,
+      setPageAudio,
       dynamicFields,
       dirty,
       markSaved,

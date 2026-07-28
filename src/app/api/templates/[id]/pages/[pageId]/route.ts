@@ -9,6 +9,24 @@ import {
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
 import { canonicalizeLayersForPersistence } from '@/lib/shape-style'
+import { Prisma } from '../../../../../../../prisma/generated/client'
+
+const pageAudioSchema = z.object({
+  source: z.enum(['original', 'library', 'mute', 'mix']),
+  musicId: z.number().int().optional(),
+  audioVersion: z.enum(['original', 'instrumental']).optional(),
+  musicName: z.string().optional(),
+  musicThumbnailUrl: z.string().nullable().optional(),
+  startTime: z.number().min(0),
+  endTime: z.number().min(0),
+  volume: z.number().min(0).max(100),
+  volumeOriginal: z.number().min(0).max(100).optional(),
+  volumeMusic: z.number().min(0).max(100).optional(),
+  fadeIn: z.boolean(),
+  fadeOut: z.boolean(),
+  fadeInDuration: z.number().min(0),
+  fadeOutDuration: z.number().min(0),
+})
 
 const updatePageSchema = z.object({
   name: z.string().min(1).optional(),
@@ -16,6 +34,9 @@ const updatePageSchema = z.object({
   height: z.number().int().positive().optional(),
   layers: z.array(z.unknown()).optional(),
   background: z.string().optional(),
+  // Trilha sonora da página (aba Músicas); null limpa. NÃO entra no diff
+  // visual — mudar música não invalida o render agendado (que é PNG).
+  audio: pageAudioSchema.nullable().optional(),
   order: z.number().int().optional(),
   thumbnail: z.string().optional(),
   tags: z.array(z.string()).optional(),
@@ -110,6 +131,10 @@ export async function PATCH(
     const updateData: Record<string, unknown> = { ...validatedData }
     if (validatedData.layers !== undefined) {
       updateData.layers = JSON.stringify(canonicalizeLayersForPersistence(validatedData.layers))
+    }
+    // Prisma não aceita null literal em coluna Json — limpar exige DbNull
+    if (validatedData.audio === null) {
+      updateData.audio = Prisma.DbNull
     }
 
     // A arte agendada renderiza desta página; mudou o visual, o render antigo

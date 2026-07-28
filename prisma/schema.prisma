@@ -490,6 +490,7 @@ model Page {
   height         Int
   layers         Json         @default("[]")
   background     String?
+  audio          Json?
   order          Int          @default(0)
   thumbnail      String?
   templateId     Int

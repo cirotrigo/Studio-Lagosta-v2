@@ -30,25 +30,15 @@ import { AudioWaveformTimeline } from './audio-waveform-timeline';
 import { MusicCard } from './music-card';
 import { MusicStemProgress } from './music-stem-progress';
 
+import type { PageAudioConfig } from '@/types/template';
+
 export type AudioVersion = 'original' | 'instrumental';
 
-export interface AudioConfig {
-  source: 'original' | 'library' | 'mute' | 'mix';
-  musicId?: number;
-  audioVersion?: AudioVersion;
-  /** Apenas para exibição no resumo (não afeta a renderização) */
-  musicName?: string;
-  musicThumbnailUrl?: string | null;
-  startTime: number;
-  endTime: number;
-  volume: number;
-  volumeOriginal?: number;
-  volumeMusic?: number;
-  fadeIn: boolean;
-  fadeOut: boolean;
-  fadeInDuration: number;
-  fadeOutDuration: number;
-}
+/**
+ * Alias do tipo persistido em Page.audio — a config escolhida aqui é a MESMA
+ * que a aba Músicas grava na página.
+ */
+export type AudioConfig = PageAudioConfig;
 
 interface AudioSelectionModalProps {
   open: boolean;

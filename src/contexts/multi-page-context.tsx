@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from 'react'
-import type { Page } from '@/types/template'
+import type { Page, PageAudioConfig } from '@/types/template'
 import { usePages, useUpdatePage } from '@/hooks/use-pages'
 import { ApiError } from '@/lib/api-client'
 
@@ -10,6 +10,8 @@ export interface PageStatePatch {
   width?: number
   height?: number
   background?: string
+  /** Trilha sonora da página; null limpa a trilha. Fora do diff visual (não invalida renders). */
+  audio?: PageAudioConfig | null
 }
 
 interface MultiPageContextValue {
@@ -69,6 +71,7 @@ export function MultiPageProvider({ templateId, children, initialPageId }: Multi
       height: p.height,
       layers: Array.isArray(p.layers) ? p.layers : [],
       background: p.background ?? undefined,
+      audio: p.audio ?? undefined,
       order: p.order,
       thumbnail: p.thumbnail ?? undefined,
       isTemplate: p.isTemplate,
