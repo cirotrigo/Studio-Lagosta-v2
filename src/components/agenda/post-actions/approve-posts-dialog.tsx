@@ -72,11 +72,25 @@ export function ApprovePostsDialog({
     )
   }, [posts])
 
+  // Mesma lógica para rascunho sem arte: o servidor recusa, então já aparece
+  // desmarcado e com o motivo, em vez de sumir num aviso genérico depois.
+  const semArte = useMemo(
+    () =>
+      new Set(
+        posts
+          .filter((post) => (post.mediaUrls?.length ?? 0) === 0 && !post.pageId)
+          .map((post) => post.id),
+      ),
+    [posts],
+  )
+
   useEffect(() => {
     if (open) {
-      setSelecionados(posts.filter((p) => !vencidos.has(p.id)).map((p) => p.id))
+      setSelecionados(
+        posts.filter((p) => !vencidos.has(p.id) && !semArte.has(p.id)).map((p) => p.id),
+      )
     }
-  }, [open, posts, vencidos])
+  }, [open, posts, vencidos, semArte])
 
   const isLote = posts.length > 1
   const total = selecionados.length
@@ -145,6 +159,8 @@ export function ApprovePostsDialog({
           <ul className="space-y-2 pr-3">
             {posts.map((post) => {
               const vencido = vencidos.has(post.id)
+              const faltaArte = semArte.has(post.id)
+              const bloqueado = vencido || faltaArte
               const marcado = selecionados.includes(post.id)
 
               return (
@@ -152,7 +168,7 @@ export function ApprovePostsDialog({
                   key={post.id}
                   className={cn(
                     'flex items-start gap-3 rounded-lg border p-3 text-sm',
-                    vencido
+                    bloqueado
                       ? 'border-red-300 bg-red-50 dark:bg-red-950/20'
                       : marcado
                         ? 'border-emerald-400/60 bg-emerald-50/60 dark:bg-emerald-950/20'
@@ -162,7 +178,7 @@ export function ApprovePostsDialog({
                   {isLote && (
                     <Checkbox
                       checked={marcado}
-                      disabled={vencido}
+                      disabled={bloqueado}
                       onCheckedChange={() => toggle(post.id)}
                       className="mt-0.5"
                       aria-label={`Aprovar ${TIPO_LABEL[post.postType] ?? 'post'} de ${formatPostDateTimeBR(post)}`}
@@ -189,6 +205,13 @@ export function ApprovePostsDialog({
                       <p className="flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-300">
                         <AlertTriangle className="w-3 h-3 flex-shrink-0" />
                         O horário já passou. Reagende antes de aprovar.
+                      </p>
+                    )}
+
+                    {!vencido && faltaArte && (
+                      <p className="flex items-center gap-1 text-xs font-medium text-red-700 dark:text-red-300">
+                        <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                        Este rascunho está sem arte. Adicione a imagem antes de aprovar.
                       </p>
                     )}
                   </div>

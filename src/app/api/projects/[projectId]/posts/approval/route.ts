@@ -103,6 +103,9 @@ export async function POST(
         status: true,
         scheduledDatetime: true,
         laterPostId: true,
+        mediaUrls: true,
+        pageId: true,
+        renderStatus: true,
       },
     })
 
@@ -149,6 +152,25 @@ export async function POST(
           continue
         }
 
+        // Sem imagem e sem página de template não há o que publicar — aprovado
+        // assim, o post só falharia depois, na hora do envio.
+        if (post.mediaUrls.length === 0 && !post.pageId) {
+          ignorados.push({
+            postId: post.id,
+            motivo: 'Este rascunho está sem arte. Adicione a imagem antes de aprovar.',
+          })
+          continue
+        }
+
+        // Post de template ainda sem arte: agenda o render agora, senão o envio
+        // antecipado despacharia o post sem imagem. Sem mídia, re-renderizar é
+        // sempre a escolha segura — inclusive se constar RENDERED, porque o
+        // envio publica a partir de mediaUrls, nunca de renderedImageUrl.
+        // renderAttempts volta a zero (como em invalidate-renders): reaprovar
+        // um post cujo render falhou 3x precisa renderizar de novo, não ficar
+        // preso para sempre fora do filtro renderAttempts < 3 do cron.
+        const precisaRender = post.pageId !== null && post.mediaUrls.length === 0
+
         await db.socialPost.update({
           where: { id: post.id },
           data: {
@@ -156,6 +178,9 @@ export async function POST(
             errorMessage: null,
             failedAt: null,
             processingStartedAt: null,
+            ...(precisaRender
+              ? { renderStatus: 'PENDING', nextRenderAt: agora, renderAttempts: 0, renderError: null }
+              : {}),
           },
         })
         processados.push(post.id)

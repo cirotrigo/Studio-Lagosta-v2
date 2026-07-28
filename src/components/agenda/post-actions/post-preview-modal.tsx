@@ -602,7 +602,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
             )}
 
             {/* Ações */}
-            <div className="flex items-center gap-2 pt-4 border-t">
+            <div className="flex flex-wrap items-center gap-2 pt-4 border-t">
               {/* Botão para abrir story/post no Instagram - agora funciona para todos os posts com URL */}
               {post.status === 'POSTED' && (post.publishedUrl || post.latePlatformUrl || post.verifiedPermalink) && (
                 <Button
@@ -691,7 +691,9 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
               <DropdownMenu modal={false}>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon">
+                  {/* ml-auto só age quando o wrap joga o botão para a segunda
+                      linha: em vez de órfão à esquerda, ele alinha à direita */}
+                  <Button variant="outline" size="icon" className="ml-auto">
                     <MoreHorizontal className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>
