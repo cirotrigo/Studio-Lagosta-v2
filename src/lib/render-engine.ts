@@ -337,12 +337,21 @@ export class RenderEngine {
 
     const content = this.applyTextTransform(layer.content ?? '', style)
 
+    // O Konva.Text do editor tem padding={6} fixo (konva-editable-text): o
+    // conteúdo quebra em width-12 e começa 6px para dentro. Sem replicar, todo
+    // texto da arte publicada saía ~6px deslocado e quebrava mais largo.
+    // rich-text não passa por esse node (segmentos em Group, sem padding).
+    const pad = layer.type === 'text' ? 6 * (options.scaleFactor ?? 1) : 0
+    if (pad) ctx.translate(pad, pad)
+    const boxWidth = Math.max(0, width - pad * 2)
+    const boxHeight = Math.max(0, height - pad * 2)
+
     // Camada sem textboxConfig passa pelo mesmo caminho com quebra de linha:
     // o fallback antigo (fillText com maxWidth) espremia os glifos
     // horizontalmente em vez de quebrar, enquanto o editor Konva sempre quebra
     // (wrap="word") — 448 camadas publicavam texto deformado
     const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
-    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, width, height)
+    await this.renderTextWithConfig(ctx, resolvedStyle, config, content, boxWidth, boxHeight)
   }
 
   /**
@@ -465,6 +474,7 @@ export class RenderEngine {
       config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2,
       config.anchor,
       height,
+      config.autoWrap?.autoExpand === true,
     )
   }
 
@@ -494,6 +504,7 @@ export class RenderEngine {
       config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2,
       config.anchor,
       height,
+      config.autoWrap?.autoExpand === true,
     )
   }
 
@@ -505,29 +516,50 @@ export class RenderEngine {
     lineHeightMultiplier: number,
     anchor: TextboxConfig['anchor'] = 'top',
     maxHeight?: number,
+    autoExpand = false,
   ): void {
     if (!lines.length) return
 
     const lineHeight = fontSize * lineHeightMultiplier
-    const totalHeight = lines.length * lineHeight
+
+    // Paridade com o Konva.Text em altura fixa: ele TRUNCA por linhas inteiras
+    // ANTES de alinhar (para de acumular quando a próxima linha não cabe) e o
+    // alinhamento vertical usa só as linhas desenhadas.
+    // Com autoExpand, o editor cresce a caixa na direção da âncora — aqui isso
+    // vira desenhar além da altura gravada (startY pode ficar negativo: base
+    // sobe, meio abre para os dois lados, topo desce).
+    let drawLines = lines
+    if (!autoExpand && maxHeight !== undefined) {
+      const maxLines = Math.max(1, Math.floor((maxHeight + 0.001) / lineHeight))
+      if (drawLines.length > maxLines) drawLines = drawLines.slice(0, maxLines)
+    }
+
+    const totalHeight = drawLines.length * lineHeight
 
     let startY = 0
     if (anchor === 'middle' && maxHeight !== undefined) {
-      startY = Math.max(0, (maxHeight - totalHeight) / 2)
+      startY = (maxHeight - totalHeight) / 2
     } else if (anchor === 'bottom' && maxHeight !== undefined) {
-      startY = Math.max(0, maxHeight - totalHeight)
+      startY = maxHeight - totalHeight
     }
 
     const x = this.getTextX(width, ctx.textAlign)
-    let currentY = startY
 
-    for (const line of lines) {
+    // O Konva desenha cada linha com baseline 'middle' no CENTRO do line-box
+    // (meia-entrelinha acima da primeira linha). Com baseline 'top' no topo do
+    // line-box, todo texto com lineHeight ≠ 1 subia (lineHeight-1)·fontSize/2.
+    const previousBaseline = ctx.textBaseline
+    ctx.textBaseline = 'middle'
+    let currentY = startY + lineHeight / 2
+
+    for (const line of drawLines) {
       // Sem o 4º argumento (maxWidth): ele COMPRIME os glifos quando a linha
       // passa da caixa. Palavra maior que a caixa transborda, como no editor
       ctx.fillText(line, x, currentY)
       currentY += lineHeight
-      if (maxHeight !== undefined && currentY > maxHeight) break
     }
+
+    ctx.textBaseline = previousBaseline
   }
 
   private static breakTextIntoLines(
