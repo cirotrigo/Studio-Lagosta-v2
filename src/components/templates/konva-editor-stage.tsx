@@ -85,9 +85,10 @@ export function KonvaEditorStage() {
   const [snapConfig, _setSnapConfig] = React.useState<SnapConfig>(DEFAULT_SNAP_CONFIG)
   // OTIMIZAÇÃO MOBILE: Desabilitar snapping em mobile (pesado de calcular)
   const [snappingEnabled, setSnappingEnabled] = React.useState(!isMobile)
-  const [showTestGuide, setShowTestGuide] = React.useState(true)
   const [showMarginGuides, setShowMarginGuides] = React.useState(true)
-  const [showCanvasBounds, setShowCanvasBounds] = React.useState(true)
+  // Bordas amarelas do canvas: ferramenta de conferência, desligada por padrão
+  // (era um resto de debug que vinha ligado em produção, junto com a cruz verde)
+  const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
   const [_fontsReady, setFontsReady] = React.useState(false)
 
   // Drag-to-select state
@@ -599,8 +600,14 @@ export function KonvaEditorStage() {
         )
       }
 
-      // Usar a biblioteca otimizada de smart guides com configuração ativa
-      const activeConfig = { ...snapConfig, enabled: snappingEnabled }
+      // Usar a biblioteca otimizada de smart guides com configuração ativa.
+      // Threshold é em pixels de TELA: em zoom baixo o valor bruto (5px do
+      // canvas) ficava imperceptível, em zoom alto ficava grudento demais.
+      const activeConfig = {
+        ...snapConfig,
+        enabled: snappingEnabled,
+        threshold: snapConfig.threshold / (zoom || 1),
+      }
       const { guides: nextGuides, position } = computeAlignmentGuides(
         movingRect,
         otherRects,
@@ -641,7 +648,7 @@ export function KonvaEditorStage() {
 
       setGuides(nextGuides)
     },
-    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds],
+    [canvasHeight, canvasWidth, design.layers, snapConfig, snappingEnabled, showMarginGuides, selectedLayerIds, zoom],
   )
 
   const handleLayerDragEnd = React.useCallback(() => {
@@ -682,24 +689,15 @@ export function KonvaEditorStage() {
         return
       }
 
-      // Toggle guia de teste com 'g'
-      if (key === 'g' && !isModifier) {
-        setShowTestGuide(prev => !prev)
-        console.log('🧪 Test guide toggled:', !showTestGuide)
-        return
-      }
-
       // Toggle guias de margem com 'r'
       if (key === 'r' && !isModifier) {
         setShowMarginGuides(prev => !prev)
-        console.log('📐 Margin guides toggled:', !showMarginGuides)
         return
       }
 
       // Toggle canvas bounds com 'c'
       if (key === 'c' && !isModifier) {
         setShowCanvasBounds(prev => !prev)
-        console.log('🟡 Canvas bounds toggled:', !showCanvasBounds)
         return
       }
 
@@ -846,7 +844,6 @@ export function KonvaEditorStage() {
     redo,
     selectedLayerIds.length,
     undo,
-    showTestGuide,
     showMarginGuides,
     showCanvasBounds,
     alignSelectedLeft,
@@ -1036,7 +1033,13 @@ export function KonvaEditorStage() {
                 projectId={projectId}
               />
             ))}
-            <KonvaSelectionTransformer selectedLayerIds={selectedLayerIds} stageRef={stageRef} />
+            <KonvaSelectionTransformer
+              selectedLayerIds={selectedLayerIds}
+              stageRef={stageRef}
+              snapEnabled={snappingEnabled}
+              snapToMargins={showMarginGuides}
+              onSnapGuides={setGuides}
+            />
             <KonvaGradientHandles stageRef={stageRef} />
           </KonvaLayer>
 
@@ -1099,30 +1102,6 @@ export function KonvaEditorStage() {
                   strokeWidth={3}
                   dash={[6, 4]}
                   opacity={0.8}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-              </>
-            )}
-
-            {/* Guia de teste - para verificar se a renderização funciona */}
-            {showTestGuide && (
-              <>
-                <Line
-                  points={[canvasWidth / 2, 0, canvasWidth / 2, canvasHeight]}
-                  stroke="#00FF00"
-                  strokeWidth={3}
-                  dash={[10, 10]}
-                  opacity={1}
-                  listening={false}
-                  perfectDrawEnabled={false}
-                />
-                <Line
-                  points={[0, canvasHeight / 2, canvasWidth, canvasHeight / 2]}
-                  stroke="#00FF00"
-                  strokeWidth={3}
-                  dash={[10, 10]}
-                  opacity={1}
                   listening={false}
                   perfectDrawEnabled={false}
                 />
