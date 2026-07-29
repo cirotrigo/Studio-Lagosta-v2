@@ -25,6 +25,10 @@ import {
   persistAndRenderCreative,
   resolveImageUrl,
 } from '@/lib/creatives/persist'
+import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
+import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import type { Layer } from '@/types/template'
 
 export { CreativeError, getPublicAppUrl }
 
@@ -406,8 +410,9 @@ function bakeLayers(
   sourceLayers: any[],
   slotValues: Record<string, unknown>,
   imageUrl: string | null,
-): { layers: any[]; imageApplied: boolean } {
+): { layers: any[]; imageApplied: boolean; changedTextIds: string[] } {
   const explicitFileUrl = new Set<string>()
+  const changedTextIds: string[] = []
 
   const layers = sourceLayers.map((layer: any) => {
     const slot = slotValues[layer.id] ?? slotValues[layer.name]
@@ -415,9 +420,13 @@ function bakeLayers(
 
     if (typeof slot === 'string') {
       updated.content = slot
+      if (layer.type === 'text') changedTextIds.push(layer.id)
     } else if (slot && typeof slot === 'object') {
       const slotObj = slot as Record<string, unknown>
-      if (typeof slotObj.content === 'string') updated.content = slotObj.content
+      if (typeof slotObj.content === 'string') {
+        updated.content = slotObj.content
+        if (layer.type === 'text') changedTextIds.push(layer.id)
+      }
       if (typeof slotObj.fileUrl === 'string') {
         updated.fileUrl = slotObj.fileUrl
         explicitFileUrl.add(layer.id)
@@ -426,7 +435,7 @@ function bakeLayers(
     return updated
   })
 
-  if (!imageUrl) return { layers, imageApplied: false }
+  if (!imageUrl) return { layers, imageApplied: false, changedTextIds }
 
   const isImageTarget = (layer: any) =>
     layer.type === 'image' && (layer.isDynamic || layer.id === 'bg-img') && !explicitFileUrl.has(layer.id)
@@ -434,10 +443,10 @@ function bakeLayers(
   const target =
     layers.find((l: any) => isImageTarget(l) && !l.fileUrl) ?? layers.find(isImageTarget)
 
-  if (!target) return { layers, imageApplied: false }
+  if (!target) return { layers, imageApplied: false, changedTextIds }
 
   target.fileUrl = imageUrl
-  return { layers, imageApplied: true }
+  return { layers, imageApplied: true, changedTextIds }
 }
 
 /**
@@ -483,7 +492,14 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
   const resolved = await resolveImageUrl(directUrl, driveImageId)
 
-  const { layers, imageApplied } = bakeLayers(parseLayers(sourcePage.layers), slotValues, resolved.url)
+  const { layers: bakedLayers, imageApplied, changedTextIds } = bakeLayers(parseLayers(sourcePage.layers), slotValues, resolved.url)
+
+  // Texto novo maior (ou menor) que o do template: medir a quebra real e
+  // reacomodar as pilhas de combinação; texto solto cresce a própria caixa
+  // (autoExpand) em vez de truncar. Fontes registradas ANTES de medir.
+  await registerProjectFonts(projectId)
+  const measure = await createServerTextMeasurer()
+  const layers = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
 
   const imageWarning =
     resolved.warning ??

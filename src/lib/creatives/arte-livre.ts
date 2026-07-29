@@ -26,6 +26,9 @@ import {
   type FormatoArte,
 } from '@/lib/creatives/persist'
 import { buildComboLayers } from '@/lib/font-combinations-layers'
+import { applyStackPatches, reflowComboStack } from '@/lib/combo-stack-reflow'
+import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import {
   FONT_COMBO_LAYOUTS,
   resolveComboFontFamily,
@@ -308,7 +311,16 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
       comboName: combo.name,
       textOverrides: input.textos,
     })
-    comboLayers.forEach((layer, i) => layers.push({ ...layer, order: layers.length + i }))
+
+    // Texto da IA maior (ou menor) que o exemplo da combinação: medir a
+    // quebra real e reacomodar a pilha — sem isso a caixa estimada corta o
+    // texto e os elementos de baixo não acompanham. Fontes registradas ANTES
+    // de medir, senão a medida sai do fallback.
+    await registerProjectFonts(project.id)
+    const measure = await createServerTextMeasurer()
+    const reflowed = applyStackPatches(comboLayers, reflowComboStack(comboLayers, measure))
+
+    reflowed.forEach((layer, i) => layers.push({ ...layer, order: layers.length + i }))
     composicao = 'combinacao'
     combinacaoUsada = combo.name
   } else {

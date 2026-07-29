@@ -6,6 +6,10 @@ import {
   fetchTemplateWithProject,
   hasTemplateWriteAccess,
 } from '@/lib/templates/access'
+import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
+import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
+import type { Layer } from '@/types/template'
 
 const createFromTemplateSchema = z.object({
   templatePageId: z.string(),
@@ -99,6 +103,18 @@ export async function POST(
       return newLayer
     })
 
+    // Texto novo maior (ou menor) que o do modelo: medir a quebra real e
+    // reacomodar as pilhas de combinação (fontes registradas ANTES de medir)
+    const changedTextIds = (templateLayers as any[])
+      .filter((layer: any) => layer.type === 'text' && texts[layer.id])
+      .map((layer: any) => layer.id)
+    let finalLayers = modifiedLayers
+    if (changedTextIds.length > 0) {
+      await registerProjectFonts(template.projectId)
+      const measure = await createServerTextMeasurer()
+      finalLayers = reflowLayersAfterFill(modifiedLayers as Layer[], changedTextIds, measure)
+    }
+
     // Contar páginas existentes para determinar order
     const pageCount = await db.page.count({
       where: { templateId },
@@ -110,7 +126,7 @@ export async function POST(
         name: `Criativo ${new Date().toLocaleDateString('pt-BR')}`,
         width: templatePage.width,
         height: templatePage.height,
-        layers: JSON.stringify(modifiedLayers),
+        layers: JSON.stringify(finalLayers),
         background: templatePage.background,
         order: pageCount,
         templateId,

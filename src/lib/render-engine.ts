@@ -819,6 +819,54 @@ export class RenderEngine {
     ;(ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = `${spacing}px`
   }
 
+  /**
+   * Altura natural de uma camada de texto com o texto quebrado — o mesmo
+   * cálculo do desenho (`drawTextContent` → `renderAutoWrapFixed`): transform,
+   * fonte, letterSpacing no ctx, padding 6 e quebra por palavra. É o medidor
+   * do reflow das combinações empilhadas (combo-stack-reflow): a fonte do
+   * projeto PRECISA estar registrada antes, senão a medida sai do fallback.
+   *
+   * Devolve null quando a camada não é medível: sem conteúdo, texto curvo,
+   * rich-text (caixa própria) ou textMode de auto-resize (a fonte se adapta à
+   * caixa — a caixa não deve se adaptar ao texto).
+   */
+  static measureTextLayerHeight(ctx: CanvasRenderingContext2D, layer: Layer): number | null {
+    if (layer.type !== 'text') return null
+    if (layer.effects?.curved?.enabled) return null
+
+    const config: TextboxConfig = layer.textboxConfig ?? { textMode: 'auto-wrap-fixed' }
+    const mode = config.textMode ?? 'auto-wrap-fixed'
+    if (mode !== 'auto-wrap-fixed') return null
+
+    const style = layer.style ?? {}
+    const content = this.applyTextTransform(layer.content ?? '', style)
+    if (!content.trim()) return null
+
+    const fontSize = Math.max(1, style.fontSize ?? 16)
+    const spacingCtx = ctx as CanvasRenderingContext2D & { letterSpacing?: string }
+
+    ctx.save()
+    spacingCtx.letterSpacing = '0px'
+    ctx.font = this.buildFontString(fontSize, style)
+    this.applyLetterSpacing(ctx, style, 1)
+
+    const pad = 6
+    const boxWidth = Math.max(0, (layer.size?.width ?? 240) - pad * 2)
+    const lines = this.breakTextIntoLines(
+      ctx,
+      content,
+      boxWidth,
+      config.autoWrap?.breakMode ?? 'word',
+      config.wordBreak ?? false,
+    )
+    ctx.restore()
+    spacingCtx.letterSpacing = '0px'
+
+    // A entrelinha mora em dois campos; o desenho prefere autoWrap.lineHeight
+    const lineHeight = fontSize * (config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2)
+    return Math.round(Math.max(1, lines.length) * lineHeight + pad * 2)
+  }
+
   private static async renderTextWithConfig(
     ctx: CanvasRenderingContext2D,
     style: LayerStyle,

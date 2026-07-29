@@ -9,6 +9,8 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { convertPageToDesignData, applySlotValues } from './page-to-design-data'
 import { registerProjectFonts } from './register-project-fonts'
+import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
+import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 
 export interface RenderStoryResult {
   buffer: Buffer
@@ -68,6 +70,17 @@ export async function renderStoryImage(
   // 4. Register project fonts (dynamic import to avoid static bundling)
   const projectId = page.Template.projectId
   await registerProjectFonts(projectId)
+
+  // 4b. Slot com texto maior (ou menor) que o do template: reacomodar as
+  // pilhas de combinação e crescer caixas soltas — DEPOIS das fontes, porque
+  // medir com fallback dá altura errada. Sem slots não há o que refluir.
+  if (slotValues && Object.keys(slotValues).length > 0) {
+    const changedTextIds = designData.layers
+      .filter((layer) => layer.type === 'text' && (slotValues[layer.id] ?? slotValues[layer.name]) !== undefined)
+      .map((layer) => layer.id)
+    const measure = await createServerTextMeasurer()
+    designData = { ...designData, layers: reflowLayersAfterFill(designData.layers, changedTextIds, measure) }
+  }
 
   // 5. Render to PNG using dynamic import (same pattern as generation-utils.ts)
   console.log(`[story-renderer] Rendering page ${pageId} (${page.width}×${page.height})...`)

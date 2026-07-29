@@ -51,7 +51,7 @@ export function buildComboLayers({
   const escala = canvasWidth / COMBO_BASE_CANVAS_WIDTH
   const grupo = groupId ?? `combo-${createId()}`
 
-  return elements.map((element) => {
+  return elements.map((element, index) => {
     const texto = textOverrides?.[element.id] ?? textOverrides?.[element.label] ?? element.text
 
     return {
@@ -85,13 +85,17 @@ export function buildComboLayers({
       },
       textboxConfig: {
         textMode: 'auto-wrap-fixed',
+        // O texto encosta no topo da caixa e cresce para baixo; o reflow da
+        // pilha (combo-stack-reflow) arrasta o que vem depois.
+        anchor: 'top',
         // A entrelinha precisa ser a MESMA nos dois campos: o render
         // server-side prefere `autoWrap.lineHeight` sobre `style.lineHeight`,
         // então o 1 fixo que estava aqui apertava toda combinação do catálogo
         // (1.02 a 1.5) na arte agendada, enquanto o editor mostrava o valor
-        // certo. `autoExpand` fica desligado de propósito: a altura salva na
-        // combinação é a que o usuário ajustou.
-        autoWrap: { lineHeight: element.lineHeight, breakMode: 'word', autoExpand: false },
+        // certo. `autoExpand` ligado: a altura passa a ser derivada do texto
+        // (a altura salva na combinação vira só o chute inicial — texto de IA
+        // maior que o exemplo era truncado por linhas inteiras no render).
+        autoWrap: { lineHeight: element.lineHeight, breakMode: 'word', autoExpand: true },
       },
       ...(element.rotation ? { rotation: element.rotation } : {}),
       ...(element.effects ? { effects: element.effects } : {}),
@@ -101,6 +105,7 @@ export function buildComboLayers({
         elementId: element.id,
         elementLabel: element.label,
         groupId: grupo,
+        stackOrder: index,
       },
     } as Layer
   })

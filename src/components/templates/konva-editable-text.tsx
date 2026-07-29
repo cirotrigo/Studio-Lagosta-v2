@@ -5,6 +5,7 @@ import Konva from 'konva'
 import { Text, Rect, Path, Group } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer } from '@/types/template'
+import { useTemplateEditor } from '@/contexts/template-editor-context'
 
 /**
  * KonvaEditableText - Componente de texto editável para Konva.js
@@ -302,6 +303,13 @@ export function KonvaEditableText({
   const onChangeRef = React.useRef(onChange)
   onChangeRef.current = onChange
 
+  // Pilha de combinação: quando ESTA caixa muda de altura, as camadas do
+  // mesmo grupo que estão inteiramente abaixo acompanham o delta. Em ref pelo
+  // mesmo motivo do onChange — o valor do contexto muda a cada render.
+  const editor = useTemplateEditor()
+  const editorRef = React.useRef(editor)
+  editorRef.current = editor
+
   // Assinatura das entradas que mudam a quebra de linha. Um ajuste por
   // assinatura: o efeito escreve no mesmo estado que o dispara, e sem essa
   // trava um único pixel de divergência vira "Maximum update depth exceeded"
@@ -371,6 +379,31 @@ export function KonvaEditableText({
       size: { width: layer.size?.width ?? textNode.width(), height: natural },
       position: { x: layer.position?.x ?? 0, y: Math.round(novoY) },
     })
+
+    // Reflow da pilha: membros do grupo INTEIRAMENTE abaixo (topo além do
+    // bottom original desta caixa) descem/sobem pelo mesmo delta. Colunas na
+    // mesma faixa de y não se movem — mesma regra do combo-stack-reflow do
+    // servidor. Só com âncora no topo: nas outras, quem se move é esta caixa.
+    const groupId = typeof layer.metadata?.groupId === 'string' ? layer.metadata.groupId : null
+    if (groupId && anchor === 'top') {
+      const bottomOriginal = y + atual
+      const irmaos = editorRef.current.design.layers.filter(
+        (outro) =>
+          outro.id !== layer.id &&
+          outro.metadata?.groupId === groupId &&
+          (outro.position?.y ?? 0) + 0.5 >= bottomOriginal,
+      )
+      for (const irmao of irmaos) {
+        editorRef.current.updateLayer(
+          irmao.id,
+          (l) => ({
+            ...l,
+            position: { x: l.position?.x ?? 0, y: Math.round((l.position?.y ?? 0) + diff) },
+          }),
+          { coalesceKey: `stack-shift-${layer.id}` },
+        )
+      }
+    }
   }, [
     assinaturaQuebra,
     autoExpand,
