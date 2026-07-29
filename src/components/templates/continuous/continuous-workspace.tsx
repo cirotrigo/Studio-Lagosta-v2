@@ -52,6 +52,49 @@ export function ContinuousWorkspace() {
   // nítidos e frescos; Page.thumbnail (150px) é só o primeiro paint
   const [captures, setCaptures] = React.useState<Map<string, string>>(() => new Map())
 
+  // Virtualização estilo Polotno: só páginas no viewport ±1 tela montam stage
+  // vivo; além disso, imagem (a altura do slot é fixa — scrollbar estável)
+  const [liveIds, setLiveIds] = React.useState<string[]>([])
+  const visibleRafRef = React.useRef(0)
+
+  const computeLiveIds = React.useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+    const containerRect = container.getBoundingClientRect()
+    const margin = containerRect.height
+    const next: string[] = []
+    for (const [pageId, el] of slotRefs.current) {
+      const rect = el.getBoundingClientRect()
+      if (rect.bottom >= containerRect.top - margin && rect.top <= containerRect.bottom + margin) {
+        next.push(pageId)
+      }
+    }
+    next.sort()
+    setLiveIds((prev) => {
+      if (prev.length === next.length && prev.every((id, i) => id === next[i])) return prev
+      return next
+    })
+  }, [])
+
+  const scheduleLiveIds = React.useCallback(() => {
+    if (visibleRafRef.current) return
+    visibleRafRef.current = requestAnimationFrame(() => {
+      visibleRafRef.current = 0
+      computeLiveIds()
+    })
+  }, [computeLiveIds])
+
+  // Recalcular a janela viva quando páginas/zoom mudam (e no mount)
+  React.useEffect(() => {
+    scheduleLiveIds()
+  }, [sortedPages, zoom, scheduleLiveIds])
+
+  React.useEffect(() => {
+    return () => {
+      if (visibleRafRef.current) cancelAnimationFrame(visibleRafRef.current)
+    }
+  }, [])
+
   const registerSlot = React.useCallback((pageId: string, el: HTMLDivElement | null) => {
     if (el) {
       slotRefs.current.set(pageId, el)
@@ -134,6 +177,7 @@ export function ContinuousWorkspace() {
   // Ativação por scroll: quando o scroll assenta, a página mais visível
   // (acima do limiar) vira ativa. Scroll programático não ativa (flag).
   const handleScroll = React.useCallback(() => {
+    scheduleLiveIds()
     if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current)
     scrollDebounceRef.current = window.setTimeout(() => {
       if (programmaticScrollRef.current) return
@@ -160,7 +204,7 @@ export function ContinuousWorkspace() {
         activatePageRef.current(bestId)
       }
     }, SCROLL_SETTLE_MS)
-  }, [])
+  }, [scheduleLiveIds])
 
   React.useEffect(() => {
     return () => {
@@ -270,6 +314,8 @@ export function ContinuousWorkspace() {
                     page={page}
                     width={slotWidth}
                     height={slotHeight}
+                    zoom={zoom}
+                    live={liveIds.includes(page.id)}
                     capturedUrl={captures.get(page.id)}
                     index={index}
                   />
