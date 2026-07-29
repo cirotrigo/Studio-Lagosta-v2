@@ -17,6 +17,10 @@ import { agendarPost } from '@/lib/creatives/agendar'
 import { KnowledgeCategory } from '@prisma/client'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
 import { processarAprovacao, reagendarPost, cancelarPost } from '@/lib/posts/agenda-acoes'
+import { reindexEntry } from '@/lib/knowledge/indexer'
+import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
+import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { getUserFromClerkId } from '@/lib/auth-utils'
 
 export interface McpTool {
   name: string
@@ -43,6 +47,30 @@ async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | nul
     select: { id: true },
   })
   return projects.map((p) => p.id)
+}
+
+/**
+ * Autor das escritas na base, sempre como User.id do banco — a mesma convenção
+ * de createdBy/updatedBy das rotas da interface.
+ *
+ * Atenção ao espaço de id: tanto `principal.userId` (token OAuth) quanto
+ * `Project.userId` guardam o id do CLERK, não o do banco. Os dois precisam
+ * passar por getUserFromClerkId, senão a coluna fica com clerkIds e cuids
+ * misturados e nenhum join por User.id resolve.
+ */
+async function resolverAutor(projectId: number, principal: McpPrincipal): Promise<string> {
+  const clerkId =
+    principal.kind === 'user' && principal.userId
+      ? principal.userId
+      : (
+          await db.project.findUnique({ where: { id: projectId }, select: { userId: true } })
+        )?.userId
+
+  if (!clerkId) {
+    throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
+  }
+  const dbUser = await getUserFromClerkId(clerkId)
+  return dbUser.id
 }
 
 /** Barra o acesso a um projeto fora do alcance do portador. */
@@ -218,7 +246,7 @@ export const MCP_TOOLS: McpTool[] = [
           status: 'ACTIVE',
           ...(category ? { category } : {}),
         },
-        select: { title: true, content: true, category: true, tags: true },
+        select: { id: true, title: true, content: true, category: true, tags: true, updatedAt: true },
         orderBy: { category: 'asc' },
       })
       return { count: entries.length, entries }
@@ -510,6 +538,226 @@ export const MCP_TOOLS: McpTool[] = [
       const projectId = requireNumber(args, 'projectId')
       await assertProjetoPermitido(projectId, principal)
       return cancelarPost({ projectId, postId: requireString(args, 'postId') })
+    },
+  },
+  {
+    name: 'criar-entrada-base',
+    description:
+      'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        category: {
+          type: 'string',
+          enum: Object.values(KnowledgeCategory),
+          description: 'Categoria da entrada (TOM_DE_VOZ, HORARIOS, CARDAPIO, CAMPANHAS...).',
+        },
+        title: { type: 'string', description: 'Título curto e específico (ex: "Promoção Costela no Bafo — agosto").' },
+        content: { type: 'string', description: 'O conteúdo, em texto corrido, do jeito que deve alimentar as copies.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Etiquetas opcionais para busca.' },
+      },
+      required: ['projectId', 'category', 'title', 'content'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const autor = await resolverAutor(projectId, principal)
+      const categoria = requireString(args, 'category') as KnowledgeCategory
+      if (!Object.values(KnowledgeCategory).includes(categoria)) {
+        throw new Error(`Categoria inválida. Use uma de: ${Object.values(KnowledgeCategory).join(', ')}`)
+      }
+
+      const title = requireString(args, 'title')
+      const content = requireString(args, 'content')
+
+      // Grava e indexa como uma coisa só: se a indexação falhar, a entrada é
+      // desfeita. Sem isso, o erro voltaria ao modelo enquanto a entrada já
+      // estaria valendo — e o retry natural dele criaria uma duplicata.
+      const entry = await db.knowledgeBaseEntry.create({
+        data: {
+          projectId,
+          category: categoria,
+          title,
+          content,
+          tags: Array.isArray(args.tags)
+            ? args.tags.filter((t: unknown): t is string => typeof t === 'string')
+            : [],
+          status: 'ACTIVE',
+          metadata: { origem: 'chat-conector' },
+          createdBy: autor,
+          userId: autor,
+        },
+        select: { id: true, title: true },
+      })
+
+      try {
+        await reindexEntry(entry.id, { projectId, userId: autor })
+      } catch (erro) {
+        await db.knowledgeBaseEntry.delete({ where: { id: entry.id } }).catch(() => {})
+        console.error('[mcp] indexação falhou ao criar entrada — entrada desfeita:', erro)
+        throw new CreativeError(
+          'FALHA_INDEXACAO',
+          'Não consegui indexar a entrada para a busca, então nada foi gravado. Tente de novo em instantes.',
+          502,
+        )
+      }
+
+      await invalidateProjectCache(projectId).catch((e) =>
+        console.error('[mcp] invalidateProjectCache falhou:', e))
+
+      return {
+        criada: true,
+        entradaId: entry.id,
+        mensagem: `Entrada "${entry.title}" criada em ${categoria}. Já vale para os próximos textos.`,
+      }
+    },
+  },
+
+  {
+    name: 'atualizar-entrada-base',
+    description:
+      'Atualiza uma entrada existente da base de conhecimento (o entradaId vem de consultar-base). É assim que preço, horário ou regra desatualizada se corrige — a mudança vale para TODOS os textos futuros, deste chat e do Claudinho.\n\nFluxo obrigatório: consultar-base → mostrar à pessoa o texto ATUAL e o texto NOVO lado a lado → só gravar com o OK explícito. Campos não enviados ficam como estão.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        entradaId: { type: 'string', description: 'Id da entrada (de consultar-base).' },
+        title: { type: 'string', description: 'Novo título (opcional).' },
+        content: { type: 'string', description: 'Novo conteúdo completo (opcional — substitui o texto inteiro, não é acréscimo).' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Novas etiquetas (opcional, substitui as atuais).' },
+        category: {
+          type: 'string',
+          enum: Object.values(KnowledgeCategory),
+          description: 'Nova categoria (opcional).',
+        },
+      },
+      required: ['projectId', 'entradaId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const entradaId = requireString(args, 'entradaId')
+      const autor = await resolverAutor(projectId, principal)
+
+      const existente = await db.knowledgeBaseEntry.findUnique({ where: { id: entradaId } })
+      if (!existente || existente.projectId !== projectId) {
+        throw new CreativeError('ENTRADA_NAO_ENCONTRADA', 'Entrada não encontrada neste cliente.', 404)
+      }
+
+      // Vazio não é "limpar": apagaria o texto E os vetores reportando sucesso,
+      // sem histórico para recuperar. Para tirar de circulação, use arquivar.
+      const title = typeof args.title === 'string' ? args.title.trim() || undefined : undefined
+      const content = typeof args.content === 'string' ? args.content.trim() || undefined : undefined
+      if (typeof args.title === 'string' && title === undefined) {
+        throw new Error('O título não pode ficar vazio.')
+      }
+      if (typeof args.content === 'string' && content === undefined) {
+        throw new Error('O conteúdo não pode ficar vazio. Para tirar a entrada de circulação, use arquivar-entrada-base.')
+      }
+      const tags = Array.isArray(args.tags)
+        ? args.tags.filter((t: unknown): t is string => typeof t === 'string')
+        : undefined
+      const category = typeof args.category === 'string' ? (args.category as KnowledgeCategory) : undefined
+      if (category && !Object.values(KnowledgeCategory).includes(category)) {
+        throw new Error(`Categoria inválida. Use uma de: ${Object.values(KnowledgeCategory).join(', ')}`)
+      }
+      if (title === undefined && content === undefined && tags === undefined && category === undefined) {
+        throw new Error('Nada para atualizar: envie title, content, tags ou category.')
+      }
+
+      await db.knowledgeBaseEntry.update({
+        where: { id: entradaId },
+        data: {
+          ...(title !== undefined ? { title } : {}),
+          ...(content !== undefined ? { content } : {}),
+          ...(tags !== undefined ? { tags } : {}),
+          ...(category !== undefined ? { category } : {}),
+          updatedBy: autor,
+        },
+      })
+
+      // Texto ou categoria novos exigem reindexar: os vetores carregam o texto
+      // E a categoria nos metadados, e a busca filtra por eles.
+      const mudouIndice =
+        (content !== undefined && content !== existente.content) ||
+        (title !== undefined && title !== existente.title) ||
+        (category !== undefined && category !== existente.category)
+
+      let avisoBusca: string | undefined
+      if (mudouIndice) {
+        try {
+          await reindexEntry(entradaId, { projectId, userId: autor })
+        } catch (erro) {
+          // reindexEntry apaga os vetores antigos ANTES de gerar os novos: se
+          // falhar aqui, a entrada some da busca até ser reindexada. O texto
+          // salvo está correto, então não desfazemos — mas quem chamou precisa
+          // saber, senão a falha morre no log.
+          console.error('[mcp] reindexEntry falhou após atualizar a entrada:', erro)
+          avisoBusca =
+            'O texto foi salvo, mas a indexação da busca falhou — a entrada pode não aparecer em buscas até ser reindexada pela interface do Studio (avise a pessoa).'
+        }
+      }
+
+      await invalidateProjectCache(projectId).catch((e) =>
+        console.error('[mcp] invalidateProjectCache falhou:', e))
+
+      return {
+        atualizada: true,
+        entradaId,
+        // Devolve o texto anterior: é a única trilha de recuperação, já que o
+        // banco não guarda versão antiga.
+        textoAnterior: { title: existente.title, content: existente.content },
+        mensagem: `Entrada "${title ?? existente.title}" atualizada. Já vale para os próximos textos.`,
+        ...(avisoBusca ? { avisoBusca } : {}),
+      }
+    },
+  },
+
+  {
+    name: 'arquivar-entrada-base',
+    description:
+      'Arquiva uma entrada da base de conhecimento: ela sai da consulta e deixa de alimentar os textos. O registro não é apagado, mas reativar exige a interface do Studio (e uma reindexação por lá para ela voltar às buscas) — então trate como decisão de mão única. Use para campanha encerrada ou informação que não vale mais, e confirme com a pessoa antes, citando o título.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        entradaId: { type: 'string', description: 'Id da entrada (de consultar-base).' },
+      },
+      required: ['projectId', 'entradaId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const entradaId = requireString(args, 'entradaId')
+      const autor = await resolverAutor(projectId, principal)
+
+      const existente = await db.knowledgeBaseEntry.findUnique({ where: { id: entradaId } })
+      if (!existente || existente.projectId !== projectId) {
+        throw new CreativeError('ENTRADA_NAO_ENCONTRADA', 'Entrada não encontrada neste cliente.', 404)
+      }
+      if (existente.status === 'ARCHIVED') {
+        return { arquivada: true, entradaId, mensagem: `"${existente.title}" já estava arquivada.` }
+      }
+
+      // Mesmo padrão do cron de expiração: vetores fora ANTES do status, senão
+      // a busca RAG continua servindo o conteúdo arquivado.
+      await deleteVectorsByEntry(entradaId, { projectId, userId: autor })
+      await db.knowledgeBaseEntry.update({
+        where: { id: entradaId },
+        data: { status: 'ARCHIVED', updatedBy: autor },
+      })
+      await invalidateProjectCache(projectId).catch((e) =>
+        console.error('[mcp] invalidateProjectCache falhou:', e))
+
+      return {
+        arquivada: true,
+        entradaId,
+        mensagem: `Entrada "${existente.title}" arquivada. Não alimenta mais os textos.`,
+      }
     },
   },
 ]
