@@ -132,11 +132,13 @@ function buildPrompt({ userRequest, references, brandColors }: BuildPromptArgs):
   sections.push(`[INSTRUÇÃO TIPOGRÁFICA — PRIORIDADE MÁXIMA]
 Antes de qualquer outra modificação, examine cuidadosamente a tipografia da arte original (IMAGEM 1) e siga estas regras críticas:
 
-TAMANHO DOS TEXTOS: os blocos de texto na versão melhorada devem ocupar ${TEXT_AREA_HINT}. Os textos devem permanecer COMPACTOS e DISCRETOS. NUNCA aumente o tamanho dos textos em relação à arte original — eles devem ter o mesmo tamanho ou menores. Não use ampliação de fonte para destacar informações; use peso, cor ou posição.
+TAMANHO DOS TEXTOS (padrão): os blocos de texto na versão melhorada devem ocupar ${TEXT_AREA_HINT} e permanecer COMPACTOS e DISCRETOS. Por padrão, mantenha o tamanho dos textos igual ou menor que a arte original — para destacar informações, prefira peso, cor ou posição em vez de ampliação de fonte.
+
+EXCEÇÃO — PEDIDO EXPLÍCITO DO CLIENTE: se o [PEDIDO DO CLIENTE] solicitar aumento, diminuição ou redimensionamento de algum texto (ex: "aumente o título", "diminua o subtítulo", "destaque o preço com fonte maior"), respeite o pedido. O pedido do cliente tem prioridade sobre o padrão de compactação, mas mantenha a proporção interna entre os demais textos não citados.
 
 FIDELIDADE TIPOGRÁFICA: replique fielmente as fontes da IMAGEM 1. Observe a família tipográfica (serif, sans-serif, display, manuscrita), o peso (light, regular, medium, bold, black) e o estilo (italic, normal). Mantenha exatamente o mesmo tipo de letra. Se a IMAGEM 1 usa uma fonte com personalidade marcante, preserve essa personalidade. NÃO modernize, NÃO substitua por fontes "mais limpas", NÃO troque serif por sans-serif (ou vice-versa).
 
-PROPORÇÃO INTERNA: a relação de tamanho entre título, subtítulo, corpo de texto e detalhes deve permanecer EXATAMENTE como na IMAGEM 1. Se o título original era 3× maior que o corpo, mantenha 3×. Não inverta nem altere essa hierarquia.`)
+PROPORÇÃO INTERNA: a relação de tamanho entre título, subtítulo, corpo de texto e detalhes deve permanecer EXATAMENTE como na IMAGEM 1, salvo se o [PEDIDO DO CLIENTE] pedir alteração explícita para algum desses textos. Se o título original era 3× maior que o corpo, mantenha 3×. Não inverta nem altere essa hierarquia sem pedido expresso.`)
 
   if (hasReferences) {
     sections.push(buildContextSection(references))
@@ -186,9 +188,13 @@ Atue como um Diretor de Arte Sênior focado em design de comunicação. ${
 - Aplique uma textura sutil e coerente APENAS no título principal, sem comprometer legibilidade.`)
 
   const reforco: string[] = ['[REFORÇO FINAL — REGRAS CRÍTICAS]']
-  reforco.push(`- TEXTOS COMPACTOS: ocupando ${TEXT_AREA_HINT}.`)
+  reforco.push(
+    `- TEXTOS COMPACTOS por padrão (${TEXT_AREA_HINT}), mas respeite ajustes de tamanho pedidos explicitamente no [PEDIDO DO CLIENTE].`,
+  )
   reforco.push('- FONTES IDÊNTICAS às da IMAGEM 1 — mesma família, peso e estilo.')
-  reforco.push('- PROPORÇÕES TIPOGRÁFICAS preservadas — sem ampliação.')
+  reforco.push(
+    '- PROPORÇÕES TIPOGRÁFICAS preservadas para textos não citados no pedido — sem ampliação não solicitada.',
+  )
   if (hasBackground) {
     reforco.push('- FUNDO = nova imagem fornecida (IMAGEM 2), sem alterações de conteúdo na imagem em si.')
   }

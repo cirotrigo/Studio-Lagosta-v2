@@ -57,7 +57,7 @@ const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 const PLACEHOLDER =
-  'Ex: Mude o texto para Happy Hour, das 16h às 20h e adicione pessoas brindando.\n\nOu deixe em branco para um aprimoramento geral sem alterações de conteúdo.'
+  'Ex: Mude o texto para Happy Hour, das 16h às 20h. Aumente o título e mantenha o resto compacto.\n\nOu deixe em branco para um aprimoramento geral sem alterações de conteúdo.'
 
 export function ImproveCreativeModal({
   generation,
