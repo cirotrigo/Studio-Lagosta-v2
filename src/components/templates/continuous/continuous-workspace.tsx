@@ -332,11 +332,11 @@ export function ContinuousWorkspace() {
           const slotHeight = Math.max(1, Math.round(pageHeight * zoom))
 
           return (
-            <div key={page.id} className="group/page flex flex-shrink-0 flex-col" style={{ width: slotWidth }}>
+            <div key={page.id} className="flex flex-shrink-0 flex-col" style={{ width: slotWidth }}>
               {/* Faixa da página: nome + controles (estilo Polotno) */}
               <div className="flex h-8 items-end justify-between pb-1">
                 <span className="select-none text-xs font-medium text-muted-foreground">{page.name}</span>
-                <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover/page:opacity-100">
+                <div className="flex items-center gap-0.5 opacity-50 transition-opacity hover:opacity-100">
                   <Button
                     size="sm"
                     variant="ghost"
