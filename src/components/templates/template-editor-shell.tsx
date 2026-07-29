@@ -12,7 +12,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
-import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, Shapes } from 'lucide-react'
+import { Save, Maximize2, Minimize2, FileText, Image as ImageIcon, Type as TypeIcon, Square, Layers2, Award, Palette, Sparkles, Settings, Copy, Trash2, Plus, ChevronLeft, ChevronRight, Wand2, ChevronDown, ChevronUp, FileImage, Film, GalleryVertical, Menu, Music, X, ZoomIn, ZoomOut, MessageSquare, Calendar, ArrowLeft, Check, PaintBucket, Shapes } from 'lucide-react'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { EditorCanvas } from './editor-canvas'
 import { PropertiesPanel, EffectsPanel } from './properties-panel'
@@ -1341,7 +1341,29 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
   const { templateId } = useTemplateEditor()
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
   const { sortedPages, addPage, duplicatePage, deletePage } = usePageActions()
+  const { viewMode } = useEditorViewMode()
   const reorderPagesMutation = useReorderPages()
+
+  // No contínuo, quem ativa é o workspace (captura o preview da página que sai
+  // e rola até a nova); no clássico, troca direta como sempre foi
+  const goToPage = React.useCallback(
+    (pageId: string) => {
+      if (viewMode === 'continuous') {
+        window.dispatchEvent(new CustomEvent('lagosta:activate-page', { detail: pageId }))
+      } else {
+        setCurrentPageId(pageId)
+      }
+    },
+    [viewMode, setCurrentPageId],
+  )
+
+  const handleAddPageClick = React.useCallback(async () => {
+    const newPage = await addPage()
+    if (newPage && viewMode === 'continuous') {
+      // Rolar até a página nova assim que o slot montar
+      window.dispatchEvent(new CustomEvent('lagosta:activate-page', { detail: newPage.id }))
+    }
+  }, [addPage, viewMode])
 
   // Configurar sensores para drag-and-drop
   const sensors = useSensors(
@@ -1386,7 +1408,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
         e.preventDefault()
         const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
         if (currentIndex > 0) {
-          setCurrentPageId(sortedPages[currentIndex - 1].id)
+          goToPage(sortedPages[currentIndex - 1].id)
         }
       }
 
@@ -1395,29 +1417,47 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
         e.preventDefault()
         const currentIndex = sortedPages.findIndex((p) => p.id === currentPageId)
         if (currentIndex < sortedPages.length - 1) {
-          setCurrentPageId(sortedPages[currentIndex + 1].id)
+          goToPage(sortedPages[currentIndex + 1].id)
         }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [sortedPages, currentPageId, setCurrentPageId])
+  }, [sortedPages, currentPageId, goToPage])
 
   return (
     <div className={`flex flex-shrink-0 flex-col border-t border-border/40 bg-card transition-all ${isCollapsed ? 'h-10' : 'h-[4.5rem]'
       }`}>
-      {/* Estado colapsado - apenas contador e botão de expandir */}
+      {/* Estado colapsado - toggle de modo, contador e chips de navegação */}
       {isCollapsed ? (
-        <div className="flex h-10 items-center justify-between px-4">
-          <span className="text-xs text-muted-foreground">
+        <div className="flex h-10 items-center gap-2 px-3">
+          <ViewModeToggle />
+          <span className="whitespace-nowrap text-xs text-muted-foreground">
             Página {sortedPages.findIndex((p) => p.id === currentPageId) + 1} de {sortedPages.length}
           </span>
+          {/* Chips numerados: clique ativa a página e (no contínuo) rola até ela */}
+          <div className="flex flex-1 items-center gap-1 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {sortedPages.map((page, index) => (
+              <button
+                key={page.id}
+                onClick={() => goToPage(page.id)}
+                className={`flex h-6 w-6 flex-shrink-0 items-center justify-center rounded text-[11px] font-medium transition-colors ${
+                  page.id === currentPageId
+                    ? 'bg-primary text-primary-foreground'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                }`}
+                title={page.name}
+              >
+                {index + 1}
+              </button>
+            ))}
+          </div>
           <Button
             size="sm"
             variant="ghost"
             onClick={onToggleCollapse}
-            className="h-7 w-7 p-0"
+            className="h-7 w-7 flex-shrink-0 p-0"
             title="Expandir barra de páginas"
           >
             <ChevronUp className="h-4 w-4" />
@@ -1425,7 +1465,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
         </div>
       ) : (
         <div className="flex h-full items-center gap-2 px-3">
-          {/* Colapsar + contador */}
+          {/* Colapsar + toggle de modo + contador */}
           <div className="flex flex-shrink-0 items-center gap-1">
             <Button
               size="sm"
@@ -1436,6 +1476,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
             >
               <ChevronDown className="h-4 w-4" />
             </Button>
+            <ViewModeToggle />
             <span className="whitespace-nowrap text-xs text-muted-foreground">
               {sortedPages.findIndex((p) => p.id === currentPageId) + 1} / {sortedPages.length}
             </span>
@@ -1459,7 +1500,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
                     page={page}
                     index={index}
                     isActive={currentPageId === page.id}
-                    onClick={() => setCurrentPageId(page.id)}
+                    onClick={() => goToPage(page.id)}
                   />
                 ))}
               </SortableContext>
@@ -1467,7 +1508,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
 
             {/* Botão para adicionar página */}
             <button
-              onClick={() => void addPage()}
+              onClick={() => void handleAddPageClick()}
               className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
               title="Adicionar nova página"
             >
@@ -1511,7 +1552,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
             <Button
               size="sm"
               variant="default"
-              onClick={() => void addPage()}
+              onClick={() => void handleAddPageClick()}
               className="h-8"
               title="Adicionar nova página (Ctrl+PageUp/PageDown navega)"
             >
@@ -1521,6 +1562,33 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/** Toggle contínuo/página única — vive na PagesBar, persiste em localStorage */
+function ViewModeToggle() {
+  const { viewMode, setViewMode } = useEditorViewMode()
+  return (
+    <div className="flex flex-shrink-0 items-center gap-0.5 rounded-md border border-border/40 p-0.5">
+      <Button
+        size="sm"
+        variant={viewMode === 'continuous' ? 'secondary' : 'ghost'}
+        className="h-6 w-6 p-0"
+        onClick={() => setViewMode('continuous')}
+        title="Modo contínuo — todas as páginas no workspace, navegação por scroll"
+      >
+        <GalleryVertical className="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        size="sm"
+        variant={viewMode === 'single' ? 'secondary' : 'ghost'}
+        className="h-6 w-6 p-0"
+        onClick={() => setViewMode('single')}
+        title="Modo página única (clássico)"
+      >
+        <Square className="h-3.5 w-3.5" />
+      </Button>
     </div>
   )
 }
