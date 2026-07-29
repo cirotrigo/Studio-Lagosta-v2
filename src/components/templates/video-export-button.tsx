@@ -50,7 +50,7 @@ async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 
 export function VideoExportButton() {
   const editorContext = useTemplateEditor()
-  const { design, zoom, templateId, projectId } = editorContext
+  const { design, zoom, templateId, projectId, getStageInstance } = editorContext
   const designName =
     typeof (design as { name?: string }).name === 'string' ? (design as { name?: string }).name! : 'Sem título'
   const { toast } = useToast()
@@ -360,10 +360,12 @@ export function VideoExportButton() {
       return
     }
 
-    const stageElement = document.querySelector('.konvajs-content')
-    const stage = stageElement
-      ? Konva.stages.find((s) => s.container() === stageElement.parentElement)
-      : null
+    // Com o workspace contínuo existem N stages montados (um por página), e
+    // `document.querySelector` devolvia sempre o PRIMEIRO do DOM — a página 1.
+    // Exportar vídeo de qualquer outra página procurava a camada de vídeo no
+    // stage errado e morria em "VideoNode não encontrado no stage".
+    // `getStageInstance()` é a fonte da verdade do stage ATIVO.
+    const stage = getStageInstance()
 
     if (!stage) {
       toast({
