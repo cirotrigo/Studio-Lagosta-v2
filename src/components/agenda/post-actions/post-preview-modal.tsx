@@ -25,7 +25,8 @@ import {
   XCircle,
   CalendarCheck,
   FileEdit,
-  Undo2
+  Undo2,
+  Loader2
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -94,6 +95,10 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const mediaUrls = (post.mediaUrls?.length ? post.mediaUrls : post.renderedImageUrl ? [post.renderedImageUrl] : []) as string[]
   const isCarousel = post.postType === 'CAROUSEL' && mediaUrls.length > 1
   const isStory = post.postType === 'STORY'
+  const gerandoArte =
+    mediaUrls.length === 0 &&
+    !!post.pageId &&
+    (post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING')
 
   // OPTIMIZED: Preload next and previous images for carousel
   useEffect(() => {
@@ -487,6 +492,24 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                     </Badge>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Arte na fila de render — é o estado logo depois de editar a
+                página no editor: a arte antiga foi descartada e a nova ainda
+                não saiu. Sem este aviso o modal abre vazio, sem explicação. */}
+            {gerandoArte && (
+              <div
+                className={cn(
+                  'relative overflow-hidden rounded-lg bg-muted border border-dashed flex flex-col items-center justify-center gap-2 text-muted-foreground',
+                  isStory ? 'aspect-[9/16]' : 'aspect-square',
+                )}
+              >
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <span className="text-sm font-medium">Gerando a arte…</span>
+                <span className="text-xs px-6 text-center">
+                  O template mudou. A arte nova aparece aqui em até 2 minutos.
+                </span>
               </div>
             )}
 

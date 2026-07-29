@@ -35,6 +35,14 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
   const firstMediaUrl = post.renderedImageUrl || post.mediaUrls?.[0]
   const isVideo = firstMediaUrl ? isVideoUrl(firstMediaUrl) : false
 
+  // Editar a página devolve o post à fila de render e apaga a arte antiga.
+  // Sem este estado o card ficaria sem miniatura, sem explicação, até o cron
+  // rodar — e "sumiu a arte" assusta mais que "estou gerando".
+  const gerandoArte =
+    !firstMediaUrl &&
+    !!post.pageId &&
+    (post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING')
+
   const getIcon = () => {
     switch (post.postType) {
       case 'STORY':
@@ -76,9 +84,16 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
       )}
     >
       {/* Thumbnail — template-based stories may use renderedImageUrl */}
-      {((post.mediaUrls && post.mediaUrls.length > 0 && post.mediaUrls[0]) || post.renderedImageUrl) && (
+      {(firstMediaUrl || gerandoArte) && (
         <div className="relative h-8 w-8 sm:h-10 sm:w-10 flex-shrink-0 overflow-hidden rounded bg-muted">
-          {isVideo ? (
+          {gerandoArte ? (
+            <div
+              className="absolute inset-0 w-full h-full flex items-center justify-center"
+              title="Gerando a arte a partir do template"
+            >
+              <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+            </div>
+          ) : isVideo ? (
             <div className="absolute inset-0 w-full h-full bg-muted flex items-center justify-center">
               <Video className="w-4 h-4 text-muted-foreground" />
             </div>
@@ -198,17 +213,19 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
             </Badge>
           )}
 
-          {/* Badges de Render Status - para Stories com template */}
-          {post.postType === 'STORY' && post.pageId && post.status === 'SCHEDULED' && (
+          {/* Badges de Render Status - para Stories com template.
+              Rascunho entra junto: ele também renderiza (e re-renderiza a cada
+              edição da página), e é onde a arte é conferida antes de aprovar. */}
+          {post.postType === 'STORY' && post.pageId && (post.status === 'SCHEDULED' || post.status === 'DRAFT') && (
             <>
               {(post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING') && (
                 <Badge
                   variant="outline"
                   className="h-3 px-1 text-[8px] flex items-center gap-0.5 border-blue-400 text-blue-500"
-                  title="Imagem será gerada antes da publicação"
+                  title="A arte está sendo gerada a partir do template"
                 >
                   <ImageIcon className="w-2 h-2" />
-                  <span className="hidden sm:inline">Renderizar</span>
+                  <span className="hidden sm:inline">Gerando arte</span>
                 </Badge>
               )}
               {post.renderStatus === 'RENDERED' && (

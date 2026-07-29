@@ -14,13 +14,19 @@ export async function GET(req: NextRequest) {
 
     const now = new Date()
 
-    // Find posts that need rendering
+    // Find posts that need rendering.
+    //
+    // DRAFT entra junto com SCHEDULED: a agenda mostra a arte do rascunho, e
+    // editar a página só corrige o que ela mostra se o render acontecer antes
+    // da aprovação. `nextRenderAt: asc` mantém a prioridade certa — rascunho
+    // reinvalidado a cada autosave volta para o fim da fila, nunca na frente
+    // de um agendado esperando desde antes.
     const postsToRender = await db.socialPost.findMany({
       where: {
         renderStatus: RenderStatus.PENDING,
         nextRenderAt: { lte: now },
         renderAttempts: { lt: 3 },
-        status: PostStatus.SCHEDULED,
+        status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
         pageId: { not: null },
       },
       orderBy: { nextRenderAt: 'asc' },

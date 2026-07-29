@@ -48,7 +48,16 @@ export function useAgendaPosts({
 
       // Verifica se há algum post com status POSTING
       const hasPostingPosts = data.some((post: any) => post.status === 'POSTING')
-      return hasPostingPosts ? 10000 : false // OPTIMIZED: Increased to 10 seconds (was 5)
+      if (hasPostingPosts) return 10000 // OPTIMIZED: Increased to 10 seconds (was 5)
+
+      // Arte na fila de render (o cron roda a cada 2 min). Sem isto, quem
+      // acabou de editar o template no editor volta para a agenda e continua
+      // vendo o placeholder até recarregar a página na mão.
+      const temArteGerando = data.some(
+        (post: any) =>
+          post.pageId && (post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING'),
+      )
+      return temArteGerando ? 20000 : false
     },
   })
 

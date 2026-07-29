@@ -474,8 +474,25 @@ página/camada, e a troca de fonte com medição de caixa. Regras que ficaram:
   (`src/lib/posts/invalidate-renders.ts`) — senão o post publica a arte
   antiga em silêncio. O PATCH de página só invalida em mudança visual REAL
   (o mesmo endpoint recebe thumbnail e autosave do PageSync).
+- **A invalidação vale para RASCUNHO também** (desde 29/07/2026). A agenda
+  mostra a arte do rascunho, então rascunho com arte velha mente igual a
+  agendado — e a aprovação só manda renderizar quando o post está sem mídia,
+  ou seja, publicaria a arte velha. `render-stories` renderiza DRAFT e
+  SCHEDULED; `nextRenderAt: asc` mantém o agendado na frente.
+- **`renderStatus: NOT_NEEDED` significa "a arte NÃO vem do render desta
+  página"** — mídia trazida de fora (upload, Drive, import do Zernio). Arte que
+  saiu de um render nasce RENDERED, mesmo já pronta na criação: era gravar
+  NOT_NEEDED nela que congelava o post no PNG do momento em que foi criado,
+  fora do alcance da invalidação. Vale para `agendarPost`
+  (`src/lib/creatives/agendar.ts`) e para qualquer caminho novo.
+- **`Page.thumbnail` nem sempre é publicável**: na criação é o PNG do render no
+  Blob, mas o PageSync sobrescreve com um JPEG base64 de 150px assim que a
+  página é aberta no editor. Quem for reusar o thumbnail como mídia precisa
+  recusar `data:` e cair no render.
 - **Mudou o código de render?** `scripts/rerender-agendados.ts` força o
   re-render do que já está RENDERED — só com o deploy no ar.
+  `scripts/reparar-arte-congelada.ts` é o irmão para as linhas antigas gravadas
+  como NOT_NEEDED (dry-run por padrão).
 - **Fonte de projeto exige arquivo enviado** (`CustomFont` + blob): o
   `addGoogleFont` do editor carrega do CDN só no navegador, e o render cai em
   fallback. Arquivo TTF **estático** (napi-rs canvas não aplica eixo variável)

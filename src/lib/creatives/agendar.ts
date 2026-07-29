@@ -67,6 +67,14 @@ export async function agendarPost(input: AgendarPostInput) {
 
   let templateId: number | null = null
   let mediaUrls = input.mediaUrls ?? []
+  /**
+   * A arte deste post é um render da página (e não uma imagem que o chamador
+   * trouxe pronta). É o que faz `invalidateScheduledRenders` reconhecer o post
+   * quando a página muda: marcado NOT_NEEDED, ele ficaria com o PNG do momento
+   * da criação para sempre — a agenda mostrando a arte velha e a publicação
+   * saindo com ela.
+   */
+  let midiaVeioDaPagina = false
 
   if (input.pageId) {
     const page = await db.page.findUnique({
@@ -84,8 +92,17 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     templateId = page.templateId
-    // A arte já foi renderizada na criação; reusar o PNG evita re-render na fila
-    if (mediaUrls.length === 0 && page.thumbnail) mediaUrls = [page.thumbnail]
+    // A arte já foi renderizada na criação; reusar o PNG evita re-render na fila.
+    //
+    // Só serve o thumbnail que veio do render (URL do Blob). Depois que alguém
+    // abre a página no editor, o PageSync sobrescreve `thumbnail` com um JPEG
+    // base64 de 150px — publicar isso mandaria uma miniatura borrada (ou uma
+    // data URL que o Zernio nem aceita). Sem PNG utilizável, o post nasce sem
+    // mídia e o cron renderiza a página atual.
+    if (mediaUrls.length === 0 && page.thumbnail && !page.thumbnail.startsWith('data:')) {
+      mediaUrls = [page.thumbnail]
+      midiaVeioDaPagina = true
+    }
   }
 
   const vaiPublicar = input.situacao === 'agendado'
@@ -122,7 +139,15 @@ export async function agendarPost(input: AgendarPostInput) {
       status,
       pageId: input.pageId ?? null,
       templateId,
-      renderStatus: (mediaUrls.length > 0 ? 'NOT_NEEDED' : 'PENDING') as never,
+      renderStatus: (mediaUrls.length === 0
+        ? 'PENDING'
+        : midiaVeioDaPagina
+          ? 'RENDERED'
+          : 'NOT_NEEDED') as never,
+      ...(midiaVeioDaPagina ? { renderedImageUrl: mediaUrls[0], renderedAt: new Date() } : {}),
+      // Sem arte pronta o cron precisa renderizar — sem isso o post fica
+      // PENDING com nextRenderAt null e nunca entra na fila de render.
+      ...(mediaUrls.length === 0 ? { nextRenderAt: new Date() } : {}),
     },
     select: { id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true },
   })

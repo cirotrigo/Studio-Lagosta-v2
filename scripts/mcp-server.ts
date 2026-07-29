@@ -636,11 +636,11 @@ server.tool(
       const postStatus = status ?? 'DRAFT'
       const hasPage = !!pageId
 
-      // Determine renderStatus
-      let renderStatus = 'NOT_NEEDED'
-      if (hasPage && postStatus === 'SCHEDULED' && (!mediaUrls || mediaUrls.length === 0)) {
-        renderStatus = 'PENDING'
-      }
+      // Determine renderStatus. Rascunho entra junto: o cron render-stories
+      // renderiza DRAFT também, e sem isso a agenda mostra o rascunho sem arte
+      // nenhuma até alguém aprovar.
+      const precisaRender = hasPage && (!mediaUrls || mediaUrls.length === 0)
+      const renderStatus = precisaRender ? 'PENDING' : 'NOT_NEEDED'
 
       const post = await prisma.socialPost.create({
         data: {
@@ -656,6 +656,10 @@ server.tool(
           templateId: resolvedTemplateId ?? null,
           slotValues: parsedSlotValues ?? undefined,
           renderStatus: renderStatus as any,
+          // O cron filtra por `nextRenderAt <= agora`, e null não passa nesse
+          // filtro: PENDING sem esta data ficava fora da fila para sempre — o
+          // post nunca ganhava arte e o executor o pulava indefinidamente.
+          nextRenderAt: precisaRender ? new Date() : null,
         },
       })
 

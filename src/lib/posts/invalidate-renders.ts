@@ -22,6 +22,15 @@ type DbClient = PrismaClient | Prisma.TransactionClient
 
 export type InvalidateTarget = { templateId: number } | { pageIds: string[] } | { postIds: string[] }
 
+/**
+ * Invalida a arte renderizada dos posts que dependem da página/template
+ * alterado, devolvendo-os à fila de render.
+ *
+ * Vale para agendados e rascunhos: o cron `render-stories` renderiza os dois
+ * (o rascunho precisa mostrar a arte certa na agenda muito antes de alguém
+ * aprovar).
+ */
+
 export async function invalidateScheduledRenders(
   client: DbClient,
   target: InvalidateTarget,
@@ -31,7 +40,11 @@ export async function invalidateScheduledRenders(
 
   const result = await client.socialPost.updateMany({
     where: {
-      status: PostStatus.SCHEDULED,
+      // DRAFT entra junto: o rascunho criado pelo chat guarda o PNG do momento
+      // da criação, e sem invalidar ele mostra a arte velha na agenda — e
+      // publica ela na aprovação, porque a aprovação só manda renderizar
+      // quando o post está sem mídia.
+      status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
       renderStatus: { in: [RenderStatus.RENDERED, RenderStatus.PENDING, RenderStatus.RENDERING] },
       ...('templateId' in target
         ? { templateId: target.templateId, pageId: { not: null } }
