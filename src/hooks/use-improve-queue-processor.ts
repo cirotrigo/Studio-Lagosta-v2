@@ -5,22 +5,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useImproveQueueStore } from '@/stores/improve-queue-store'
+import { pollGenerationStatus } from '@/lib/ai/poll-generation'
 
 interface StartImproveResponse {
   success: boolean
   generation: { id: string; status: 'PROCESSING' }
 }
-
-interface GenerationStatusResponse {
-  id: string
-  status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
-  resultUrl: string | null
-  fieldValues?: { error?: string; failedAt?: string } | null
-}
-
-const POLL_INTERVAL_MS = 4_000
-const MAX_POLL_DURATION_MS = 6 * 60 * 1000 // 6 minutos
-const POLL_FETCH_TIMEOUT_MS = 10_000
 
 /**
  * Processa a fila serialmente:
@@ -119,42 +109,4 @@ export function useImproveQueueProcessor() {
       void processNext()
     }
   }, [jobs, hasHydrated, processNext])
-}
-
-/**
- * Faz polling até status virar COMPLETED ou FAILED, ou até estourar o budget.
- * Tolerante a erros transitórios de rede — re-tenta no próximo tick.
- */
-async function pollGenerationStatus(generationId: string): Promise<GenerationStatusResponse> {
-  const startedAt = Date.now()
-
-  while (Date.now() - startedAt < MAX_POLL_DURATION_MS) {
-    await sleep(POLL_INTERVAL_MS)
-
-    try {
-      const status = await api.get<GenerationStatusResponse>(
-        `/api/generations/${generationId}`,
-        { signal: AbortSignal.timeout(POLL_FETCH_TIMEOUT_MS) }
-      )
-
-      if (status.status === 'COMPLETED' || status.status === 'FAILED') {
-        return status
-      }
-    } catch (error) {
-      // Polling tolera falhas transitórias — só dá log e continua.
-      console.warn('[improve-queue] poll error (will retry):', error)
-    }
-  }
-
-  // Estourou o budget de polling — considera falha sem perder o job no servidor.
-  return {
-    id: generationId,
-    status: 'FAILED',
-    resultUrl: null,
-    fieldValues: { error: 'Tempo limite de espera excedido (6min). Tente novamente.' },
-  }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms))
 }

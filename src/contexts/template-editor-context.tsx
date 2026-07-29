@@ -131,6 +131,14 @@ export interface ExportRecord {
   fileName: string
   sizeBytes: number
   createdAt: number
+  /**
+   * Id da Generation criada no servidor. Necessário para enfileirar a melhoria
+   * com IA logo após a geração — a rota de melhoria é
+   * POST /api/generations/{id}/improve e exige uma Generation existente.
+   */
+  generationId?: string
+  /** URL pública da arte no Blob, como o servidor gravou. */
+  resultUrl?: string
 }
 
 export const TemplateEditorContext = React.createContext<TemplateEditorContextValue | null>(null)
@@ -907,6 +915,11 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
 
           const data = await response.json()
           console.log('[EXPORT] Saved successfully. Remaining credits:', data.creditsRemaining)
+
+          // Sem isso não dá para melhorar a arte recém-gerada: a fila de
+          // melhoria precisa do id da Generation que o servidor acabou de criar.
+          record.generationId = data?.generation?.id
+          record.resultUrl = data?.generation?.resultUrl
 
           // Invalidar cache dos criativos para atualizar a lista automaticamente
           queryClient.invalidateQueries({ queryKey: ['template-creatives', template.id] })

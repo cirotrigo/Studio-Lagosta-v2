@@ -14,9 +14,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
 import { useSocialPosts } from '@/hooks/use-social-posts'
 import { useToast } from '@/hooks/use-toast'
+import { api } from '@/lib/api-client'
+import { pollGenerationStatus } from '@/lib/ai/poll-generation'
+import {
+  AI_INSTRUCTION_MAX_CHARS,
+  AI_INSTRUCTION_PLACEHOLDER,
+  AI_IMPROVEMENT_CREDIT_COST,
+} from '@/lib/ai/instruction-field'
+import type { ExportRecord } from '@/contexts/template-editor-context'
 
 interface ScheduleStoryModalProps {
   open: boolean
@@ -27,6 +36,12 @@ interface ScheduleStoryModalProps {
   pageThumbnail?: string | null
   /** Export current Konva stage as data URL (same as "Salvar Criativo") */
   onExportImage: () => Promise<string>
+  /**
+   * Exporta criando uma Generation no servidor. Só é usado quando há instrução
+   * para a IA: a rota de melhoria exige um generationId, e o caminho normal de
+   * agendamento (upload direto) não cria Generation nenhuma.
+   */
+  onExportCreative: () => Promise<ExportRecord>
 }
 
 export function ScheduleStoryModal({
@@ -37,6 +52,7 @@ export function ScheduleStoryModal({
   pageId,
   pageThumbnail,
   onExportImage,
+  onExportCreative,
 }: ScheduleStoryModalProps) {
   const { toast } = useToast()
   const { createPost } = useSocialPosts(projectId)
@@ -45,6 +61,11 @@ export function ScheduleStoryModal({
   const [selectedTime, setSelectedTime] = React.useState('12:00')
   const [isSubmitting, setIsSubmitting] = React.useState(false)
   const [submitStatus, setSubmitStatus] = React.useState('')
+  const [aiInstruction, setAiInstruction] = React.useState('')
+
+  React.useEffect(() => {
+    if (open) setAiInstruction('')
+  }, [open])
 
   const getScheduledDate = () => {
     if (!selectedDate) return null
@@ -63,42 +84,84 @@ export function ScheduleStoryModal({
     return true
   }
 
+  /**
+   * Caminho sem instrução: exporta o stage e sobe direto pro Blob. Barato,
+   * síncrono e sem criar Generation — é o comportamento histórico.
+   */
+  const uploadStageImage = async (): Promise<string> => {
+    setSubmitStatus('Gerando imagem...')
+    const dataUrl = await onExportImage()
+
+    setSubmitStatus('Enviando imagem...')
+    const mimeType = dataUrl.match(/^data:([^;]+)/)?.[1] || 'image/png'
+    const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
+    const binaryStr = atob(dataUrl.split(',')[1])
+    const bytes = new Uint8Array(binaryStr.length)
+    for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
+    const file = new File([bytes], `story-scheduled-${Date.now()}.${ext}`, { type: mimeType })
+
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('type', 'post')
+    formData.append('postType', 'STORY')
+
+    const uploadRes = await fetch('/api/upload', { method: 'POST', body: formData })
+    if (!uploadRes.ok) {
+      throw new Error('Falha ao fazer upload da imagem')
+    }
+    const uploadData = (await uploadRes.json()) as { url: string }
+    if (!uploadData?.url) {
+      throw new Error('URL da imagem não retornada')
+    }
+    return uploadData.url
+  }
+
+  /**
+   * Caminho com instrução: precisa de uma Generation para poder melhorar, e
+   * precisa esperar o resultado antes de agendar — senão o post sairia com a
+   * arte antiga. Se a melhoria falhar, agenda a original em vez de perder o
+   * agendamento inteiro.
+   */
+  const improveAndGetUrl = async (instruction: string): Promise<string> => {
+    setSubmitStatus('Gerando criativo...')
+    const record = await onExportCreative()
+
+    if (!record.generationId || !record.resultUrl) {
+      throw new Error('O servidor não retornou o criativo gerado')
+    }
+
+    setSubmitStatus('Melhorando com IA... (pode levar até 2 min)')
+    const start = await api.post<{ generation: { id: string } }>(
+      `/api/generations/${record.generationId}/improve`,
+      { userRequest: instruction },
+    )
+
+    const final = await pollGenerationStatus(start.generation.id)
+
+    if (final.status === 'COMPLETED' && final.resultUrl) {
+      return final.resultUrl
+    }
+
+    toast({
+      title: 'Melhoria não concluída',
+      description: `Agendando a arte original. Motivo: ${
+        final.fieldValues?.error || 'falha desconhecida'
+      }`,
+      variant: 'destructive',
+    })
+    return record.resultUrl
+  }
+
   const handleSubmit = async () => {
     if (!canSubmit()) return
     setIsSubmitting(true)
 
     try {
-      // 1. Export image from Konva stage (pixel-perfect, same as "Salvar Criativo")
-      setSubmitStatus('Gerando imagem...')
-      const dataUrl = await onExportImage()
+      const instruction = aiInstruction.trim()
+      const mediaUrl = instruction
+        ? await improveAndGetUrl(instruction)
+        : await uploadStageImage()
 
-      // 2. Convert data URL to File and upload via FormData
-      setSubmitStatus('Enviando imagem...')
-      const mimeType = dataUrl.match(/^data:([^;]+)/)?.[1] || 'image/png'
-      const ext = mimeType.includes('jpeg') ? 'jpg' : 'png'
-      const binaryStr = atob(dataUrl.split(',')[1])
-      const bytes = new Uint8Array(binaryStr.length)
-      for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i)
-      const file = new File([bytes], `story-scheduled-${Date.now()}.${ext}`, { type: mimeType })
-
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('type', 'post')
-      formData.append('postType', 'STORY')
-
-      const uploadRes = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
-      })
-      if (!uploadRes.ok) {
-        throw new Error('Falha ao fazer upload da imagem')
-      }
-      const uploadData = await uploadRes.json() as { url: string }
-      if (!uploadData?.url) {
-        throw new Error('URL da imagem não retornada')
-      }
-
-      // 3. Create post with image already rendered
       setSubmitStatus('Criando agendamento...')
       const scheduled = getScheduledDate()
       const scheduledDatetimeISO =
@@ -110,7 +173,7 @@ export function ScheduleStoryModal({
         postType: 'STORY',
         caption: '',
         generationIds: [],
-        mediaUrls: [uploadData.url],
+        mediaUrls: [mediaUrl],
         scheduleType,
         scheduledDatetime: scheduledDatetimeISO,
         pageId,
@@ -248,6 +311,32 @@ export function ScheduleStoryModal({
             )}
           </div>
         )}
+
+        {/* Instrução opcional para a IA */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="schedule-ai-instruction">Instrução para a IA (opcional)</Label>
+            <span className="text-xs text-muted-foreground">
+              {aiInstruction.length}/{AI_INSTRUCTION_MAX_CHARS}
+            </span>
+          </div>
+          <Textarea
+            id="schedule-ai-instruction"
+            placeholder={AI_INSTRUCTION_PLACEHOLDER}
+            value={aiInstruction}
+            onChange={(e) =>
+              setAiInstruction(e.target.value.slice(0, AI_INSTRUCTION_MAX_CHARS))
+            }
+            rows={3}
+            className="resize-none"
+            disabled={isSubmitting}
+          />
+          <p className="text-xs text-muted-foreground">
+            {aiInstruction.trim()
+              ? `A arte passa pela melhoria com IA antes de ser agendada (+${AI_IMPROVEMENT_CREDIT_COST} créditos). O agendamento espera o resultado — pode levar até 2 minutos.`
+              : 'Deixe em branco para agendar a arte exatamente como está no editor.'}
+          </p>
+        </div>
 
         {/* Submit */}
         <Button

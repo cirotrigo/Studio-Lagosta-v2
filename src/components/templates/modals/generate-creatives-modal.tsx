@@ -14,7 +14,14 @@ import {
 } from '@/components/ui/dialog'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
+import {
+  AI_INSTRUCTION_MAX_CHARS,
+  AI_INSTRUCTION_PLACEHOLDER,
+  AI_IMPROVEMENT_CREDIT_COST,
+} from '@/lib/ai/instruction-field'
 import type { Page } from '@/types/template'
 
 interface GenerateCreativesModalProps {
@@ -22,7 +29,7 @@ interface GenerateCreativesModalProps {
   onOpenChange: (open: boolean) => void
   pages: Page[]
   currentPageId: string | null
-  onGenerate: (selectedPageIds: string[]) => Promise<void>
+  onGenerate: (selectedPageIds: string[], aiInstruction: string) => Promise<void>
   creditCost: number
   hasCredits: boolean
   isGenerating?: boolean
@@ -44,18 +51,27 @@ export function GenerateCreativesModal({
   generationProgress,
 }: GenerateCreativesModalProps) {
   const [selectedPageIds, setSelectedPageIds] = React.useState<Set<string>>(new Set())
+  const [aiInstruction, setAiInstruction] = React.useState('')
 
   // Ordenar páginas por order
   const sortedPages = React.useMemo(() => {
     return [...pages].sort((a, b) => a.order - b.order)
   }, [pages])
 
+  // Com uma página só não há o que escolher — o modal existe pelo campo de
+  // instrução, então a lista some e a página entra selecionada.
+  const isSinglePage = sortedPages.length === 1
+
   // Inicializar com apenas a página atual selecionada
   React.useEffect(() => {
-    if (open && currentPageId) {
+    if (!open) return
+    setAiInstruction('')
+    if (isSinglePage) {
+      setSelectedPageIds(new Set([sortedPages[0].id]))
+    } else if (currentPageId) {
       setSelectedPageIds(new Set([currentPageId]))
     }
-  }, [open, currentPageId])
+  }, [open, currentPageId, isSinglePage, sortedPages])
 
   const allSelected = selectedPageIds.size === sortedPages.length
   const noneSelected = selectedPageIds.size === 0
@@ -84,41 +100,57 @@ export function GenerateCreativesModal({
     if (noneSelected) return
 
     const selectedIds = Array.from(selectedPageIds)
-    await onGenerate(selectedIds)
-  }, [noneSelected, selectedPageIds, onGenerate])
+    await onGenerate(selectedIds, aiInstruction.trim())
+  }, [noneSelected, selectedPageIds, onGenerate, aiInstruction])
 
-  const totalCost = selectedPageIds.size * creditCost
-  const estimatedTime = selectedPageIds.size * 3 // 3 segundos por página
+  const wantsImprovement = aiInstruction.trim().length > 0
+  const improvementCost = wantsImprovement
+    ? selectedPageIds.size * AI_IMPROVEMENT_CREDIT_COST
+    : 0
+  const totalCost = selectedPageIds.size * creditCost + improvementCost
+  // 3s por página no export; a melhoria roda em fila e leva ~60s por arte.
+  const estimatedTime = selectedPageIds.size * (wantsImprovement ? 60 : 3)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
-          <DialogTitle>Gerar Criativos - Selecione as Páginas</DialogTitle>
+          <DialogTitle>
+            {isSinglePage ? 'Gerar Criativo' : 'Gerar Criativos - Selecione as Páginas'}
+          </DialogTitle>
           <DialogDescription>
-            Escolha quais páginas deseja exportar como criativos JPEG em alta qualidade
+            {isSinglePage
+              ? 'Exporta a página atual como criativo JPEG em alta qualidade'
+              : 'Escolha quais páginas deseja exportar como criativos JPEG em alta qualidade'}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex-1 overflow-y-auto space-y-4 py-4">
           {/* Checkbox Selecionar Todas */}
-          <div className="flex items-center space-x-2 px-1">
-            <Checkbox
-              id="select-all"
-              checked={allSelected}
-              onCheckedChange={handleToggleAll}
-              disabled={isGenerating}
-            />
-            <label
-              htmlFor="select-all"
-              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-            >
-              Selecionar Todas as Páginas ({sortedPages.length})
-            </label>
-          </div>
+          {!isSinglePage && (
+            <div className="flex items-center space-x-2 px-1">
+              <Checkbox
+                id="select-all"
+                checked={allSelected}
+                onCheckedChange={handleToggleAll}
+                disabled={isGenerating}
+              />
+              <label
+                htmlFor="select-all"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Selecionar Todas as Páginas ({sortedPages.length})
+              </label>
+            </div>
+          )}
 
           {/* Grid de Thumbnails */}
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div
+            className={cn(
+              'grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4',
+              isSinglePage && 'hidden',
+            )}
+          >
             {sortedPages.map((page, index) => {
               const isSelected = selectedPageIds.has(page.id)
               const isCurrentPage = page.id === currentPageId
@@ -180,6 +212,32 @@ export function GenerateCreativesModal({
             })}
           </div>
 
+          {/* Instrução opcional para a IA */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="ai-instruction">Instrução para a IA (opcional)</Label>
+              <span className="text-xs text-muted-foreground">
+                {aiInstruction.length}/{AI_INSTRUCTION_MAX_CHARS}
+              </span>
+            </div>
+            <Textarea
+              id="ai-instruction"
+              placeholder={AI_INSTRUCTION_PLACEHOLDER}
+              value={aiInstruction}
+              onChange={(e) =>
+                setAiInstruction(e.target.value.slice(0, AI_INSTRUCTION_MAX_CHARS))
+              }
+              rows={3}
+              className="resize-none"
+              disabled={isGenerating}
+            />
+            <p className="text-xs text-muted-foreground">
+              {wantsImprovement
+                ? `A arte gerada entra na fila de melhoria com IA (+${AI_IMPROVEMENT_CREDIT_COST} créditos por página). O criativo original continua salvo.`
+                : 'Deixe em branco para gerar a arte exatamente como está no editor.'}
+            </p>
+          </div>
+
           {/* Resumo de Custos */}
           <div className="bg-muted/50 rounded-lg p-4 space-y-2">
             <h4 className="font-semibold text-sm">📊 Resumo:</h4>
@@ -193,7 +251,10 @@ export function GenerateCreativesModal({
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Custo total:</span>
                 <span className="font-medium">
-                  {totalCost} créditos ({creditCost} créditos/página)
+                  {totalCost} créditos
+                  {wantsImprovement
+                    ? ` (${creditCost} de geração + ${AI_IMPROVEMENT_CREDIT_COST} de melhoria, por página)`
+                    : ` (${creditCost} créditos/página)`}
                 </span>
               </div>
               <div className="flex justify-between">

@@ -46,6 +46,7 @@ export async function PATCH(
       googleDriveVideosFolderId?: string | null
       googleDriveVideosFolderName?: string | null
       aiChatBehavior?: string | null
+      artImprovementPrompt?: string | null
       laterAccountId?: string | null
       laterProfileId?: string | null
       postingProvider?: 'LATER' | null
@@ -64,6 +65,7 @@ export async function PATCH(
     assignField('googleDriveVideosFolderId')
     assignField('googleDriveVideosFolderName')
     assignField('aiChatBehavior')
+    assignField('artImprovementPrompt')
     assignField('laterAccountId')
     assignField('laterProfileId')
     assignField('postingProvider')
@@ -84,6 +86,7 @@ export async function PATCH(
         googleDriveVideosFolderId: true,
         googleDriveVideosFolderName: true,
         aiChatBehavior: true,
+        artImprovementPrompt: true,
         laterAccountId: true,
         laterProfileId: true,
         postingProvider: true,

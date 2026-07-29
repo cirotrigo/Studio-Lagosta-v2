@@ -32,6 +32,7 @@ import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-fo
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
+import { ArtImprovementPromptConfig } from '@/components/projects/art-improvement-prompt-config'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
@@ -346,6 +347,12 @@ export default function ProjectDetailPage() {
                 <AIChatBehaviorConfig
                   projectId={projectId}
                   initialBehavior={projectDetails.aiChatBehavior}
+                />
+
+                {/* Direção de arte da melhoria com IA */}
+                <ArtImprovementPromptConfig
+                  projectId={projectId}
+                  initialPrompt={projectDetails.artImprovementPrompt}
                 />
 
                 {/* Project Tags Configuration */}

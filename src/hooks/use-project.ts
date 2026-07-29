@@ -30,6 +30,7 @@ export interface ProjectResponse {
   googleDriveVideosFolderId: string | null
   googleDriveVideosFolderName: string | null
   aiChatBehavior: string | null
+  artImprovementPrompt: string | null
   makeWebhookAnalyzeUrl: string | null
   makeWebhookCreativeUrl: string | null
   userId: string
@@ -66,6 +67,7 @@ export type UpdateProjectSettingsInput = Partial<{
   googleDriveVideosFolderId: string | null
   googleDriveVideosFolderName: string | null
   aiChatBehavior: string | null
+  artImprovementPrompt: string | null
   laterAccountId: string | null
   laterProfileId: string | null
   postingProvider: 'ZAPIER' | 'LATER' | null

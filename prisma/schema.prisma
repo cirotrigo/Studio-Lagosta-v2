@@ -215,6 +215,10 @@ model Project {
   /// Id com escopo de app, devolvido por /me (diferente de instagramUserId)
   instagramAppScopedId        String?
   aiChatBehavior              String?
+  /// Direção de arte da melhoria com IA. Nulo = usa DEFAULT_ART_DIRECTION
+  /// (src/lib/ai/openai-image-client.ts). Serve para apertar as regras num
+  /// projeto específico sem endurecer o padrão de todos.
+  artImprovementPrompt        String?
   laterAccountId              String?
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)

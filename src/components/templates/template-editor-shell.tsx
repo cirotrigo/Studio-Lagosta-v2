@@ -230,6 +230,10 @@ function TemplateEditorContent({
   } = useTemplateEditor()
 
   const { pages, currentPageId, setCurrentPageId, isLoading: isPagesLoading } = useMultiPage()
+  const currentPage = React.useMemo(
+    () => pages.find((p) => p.id === currentPageId) ?? null,
+    [pages, currentPageId],
+  )
   const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
   const { canPerformOperation, getCost } = useCredits()
   const { addPage } = usePageActions()
@@ -379,35 +383,19 @@ function TemplateEditorContent({
     }
   }, [templateId, name, design, dynamicFields, generateThumbnail, updateTemplate, markSaved, toast, pages, currentPageId, setCurrentPageId, agendaMode, router])
 
+  // O modal abre sempre, mesmo com uma página só: além de escolher páginas ele
+  // é onde se digita a instrução opcional para a melhoria com IA. Com uma
+  // página, o modal esconde a lista e já vem com ela selecionada.
   const handleExport = React.useCallback(async () => {
-    // Se tem múltiplas páginas, abrir modal de seleção
-    if (pages.length > 1) {
-      setShowGenerateModal(true)
-      return
-    }
+    setShowGenerateModal(true)
+  }, [])
 
-    // Se tem apenas 1 página, exportar diretamente
+  const handleGenerateMultipleCreatives = React.useCallback(async (
+    selectedPageIds: string[],
+    aiInstruction: string,
+  ) => {
     try {
-      // Pegar nome da única página disponível
-      const pageName = pages[0]?.name
-      await exportDesign('jpeg', pageName)
-      toast({
-        title: 'Criativo salvo com sucesso!',
-        description: 'O criativo foi salvo e está disponível na biblioteca.',
-      })
-    } catch (_error) {
-      console.error('Export failed:', _error)
-      toast({
-        title: 'Erro ao salvar criativo',
-        description: _error instanceof Error ? _error.message : 'Não foi possível salvar o criativo.',
-        variant: 'destructive',
-      })
-    }
-  }, [pages, exportDesign, toast])
-
-  const handleGenerateMultipleCreatives = React.useCallback(async (selectedPageIds: string[]) => {
-    try {
-      await generateMultiple(selectedPageIds)
+      await generateMultiple(selectedPageIds, aiInstruction)
       setShowGenerateModal(false)
     } catch (_error) {
       console.error('[TemplateEditor] Error generating multiple creatives:', _error)
@@ -1195,6 +1183,7 @@ function TemplateEditorContent({
             templateId={templateId}
             pageId={currentPageId}
             onExportImage={() => exportStageDataUrl('jpeg')}
+            onExportCreative={() => exportDesign('jpeg', currentPage?.name)}
           />
         )}
       </>
@@ -1230,6 +1219,7 @@ function TemplateEditorContent({
             templateId={templateId}
             pageId={currentPageId}
             onExportImage={() => exportStageDataUrl('jpeg')}
+            onExportCreative={() => exportDesign('jpeg', currentPage?.name)}
           />
         )}
       </>
@@ -1259,6 +1249,7 @@ function TemplateEditorContent({
           templateId={templateId}
           pageId={currentPageId}
           onExportImage={() => exportStageDataUrl('jpeg')}
+            onExportCreative={() => exportDesign('jpeg', currentPage?.name)}
         />
       )}
     </>

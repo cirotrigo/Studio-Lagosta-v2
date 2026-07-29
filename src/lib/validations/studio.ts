@@ -61,6 +61,7 @@ export const updateProjectSettingsSchema = z
     googleDriveVideosFolderId: driveField,
     googleDriveVideosFolderName: driveField,
     aiChatBehavior: z.string().max(10000, 'Comportamento do chat deve ter no máximo 10.000 caracteres').nullable().optional(),
+    artImprovementPrompt: z.string().max(10000, 'Direção de arte deve ter no máximo 10.000 caracteres').nullable().optional(),
     laterAccountId: z.string().nullable().optional().or(z.literal('')),
     laterProfileId: z.string().nullable().optional().or(z.literal('')),
     postingProvider: z.enum(['LATER']).nullable().optional(),
@@ -111,11 +112,19 @@ export const updateProjectSettingsSchema = z
 
     // Allow individual fields to be sent alone or with Google Drive fields
     const hasAiChatBehavior = Object.prototype.hasOwnProperty.call(data, 'aiChatBehavior')
+    const hasArtImprovementPrompt = Object.prototype.hasOwnProperty.call(data, 'artImprovementPrompt')
     const hasLaterAccountId = Object.prototype.hasOwnProperty.call(data, 'laterAccountId')
     const hasLaterProfileId = Object.prototype.hasOwnProperty.call(data, 'laterProfileId')
     const hasPostingProvider = Object.prototype.hasOwnProperty.call(data, 'postingProvider')
 
-    if (!touched && !hasAiChatBehavior && !hasLaterAccountId && !hasLaterProfileId && !hasPostingProvider) {
+    if (
+      !touched &&
+      !hasAiChatBehavior &&
+      !hasArtImprovementPrompt &&
+      !hasLaterAccountId &&
+      !hasLaterProfileId &&
+      !hasPostingProvider
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message: 'Envie pelo menos um campo para atualizar',

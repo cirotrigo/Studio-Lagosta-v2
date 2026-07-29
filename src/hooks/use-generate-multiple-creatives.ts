@@ -2,6 +2,7 @@ import * as React from 'react'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { useMultiPage } from '@/contexts/multi-page-context'
 import { useToast } from '@/hooks/use-toast'
+import { useImproveQueueStore } from '@/stores/improve-queue-store'
 
 interface GenerationProgress {
   current: number
@@ -11,7 +12,7 @@ interface GenerationProgress {
 }
 
 interface UseGenerateMultipleCreativesReturn {
-  generateMultiple: (pageIds: string[]) => Promise<void>
+  generateMultiple: (pageIds: string[], aiInstruction?: string) => Promise<void>
   isGenerating: boolean
   progress: GenerationProgress | null
 }
@@ -20,9 +21,10 @@ interface UseGenerateMultipleCreativesReturn {
  * Hook para gerar múltiplos criativos (uma página por vez, sequencialmente)
  */
 export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesReturn {
-  const { exportDesign } = useTemplateEditor()
+  const { exportDesign, projectId } = useTemplateEditor()
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
   const { toast } = useToast()
+  const addImproveJob = useImproveQueueStore((s) => s.addJob)
 
   const [isGenerating, setIsGenerating] = React.useState(false)
   const [progress, setProgress] = React.useState<GenerationProgress | null>(null)
@@ -31,10 +33,13 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
   const originalPageIdRef = React.useRef<string | null>(null)
 
   const generateMultiple = React.useCallback(
-    async (pageIds: string[]) => {
+    async (pageIds: string[], aiInstruction = '') => {
       if (pageIds.length === 0) {
         return
       }
+
+      const wantsImprovement = aiInstruction.trim().length > 0
+      let queuedForImprovement = 0
 
       // Guardar página atual para restaurar depois
       originalPageIdRef.current = currentPageId
@@ -90,7 +95,24 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
             await new Promise((resolve) => setTimeout(resolve, 500))
 
             // Exportar a página atual com nome da página
-            await exportDesign('jpeg', page.name)
+            const record = await exportDesign('jpeg', page.name)
+
+            // A melhoria roda na fila global (serial), fora deste loop — quem
+            // processa é o ImproveQueueProvider do layout protegido. Sem
+            // generationId não há o que melhorar: a arte fica só como gerada.
+            if (wantsImprovement && record.generationId) {
+              addImproveJob({
+                generationId: record.generationId,
+                projectId,
+                generationThumbnailUrl: record.resultUrl ?? null,
+                generationLabel: page.name,
+                userRequest: aiInstruction.trim(),
+                backgroundImageUrl: null,
+                selectedLogoIds: [],
+                selectedElementIds: [],
+              })
+              queuedForImprovement += 1
+            }
 
             successes.push(pageId)
 
@@ -113,11 +135,16 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
         }
 
         // Toast final com resultado
+        const improvementNote =
+          queuedForImprovement > 0
+            ? ` ${queuedForImprovement} na fila de melhoria com IA.`
+            : ''
+
         if (errors.length === 0) {
           // Sucesso total
           toast({
             title: '✅ Criativos gerados com sucesso!',
-            description: `${successes.length} criativo${successes.length > 1 ? 's foram gerados' : ' foi gerado'}.`,
+            description: `${successes.length} criativo${successes.length > 1 ? 's foram gerados' : ' foi gerado'}.${improvementNote}`,
           })
         } else if (successes.length === 0) {
           // Falha total
@@ -130,7 +157,7 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
           // Sucesso parcial
           toast({
             title: '⚠️ Geração parcial',
-            description: `${successes.length} criativo${successes.length > 1 ? 's gerados' : ' gerado'}, ${errors.length} falha${errors.length > 1 ? 's' : ''}.`,
+            description: `${successes.length} criativo${successes.length > 1 ? 's gerados' : ' gerado'}, ${errors.length} falha${errors.length > 1 ? 's' : ''}.${improvementNote}`,
             variant: 'default',
           })
         }
@@ -149,7 +176,7 @@ export function useGenerateMultipleCreatives(): UseGenerateMultipleCreativesRetu
         setProgress(null)
       }
     },
-    [pages, currentPageId, setCurrentPageId, exportDesign, toast]
+    [pages, currentPageId, setCurrentPageId, exportDesign, toast, addImproveJob, projectId]
   )
 
   return {

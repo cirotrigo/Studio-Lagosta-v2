@@ -369,6 +369,7 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
       size: openaiSize,
       references: references.length > 0 ? references : undefined,
       brandColors: assets.colors,
+      artDirection: assets.artDirection,
     })
 
     const finalBuffer = await sharp(improvedBuffer)

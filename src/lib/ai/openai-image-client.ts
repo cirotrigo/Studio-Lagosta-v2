@@ -1,5 +1,6 @@
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
+import { DEFAULT_ART_DIRECTION } from './art-direction'
 
 let cachedClient: OpenAI | null = null
 
@@ -23,16 +24,6 @@ function getClient(): OpenAI {
  */
 const IMAGE_MODEL = process.env.OPENAI_IMAGE_MODEL || 'gpt-image-2'
 
-/**
- * Limite de área para textos, expressado em linguagem visual.
- * O gpt-image entende melhor descrições visuais do que percentuais matemáticos.
- * Customizável via env (ex: "no máximo 20% da arte" ou "muito compactos, ocupando
- * menos de um quinto da imagem").
- */
-const TEXT_AREA_HINT =
-  process.env.OPENAI_IMAGE_TEXT_AREA_HINT ||
-  'no máximo um quarto (cerca de 25%) da área visual total da arte'
-
 export function getCurrentImageModel(): string {
   return IMAGE_MODEL
 }
@@ -53,6 +44,8 @@ interface BuildPromptArgs {
   userRequest: string
   references: ReferenceImage[]
   brandColors: BrandColor[]
+  /** Direção de arte do projeto; cai no DEFAULT_ART_DIRECTION quando vazia. */
+  artDirection?: string | null
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -86,15 +79,14 @@ function buildBrandColorsSection(colors: BrandColor[]): string {
   return `[CORES DA MARCA]\nA paleta oficial deste projeto:\n${list}\nPriorize estas cores para textos, ênfases e elementos visuais quando precisar ajustar contraste ou hierarquia.`
 }
 
-function buildPedidoSection(userRequest: string, hasBackground: boolean): string {
+function buildPedidoSection(userRequest: string): string {
   const trimmed = userRequest.trim()
-  if (trimmed.length > 0) {
-    return `[PEDIDO DO CLIENTE]\n${trimmed}`
-  }
-  if (hasBackground) {
-    return `[PEDIDO DO CLIENTE]\nSubstitua APENAS o fundo do criativo pela nova imagem fornecida. Mantenha EXATAMENTE textos, logo, cores da marca e tipografia da IMAGEM 1 — não reescreva, não traduza, não troque ordem nem adicione conteúdo.`
-  }
-  return `[PEDIDO DO CLIENTE]\nAprimoramento geral: aplique apenas as diretrizes do Diretor de Arte (hierarquia, espaçamentos, contraste, ênfase). Mantenha EXATAMENTE o mesmo conteúdo de textos da arte original — não reescreva, não traduza, não acrescente palavras.`
+  if (trimmed.length === 0) return ''
+  return `[PEDIDO DO CLIENTE]
+${trimmed}
+
+Este pedido tem prioridade sobre as diretrizes de diagramação acima, mas nunca
+sobre os limites (palavras, família tipográfica, paleta e logo).`
 }
 
 function buildAssetsUsageSection(references: ReferenceImage[]): string {
@@ -116,60 +108,35 @@ function buildAssetsUsageSection(references: ReferenceImage[]): string {
 }
 
 function buildBackgroundIntegrationSection(): string {
-  return `[INTEGRAÇÃO DO NOVO FUNDO]
-- Identifique o ponto focal e as áreas mais "limpas" da nova imagem de fundo e posicione os blocos de texto sobre essas áreas para preservar legibilidade.
-- Se necessário, aplique um leve overlay (gradiente sutil escuro ou claro, no máximo 25% de opacidade) APENAS atrás dos textos para garantir contraste — nunca cobrindo a imagem inteira.
-- Se a nova imagem de fundo tem alto contraste/cores fortes, ajuste a cor do texto e/ou da logo (mantendo a paleta da marca) para preservar legibilidade.
-- Não altere a iluminação, saturação ou conteúdo da nova imagem de fundo em si — apenas a sobreponha.`
+  return `[NOVO FUNDO]
+A nova imagem de fundo substitui completamente o fundo da IMAGEM 1 e ocupa 100%
+da área visível. Preserve o ponto focal natural dela — não recorte de forma
+agressiva e não altere seu conteúdo. Aplique a [LEITURA DA FOTO] sobre esta nova
+imagem, não sobre a original.`
 }
 
-function buildPrompt({ userRequest, references, brandColors }: BuildPromptArgs): string {
+/**
+ * Monta o prompt final.
+ *
+ * O que o sistema é dono e o projeto não pode reescrever: o mapa das imagens
+ * (quem é IMAGEM 1, 2, 3…, que depende do que foi anexado em runtime), a paleta
+ * da marca, o uso dos assets e o pedido do cliente. O miolo — a direção de arte
+ * — é `artDirection`, que vem do projeto quando ele tem um prompt próprio e cai
+ * no DEFAULT_ART_DIRECTION quando não tem.
+ */
+function buildPrompt({ userRequest, references, brandColors, artDirection }: BuildPromptArgs): string {
   const hasBackground = references.some((r) => r.role === 'background')
-  const hasReferences = references.length > 0
-
   const sections: string[] = []
 
-  sections.push(`[INSTRUÇÃO TIPOGRÁFICA — PRIORIDADE MÁXIMA]
-Antes de qualquer outra modificação, examine cuidadosamente a tipografia da arte original (IMAGEM 1) e siga estas regras críticas:
-
-TAMANHO DOS TEXTOS (padrão): os blocos de texto na versão melhorada devem ocupar ${TEXT_AREA_HINT} e permanecer COMPACTOS e DISCRETOS. Por padrão, mantenha o tamanho dos textos igual ou menor que a arte original — para destacar informações, prefira peso, cor ou posição em vez de ampliação de fonte.
-
-EXCEÇÃO — PEDIDO EXPLÍCITO DO CLIENTE: se o [PEDIDO DO CLIENTE] solicitar aumento, diminuição ou redimensionamento de algum texto (ex: "aumente o título", "diminua o subtítulo", "destaque o preço com fonte maior"), respeite o pedido. O pedido do cliente tem prioridade sobre o padrão de compactação, mas mantenha a proporção interna entre os demais textos não citados.
-
-FIDELIDADE TIPOGRÁFICA: replique fielmente as fontes da IMAGEM 1. Observe a família tipográfica (serif, sans-serif, display, manuscrita), o peso (light, regular, medium, bold, black) e o estilo (italic, normal). Mantenha exatamente o mesmo tipo de letra. Se a IMAGEM 1 usa uma fonte com personalidade marcante, preserve essa personalidade. NÃO modernize, NÃO substitua por fontes "mais limpas", NÃO troque serif por sans-serif (ou vice-versa).
-
-PROPORÇÃO INTERNA: a relação de tamanho entre título, subtítulo, corpo de texto e detalhes deve permanecer EXATAMENTE como na IMAGEM 1, salvo se o [PEDIDO DO CLIENTE] pedir alteração explícita para algum desses textos. Se o título original era 3× maior que o corpo, mantenha 3×. Não inverta nem altere essa hierarquia sem pedido expresso.`)
-
-  if (hasReferences) {
+  if (references.length > 0) {
     sections.push(buildContextSection(references))
   }
 
   const colorsSection = buildBrandColorsSection(brandColors)
   if (colorsSection) sections.push(colorsSection)
 
-  sections.push(buildPedidoSection(userRequest, hasBackground))
-
-  sections.push(`[PAPEL]
-Atue como um Diretor de Arte Sênior focado em design de comunicação. ${
-    hasBackground
-      ? 'Sua tarefa é montar a versão final da peça posicionando os elementos da IMAGEM 1 sobre a nova imagem de fundo, com foco em leitura rápida em dispositivos móveis e elevando organização, clareza e percepção de valor.'
-      : 'Sua tarefa é aprimorar o layout da peça fornecida, elevando organização, clareza e percepção de valor, com foco em leitura rápida em dispositivos móveis.'
-  }`)
-
-  const restricoes: string[] = ['[RESTRIÇÕES ABSOLUTAS — O QUE NÃO ALTERAR]']
-  if (hasBackground) {
-    restricoes.push(
-      '- Use a nova imagem de fundo (IMAGEM 2) como fundo da peça final, ocupando 100% da área visível. Não recorte de forma agressiva; preserve o ponto focal natural da imagem.',
-    )
-  } else {
-    restricoes.push('- Preserve exatamente a mesma imagem de fundo da peça original.')
-  }
-  restricoes.push('- Mantenha a identidade visual e a paleta de cores da marca.')
-  restricoes.push('- Mantenha a mesma família tipográfica (ver INSTRUÇÃO TIPOGRÁFICA acima).')
-  restricoes.push(
-    '- Não altere, distorça ou reposicione a logo de forma a perder reconhecimento. Pode mover dentro do enquadramento, mas mantenha proporções e cores.',
-  )
-  sections.push(restricoes.join('\n'))
+  const direction = artDirection?.trim() || DEFAULT_ART_DIRECTION
+  sections.push(direction)
 
   if (hasBackground) {
     sections.push(buildBackgroundIntegrationSection())
@@ -178,33 +145,8 @@ Atue como um Diretor de Arte Sênior focado em design de comunicação. ${
   const assetsUsage = buildAssetsUsageSection(references)
   if (assetsUsage) sections.push(assetsUsage)
 
-  sections.push(`[DIRETRIZES DE COMPOSIÇÃO E TEXTO]
-- Hierarquia visual: reorganize alinhamento e distribuição dos blocos de texto para leitura lógica e equilibrada, evitando poluição visual.
-- Espaçamento: ajuste os respiros (white space) entre elementos para conforto de leitura${hasBackground ? ' sobre a nova imagem de fundo' : ''}.
-- Ênfase: use peso da fonte, cor ou posição (NÃO tamanho) para destacar informações.
-- Contraste: garanta alto contraste do texto contra o fundo${hasBackground ? ' — usando overlay sutil ou ajuste de cor de fonte se necessário' : ''}.`)
-
-  sections.push(`[ACABAMENTO ESTÉTICO]
-- Aplique uma textura sutil e coerente APENAS no título principal, sem comprometer legibilidade.`)
-
-  const reforco: string[] = ['[REFORÇO FINAL — REGRAS CRÍTICAS]']
-  reforco.push(
-    `- TEXTOS COMPACTOS por padrão (${TEXT_AREA_HINT}), mas respeite ajustes de tamanho pedidos explicitamente no [PEDIDO DO CLIENTE].`,
-  )
-  reforco.push('- FONTES IDÊNTICAS às da IMAGEM 1 — mesma família, peso e estilo.')
-  reforco.push(
-    '- PROPORÇÕES TIPOGRÁFICAS preservadas para textos não citados no pedido — sem ampliação não solicitada.',
-  )
-  if (hasBackground) {
-    reforco.push('- FUNDO = nova imagem fornecida (IMAGEM 2), sem alterações de conteúdo na imagem em si.')
-  }
-  sections.push(reforco.join('\n'))
-
-  sections.push(
-    hasBackground
-      ? 'O resultado deve ser uma versão altamente profissional e bem resolvida, combinando o conteúdo gráfico da IMAGEM 1 com o novo fundo, mantendo a essência e a identidade da marca do cliente.'
-      : 'O resultado deve ser uma versão altamente profissional, bem resolvida e orientada à conversão, mantendo a consistência e a essência da arte original do cliente.',
-  )
+  const pedido = buildPedidoSection(userRequest)
+  if (pedido) sections.push(pedido)
 
   return sections.join('\n\n')
 }
@@ -216,6 +158,8 @@ interface ImproveCreativeOptions {
   size: string
   references?: ReferenceImage[]
   brandColors?: BrandColor[]
+  /** `Project.artImprovementPrompt` — substitui a direção de arte padrão. */
+  artDirection?: string | null
   timeoutMs?: number
 }
 
@@ -243,11 +187,12 @@ export async function improveCreative({
   size,
   references = [],
   brandColors = [],
+  artDirection = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = buildPrompt({ userRequest, references, brandColors })
+  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,
@@ -294,8 +239,9 @@ export async function improveCreative({
       references.length > 0
         ? ` (refs: bg=${refCounts.bg}, logos=${refCounts.logos}, elements=${refCounts.elements})`
         : ''
+    const directionSuffix = artDirection?.trim() ? ' [direção do projeto]' : ''
     console.log(
-      `[improveCreative] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s${refSuffix}`,
+      `[improveCreative] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s${refSuffix}${directionSuffix}`,
     )
 
     const b64 = response.data?.[0]?.b64_json
