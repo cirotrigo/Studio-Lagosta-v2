@@ -46,6 +46,18 @@ const bodySchema = z.object({
     .max(MAX_SELECTED_ELEMENTS)
     .optional()
     .default([]),
+  /**
+   * Post da agenda que deve receber a arte melhorada ao final. Regra de
+   * negócio: só post APROVADO (status SCHEDULED) pode ser melhorado — rascunho
+   * se edita, não se melhora.
+   */
+  applyToPostId: z.string().min(1).optional().nullable(),
+  /**
+   * Fonte da imagem a melhorar, quando diferente do resultUrl da Generation —
+   * um post pode ter sido re-renderizado pelo cron depois que a Generation foi
+   * criada, e o que se melhora é a arte que está NO POST.
+   */
+  sourceImageUrl: z.string().url().optional().nullable(),
 })
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
@@ -67,10 +79,20 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 400 },
       )
     }
-    const { userRequest, backgroundImageUrl, selectedLogoIds, selectedElementIds } = parsed.data
+    const {
+      userRequest,
+      backgroundImageUrl,
+      selectedLogoIds,
+      selectedElementIds,
+      applyToPostId,
+      sourceImageUrl,
+    } = parsed.data
 
     if (backgroundImageUrl && !VERCEL_BLOB_HOST_REGEX.test(backgroundImageUrl)) {
       return NextResponse.json({ error: 'URL de fundo não permitida' }, { status: 400 })
+    }
+    if (sourceImageUrl && !VERCEL_BLOB_HOST_REGEX.test(sourceImageUrl)) {
+      return NextResponse.json({ error: 'URL de origem não permitida' }, { status: 400 })
     }
 
     const original = await db.generation.findFirst({
@@ -100,6 +122,29 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     if (!hasProjectWriteAccess(project, { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+    }
+
+    if (applyToPostId) {
+      const post = await db.socialPost.findFirst({
+        where: { id: applyToPostId, projectId: original.projectId },
+        select: { id: true, status: true },
+      })
+      if (!post) {
+        return NextResponse.json({ error: 'Post não encontrado neste projeto' }, { status: 404 })
+      }
+      // Regra de negócio: melhorar com IA só arte APROVADA. Rascunho se edita
+      // no editor; a melhoria entra depois da aprovação.
+      if (post.status !== 'SCHEDULED') {
+        return NextResponse.json(
+          {
+            error:
+              post.status === 'DRAFT'
+                ? 'Este post ainda é rascunho. Aprove-o primeiro — só arte aprovada pode ser melhorada com IA.'
+                : `Este post não pode ser melhorado (status ${post.status}).`,
+          },
+          { status: 400 },
+        )
+      }
     }
 
     try {
@@ -139,6 +184,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           backgroundImageUrl: backgroundImageUrl ?? null,
           selectedLogoIds,
           selectedElementIds,
+          applyToPostId: applyToPostId ?? null,
           model: getCurrentImageModel(),
           quality: 'high',
           inputSize: openaiSize,
@@ -158,7 +204,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       processImprovementInBackground({
         jobGenerationId: job.id,
         originalGenerationId: original.id,
-        originalResultUrl: original.resultUrl!,
+        originalResultUrl: sourceImageUrl ?? original.resultUrl!,
+        applyToPostId: applyToPostId ?? null,
         userId,
         orgId: orgId ?? undefined,
         projectId: original.projectId,
@@ -199,6 +246,7 @@ interface BackgroundArgs {
   jobGenerationId: string
   originalGenerationId: string
   originalResultUrl: string
+  applyToPostId: string | null
   userId: string
   orgId?: string
   projectId: number
@@ -446,6 +494,37 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
       organizationId: args.orgId,
       projectId: args.projectId,
     })
+
+    if (args.applyToPostId) {
+      // A melhoria demora ~1min; o post pode ter sido publicado ou despromovido
+      // nesse meio-tempo. Só aplica se AINDA estiver aprovado — trocar a mídia
+      // de um post POSTING/POSTED mentiria sobre o que foi publicado.
+      const updated = await db.socialPost.updateMany({
+        where: {
+          id: args.applyToPostId,
+          projectId: args.projectId,
+          status: 'SCHEDULED',
+        },
+        data: {
+          mediaUrls: [blob.url],
+          generationId: args.jobGenerationId,
+          // A arte agora é uma derivação de IA, não o render da página:
+          // NOT_NEEDED tira o post do alcance do cron render-stories e da
+          // invalidação por edição de página — que zerariam mediaUrls e
+          // voltariam a arte crua por cima da melhoria.
+          renderStatus: 'NOT_NEEDED',
+          nextRenderAt: null,
+          renderError: null,
+        },
+      })
+      if (updated.count === 0) {
+        console.warn(
+          `[improve.bg] post ${args.applyToPostId} não estava mais SCHEDULED — arte melhorada ficou só na galeria (${args.jobGenerationId})`,
+        )
+      } else {
+        console.log(`[improve.bg] arte melhorada aplicada ao post ${args.applyToPostId}`)
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Erro desconhecido'
     console.error('[improve.bg] failed:', message)

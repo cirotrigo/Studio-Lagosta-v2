@@ -50,6 +50,8 @@ export function useImproveQueueProcessor() {
           ...(next.selectedElementIds && next.selectedElementIds.length > 0
             ? { selectedElementIds: next.selectedElementIds }
             : {}),
+          ...(next.applyToPostId ? { applyToPostId: next.applyToPostId } : {}),
+          ...(next.sourceImageUrl ? { sourceImageUrl: next.sourceImageUrl } : {}),
         }
       )
 
@@ -66,9 +68,17 @@ export function useImproveQueueProcessor() {
         })
         queryClient.invalidateQueries({ queryKey: ['generations', next.projectId] })
         queryClient.invalidateQueries({ queryKey: ['all-generations'] })
+        if (next.applyToPostId) {
+          // O servidor já aplicou a arte no post — aqui só refresca a agenda.
+          queryClient.invalidateQueries({ queryKey: ['social-posts', next.projectId] })
+          queryClient.invalidateQueries({ queryKey: ['social-post', next.applyToPostId] })
+          queryClient.invalidateQueries({ queryKey: ['agenda-posts', next.projectId] })
+        }
         toast({
           title: 'Criativo melhorado',
-          description: `"${next.generationLabel}" disponível na galeria.`,
+          description: next.applyToPostId
+            ? `"${next.generationLabel}" — a arte do post agendado foi atualizada.`
+            : `"${next.generationLabel}" disponível na galeria.`,
         })
       } else {
         const errorMessage = finalStatus.fieldValues?.error || 'Falha desconhecida no servidor'

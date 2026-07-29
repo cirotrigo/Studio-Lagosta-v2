@@ -397,6 +397,7 @@ export const MCP_TOOLS: McpTool[] = [
         scheduledDatetime: { type: 'string', description: 'Quando: "AAAA-MM-DD HH:mm" no horário de Brasília.' },
         pageId: { type: 'string', description: 'A arte criada aqui (veio de criar-arte ou criar-arte-de-modelo).' },
         mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
+        generationId: { type: 'string', description: 'O generationId que criar-arte devolveu. Vincula o criativo ao post e habilita "Melhorar com IA" na agenda depois de aprovado. Passe sempre que tiver.' },
         situacao: {
           type: 'string',
           enum: ['rascunho', 'agendado'],
@@ -421,6 +422,7 @@ export const MCP_TOOLS: McpTool[] = [
         scheduledDatetime: requireString(args, 'scheduledDatetime'),
         pageId: args.pageId,
         mediaUrls: args.mediaUrls,
+        generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
         situacao,
       })
     },

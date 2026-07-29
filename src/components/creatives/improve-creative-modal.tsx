@@ -30,6 +30,11 @@ interface ImproveTarget {
   projectId: number
   resultUrl: string | null
   templateName?: string | null
+  /**
+   * Quando a melhoria vem da agenda: post aprovado que recebe a arte melhorada
+   * ao final (aplicado pelo servidor). resultUrl deve ser a arte ATUAL do post.
+   */
+  applyToPostId?: string | null
 }
 
 interface ImproveCreativeModalProps {
@@ -228,6 +233,10 @@ export function ImproveCreativeModal({
       backgroundImageUrl: backgroundUrl,
       selectedLogoIds,
       selectedElementIds,
+      applyToPostId: generation.applyToPostId ?? null,
+      // A arte que se melhora é a que está no post — pode diferir do resultUrl
+      // da Generation se o cron re-renderizou a página depois.
+      sourceImageUrl: generation.applyToPostId ? generation.resultUrl : null,
     })
 
     toast({

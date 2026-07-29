@@ -26,7 +26,8 @@ import {
   CalendarCheck,
   FileEdit,
   Undo2,
-  Loader2
+  Loader2,
+  Sparkles
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -43,6 +44,7 @@ import { useProject } from '@/hooks/use-project'
 import { RescheduleDialog } from './reschedule-dialog'
 import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
+import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { toast } from 'sonner'
 import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
@@ -60,6 +62,7 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [duplicateOpen, setDuplicateOpen] = useState(false)
   const [approveOpen, setApproveOpen] = useState(false)
+  const [improveOpen, setImproveOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const [isPolling, setIsPolling] = useState(false)
   const { publishNow, deletePost } = usePostActions(post.projectId)
@@ -128,6 +131,17 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
 
   const currentMediaUrl = mediaUrls[currentImageIndex]
   const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
+
+  /**
+   * Melhorar com IA exige: post APROVADO (SCHEDULED — rascunho se edita, não
+   * se melhora), uma Generation vinculada (é o que a rota de melhoria recebe)
+   * e uma imagem atual. Posts antigos sem generationId não mostram o botão.
+   */
+  const canImprove =
+    post.status === 'SCHEDULED' &&
+    !!post.generationId &&
+    mediaUrls.length > 0 &&
+    !isCurrentMediaVideo
 
   const handlePrevImage = () => {
     setCurrentImageIndex((prev) => (prev === 0 ? mediaUrls.length - 1 : prev - 1))
@@ -689,6 +703,20 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 </>
               )}
 
+              {/* Melhorar com IA: só arte APROVADA. Rascunho se edita no
+                  editor — a melhoria entra depois da aprovação, e o servidor
+                  reforça a mesma regra. */}
+              {canImprove && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setImproveOpen(true)}
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Melhorar com IA
+                </Button>
+              )}
+
               {isTemplateBased && post.templateId ? (
                 <Button
                   variant="outline"
@@ -763,6 +791,23 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Melhorar com IA — só chega aqui com post SCHEDULED (canImprove) */}
+      {canImprove && post.generationId && (
+        <ImproveCreativeModal
+          generation={{
+            id: post.generationId,
+            projectId: post.projectId,
+            // A arte que se melhora é a que está NO POST, não o resultUrl da
+            // Generation — o cron pode ter re-renderizado depois dela.
+            resultUrl: mediaUrls[0],
+            templateName: `${isStory ? 'Story' : 'Post'} agendado — ${formatPostDateTimeBR(post)}`,
+            applyToPostId: post.id,
+          }}
+          open={improveOpen}
+          onOpenChange={setImproveOpen}
+        />
+      )}
 
       {/* Dialog de Re-agendamento */}
       <RescheduleDialog

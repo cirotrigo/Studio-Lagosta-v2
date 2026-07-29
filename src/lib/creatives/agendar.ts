@@ -42,6 +42,12 @@ export interface AgendarPostInput {
   /** Imagens prontas, quando não vier de uma página */
   mediaUrls?: string[]
   /**
+   * Generation que originou a arte (criar-arte devolve esse id). É o vínculo
+   * que permite "Melhorar com IA" depois que o post for aprovado — sem ele a
+   * rota de melhoria não tem o que melhorar.
+   */
+  generationId?: string
+  /**
    * "rascunho" (padrão) só aparece na agenda; "agendado" entra na fila e
    * publica de verdade. O vocabulário é o da pessoa, não o do banco.
    */
@@ -105,6 +111,36 @@ export async function agendarPost(input: AgendarPostInput) {
     }
   }
 
+  /**
+   * Vincular a Generation ao post é o que habilita "Melhorar com IA" na agenda.
+   * Quando o chamador não informa (Claudinho antigo, mediaUrls prontos), tenta
+   * derivar: a Generation criada por persistAndRenderCreative tem `resultUrl`
+   * idêntico ao PNG que virou a mídia do post — o sufixo aleatório do Blob
+   * torna o match inequívoco.
+   */
+  let generationId: string | null = null
+  if (input.generationId) {
+    const gen = await db.generation.findFirst({
+      where: { id: input.generationId, projectId: project.id },
+      select: { id: true },
+    })
+    if (!gen) {
+      throw new CreativeError(
+        'GENERATION_NOT_FOUND',
+        `Criativo não encontrado neste projeto: ${input.generationId}`,
+        404,
+      )
+    }
+    generationId = gen.id
+  } else if (mediaUrls.length > 0) {
+    const gen = await db.generation.findFirst({
+      where: { projectId: project.id, resultUrl: mediaUrls[0] },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    })
+    generationId = gen?.id ?? null
+  }
+
   const vaiPublicar = input.situacao === 'agendado'
   const status = (vaiPublicar ? 'SCHEDULED' : 'DRAFT') as PostStatus
   const quando = parseBRT(input.scheduledDatetime)
@@ -139,6 +175,7 @@ export async function agendarPost(input: AgendarPostInput) {
       status,
       pageId: input.pageId ?? null,
       templateId,
+      generationId,
       renderStatus: (mediaUrls.length === 0
         ? 'PENDING'
         : midiaVeioDaPagina

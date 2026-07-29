@@ -15,6 +15,10 @@ export interface ImproveJob {
   backgroundImageUrl?: string | null
   selectedLogoIds?: number[]
   selectedElementIds?: number[]
+  /** Post aprovado (SCHEDULED) que recebe a arte melhorada — aplicado pelo servidor. */
+  applyToPostId?: string | null
+  /** Arte atual do post, quando difere do resultUrl da Generation. */
+  sourceImageUrl?: string | null
   status: ImproveJobStatus
   createdAt: number
   startedAt?: number
@@ -36,6 +40,8 @@ interface AddJobInput {
   backgroundImageUrl?: string | null
   selectedLogoIds?: number[]
   selectedElementIds?: number[]
+  applyToPostId?: string | null
+  sourceImageUrl?: string | null
 }
 
 interface ImproveQueueState {
