@@ -63,8 +63,9 @@ export function ContinuousWorkspace() {
   const containerRef = React.useRef<HTMLDivElement | null>(null)
   const slotRefs = React.useRef(new Map<string, HTMLDivElement>())
   const scrollDebounceRef = React.useRef<number | null>(null)
-  const programmaticScrollRef = React.useRef(false)
-  const programmaticTimerRef = React.useRef<number | null>(null)
+  // Timestamp em vez de flag+timer: setTimeout é estrangulado em aba oculta e
+  // deixava a flag presa; Date.now() não tem esse problema
+  const programmaticUntilRef = React.useRef(0)
   const pendingScrollToRef = React.useRef<string | null>(null)
   const initialScrollDoneRef = React.useRef(false)
 
@@ -135,17 +136,24 @@ export function ContinuousWorkspace() {
 
   const scrollToPage = React.useCallback((pageId: string, behavior: ScrollBehavior = 'smooth') => {
     const el = slotRefs.current.get(pageId)
-    if (!el) {
+    const container = containerRef.current
+    if (!el || !container) {
       // Slot ainda não montou (página recém-criada) — o efeito de pendência resolve
       pendingScrollToRef.current = pageId
       return
     }
-    programmaticScrollRef.current = true
-    if (programmaticTimerRef.current) window.clearTimeout(programmaticTimerRef.current)
-    el.scrollIntoView({ behavior, block: 'center' })
-    programmaticTimerRef.current = window.setTimeout(() => {
-      programmaticScrollRef.current = false
-    }, PROGRAMMATIC_SCROLL_MS)
+    const containerRect = container.getBoundingClientRect()
+    const elRect = el.getBoundingClientRect()
+    const slotTop = elRect.top - containerRect.top + container.scrollTop
+    // Página mais alta que o viewport alinha pelo topo (cabeçalho visível);
+    // menor que o viewport, centraliza
+    const HEADER_ALLOWANCE = 40
+    const target =
+      elRect.height >= containerRect.height
+        ? slotTop - HEADER_ALLOWANCE
+        : slotTop - (containerRect.height - elRect.height) / 2
+    programmaticUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_MS
+    container.scrollTo({ top: Math.max(0, target), behavior })
   }, [])
 
   /**
@@ -246,7 +254,7 @@ export function ContinuousWorkspace() {
     scheduleLiveIds()
     if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current)
     scrollDebounceRef.current = window.setTimeout(() => {
-      if (programmaticScrollRef.current) return
+      if (Date.now() < programmaticUntilRef.current) return
       if (croppingRef.current) return
       const container = containerRef.current
       if (!container) return
@@ -275,7 +283,6 @@ export function ContinuousWorkspace() {
   React.useEffect(() => {
     return () => {
       if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current)
-      if (programmaticTimerRef.current) window.clearTimeout(programmaticTimerRef.current)
     }
   }, [])
 
