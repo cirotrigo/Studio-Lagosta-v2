@@ -126,6 +126,78 @@ export function ContinuousWorkspace() {
     }
   }, [])
 
+  /**
+   * Âncora do zoom: a página mais próxima do centro do viewport e a fração
+   * (0..1) do centro dentro dela. Guardada em coordenadas relativas porque é
+   * o único jeito de sobreviver ao re-layout — os slots são redimensionados
+   * (`pageWidth * zoom`), então escalar `scrollTop` por `novoZoom/velhoZoom`
+   * erraria: gap, cabeçalho e padding da coluna são fixos em px de tela e não
+   * acompanham o zoom.
+   */
+  const anchorRef = React.useRef<{ pageId: string; uY: number; uX: number } | null>(null)
+  const prevZoomRef = React.useRef(zoom)
+
+  const captureAnchor = React.useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+    const cRect = container.getBoundingClientRect()
+    const centerY = cRect.top + cRect.height / 2
+    const centerX = cRect.left + cRect.width / 2
+
+    let best: { pageId: string; uY: number; uX: number } | null = null
+    let bestDist = Number.POSITIVE_INFINITY
+    for (const [pageId, el] of slotRefs.current) {
+      const r = el.getBoundingClientRect()
+      const dist = Math.abs(r.top + r.height / 2 - centerY)
+      if (dist < bestDist) {
+        bestDist = dist
+        best = {
+          pageId,
+          uY: r.height > 0 ? (centerY - r.top) / r.height : 0.5,
+          uX: r.width > 0 ? (centerX - r.left) / r.width : 0.5,
+        }
+      }
+    }
+    if (best) anchorRef.current = best
+  }, [])
+
+  /**
+   * Repõe o scroll depois do re-layout para o ponto ancorado continuar no
+   * centro. Sem isso, ampliar aumenta a altura de todos os slots, o
+   * `scrollTop` fica parado e o conteúdo desliza — e pior: o `handleScroll`
+   * vê outra página como "mais visível" e TROCA A PÁGINA ATIVA.
+   *
+   * useLayoutEffect (não useEffect) para corrigir antes do paint: em useEffect
+   * o salto apareceria por um frame.
+   */
+  React.useLayoutEffect(() => {
+    const prevZoom = prevZoomRef.current
+    if (prevZoom === zoom) return
+    prevZoomRef.current = zoom
+
+    // O auto-fit inicial faz setZoom + scrollToPage; compensar aqui brigaria
+    // com ele e jogaria a página de entrada (link da agenda) fora da tela.
+    if (!initialScrollDoneRef.current) return
+
+    const anchor = anchorRef.current
+    const container = containerRef.current
+    if (!anchor || !container) return
+    const el = slotRefs.current.get(anchor.pageId)
+    if (!el) return
+
+    const cRect = container.getBoundingClientRect()
+    const r = el.getBoundingClientRect()
+    const slotTop = r.top - cRect.top + container.scrollTop
+    const slotLeft = r.left - cRect.left + container.scrollLeft
+
+    // Segura o handleScroll: o scroll abaixo é nosso, não do usuário, e sem a
+    // trava ele trocaria a página ativa (flush + load do PageSync à toa).
+    programmaticUntilRef.current = Date.now() + PROGRAMMATIC_SCROLL_MS
+    container.scrollTop = Math.max(0, slotTop + anchor.uY * r.height - cRect.height / 2)
+    container.scrollLeft = Math.max(0, slotLeft + anchor.uX * r.width - cRect.width / 2)
+    scheduleLiveIds()
+  }, [zoom, scheduleLiveIds])
+
   const registerSlot = React.useCallback((pageId: string, el: HTMLDivElement | null) => {
     if (el) {
       slotRefs.current.set(pageId, el)
@@ -252,6 +324,10 @@ export function ContinuousWorkspace() {
   // (acima do limiar) vira ativa. Scroll programático não ativa (flag).
   const handleScroll = React.useCallback(() => {
     scheduleLiveIds()
+    // Âncora fresca a cada scroll do usuário — é ela que o zoom vai repor.
+    // Scroll programático (o nosso, o scrollToPage) não conta: sobrescreveria
+    // a âncora boa com a posição que ainda estamos ajustando.
+    if (Date.now() >= programmaticUntilRef.current) captureAnchor()
     if (scrollDebounceRef.current) window.clearTimeout(scrollDebounceRef.current)
     scrollDebounceRef.current = window.setTimeout(() => {
       if (Date.now() < programmaticUntilRef.current) return
@@ -302,8 +378,13 @@ export function ContinuousWorkspace() {
         setZoom(clamped)
       }
     }
-    requestAnimationFrame(() => scrollToPage(currentPageId, 'auto'))
-     
+    requestAnimationFrame(() => {
+      scrollToPage(currentPageId, 'auto')
+      // Primeira âncora: quem dá zoom sem ter rolado nada ainda precisa de uma
+      // referência, senão o primeiro clique fica sem compensação.
+      requestAnimationFrame(captureAnchor)
+    })
+
   }, [isLoading, sortedPages, currentPageId])
 
   if (isLoading && sortedPages.length === 0) {

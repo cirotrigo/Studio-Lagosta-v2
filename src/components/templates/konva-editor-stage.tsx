@@ -473,6 +473,16 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       const clampedScale = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newScale))
       if (clampedScale === oldScale) return
 
+      // No modo embutido quem escala é o React (props scaleX/scaleY do <Stage>)
+      // e quem posiciona é o slot da coluna. Animar `stage.position()` aqui
+      // deslocaria o desenho dentro do slot sem nada repor — o <Stage> não
+      // declara props x/y — e o `onUpdate` re-renderizaria a coluna inteira a
+      // cada frame. Só mexe no zoom global; o workspace ancora o scroll.
+      if (embedded) {
+        setZoom(clampedScale)
+        return
+      }
+
       // Obter dimensões do stage (container)
       const stageWidth = stage.width()
 
@@ -508,7 +518,7 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
         },
       }).play()
     },
-    [setZoom, canvasWidth, isMobile],
+    [setZoom, canvasWidth, isMobile, embedded],
   )
 
   const handleLayerChange = React.useCallback(

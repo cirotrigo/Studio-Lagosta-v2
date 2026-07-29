@@ -405,11 +405,14 @@ export function EditorCanvas() {
 
         {/* Zoom Controls - centralizado horizontalmente no rodapé (APENAS DESKTOP) */}
         <div className="hidden md:block">
+          {/* Os limites têm que ser os MESMOS do clamp de `setZoom` no
+              contexto (0.25–2). Anunciar 0.1–5 aqui deixava o botão de ampliar
+              habilitado acima de 200% sem fazer nada. */}
           <ZoomControls
             zoom={zoom}
             onZoomChange={setZoom}
-            minZoom={0.1}
-            maxZoom={5}
+            minZoom={0.25}
+            maxZoom={2}
           />
         </div>
       </div>
