@@ -522,6 +522,33 @@ fecha as duas divergências de maior alcance da tabela e o Auto da caixa:
   altura fixa do nó na tela é o contrato visível com o render server-side, que
   corta pela altura gravada; height auto esconderia a dessincronia.
 
+`docs/SESSAO-2026-07-29-MELHORIA-IA-CRIATIVOS.md` traz a melhoria com IA para a
+agenda e corrige dois defeitos do painel Criativos. Regras que ficaram:
+
+- **Melhorar com IA só em post APROVADO** (SCHEDULED). Rascunho se edita, não se
+  melhora — gate na UI *e* na rota, que recusa antes de cobrar crédito.
+- **Post melhorado vira `renderStatus: NOT_NEEDED`**, senão `render-stories` e
+  `invalidateScheduledRenders` sobrescrevem a arte em minutos. O preço é que
+  editar o template deixa de atualizar a arte daquele post.
+- **`agendarPost` grava `SocialPost.generationId`** (explícito ou derivado por
+  `resultUrl === mediaUrls[0]`). É o vínculo que habilita a melhoria; posts
+  anteriores a 29/07 não têm e **não dá para recuperar** — as 4 causas estão no
+  cabeçalho de `scripts/backfill-post-generation-id.ts`.
+- **`PROCESSING` é o status do banco**; `PENDING`/`POSTING` só existem no canal
+  SSE do export de vídeo. Componente que renderize criativo precisa tratar
+  PROCESSING, senão cai num `<Image>` sem src e vira miniatura quebrada.
+- **Nunca localizar o stage por `querySelector`/`Konva.stages`** — com o
+  workspace contínuo há N stages montados e o primeiro do DOM não é o da página
+  aberta. Use `getStageInstance()`. Foi o que quebrou o export de vídeo fora da
+  página 1.
+- **Lightbox pré-carrega vizinhos**: vídeo criado em `contentLoad` não pode ter
+  `autoplay` — play/pause vão em `contentActivate`/`contentDeactivate`, senão a
+  trilha toca ao abrir uma imagem.
+- **A direção de arte do aprimoramento é editável por projeto**
+  (`Project.artImprovementPrompt`, aba Configurações); o padrão dá liberdade
+  criativa e vive em `src/lib/ai/art-direction.ts`, módulo sem dependências
+  porque o card de configuração é client.
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá
