@@ -12,9 +12,24 @@ import { ImageToolbar } from './image-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
 import { ZoomControls } from './zoom-controls'
+import { useEditorViewMode } from '@/hooks/use-editor-view-mode'
+import { useIsMobile } from '@/hooks/use-media-query'
 
 const KonvaEditorStage = dynamic(
   () => import('./konva-editor-stage').then((mod) => mod.KonvaEditorStage),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full flex-1 items-center justify-center overflow-auto rounded-lg border border-border/40 bg-muted/50 p-8">
+        <Skeleton className="h-[480px] w-full" />
+      </div>
+    ),
+  },
+)
+
+// Workspace contínuo (todas as páginas empilhadas) — client-only como o stage
+const ContinuousWorkspace = dynamic(
+  () => import('./continuous/continuous-workspace').then((mod) => mod.ContinuousWorkspace),
   {
     ssr: false,
     loading: () => (
@@ -74,6 +89,10 @@ export function EditorCanvas() {
     setZoom,
     croppingLayerId,
   } = useTemplateEditor()
+  const { viewMode } = useEditorViewMode()
+  const isMobile = useIsMobile()
+  // Mobile fica sempre no modo página única (auto-fit/pinch/drawer próprios)
+  const isContinuous = viewMode === 'continuous' && !isMobile
   const [isEffectsPanelOpen, setIsEffectsPanelOpen] = React.useState(false)
   const [selectedTextNode, setSelectedTextNode] = React.useState<Konva.Text | Konva.TextPath | null>(null)
   const [currentLayer, setCurrentLayer] = React.useState<Konva.Layer | null>(null)
@@ -374,9 +393,9 @@ export function EditorCanvas() {
 
       {/* Canvas Konva + Effects Panel */}
       <div className="flex-1 flex relative overflow-hidden">
-        {/* Canvas Konva */}
+        {/* Canvas Konva — contínuo (coluna de páginas) ou clássico (página única) */}
         <div className="flex-1 h-full w-full">
-          <KonvaEditorStage />
+          {isContinuous ? <ContinuousWorkspace /> : <KonvaEditorStage />}
         </div>
 
         {/* Effects Panel - lateral direito */}

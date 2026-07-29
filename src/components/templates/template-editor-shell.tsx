@@ -38,6 +38,7 @@ import { CreativeGeneratorPanel } from '../ai-creative-generator/creative-genera
 import { getFontManager } from '@/lib/font-manager'
 import { useReorderPages } from '@/hooks/use-pages'
 import { usePageActions } from '@/hooks/use-page-actions'
+import { EditorViewModeProvider, useEditorViewMode } from '@/hooks/use-editor-view-mode'
 import { PageSyncWrapper } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { ScheduleStoryModal } from './modals/schedule-story-modal'
@@ -157,7 +158,9 @@ export function TemplateEditorShell({ template, prefillDriveImage, aiEditMode, i
     <MultiPageProvider key={initialPageId || 'default'} templateId={template.id} initialPageId={initialPageId}>
       <TemplateEditorProvider key={initialPageId || 'default'} template={resource}>
         <PageSyncWrapper>
-          <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} agendaMode={agendaMode} />
+          <EditorViewModeProvider>
+            <TemplateEditorContent prefillDriveImage={prefillDriveImage} aiEditMode={aiEditMode} agendaMode={agendaMode} />
+          </EditorViewModeProvider>
         </PageSyncWrapper>
       </TemplateEditorProvider>
     </MultiPageProvider>
@@ -245,10 +248,9 @@ function TemplateEditorContent({
     return () => window.removeEventListener('video-export-completed', handleVideoCompleted)
   }, [])
   const [isFullscreen, setIsFullscreen] = React.useState(false)
-  // Em telas baixas (notebooks pequenos), inicia com a barra de páginas colapsada
-  const [isPagesBarCollapsed, setIsPagesBarCollapsed] = React.useState(
-    () => typeof window !== 'undefined' && window.innerHeight < 640,
-  )
+  // Estado da barra de páginas vive no hook de modo de visualização
+  // (persistido; padrão: recolhida no modo contínuo)
+  const { isPagesBarCollapsed, setPagesBarCollapsed } = useEditorViewMode()
   const [showGenerateModal, setShowGenerateModal] = React.useState(false)
   const [mobileToolsOpen, setMobileToolsOpen] = React.useState(false)
   const [showScheduleModal, setShowScheduleModal] = React.useState(false)
@@ -914,7 +916,7 @@ function TemplateEditorContent({
           </div>
 
           {/* Bottom Pages Bar - Polotno Style */}
-          <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setIsPagesBarCollapsed(!isPagesBarCollapsed)} />
+          <PagesBar isCollapsed={isPagesBarCollapsed} onToggleCollapse={() => setPagesBarCollapsed(!isPagesBarCollapsed)} />
         </main>
 
         {/* Right Side Panel with Expandable Content */}
