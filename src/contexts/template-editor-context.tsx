@@ -74,6 +74,12 @@ export interface TemplateEditorContextValue {
   removeExport: (id: string) => void
   clearExports: () => void
   setStageInstance: (stage: Konva.Stage | null) => void
+  /**
+   * Stage ATIVO (o único editável). Com o workspace contínuo existem N stages
+   * montados (previews) — nunca localizar o stage por querySelector/Konva.stages;
+   * esta é a fonte da verdade.
+   */
+  getStageInstance: () => Konva.Stage | null
   loadTemplate: (payload: {
     designData: DesignData
     dynamicFields?: DynamicField[] | null
@@ -243,6 +249,8 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
   const setStageInstance = React.useCallback((stage: Konva.Stage | null) => {
     stageInstanceRef.current = stage
   }, [])
+
+  const getStageInstance = React.useCallback(() => stageInstanceRef.current, [])
 
   const applyDesign = React.useCallback(
     (updater: (prev: DesignData) => DesignData, options?: { skipHistory?: boolean; coalesceKey?: string }) => {
@@ -1294,6 +1302,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       removeExport,
       clearExports,
       setStageInstance,
+      getStageInstance,
       forceUpdate,
       alignSelectedLeft,
       alignSelectedCenterH,
@@ -1362,6 +1371,7 @@ const [pendingAIImageEdit, setPendingAIImageEdit] = React.useState<{
       removeExport,
       clearExports,
       setStageInstance,
+      getStageInstance,
       forceUpdate,
       alignSelectedLeft,
       alignSelectedCenterH,

@@ -88,6 +88,7 @@ export function EditorCanvas() {
     zoom,
     setZoom,
     croppingLayerId,
+    getStageInstance,
   } = useTemplateEditor()
   const { viewMode } = useEditorViewMode()
   const isMobile = useIsMobile()
@@ -124,15 +125,9 @@ export function EditorCanvas() {
         return
       }
 
-      // Buscar stage no DOM
-      const stageElement = document.querySelector('.konvajs-content')
-      if (!stageElement) {
-        console.warn('[EditorCanvas] Stage element não encontrado')
-        return
-      }
-
-      // Pegar stage do Konva
-      const stage = Konva.stages.find(s => s.container() === stageElement.parentElement)
+      // Stage ATIVO via contexto — no modo contínuo existem N stages montados
+      // (previews) e o querySelector antigo pegava o primeiro do DOM
+      const stage = getStageInstance()
       if (!stage) {
         console.warn('[EditorCanvas] Konva stage não encontrado')
         return
@@ -167,7 +162,7 @@ export function EditorCanvas() {
     }, 100) // Pequeno delay para garantir que Konva renderizou
 
     return () => clearTimeout(timeoutId)
-  }, [selectedLayer, isTextSelected])
+  }, [selectedLayer, isTextSelected, getStageInstance])
 
   // Fechar painel quando layer deselecionar
   React.useEffect(() => {
