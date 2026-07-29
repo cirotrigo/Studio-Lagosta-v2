@@ -523,7 +523,7 @@ fecha as duas divergências de maior alcance da tabela e o Auto da caixa:
   corta pela altura gravada; height auto esconderia a dessincronia.
 
 `docs/SESSAO-2026-07-29-MELHORIA-IA-CRIATIVOS.md` traz a melhoria com IA para a
-agenda e corrige dois defeitos do painel Criativos. Regras que ficaram:
+agenda e corrige três defeitos do editor. Regras que ficaram:
 
 - **Melhorar com IA só em post APROVADO** (SCHEDULED). Rascunho se edita, não se
   melhora — gate na UI *e* na rota, que recusa antes de cobrar crédito.
@@ -544,6 +544,13 @@ agenda e corrige dois defeitos do painel Criativos. Regras que ficaram:
 - **Lightbox pré-carrega vizinhos**: vídeo criado em `contentLoad` não pode ter
   `autoplay` — play/pause vão em `contentActivate`/`contentDeactivate`, senão a
   trilha toca ao abrir uma imagem.
+- **No workspace contínuo o zoom redimensiona o slot DOM de cada página** (não
+  há `transform: scale`). Toda mudança de zoom precisa repor o scroll por
+  âncora relativa (página do centro + fração dentro dela) num `useLayoutEffect`
+  e marcar `programmaticUntilRef` — senão o conteúdo desliza *e* o
+  `handleScroll` troca a página ativa sozinho. Escalar `scrollTop` pela razão
+  dos zooms não funciona: gap, cabeçalho e padding são fixos em px de tela.
+  `animateZoom` não vale no modo `embedded` (quem escala ali é o React).
 - **A direção de arte do aprimoramento é editável por projeto**
   (`Project.artImprovementPrompt`, aba Configurações); o padrão dá liberdade
   criativa e vive em `src/lib/ai/art-direction.ts`, módulo sem dependências

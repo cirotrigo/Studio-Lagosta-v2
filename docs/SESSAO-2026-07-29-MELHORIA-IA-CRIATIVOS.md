@@ -1,8 +1,8 @@
-# Sessão 29/07/2026 — melhoria com IA na agenda, feedback de criativos e dois bugs do editor
+# Sessão 29/07/2026 — melhoria com IA na agenda, feedback de criativos e três bugs do editor
 
-Seis mudanças, em três frentes: a **direção de arte** do aprimoramento com IA,
-o **alcance** dele (editor e agenda) e dois defeitos que apareciam no painel
-Criativos.
+Sete mudanças, em três frentes: a **direção de arte** do aprimoramento com IA,
+o **alcance** dele (editor e agenda) e três defeitos do editor — dois no painel
+Criativos e um no zoom do workspace contínuo.
 
 Cada item diz **o que mudou**, **por que** e **a armadilha**.
 
@@ -222,6 +222,71 @@ O stage editável é o único com Transformer, é o que tem o nó do vídeo, e �
   propósito: ali qualquer cópia do elemento serve, porque só se lê
   `video.duration`. Era por isso que o modal mostrava o trecho correto
   (`0.0s → 6.6s`) mesmo com o export quebrado — o sintoma enganava.
+
+---
+
+## 7. Zoom rolava a página em vez de ancorar no centro
+
+**Arquivos:** `src/components/templates/continuous/continuous-workspace.tsx`,
+`src/components/templates/konva-editor-stage.tsx`,
+`src/components/templates/editor-canvas.tsx`
+
+Dar zoom deslizava o conteúdo e — o sintoma que o usuário chamou de "piorou" —
+**trocava a página ativa**.
+
+A causa é o modelo de layout, não o zoom. No workspace contínuo **não existe
+`transform: scale`**: o zoom redimensiona o **slot DOM de cada página**
+(`slotWidth = pageWidth * zoom`, `continuous-workspace.tsx`). Ampliar aumenta a
+altura de todos os slots, o `scrollTop` fica parado e o que estava no centro sai
+de vista. Aí o `handleScroll` vê outra página como "mais visível", chama
+`activatePage`, e dispara flush + load do PageSync sem ninguém ter pedido.
+
+A compensação guarda uma **âncora** — a página mais próxima do centro do
+viewport e a fração (0..1) do centro dentro dela — e a repõe depois do
+re-layout.
+
+Medido no template 164, âncora no slot 5 a 28,5% da altura, de 60% a 149% e de
+volta (9 operações): a página ativa ficou em 6 o tempo todo, a fração variou no
+máximo 0,012, e o ciclo completo retorna a `0.285` — sem erro acumulado.
+
+**Armadilhas:**
+- **Coordenadas relativas, não absolutas.** Escalar `scrollTop` por
+  `novoZoom/velhoZoom` erra: o gap entre páginas (`gap-6`), o cabeçalho de cada
+  slot (`h-8`) e o padding da coluna (`px-8 py-6`) são fixos em px de tela e
+  **não acompanham o zoom**. Só a âncora por slot sobrevive ao re-layout.
+- **`useLayoutEffect`, não `useEffect`** — a correção precisa acontecer antes do
+  paint; com `useEffect` o salto aparece por um frame.
+- **A reposição marca `programmaticUntilRef`**, senão o próprio scroll corretivo
+  aciona o `handleScroll` e troca a página ativa — exatamente o que se quer
+  evitar.
+- **A âncora é capturada no `handleScroll` do usuário** (e uma vez após o
+  scroll inicial), nunca durante scroll programático: capturar durante a
+  correção sobrescreveria a âncora boa com a posição que ainda está sendo
+  ajustada.
+- **Pular a compensação antes do `initialScrollDoneRef`**: o auto-fit inicial
+  faz `setZoom` seguido de `scrollToPage`, e compensar ali jogaria a página de
+  entrada (link da agenda) para fora da tela.
+
+**Dois defeitos vizinhos, do mesmo caminho:**
+
+- `animateZoom` (atalhos Cmd `+`/`-`/`0`) não tinha guarda de `embedded`. No
+  modo contínuo quem escala é o React (props `scaleX`/`scaleY` do `<Stage>`) e
+  quem posiciona é o slot; animar `stage.position()` deslocava o desenho dentro
+  do slot **sem nada repor** — o `<Stage>` não declara props `x`/`y` — e o
+  `onUpdate` re-renderizava a coluna inteira a cada frame.
+- Os `ZoomControls` anunciavam `0.1–5` enquanto o `setZoom` do contexto clampa
+  `0.25–2`: o botão de ampliar seguia habilitado acima de 200% sem fazer nada.
+  **Limite de UI e clamp do contexto têm que ser o mesmo número.**
+
+**Fora do alcance desta correção:** o **modo clássico** (página única / mobile)
+usa outro modelo — o elemento DOM não cresce com o zoom, então ampliar **corta**
+em vez de gerar scroll. Comportamento diferente do relatado; mudar exigiria
+adotar o modelo embutido também ali.
+
+**Código morto encontrado e não removido:** `floating-zoom-controls.tsx` (117
+linhas, nunca importado), `_containerRef` em `konva-editor-stage.tsx` e o
+`handleWheel` no-op ainda registrado no `<Stage>` (scroll do mouse não dá zoom
+de propósito).
 
 ---
 
