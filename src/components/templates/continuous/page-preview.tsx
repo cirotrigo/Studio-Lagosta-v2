@@ -48,7 +48,7 @@ export function PagePreview({ page, width, height, zoom, live, capturedUrl, inde
       style={{ width, height, backgroundColor: page.background || '#ffffff' }}
     >
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element -- dataURL/thumbnail local, sem otimização do next/image
+         
         <img
           src={src}
           alt={page.name}

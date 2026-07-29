@@ -8,6 +8,32 @@ import { useMultiPage } from '@/contexts/multi-page-context'
 import { usePageActions } from '@/hooks/use-page-actions'
 import { KonvaEditorStage } from '../konva-editor-stage'
 import { PagePreview } from './page-preview'
+import type { Layer } from '@/types/template'
+
+/**
+ * Hit-test de camada em coordenadas do canvas da página (topmost primeiro).
+ * Caixa alinhada aos eixos — rotação ignorada de propósito (o clique acorda a
+ * página de qualquer jeito; a seleção é um bônus de conveniência). Formas de
+ * origem central (circle/triangle/star) têm a caixa centrada na posição.
+ */
+function hitTestPageLayer(layers: Layer[], x: number, y: number): Layer | null {
+  const ordered = [...layers].sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  for (let i = ordered.length - 1; i >= 0; i--) {
+    const layer = ordered[i]
+    if (layer.visible === false || layer.locked) continue
+    const width = layer.size?.width ?? 0
+    const height = layer.size?.height ?? 0
+    if (width <= 0 || height <= 0) continue
+    const centerOrigin =
+      layer.type === 'shape' && ['circle', 'triangle', 'star'].includes(layer.style?.shapeType ?? '')
+    const left = (layer.position?.x ?? 0) - (centerOrigin ? width / 2 : 0)
+    const top = (layer.position?.y ?? 0) - (centerOrigin ? height / 2 : 0)
+    if (x >= left && x <= left + width && y >= top && y <= top + height) {
+      return layer
+    }
+  }
+  return null
+}
 
 /**
  * ContinuousWorkspace — todas as páginas do template empilhadas numa coluna
@@ -30,7 +56,7 @@ const PROGRAMMATIC_SCROLL_MS = 900
 const CAPTURE_WIDTH = 450
 
 export function ContinuousWorkspace() {
-  const { design, zoom, setZoom, croppingLayerId, generateThumbnail } = useTemplateEditor()
+  const { design, zoom, setZoom, croppingLayerId, generateThumbnail, selectLayer } = useTemplateEditor()
   const { currentPageId, setCurrentPageId, isLoading } = useMultiPage()
   const { sortedPages, addPageAfter, duplicatePage, deletePage, canDeletePage } = usePageActions()
 
@@ -42,11 +68,15 @@ export function ContinuousWorkspace() {
   const pendingScrollToRef = React.useRef<string | null>(null)
   const initialScrollDoneRef = React.useRef(false)
 
-  // Refs espelhando estado para o handler de scroll (listener estável)
+  // Refs espelhando estado para handlers estáveis (scroll/eventos/hit-test)
   const currentPageIdRef = React.useRef(currentPageId)
   currentPageIdRef.current = currentPageId
   const croppingRef = React.useRef(croppingLayerId)
   croppingRef.current = croppingLayerId
+  const zoomRef = React.useRef(zoom)
+  zoomRef.current = zoom
+  const sortedPagesRef = React.useRef(sortedPages)
+  sortedPagesRef.current = sortedPages
 
   // Capturas em memória das páginas visitadas (dataURL ~450px) — previews
   // nítidos e frescos; Page.thumbnail (150px) é só o primeiro paint
@@ -151,6 +181,42 @@ export function ContinuousWorkspace() {
   const activatePageRef = React.useRef(activatePage)
   activatePageRef.current = activatePage
 
+  // Acordar com seleção: clique num elemento de página inativa guarda o alvo;
+  // a seleção é aplicada DEPOIS que o PageSync carregou o design da página
+  // (loadTemplate limpa a seleção — selecionar antes seria desfeito)
+  const pendingSelectRef = React.useRef<{ pageId: string; layerId: string } | null>(null)
+
+  React.useEffect(() => {
+    const pending = pendingSelectRef.current
+    if (!pending || pending.pageId !== currentPageId) return
+    if (!design.layers.some((layer) => layer.id === pending.layerId)) return
+    pendingSelectRef.current = null
+    const { pageId, layerId } = pending
+    // Um respiro para o stage embutido montar; guarda contra troca de página no meio
+    window.setTimeout(() => {
+      if (currentPageIdRef.current === pageId) {
+        selectLayer(layerId)
+      }
+    }, 80)
+  }, [currentPageId, design.layers, selectLayer])
+
+  const handleSlotMouseDown = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>, pageId: string) => {
+      if (pageId === currentPageIdRef.current) return
+      const slotEl = slotRefs.current.get(pageId)
+      const page = sortedPagesRef.current.find((p) => p.id === pageId)
+      if (slotEl && page) {
+        const rect = slotEl.getBoundingClientRect()
+        const canvasX = (event.clientX - rect.left) / (zoomRef.current || 1)
+        const canvasY = (event.clientY - rect.top) / (zoomRef.current || 1)
+        const hit = hitTestPageLayer(Array.isArray(page.layers) ? (page.layers as Layer[]) : [], canvasX, canvasY)
+        pendingSelectRef.current = hit ? { pageId, layerId: hit.id } : null
+      }
+      activatePage(pageId)
+    },
+    [activatePage],
+  )
+
   // PagesBar (chips/thumbnails/atalhos) pede ativação+scroll por evento —
   // mesmo idioma dos eventos do crop (lagosta:crop-*)
   React.useEffect(() => {
@@ -230,7 +296,7 @@ export function ContinuousWorkspace() {
       }
     }
     requestAnimationFrame(() => scrollToPage(currentPageId, 'auto'))
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- roda uma vez, quando as páginas carregam
+     
   }, [isLoading, sortedPages, currentPageId])
 
   if (isLoading && sortedPages.length === 0) {
@@ -303,9 +369,7 @@ export function ContinuousWorkspace() {
                   isActive ? 'ring-2 ring-primary' : ''
                 }`}
                 style={{ width: slotWidth, height: slotHeight }}
-                onMouseDown={() => {
-                  if (!isActive) activatePage(page.id)
-                }}
+                onMouseDown={(event) => handleSlotMouseDown(event, page.id)}
               >
                 {isActive ? (
                   <KonvaEditorStage embedded />
