@@ -321,16 +321,38 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
             // Verificar progresso em tempo real (prioriza override, fallback para status do banco)
             const progressData = progressOverrides[creative.id]
             const effectiveStatus = progressData?.status || creative.status
-            const isProcessing = effectiveStatus === 'PENDING' || effectiveStatus === 'POSTING'
+            // PROCESSING é o status do BANCO (melhoria com IA, export em curso).
+            // PENDING/POSTING só existem no canal SSE do export de vídeo — sem
+            // PROCESSING aqui, a melhoria caía no <Image> com src vazio e
+            // aparecia como miniatura quebrada, parecendo erro.
+            const isProcessing =
+              effectiveStatus === 'PENDING' ||
+              effectiveStatus === 'POSTING' ||
+              effectiveStatus === 'PROCESSING'
             const currentProgress = progressData?.progress || (creative.status === 'POSTING' ? 50 : 0)
             const hasFailed = effectiveStatus === 'FAILED'
+            // Só o export de vídeo emite progresso real (SSE). A melhoria com
+            // IA roda no servidor sem canal de progresso — mostrar uma barra em
+            // 0% ali passaria a impressão de travado.
+            const temProgressoReal = !!progressData
+            const semArte = !creative.resultUrl
 
             return (
               <div
                 key={creative.id}
                 className="group relative overflow-hidden rounded-lg border border-border/40 bg-card transition-all hover:border-primary hover:shadow-md"
               >
-                {/* Thumbnail com link para lightbox */}
+                {/* Sem arte ainda (PROCESSING): placeholder no lugar da
+                    miniatura. O lightbox e o <Image> exigem URL. */}
+                {semArte ? (
+                  <div
+                    style={{ aspectRatio }}
+                    className="flex items-center justify-center overflow-hidden bg-muted"
+                  >
+                    <ImageIcon className="h-10 w-10 opacity-20" />
+                  </div>
+                ) : (
+                /* Thumbnail com link para lightbox */
                 <a
                   href={creative.resultUrl}
                   data-pswp-width={width}
@@ -366,21 +388,30 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
                     />
                   )}
                 </a>
+                )}
 
-                {/* Barra de progresso (se está processando) */}
+                {/* Processando */}
                 {isProcessing && (
                   <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm">
                     <Loader2 className="mb-2 h-8 w-8 animate-spin text-white" />
-                    <div className="w-3/4 space-y-1">
-                      <Progress value={currentProgress} className="h-2" />
-                      <p className="text-center text-xs text-white">
-                        {currentProgress < 20 ? 'Preparando...' :
-                         currentProgress < 50 ? 'Processando...' :
-                         currentProgress < 80 ? 'Convertendo...' :
-                         'Finalizando...'}
-                        {' '}({currentProgress}%)
+                    {temProgressoReal ? (
+                      <div className="w-3/4 space-y-1">
+                        <Progress value={currentProgress} className="h-2" />
+                        <p className="text-center text-xs text-white">
+                          {currentProgress < 20 ? 'Preparando...' :
+                           currentProgress < 50 ? 'Processando...' :
+                           currentProgress < 80 ? 'Convertendo...' :
+                           'Finalizando...'}
+                          {' '}({currentProgress}%)
+                        </p>
+                      </div>
+                    ) : (
+                      <p className="px-2 text-center text-xs text-white">
+                        Gerando com IA…
+                        <br />
+                        <span className="text-white/70">leva 1 a 2 minutos</span>
                       </p>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -407,13 +438,16 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
                     </p>
                   </div>
 
+                  {/* Sem arte pronta não há o que agendar, editar ou baixar —
+                      só excluir continua fazendo sentido. */}
                   <div className="flex items-center gap-1">
                     <Button
                       size="sm"
                       variant="outline"
                       className="h-7 w-7 p-0"
                       onClick={() => handleSchedule(creative)}
-                      title="Agendar publicação"
+                      disabled={semArte}
+                      title={semArte ? 'Aguardando a arte ficar pronta' : 'Agendar publicação'}
                     >
                       <Calendar className="h-3.5 w-3.5" />
                     </Button>
@@ -423,7 +457,8 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
                         variant="outline"
                         className="h-7 w-7 p-0"
                         onClick={() => handleEditWithAI(creative)}
-                        title="Editar com IA"
+                        disabled={semArte}
+                        title={semArte ? 'Aguardando a arte ficar pronta' : 'Editar com IA'}
                       >
                         <Wand2 className="h-3.5 w-3.5" />
                       </Button>
@@ -438,7 +473,8 @@ export function CreativesPanel({ templateId, projectId, onOpenAIPanel }: Creativ
                           `criativo-${creative.id}${extension}`
                         )
                       }
-                      title="Baixar criativo"
+                      disabled={semArte}
+                      title={semArte ? 'Aguardando a arte ficar pronta' : 'Baixar criativo'}
                     >
                       <Download className="h-3.5 w-3.5" />
                     </Button>

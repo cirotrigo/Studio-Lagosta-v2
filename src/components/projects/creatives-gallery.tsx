@@ -34,7 +34,7 @@ interface TemplateInfo {
 
 interface GenerationRecord {
   id: string
-  status: 'POSTING' | 'COMPLETED' | 'FAILED'
+  status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED'
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
@@ -99,6 +99,7 @@ type ProgressOverride = {
 
 const STATUS_LABELS: Record<ProgressOverride['status'], string> = {
   COMPLETED: 'Concluído',
+  PROCESSING: 'Gerando com IA',
   POSTING: 'Processando',
   FAILED: 'Falhou',
   PENDING: 'Pendente',
@@ -106,12 +107,13 @@ const STATUS_LABELS: Record<ProgressOverride['status'], string> = {
 
 const STATUS_COLORS: Record<ProgressOverride['status'], string> = {
   COMPLETED: 'bg-emerald-500',
+  PROCESSING: 'bg-primary',
   POSTING: 'bg-amber-500',
   FAILED: 'bg-destructive',
   PENDING: 'bg-slate-400',
 }
 
-const STATUS_ORDER: ProgressOverride['status'][] = ['COMPLETED', 'POSTING', 'PENDING', 'FAILED']
+const STATUS_ORDER: ProgressOverride['status'][] = ['COMPLETED', 'PROCESSING', 'POSTING', 'PENDING', 'FAILED']
 
 function getStringField(values: Record<string, unknown>, key: string): string | undefined {
   const value = values?.[key]
@@ -632,7 +634,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         acc[meta.status] += 1
         return acc
       },
-      { COMPLETED: 0, POSTING: 0, FAILED: 0, PENDING: 0 }
+      { COMPLETED: 0, PROCESSING: 0, POSTING: 0, FAILED: 0, PENDING: 0 }
     )
   }, [filtered, getGenerationMeta])
 

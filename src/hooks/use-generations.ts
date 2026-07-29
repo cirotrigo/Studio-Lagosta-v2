@@ -16,7 +16,8 @@ export interface TemplateInfo {
 
 export interface GenerationRecord {
   id: string
-  status: 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
+  /** PROCESSING vem do enum do banco; POSTING/PENDING vêm do SSE do export de vídeo. */
+  status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
   templateId: number
   fieldValues: Record<string, unknown>
   resultUrl: string | null
@@ -83,5 +84,16 @@ export function useAllGenerations(options: UseAllGenerationsOptions = {}) {
         : undefined,
     staleTime: 30_000,
     gcTime: 5 * 60_000,
+    /**
+     * Enquanto houver criativo em PROCESSING, refaz a busca a cada 5s — a
+     * melhoria com IA roda no servidor e leva 1-2 min, então sem isso o card
+     * ficaria em "Processando" até alguém recarregar a página.
+     */
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((p) =>
+        p.generations.some((g) => g.status === 'PROCESSING'),
+      )
+        ? 5_000
+        : false,
   })
 }

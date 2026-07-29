@@ -18,7 +18,7 @@ interface GalleryItemProps {
   templateType: 'STORY' | 'FEED' | 'SQUARE'
   selected: boolean
   hasDriveBackup?: boolean
-  status: 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
+  status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
   progress?: number
   errorMessage?: string | null
   isVideo?: boolean
@@ -96,7 +96,9 @@ export function GalleryItem({
     return VIDEO_EXTENSIONS.some((ext) => candidate.endsWith(ext))
   }, [resolvedAssetUrl, effectiveDisplayUrl, isVideo])
 
-  const showProgress = status === 'POSTING' || status === 'PENDING'
+  // PROCESSING é o status do banco (melhoria com IA em curso). Sem ele o
+  // card ficava sem imagem e sem aviso nenhum, parecendo criativo quebrado.
+  const showProgress = status === 'POSTING' || status === 'PENDING' || status === 'PROCESSING'
   const clampedProgress =
     typeof progress === 'number' ? Math.max(0, Math.min(100, Math.round(progress))) : undefined
   const showFailure = status === 'FAILED'

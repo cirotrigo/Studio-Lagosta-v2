@@ -11,8 +11,13 @@ export interface CreativeFieldValues {
 }
 
 export interface Creative {
+  /**
+   * PROCESSING é o valor do enum no banco (GenerationStatus) — é o que a
+   * melhoria com IA grava enquanto trabalha. POSTING/PENDING vêm do canal SSE
+   * do export de vídeo e não existem no banco.
+   */
+  status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED'
   id: string
-  status: 'POSTING' | 'COMPLETED' | 'FAILED'
   resultUrl: string
   createdAt: string
   templateName: string
@@ -34,6 +39,13 @@ export function useTemplateCreatives(templateId: number) {
     queryFn: () => api.get(`/api/templates/${templateId}/creatives`),
     enabled: Number.isFinite(templateId) && templateId > 0,
     staleTime: 30_000, // 30 segundos
+    /**
+     * Enquanto houver criativo em PROCESSING, refaz a busca a cada 5s: a
+     * melhoria com IA leva 1-2 min e roda no servidor, então sem isso a
+     * miniatura só apareceria depois de um refresh manual.
+     */
+    refetchInterval: (query) =>
+      query.state.data?.some((c) => c.status === 'PROCESSING') ? 5_000 : false,
   })
 }
 

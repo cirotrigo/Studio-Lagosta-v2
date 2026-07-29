@@ -68,6 +68,10 @@ export function useImproveQueueProcessor() {
         })
         queryClient.invalidateQueries({ queryKey: ['generations', next.projectId] })
         queryClient.invalidateQueries({ queryKey: ['all-generations'] })
+        // Painel Criativos do editor. Invalidar por prefixo (sem o templateId,
+        // que a fila não conhece) atinge o painel aberto sem depender do
+        // polling — que o navegador pausa quando a aba está em segundo plano.
+        queryClient.invalidateQueries({ queryKey: ['template-creatives'] })
         if (next.applyToPostId) {
           // O servidor já aplicou a arte no post — aqui só refresca a agenda.
           queryClient.invalidateQueries({ queryKey: ['social-posts', next.projectId] })

@@ -10,7 +10,7 @@ interface CreativeCardProps {
   id: string
   displayUrl?: string | null
   assetUrl?: string | null
-  status: 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
+  status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED' | 'PENDING'
   isVideo?: boolean
   selected: boolean
   width: number
