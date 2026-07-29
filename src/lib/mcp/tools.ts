@@ -646,6 +646,16 @@ export const MCP_TOOLS: McpTool[] = [
       if (!existente || existente.projectId !== projectId) {
         throw new CreativeError('ENTRADA_NAO_ENCONTRADA', 'Entrada não encontrada neste cliente.', 404)
       }
+      // Entrada fora de circulação não alimenta texto nenhum: editar aqui
+      // responderia "já vale para os próximos textos" mentindo, e ainda
+      // recriaria vetores de um conteúdo arquivado.
+      if (existente.status !== 'ACTIVE') {
+        throw new CreativeError(
+          'ENTRADA_INATIVA',
+          `Esta entrada está ${existente.status === 'ARCHIVED' ? 'arquivada' : 'como rascunho'} e não alimenta os textos. Reative pela interface do Studio antes de editar.`,
+          400,
+        )
+      }
 
       // Vazio não é "limpar": apagaria o texto E os vetores reportando sucesso,
       // sem histórico para recuperar. Para tirar de circulação, use arquivar.
