@@ -36,7 +36,8 @@ import { ZoomControls, ZoomControlsMobile } from './zoom-controls'
 import { AgendaPanel } from './panels/agenda-panel'
 import { CreativeGeneratorPanel } from '../ai-creative-generator/creative-generator-panel'
 import { getFontManager } from '@/lib/font-manager'
-import { useCreatePage, useDuplicatePage, useDeletePage, useReorderPages } from '@/hooks/use-pages'
+import { useReorderPages } from '@/hooks/use-pages'
+import { usePageActions } from '@/hooks/use-page-actions'
 import { PageSyncWrapper } from './page-sync-wrapper'
 import { GenerateCreativesModal } from './modals/generate-creatives-modal'
 import { ScheduleStoryModal } from './modals/schedule-story-modal'
@@ -228,7 +229,7 @@ function TemplateEditorContent({
   const { pages, currentPageId, setCurrentPageId, isLoading: isPagesLoading } = useMultiPage()
   const { generateMultiple, isGenerating: isGeneratingMultiple, progress: generationProgress } = useGenerateMultipleCreatives()
   const { canPerformOperation, getCost } = useCredits()
-  const createPageMutation = useCreatePage()
+  const { addPage } = usePageActions()
 
   const isMobile = useIsMobile()
   const [activePanel, setActivePanel] = React.useState<SidePanel>(null)
@@ -517,41 +518,9 @@ function TemplateEditorContent({
   }, [prefillDriveImage, insertPrefillImage, toast, aiEditMode, setPendingAIImageEdit, setActivePanel])
 
   // Handler para adicionar página (usado no mobile)
-  const handleAddPage = React.useCallback(async () => {
-    try {
-      const pageData = {
-        name: `Página ${pages.length + 1}`,
-        width: design.canvas.width || 1080,
-        height: design.canvas.height || 1920,
-        layers: [],
-        background: design.canvas.backgroundColor || '#ffffff',
-        order: pages.length,
-      }
-
-      const newPage = await createPageMutation.mutateAsync({
-        templateId,
-        data: pageData,
-      })
-
-      // Selecionar nova página
-      if (newPage && typeof newPage === 'object' && 'id' in newPage) {
-        setCurrentPageId(newPage.id as string)
-      }
-
-      toast({
-        title: 'Página criada!',
-        description: 'Nova página adicionada ao template.',
-      })
-    } catch (_error) {
-      console.error('[handleAddPage] Erro ao criar página:', _error)
-      const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
-      toast({
-        title: 'Erro ao criar página',
-        description: errorMessage,
-        variant: 'destructive',
-      })
-    }
-  }, [templateId, pages.length, design.canvas, createPageMutation, setCurrentPageId, toast])
+  const handleAddPage = React.useCallback(() => {
+    void addPage()
+  }, [addPage])
 
   // Efeito para esconder body scroll quando em fullscreen
   React.useEffect(() => {
@@ -1367,12 +1336,9 @@ interface PagesBarProps {
 }
 
 function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
-  const { toast } = useToast()
-  const { templateId, design } = useTemplateEditor()
+  const { templateId } = useTemplateEditor()
   const { pages, currentPageId, setCurrentPageId } = useMultiPage()
-  const createPageMutation = useCreatePage()
-  const duplicatePageMutation = useDuplicatePage()
-  const deletePageMutation = useDeletePage()
+  const { sortedPages, addPage, duplicatePage, deletePage } = usePageActions()
   const reorderPagesMutation = useReorderPages()
 
   // Configurar sensores para drag-and-drop
@@ -1383,11 +1349,6 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
       },
     })
   )
-
-  // Ordenar páginas por order
-  const sortedPages = React.useMemo(() => {
-    return [...pages].sort((a, b) => a.order - b.order)
-  }, [pages])
 
   // Handler para drag-and-drop
   const handleDragStart = React.useCallback((_event: DragEndEvent) => {
@@ -1413,117 +1374,6 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
       }
     },
     [sortedPages, templateId, reorderPagesMutation]
-  )
-
-  const handleAddPage = React.useCallback(async () => {
-    try {
-      console.log('[PagesBar] Criando nova página...', {
-        templateId,
-        pagesCount: pages.length,
-        canvasWidth: design.canvas.width,
-        canvasHeight: design.canvas.height,
-      })
-
-      const pageData = {
-        name: `Página ${pages.length + 1}`,
-        width: design.canvas.width || 1080,
-        height: design.canvas.height || 1920,
-        layers: [],
-        background: design.canvas.backgroundColor || '#ffffff',
-        order: pages.length,
-      }
-
-      console.log('[PagesBar] Dados da página:', pageData)
-
-      const newPage = await createPageMutation.mutateAsync({
-        templateId,
-        data: pageData,
-      })
-
-      console.log('[PagesBar] Página criada com sucesso:', newPage)
-
-      // Selecionar nova página
-      if (newPage && typeof newPage === 'object' && 'id' in newPage) {
-        setCurrentPageId(newPage.id as string)
-      }
-
-      toast({
-        title: 'Página criada!',
-        description: 'Nova página adicionada ao template.',
-      })
-    } catch (_error) {
-      console.error('[PagesBar] Erro ao criar página:', _error)
-      const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
-      toast({
-        title: 'Erro ao criar página',
-        description: errorMessage,
-        variant: 'destructive',
-      })
-    }
-  }, [templateId, pages.length, design, createPageMutation, setCurrentPageId, toast])
-
-  const handleDuplicatePage = React.useCallback(
-    async (pageId: string, e: React.MouseEvent) => {
-      e.stopPropagation()
-      try {
-        await duplicatePageMutation.mutateAsync({ templateId, pageId })
-        toast({
-          title: 'Página duplicada!',
-          description: 'A página foi duplicada com sucesso.',
-        })
-      } catch (_error) {
-        console.error('Error duplicating page:', _error)
-        toast({
-          title: 'Erro ao duplicar',
-          description: 'Não foi possível duplicar a página.',
-          variant: 'destructive',
-        })
-      }
-    },
-    [templateId, duplicatePageMutation, toast]
-  )
-
-  const handleDeletePage = React.useCallback(
-    async (pageId: string, e: React.MouseEvent) => {
-      e.stopPropagation()
-
-      if (pages.length <= 1) {
-        toast({
-          title: 'Ação não permitida',
-          description: 'Não é possível deletar a última página.',
-          variant: 'destructive',
-        })
-        return
-      }
-
-      try {
-        // Se deletar a página atual, navegar para outra ANTES de deletar
-        if (pageId === currentPageId && sortedPages.length > 1) {
-          const currentIndex = sortedPages.findIndex((p) => p.id === pageId)
-          // Navegar para a página anterior ou próxima
-          const nextPage = currentIndex > 0 ? sortedPages[currentIndex - 1] : sortedPages[currentIndex + 1]
-          if (nextPage) {
-            setCurrentPageId(nextPage.id)
-          }
-        }
-
-        await deletePageMutation.mutateAsync({ templateId, pageId })
-
-        toast({
-          title: 'Página deletada!',
-          description: 'A página foi removida com sucesso.',
-        })
-      } catch (_error) {
-        console.error('[PagesBar] Error deleting page:', _error)
-        const errorMessage = _error instanceof Error ? _error.message : 'Erro desconhecido'
-        toast({
-          title: 'Erro ao deletar',
-          description: errorMessage,
-          variant: 'destructive',
-        })
-      }
-    },
-    [templateId, pages.length, currentPageId, sortedPages, deletePageMutation, setCurrentPageId, toast]
   )
 
   // Atalhos de teclado para navegação
@@ -1615,7 +1465,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
 
             {/* Botão para adicionar página */}
             <button
-              onClick={handleAddPage}
+              onClick={() => void addPage()}
               className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded border-2 border-dashed border-border/60 transition-all hover:border-primary hover:bg-primary/5"
               title="Adicionar nova página"
             >
@@ -1631,7 +1481,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
               onClick={(e) => {
                 e.stopPropagation()
                 if (currentPageId) {
-                  handleDuplicatePage(currentPageId, e)
+                  void duplicatePage(currentPageId)
                 }
               }}
               className="h-8 w-8 p-0"
@@ -1646,7 +1496,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
               onClick={(e) => {
                 e.stopPropagation()
                 if (currentPageId) {
-                  handleDeletePage(currentPageId, e)
+                  void deletePage(currentPageId)
                 }
               }}
               disabled={pages.length <= 1}
@@ -1659,7 +1509,7 @@ function PagesBar({ isCollapsed, onToggleCollapse }: PagesBarProps) {
             <Button
               size="sm"
               variant="default"
-              onClick={handleAddPage}
+              onClick={() => void addPage()}
               className="h-8"
               title="Adicionar nova página (Ctrl+PageUp/PageDown navega)"
             >
