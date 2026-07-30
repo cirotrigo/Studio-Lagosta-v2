@@ -590,9 +590,12 @@ Regras que valem para código novo:
 - **A prévia da aba Marca usa `buildPromptSections`** — a MESMA função do
   improve. Mudou a montagem do prompt, a prévia acompanha sozinha; nunca
   duplicar o texto da prévia à mão.
-- **Escrita do DNA é serviço** (`updateBrandDNA`), não código de rota: a
-  intenção declarada é o MCP ganhar tools de consultar/atualizar DNA via chat
-  embrulhando o mesmo serviço.
+- **Escrita do DNA é serviço** (`updateBrandDNA`), não código de rota — e o
+  MCP já embrulha o mesmo serviço: `consultar-dna` devolve o BrandContext com
+  `secoesVazias` (convite para completar) e `atualizar-dna` grava por seção
+  (SUBSTITUI, não acrescenta; `null` limpa). A descrição de
+  `criar-entrada-base` redireciona identidade para o DNA — a categoria
+  TOM_DE_VOZ da base é legado.
 - No formatador da base (`search.ts`), entrada que estoura o teto de tokens é
   **pulada** (`continue`) — o `return`/`break` antigo fazia um CARDAPIO longo
   eliminar as categorias seguintes inteiras.

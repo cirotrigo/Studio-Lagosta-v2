@@ -21,6 +21,13 @@ import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import {
+  loadBrandContext,
+  updateBrandDNA,
+  BRAND_DNA_FIELDS,
+  BRAND_DNA_MAX_CHARS,
+  type BrandDNAField,
+} from '@/lib/brand/brand-context'
 
 export interface McpTool {
   name: string
@@ -250,6 +257,90 @@ export const MCP_TOOLS: McpTool[] = [
         orderBy: { category: 'asc' },
       })
       return { count: entries.length, entries }
+    },
+  },
+
+  {
+    name: 'consultar-dna',
+    description:
+      'DNA da marca do cliente: tom de voz, regras, composição/layout, estilo visual e direção fotográfica — mais o que o sistema injeta sozinho (fontes, cores, logo). O DNA entra em TODA geração de copy e arte, sempre; a base de conhecimento é o conteúdo pesquisável (horários, cardápio, campanhas).\n\nConsulte antes de escrever textos para o cliente, e SEMPRE antes de atualizar-dna — você precisa mostrar à pessoa o que já existe.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const brand = await loadBrandContext(projectId)
+      if (!brand) {
+        throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
+      }
+      const secoesVazias = BRAND_DNA_FIELDS.filter((f) => !brand.dna[f])
+      return {
+        ...brand,
+        // O modelo tende a não notar ausência — apontar o que falta transforma
+        // a consulta num convite para completar o DNA com a pessoa.
+        secoesVazias,
+        dica:
+          secoesVazias.length > 0
+            ? `Seções ainda vazias: ${secoesVazias.join(', ')}. Se fizer sentido na conversa, ofereça preencher com atualizar-dna.`
+            : 'DNA completo. Use-o como lei ao escrever para este cliente.',
+      }
+    },
+  },
+
+  {
+    name: 'atualizar-dna',
+    description:
+      'Atualiza o DNA da marca — a identidade que passa a valer em TODA geração de copy e arte deste cliente, do chat e do site. Seções: toneOfVoice (como a marca fala), contentRules (o que nunca fazer/dizer), composition (layout e hierarquia), visualStyle (estética geral), photoDirection (luz e tratamento de foto).\n\nCada seção enviada SUBSTITUI o texto inteiro dela — não é acréscimo. Fluxo obrigatório: consultar-dna → mostrar à pessoa o texto ATUAL e o NOVO → só gravar com o OK explícito. Enviar null limpa a seção.\n\nNão confunda com a base de conhecimento: horário, cardápio, preço e campanha vão em criar-entrada-base; identidade vai aqui.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        toneOfVoice: { type: ['string', 'null'], description: 'Como a marca fala (usado em copies e chat). null limpa.' },
+        contentRules: { type: ['string', 'null'], description: 'O que nunca fazer ou dizer (usado em copies, chat e artes). null limpa.' },
+        composition: { type: ['string', 'null'], description: 'Como os elementos se organizam nas artes. null limpa.' },
+        visualStyle: { type: ['string', 'null'], description: 'A estética geral da marca (usado nas artes). null limpa.' },
+        photoDirection: { type: ['string', 'null'], description: 'Luz e tratamento fotográfico (usado nas artes). null limpa.' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const patch: Partial<Record<BrandDNAField, string | null>> = {}
+      for (const field of BRAND_DNA_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(args, field)) continue
+        const value = args[field]
+        if (value !== null && typeof value !== 'string') {
+          throw new Error(`${field} deve ser texto ou null.`)
+        }
+        if (typeof value === 'string' && value.length > BRAND_DNA_MAX_CHARS) {
+          throw new Error(
+            `${field} passou de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese, não arquivo — resuma; detalhe factual vai para a base de conhecimento.`,
+          )
+        }
+        patch[field] = value
+      }
+      if (Object.keys(patch).length === 0) {
+        throw new Error(
+          'Envie pelo menos uma seção (toneOfVoice, contentRules, composition, visualStyle, photoDirection).',
+        )
+      }
+
+      const dna = await updateBrandDNA(projectId, patch)
+      const alteradas = Object.keys(patch).join(', ')
+      return {
+        atualizado: true,
+        dna,
+        mensagem: `DNA atualizado (${alteradas}). Já vale para as próximas gerações — do chat e do site.`,
+      }
     },
   },
 
@@ -545,7 +636,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'criar-entrada-base',
     description:
-      'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
+      'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\n⚠️ Tom de voz, regras da marca, estilo visual e direção fotográfica NÃO vão aqui — vão no DNA (atualizar-dna). A base é buscada por relevância e identidade cadastrada nela não chega aos geradores; a categoria TOM_DE_VOZ existe só por legado.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
     inputSchema: {
       type: 'object',
       properties: {
