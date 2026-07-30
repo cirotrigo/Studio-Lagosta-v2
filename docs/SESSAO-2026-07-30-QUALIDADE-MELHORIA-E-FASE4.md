@@ -283,5 +283,19 @@ CLAUDE.md registra como **irrecuperável**. Das 500 melhorias com linhagem, 409
 sumiriam e as 91 restantes ficariam com `sourceGenerationId` órfão. Os blobs
 não são apagados por esse script, então virariam arquivo pago e inalcançável.
 
-Ficou registrado como tarefa separada (dry-run obrigatório + separar o item 1
-do resto). **O `db:clean` não foi executado.**
+**O `db:clean` não foi executado em produção.** O script foi reescrito no fim
+da sessão, seguindo a convenção `--apply` dos outros scripts:
+
+- **dry-run por padrão**; exclusão real só com `--apply`;
+- o item 1 (Generations) fica atrás de `--incluir-criativos`, desligado por
+  padrão, e o relatório imprime os efeitos colaterais (posts que perderiam o
+  `generationId`, linhagem quebrada, blobs órfãos) mesmo quando pulado;
+- cada tarefa declara o `where` **uma vez** e o compartilha entre contar e
+  apagar — o dry-run não pode divergir do que o `--apply` faz;
+- cabeçalho avisando que roda contra produção.
+
+Verificado sem risco: o dry-run rodou contra produção e as contagens ficaram
+idênticas antes e depois; o caminho `--apply` foi testado **no branch
+`dev-local`**, onde apagou os 297.579 PostLogs previstos e manteve as 4.227
+Generations (item 1 pulado), com a produção intocada. Foi o primeiro uso real
+do banco de dev montado nesta mesma sessão.
