@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
 import { DEFAULT_ART_DIRECTION } from './art-direction'
+import type { BrandIdentity } from './improvement-assets-loader'
 
 let cachedClient: OpenAI | null = null
 
@@ -46,6 +47,8 @@ interface BuildPromptArgs {
   brandColors: BrandColor[]
   /** Direção de arte do projeto; cai no DEFAULT_ART_DIRECTION quando vazia. */
   artDirection?: string | null
+  /** Identidade da marca; sempre do sistema, nunca do bloco editável. */
+  identity?: BrandIdentity | null
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -77,6 +80,50 @@ function buildBrandColorsSection(colors: BrandColor[]): string {
   if (colors.length === 0) return ''
   const list = colors.map((c) => `- ${c.name}: ${c.hexCode}`).join('\n')
   return `[CORES DA MARCA]\nA paleta oficial deste projeto:\n${list}\nPriorize estas cores para textos, ênfases e elementos visuais quando precisar ajustar contraste ou hierarquia.`
+}
+
+/**
+ * Identidade do cliente. É o que faz a MESMA direção de arte produzir peças
+ * diferentes por marca — sem isso, todo cliente recebe a mesma receita genérica.
+ *
+ * Montada pelo sistema, não pelo bloco editável: um prompt de projeto mal
+ * escrito não deve poder apagar a tipografia e a paleta da marca.
+ *
+ * As fontes são a parte mais confiável (todos os 11 projetos têm as três
+ * definidas); `brandStyleDescription` e `cuisineType` entram só quando
+ * preenchidos, porque hoje quase todos estão vazios e uma linha "Estilo da
+ * marca: null" só confundiria o modelo.
+ */
+function buildBrandIdentitySection(identity: BrandIdentity | null): string {
+  if (!identity) return ''
+
+  const lines: string[] = [`[IDENTIDADE DA MARCA — ${identity.projectName}]`]
+
+  if (identity.styleDescription) {
+    lines.push(`Estilo visual da marca: ${identity.styleDescription}`)
+  }
+  if (identity.cuisineType) {
+    lines.push(`Tipo de cozinha: ${identity.cuisineType}`)
+  }
+
+  const fontes: string[] = []
+  if (identity.titleFont) fontes.push(`títulos em ${identity.titleFont}`)
+  // Subtítulo nulo significa "a marca usa a fonte de corpo também no subtítulo"
+  // (ver comentário no schema) — dizer isso é melhor que omitir a linha.
+  if (identity.subtitleFont) {
+    fontes.push(`subtítulos em ${identity.subtitleFont}`)
+  } else if (identity.bodyFont) {
+    fontes.push(`subtítulos na mesma fonte do corpo`)
+  }
+  if (identity.bodyFont) fontes.push(`corpo em ${identity.bodyFont}`)
+
+  if (fontes.length > 0) {
+    lines.push(
+      `Tipografia oficial: ${fontes.join(', ')}. Replique o desenho das letras como está na IMAGEM 1 — estes nomes servem para você reconhecer a fonte, não para substituí-la por outra parecida.`,
+    )
+  }
+
+  return lines.length > 1 ? lines.join('\n') : ''
 }
 
 function buildPedidoSection(userRequest: string): string {
@@ -124,13 +171,16 @@ imagem, não sobre a original.`
  * — é `artDirection`, que vem do projeto quando ele tem um prompt próprio e cai
  * no DEFAULT_ART_DIRECTION quando não tem.
  */
-function buildPrompt({ userRequest, references, brandColors, artDirection }: BuildPromptArgs): string {
+function buildPrompt({ userRequest, references, brandColors, artDirection, identity }: BuildPromptArgs): string {
   const hasBackground = references.some((r) => r.role === 'background')
   const sections: string[] = []
 
   if (references.length > 0) {
     sections.push(buildContextSection(references))
   }
+
+  const identitySection = buildBrandIdentitySection(identity ?? null)
+  if (identitySection) sections.push(identitySection)
 
   const colorsSection = buildBrandColorsSection(brandColors)
   if (colorsSection) sections.push(colorsSection)
@@ -160,6 +210,8 @@ interface ImproveCreativeOptions {
   brandColors?: BrandColor[]
   /** `Project.artImprovementPrompt` — substitui a direção de arte padrão. */
   artDirection?: string | null
+  /** Identidade da marca (fontes, estilo, cozinha) — injetada pelo sistema. */
+  identity?: BrandIdentity | null
   timeoutMs?: number
 }
 
@@ -188,11 +240,12 @@ export async function improveCreative({
   references = [],
   brandColors = [],
   artDirection = null,
+  identity = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection })
+  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, identity })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,

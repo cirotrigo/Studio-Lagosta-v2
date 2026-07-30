@@ -10,12 +10,29 @@ export interface ImprovementAsset {
   kind: 'logo' | 'element'
 }
 
+/**
+ * Identidade do cliente que o sistema injeta no prompt — o que faz a MESMA
+ * direção de arte render resultados diferentes por marca. Fica fora do bloco
+ * editável de propósito: um prompt de projeto mal escrito não pode apagar a
+ * tipografia e a paleta da marca.
+ */
+export interface BrandIdentity {
+  projectName: string
+  /** `Project.brandStyleDescription` — hoje preenchido em poucos projetos. */
+  styleDescription: string | null
+  cuisineType: string | null
+  titleFont: string | null
+  subtitleFont: string | null
+  bodyFont: string | null
+}
+
 export interface ImprovementAssetsBundle {
   logos: ImprovementAsset[]
   elements: ImprovementAsset[]
   colors: Array<{ name: string; hexCode: string }>
   /** Direção de arte do projeto; null = usa a padrão. */
   artDirection: string | null
+  identity: BrandIdentity | null
 }
 
 export async function loadImprovementAssets(
@@ -51,7 +68,15 @@ export async function loadImprovementAssets(
     }),
     db.project.findUnique({
       where: { id: projectId },
-      select: { artImprovementPrompt: true },
+      select: {
+        name: true,
+        artImprovementPrompt: true,
+        brandStyleDescription: true,
+        cuisineType: true,
+        titleFontFamily: true,
+        subtitleFontFamily: true,
+        bodyFontFamily: true,
+      },
     }),
   ])
 
@@ -60,5 +85,15 @@ export async function loadImprovementAssets(
     elements: elements.map((e) => ({ fileUrl: e.fileUrl, name: e.name, kind: 'element' as const })),
     colors,
     artDirection: project?.artImprovementPrompt?.trim() || null,
+    identity: project
+      ? {
+          projectName: project.name,
+          styleDescription: project.brandStyleDescription?.trim() || null,
+          cuisineType: project.cuisineType?.trim() || null,
+          titleFont: project.titleFontFamily?.trim() || null,
+          subtitleFont: project.subtitleFontFamily?.trim() || null,
+          bodyFont: project.bodyFontFamily?.trim() || null,
+        }
+      : null,
   }
 }

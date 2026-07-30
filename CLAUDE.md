@@ -552,9 +552,21 @@ agenda e corrige três defeitos do editor. Regras que ficaram:
   dos zooms não funciona: gap, cabeçalho e padding são fixos em px de tela.
   `animateZoom` não vale no modo `embedded` (quem escala ali é o React).
 - **A direção de arte do aprimoramento é editável por projeto**
-  (`Project.artImprovementPrompt`, aba Configurações); o padrão dá liberdade
-  criativa e vive em `src/lib/ai/art-direction.ts`, módulo sem dependências
-  porque o card de configuração é client.
+  (`Project.artImprovementPrompt`, aba Configurações). O padrão vive em
+  `src/lib/ai/art-direction.ts` — módulo sem dependências, porque o card de
+  configuração é client.
+- **No padrão a FOTOGRAFIA é a protagonista** (~90% da composição) e o bloco de
+  texto ocupa 15–20% da altura, nunca mais de 25%. O teto foi reinstaurado em
+  30/07 depois de teste real: sem ele o modelo faz título desproporcional e
+  sacrifica a foto. O impacto vem de peso, cor, contraste e posição — não de
+  tamanho. **Não "libere" esse limite de novo sem repetir o teste.**
+- **A identidade do cliente é injetada pelo SISTEMA, fora do bloco editável**
+  (`buildBrandIdentitySection`): nome, tipografia por papel, paleta e, quando
+  preenchidos, `brandStyleDescription` e `cuisineType`. É o que faz a mesma
+  direção render peças diferentes por marca — e um prompt de projeto mal escrito
+  não pode apagá-la. As fontes são o sinal confiável (os 11 projetos têm as
+  três); `brandStyleDescription` só o Wine Vix tem, e `cuisineType` está vazio
+  em todos.
 
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora

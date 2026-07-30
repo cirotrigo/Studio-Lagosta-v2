@@ -87,8 +87,9 @@ export function ArtImprovementPromptConfig({
             </div>
             <p className="text-sm text-muted-foreground">
               Define como a IA redesenha a diagramação quando você melhora um criativo deste
-              projeto. Deixe em branco para usar a direção padrão, que dá liberdade criativa ao
-              modelo. Preencha quando este cliente precisar de regras mais apertadas.
+              projeto. Deixe em branco para usar a direção padrão, em que a fotografia é a
+              protagonista e o texto ocupa no máximo um quarto da arte. Preencha quando este
+              cliente precisar de regras diferentes.
             </p>
           </div>
         </div>
