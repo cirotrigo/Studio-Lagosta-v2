@@ -182,9 +182,6 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const canvasHeight = design.canvas.height
   const deferredLayers = React.useDeferredValue(design.layers)
 
-  // Container ref para calcular tamanho disponível
-  const _containerRef = React.useRef<HTMLDivElement>(null)
-
   React.useEffect(() => {
     if (stageRef.current) {
       setStageInstance(stageRef.current)

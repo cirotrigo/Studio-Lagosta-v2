@@ -324,11 +324,12 @@ export default function OrgKnowledgePage() {
                           <SelectContent>
                             {categories.map((cat) => (
                               <SelectItem key={cat} value={cat}>
-                                {cat.replace(/_/g, ' ')}
+                                {cat === 'TOM_DE_VOZ' ? 'TOM DE VOZ (legado)' : cat.replace(/_/g, ' ')}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {category === 'TOM_DE_VOZ' && <TomDeVozLegacyNotice />}
                       </div>
 
                       <div>
@@ -381,11 +382,12 @@ export default function OrgKnowledgePage() {
                           <SelectContent>
                             {categories.map((cat) => (
                               <SelectItem key={cat} value={cat}>
-                                {cat.replace(/_/g, ' ')}
+                                {cat === 'TOM_DE_VOZ' ? 'TOM DE VOZ (legado)' : cat.replace(/_/g, ' ')}
                               </SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
+                        {category === 'TOM_DE_VOZ' && <TomDeVozLegacyNotice />}
                       </div>
 
                       <div>
@@ -484,6 +486,12 @@ export default function OrgKnowledgePage() {
                       </DropdownMenu>
                     </div>
 
+                    {entry.category === 'TOM_DE_VOZ' && (
+                      <p className="rounded-md bg-amber-500/10 px-2 py-1 text-xs text-amber-600 dark:text-amber-400">
+                        Categoria legado — a identidade agora vive no DNA da marca (aba Marca do projeto).
+                      </p>
+                    )}
+
                     <p className="text-sm text-muted-foreground line-clamp-3">
                       {entry.content}
                     </p>
@@ -524,5 +532,21 @@ export default function OrgKnowledgePage() {
         </>
       )}
     </div>
+  )
+}
+
+/**
+ * TOM_DE_VOZ é legado: a base é buscada por relevância e identidade precisa
+ * entrar INCONDICIONALMENTE no prompt — por isso ela vive no DNA da marca.
+ * Espelha o aviso que a tool `criar-entrada-base` do MCP já dá no chat.
+ * A categoria não sai do enum porque entradas antigas existem.
+ */
+function TomDeVozLegacyNotice() {
+  return (
+    <p className="mt-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+      Tom de voz é categoria legado: a identidade da marca agora vive no{' '}
+      <strong>DNA da marca</strong> (aba Marca do projeto), que entra em todo prompt de geração.
+      Entradas criadas aqui só aparecem em buscas por relevância — prefira preencher o DNA.
+    </p>
   )
 }

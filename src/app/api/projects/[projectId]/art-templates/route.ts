@@ -7,6 +7,20 @@ import { randomBytes } from 'crypto'
 
 export const runtime = 'nodejs'
 
+/**
+ * @deprecated Rota legado sem UI desde a chegada do DNA da Marca (aba Marca).
+ * O generate-art ainda lê dados que ela escreve, por isso NÃO foi apagada:
+ * o warn abaixo mede uso real em produção, e a remoção só acontece depois de
+ * 2+ semanas sem ele nos logs (decisão futura do Ciro, registrada no plano de
+ * 30/07/2026). Identidade de marca vive no BrandDNA — ver
+ * src/lib/brand/brand-context.ts e a aba Marca do projeto.
+ */
+function warnDeprecated(method: string): void {
+  console.warn(
+    `[deprecated] ${method} /api/projects/[projectId]/art-templates — rota legado; identidade agora vive no DNA da marca (aba Marca)`,
+  )
+}
+
 // --- Types ---
 
 interface ArtTemplate {
@@ -32,6 +46,7 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  warnDeprecated('GET')
   const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 })
@@ -69,6 +84,7 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  warnDeprecated('POST')
   const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 })
@@ -155,6 +171,7 @@ export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  warnDeprecated('DELETE')
   const { userId, orgId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: 'Nao autorizado' }, { status: 401 })

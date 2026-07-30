@@ -6,6 +6,20 @@ import { z } from 'zod'
 
 export const runtime = 'nodejs'
 
+/**
+ * @deprecated Rota legado sem UI desde a chegada do DNA da Marca (aba Marca).
+ * O generate-art ainda lê dados que ela escreve, por isso NÃO foi apagada:
+ * o warn abaixo mede uso real em produção, e a remoção só acontece depois de
+ * 2+ semanas sem ele nos logs (decisão futura do Ciro, registrada no plano de
+ * 30/07/2026). Identidade de marca vive no BrandDNA — ver
+ * src/lib/brand/brand-context.ts e a aba Marca do projeto.
+ */
+function warnDeprecated(method: string): void {
+  console.warn(
+    `[deprecated] ${method} /api/projects/[projectId]/brand-style — rota legado; identidade agora vive no DNA da marca (aba Marca)`,
+  )
+}
+
 // Schema for PUT request
 const brandStyleSchema = z.object({
   styleDescription: z.string().max(2000).optional(),
@@ -33,6 +47,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
+  warnDeprecated('GET')
   const { projectId } = await params
   const projectIdNum = Number(projectId)
   const { userId, orgId } = await auth()
@@ -70,6 +85,7 @@ export async function PUT(
   req: Request,
   { params }: { params: Promise<{ projectId: string }> },
 ) {
+  warnDeprecated('PUT')
   const { projectId } = await params
   const projectIdNum = Number(projectId)
   const { userId, orgId } = await auth()
