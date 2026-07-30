@@ -1,0 +1,33 @@
+# CI mínimo: typecheck + lint em todo push/PR na main.
+# Sem testes (não existem) e sem deploy (a Vercel cuida do build de produção).
+# O postinstall do npm ci já roda `prisma generate`, mas o passo explícito
+# fica como rede de segurança caso o postinstall mude.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
