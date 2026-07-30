@@ -54,6 +54,7 @@ export async function GET(
       runtimeNotes: [
         'Contexto das imagens: numera IMAGEM 1 (arte original), IMAGEM 2 (fundo novo, se enviado) e logos/elementos selecionados no modal.',
         'Pedido do cliente: o texto digitado na hora entra por último, com prioridade sobre a diagramação — nunca sobre identidade e paleta.',
+        'Texto exato (verbatim): quando o criativo tem textos conhecidos (slots do template), eles entram como a palavra final do prompt e a arte gerada é conferida letra por letra por um modelo de visão antes de valer.',
       ],
     })
   } catch (error) {

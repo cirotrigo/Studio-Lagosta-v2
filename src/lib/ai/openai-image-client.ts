@@ -49,6 +49,12 @@ interface BuildPromptArgs {
   artDirection?: string | null
   /** Identidade da marca via loader único; sempre do sistema, nunca do bloco editável. */
   brand?: BrandContext | null
+  /**
+   * Textos que a arte DEVE reproduzir letra por letra (extraídos da Generation
+   * original). Viram a seção [TEXTO EXATO — VERBATIM], que vence até o pedido
+   * do cliente — e são conferidos pós-geração pela verificação de visão.
+   */
+  expectedTexts?: string[]
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -138,6 +144,18 @@ function buildBrandIdentitySection(brand: BrandContext | null): string {
   return lines.length > 1 ? lines.join('\n') : ''
 }
 
+function buildTextoExatoSection(expectedTexts: string[]): string {
+  if (expectedTexts.length === 0) return ''
+  const list = expectedTexts.map((t) => `- "${t.replace(/<br\s*\/?>/gi, ' ').replace(/\s+/g, ' ').trim()}"`).join('\n')
+  return `[TEXTO EXATO — VERBATIM]
+A arte contém textos que NÃO podem mudar. Reproduza cada um letra por letra,
+com a mesma grafia, os mesmos números e a mesma pontuação — nada a mais, nada
+a menos:
+${list}
+Não corrija, não traduza, não abrevie e não acrescente palavras. Se o pedido do
+cliente conflitar com algum destes textos, os textos exatos vencem.`
+}
+
 function buildPedidoSection(userRequest: string): string {
   const trimmed = userRequest.trim()
   if (trimmed.length === 0) return ''
@@ -185,7 +203,7 @@ imagem, não sobre a original.`
  * - `runtime`: depende do que a pessoa faz na hora (anexos, pedido digitado).
  */
 export interface PromptSection {
-  id: 'contexto' | 'identidade' | 'cores' | 'direcao' | 'novo-fundo' | 'assets' | 'pedido'
+  id: 'contexto' | 'identidade' | 'cores' | 'direcao' | 'novo-fundo' | 'assets' | 'pedido' | 'texto-exato'
   title: string
   origin: 'system' | 'editable' | 'runtime'
   content: string
@@ -211,6 +229,7 @@ export function buildPromptSections({
   brandColors,
   artDirection,
   brand,
+  expectedTexts = [],
 }: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
   const sections: PromptSection[] = []
@@ -267,6 +286,18 @@ export function buildPromptSections({
     sections.push({ id: 'pedido', title: 'Pedido do cliente', origin: 'runtime', content: pedido })
   }
 
+  // Por último DE PROPÓSITO: é a palavra final do prompt, acima inclusive do
+  // pedido do cliente — texto aprovado não muda nem a pedido.
+  const textoExato = buildTextoExatoSection(expectedTexts)
+  if (textoExato) {
+    sections.push({
+      id: 'texto-exato',
+      title: 'Texto exato (verbatim)',
+      origin: 'system',
+      content: textoExato,
+    })
+  }
+
   return sections
 }
 
@@ -287,6 +318,8 @@ interface ImproveCreativeOptions {
   artDirection?: string | null
   /** Identidade da marca via loader único — injetada pelo sistema. */
   brand?: BrandContext | null
+  /** Textos que a arte deve reproduzir verbatim (seção [TEXTO EXATO]). */
+  expectedTexts?: string[]
   timeoutMs?: number
 }
 
@@ -316,11 +349,12 @@ export async function improveCreative({
   brandColors = [],
   artDirection = null,
   brand = null,
+  expectedTexts = [],
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, brand })
+  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, brand, expectedTexts })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,
