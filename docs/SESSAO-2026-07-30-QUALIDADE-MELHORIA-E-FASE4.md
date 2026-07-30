@@ -249,10 +249,39 @@ intactos; produção respondendo (e **crescendo**: `socialPosts` foi de 7659
 para 7666 durante a sessão, tráfego real) enquanto o `dev-local` seguiu em
 7659 — liveness e isolamento na mesma medida.
 
-### O que ficou faltando na topologia
+### O `default` também foi movido
 
-**O flag `default` continua no branch abandonado.** No Neon o branch `default`
-é o único protegido contra exclusão: hoje o lixo está protegido e a produção
-não. Mover o `default` para o `production` fecharia isso, mas pode alterar
-configuração de compute/autoscaling de um banco vivo — não foi feito por não
-ter sido pedido e por ter efeito colateral não óbvio. Decisão do Ciro.
+A pedido do Ciro, logo em seguida. O flag estava no branch abandonado, e no
+Neon o `default` é justamente o que não pode ser apagado — o lixo estava
+protegido e a produção não. Antes de executar, a documentação foi conferida:
+`set_as_default` move **apenas a designação**; o que reage a `isDefault` são
+políticas do `neon.config.ts`, que este projeto não usa.
+
+Confirmado com snapshot antes/depois do compute de produção: `0.25–2 CU`,
+`suspend=0s`, `active`, `k8s-neonvm` — **idênticos**, e a API devolveu
+`operations: []` (nenhuma operação disparada). Produção seguiu respondendo
+(landing 200, escrita ativa no banco).
+
+### Dry-run do `db:clean` (medido, não executado)
+
+Aproveitando o acesso, foi medido o que `npm run db:clean` apagaria hoje em
+produção — ele roda sem confirmação nem dry-run:
+
+| # | Alvo | Linhas |
+|---|---|---|
+| 1 | `Generation` (>30d) | **3.804** |
+| 6 | `PostLog` (>30d) | 297.576 |
+| 4,5,7 | VideoJobs e PostRetry | 20 |
+| 2,3,8 | StorageObject, UsageHistory, SubscriptionEvent | 0 |
+
+O item 6 é limpeza legítima e responde por 99% do volume. **O item 1 não é
+limpeza, é perda de produto**: apagaria 3.804 das 4.227 Generations (a galeria
+de Criativos), e como `SocialPost.Generation` é relação opcional sem
+`onDelete` declarado o Prisma aplica **`SetNull`** — 2.007 posts perderiam o
+`generationId`, que é o vínculo que habilita "Melhorar com IA" e que o
+CLAUDE.md registra como **irrecuperável**. Das 500 melhorias com linhagem, 409
+sumiriam e as 91 restantes ficariam com `sourceGenerationId` órfão. Os blobs
+não são apagados por esse script, então virariam arquivo pago e inalcançável.
+
+Ficou registrado como tarefa separada (dry-run obrigatório + separar o item 1
+do resto). **O `db:clean` não foi executado.**

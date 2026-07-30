@@ -73,8 +73,8 @@ Projeto `studio-lagosta` (`patient-king-49987156`):
 
 | Branch | Id | Compute | O que é |
 |---|---|---|---|
-| **`production`** | `br-fancy-boat-adl32qyg` | `ep-fragrant-term-adnufsao` | **A produção.** Banco do `.env` **e** do env de produção da Vercel |
-| `abandonado-producao-2025` | `br-dawn-heart-adi76dh9` (**ainda é o `default`**) | `ep-restless-silence-adjepguy` (idle) | A produção original, parada desde 31/12/2025 |
+| **`production`** (`default`) | `br-fancy-boat-adl32qyg` | `ep-fragrant-term-adnufsao` | **A produção.** Banco do `.env` **e** do env de produção da Vercel |
+| `abandonado-producao-2025` | `br-dawn-heart-adi76dh9` | `ep-restless-silence-adjepguy` (idle) | A produção original, parada desde 31/12/2025 |
 | `dev-local` | `br-young-boat-adv30d9f` | `ep-holy-flower-ada0j66v` | O banco de desenvolvimento |
 
 **Até 30/07/2026 os nomes mentiam**: o branch chamado `dev` era a produção
@@ -89,10 +89,11 @@ Regras que sobrevivem ao conserto:
   identifique pelo **compute**: o dono do endpoint que está no `DATABASE_URL`.
   É o que `scripts/setup-dev-db.ts` faz, e por isso o `--recriar` dele recusa
   apagar o branch que serve a produção. Hoje o nome bate; ele já não batia.
-- **O `default` continua no branch abandonado.** No Neon o branch `default` é
-  o único protegido contra exclusão — ou seja, hoje o lixo está protegido e a
-  produção não. Trocar isso é decisão do Ciro (pode mexer em autoscaling do
-  compute), e é o que falta para a topologia ficar correta.
+- **O `default` foi movido para o `production`** em 30/07/2026, junto com o
+  rename. No Neon o branch `default` não pode ser apagado, então a proteção
+  agora está sobre a produção em vez de sobre o branch abandonado.
+  `set_as_default` é só a designação: o compute ficou idêntico (0.25–2 CU,
+  suspend 0s) e a API não disparou operação nenhuma.
 
 ### Banco de desenvolvimento (branch do Neon, 30/07/2026)
 
