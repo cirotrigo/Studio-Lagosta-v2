@@ -41,8 +41,11 @@ conflito entre texto e fotografia, priorize sempre a fotografia.
 
 [PROTAGONISMO DA FOTOGRAFIA]
 A fotografia ocupa aproximadamente 90% da composição visual, e o layout deve
-parecer construído ao redor dela. Nunca aumente nem reposicione textos de forma
-que reduzam o impacto da imagem.
+parecer construído ao redor dela.
+Sobre mover texto, a regra é uma só: você PODE reposicionar blocos de texto
+inteiros (sem alterar nenhuma palavra) quando isso melhorar a composição — o
+que você NÃO pode é aumentá-los nem colocá-los onde reduzam o impacto da
+fotografia.
 Preserve completamente: alimentos, bebidas, rostos, mãos e os detalhes
 importantes da cena.
 
