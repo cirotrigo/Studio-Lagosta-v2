@@ -185,9 +185,12 @@ async function main() {
     console.log('═══════════════════════════════════════════════════════\n')
 
     if (APPLY && total > 0) {
-      console.log('💡 Para recuperar espaço em disco, rode no SQL Editor do Neon:')
-      console.log('   VACUUM FULL;')
-      console.log('   REINDEX DATABASE neondb;\n')
+      console.log('💡 Sobre o espaço em disco no Neon (NÃO rode VACUUM FULL por reflexo):')
+      console.log('   · DELETE gera WAL e AUMENTA o storage temporariamente; o espaço volta')
+      console.log('     sozinho quando os registros saem da janela de histórico do projeto.')
+      console.log('   · VACUUM comum NÃO reduz o tamanho reportado — só marca espaço para reuso.')
+      console.log('   · VACUUM FULL reduz, mas TRAVA a tabela e causa pico de storage. Em banco')
+      console.log('     de produção com escrita ativa, só com motivo real e fora do horário de pico.\n')
     }
     if (!APPLY) {
       console.log('   Para apagar de verdade:  npx tsx scripts/clean-db.ts --apply\n')
