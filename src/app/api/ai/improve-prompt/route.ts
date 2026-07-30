@@ -296,7 +296,7 @@ export async function POST(request: Request) {
 
       try {
         // Remove markdown code blocks if present (```json ... ``` or ``` ... ```)
-        let cleanedText = rawText
+        const cleanedText = rawText
           .replace(/^```(?:json)?\s*\n?/i, '')
           .replace(/\n?```\s*$/i, '')
           .trim()

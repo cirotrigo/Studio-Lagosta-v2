@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Fetch scheduled + published posts from Zernio with pagination
-    let allZernioPosts: any[] = []
+    const allZernioPosts: any[] = []
     for (const status of ['scheduled', 'published']) {
       let page = 1
       while (true) {
