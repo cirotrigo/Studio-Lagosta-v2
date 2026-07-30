@@ -24,10 +24,11 @@ const ROOT = process.cwd()
 const PROD_ENV_FILE = resolve(ROOT, '.env')
 const DEV_ENV_FILE = resolve(ROOT, '.env.development.local')
 /**
- * NÃO usar "dev": neste projeto o branch chamado `dev` é a PRODUÇÃO de verdade
- * (é dele o compute `ep-fragrant-term-adnufsao` que o .env e a Vercel usam),
- * enquanto o branch chamado `production` está parado desde 2025. Um nome
- * próprio evita a colisão e deixa óbvio quem é quem.
+ * `dev-local`, não `dev`. Até 30/07/2026 o branch chamado `dev` era a
+ * PRODUÇÃO de verdade (dono do compute que o .env e a Vercel usam) — os
+ * branches foram renomeados no mesmo dia e hoje `production` é mesmo a
+ * produção. O nome próprio fica: deixa explícito que este branch é o banco
+ * local de quem desenvolve, e não volta a colidir se alguém recriar um `dev`.
  */
 const BRANCH_NAME = 'dev-local'
 const NEON_API = 'https://console.neon.tech/api/v2'
@@ -215,9 +216,11 @@ async function main(): Promise<void> {
   const { branches } = await neon(apiKey, `/projects/${projectId}/branches`)
 
   // O branch de produção é o DONO do compute do .env — nunca o de nome
-  // "production" nem o `default`. Neste projeto eles divergem: o compute de
-  // produção pertence a um branch chamado "dev", e o branch chamado
-  // "production" está parado desde 2025. Confiar no nome apagaria a produção.
+  // "production" nem o `default`. Hoje o nome bate (renomeados em 30/07/2026),
+  // mas já não batia: o compute de produção pertencia a um branch chamado
+  // "dev". Continuar resolvendo pelo compute é o que torna este script imune
+  // a nome errado — e o `default` segue no branch abandonado, então confiar
+  // nele também estaria errado.
   const { endpoints: allEndpoints } = await neon(apiKey, `/projects/${projectId}/endpoints`)
   const prodEndpointRow = (allEndpoints ?? []).find((e: any) => e.id === prodEndpoint)
   const prodBranchId: string | undefined = prodEndpointRow?.branch_id

@@ -67,27 +67,32 @@ Consequences:
 
 See `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` § 9 for the full diagnosis.
 
-### ⚠️ Os nomes dos branches do Neon MENTEM (descoberto em 30/07/2026)
+### Branches do Neon (renomeados em 30/07/2026)
 
-No projeto `studio-lagosta` (`patient-king-49987156`):
+Projeto `studio-lagosta` (`patient-king-49987156`):
 
-| Branch | Id | Compute | O que é de verdade |
+| Branch | Id | Compute | O que é |
 |---|---|---|---|
-| **`dev`** | `br-fancy-boat-adl32qyg` | `ep-fragrant-term-adnufsao` | **A PRODUÇÃO.** É o banco do `.env` **e** do env de produção da Vercel |
-| `production` | `br-dawn-heart-adi76dh9` (default) | `ep-restless-silence-adjepguy` (idle) | Abandonado desde 31/12/2025 |
-| `dev-local` | criado em 30/07/2026 | `ep-holy-flower-ada0j66v` | O banco de desenvolvimento de verdade |
+| **`production`** | `br-fancy-boat-adl32qyg` | `ep-fragrant-term-adnufsao` | **A produção.** Banco do `.env` **e** do env de produção da Vercel |
+| `abandonado-producao-2025` | `br-dawn-heart-adi76dh9` (**ainda é o `default`**) | `ep-restless-silence-adjepguy` (idle) | A produção original, parada desde 31/12/2025 |
+| `dev-local` | `br-young-boat-adv30d9f` | `ep-holy-flower-ada0j66v` | O banco de desenvolvimento |
 
-Alguém ramificou a produção para um branch chamado `dev`, apontou tudo para
-ele e nunca renomeou. **Apagar o branch chamado `dev` derrubaria o site.**
+**Até 30/07/2026 os nomes mentiam**: o branch chamado `dev` era a produção
+(alguém ramificou a produção para ele em 31/12/2025, apontou tudo e nunca
+renomeou), enquanto o chamado `production` estava abandonado. Renomear era
+seguro porque a string de conexão vem do **endpoint**, não do nome — o que
+ficou provado na prática (produção seguiu respondendo, sem tocar na Vercel).
+
+Regras que sobrevivem ao conserto:
 
 - **Nunca identifique a produção pelo NOME do branch nem pelo flag `default`** —
   identifique pelo **compute**: o dono do endpoint que está no `DATABASE_URL`.
   É o que `scripts/setup-dev-db.ts` faz, e por isso o `--recriar` dele recusa
-  apagar o branch que serve a produção.
-- O branch de dev se chama **`dev-local`** justamente para não colidir com o
-  `dev` que é produção.
-- Renomear os branches no console (`dev` → `production` e vice-versa) resolveria
-  a confusão de vez, mas é operação de risco e ficou como decisão do Ciro.
+  apagar o branch que serve a produção. Hoje o nome bate; ele já não batia.
+- **O `default` continua no branch abandonado.** No Neon o branch `default` é
+  o único protegido contra exclusão — ou seja, hoje o lixo está protegido e a
+  produção não. Trocar isso é decisão do Ciro (pode mexer em autoscaling do
+  compute), e é o que falta para a topologia ficar correta.
 
 ### Banco de desenvolvimento (branch do Neon, 30/07/2026)
 

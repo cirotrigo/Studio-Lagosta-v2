@@ -228,9 +228,31 @@ via `/users/me/organizations`.
 provado na prática: um registro escrito no dev **não** apareceu na produção, e
 foi removido em seguida.
 
-### Pendência do Ciro
+### Os branches foram renomeados (ainda em 30/07)
 
-Renomear os branches no console (`dev` → `production`, e o `production` morto
-para algo como `production-antigo`) resolveria a armadilha de nome de vez. É
-operação de risco e ficou como decisão dele — o código já não depende dos
-nomes.
+A pedido do Ciro, já nesta sessão. Renomear é seguro porque a string de
+conexão vem do **endpoint** (`ep-…`), não do nome do branch; antes de escrever
+foi conferido que nenhum código referencia nome/id de branch e que as env vars
+da Vercel são valores manuais, sem integração do Neon que ressincronizasse.
+
+Ordem obrigatória (nomes são únicos no projeto):
+
+1. `production` (`br-dawn-heart-adi76dh9`, o abandonado) →
+   **`abandonado-producao-2025`**, liberando o nome;
+2. `dev` (`br-fancy-boat-adl32qyg`, a produção real) → **`production`**.
+
+O script de rename só escreve depois de afirmar que o dono do compute do
+`.env` é mesmo o branch chamado `dev` e que o `production` de então é outro.
+
+Verificação pós-rename: ids, computes e o mapeamento endpoint→branch
+intactos; produção respondendo (e **crescendo**: `socialPosts` foi de 7659
+para 7666 durante a sessão, tráfego real) enquanto o `dev-local` seguiu em
+7659 — liveness e isolamento na mesma medida.
+
+### O que ficou faltando na topologia
+
+**O flag `default` continua no branch abandonado.** No Neon o branch `default`
+é o único protegido contra exclusão: hoje o lixo está protegido e a produção
+não. Mover o `default` para o `production` fecharia isso, mas pode alterar
+configuração de compute/autoscaling de um banco vivo — não foi feito por não
+ter sido pedido e por ter efeito colateral não óbvio. Decisão do Ciro.
