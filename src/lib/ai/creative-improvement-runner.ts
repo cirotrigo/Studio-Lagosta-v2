@@ -373,20 +373,60 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       },
     })
 
-    await deductCreditsForFeature({
-      clerkUserId: args.userId,
-      feature: 'ai_creative_improvement',
-      details: {
-        originalGenerationId: args.originalGenerationId,
-        newGenerationId: args.jobGenerationId,
-        model: getCurrentImageModel(),
-        format,
-        inputSize: openaiSize,
-        elapsedSeconds,
-      },
-      organizationId: args.orgId,
-      projectId: args.projectId,
-    })
+    // Dedução DEPOIS do sucesso e não-fatal: a arte já foi gerada, verificada
+    // e está no Blob — falha de cobrança não pode virar isso em FAILED nem
+    // impedir a aplicação ao post. Fica registrada para acerto manual.
+    try {
+      await deductCreditsForFeature({
+        clerkUserId: args.userId,
+        feature: 'ai_creative_improvement',
+        details: {
+          originalGenerationId: args.originalGenerationId,
+          newGenerationId: args.jobGenerationId,
+          model: getCurrentImageModel(),
+          format,
+          inputSize: openaiSize,
+          elapsedSeconds,
+        },
+        organizationId: args.orgId,
+        projectId: args.projectId,
+      })
+    } catch (deductError) {
+      const deductMessage =
+        deductError instanceof Error ? deductError.message : String(deductError)
+      console.error(
+        `[improve.bg] dedução de créditos FALHOU (generation ${args.jobGenerationId}) — melhoria segue valendo, acertar cobrança à mão:`,
+        deductMessage,
+      )
+      await db.generation
+        .update({
+          where: { id: args.jobGenerationId },
+          data: {
+            fieldValues: {
+              source: 'ai_improvement',
+              originalGenerationId: args.originalGenerationId,
+              userRequest: args.userRequest,
+              backgroundImageUrl: args.backgroundImageUrl ?? null,
+              selectedLogoIds: args.selectedLogoIds,
+              selectedElementIds: args.selectedElementIds,
+              model: getCurrentImageModel(),
+              quality: 'high',
+              inputSize: openaiSize,
+              finalSize: `${finalSize.width}x${finalSize.height}`,
+              format,
+              elapsedSeconds,
+              referenceCounts: {
+                background: references.filter((r) => r.role === 'background').length,
+                logos: references.filter((r) => r.role === 'logo').length,
+                elements: references.filter((r) => r.role === 'element').length,
+              },
+              creditDeductionError: deductMessage.slice(0, 400),
+              ...textCheckInfo,
+            },
+          },
+        })
+        .catch(() => null)
+    }
 
     if (args.applyToPostId) {
       // A melhoria demora ~1min; o post pode ter sido publicado ou despromovido
