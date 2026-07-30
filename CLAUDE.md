@@ -568,6 +568,45 @@ agenda e corrige três defeitos do editor. Regras que ficaram:
   três); `brandStyleDescription` só o Wine Vix tem, e `cuisineType` está vazio
   em todos.
 
+`docs/SESSAO-2026-07-30-QUALIDADE-MELHORIA-E-FASE4.md` fecha a confiabilidade
+da melhoria: verificação de texto, resolução nativa, linhagem e a Fase 4 de
+limpeza. Regras que ficaram:
+
+- **Todo texto conhecido entra no prompt como `[TEXTO EXATO — VERBATIM]`** —
+  última seção do prompt, acima até do pedido do cliente — e a arte gerada é
+  **conferida por visão** (gpt-4o-mini transcreve; comparação uppercase, sem
+  acento, espaços colapsados, PONTUAÇÃO MANTIDA). Divergiu → regenera (2
+  gerações no total); persistiu → Generation FAILED e **o post fica com a arte
+  original**. Sem texto esperado (upload externo, export do editor) →
+  `textCheck: 'skipped'`; visão fora do ar → skipped também, nunca derruba a
+  melhoria. Auditoria em `fieldValues` (`textCheck`, `textCheckAttempts`).
+- **O pipeline da melhoria vive em `src/lib/ai/creative-improvement-runner.ts`**,
+  não na rota — a rota improve só valida e dispara `after()`. Teste E2E importa
+  o runner e roda o caminho real sem sessão Clerk (protocolo: projeto 8,
+  `publishType: REMINDER`, +7 dias, cleanup completo).
+- **A melhoria gera em resolução NATIVA** (STORY 1088x1936, FEED 1088x1360,
+  SQUARE 1088x1088 — múltiplos de 16, sempre ≥ saída final): o resize final é
+  downscale, nunca upscale. O `FORMAT_TO_INPUT_SIZE` de `cost-estimates.ts` é
+  **legado congelado** para linhas de uso antigas — não sincronizar com o
+  `creative-improvement-format.ts`; linhas novas gravam `inputSize` nos details.
+- **Dedução de créditos falhando NÃO desfaz melhoria pronta**: loga alto, grava
+  `fieldValues.creditDeductionError` e a arte segue aplicada. Descartar arte
+  verificada por soluço de cobrança é o pior dos dois erros.
+- **Linhagem é coluna**: `Generation.sourceGenerationId` (sem FK de propósito —
+  apagar a origem não arrasta a melhoria). A rota improve grava; as 500
+  melhorias antigas foram backfilladas. É o que liga badge "✨ melhorada",
+  antes/depois e "melhorar de novo" na galeria.
+- **`Project.userId` é o id INTERNO do User, não o clerkId** — dedução de
+  créditos e qualquer fluxo Clerk recebem `user_…`. Já existe User fantasma no
+  banco criado por essa confusão; não criar outro.
+- **Rotas legado `brand-style`/`design-system`/`art-templates`: remoção em dois
+  tempos.** Hoje só logam `[deprecated]` por handler (o `generate-art` ainda lê
+  o que escrevem); apagar de verdade só depois de 2+ semanas sem warn nos logs
+  de produção, por decisão do Ciro. `TOM_DE_VOZ` segue no enum, marcado como
+  legado na página /knowledge.
+- **CI mínimo no ar** (`.github/workflows/ci.yml`): typecheck + lint em
+  push/PR. Lint com ERRO agora quebra o CI — a main foi zerada nesta sessão.
+
 ### DNA da Marca (30/07/2026)
 
 A identidade vive na tabela `BrandDNA` (1:1 com Project; tom de voz, regras,
