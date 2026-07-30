@@ -131,6 +131,14 @@ export interface PrepareCreativeResult {
     logos: unknown[]
     colors: unknown[]
     fonts: unknown[]
+    /** DNA da marca (aba Marca) — identidade que vale para TODA arte/copy. */
+    dna: {
+      toneOfVoice: string | null
+      contentRules: string | null
+      composition: string | null
+      visualStyle: string | null
+      photoDirection: string | null
+    } | null
   }
   knowledge: Record<string, string>
 }
@@ -147,6 +155,7 @@ const PROJECT_SELECT = {
   bodyFontFamily: true,
   brandStyleDescription: true,
   cuisineType: true,
+  brandDNA: true,
   BrandColor: { select: { name: true, hexCode: true }, orderBy: { id: 'asc' } },
   CustomFont: { select: { name: true, fontFamily: true, fileUrl: true }, orderBy: { id: 'asc' } },
   Logo: {
@@ -350,7 +359,9 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     },
     alternatives,
     brand: {
-      brandStyle: project.brandStyleDescription,
+      // brandStyle mantém o nome antigo para não quebrar as skills que já
+      // leem este bloco; o DNA visualStyle tem prioridade sobre o legado.
+      brandStyle: project.brandDNA?.visualStyle ?? project.brandStyleDescription,
       cuisineType: project.cuisineType,
       titleFontFamily: project.titleFontFamily,
       bodyFontFamily: project.bodyFontFamily,
@@ -358,6 +369,15 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       logos: project.Logo,
       colors: project.BrandColor,
       fonts: project.CustomFont,
+      dna: project.brandDNA
+        ? {
+            toneOfVoice: project.brandDNA.toneOfVoice,
+            contentRules: project.brandDNA.contentRules,
+            composition: project.brandDNA.composition,
+            visualStyle: project.brandDNA.visualStyle,
+            photoDirection: project.brandDNA.photoDirection,
+          }
+        : null,
     },
     knowledge,
   }

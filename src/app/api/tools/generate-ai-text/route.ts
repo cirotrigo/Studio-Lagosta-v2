@@ -8,6 +8,7 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectReadAccess } from '@/lib/projects/access'
 import { getInstagramTemplatePreset } from '@/lib/instagram-template-presets'
 import { getProjectPromptKnowledgeContext, searchKnowledgeBase } from '@/lib/knowledge/search'
+import { loadBrandContext } from '@/lib/brand/brand-context'
 import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
@@ -1583,6 +1584,8 @@ function buildSystemPrompt(brandContext: {
   cuisineType: string
   colorPalette: string[]
   instagramUsername: string
+  toneOfVoice: string
+  contentRules: string
 }, options?: { tone?: string | null; objective?: string | null }): string {
   const palette = brandContext.colorPalette.length > 0
     ? brandContext.colorPalette.join(', ')
@@ -1620,6 +1623,10 @@ function buildSystemPrompt(brandContext: {
     `- Segmento: ${brandContext.cuisineType || 'nao informado'}`,
     `- Instagram: ${brandContext.instagramUsername || 'nao informado'}`,
     `- Paleta: ${palette}`,
+    // DNA da marca (aba Marca): tom e regras entram SEMPRE que preenchidos —
+    // diferente da base de conhecimento, que depende de relevância na busca.
+    brandContext.toneOfVoice ? `- Tom de voz da marca (siga sempre): ${brandContext.toneOfVoice}` : '',
+    brandContext.contentRules ? `- Regras da marca (nunca violar): ${brandContext.contentRules}` : '',
   ].filter(Boolean).join('\n')
 }
 
@@ -1988,12 +1995,17 @@ export async function generateAiTextPayload(
     }),
   ])
 
+  // DNA via loader único (src/lib/brand) — mesma fonte da aba Marca e do
+  // improve. visualStyle do DNA tem prioridade sobre o campo legado.
+  const brandDna = await loadBrandContext(body.projectId)
   const brandContext = {
     projectName: projectMeta?.name || 'Projeto',
-    brandStyleDescription: projectMeta?.brandStyleDescription || '',
+    brandStyleDescription: brandDna?.dna.visualStyle || projectMeta?.brandStyleDescription || '',
     cuisineType: projectMeta?.cuisineType || '',
     instagramUsername: projectMeta?.instagramUsername || '',
     colorPalette: colors.map((item) => item.hexCode),
+    toneOfVoice: brandDna?.dna.toneOfVoice || '',
+    contentRules: brandDna?.dna.contentRules || '',
   }
   const allTemplates = (((projectMeta?.brandVisualElements as Record<string, unknown> | null)?.artTemplates ?? []) as Array<Record<string, unknown>>)
   const selectedTemplates: TemplateSummary[] = (body.templateIds ?? [])

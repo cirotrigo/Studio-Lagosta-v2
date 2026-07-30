@@ -219,6 +219,7 @@ model Project {
   /// (src/lib/ai/openai-image-client.ts). Serve para apertar as regras num
   /// projeto específico sem endurecer o padrão de todos.
   artImprovementPrompt        String?
+  brandDNA                    BrandDNA?
   laterAccountId              String?
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)
@@ -260,6 +261,34 @@ model Project {
   @@index([userId, updatedAt(sort: Desc)])
   @@index([updatedAt(sort: Desc)])
   @@index([isClientProject])
+}
+
+/// DNA da marca — identidade que entra INCONDICIONALMENTE em todo prompt de
+/// geração (copy e arte). Difere da base de conhecimento, que é buscada por
+/// relevância (minScore/topK/teto de tokens) e por isso não serve para
+/// identidade: TOM_DE_VOZ na base nunca chegava ao gerador de copy da UI.
+///
+/// Uma coluna TEXT por seção DE PROPÓSITO (nada de Json): a UI edita por
+/// seção, cada gerador consome um recorte diferente (copy usa tom+regras;
+/// arte usa estilo+foto+composição), e `brandVisualElements` já mostrou o que
+/// acontece com Json sem dono — 4 features fazendo merge manual e metade das
+/// chaves nunca lida.
+model BrandDNA {
+  id             Int      @id @default(autoincrement())
+  projectId      Int      @unique
+  /// Como a marca fala (copy, chat) — não entra no prompt de imagem
+  toneOfVoice    String?
+  /// O que nunca fazer/dizer — entra em copy E arte
+  contentRules   String?
+  /// Layout, hierarquia, respiro — complementa as FontCombinations
+  composition    String?
+  /// Estética geral; tem prioridade sobre o legado Project.brandStyleDescription
+  visualStyle    String?
+  /// Luz, enquadramento, tratamento fotográfico
+  photoDirection String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 }
 
 model ProjectTag {

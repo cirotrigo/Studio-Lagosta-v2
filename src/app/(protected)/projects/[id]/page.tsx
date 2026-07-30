@@ -33,6 +33,7 @@ import { InstagramAccountConfig } from '@/components/projects/instagram-account-
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
 import { AIChatBehaviorConfig } from '@/components/projects/ai-chat-behavior-config'
 import { ArtImprovementPromptConfig } from '@/components/projects/art-improvement-prompt-config'
+import { BrandDnaSection } from '@/components/projects/brand-dna-section'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
@@ -202,7 +203,9 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="metricas">Métricas</TabsTrigger>
-          <TabsTrigger value="assets">Assets</TabsTrigger>
+          {/* value continua 'assets' de propósito: links ?tab=assets espalhados
+              (e o hábito) seguem funcionando — só o rótulo virou Marca */}
+          <TabsTrigger value="assets">Marca</TabsTrigger>
           <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
         </TabsList>
 
@@ -326,7 +329,19 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="assets" className="mt-3 md:mt-4">
-          <ProjectAssetsPanel projectId={projectId} />
+          <div className="space-y-6">
+            {/* DNA primeiro: é o que muda o resultado das gerações. Os assets
+                visuais (logos, cores, fontes) vêm em seguida — são a parte da
+                identidade que o sistema injeta sozinho. */}
+            <BrandDnaSection projectId={projectId} />
+            {projectDetails && (
+              <ArtImprovementPromptConfig
+                projectId={projectId}
+                initialPrompt={projectDetails.artImprovementPrompt}
+              />
+            )}
+            <ProjectAssetsPanel projectId={projectId} />
+          </div>
         </TabsContent>
 
         <TabsContent value="metricas" className="mt-3 md:mt-4">
@@ -347,12 +362,6 @@ export default function ProjectDetailPage() {
                 <AIChatBehaviorConfig
                   projectId={projectId}
                   initialBehavior={projectDetails.aiChatBehavior}
-                />
-
-                {/* Direção de arte da melhoria com IA */}
-                <ArtImprovementPromptConfig
-                  projectId={projectId}
-                  initialPrompt={projectDetails.artImprovementPrompt}
                 />
 
                 {/* Project Tags Configuration */}

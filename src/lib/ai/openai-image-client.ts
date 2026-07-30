@@ -1,7 +1,7 @@
 import OpenAI from 'openai'
 import { toFile } from 'openai/uploads'
 import { DEFAULT_ART_DIRECTION } from './art-direction'
-import type { BrandIdentity } from './improvement-assets-loader'
+import type { BrandContext } from '@/lib/brand/brand-context'
 
 let cachedClient: OpenAI | null = null
 
@@ -47,8 +47,8 @@ interface BuildPromptArgs {
   brandColors: BrandColor[]
   /** Direção de arte do projeto; cai no DEFAULT_ART_DIRECTION quando vazia. */
   artDirection?: string | null
-  /** Identidade da marca; sempre do sistema, nunca do bloco editável. */
-  identity?: BrandIdentity | null
+  /** Identidade da marca via loader único; sempre do sistema, nunca do bloco editável. */
+  brand?: BrandContext | null
 }
 
 function buildContextSection(references: ReferenceImage[]): string {
@@ -94,28 +94,40 @@ function buildBrandColorsSection(colors: BrandColor[]): string {
  * preenchidos, porque hoje quase todos estão vazios e uma linha "Estilo da
  * marca: null" só confundiria o modelo.
  */
-function buildBrandIdentitySection(identity: BrandIdentity | null): string {
-  if (!identity) return ''
+function buildBrandIdentitySection(brand: BrandContext | null): string {
+  if (!brand) return ''
 
-  const lines: string[] = [`[IDENTIDADE DA MARCA — ${identity.projectName}]`]
+  const lines: string[] = [`[IDENTIDADE DA MARCA — ${brand.projectName}]`]
 
-  if (identity.styleDescription) {
-    lines.push(`Estilo visual da marca: ${identity.styleDescription}`)
+  // Seções do DNA relevantes para IMAGEM. toneOfVoice fica de fora de
+  // propósito: é instrução de escrita (copy/chat) e aqui os textos são
+  // reproduzidos verbatim — instrução de tom só confundiria o modelo.
+  if (brand.dna.visualStyle) {
+    lines.push(`Estilo visual da marca: ${brand.dna.visualStyle}`)
   }
-  if (identity.cuisineType) {
-    lines.push(`Tipo de cozinha: ${identity.cuisineType}`)
+  if (brand.dna.photoDirection) {
+    lines.push(`Direção fotográfica da marca: ${brand.dna.photoDirection}`)
+  }
+  if (brand.dna.composition) {
+    lines.push(`Composição e layout da marca: ${brand.dna.composition}`)
+  }
+  if (brand.dna.contentRules) {
+    lines.push(`Regras da marca (respeite sempre): ${brand.dna.contentRules}`)
+  }
+  if (brand.cuisineType) {
+    lines.push(`Tipo de cozinha: ${brand.cuisineType}`)
   }
 
   const fontes: string[] = []
-  if (identity.titleFont) fontes.push(`títulos em ${identity.titleFont}`)
+  if (brand.fonts.title) fontes.push(`títulos em ${brand.fonts.title}`)
   // Subtítulo nulo significa "a marca usa a fonte de corpo também no subtítulo"
   // (ver comentário no schema) — dizer isso é melhor que omitir a linha.
-  if (identity.subtitleFont) {
-    fontes.push(`subtítulos em ${identity.subtitleFont}`)
-  } else if (identity.bodyFont) {
+  if (brand.fonts.subtitle) {
+    fontes.push(`subtítulos em ${brand.fonts.subtitle}`)
+  } else if (brand.fonts.body) {
     fontes.push(`subtítulos na mesma fonte do corpo`)
   }
-  if (identity.bodyFont) fontes.push(`corpo em ${identity.bodyFont}`)
+  if (brand.fonts.body) fontes.push(`corpo em ${brand.fonts.body}`)
 
   if (fontes.length > 0) {
     lines.push(
@@ -163,42 +175,105 @@ imagem, não sobre a original.`
 }
 
 /**
- * Monta o prompt final.
+ * Origem de cada seção do prompt — é o que a prévia da aba Marca exibe como
+ * badge, respondendo "onde eu edito isso?".
+ *
+ * - `system`: montada pelo sistema a partir de Assets/DNA; não é sobrescrevível
+ *   pelo prompt do projeto (de propósito — prompt mal escrito não pode apagar a
+ *   tipografia e a paleta).
+ * - `editable`: a direção de arte — padrão ou o texto do projeto.
+ * - `runtime`: depende do que a pessoa faz na hora (anexos, pedido digitado).
+ */
+export interface PromptSection {
+  id: 'contexto' | 'identidade' | 'cores' | 'direcao' | 'novo-fundo' | 'assets' | 'pedido'
+  title: string
+  origin: 'system' | 'editable' | 'runtime'
+  content: string
+  /** true quando a direção veio do projeto em vez do padrão */
+  customized?: boolean
+}
+
+/**
+ * Monta as seções do prompt final.
  *
  * O que o sistema é dono e o projeto não pode reescrever: o mapa das imagens
- * (quem é IMAGEM 1, 2, 3…, que depende do que foi anexado em runtime), a paleta
- * da marca, o uso dos assets e o pedido do cliente. O miolo — a direção de arte
- * — é `artDirection`, que vem do projeto quando ele tem um prompt próprio e cai
- * no DEFAULT_ART_DIRECTION quando não tem.
+ * (quem é IMAGEM 1, 2, 3…, que depende do que foi anexado em runtime), a
+ * identidade/paleta da marca, o uso dos assets e o pedido do cliente. O miolo
+ * — a direção de arte — é `artDirection`, que vem do projeto quando ele tem um
+ * prompt próprio e cai no DEFAULT_ART_DIRECTION quando não tem.
+ *
+ * Exportada porque a prévia da aba Marca usa EXATAMENTE esta função — se a
+ * prévia montasse o próprio texto, mentiria na primeira mudança daqui.
  */
-function buildPrompt({ userRequest, references, brandColors, artDirection, identity }: BuildPromptArgs): string {
+export function buildPromptSections({
+  userRequest,
+  references,
+  brandColors,
+  artDirection,
+  brand,
+}: BuildPromptArgs): PromptSection[] {
   const hasBackground = references.some((r) => r.role === 'background')
-  const sections: string[] = []
+  const sections: PromptSection[] = []
 
   if (references.length > 0) {
-    sections.push(buildContextSection(references))
+    sections.push({
+      id: 'contexto',
+      title: 'Contexto das imagens',
+      origin: 'runtime',
+      content: buildContextSection(references),
+    })
   }
 
-  const identitySection = buildBrandIdentitySection(identity ?? null)
-  if (identitySection) sections.push(identitySection)
+  const identitySection = buildBrandIdentitySection(brand ?? null)
+  if (identitySection) {
+    sections.push({
+      id: 'identidade',
+      title: 'Identidade da marca',
+      origin: 'system',
+      content: identitySection,
+    })
+  }
 
   const colorsSection = buildBrandColorsSection(brandColors)
-  if (colorsSection) sections.push(colorsSection)
+  if (colorsSection) {
+    sections.push({ id: 'cores', title: 'Cores da marca', origin: 'system', content: colorsSection })
+  }
 
-  const direction = artDirection?.trim() || DEFAULT_ART_DIRECTION
-  sections.push(direction)
+  const custom = !!artDirection?.trim()
+  sections.push({
+    id: 'direcao',
+    title: custom ? 'Direção de arte (deste projeto)' : 'Direção de arte (padrão do Studio)',
+    origin: 'editable',
+    customized: custom,
+    content: artDirection?.trim() || DEFAULT_ART_DIRECTION,
+  })
 
   if (hasBackground) {
-    sections.push(buildBackgroundIntegrationSection())
+    sections.push({
+      id: 'novo-fundo',
+      title: 'Novo fundo',
+      origin: 'runtime',
+      content: buildBackgroundIntegrationSection(),
+    })
   }
 
   const assetsUsage = buildAssetsUsageSection(references)
-  if (assetsUsage) sections.push(assetsUsage)
+  if (assetsUsage) {
+    sections.push({ id: 'assets', title: 'Uso dos assets', origin: 'runtime', content: assetsUsage })
+  }
 
   const pedido = buildPedidoSection(userRequest)
-  if (pedido) sections.push(pedido)
+  if (pedido) {
+    sections.push({ id: 'pedido', title: 'Pedido do cliente', origin: 'runtime', content: pedido })
+  }
 
-  return sections.join('\n\n')
+  return sections
+}
+
+function buildPrompt(args: BuildPromptArgs): string {
+  return buildPromptSections(args)
+    .map((s) => s.content)
+    .join('\n\n')
 }
 
 interface ImproveCreativeOptions {
@@ -210,8 +285,8 @@ interface ImproveCreativeOptions {
   brandColors?: BrandColor[]
   /** `Project.artImprovementPrompt` — substitui a direção de arte padrão. */
   artDirection?: string | null
-  /** Identidade da marca (fontes, estilo, cozinha) — injetada pelo sistema. */
-  identity?: BrandIdentity | null
+  /** Identidade da marca via loader único — injetada pelo sistema. */
+  brand?: BrandContext | null
   timeoutMs?: number
 }
 
@@ -240,12 +315,12 @@ export async function improveCreative({
   references = [],
   brandColors = [],
   artDirection = null,
-  identity = null,
+  brand = null,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 }: ImproveCreativeOptions): Promise<Buffer> {
   const client = getClient()
 
-  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, identity })
+  const prompt = buildPrompt({ userRequest, references, brandColors, artDirection, brand })
 
   const primaryFile = await toFile(imageBuffer, `original.${extensionFromMime(mimeType)}`, {
     type: mimeType,

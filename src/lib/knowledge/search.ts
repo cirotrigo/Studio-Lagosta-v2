@@ -150,8 +150,11 @@ function formatPromptKnowledgeContext(
       ].filter(Boolean).join('\n')
 
       const estimatedTokens = Math.ceil(section.length / 4)
+      // Entrada que não cabe é PULADA, não aborta o resto. O `return` antigo
+      // fazia um CARDAPIO longo eliminar DIFERENCIAIS inteiro — a categoria
+      // seguinte nunca era considerada, mesmo cabendo no orçamento.
       if (totalTokens + estimatedTokens > maxTokens) {
-        return sections.join('\n\n---\n\n')
+        continue
       }
 
       sections.push(section)
@@ -560,8 +563,11 @@ export function formatContextFromResults(
     // Estimate tokens (4 chars ≈ 1 token)
     const sectionTokens = Math.ceil(section.length / 4)
 
+    // Pula a entrada que não cabe em vez de encerrar: uma entrada longa no
+    // topo do ranking não deve impedir as menores (e ainda relevantes) de
+    // entrarem no orçamento restante.
     if (totalTokens + sectionTokens > maxTokens) {
-      break
+      continue
     }
 
     sections.push(section)

@@ -568,6 +568,35 @@ agenda e corrige três defeitos do editor. Regras que ficaram:
   três); `brandStyleDescription` só o Wine Vix tem, e `cuisineType` está vazio
   em todos.
 
+### DNA da Marca (30/07/2026)
+
+A identidade vive na tabela `BrandDNA` (1:1 com Project; tom de voz, regras,
+composição, estilo visual, direção fotográfica) e é editada na aba **Marca** do
+projeto (ex-Assets — o value da tab continua `assets` para os links antigos).
+Regras que valem para código novo:
+
+- **DNA ≠ base de conhecimento.** DNA entra INCONDICIONALMENTE em todo prompt
+  de geração; a base é buscada por relevância (minScore/topK/teto de tokens) e
+  por isso NUNCA deve guardar identidade — `TOM_DE_VOZ` na base não chegava ao
+  gerador de copy da UI, e é por isso que a aba Marca oferece importação dessas
+  entradas para o DNA.
+- **Identidade se lê pelo loader único** `loadBrandContext`
+  (`src/lib/brand/brand-context.ts`) — nada de `select` próprio de campos de
+  marca em consumidor novo. Consomem hoje: improve, chat, generate-ai-text
+  (wizard) e o bloco `brand.dna` do MCP `escolher-modelo`.
+  `dna.visualStyle` tem prioridade sobre o legado `brandStyleDescription`.
+- **`toneOfVoice` NÃO entra em prompt de imagem** (os textos são reproduzidos
+  verbatim; instrução de tom só confunde o modelo). Entra em copy e chat.
+- **A prévia da aba Marca usa `buildPromptSections`** — a MESMA função do
+  improve. Mudou a montagem do prompt, a prévia acompanha sozinha; nunca
+  duplicar o texto da prévia à mão.
+- **Escrita do DNA é serviço** (`updateBrandDNA`), não código de rota: a
+  intenção declarada é o MCP ganhar tools de consultar/atualizar DNA via chat
+  embrulhando o mesmo serviço.
+- No formatador da base (`search.ts`), entrada que estoura o teto de tokens é
+  **pulada** (`continue`) — o `return`/`break` antigo fazia um CARDAPIO longo
+  eliminar as categorias seguintes inteiras.
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá

@@ -13,6 +13,7 @@ import { type FeatureKey } from '@/lib/credits/feature-config'
 import { getRAGContextWithResults } from '@/lib/knowledge/search'
 import { getMaxOutputTokens, type AIProvider } from '@/lib/ai/token-limits'
 import { db } from '@/lib/db'
+import { loadBrandContext } from '@/lib/brand/brand-context'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // 2 minutes for AI streaming responses + RAG context retrieval
@@ -270,6 +271,17 @@ export async function POST(req: Request) {
             const behavior = project.aiChatBehavior?.trim()
             const hasBehavior = Boolean(behavior)
             if (hasBehavior) systemPrompt = `${behavior}\n\n`
+
+            // 1b. DNA da marca (aba Marca): tom de voz e regras entram SEMPRE.
+            // aiChatBehavior segue sendo o comportamento do ASSISTENTE; o DNA
+            // é a identidade da MARCA — os dois se somam, não competem.
+            const brandDna = await loadBrandContext(projectId)
+            if (brandDna?.dna.toneOfVoice) {
+              systemPrompt += `TOM DE VOZ DA MARCA (siga sempre): ${brandDna.dna.toneOfVoice}\n\n`
+            }
+            if (brandDna?.dna.contentRules) {
+              systemPrompt += `REGRAS DA MARCA (nunca violar): ${brandDna.dna.contentRules}\n\n`
+            }
 
             // 2. RAG context instructions (if RAG context available)
             if (ragUsed) {
