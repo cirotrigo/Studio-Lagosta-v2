@@ -345,7 +345,7 @@ export function normalizeTemplate(raw: Record<string, unknown>): TemplateData {
         const slotObj = item as Record<string, unknown>
         // Prefer 'type' for semantic meaning (headline, label, etc.)
         // then 'name', then fallback to counter
-        let baseKey = String(slotObj.type ?? slotObj.name ?? `slot_${tempSlots.length}`)
+        const baseKey = String(slotObj.type ?? slotObj.name ?? `slot_${tempSlots.length}`)
         // Deduplicate
         let key = baseKey
         if (usedKeys.has(key)) {

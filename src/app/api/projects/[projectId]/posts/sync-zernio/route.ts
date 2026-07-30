@@ -65,7 +65,7 @@ export async function POST(
     const client = getLaterClient()
 
     // Paginate to fetch all scheduled posts
-    let zernioPosts: any[] = []
+    const zernioPosts: any[] = []
     let page = 1
     while (true) {
       const posts = await client.listPosts({
