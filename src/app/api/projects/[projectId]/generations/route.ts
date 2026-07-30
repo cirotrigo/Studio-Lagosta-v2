@@ -131,6 +131,7 @@ export async function GET(
         status: true,
         templateId: true,
         fieldValues: true,
+        sourceGenerationId: true,
         resultUrl: true,
         googleDriveFileId: true,
         googleDriveBackupUrl: true,

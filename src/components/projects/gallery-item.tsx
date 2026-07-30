@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -23,6 +23,8 @@ interface GalleryItemProps {
   errorMessage?: string | null
   isVideo?: boolean
   authorClerkId?: string
+  /** true quando a Generation tem sourceGenerationId — arte melhorada por IA. */
+  isImproved?: boolean
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -30,6 +32,8 @@ interface GalleryItemProps {
   onPreview?: () => void
   onSchedule?: () => void
   onImprove?: () => void
+  /** Abre o antes/depois — só faz sentido quando isImproved. */
+  onCompare?: () => void
   index: number
   pswpWidth: number
   pswpHeight: number
@@ -55,6 +59,7 @@ export function GalleryItem({
   errorMessage,
   isVideo,
   authorClerkId,
+  isImproved,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -62,6 +67,7 @@ export function GalleryItem({
   onPreview,
   onSchedule,
   onImprove,
+  onCompare,
   index,
   pswpWidth,
   pswpHeight,
@@ -392,6 +398,12 @@ export function GalleryItem({
             <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-2 py-0.5 text-[10px] uppercase font-semibold text-white backdrop-blur-sm">
               {templateType}
             </span>
+            {isImproved && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+                <Sparkles className="h-2.5 w-2.5" />
+                melhorada
+              </span>
+            )}
             {status === 'COMPLETED' && (
               <span className="text-[10px] text-emerald-400 font-medium tracking-wide uppercase">
                 Pronto
@@ -432,6 +444,22 @@ export function GalleryItem({
             title="Melhorar com IA (25 créditos)"
           >
             <Sparkles className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {isImproved && onCompare && status === 'COMPLETED' && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onCompare()
+            }}
+            title="Antes e depois"
+          >
+            <Columns2 className="h-3.5 w-3.5" />
           </Button>
         )}
 

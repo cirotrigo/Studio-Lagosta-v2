@@ -24,6 +24,10 @@ import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
+import {
+  CompareImprovementDialog,
+  type CompareTarget,
+} from '@/components/creatives/compare-improvement-dialog'
 
 interface TemplateInfo {
   id: number
@@ -37,6 +41,7 @@ interface GenerationRecord {
   status: 'PROCESSING' | 'POSTING' | 'COMPLETED' | 'FAILED'
   templateId: number
   fieldValues: Record<string, unknown>
+  sourceGenerationId?: string | null
   resultUrl: string | null
   googleDriveFileId?: string | null
   googleDriveBackupUrl?: string | null
@@ -148,6 +153,9 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [schedulingGeneration, setSchedulingGeneration] = React.useState<GenerationRecord | null>(null)
   const [improvingGeneration, setImprovingGeneration] = React.useState<GenerationRecord | null>(null)
+  // "Melhorar de novo" reabre o modal com o pedido anterior pré-preenchido.
+  const [improveInitialRequest, setImproveInitialRequest] = React.useState<string | null>(null)
+  const [compareTarget, setCompareTarget] = React.useState<CompareTarget | null>(null)
 
   // Serializa weekdays ordenados pra estabilidade do queryKey
   const weekdaysParam = React.useMemo(
@@ -584,8 +592,34 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   }, [])
 
   const handleImprove = React.useCallback((generation: GenerationRecord) => {
+    setImproveInitialRequest(null)
     setImprovingGeneration(generation)
   }, [])
+
+  const handleCompare = React.useCallback((generation: GenerationRecord) => {
+    if (!generation.sourceGenerationId) return
+    const userRequest = generation.fieldValues?.userRequest
+    setCompareTarget({
+      id: generation.id,
+      resultUrl: generation.resultUrl,
+      templateName: generation.templateName ?? generation.Template?.name,
+      sourceGenerationId: generation.sourceGenerationId,
+      userRequest: typeof userRequest === 'string' ? userRequest : null,
+    })
+  }, [])
+
+  // "Melhorar de novo": fecha o antes/depois e reabre o modal de melhoria
+  // sobre a arte MELHORADA (nova iteração), com o pedido anterior no campo.
+  const handleImproveAgain = React.useCallback(
+    (target: CompareTarget) => {
+      setCompareTarget(null)
+      const generation = allGenerations.find((g) => g.id === target.id)
+      if (!generation) return
+      setImproveInitialRequest(target.userRequest ?? null)
+      setImprovingGeneration(generation)
+    },
+    [allGenerations],
+  )
 
   const handleCloseComposer = React.useCallback(() => {
     setIsComposerOpen(false)
@@ -906,6 +940,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onDelete={() => handleDelete(generation)}
                   onSchedule={() => handleSchedule(generation)}
                   onImprove={() => handleImprove(generation)}
+                  isImproved={Boolean(generation.sourceGenerationId)}
+                  onCompare={
+                    generation.sourceGenerationId ? () => handleCompare(generation) : undefined
+                  }
                   onPreview={() => {
                     if (previewPayload) {
                       setPreview(previewPayload)
@@ -1125,13 +1163,27 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 projectId: improvingGeneration.projectId,
                 resultUrl: improvingGeneration.resultUrl,
                 templateName: improvingGeneration.templateName ?? improvingGeneration.Template?.name,
+                initialUserRequest: improveInitialRequest,
               }
             : null
         }
         open={!!improvingGeneration}
         onOpenChange={(next) => {
-          if (!next) setImprovingGeneration(null)
+          if (!next) {
+            setImprovingGeneration(null)
+            setImproveInitialRequest(null)
+          }
         }}
+      />
+
+      {/* Antes/depois de uma melhoria com IA */}
+      <CompareImprovementDialog
+        target={compareTarget}
+        open={!!compareTarget}
+        onOpenChange={(next) => {
+          if (!next) setCompareTarget(null)
+        }}
+        onImproveAgain={handleImproveAgain}
       />
     </>
   )

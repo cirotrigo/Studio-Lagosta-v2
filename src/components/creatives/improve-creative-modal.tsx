@@ -35,6 +35,11 @@ interface ImproveTarget {
    * ao final (aplicado pelo servidor). resultUrl deve ser a arte ATUAL do post.
    */
   applyToPostId?: string | null
+  /**
+   * "Melhorar de novo": pré-preenche o pedido com o userRequest gravado na
+   * melhoria anterior (fieldValues.userRequest).
+   */
+  initialUserRequest?: string | null
 }
 
 interface ImproveCreativeModalProps {
@@ -141,6 +146,15 @@ export function ImproveCreativeModal({
       cleanupPreview(backgroundPreview)
     }
   }, [backgroundPreview, cleanupPreview])
+
+  // "Melhorar de novo": ao abrir com um pedido anterior, começa dele. Só na
+  // ABERTURA — digitação subsequente não pode ser sobrescrita.
+  React.useEffect(() => {
+    if (open && generation?.initialUserRequest) {
+      setUserRequest(generation.initialUserRequest.slice(0, MAX_CHARS))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, generation?.id])
 
   const handleFile = async (file: File) => {
     if (!ALLOWED_MIME.includes(file.type)) {

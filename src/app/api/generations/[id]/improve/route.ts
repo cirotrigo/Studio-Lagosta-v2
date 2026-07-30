@@ -165,6 +165,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         status: 'PROCESSING',
         resultUrl: null,
         fileName: null,
+        // Linhagem relacional (B1) — o fieldValues.originalGenerationId
+        // continua por compatibilidade, mas quem consulta usa a coluna.
+        sourceGenerationId: original.id,
         fieldValues: {
           source: 'ai_improvement',
           originalGenerationId: original.id,

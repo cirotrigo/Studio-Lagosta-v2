@@ -104,6 +104,13 @@ model Generation {
   status               GenerationStatus    @default(PROCESSING)
   templateId           Int
   fieldValues          Json
+  /**
+   * Linhagem da melhoria com IA: aponta para a Generation que foi melhorada.
+   * Coluna solta de propósito (sem FK) — a origem pode ser apagada sem
+   * arrastar a melhoria junto. O fieldValues.originalGenerationId continua
+   * sendo gravado por compatibilidade.
+   */
+  sourceGenerationId   String?
   resultUrl            String?
   projectId            Int
   authorName           String?
@@ -123,6 +130,7 @@ model Generation {
   @@index([createdAt])
   @@index([createdBy])
   @@index([projectId])
+  @@index([sourceGenerationId])
   @@index([status])
   @@index([templateId])
 }
