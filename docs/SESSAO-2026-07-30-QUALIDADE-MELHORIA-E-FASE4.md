@@ -195,8 +195,42 @@ do refresh token do Drive (editar um, esquecer o outro, a camada de cima vence
 calada). Comentadas, com a resolução verificada antes e depois: produção
 continua resolvendo pelo `.env`.
 
+### O branch chamado `dev` era a PRODUÇÃO
+
+Com a `NEON_API_KEY` no `.env`, o setup automático revelou o que o console
+escondia: no projeto `studio-lagosta`, o compute `ep-fragrant-term-adnufsao`
+— o do `.env` **e** o do env de produção da Vercel, conferido com
+`vercel env pull` — pertence ao branch **chamado `dev`**
+(`br-fancy-boat-adl32qyg`, criado em 31/12/2025). O branch chamado
+`production` (`br-dawn-heart-adi76dh9`, o `default` do projeto) está
+abandonado, com o compute `ep-restless-silence-adjepguy` idle.
+
+Consequência imediata: a primeira versão do `setup-dev-db.ts` criava/apagava
+um branch chamado `dev` — ou seja, o `--recriar` **apagaria a produção**. O
+script foi corrigido antes de qualquer execução destrutiva (ele recusou
+sozinho, porque o branch já existia):
+
+- a produção passou a ser identificada pelo **dono do compute do `.env`**,
+  nunca pelo nome nem pelo flag `default`;
+- o branch de dev virou **`dev-local`** (`ep-holy-flower-ada0j66v`), criado a
+  partir do branch de produção real;
+- `--recriar` tem trava dura: recusa apagar o branch que serve a produção.
+
+Também corrigidos no caminho: a chave era procurada só em `process.env` e
+`.env.local` (o Ciro pôs no `.env`), e o `GET /projects` do Neon exige
+`org_id` desde que as contas viraram organizações — o script descobre a org
+via `/users/me/organizations`.
+
+### Verificações finais
+
+`dev-local` nasceu com os dados da produção (`projects=11`,
+`generations=4227`, `socialPosts=7659` — idênticos) e o isolamento foi
+provado na prática: um registro escrito no dev **não** apareceu na produção, e
+foi removido em seguida.
+
 ### Pendência do Ciro
 
-Criar o branch no console do Neon (ou gerar uma `NEON_API_KEY` e rodar
-`npm run db:dev:setup`). Enquanto o `.env.development.local` não existir, os
-comandos de dev abortam com instrução — nunca caem em produção.
+Renomear os branches no console (`dev` → `production`, e o `production` morto
+para algo como `production-antigo`) resolveria a armadilha de nome de vez. É
+operação de risco e ficou como decisão dele — o código já não depende dos
+nomes.

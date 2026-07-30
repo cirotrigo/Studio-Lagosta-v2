@@ -67,6 +67,28 @@ Consequences:
 
 See `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` § 9 for the full diagnosis.
 
+### ⚠️ Os nomes dos branches do Neon MENTEM (descoberto em 30/07/2026)
+
+No projeto `studio-lagosta` (`patient-king-49987156`):
+
+| Branch | Id | Compute | O que é de verdade |
+|---|---|---|---|
+| **`dev`** | `br-fancy-boat-adl32qyg` | `ep-fragrant-term-adnufsao` | **A PRODUÇÃO.** É o banco do `.env` **e** do env de produção da Vercel |
+| `production` | `br-dawn-heart-adi76dh9` (default) | `ep-restless-silence-adjepguy` (idle) | Abandonado desde 31/12/2025 |
+| `dev-local` | criado em 30/07/2026 | `ep-holy-flower-ada0j66v` | O banco de desenvolvimento de verdade |
+
+Alguém ramificou a produção para um branch chamado `dev`, apontou tudo para
+ele e nunca renomeou. **Apagar o branch chamado `dev` derrubaria o site.**
+
+- **Nunca identifique a produção pelo NOME do branch nem pelo flag `default`** —
+  identifique pelo **compute**: o dono do endpoint que está no `DATABASE_URL`.
+  É o que `scripts/setup-dev-db.ts` faz, e por isso o `--recriar` dele recusa
+  apagar o branch que serve a produção.
+- O branch de dev se chama **`dev-local`** justamente para não colidir com o
+  `dev` que é produção.
+- Renomear os branches no console (`dev` → `production` e vice-versa) resolveria
+  a confusão de vez, mas é operação de risco e ficou como decisão do Ciro.
+
 ### Banco de desenvolvimento (branch do Neon, 30/07/2026)
 
 O `.env` continua apontando para **PRODUÇÃO** — scripts, MCP e `db:studio` são
@@ -100,7 +122,12 @@ Armadilhas registradas:
   sempre `npm run db:migrate`.
 - **Branch do Neon é copy-on-write e envelhece**: nasce com os dados do
   momento e não acompanha a produção. Antes de testar algo que dependa de
-  dado recente, `npm run db:dev:setup --recriar`.
+  dado recente, `npm run db:dev:setup --recriar`. Isolamento verificado em
+  30/07: escrita no `dev-local` não aparece na produção.
+- **A `NEON_API_KEY` é opcional e mora no `.env`.** Sem ela o setup imprime o
+  passo a passo do console. A API exige `org_id` no `GET /projects` (contas
+  hoje pertencem a uma organização) — o script descobre isso sozinho via
+  `/users/me/organizations`.
 - Migration para produção continua sendo **escrita à mão + `db:deploy`** (ver
   § Database Management). O branch serve para *validar* a migration antes.
 

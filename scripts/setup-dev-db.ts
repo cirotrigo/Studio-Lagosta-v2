@@ -23,7 +23,13 @@ import { resolve } from 'node:path'
 const ROOT = process.cwd()
 const PROD_ENV_FILE = resolve(ROOT, '.env')
 const DEV_ENV_FILE = resolve(ROOT, '.env.development.local')
-const BRANCH_NAME = 'dev'
+/**
+ * NÃO usar "dev": neste projeto o branch chamado `dev` é a PRODUÇÃO de verdade
+ * (é dele o compute `ep-fragrant-term-adnufsao` que o .env e a Vercel usam),
+ * enquanto o branch chamado `production` está parado desde 2025. Um nome
+ * próprio evita a colisão e deixa óbvio quem é quem.
+ */
+const BRANCH_NAME = 'dev-local'
 const NEON_API = 'https://console.neon.tech/api/v2'
 
 const RECREATE = process.argv.includes('--recriar')
@@ -83,6 +89,32 @@ async function neon(apiKey: string, path: string, init?: RequestInit): Promise<a
     throw new Error(`Neon API ${response.status} em ${path}: ${JSON.stringify(body).slice(0, 300)}`)
   }
   return body
+}
+
+/**
+ * Lista os projetos visíveis para a chave.
+ *
+ * `GET /projects` sozinho devolve 400 ("org_id is required") quando a conta
+ * pertence a uma organização — que é o caso desde que o Neon migrou as contas
+ * pessoais para orgs. Então: descobre as orgs e pergunta por org, caindo no
+ * endpoint sem parâmetro só para chaves antigas.
+ */
+async function listProjects(apiKey: string): Promise<any[]> {
+  const found: any[] = []
+  const { organizations } = await neon(apiKey, '/users/me/organizations').catch(() => ({
+    organizations: [],
+  }))
+
+  for (const org of organizations ?? []) {
+    const { projects } = await neon(apiKey, `/projects?org_id=${encodeURIComponent(org.id)}`)
+    found.push(...(projects ?? []))
+  }
+
+  if (found.length === 0) {
+    const { projects } = await neon(apiKey, '/projects')
+    found.push(...(projects ?? []))
+  }
+  return found
 }
 
 function writeDevEnvFile(pooled: string, direct: string, note: string): void {
@@ -149,7 +181,13 @@ async function main(): Promise<void> {
     return
   }
 
-  const apiKey = process.env.NEON_API_KEY ?? parseEnvFile(resolve(ROOT, '.env.local')).NEON_API_KEY
+  // A chave pode estar no ambiente ou em qualquer um dos arquivos de env —
+  // procurar só num deles fazia o script cair no caminho manual mesmo com a
+  // chave configurada.
+  const apiKey =
+    process.env.NEON_API_KEY ??
+    prod.NEON_API_KEY ??
+    parseEnvFile(resolve(ROOT, '.env.local')).NEON_API_KEY
   if (!apiKey) {
     printManualInstructions(prodPooled)
     return
@@ -158,9 +196,9 @@ async function main(): Promise<void> {
   const prodEndpoint = endpointIdOf(prodPooled)
   console.log(`• Procurando o projeto Neon do compute ${prodEndpoint}…`)
 
-  const { projects } = await neon(apiKey, '/projects')
+  const projects = await listProjects(apiKey)
   let projectId: string | null = null
-  for (const project of projects ?? []) {
+  for (const project of projects) {
     const { endpoints } = await neon(apiKey, `/projects/${project.id}/endpoints`)
     if ((endpoints ?? []).some((e: any) => e.id === prodEndpoint)) {
       projectId = project.id
@@ -175,9 +213,32 @@ async function main(): Promise<void> {
   }
 
   const { branches } = await neon(apiKey, `/projects/${projectId}/branches`)
+
+  // O branch de produção é o DONO do compute do .env — nunca o de nome
+  // "production" nem o `default`. Neste projeto eles divergem: o compute de
+  // produção pertence a um branch chamado "dev", e o branch chamado
+  // "production" está parado desde 2025. Confiar no nome apagaria a produção.
+  const { endpoints: allEndpoints } = await neon(apiKey, `/projects/${projectId}/endpoints`)
+  const prodEndpointRow = (allEndpoints ?? []).find((e: any) => e.id === prodEndpoint)
+  const prodBranchId: string | undefined = prodEndpointRow?.branch_id
+  if (!prodBranchId) {
+    console.error(`✗ Não achei a qual branch o compute de produção (${prodEndpoint}) pertence.`)
+    process.exit(1)
+  }
+  const prodBranch = (branches ?? []).find((b: any) => b.id === prodBranchId)
+  console.log(
+    `  branch de PRODUÇÃO: "${prodBranch?.name ?? '?'}" (${prodBranchId}) — dono do compute do .env`,
+  )
+
   const existing = (branches ?? []).find((b: any) => b.name === BRANCH_NAME)
 
   if (existing && RECREATE) {
+    // Trava dura: --recriar nunca pode apagar o branch que serve a produção.
+    if (existing.id === prodBranchId) {
+      console.error(`✗ RECUSADO: o branch "${BRANCH_NAME}" é o branch de PRODUÇÃO (${existing.id}).`)
+      console.error('  Apagá-lo derrubaria o site. Renomeie os branches no console antes.')
+      process.exit(1)
+    }
     console.log(`• Apagando o branch "${BRANCH_NAME}" antigo (${existing.id})…`)
     await neon(apiKey, `/projects/${projectId}/branches/${existing.id}`, { method: 'DELETE' })
   } else if (existing) {
@@ -186,8 +247,8 @@ async function main(): Promise<void> {
     process.exit(1)
   }
 
-  const parent = (branches ?? []).find((b: any) => b.default) ?? (branches ?? [])[0]
-  console.log(`• Criando o branch "${BRANCH_NAME}" a partir de ${parent?.name ?? 'default'}…`)
+  const parent = prodBranch
+  console.log(`• Criando o branch "${BRANCH_NAME}" a partir de "${parent?.name ?? 'produção'}"…`)
 
   const created = await neon(apiKey, `/projects/${projectId}/branches`, {
     method: 'POST',
