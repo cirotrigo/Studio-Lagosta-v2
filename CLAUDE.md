@@ -67,6 +67,43 @@ Consequences:
 
 See `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` § 9 for the full diagnosis.
 
+### Banco de desenvolvimento (branch do Neon, 30/07/2026)
+
+O `.env` continua apontando para **PRODUÇÃO** — scripts, MCP e `db:studio` são
+ferramentas de operação e precisam disso. O que mudou é que os comandos que
+alteram schema agora rodam contra um **branch do Neon** (`dev`), via
+`scripts/dev-db.ts`.
+
+- `npm run db:dev:setup` cria o branch e escreve o `.env.development.local`
+  (automático com `NEON_API_KEY`; sem a chave, imprime o passo a passo do
+  console). `--recriar` joga fora e refaz a partir da produção de hoje.
+- `npm run db:dev:status` mostra qual banco cada camada resolve.
+- **`db:migrate`, `db:push` e `db:reset` vão para o branch de dev**;
+  `db:deploy` (`prisma migrate deploy`) é o caminho de produção;
+  `db:studio` continua em produção e `db:studio:dev` abre o branch.
+- **`npm run dev` usa o branch automaticamente** — o Next carrega
+  `.env.development.local` antes de tudo. Consequência: o app local grava
+  linhas no branch, mas Blob, Drive e APIs externas continuam sendo os de
+  produção. Não é sandbox completo.
+
+Armadilhas registradas:
+
+- **Não trocar o runner por `dotenv -e .env.development.local -e .env`.** O
+  dotenv-cli **ignora em silêncio** arquivo inexistente e cai no seguinte —
+  com o `.env` apontando para produção, um arquivo de dev apagado faria
+  `prisma migrate dev` (que propõe **resetar o banco**) rodar contra
+  PRODUÇÃO. Testado em 30/07. O runner aborta nesse caso.
+- **O guard compara o compute, não o host**: `ep-x-pooler.…` e `ep-x.…` são a
+  mesma instância, então colar a URL *direta* de produção no `DATABASE_URL` de
+  dev também é recusado.
+- **`npx prisma migrate dev` cru continua perigoso** — ele lê o `.env`. Use
+  sempre `npm run db:migrate`.
+- **Branch do Neon é copy-on-write e envelhece**: nasce com os dados do
+  momento e não acompanha a produção. Antes de testar algo que dependa de
+  dado recente, `npm run db:dev:setup --recriar`.
+- Migration para produção continua sendo **escrita à mão + `db:deploy`** (ver
+  § Database Management). O branch serve para *validar* a migration antes.
+
 ## Architecture Overview
 
 ### Tech Stack

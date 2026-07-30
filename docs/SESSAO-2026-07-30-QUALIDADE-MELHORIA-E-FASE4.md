@@ -154,6 +154,49 @@ Pré-requisito descoberto na sessão: a main tinha **4 erros de lint**
 (`prefer-const`) que fariam o CI nascer vermelho — corrigidos em `8cf4d64` e
 `b2bb14f`.
 
-## 8. D2 — banco de desenvolvimento (SÓ PROPOSTA, não executado)
+## 8. D2 — banco de desenvolvimento (aprovado e executado no fim da sessão)
 
-Ver o resumo da sessão. Nada no `.env` nem no fluxo de produção foi alterado.
+Aprovado pelo Ciro em chat depois da proposta. O `.env` e o fluxo de produção
+**não foram alterados**: continuam apontando para produção, porque scripts,
+MCP e `db:studio` são ferramentas de operação e dependem disso.
+
+O que entrou:
+
+- **`scripts/dev-db.ts`** — runner que executa um comando com as URLs do
+  `.env.development.local` por cima do `.env` e **recusa rodar** se o banco
+  resolvido for o de produção.
+- **`scripts/setup-dev-db.ts`** — cria/reaproveita o branch `dev` no Neon
+  (automático com `NEON_API_KEY`, senão imprime o passo a passo do console) e
+  escreve o `.env.development.local`. `--recriar` refaz do estado de hoje.
+- **package.json**: `db:migrate`, `db:push` e `db:reset` passam pelo runner
+  (dev); `db:deploy` nasce como o caminho explícito de produção;
+  `db:studio:dev`, `db:dev:setup` e `db:dev:status` são novos.
+
+### O desenho ingênuo do plano era inseguro
+
+O plano dizia "`dotenv -e` nos scripts". Testado antes de implementar:
+`dotenv-cli -e .env.INEXISTENTE -e .env` **cai em silêncio no `.env`**. Como o
+`.env` é produção, um `.env.development.local` apagado faria
+`npm run db:migrate` (= `prisma migrate dev`, que propõe **resetar o banco**)
+rodar contra PRODUÇÃO. Por isso o runner próprio em vez do dotenv-cli.
+
+O guard compara o **compute** do Neon (primeiro rótulo do host, sem
+`-pooler`), não o host inteiro — senão a URL *direta* de produção colada no
+`DATABASE_URL` de dev passaria. Seis testes rodados: arquivo ausente (aborta),
+`db:migrate` com arquivo ausente (aborta), URL pooled de produção (aborta),
+URL direta de produção disfarçada (aborta), endpoint diferente (passa e
+repassa o env ao filho), `--status` (relatório correto).
+
+### Limpeza junto
+
+O `.env.local` tinha `DATABASE_URL`/`DIRECT_URL` **byte a byte idênticos** aos
+do `.env` — duplicata da URL de produção em dois arquivos, a mesma armadilha
+do refresh token do Drive (editar um, esquecer o outro, a camada de cima vence
+calada). Comentadas, com a resolução verificada antes e depois: produção
+continua resolvendo pelo `.env`.
+
+### Pendência do Ciro
+
+Criar o branch no console do Neon (ou gerar uma `NEON_API_KEY` e rodar
+`npm run db:dev:setup`). Enquanto o `.env.development.local` não existir, os
+comandos de dev abortam com instrução — nunca caem em produção.
