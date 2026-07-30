@@ -25,6 +25,12 @@ const PROVIDER_PRICING = {
   'gpt-image-2.high.1024x1792': 0.165,
   'gpt-image-2.high.1024x1280': 0.165,
   'gpt-image-2.high.1536x1024': 0.165,
+  // Resoluções nativas da melhoria (jul/2026) — gpt-image-2 aceita qualquer
+  // múltiplo de 16 e cobra pelo bucket mais próximo; assumido o preço do
+  // tamanho listado vizinho até a tabela oficial discriminar estes.
+  'gpt-image-2.high.1088x1936': 0.165,
+  'gpt-image-2.high.1088x1360': 0.165,
+  'gpt-image-2.high.1088x1088': 0.211,
   // Quality medium
   'gpt-image-2.medium.1024x1024': 0.063,
   'gpt-image-2.medium.1024x1536': 0.045,
@@ -70,8 +76,11 @@ const PROVIDER_PRICING = {
 // 1 crédito ≈ $0.012 (usado quando não conseguimos derivar pelo model).
 const FALLBACK_USD_PER_CREDIT = 0.012
 
-// Mapping: format do criativo → input size enviado pro gpt-image
-// (replica o mesmo mapping que está em creative-improvement-format.ts).
+// Mapping LEGADO: format do criativo → input size das linhas de uso antigas,
+// que não gravavam `inputSize` nos details. Linhas novas trazem o inputSize
+// real (a rota improve grava desde jul/2026) e nunca caem aqui — por isso este
+// mapping fica CONGELADO nos tamanhos da época, não acompanha o
+// creative-improvement-format.ts.
 const FORMAT_TO_INPUT_SIZE: Record<string, string> = {
   STORY: '1024x1792',
   SQUARE: '1024x1024',

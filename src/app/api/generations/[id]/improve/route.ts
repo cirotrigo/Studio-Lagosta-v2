@@ -490,6 +490,7 @@ async function processImprovementInBackground(args: BackgroundArgs): Promise<voi
         newGenerationId: args.jobGenerationId,
         model: getCurrentImageModel(),
         format,
+        inputSize: openaiSize,
         elapsedSeconds,
       },
       organizationId: args.orgId,

@@ -6,14 +6,16 @@
 export type ImprovementFormat = 'STORY' | 'SQUARE' | 'FEED_PORTRAIT'
 
 export const OPENAI_INPUT_SIZE: Record<ImprovementFormat, string> = {
-  // 9:16 (~0.571), múltiplo de 16. 4K (2160x3840) era ideal mas demorava
-  // >100s no quality 'high', estourava o timeout. 1024x1792 mantém qualidade
-  // pro upscale leve até 1080x1920.
-  STORY: '1024x1792',
-  // 1:1 — preço listado da OpenAI ($0.211 high), tempo previsível.
-  SQUARE: '1024x1024',
-  // 4:5 exato, múltiplo de 16. Upscale leve pra 1080x1350 no Sharp.
-  FEED_PORTRAIT: '1024x1280',
+  // Resolução NATIVA (>= saída final em ambos os lados): o resize final vira
+  // downscale leve em vez de upscale — antes gerava 1024x1792 e esticava para
+  // 1080x1920, perdendo nitidez justamente no texto pequeno. 4K (2160x3840)
+  // segue descartado: >100s no quality 'high' estourava o timeout.
+  // 1088x1936 ≈ 9:16 (0.562 vs 0.5625) — crop residual de ~2px no cover.
+  STORY: '1088x1936',
+  // 1:1 exato — downscale 1088 → 1080 sem crop.
+  SQUARE: '1088x1088',
+  // 4:5 exato — downscale 1088x1360 → 1080x1350 sem crop.
+  FEED_PORTRAIT: '1088x1360',
 }
 
 export const FINAL_OUTPUT_SIZE: Record<ImprovementFormat, { width: number; height: number }> = {
