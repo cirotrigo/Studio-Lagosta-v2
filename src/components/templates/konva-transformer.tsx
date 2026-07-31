@@ -188,8 +188,8 @@ export function KonvaSelectionTransformer({
       const vStops: number[] = [0, snap.canvasWidth / 2, snap.canvasWidth]
       const hStops: number[] = [0, snap.canvasHeight / 2, snap.canvasHeight]
       if (snap.margins) {
-        vStops.push(CANVAS_MARGIN, snap.canvasWidth - CANVAS_MARGIN)
-        hStops.push(CANVAS_MARGIN, snap.canvasHeight - CANVAS_MARGIN)
+        vStops.push(CANVAS_MARGIN.left, snap.canvasWidth - CANVAS_MARGIN.right)
+        hStops.push(CANVAS_MARGIN.top, snap.canvasHeight - CANVAS_MARGIN.bottom)
       }
       for (const layer of snap.layers) {
         if (snap.selectedIds.includes(layer.id)) continue

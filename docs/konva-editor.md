@@ -304,7 +304,7 @@ Sistema de guias inteligentes inspirado em Figma/Canva.
 ### Funcionalidades
 - **Snap to Canvas**: Centro horizontal/vertical, bordas
 - **Snap to Objects**: Alinhamento com outros elementos
-- **Snap to Margins**: Padding de 70px configurável
+- **Snap to Margins**: margem de segurança de `CANVAS_MARGIN` (`src/lib/canvas-margin.ts`) — 70px nas laterais, 120px no topo e 100px na base
 - **Visual Feedback**: Linhas magenta tracejadas
 
 ### Configuração
@@ -495,6 +495,9 @@ await exportDesign('jpeg') // ou 'png'
 - **Alt** (segurar): Desabilita snap temporariamente
 - **G**: Toggle guia de teste (debug)
 - **R**: Toggle guias de margem
+- **C**: Toggle bordas do canvas
+- **M**: Toggle máscara da interface do story do Instagram (só em canvas 9:16;
+  ligada por padrão) — ver `src/lib/instagram-story-chrome.ts`
 - **Shift** (ao arrastar): Seleção múltipla
 - **Shift** (ao resize): Mantém proporção
 

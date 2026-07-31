@@ -15,6 +15,7 @@ import { KonvaLayerFactory } from './konva-layer-factory'
 import { KonvaSelectionTransformer } from './konva-transformer'
 import { KonvaImageCropOverlay } from './konva-image-crop'
 import { KonvaGradientHandles } from './konva-gradient-handles'
+import { KonvaInstagramStoryMask } from './konva-instagram-story-mask'
 import {
   computeAlignmentGuides,
   type RectInfo,
@@ -100,6 +101,10 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   // Bordas amarelas do canvas: ferramenta de conferência, desligada por padrão
   // (era um resto de debug que vinha ligado em produção, junto com a cruz verde)
   const [showCanvasBounds, setShowCanvasBounds] = React.useState(false)
+  // Máscara com a interface do story do Instagram ('M'): referência de
+  // diagramação, ligada por padrão — o chrome cabe dentro das margens de
+  // segurança, então não atrapalha quem está editando
+  const [showInstagramMask, setShowInstagramMask] = React.useState(true)
   const [_fontsReady, setFontsReady] = React.useState(false)
 
   // Drag-to-select state
@@ -612,13 +617,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
 
       // Se as guias de margem estiverem ativas, adicionar retângulos invisíveis nas margens
       if (showMarginGuides) {
-        const MARGIN = CANVAS_MARGIN
         // Adicionar guias de margem como se fossem objetos invisíveis
         otherRects.push(
-          { id: 'margin-left', x: MARGIN, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-right', x: canvasWidth - MARGIN, y: 0, width: 0, height: canvasHeight },
-          { id: 'margin-top', x: 0, y: MARGIN, width: canvasWidth, height: 0 },
-          { id: 'margin-bottom', x: 0, y: canvasHeight - MARGIN, width: canvasWidth, height: 0 },
+          { id: 'margin-left', x: CANVAS_MARGIN.left, y: 0, width: 0, height: canvasHeight },
+          { id: 'margin-right', x: canvasWidth - CANVAS_MARGIN.right, y: 0, width: 0, height: canvasHeight },
+          { id: 'margin-top', x: 0, y: CANVAS_MARGIN.top, width: canvasWidth, height: 0 },
+          { id: 'margin-bottom', x: 0, y: canvasHeight - CANVAS_MARGIN.bottom, width: canvasWidth, height: 0 },
         )
       }
 
@@ -726,6 +730,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
       // Toggle canvas bounds com 'c'
       if (key === 'c' && !isModifier) {
         setShowCanvasBounds(prev => !prev)
+        return
+      }
+
+      // Toggle máscara da interface do Instagram com 'm'
+      if (key === 'm' && !isModifier) {
+        setShowInstagramMask(prev => !prev)
         return
       }
 
@@ -1087,6 +1097,16 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
           <KonvaLayer name="guides-layer" listening={false}>
             {/* {guides.length > 0 && console.log('🎨 Renderizando', guides.length, 'guias')} */}
 
+            {/* Máscara da interface do story ('M') — primeira do grupo para as
+                guias de margem ficarem por cima do gradiente */}
+            {showInstagramMask && (
+              <KonvaInstagramStoryMask
+                projectId={projectId}
+                canvasWidth={canvasWidth}
+                canvasHeight={canvasHeight}
+              />
+            )}
+
             {/* Drag-to-select rectangle */}
             {selectionRect.visible && (
               <Rect
@@ -1102,12 +1122,12 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
               />
             )}
 
-            {/* Guias de margem (padding 70px) - Ativado com tecla 'R' */}
+            {/* Guias de margem (70px laterais, 120px topo, 100px base) - Ativado com tecla 'R' */}
             {showMarginGuides && (
               <>
-                {/* Borda esquerda - 70px */}
+                {/* Borda esquerda */}
                 <Line
-                  points={[CANVAS_MARGIN, 0, CANVAS_MARGIN, canvasHeight]}
+                  points={[CANVAS_MARGIN.left, 0, CANVAS_MARGIN.left, canvasHeight]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1115,9 +1135,9 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                   listening={false}
                   perfectDrawEnabled={false}
                 />
-                {/* Borda direita - 70px */}
+                {/* Borda direita */}
                 <Line
-                  points={[canvasWidth - CANVAS_MARGIN, 0, canvasWidth - CANVAS_MARGIN, canvasHeight]}
+                  points={[canvasWidth - CANVAS_MARGIN.right, 0, canvasWidth - CANVAS_MARGIN.right, canvasHeight]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1125,9 +1145,9 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                   listening={false}
                   perfectDrawEnabled={false}
                 />
-                {/* Borda superior - 70px */}
+                {/* Borda superior */}
                 <Line
-                  points={[0, CANVAS_MARGIN, canvasWidth, CANVAS_MARGIN]}
+                  points={[0, CANVAS_MARGIN.top, canvasWidth, CANVAS_MARGIN.top]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}
@@ -1135,9 +1155,9 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
                   listening={false}
                   perfectDrawEnabled={false}
                 />
-                {/* Borda inferior - 70px */}
+                {/* Borda inferior */}
                 <Line
-                  points={[0, canvasHeight - CANVAS_MARGIN, canvasWidth, canvasHeight - CANVAS_MARGIN]}
+                  points={[0, canvasHeight - CANVAS_MARGIN.bottom, canvasWidth, canvasHeight - CANVAS_MARGIN.bottom]}
                   stroke="#3B82F6"
                   strokeWidth={3}
                   dash={[6, 4]}

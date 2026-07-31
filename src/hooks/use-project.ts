@@ -86,6 +86,39 @@ export function useProject(projectId: number | null) {
   })
 }
 
+export interface ProjectLogo {
+  id: number
+  name: string
+  fileUrl: string
+  isProjectLogo: boolean
+  createdAt: string
+}
+
+/**
+ * A logo principal do projeto.
+ *
+ * Vem da tabela `Logo` (flag `isProjectLogo`), NÃO de `Project.logoUrl` — essa
+ * coluna está nula nos 11 projetos, enquanto todos têm exatamente uma Logo
+ * marcada. Cair no `logoUrl` daria avatar vazio em todo mundo.
+ *
+ * `enabled` existe para o consumidor só buscar quando a logo for aparecer — a
+ * máscara do editor, por exemplo, não busca em canvas que não é story.
+ */
+export function useProjectLogo(projectId: number | null, enabled = true) {
+  return useQuery<ProjectLogo | null>({
+    queryKey: ['project-logo', projectId],
+    enabled: enabled && typeof projectId === 'number' && !Number.isNaN(projectId),
+    staleTime: 10 * 60_000,
+    queryFn: async () => {
+      if (projectId == null || Number.isNaN(projectId)) return null
+      const logos = await api.get<ProjectLogo[]>(`/api/projects/${projectId}/logos`)
+      if (!Array.isArray(logos) || logos.length === 0) return null
+      // A rota já devolve por createdAt desc, então a primeira é a mais recente
+      return logos.find((logo) => logo.isProjectLogo) ?? logos[0]
+    },
+  })
+}
+
 export function useProjects() {
   return useQuery<ProjectWithLogoResponse[]>({
     queryKey: ['projects'],
