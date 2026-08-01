@@ -68,6 +68,12 @@ export async function ensureArteTemplate(
 /**
  * Resolve a URL da imagem de fundo — URL direta ou arquivo do Drive.
  *
+ * Foto do Drive vira CÓPIA PERMANENTE no Blob: o thumbnailLink do Drive é
+ * assinado e EXPIRA em horas — servia enquanto o render era imediato, mas a
+ * página fica com a URL morta (403) para o editor e para qualquer re-render
+ * do cron (78 páginas antigas estão assim). O caminho é determinístico por
+ * arquivo: repetir a mesma foto na semana reusa o mesmo blob.
+ *
  * Falha no Drive não é fatal: a arte ainda renderiza. O motivo volta junto
  * para o chamador poder avisar, em vez de entregar a foto errada calado.
  */
@@ -88,8 +94,19 @@ export async function resolveImageUrl(
   try {
     const file = await googleDriveService.getFileMetadata(driveImageId, 'thumbnailLink')
     const thumbnailLink = (file as { thumbnailLink?: string }).thumbnailLink
-    if (thumbnailLink) return { url: thumbnailLink.replace(/=s\d+$/, '=s1920') }
-    return { url: null, warning: `Arquivo ${driveImageId} do Drive não tem thumbnailLink (não é imagem?)` }
+    if (!thumbnailLink) {
+      return { url: null, warning: `Arquivo ${driveImageId} do Drive não tem thumbnailLink (não é imagem?)` }
+    }
+
+    const { fetchBuffer } = await import('@/lib/posts/register-project-fonts')
+    const buffer = await fetchBuffer(thumbnailLink.replace(/=s\d+$/, '=s1920'))
+    const blob = await put(`drive-cache/${driveImageId}-s1920.jpg`, buffer, {
+      access: 'public',
+      contentType: 'image/jpeg',
+      addRandomSuffix: false,
+      allowOverwrite: true,
+    })
+    return { url: blob.url }
   } catch (error) {
     const message = (error as Error).message
     console.error('[creatives] Drive resolve failed:', message)
