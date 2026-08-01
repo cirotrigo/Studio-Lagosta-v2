@@ -840,11 +840,25 @@ export class RenderEngine {
    * É a base da validação geométrica pré-render (text-geometry): a largura
    * pega palavra indivisível que transborda — o desenho NÃO espreme com
    * maxWidth, transborda como no editor.
+   *
+   * inkTopSlack/inkBottomSlack: distância entre a borda da caixa-fórmula
+   * (fontSize × lineHeight) e a TINTA real dos glifos da primeira/última
+   * linha, medida por actualBoundingBox. Headline empilhado com caixas
+   * propositalmente sobrepostas (padrão de design) só funciona porque essa
+   * folga existe — a colisão precisa descontá-la, senão todo título de duas
+   * linhas apertadas vira falso positivo (aconteceu com o modelo Domingo do
+   * By Rock: "Seu almoço"/"de domingo" foram encolhidos sem precisar).
    */
   static measureTextLayerBox(
     ctx: CanvasRenderingContext2D,
     layer: Layer,
-  ): { height: number; maxLineWidth: number; lineCount: number } | null {
+  ): {
+    height: number
+    maxLineWidth: number
+    lineCount: number
+    inkTopSlack: number
+    inkBottomSlack: number
+  } | null {
     if (layer.type !== 'text') return null
     if (layer.effects?.curved?.enabled) return null
 
@@ -881,15 +895,46 @@ export class RenderEngine {
       const w = ctx.measureText(line).width
       if (w > maxLineWidth) maxLineWidth = w
     }
+
+    // A entrelinha mora em dois campos; o desenho prefere autoWrap.lineHeight
+    const lineHeightMult = config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2
+    const lineBox = fontSize * lineHeightMult
+
+    // Folga tinta ↔ caixa-fórmula nas bordas, com a MESMA matemática do
+    // desenho: renderLines usa textBaseline 'middle' no CENTRO do line-box,
+    // então a tinta da primeira linha começa em lineBox/2 − ascent(middle) e
+    // a da última termina em lineBox/2 + descent(middle). Pode dar negativo
+    // (lineHeight < 1): a tinta vaza da caixa-fórmula — informação real.
+    // Sem métricas (canvas antigo, linha vazia), folga zero = conservador.
+    const previousBaseline = ctx.textBaseline
+    ctx.textBaseline = 'middle'
+    const firstLine = lines.find((l) => l.length > 0)
+    const lastLine = [...lines].reverse().find((l) => l.length > 0)
+    let inkTopSlack = 0
+    let inkBottomSlack = 0
+    if (firstLine) {
+      const m = ctx.measureText(firstLine)
+      if (typeof m.actualBoundingBoxAscent === 'number') {
+        inkTopSlack = lineBox / 2 - m.actualBoundingBoxAscent
+      }
+    }
+    if (lastLine) {
+      const m = ctx.measureText(lastLine)
+      if (typeof m.actualBoundingBoxDescent === 'number') {
+        inkBottomSlack = lineBox / 2 - m.actualBoundingBoxDescent
+      }
+    }
+    ctx.textBaseline = previousBaseline
+
     ctx.restore()
     spacingCtx.letterSpacing = '0px'
 
-    // A entrelinha mora em dois campos; o desenho prefere autoWrap.lineHeight
-    const lineHeight = fontSize * (config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2)
     return {
-      height: Math.round(Math.max(1, lines.length) * lineHeight + pad * 2),
+      height: Math.round(Math.max(1, lines.length) * lineBox + pad * 2),
       maxLineWidth: Math.ceil(maxLineWidth),
       lineCount: Math.max(1, lines.length),
+      inkTopSlack: Math.round(inkTopSlack * 10) / 10,
+      inkBottomSlack: Math.round(inkBottomSlack * 10) / 10,
     }
   }
 
@@ -1707,9 +1752,30 @@ export class RenderEngine {
 
   private static buildFontString(size: number, style: LayerStyle): string {
     const fontStyle = style.fontStyle ?? 'normal'
-    const weight = style.fontWeight ?? 'normal'
+    const weight = this.cssFontWeight(style.fontWeight)
     const family = style.fontFamily ?? 'sans-serif'
     return `${fontStyle} ${weight} ${Math.max(1, Math.floor(size))}px ${family}`
+  }
+
+  /**
+   * Peso numérico seguro para o parser de font do canvas.
+   *
+   * O napi-rs aceita múltiplos de 100 (e palavras-chave); um numérico fora
+   * disso QUEBRA o parse da string INTEIRA — descoberto com o 250 que a
+   * normalização de pesos (afe3d7e) gravou a partir do usWeightClass real do
+   * Metrisch ExtraLight. Sintoma por plataforma: no macOS o texto sai
+   * GIGANTE (~4x), no Linux da Vercel sai INVISÍVEL (a lambda não tem fonte
+   * de sistema para o fallback). Arredondar ao múltiplo de 100 não muda nada
+   * visualmente: a família é registrada com UMA face e o limiar do faux-bold
+   * é ≥600 — 250→300 continua aquém dele.
+   */
+  private static cssFontWeight(weight: LayerStyle['fontWeight']): string | number {
+    if (weight === undefined || weight === null) return 'normal'
+    const n = typeof weight === 'string' ? Number(weight) : weight
+    if (typeof n === 'number' && Number.isFinite(n)) {
+      return Math.min(900, Math.max(100, Math.round(n / 100) * 100))
+    }
+    return typeof weight === 'string' ? weight : 'normal'
   }
 
   private static getTextX(width: number, align: CanvasTextAlign): number {

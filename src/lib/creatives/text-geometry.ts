@@ -23,9 +23,14 @@
 import type { Layer } from '@/types/template'
 import { CANVAS_MARGIN } from '@/lib/canvas-margin'
 
-export type MeasureTextBox = (
-  layer: Layer,
-) => { height: number; maxLineWidth: number; lineCount: number } | null
+export type MeasureTextBox = (layer: Layer) => {
+  height: number
+  maxLineWidth: number
+  lineCount: number
+  /** Folga entre a caixa-fórmula e a tinta real dos glifos (borda de cima/baixo). */
+  inkTopSlack?: number
+  inkBottomSlack?: number
+} | null
 
 export interface TextGeometryIssue {
   tipo: 'overflow' | 'colisao' | 'fora-da-area-segura'
@@ -49,6 +54,11 @@ export interface TextLayerMetrics {
   /** Faixa vertical ocupada pelos glifos (descontado o padding do desenho). */
   glyphTop: number
   glyphBottom: number
+  fontSize: number
+  /** Altura de UM line-box (fontSize × lineHeight) — base do truncamento do render. */
+  lineBox: number
+  /** Com autoExpand o render desenha além da caixa; sem, trunca por linhas inteiras. */
+  autoExpand: boolean
 }
 
 /** Padding interno do desenho de texto do render-engine. */
@@ -79,8 +89,15 @@ export function measureTextLayers(layers: Layer[], measure: MeasureTextBox): Tex
       realHeight: measured.height,
       maxLineWidth: measured.maxLineWidth,
       lineCount: measured.lineCount,
-      glyphTop: y + TEXT_DRAW_PADDING,
-      glyphBottom: y + measured.height - TEXT_DRAW_PADDING,
+      // Tinta real, não caixa-fórmula: headline empilhado tem caixas que se
+      // tocam por design e só a folga dos glifos evita o falso positivo.
+      glyphTop: y + TEXT_DRAW_PADDING + (measured.inkTopSlack ?? 0),
+      glyphBottom: y + measured.height - TEXT_DRAW_PADDING - (measured.inkBottomSlack ?? 0),
+      fontSize: (layer.style?.fontSize as number | undefined) ?? 16,
+      lineBox:
+        ((layer.style?.fontSize as number | undefined) ?? 16) *
+        (layer.textboxConfig?.autoWrap?.lineHeight ?? layer.style?.lineHeight ?? 1.2),
+      autoExpand: layer.textboxConfig?.autoWrap?.autoExpand === true,
     })
   }
   return metrics
@@ -100,16 +117,23 @@ export function checkTextGeometry(
   const overflows: TextGeometryIssue[] = []
   const foraDaArea: TextGeometryIssue[] = []
 
-  // a) overflow da própria caixa (vertical e horizontal)
+  // a) overflow da própria caixa (vertical e horizontal). O critério vertical
+  //    é PARIDADE COM O TRUNCAMENTO do render: sem autoExpand, ele descarta
+  //    linhas inteiras que não cabem (floor(altura/lineBox)) — caixa um pouco
+  //    menor que a fórmula com a MESMA contagem de linhas desenha certinho e
+  //    não é defeito (o modelo Domingo do By Rock é assim por design). Com
+  //    autoExpand não há truncamento: o dano possível é colisão/área segura,
+  //    já cobertos pelos outros checks.
   for (const m of metricas) {
-    const estouroV = m.realHeight - m.box.height
-    if (estouroV > OVERFLOW_TOLERANCE_PX) {
+    const linhasQueCabem = Math.max(1, Math.floor((m.box.height + 0.001) / m.lineBox))
+    const linhasCortadas = m.autoExpand ? 0 : m.lineCount - linhasQueCabem
+    if (linhasCortadas > 0) {
       overflows.push({
         tipo: 'overflow',
         camadas: [m.name],
         layerIds: [m.layerId],
-        px: Math.round(estouroV),
-        detalhe: `${m.name} precisa de ${m.realHeight}px de altura (${m.lineCount} linha${m.lineCount > 1 ? 's' : ''}) mas a caixa tem ${Math.round(m.box.height)}px`,
+        px: Math.round(linhasCortadas * m.lineBox),
+        detalhe: `${m.name} tem ${m.lineCount} linha${m.lineCount > 1 ? 's' : ''} mas a caixa só mostra ${linhasQueCabem} — ${linhasCortadas} linha${linhasCortadas > 1 ? 's seriam cortadas' : ' seria cortada'} no render`,
       })
     }
     const larguraUtil = m.box.width - TEXT_DRAW_PADDING * 2
@@ -125,7 +149,11 @@ export function checkTextGeometry(
     }
   }
 
-  // b) colisão glifo-a-glifo entre camadas de texto
+  // b) colisão glifo-a-glifo entre camadas de texto. A tolerância vertical
+  //    escala com o corpo: em headline grande, ponta de cedilha e ascendente
+  //    ocupam o mesmo RETÂNGULO sem os pixels se tocarem (estão em x
+  //    diferentes) — 11px de interseção em fs77 é roçar de pontas, 25px em
+  //    fs38 é texto sobre texto.
   for (let i = 0; i < metricas.length; i++) {
     for (let j = i + 1; j < metricas.length; j++) {
       const a = metricas[i]
@@ -134,7 +162,8 @@ export function checkTextGeometry(
         Math.min(a.glyphBottom, b.glyphBottom) - Math.max(a.glyphTop, b.glyphTop)
       const overlapH =
         Math.min(a.box.x + a.box.width, b.box.x + b.box.width) - Math.max(a.box.x, b.box.x)
-      if (overlapV > COLLISION_TOLERANCE_PX && overlapH > COLLISION_TOLERANCE_PX) {
+      const toleranciaV = Math.max(COLLISION_TOLERANCE_PX, 0.18 * Math.max(a.fontSize, b.fontSize))
+      if (overlapV > toleranciaV && overlapH > COLLISION_TOLERANCE_PX) {
         colisoes.push({
           tipo: 'colisao',
           camadas: [a.name, b.name],

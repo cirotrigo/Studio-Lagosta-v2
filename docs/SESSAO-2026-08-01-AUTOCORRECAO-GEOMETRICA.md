@@ -79,3 +79,41 @@ original, flag off cria com avisos, alternatives com slotFields. Regressão
 
 Pendência conhecida (fase 2, de propósito): check de contraste
 (texto sobre região clara sem gradiente) — citado na spec como opcional.
+
+## Descobertas do primeiro uso real (madrugada de 01/08, story de domingo)
+
+O teste "criar e agendar story de domingo do By Rock" derrubou três defeitos
+que o E2E do template 140 não tinha como pegar:
+
+1. **`fontWeight` fora do múltiplo de 100 QUEBRA o parse do font string do
+   napi-rs** — e o sintoma depende da plataforma: no macOS o texto sai
+   GIGANTE (~4×), no Linux da Vercel sai **INVISÍVEL** (lambda não tem fonte
+   de sistema para o fallback). O peso 250 veio da normalização afe7d3e→afe3d7e
+   (usWeightClass REAL do Metrisch ExtraLight é 250; o Bacana tem 310–390).
+   Varredura: 148 páginas em 5 projetos; ZERO posts DRAFT/SCHEDULED
+   referenciando páginas afetadas. Fix: `cssFontWeight()` no render-engine
+   arredonda ao múltiplo de 100 [100..900] — não muda face (1 face por
+   família) nem o limiar de faux-bold (≥600). Os DADOS ficam como estão
+   (o peso do arquivo é verdade; o saneamento é do renderer).
+2. **Colisão por caixa-fórmula dava falso positivo em headline empilhado**
+   (o modelo Domingo tem "Seu almoço"/"de domingo" com em-boxes sobrepostos
+   por design). Fix em duas partes: folga de tinta exata (baseline `middle`
+   no centro do line-box, igual ao renderLines; `actualBoundingBox` medido
+   com o MESMO baseline) e tolerância vertical proporcional ao corpo
+   (`max(4px, 0.18×fontSize)` — 11px de interseção em fs77 é roçar de
+   pontas em x diferentes, não texto sobre texto).
+3. **Overflow vertical agora é paridade com o TRUNCAMENTO do render**
+   (linhas descartadas por `floor(altura/lineBox)`, só sem autoExpand) — a
+   caixa do designer pode ser menor que a fórmula e desenhar certinho; o
+   defeito real é linha CORTADA, não pixel de fórmula.
+
+Também: `register-project-fonts` blindado (status HTTP conferido — antes um
+403 do Blob gravava o corpo do erro como .otf no cache /tmp da instância,
+envenenando-a; `registerFromPath` devolve boolean e não lança — agora é
+conferido, com cache-bust e re-download; falha vira log ALTO com o nome das
+famílias) e `normalizeForComparison` unifica variantes de bullet (·•∙●) —
+"· " vs "• " não é divergência de texto real.
+
+Moral do teste: o ink-check por região validou o render local "correto"
+enquanto o texto estava 4× maior — verificação por proxy engana; olhar a
+imagem de verdade (conferir-arte) foi o que pegou tudo.

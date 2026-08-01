@@ -43,6 +43,9 @@ export function normalizeForComparison(value: string): string {
     .replace(/[‘’‚′]/g, "'")
     .replace(/[“”„″]/g, '"')
     .replace(/[–—−]/g, '-')
+    // Separadores de ponto são visualmente idênticos e o modelo de visão
+    // transcreve qualquer um deles: "· A" vs "• A" não é divergência real.
+    .replace(/[•∙●・]/g, '·')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase()

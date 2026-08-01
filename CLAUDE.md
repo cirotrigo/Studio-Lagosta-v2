@@ -747,6 +747,15 @@ autocorreção pré-render nos três geradores de arte. Regras:
   no fieldValues; log `[text-autofix]` é a telemetria de template apertado.
 - `fieldValues.pageId` em toda Generation nova — é como conferir-arte acha as
   camadas para diagnosticar `sobreposicao` (vs "texto faltando").
+- **`fontWeight` que não é múltiplo de 100 quebra o parser do napi-rs** (250,
+  310…, vindos do usWeightClass real gravado pela normalização): texto sai
+  GIGANTE no macOS e INVISÍVEL na Vercel. `buildFontString` saneia via
+  `cssFontWeight()` — os dados ficam com o peso real do arquivo; camada nova
+  de código que monte font string por fora precisa do mesmo saneamento.
+- Colisão usa TINTA com baseline `middle` (igual ao renderLines) e tolerância
+  `max(4px, 0.18×fontSize)`; overflow vertical é PARIDADE COM O TRUNCAMENTO
+  (linhas cortadas), não diferença de fórmula — caixa menor que a fórmula com
+  a mesma contagem de linhas é design válido, não defeito.
 
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
