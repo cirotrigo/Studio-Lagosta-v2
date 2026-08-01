@@ -23,8 +23,10 @@ import {
   ensureArteTemplate,
   getPublicAppUrl,
   persistAndRenderCreative,
+  renderPageAndRegister,
   resolveImageUrl,
 } from '@/lib/creatives/persist'
+import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
@@ -558,5 +560,177 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     templateName: ARTE_RAPIDA_TEMPLATE_NAME,
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
+  }
+}
+
+// ─── ajustar-arte ────────────────────────────────────────────────────
+
+export interface AjustarArteInput {
+  projectId: number
+  /** A página gerada (pageId de createArteRapida/createArteLivre). */
+  pageId: string
+  /** Mesmo formato do createArteRapida: chave = id ou nome da camada. */
+  slotValues?: Record<string, unknown>
+  /** Troca a foto de fundo (mesma regra de destino do createArteRapida). */
+  imageUrl?: string
+  driveImageId?: string
+  /** Renomeia a página. */
+  name?: string
+}
+
+export interface AjustarArteResult {
+  ajustada: true
+  generationId: string
+  pageId: string
+  templateId: number
+  templateName: string
+  url: string
+  editUrl: string
+  galleryUrl: string
+  width: number
+  height: number
+  sizeKB: number
+  imageApplied: boolean
+  imageWarning?: string
+  /** Nomes das camadas de texto que mudaram. */
+  camposAlterados: string[]
+  /** Posts da agenda que voltaram à fila de render por usarem esta página. */
+  postsInvalidados: number
+}
+
+/**
+ * Ajusta uma arte já gerada: aplica novos textos/foto nas camadas da MESMA
+ * página, re-renderiza e registra uma nova Generation (a anterior fica na
+ * galeria como histórico). Posts da agenda que usam a página são invalidados
+ * para o cron re-renderizar — regra da casa para qualquer escrita em
+ * Page.layers.
+ *
+ * Recusa páginas-modelo (isTemplate): mexer nelas mudaria TODAS as artes
+ * futuras daquele tema e os posts agendados que as referenciam — modelo se
+ * edita no editor, com a invalidação por mudança visual real do PATCH.
+ */
+export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteResult> {
+  const { projectId, pageId } = input
+  const slotValues = input.slotValues ?? {}
+
+  const temAjuste =
+    Object.keys(slotValues).length > 0 || input.imageUrl || input.driveImageId || input.name
+  if (!temAjuste) {
+    throw new CreativeError(
+      'SEM_AJUSTE',
+      'Nada para ajustar: envie slotValues, imageUrl/driveImageId ou name.',
+      400,
+    )
+  }
+
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    select: { id: true, name: true, userId: true },
+  })
+  if (!project) {
+    throw new CreativeError('PROJECT_NOT_FOUND', `Project not found: ${projectId}`, 404)
+  }
+
+  const page = await db.page.findUnique({
+    where: { id: pageId },
+    include: { Template: { select: { id: true, name: true, projectId: true } } },
+  })
+  if (!page || page.Template.projectId !== projectId) {
+    throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada neste projeto: ${pageId}`, 404)
+  }
+  if (page.isTemplate) {
+    throw new CreativeError(
+      'PAGINA_E_MODELO',
+      'Esta página é um MODELO do cliente, não uma arte gerada. Ajustar aqui mudaria todas as artes futuras do tema — modelos se editam no editor.',
+      400,
+    )
+  }
+
+  const driveImageId =
+    input.driveImageId ??
+    (typeof slotValues._driveImageId === 'string' ? slotValues._driveImageId : null)
+  const directUrl =
+    input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
+  const resolved = await resolveImageUrl(directUrl, driveImageId)
+
+  const sourceLayers = parseLayers(page.layers)
+  const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
+  const { layers: bakedLayers, changedTextIds } = baked
+  let imageApplied = baked.imageApplied
+
+  // Arte-livre não marca o fundo como dinâmico (a camada nasce aqui, não num
+  // template): sem este fallback, trocar a foto de uma arte criada do zero
+  // seria impossível. A primeira camada de imagem é o fundo nos dois geradores.
+  if (!imageApplied && resolved.url) {
+    const fundo = (bakedLayers as any[]).find((l) => l.type === 'image')
+    if (fundo) {
+      fundo.fileUrl = resolved.url
+      imageApplied = true
+    }
+  }
+
+  await registerProjectFonts(projectId)
+  const measure = await createServerTextMeasurer()
+  const layers = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+
+  const imageWarning =
+    resolved.warning ??
+    (resolved.url && !imageApplied
+      ? 'A imagem foi resolvida mas a arte não tem camada de imagem dinâmica para recebê-la'
+      : undefined)
+
+  const pageName = input.name ?? page.name
+  await db.page.update({
+    where: { id: page.id },
+    data: { layers: layers as any, ...(input.name ? { name: input.name } : {}) },
+  })
+
+  // Textos FINAIS da arte, por nome de camada — é o que alimenta a verificação
+  // por visão do conferir-arte e do melhorar-arte (extractExpectedTexts lê
+  // slotValues), então precisa refletir a página como ficou, não só o patch.
+  const slotValuesFinais = Object.fromEntries(
+    (layers as any[])
+      .filter((l) => l.type === 'text' && typeof l.content === 'string' && l.content.trim())
+      .map((l) => [l.name ?? l.id, l.content]),
+  )
+
+  const persisted = await renderPageAndRegister({
+    project,
+    templateId: page.Template.id,
+    templateName: page.Template.name,
+    page: {
+      id: page.id,
+      name: pageName,
+      width: page.width,
+      height: page.height,
+      layers,
+      background: page.background,
+    },
+    authorName: 'ajuste-arte',
+    fieldValues: {
+      source: 'ajuste-arte',
+      sourcePageId: page.id,
+      ajustes: slotValues,
+      slotValues: slotValuesFinais,
+      driveImageId,
+      imageUrl: resolved.url ?? directUrl ?? null,
+    },
+  })
+
+  // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
+  // fila de render, senão publicam a arte antiga em silêncio.
+  const postsInvalidados = await invalidateScheduledRenders(db, { pageIds: [page.id] })
+
+  const camposAlterados = (layers as any[])
+    .filter((l) => changedTextIds.includes(l.id))
+    .map((l) => l.name ?? l.id)
+
+  return {
+    ajustada: true,
+    ...persisted,
+    imageApplied,
+    ...(imageWarning ? { imageWarning } : {}),
+    camposAlterados,
+    postsInvalidados,
   }
 }

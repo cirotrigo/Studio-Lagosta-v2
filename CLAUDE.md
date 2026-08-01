@@ -709,6 +709,24 @@ Regras que valem para código novo:
   **pulada** (`continue`) — o `return`/`break` antigo fazia um CARDAPIO longo
   eliminar as categorias seguintes inteiras.
 
+`docs/SESSAO-2026-07-31-MCP-AUTONOMIA-ARTES.md` fecha o ciclo de autonomia do
+conector MCP: 6 tools novas (melhorar-arte, ver-melhoria, conferir-arte,
+ajustar-arte, marcar-como-modelo, listar-modelos), `startImprovement` extraído
+da rota improve (casca fina), `renderPageAndRegister` compartilhado. Regras:
+
+- **`extractExpectedTexts` lê 4 formas** (`slotValues`, `texts`, `textos`,
+  `textosLivres`) — antes a arte-livre não era lida e a melhoria de arte do MCP
+  saía sem verificação de texto. Forma nova de gravar textos em Generation
+  precisa entrar lá.
+- **`Project.userId` é o id INTERNO do User** (confirmado nos dados). O
+  `resolverDono` do tools.ts resolve por `User.id` primeiro e devolve interno +
+  clerk; passar esse cuid por `getUserFromClerkId` já criou 2 Users fantasma.
+- **`ajustar-arte` recusa página-modelo** e chama `invalidateScheduledRenders`
+  ao gravar `Page.layers` — as duas regras da casa valem para qualquer tool nova.
+- **Dedupe de melhoria**: `sourceGenerationId` + PROCESSING + janela de 10 min
+  no serviço — retry do modelo no chat não pode virar segunda cobrança.
+- `/api/mcp` tem `maxDuration = 300` por causa do `after()` da melhoria.
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá

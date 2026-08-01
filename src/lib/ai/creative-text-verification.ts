@@ -72,21 +72,32 @@ function collectFromRecord(record: Record<string, unknown>): string[] {
 
 /**
  * Extrai os textos esperados do `fieldValues` de uma Generation.
- * Formas conhecidas: `slotValues` (arte-rápida/MCP) e `texts` (gerar-criativo).
- * Qualquer outra forma (konva_editor, upload) devolve vazio → verificação pulada.
+ * Formas conhecidas: `slotValues` (arte-rápida/MCP/ajuste), `texts`
+ * (gerar-criativo), `textos` (arte-livre por combinação) e `textosLivres`
+ * (arte-livre com blocos posicionados). Qualquer outra forma (konva_editor,
+ * upload) devolve vazio → verificação pulada.
  */
 export function extractExpectedTexts(fieldValues: unknown): string[] {
   if (!fieldValues || typeof fieldValues !== 'object') return []
   const fv = fieldValues as Record<string, unknown>
 
-  const source =
-    (fv.slotValues && typeof fv.slotValues === 'object'
-      ? (fv.slotValues as Record<string, unknown>)
-      : null) ??
-    (fv.texts && typeof fv.texts === 'object' ? (fv.texts as Record<string, unknown>) : null)
+  const texts: string[] = []
 
-  if (!source) return []
-  return Array.from(new Set(collectFromRecord(source)))
+  for (const key of ['slotValues', 'texts', 'textos'] as const) {
+    const value = fv[key]
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      texts.push(...collectFromRecord(value as Record<string, unknown>))
+    }
+  }
+
+  if (Array.isArray(fv.textosLivres)) {
+    for (const bloco of fv.textosLivres) {
+      const texto = (bloco as Record<string, unknown> | null)?.texto
+      if (typeof texto === 'string' && isTextValue(texto)) texts.push(texto.trim())
+    }
+  }
+
+  return Array.from(new Set(texts))
 }
 
 /**

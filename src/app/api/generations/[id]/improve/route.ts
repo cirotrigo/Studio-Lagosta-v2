@@ -3,14 +3,8 @@ import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
-import { validateCreditsForFeature } from '@/lib/credits/deduct'
-import { InsufficientCreditsError } from '@/lib/credits/errors'
-import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
-import {
-  inferFormatFromTemplate,
-  OPENAI_INPUT_SIZE,
-  FINAL_OUTPUT_SIZE,
-} from '@/lib/ai/creative-improvement-format'
+import { CreativeError } from '@/lib/creatives/errors'
+import { startImprovement } from '@/lib/ai/creative-improvement-service'
 import { processImprovementInBackground } from '@/lib/ai/creative-improvement-runner'
 import {
   MAX_SELECTED_LOGOS,
@@ -19,6 +13,10 @@ import {
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
+
+// A validação de conteúdo (post APROVADO, créditos, host das URLs) vive no
+// serviço startImprovement — compartilhado com a tool melhorar-arte do MCP.
+// A rota só cuida do que é dela: sessão Clerk e acesso ao projeto.
 
 // userRequest é opcional — quando vazio, aplica apenas as diretrizes do
 // Diretor de Arte sem mudanças de conteúdo. O cliente do OpenAI lida com isso
@@ -50,8 +48,6 @@ const bodySchema = z.object({
   sourceImageUrl: z.string().url().optional().nullable(),
 })
 
-const VERCEL_BLOB_HOST_REGEX = /^https:\/\/[a-z0-9-]+\.public\.blob\.vercel-storage\.com\//
-
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { userId, orgId } = await auth()
@@ -67,41 +63,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         { status: 400 },
       )
     }
-    const {
-      userRequest,
-      backgroundImageUrl,
-      selectedLogoIds,
-      selectedElementIds,
-      applyToPostId,
-      sourceImageUrl,
-    } = parsed.data
-
-    if (backgroundImageUrl && !VERCEL_BLOB_HOST_REGEX.test(backgroundImageUrl)) {
-      return NextResponse.json({ error: 'URL de fundo não permitida' }, { status: 400 })
-    }
-    if (sourceImageUrl && !VERCEL_BLOB_HOST_REGEX.test(sourceImageUrl)) {
-      return NextResponse.json({ error: 'URL de origem não permitida' }, { status: 400 })
-    }
 
     const original = await db.generation.findFirst({
       where: { id },
-      select: {
-        id: true,
-        projectId: true,
-        templateId: true,
-        resultUrl: true,
-        googleDriveFileId: true,
-        fileName: true,
-        templateName: true,
-        Template: { select: { type: true, dimensions: true } },
-      },
+      select: { projectId: true },
     })
-
     if (!original) {
       return NextResponse.json({ error: 'Criativo não encontrado' }, { status: 404 })
-    }
-    if (!original.resultUrl) {
-      return NextResponse.json({ error: 'Criativo sem imagem disponível' }, { status: 400 })
     }
 
     const project = await fetchProjectWithShares(original.projectId)
@@ -112,116 +80,44 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
-    if (applyToPostId) {
-      const post = await db.socialPost.findFirst({
-        where: { id: applyToPostId, projectId: original.projectId },
-        select: { id: true, status: true },
-      })
-      if (!post) {
-        return NextResponse.json({ error: 'Post não encontrado neste projeto' }, { status: 404 })
-      }
-      // Regra de negócio: melhorar com IA só arte APROVADA. Rascunho se edita
-      // no editor; a melhoria entra depois da aprovação.
-      if (post.status !== 'SCHEDULED') {
-        return NextResponse.json(
-          {
-            error:
-              post.status === 'DRAFT'
-                ? 'Este post ainda é rascunho. Aprove-o primeiro — só arte aprovada pode ser melhorada com IA.'
-                : `Este post não pode ser melhorado (status ${post.status}).`,
-          },
-          { status: 400 },
-        )
-      }
-    }
-
-    try {
-      await validateCreditsForFeature(userId, 'ai_creative_improvement', 1, {
-        organizationId: orgId ?? undefined,
-      })
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        return NextResponse.json(
-          {
-            error: 'Créditos insuficientes',
-            required: error.required,
-            available: error.available,
-          },
-          { status: 402 },
-        )
-      }
-      throw error
-    }
-
-    const format = inferFormatFromTemplate(original.Template)
-    const openaiSize = OPENAI_INPUT_SIZE[format]
-    const finalSize = FINAL_OUTPUT_SIZE[format]
-
-    // Cria a Generation logo no PROCESSING — o client vai pollar pelo id dela.
-    const job = await db.generation.create({
-      data: {
-        templateId: original.templateId,
-        projectId: original.projectId,
-        status: 'PROCESSING',
-        resultUrl: null,
-        fileName: null,
-        // Linhagem relacional (B1) — o fieldValues.originalGenerationId
-        // continua por compatibilidade, mas quem consulta usa a coluna.
-        sourceGenerationId: original.id,
-        fieldValues: {
-          source: 'ai_improvement',
-          originalGenerationId: original.id,
-          userRequest,
-          backgroundImageUrl: backgroundImageUrl ?? null,
-          selectedLogoIds,
-          selectedElementIds,
-          applyToPostId: applyToPostId ?? null,
-          model: getCurrentImageModel(),
-          quality: 'high',
-          inputSize: openaiSize,
-          finalSize: `${finalSize.width}x${finalSize.height}`,
-          format,
-          processingStartedAt: new Date().toISOString(),
-        },
-        templateName: `${original.templateName ?? 'Criativo'} (melhorado)`,
-        projectName: project.name,
-        createdBy: userId,
-      },
+    const started = await startImprovement({
+      generationId: id,
+      userRequest: parsed.data.userRequest,
+      backgroundImageUrl: parsed.data.backgroundImageUrl,
+      selectedLogoIds: parsed.data.selectedLogoIds,
+      selectedElementIds: parsed.data.selectedElementIds,
+      applyToPostId: parsed.data.applyToPostId,
+      sourceImageUrl: parsed.data.sourceImageUrl,
+      actorClerkId: userId,
+      orgId: orgId ?? undefined,
     })
 
     // Dispara o trabalho pesado em background — response sai imediatamente,
     // o Vercel mantém a function viva até o maxDuration ou o término da task.
-    after(() =>
-      processImprovementInBackground({
-        jobGenerationId: job.id,
-        originalGenerationId: original.id,
-        originalResultUrl: sourceImageUrl ?? original.resultUrl!,
-        applyToPostId: applyToPostId ?? null,
-        userId,
-        orgId: orgId ?? undefined,
-        projectId: original.projectId,
-        projectName: project.name,
-        projectGoogleDriveFolderId: project.googleDriveFolderId ?? null,
-        templateName: original.templateName,
-        userRequest,
-        backgroundImageUrl: backgroundImageUrl ?? null,
-        selectedLogoIds,
-        selectedElementIds,
-        format,
-      }),
-    )
+    if (started.runnerArgs) {
+      const runnerArgs = started.runnerArgs
+      after(() => processImprovementInBackground(runnerArgs))
+    }
 
     return NextResponse.json(
       {
         success: true,
         generation: {
-          id: job.id,
+          id: started.jobGenerationId,
           status: 'PROCESSING' as const,
         },
       },
       { status: 202 },
     )
   } catch (error) {
+    if (error instanceof CreativeError) {
+      // Mantém o shape que o ImproveCreativeModal já lê: `error` com a
+      // mensagem humana e, no 402, required/available no topo.
+      return NextResponse.json(
+        { error: error.message, ...(error.details ?? {}) },
+        { status: error.status },
+      )
+    }
     console.error('[improve] Unexpected error:', error)
     return NextResponse.json(
       {

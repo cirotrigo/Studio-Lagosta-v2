@@ -3,8 +3,10 @@ import { isExternalApiAuthorized } from '@/lib/external-api/auth'
 import { MCP_TOOLS, runMcpTool } from '@/lib/mcp/tools'
 import { oauthIssuer, resolveAccessToken, type McpPrincipal } from '@/lib/mcp/oauth'
 
-// Renders happen inside create-arte-rapida / create-arte-livre.
-export const maxDuration = 120
+// Renders happen inside create-arte-rapida / create-arte-livre; a melhoria
+// com IA (melhorar-arte) roda via after() DEPOIS da resposta e precisa que a
+// function viva até ~5 min — mesmo teto da rota improve.
+export const maxDuration = 300
 
 /**
  * Endpoint MCP remoto (Streamable HTTP, stateless).
@@ -55,6 +57,11 @@ MANTER A BASE ATUALIZADA
 FOTOS
 - Escolha no acervo do projeto, variando as pastas para não repetir imagem entre os posts da mesma leva.
 - Evite fotos com clientes identificáveis em primeiro plano.
+
+ARTES — crie, confira, corrija
+- Depois de criar ou ajustar uma arte, use conferir-arte ANTES de mostrá-la à pessoa: a miniatura e a conferência de texto pegam texto cortado, sobreposto ou errado. Achou problema? Corrija com ajustar-arte e confira de novo.
+- Melhorar com IA (melhorar-arte) é outra coisa: refina a arte inteira com o modelo de imagem, demora ~2 minutos e custa créditos. Só em arte de post APROVADO (ou solta na galeria) e sempre com a pessoa sabendo. Acompanhe com ver-melhoria; se falhar, a arte original continua valendo.
+- Uma arte que a pessoa amou pode virar modelo das próximas: ofereça marcar-como-modelo com as tags do tema.
 
 AGENDA — a regra mais importante
 - Toda arte entra como RASCUNHO. Rascunho aparece na agenda e NÃO publica.

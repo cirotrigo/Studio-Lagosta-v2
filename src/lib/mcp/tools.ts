@@ -8,8 +8,15 @@
  * behaviour cannot drift.
  */
 
+import { after } from 'next/server'
+import sharp from 'sharp'
 import { db } from '@/lib/db'
-import { prepareCreative, createArteRapida } from '@/lib/creatives/arte-rapida'
+import {
+  prepareCreative,
+  createArteRapida,
+  ajustarArte,
+  getPublicAppUrl,
+} from '@/lib/creatives/arte-rapida'
 import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
 import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
@@ -21,6 +28,16 @@ import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import {
+  startImprovement,
+  VERCEL_BLOB_HOST_REGEX,
+} from '@/lib/ai/creative-improvement-service'
+import { processImprovementInBackground } from '@/lib/ai/creative-improvement-runner'
+import {
+  loadExpectedTextsForGeneration,
+  verifyImageTexts,
+} from '@/lib/ai/creative-text-verification'
+import { fetchImageSource } from '@/lib/ai/fetch-image-source'
 import {
   loadBrandContext,
   updateBrandDNA,
@@ -57,27 +74,60 @@ async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | nul
 }
 
 /**
- * Autor das escritas na base, sempre como User.id do banco — a mesma convenção
- * de createdBy/updatedBy das rotas da interface.
+ * Resolve quem assina a ação: o User do banco E o id do Clerk, porque cada
+ * consumidor pede um espaço de id diferente — escritas na base usam User.id
+ * (convenção de createdBy/updatedBy das rotas), créditos exigem o clerkId.
  *
- * Atenção ao espaço de id: tanto `principal.userId` (token OAuth) quanto
- * `Project.userId` guardam o id do CLERK, não o do banco. Os dois precisam
- * passar por getUserFromClerkId, senão a coluna fica com clerkIds e cuids
- * misturados e nenhum join por User.id resolve.
+ * Atenção ao espaço de id (verificado nos DADOS em 31/07/2026):
+ * - `principal.userId` (token OAuth) é id do CLERK (`user_…`), vindo do
+ *   `auth()` da tela de consentimento.
+ * - `Project.userId` guarda o id INTERNO do User (cuid) — a versão anterior
+ *   deste helper o tratava como clerkId e o getUserFromClerkId CRIAVA um User
+ *   fantasma com clerkId=cuid a cada projeto tocado pelo Claudinho. Dois
+ *   fantasmas já existem no banco por isso (cmgw866yc…, cms5fv2c5…).
  */
-async function resolverAutor(projectId: number, principal: McpPrincipal): Promise<string> {
-  const clerkId =
-    principal.kind === 'user' && principal.userId
-      ? principal.userId
-      : (
-          await db.project.findUnique({ where: { id: projectId }, select: { userId: true } })
-        )?.userId
+async function resolverDono(
+  projectId: number,
+  principal: McpPrincipal,
+): Promise<{ id: string; clerkId: string }> {
+  if (principal.kind === 'user' && principal.userId) {
+    const dbUser = await getUserFromClerkId(principal.userId)
+    return { id: dbUser.id, clerkId: principal.userId }
+  }
 
-  if (!clerkId) {
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    select: { userId: true },
+  })
+  if (!project) {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
   }
-  const dbUser = await getUserFromClerkId(clerkId)
-  return dbUser.id
+
+  let user = await db.user.findUnique({
+    where: { id: project.userId },
+    select: { id: true, clerkId: true },
+  })
+  // Projeto antigo pode ter gravado o clerkId na coluna — aceita os dois
+  // espaços em vez de inventar um usuário novo.
+  if (!user) {
+    user = await db.user.findUnique({
+      where: { clerkId: project.userId },
+      select: { id: true, clerkId: true },
+    })
+  }
+  if (!user) {
+    throw new CreativeError(
+      'DONO_NAO_ENCONTRADO',
+      `O dono do projeto ${projectId} não existe na tabela User (Project.userId=${project.userId}).`,
+      500,
+    )
+  }
+  return user
+}
+
+/** Autor das escritas na base, como User.id do banco. */
+async function resolverAutor(projectId: number, principal: McpPrincipal): Promise<string> {
+  return (await resolverDono(projectId, principal)).id
 }
 
 /** Barra o acesso a um projeto fora do alcance do portador. */
@@ -634,6 +684,431 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'ajustar-arte',
+    description:
+      'Ajusta uma arte já criada aqui: troca textos e/ou a foto na MESMA página e re-renderiza. Use depois de conferir-arte, quando algo saiu errado — texto estourando a caixa, foto ruim, erro de digitação. As chaves de slotValues são as mesmas da criação (id ou nome da camada; conferir-arte e o retorno da criação mostram os nomes).\n\nNão serve para páginas-modelo do cliente (essas se editam no editor). Se a arte já estiver em algum post da agenda, a arte do post é atualizada junto (re-render automático em alguns minutos).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        pageId: { type: 'string', description: 'A arte a ajustar (pageId devolvido por criar-arte ou criar-arte-de-modelo).' },
+        slotValues: {
+          type: 'object',
+          description: 'Só o que muda: chave = id ou nome da camada, valor = novo texto (string) ou {content, fileUrl}.',
+          additionalProperties: true,
+        },
+        imageUrl: { type: 'string', description: 'Nova foto de fundo (URL pública).' },
+        driveImageId: { type: 'string', description: 'Nova foto de fundo pelo id do Drive (de buscar-fotos).' },
+        name: { type: 'string', description: 'Novo nome da página (opcional).' },
+      },
+      required: ['projectId', 'pageId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return ajustarArte({
+        projectId,
+        pageId: requireString(args, 'pageId'),
+        slotValues: (args.slotValues && typeof args.slotValues === 'object'
+          ? args.slotValues
+          : {}) as Record<string, unknown>,
+        imageUrl: typeof args.imageUrl === 'string' ? args.imageUrl : undefined,
+        driveImageId: typeof args.driveImageId === 'string' ? args.driveImageId : undefined,
+        name: typeof args.name === 'string' ? args.name : undefined,
+      })
+    },
+  },
+
+  {
+    name: 'conferir-arte',
+    description:
+      'Mostra a arte para VOCÊ ver (miniatura na resposta) e confere por visão se os textos saíram exatamente como deveriam. Use depois de criar ou ajustar uma arte, antes de mostrá-la à pessoa — é o que pega texto cortado, sobreposto ou com erro. Informe generationId (arte da galeria) ou postId (arte atual de um post da agenda).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        generationId: { type: 'string', description: 'A arte (vem de criar-arte, criar-arte-de-modelo ou ajustar-arte).' },
+        postId: { type: 'string', description: 'Alternativa: confere a arte ATUAL de um post da agenda.' },
+        verificarTextos: { type: 'boolean', description: 'Roda a conferência de texto por visão (default true; só quando há textos de referência).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      let url: string | null = null
+      let textRefGenerationId: string | null = null
+
+      if (typeof args.generationId === 'string' && args.generationId) {
+        const gen = await db.generation.findFirst({
+          where: { id: args.generationId, projectId },
+          select: { id: true, resultUrl: true },
+        })
+        if (!gen) {
+          throw new CreativeError('ARTE_NAO_ENCONTRADA', 'Arte não encontrada neste cliente.', 404)
+        }
+        url = gen.resultUrl
+        textRefGenerationId = gen.id
+      } else if (typeof args.postId === 'string' && args.postId) {
+        const post = await db.socialPost.findFirst({
+          where: { id: args.postId, projectId },
+          select: { mediaUrls: true, generationId: true },
+        })
+        if (!post) {
+          throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste cliente.', 404)
+        }
+        url = post.mediaUrls?.[0] ?? null
+        textRefGenerationId = post.generationId
+      } else {
+        throw new Error('Informe generationId ou postId.')
+      }
+
+      if (!url) {
+        throw new CreativeError('SEM_IMAGEM', 'Esta arte ainda não tem imagem para conferir.', 400)
+      }
+
+      const { buffer } = await fetchImageSource(url)
+      const meta = await sharp(buffer).metadata()
+      const thumb = await sharp(buffer)
+        .resize(640, 640, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 75 })
+        .toBuffer()
+
+      const expected = textRefGenerationId
+        ? await loadExpectedTextsForGeneration(textRefGenerationId)
+        : []
+
+      let verificacaoTexto: Record<string, unknown> | string = 'sem-referencia'
+      if (args.verificarTextos !== false && expected.length > 0) {
+        try {
+          const check = await verifyImageTexts(buffer, expected)
+          verificacaoTexto = check.passed
+            ? { resultado: 'ok', textosConferidos: expected.length }
+            : { resultado: 'divergente', faltando: check.missing, transcricao: check.extracted.slice(0, 20) }
+        } catch (erro) {
+          verificacaoTexto = `indisponivel: ${erro instanceof Error ? erro.message : String(erro)}`
+        }
+      }
+
+      const resumo = {
+        url,
+        largura: meta.width ?? null,
+        altura: meta.height ?? null,
+        verificacaoTexto,
+        dica:
+          typeof verificacaoTexto === 'object' && verificacaoTexto.resultado === 'divergente'
+            ? 'Texto divergente: corrija com ajustar-arte antes de mostrar à pessoa.'
+            : 'Olhe a miniatura: texto legível? Nada cortado ou sobreposto? Foto combina com o tema? Se algo estiver errado, use ajustar-arte.',
+      }
+
+      return {
+        _mcpContent: [
+          { type: 'text', text: JSON.stringify(resumo, null, 2) },
+          { type: 'image', data: thumb.toString('base64'), mimeType: 'image/jpeg' },
+        ],
+      }
+    },
+  },
+
+  {
+    name: 'melhorar-arte',
+    description:
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Para aplicar direto a um post da agenda, o post precisa estar APROVADO (agendado) — rascunho se corrige com ajustar-arte, não se melhora. Não chame de novo enquanto houver melhoria em andamento da mesma arte.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
+        pedido: { type: 'string', description: 'O que melhorar, em linguagem natural (máx 500 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
+        postId: { type: 'string', description: 'Post APROVADO da agenda que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
+      },
+      required: ['projectId', 'generationId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const generationId = requireString(args, 'generationId')
+
+      const gen = await db.generation.findFirst({
+        where: { id: generationId, projectId },
+        select: { id: true, resultUrl: true },
+      })
+      if (!gen) {
+        throw new CreativeError('ARTE_NAO_ENCONTRADA', 'Arte não encontrada neste cliente.', 404)
+      }
+
+      // O que se melhora é a arte que está NO POST — o cron pode ter
+      // re-renderizado a página depois da Generation. Só URLs do nosso Blob
+      // entram no pipeline; mídia de fora (CDN do Zernio, Drive) cai no
+      // resultUrl da Generation.
+      const postId = typeof args.postId === 'string' && args.postId ? args.postId : undefined
+      let sourceImageUrl: string | undefined
+      if (postId) {
+        const post = await db.socialPost.findFirst({
+          where: { id: postId, projectId },
+          select: { mediaUrls: true },
+        })
+        const atual = post?.mediaUrls?.[0]
+        if (atual && VERCEL_BLOB_HOST_REGEX.test(atual) && atual !== gen.resultUrl) {
+          sourceImageUrl = atual
+        }
+      }
+
+      const dono = await resolverDono(projectId, principal)
+      const started = await startImprovement({
+        generationId,
+        userRequest: typeof args.pedido === 'string' ? args.pedido : '',
+        applyToPostId: postId ?? null,
+        sourceImageUrl: sourceImageUrl ?? null,
+        actorClerkId: dono.clerkId,
+        dedupeWindowMinutes: 10,
+      })
+
+      if (!started.reused && started.runnerArgs) {
+        const runnerArgs = started.runnerArgs
+        after(() => processImprovementInBackground(runnerArgs))
+      }
+
+      return {
+        emAndamento: true,
+        melhoriaId: started.jobGenerationId,
+        ...(started.reused
+          ? { jaEstavaEmAndamento: true }
+          : {}),
+        tempoEstimado: 'cerca de 2 minutos',
+        mensagem: started.reused
+          ? 'Já havia uma melhoria desta arte em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
+          : `Melhoria iniciada. Consulte ver-melhoria com melhoriaId=${started.jobGenerationId} em ~2 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
+      }
+    },
+  },
+
+  {
+    name: 'ver-melhoria',
+    description:
+      'Acompanha uma melhoria de arte disparada por melhorar-arte: em andamento, pronta ou falhou. Quando pronta, traz a imagem nova e o resultado da conferência de texto; quando falha, a arte original continua valendo. Consulte ~2 minutos após disparar (e re-consulte em ~30s se ainda estiver em andamento).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        melhoriaId: { type: 'string', description: 'O melhoriaId devolvido por melhorar-arte.' },
+      },
+      required: ['projectId', 'melhoriaId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const melhoriaId = requireString(args, 'melhoriaId')
+
+      const gen = await db.generation.findFirst({
+        where: { id: melhoriaId, projectId },
+        select: {
+          id: true,
+          status: true,
+          resultUrl: true,
+          fieldValues: true,
+          createdAt: true,
+          completedAt: true,
+          sourceGenerationId: true,
+        },
+      })
+      if (!gen) {
+        throw new CreativeError('MELHORIA_NAO_ENCONTRADA', 'Melhoria não encontrada neste cliente.', 404)
+      }
+
+      const fv = (gen.fieldValues ?? {}) as Record<string, unknown>
+      const galleryUrl = `${getPublicAppUrl()}/projects/${projectId}?tab=criativos`
+
+      if (gen.status === 'PROCESSING') {
+        const decorrido = Math.round((Date.now() - gen.createdAt.getTime()) / 1000)
+        return {
+          situacao: 'em-andamento',
+          decorridoSegundos: decorrido,
+          mensagem:
+            decorrido > 300
+              ? 'Está demorando mais que o normal — se passar de 6 minutos, considere que falhou e dispare de novo.'
+              : 'Ainda gerando. Consulte de novo em ~30 segundos.',
+        }
+      }
+
+      if (gen.status === 'COMPLETED') {
+        const applyToPostId = typeof fv.applyToPostId === 'string' ? fv.applyToPostId : null
+        let aplicadaAoPost: boolean | undefined
+        let avisoPost: string | undefined
+        if (applyToPostId) {
+          const post = await db.socialPost.findFirst({
+            where: { id: applyToPostId },
+            select: { generationId: true, status: true },
+          })
+          aplicadaAoPost = post?.generationId === gen.id
+          if (!aplicadaAoPost) {
+            avisoPost =
+              'A melhoria ficou pronta, mas o post não estava mais aprovado quando ela terminou — a arte nova está só na galeria.'
+          }
+        }
+        return {
+          situacao: 'pronta',
+          url: gen.resultUrl,
+          verificacaoTexto: fv.textCheck ?? 'skipped',
+          ...(aplicadaAoPost !== undefined ? { aplicadaAoPost } : {}),
+          ...(avisoPost ? { avisoPost } : {}),
+          galleryUrl,
+          dica: 'Use conferir-arte com este generationId para VER a arte antes de mostrá-la à pessoa.',
+          generationId: gen.id,
+        }
+      }
+
+      return {
+        situacao: 'falhou',
+        motivo: typeof fv.error === 'string' ? fv.error : 'Erro desconhecido',
+        verificacaoTexto: fv.textCheck ?? undefined,
+        mensagem:
+          'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.',
+      }
+    },
+  },
+
+  {
+    name: 'marcar-como-modelo',
+    description:
+      'Promove uma página a MODELO do cliente (ou despromove): modelos são o que escolher-modelo encontra por tema, então uma arte que ficou boa pode virar base das próximas. As tags são o que casa o modelo com o tema pedido (ex: "happy-hour", "almoco-executivo") — sem tag, o modelo não é encontrado por tema.\n\nConfirme com a pessoa antes de marcar: modelo aparece para todos que criam arte deste cliente. Tags enviadas SUBSTITUEM as atuais.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        pageId: { type: 'string', description: 'A página a marcar (de criar-arte, ajustar-arte ou listar-modelos).' },
+        tags: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Temas do modelo, normalizados com hífen (ex: ["happy-hour", "sexta"]). Substituem as tags atuais.',
+        },
+        marcar: { type: 'boolean', description: 'true (default) marca como modelo; false despromove.' },
+      },
+      required: ['projectId', 'pageId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const pageId = requireString(args, 'pageId')
+      const marcar = args.marcar !== false
+
+      const page = await db.page.findUnique({
+        where: { id: pageId },
+        include: { Template: { select: { projectId: true, name: true } } },
+      })
+      if (!page || page.Template.projectId !== projectId) {
+        throw new CreativeError('PAGE_NOT_FOUND', 'Página não encontrada neste cliente.', 404)
+      }
+
+      const tags = Array.isArray(args.tags)
+        ? args.tags.filter((t: unknown): t is string => typeof t === 'string' && t.trim().length > 0)
+        : undefined
+
+      const updated = await db.page.update({
+        where: { id: pageId },
+        data: {
+          isTemplate: marcar,
+          ...(tags !== undefined ? { tags } : {}),
+        },
+        select: { id: true, name: true, isTemplate: true, tags: true },
+      })
+
+      const tagsFinais = updated.tags ?? []
+      return {
+        atualizada: true,
+        page: updated,
+        mensagem: marcar
+          ? `"${updated.name}" agora é modelo do cliente${tagsFinais.length ? ` (temas: ${tagsFinais.join(', ')})` : ''}.`
+          : `"${updated.name}" deixou de ser modelo.`,
+        ...(marcar && tagsFinais.length === 0
+          ? {
+              aviso:
+                'O modelo ficou SEM tags de tema — escolher-modelo não vai encontrá-lo. Envie tags (ex: "happy-hour") para ele valer.',
+            }
+          : {}),
+      }
+    },
+  },
+
+  {
+    name: 'listar-modelos',
+    description:
+      'Lista os modelos do cliente (as páginas que escolher-modelo consegue encontrar) com as tags de tema de cada um. Com incluirNaoMarcadas=true, lista também as páginas comuns — útil para achar uma arte boa e promovê-la com marcar-como-modelo. Clientes sem modelo nenhum dependem de criar-arte (do zero) para tudo.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        incluirNaoMarcadas: { type: 'boolean', description: 'Inclui páginas que ainda não são modelo (candidatas a promoção).' },
+        limit: { type: 'number', description: 'Máximo de páginas (default 50, teto 200).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const incluirNaoMarcadas = args.incluirNaoMarcadas === true
+      const take = Math.min(typeof args.limit === 'number' ? args.limit : 50, 200)
+
+      const paginas = await db.page.findMany({
+        where: {
+          Template: { projectId },
+          ...(incluirNaoMarcadas ? {} : { isTemplate: true }),
+        },
+        select: {
+          id: true,
+          name: true,
+          isTemplate: true,
+          tags: true,
+          updatedAt: true,
+          Template: { select: { id: true, name: true, type: true, tags: true } },
+        },
+        orderBy: [{ isTemplate: 'desc' }, { updatedAt: 'desc' }],
+        take,
+      })
+
+      const modelos = paginas
+        .filter((p) => p.isTemplate)
+        .map((p) => ({
+          pageId: p.id,
+          nome: p.name,
+          template: p.Template.name,
+          formato: p.Template.type,
+          temas: Array.from(new Set([...(p.tags ?? []), ...(p.Template.tags ?? [])])),
+        }))
+      const candidatas = incluirNaoMarcadas
+        ? paginas
+            .filter((p) => !p.isTemplate)
+            .map((p) => ({
+              pageId: p.id,
+              nome: p.name,
+              template: p.Template.name,
+              formato: p.Template.type,
+              atualizadaEm: p.updatedAt,
+            }))
+        : undefined
+
+      return {
+        modelos,
+        countModelos: modelos.length,
+        ...(candidatas ? { candidatas, countCandidatas: candidatas.length } : {}),
+        ...(modelos.length === 0
+          ? {
+              aviso:
+                'Este cliente não tem nenhum modelo marcado — criar-arte (do zero) é o único caminho. Considere promover uma arte boa com marcar-como-modelo.',
+            }
+          : {}),
+      }
+    },
+  },
+
+  {
     name: 'criar-entrada-base',
     description:
       'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\n⚠️ Tom de voz, regras da marca, estilo visual e direção fotográfica NÃO vão aqui — vão no DNA (atualizar-dna). A base é buscada por relevância e identidade cadastrada nela não chega aos geradores; a categoria TOM_DE_VOZ existe só por legado.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
@@ -903,6 +1378,15 @@ export async function runMcpTool(
 
   try {
     const result = await tool.handler(args ?? {}, principal)
+    // Tools visuais (conferir-arte) devolvem blocos de conteúdo prontos —
+    // texto + imagem — em vez de um JSON para serializar.
+    if (
+      result &&
+      typeof result === 'object' &&
+      Array.isArray((result as Record<string, unknown>)._mcpContent)
+    ) {
+      return { content: (result as { _mcpContent: Array<Record<string, unknown>> })._mcpContent }
+    }
     return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
   } catch (error) {
     const text =

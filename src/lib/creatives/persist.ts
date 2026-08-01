@@ -150,6 +150,40 @@ export async function persistAndRenderCreative(
     },
   })
 
+  return renderPageAndRegister({
+    project,
+    templateId,
+    templateName,
+    page,
+    fieldValues: input.fieldValues,
+    authorName: input.authorName,
+  })
+}
+
+export interface RenderPageInput {
+  project: { id: number; name: string; userId: string }
+  templateId: number
+  templateName: string
+  page: {
+    id: string
+    name: string
+    width: number
+    height: number
+    layers: unknown
+    background: string | null
+  }
+  fieldValues: Record<string, unknown>
+  authorName: string
+}
+
+/**
+ * Renderiza uma Page já persistida, sobe o PNG e registra a Generation.
+ * Miolo comum entre criar uma arte nova (persistAndRenderCreative) e
+ * re-renderizar uma existente após ajuste (ajustarArte).
+ */
+export async function renderPageAndRegister(input: RenderPageInput): Promise<PersistCreativeResult> {
+  const { project, templateId, templateName, page } = input
+
   const designData = convertPageToDesignData({
     id: page.id,
     name: page.name,
@@ -182,7 +216,7 @@ export async function persistAndRenderCreative(
       templateName,
       projectName: project.name,
       completedAt: new Date(),
-      fileName: `${pageName}.png`,
+      fileName: `${page.name}.png`,
     },
   })
 
