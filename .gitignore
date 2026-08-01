@@ -30,6 +30,8 @@ yarn-error.log*
 # backups do .env (o refresh de token cria .env.bak-<timestamp> com credenciais)
 .env.bak-*
 .env.backup-*
+# despejo de layers gravado pelo normalizar-peso-fontes.ts (megabytes de JSON)
+backup-peso-fontes-*.json
 
 # vercel
 .vercel
