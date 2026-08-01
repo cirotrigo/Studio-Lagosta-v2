@@ -5,7 +5,7 @@ import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
-import { hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
 import {
   getKonvaProjectTemplateConfig,
@@ -110,7 +110,7 @@ export async function POST(
       return NextResponse.json({ error: 'Projeto nao encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(project, { userId, orgId })) {
+    if (!hasProjectWriteAccess(await withProjectOwner(project), { userId, orgId })) {
       return NextResponse.json({ error: 'Nao autorizado' }, { status: 403 })
     }
 

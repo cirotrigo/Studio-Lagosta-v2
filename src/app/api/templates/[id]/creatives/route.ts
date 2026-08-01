@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 
 interface CreativeFieldValues {
   videoExport?: boolean
@@ -60,7 +60,7 @@ export async function GET(
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+    if (!hasProjectReadAccess(await withProjectOwner(template.Project), { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 
@@ -186,7 +186,7 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'Criativo não encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(creative.Template?.Project ?? null, { userId, orgId })) {
+    if (!hasProjectWriteAccess(await withProjectOwner(creative.Template?.Project ?? null), { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

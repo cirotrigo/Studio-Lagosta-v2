@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { deductCreditsForFeature, validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { put } from '@vercel/blob'
-import { hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 import { googleDriveService } from '@/server/google-drive-service'
 
 export const runtime = 'nodejs'
@@ -55,7 +55,7 @@ export async function POST(
       return NextResponse.json({ error: 'Template não encontrado' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(template.Project, { userId, orgId })) {
+    if (!hasProjectWriteAccess(await withProjectOwner(template.Project), { userId, orgId })) {
       return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
     }
 

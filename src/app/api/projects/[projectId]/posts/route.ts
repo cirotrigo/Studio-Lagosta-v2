@@ -6,7 +6,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { PostScheduler } from '@/lib/posts/scheduler'
 import { convertPageToDesignData, findUnmatchedSlotKeys } from '@/lib/posts/page-to-design-data'
 import { PostType, ScheduleType, RecurrenceFrequency, PublishType } from '../../../../../../prisma/generated/client'
-import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 
 // Dynamic validation schema based on post type
 const createPostValidationSchema = (postType?: PostType) => {
@@ -82,7 +82,7 @@ export async function POST(
     }
 
     if (
-      !hasProjectWriteAccess(project, {
+      !hasProjectWriteAccess(await withProjectOwner(project), {
         userId: clerkUserId,
         orgId,
       })
@@ -276,7 +276,7 @@ export async function GET(
     }
 
     if (
-      !hasProjectReadAccess(project, {
+      !hasProjectReadAccess(await withProjectOwner(project), {
         userId: clerkUserId,
         orgId,
       })

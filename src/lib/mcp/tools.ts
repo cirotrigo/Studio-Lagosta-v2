@@ -28,6 +28,7 @@ import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import { projectOwnerIdsFor } from '@/lib/projects/access'
 import {
   startImprovement,
   VERCEL_BLOB_HOST_REGEX,
@@ -61,10 +62,15 @@ export interface McpTool {
 async function projetosVisiveis(principal: McpPrincipal): Promise<number[] | null> {
   if (principal.kind === 'service') return null
 
+  // `principal.userId` é clerkId; `Project.userId` é o id INTERNO do User.
+  // Comparar direto nunca casava — ver o comentário de espaços de id em
+  // src/lib/projects/access.ts.
+  const donoIds = await projectOwnerIdsFor(principal.userId)
+
   const projects = await db.project.findMany({
     where: {
       OR: [
-        { userId: principal.userId },
+        { userId: { in: donoIds } },
         { organizationProjects: { some: { organization: { ownerClerkId: principal.userId } } } },
       ],
     },

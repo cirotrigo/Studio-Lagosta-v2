@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
+import { resolveOwnerClerkId } from '@/lib/projects/access'
 import {
   OrganizationAccessError,
   requireOrganizationMembership,
@@ -97,7 +98,11 @@ export async function POST(
       return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
     }
 
-    if (project.userId !== context.clerkUserId) {
+    // `Project.userId` é o id INTERNO do User; `clerkUserId` é o do Clerk.
+    // Comparar direto nunca casava — ou seja, ninguém conseguia compartilhar
+    // projeto nenhum. Ver o comentário de espaços de id em
+    // src/lib/projects/access.ts.
+    if ((await resolveOwnerClerkId(project.userId)) !== context.clerkUserId) {
       return NextResponse.json(
         { error: 'Apenas o proprietário do projeto pode compartilhá-lo' },
         { status: 403 }

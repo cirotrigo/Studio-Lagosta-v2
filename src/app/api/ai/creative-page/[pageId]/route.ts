@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
+import { resolveOwnerClerkId } from '@/lib/projects/access'
 import { getLayoutById } from '@/lib/ai-creative-generator/layout-templates'
 import type { Layer } from '@/types/template'
 
@@ -66,7 +67,11 @@ export async function GET(
       select: { userId: true },
     })
 
-    if (!project || project.userId !== userId) {
+    // `Project.userId` é o id INTERNO do User e `userId` vem do Clerk — ver o
+    // comentário de espaços de id em src/lib/projects/access.ts. Esta rota não
+    // tem ramo de organização, então a comparação quebrada a deixava inacessível
+    // para todo mundo, dono incluído.
+    if (!project || (await resolveOwnerClerkId(project.userId)) !== userId) {
       return NextResponse.json({ error: 'Acesso negado' }, { status: 403 })
     }
 

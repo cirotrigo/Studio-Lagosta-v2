@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { z } from 'zod'
-import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, hasProjectWriteAccess, withProjectOwner } from '@/lib/projects/access'
 
 const createPageSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
@@ -53,7 +53,7 @@ export async function GET(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
-    if (!hasProjectReadAccess(template.Project, { userId, orgId })) {
+    if (!hasProjectReadAccess(await withProjectOwner(template.Project), { userId, orgId })) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
@@ -118,7 +118,7 @@ export async function POST(
       return NextResponse.json({ error: 'Template not found' }, { status: 404 })
     }
 
-    if (!hasProjectWriteAccess(template.Project, { userId, orgId })) {
+    if (!hasProjectWriteAccess(await withProjectOwner(template.Project), { userId, orgId })) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 

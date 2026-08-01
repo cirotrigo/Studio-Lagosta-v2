@@ -7,7 +7,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
-import { hasProjectReadAccess } from '@/lib/projects/access'
+import { hasProjectReadAccess, withProjectOwner } from '@/lib/projects/access'
 
 export async function GET(req: NextRequest) {
   try {
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    if (!project || !hasProjectReadAccess(project, { userId: clerkUserId, orgId })) {
+    if (!project || !hasProjectReadAccess(await withProjectOwner(project), { userId: clerkUserId, orgId })) {
       return NextResponse.json({ error: 'Access denied' }, { status: 403 })
     }
 
