@@ -208,7 +208,9 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
     data: {
       status: 'COMPLETED' as any,
       templateId,
-      fieldValues: { ...input.fieldValues, thumbnailUrl: blob.url } as any,
+      // pageId entra sempre: é como conferir-arte localiza as camadas da arte
+      // para o diagnóstico geométrico (sobreposição vs texto faltando).
+      fieldValues: { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url } as any,
       resultUrl: blob.url,
       projectId: project.id,
       createdBy: project.userId,

@@ -10,6 +10,7 @@
  * (mesmo padrão do register-project-fonts).
  */
 import type { MeasureLayerHeight } from '@/lib/combo-stack-reflow'
+import type { MeasureTextBox } from '@/lib/creatives/text-geometry'
 import { RenderEngine } from '@/lib/render-engine'
 
 export async function createServerTextMeasurer(): Promise<MeasureLayerHeight> {
@@ -17,4 +18,12 @@ export async function createServerTextMeasurer(): Promise<MeasureLayerHeight> {
   const ctx = createCanvas(1, 1).getContext('2d')
   return (layer) =>
     RenderEngine.measureTextLayerHeight(ctx as unknown as CanvasRenderingContext2D, layer)
+}
+
+/** Variante com a caixa completa (altura + largura de linha), para a validação geométrica. */
+export async function createServerTextBoxMeasurer(): Promise<MeasureTextBox> {
+  const { createCanvas } = await import('@napi-rs/canvas')
+  const ctx = createCanvas(1, 1).getContext('2d')
+  return (layer) =>
+    RenderEngine.measureTextLayerBox(ctx as unknown as CanvasRenderingContext2D, layer)
 }

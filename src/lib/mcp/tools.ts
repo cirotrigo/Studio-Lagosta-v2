@@ -16,7 +16,11 @@ import {
   createArteRapida,
   ajustarArte,
   getPublicAppUrl,
+  parseLayers,
 } from '@/lib/creatives/arte-rapida'
+import { checkTextGeometry } from '@/lib/creatives/text-geometry'
+import { createServerTextBoxMeasurer } from '@/lib/creatives/server-text-measurer'
+import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
 import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
@@ -741,27 +745,36 @@ export const MCP_TOOLS: McpTool[] = [
 
       let url: string | null = null
       let textRefGenerationId: string | null = null
+      let pageIdRef: string | null = null
 
       if (typeof args.generationId === 'string' && args.generationId) {
         const gen = await db.generation.findFirst({
           where: { id: args.generationId, projectId },
-          select: { id: true, resultUrl: true },
+          select: { id: true, resultUrl: true, fieldValues: true },
         })
         if (!gen) {
           throw new CreativeError('ARTE_NAO_ENCONTRADA', 'Arte não encontrada neste cliente.', 404)
         }
         url = gen.resultUrl
         textRefGenerationId = gen.id
+        const fv = (gen.fieldValues ?? {}) as Record<string, unknown>
+        pageIdRef =
+          typeof fv.pageId === 'string'
+            ? fv.pageId
+            : fv.source === 'ajuste-arte' && typeof fv.sourcePageId === 'string'
+              ? fv.sourcePageId
+              : null
       } else if (typeof args.postId === 'string' && args.postId) {
         const post = await db.socialPost.findFirst({
           where: { id: args.postId, projectId },
-          select: { mediaUrls: true, generationId: true },
+          select: { mediaUrls: true, generationId: true, pageId: true },
         })
         if (!post) {
           throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste cliente.', 404)
         }
         url = post.mediaUrls?.[0] ?? null
         textRefGenerationId = post.generationId
+        pageIdRef = post.pageId
       } else {
         throw new Error('Informe generationId ou postId.')
       }
@@ -793,15 +806,56 @@ export const MCP_TOOLS: McpTool[] = [
         }
       }
 
+      // Leitura que falhou + camadas sobrepostas na página = o diagnóstico
+      // certo é SOBREPOSIÇÃO, não "texto faltando" — a visão não lê o que
+      // está impresso um sobre o outro, e culpar o slot leva o modelo a
+      // "corrigir" o lugar errado.
+      if (
+        typeof verificacaoTexto === 'object' &&
+        verificacaoTexto.resultado === 'divergente' &&
+        pageIdRef
+      ) {
+        try {
+          const page = await db.page.findFirst({
+            where: { id: pageIdRef, Template: { projectId } },
+            select: { layers: true, width: true, height: true },
+          })
+          if (page) {
+            await registerProjectFonts(projectId)
+            const measureBox = await createServerTextBoxMeasurer()
+            const { issues } = checkTextGeometry(
+              parseLayers(page.layers),
+              { width: page.width, height: page.height },
+              measureBox,
+            )
+            const colisoes = issues.filter((i) => i.tipo === 'colisao')
+            if (colisoes.length > 0) {
+              verificacaoTexto = {
+                resultado: 'sobreposicao',
+                camadasEnvolvidas: Array.from(new Set(colisoes.flatMap((i) => i.camadas))),
+                detalhe: colisoes.map((i) => i.detalhe).join('; '),
+                faltando: verificacaoTexto.faltando,
+              }
+            }
+          }
+        } catch (erro) {
+          console.warn('[mcp] diagnóstico geométrico do conferir-arte falhou:', erro)
+        }
+      }
+
+      const resultado =
+        typeof verificacaoTexto === 'object' ? (verificacaoTexto.resultado as string) : null
       const resumo = {
         url,
         largura: meta.width ?? null,
         altura: meta.height ?? null,
         verificacaoTexto,
         dica:
-          typeof verificacaoTexto === 'object' && verificacaoTexto.resultado === 'divergente'
-            ? 'Texto divergente: corrija com ajustar-arte antes de mostrar à pessoa.'
-            : 'Olhe a miniatura: texto legível? Nada cortado ou sobreposto? Foto combina com o tema? Se algo estiver errado, use ajustar-arte.',
+          resultado === 'sobreposicao'
+            ? 'As camadas apontadas estão impressas uma sobre a outra — a leitura falhou por isso, não porque o texto não existe. Encurte o texto com ajustar-arte ou use outro modelo.'
+            : resultado === 'divergente'
+              ? 'Texto divergente: corrija com ajustar-arte antes de mostrar à pessoa.'
+              : 'Olhe a miniatura: texto legível? Nada cortado ou sobreposto? Foto combina com o tema? Se algo estiver errado, use ajustar-arte.',
       }
 
       return {

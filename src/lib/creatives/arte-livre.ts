@@ -28,6 +28,7 @@ import {
 import { buildComboLayers } from '@/lib/font-combinations-layers'
 import { applyStackPatches, reflowComboStack } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text-autofix'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import {
   FONT_COMBO_LAYOUTS,
@@ -117,6 +118,9 @@ export interface CreateArteLivreResult {
   imageWarning?: string
   /** Avisa quando a marca não tem par de fontes definido e houve escolha automática */
   avisoFontes?: string
+  /** Relatório da autocorreção geométrica de texto (sempre presente). */
+  autocorrecao: AutofixReport
+  avisos?: string[]
   /** Lembra o assistente do passo seguinte, para a arte não ficar órfã */
   proximoPasso: string
 }
@@ -351,6 +355,19 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
 
   const pageName = input.name ?? `Arte livre — ${new Date().toLocaleString('pt-BR')}`
 
+  // Validação geométrica + escada de correção. Blocos posicionados pelo
+  // modelo têm altura ESTIMADA (fontSize × linhas) — é aqui que a medida real
+  // pega texto que não coube ou bloco em cima de bloco. Fontes registradas
+  // antes (o caminho de combinação já registrou; o de blocos ainda não).
+  await registerProjectFonts(project.id)
+  const textLayerIds = layers.filter((l) => l.type === 'text').map((l) => l.id)
+  const fix = await aplicarAutofixOuFalhar({
+    projectId: project.id,
+    layers,
+    canvas: { width, height },
+    changedLayerIds: textLayerIds,
+  })
+
   const persisted = await persistAndRenderCreative({
     project,
     templateId: arteTemplate.id,
@@ -358,7 +375,7 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
     pageName,
     width,
     height,
-    layers,
+    layers: fix.layers,
     background: input.backgroundColor ?? (temFoto ? null : '#111111'),
     authorName: 'arte-livre',
     fieldValues: {
@@ -372,6 +389,7 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
       driveImageId: input.driveImageId ?? null,
       overlay,
       fontes: pair,
+      autocorrecao: fix.autocorrecao,
     },
   })
 
@@ -383,6 +401,8 @@ export async function createArteLivre(input: CreateArteLivreInput): Promise<Crea
     camadasDeTexto,
     ...(resolved.warning ? { imageWarning: resolved.warning } : {}),
     ...(avisoFontes ? { avisoFontes } : {}),
+    autocorrecao: fix.autocorrecao,
+    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
     // Lembra o passo seguinte: sem isso a arte fica pronta e ninguém a coloca
     // na agenda, e a pessoa não sabe que ainda falta esse passo.
     proximoPasso:

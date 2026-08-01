@@ -60,6 +60,8 @@ FOTOS
 
 ARTES — crie, confira, corrija
 - Depois de criar ou ajustar uma arte, use conferir-arte ANTES de mostrá-la à pessoa: a miniatura e a conferência de texto pegam texto cortado, sobreposto ou errado. Achou problema? Corrija com ajustar-arte e confira de novo.
+- A resposta da criação traz "autocorrecao": quando aplicada, o sistema encolheu fonte/entrelinha para o texto caber — mencione à pessoa se relevante. Se a criação FALHAR com "texto não cabe", o texto é longo demais para aquele modelo: encurte ou troque de modelo, nunca insista com o mesmo texto.
+- "avisos" na resposta são problemas reais não corrigidos (ex.: texto fora da área segura do story) — repasse à pessoa em vez de ignorar.
 - Melhorar com IA (melhorar-arte) é outra coisa: refina a arte inteira com o modelo de imagem, demora ~2 minutos e custa créditos. Só em arte de post APROVADO (ou solta na galeria) e sempre com a pessoa sabendo. Acompanhe com ver-melhoria; se falhar, a arte original continua valendo.
 - Uma arte que a pessoa amou pode virar modelo das próximas: ofereça marcar-como-modelo com as tags do tema.
 

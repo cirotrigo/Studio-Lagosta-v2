@@ -727,6 +727,27 @@ da rota improve (casca fina), `renderPageAndRegister` compartilhado. Regras:
   no serviço — retry do modelo no chat não pode virar segunda cobrança.
 - `/api/mcp` tem `maxDuration = 300` por causa do `after()` da melhoria.
 
+`docs/SESSAO-2026-08-01-AUTOCORRECAO-GEOMETRICA.md` fecha o texto que vazava
+da caixa no export (By Rock, template 140): validação geométrica + escada de
+autocorreção pré-render nos três geradores de arte. Regras:
+
+- **Todo gerador de arte passa por `aplicarAutofixOuFalhar`** (text-autofix)
+  DEPOIS do reflow e ANTES de persistir — as camadas corrigidas são as
+  persistidas (editor = export). Gerador novo precisa entrar no mesmo funil.
+- **Colisão se mede pelos GLIFOS** (padding 6px descontado, tolerância 4px),
+  nunca pelas caixas gravadas — templates têm caixas sobrepostas por design
+  que funcionam com 1 linha (o próprio Layout 2 do 140 é assim).
+- **A escada nunca toca conteúdo/quebra/fonte/cor/posição** e nunca trunca:
+  fontSize (piso 80% e 24px@1080) → lineHeight (piso 0.92) → expandir caixa →
+  `TEXTO_NAO_CABE` (422) com diagnóstico. Bloqueio devolve camadas ORIGINAIS.
+- **`reflowLayersAfterFill` cresce caixa sem olhar vizinho** — é esperado; a
+  colisão resultante é problema do autofix, não do reflow.
+- Flags `textAutofixEnabled` em Project e Template (default true): desligada
+  cria como antes + `avisos[]`. Relatório `autocorrecao` sempre na resposta e
+  no fieldValues; log `[text-autofix]` é a telemetria de template apertado.
+- `fieldValues.pageId` em toda Generation nova — é como conferir-arte acha as
+  camadas para diagnosticar `sobreposicao` (vs "texto faltando").
+
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
 vertical com crescimento da caixa e a remoção do negrito. Três armadilhas de lá

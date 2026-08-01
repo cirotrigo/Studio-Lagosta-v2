@@ -227,6 +227,9 @@ model Project {
   /// (src/lib/ai/openai-image-client.ts). Serve para apertar as regras num
   /// projeto específico sem endurecer o padrão de todos.
   artImprovementPrompt        String?
+  /// Autocorreção geométrica de texto pré-render (text-autofix). Desligar
+  /// aqui vale para todas as artes do projeto.
+  textAutofixEnabled          Boolean                 @default(true)
   brandDNA                    BrandDNA?
   laterAccountId              String?
   laterProfileId              String?
@@ -511,6 +514,8 @@ model Template {
   isPublic       Boolean      @default(false)
   tags           String[]     @default([])
   localId        String? // ID from desktop-app for sync tracking
+  /// Autocorreção geométrica de texto para artes geradas DESTE modelo.
+  textAutofixEnabled Boolean  @default(true)
   Generation     Generation[]
   Page           Page[]
   scheduledPosts SocialPost[] @relation("ScheduledPosts")

@@ -29,6 +29,7 @@ import {
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
+import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text-autofix'
 import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import type { Layer } from '@/types/template'
 
@@ -64,7 +65,7 @@ function normalize(value: string): string {
     .replace(/\s+/g, '-')
 }
 
-function parseLayers(raw: unknown): any[] {
+export function parseLayers(raw: unknown): any[] {
   if (Array.isArray(raw)) return raw as any[]
   if (typeof raw === 'string') {
     try {
@@ -75,6 +76,19 @@ function parseLayers(raw: unknown): any[] {
     }
   }
   return []
+}
+
+/** Campos preenchíveis de uma página: textos e imagens dinâmicas. */
+export function slotFieldsFromLayers(raw: unknown): SlotField[] {
+  return parseLayers(raw)
+    .filter((l: any) => l.type === 'text' || (l.type === 'image' && l.isDynamic))
+    .map((l: any) => ({
+      layerId: l.id,
+      name: l.name,
+      type: l.type,
+      isDynamic: !!l.isDynamic,
+      currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
+    }))
 }
 
 // ─── prepare-creative ────────────────────────────────────────────────
@@ -123,6 +137,8 @@ export interface PrepareCreativeResult {
     templateName: string
     tags: string[]
     templateTags: string[]
+    /** Mesmo formato do principal — sem isso a alternativa era escolha às cegas. */
+    slotFields: SlotField[]
   }>
   brand: {
     brandStyle: string | null
@@ -289,13 +305,22 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
   }
 
   const bestRef = candidates[0]
-  const alternatives = candidates.slice(1, 5).map((p: any) => ({
+  const altRefs = candidates.slice(1, 5)
+  const altLayers = altRefs.length
+    ? await db.page.findMany({
+        where: { id: { in: altRefs.map((p: any) => p.id) } },
+        select: { id: true, layers: true },
+      })
+    : []
+  const altSlotsById = new Map(altLayers.map((p) => [p.id, slotFieldsFromLayers(p.layers)]))
+  const alternatives = altRefs.map((p: any) => ({
     id: p.id,
     name: p.name,
     templateId: p.templateId,
     templateName: p.templateName,
     tags: p.tags ?? [],
     templateTags: p.templateTags ?? [],
+    slotFields: altSlotsById.get(p.id) ?? [],
   }))
 
   const page = await db.page.findUnique({
@@ -315,15 +340,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     throw new CreativeError('PAGE_NOT_FOUND', `Page not found: ${bestRef.id}`, 404)
   }
 
-  const slotFields: SlotField[] = parseLayers(page.layers)
-    .filter((l: any) => l.type === 'text' || (l.type === 'image' && l.isDynamic))
-    .map((l: any) => ({
-      layerId: l.id,
-      name: l.name,
-      type: l.type,
-      isDynamic: !!l.isDynamic,
-      currentValue: l.type === 'text' ? (l.content ?? '') : (l.fileUrl ?? ''),
-    }))
+  const slotFields: SlotField[] = slotFieldsFromLayers(page.layers)
 
   const kbEntries = await db.knowledgeBaseEntry.findMany({
     where: {
@@ -418,6 +435,10 @@ export interface CreateArteRapidaResult {
   imageApplied: boolean
   /** Set when the requested photo could not be applied, with the reason. */
   imageWarning?: string
+  /** Relatório da autocorreção geométrica de texto (sempre presente). */
+  autocorrecao: AutofixReport
+  /** Problemas geométricos não corrigidos (flag desligada ou área segura). */
+  avisos?: string[]
 }
 
 /**
@@ -521,7 +542,18 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
   // (autoExpand) em vez de truncar. Fontes registradas ANTES de medir.
   await registerProjectFonts(projectId)
   const measure = await createServerTextMeasurer()
-  const layers = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+  const reflowed = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+
+  // Validação geométrica + escada de correção — o reflow cresce caixa sem
+  // olhar vizinho, e é aqui que colisão/overflow são resolvidos ou barrados.
+  const fix = await aplicarAutofixOuFalhar({
+    projectId,
+    layers: reflowed,
+    canvas: { width: sourcePage.width, height: sourcePage.height },
+    changedLayerIds: changedTextIds,
+    sourceTemplateId: sourcePage.Template.id,
+  })
+  const layers = fix.layers
 
   const imageWarning =
     resolved.warning ??
@@ -551,6 +583,7 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
       slotValues,
+      autocorrecao: fix.autocorrecao,
     },
   })
 
@@ -560,6 +593,8 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     templateName: ARTE_RAPIDA_TEMPLATE_NAME,
     imageApplied,
     ...(imageWarning ? { imageWarning } : {}),
+    autocorrecao: fix.autocorrecao,
+    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
   }
 }
 
@@ -596,6 +631,9 @@ export interface AjustarArteResult {
   camposAlterados: string[]
   /** Posts da agenda que voltaram à fila de render por usarem esta página. */
   postsInvalidados: number
+  /** Relatório da autocorreção geométrica de texto (sempre presente). */
+  autocorrecao: AutofixReport
+  avisos?: string[]
 }
 
 /**
@@ -671,7 +709,15 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   await registerProjectFonts(projectId)
   const measure = await createServerTextMeasurer()
-  const layers = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+  const reflowed = reflowLayersAfterFill(bakedLayers as Layer[], changedTextIds, measure)
+
+  const fix = await aplicarAutofixOuFalhar({
+    projectId,
+    layers: reflowed,
+    canvas: { width: page.width, height: page.height },
+    changedLayerIds: changedTextIds,
+  })
+  const layers = fix.layers
 
   const imageWarning =
     resolved.warning ??
@@ -714,6 +760,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
       slotValues: slotValuesFinais,
       driveImageId,
       imageUrl: resolved.url ?? directUrl ?? null,
+      autocorrecao: fix.autocorrecao,
     },
   })
 
@@ -732,5 +779,7 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,
     postsInvalidados,
+    autocorrecao: fix.autocorrecao,
+    ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
   }
 }

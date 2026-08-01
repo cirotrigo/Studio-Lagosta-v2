@@ -831,6 +831,20 @@ export class RenderEngine {
    * caixa — a caixa não deve se adaptar ao texto).
    */
   static measureTextLayerHeight(ctx: CanvasRenderingContext2D, layer: Layer): number | null {
+    return this.measureTextLayerBox(ctx, layer)?.height ?? null
+  }
+
+  /**
+   * Caixa natural completa de uma camada de texto: altura (o mesmo número de
+   * measureTextLayerHeight), largura da linha mais larga e contagem de linhas.
+   * É a base da validação geométrica pré-render (text-geometry): a largura
+   * pega palavra indivisível que transborda — o desenho NÃO espreme com
+   * maxWidth, transborda como no editor.
+   */
+  static measureTextLayerBox(
+    ctx: CanvasRenderingContext2D,
+    layer: Layer,
+  ): { height: number; maxLineWidth: number; lineCount: number } | null {
     if (layer.type !== 'text') return null
     if (layer.effects?.curved?.enabled) return null
 
@@ -859,12 +873,24 @@ export class RenderEngine {
       config.autoWrap?.breakMode ?? 'word',
       config.wordBreak ?? false,
     )
+    // Largura medida com a MESMA fonte/letterSpacing da quebra — precisa
+    // acontecer antes do restore.
+    let maxLineWidth = 0
+    for (const line of lines) {
+      if (!line) continue
+      const w = ctx.measureText(line).width
+      if (w > maxLineWidth) maxLineWidth = w
+    }
     ctx.restore()
     spacingCtx.letterSpacing = '0px'
 
     // A entrelinha mora em dois campos; o desenho prefere autoWrap.lineHeight
     const lineHeight = fontSize * (config.autoWrap?.lineHeight ?? style.lineHeight ?? 1.2)
-    return Math.round(Math.max(1, lines.length) * lineHeight + pad * 2)
+    return {
+      height: Math.round(Math.max(1, lines.length) * lineHeight + pad * 2),
+      maxLineWidth: Math.ceil(maxLineWidth),
+      lineCount: Math.max(1, lines.length),
+    }
   }
 
   private static async renderTextWithConfig(
