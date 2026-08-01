@@ -44,8 +44,14 @@ export function normalizeForComparison(value: string): string {
     .replace(/[“”„″]/g, '"')
     .replace(/[–—−]/g, '-')
     // Separadores de ponto são visualmente idênticos e o modelo de visão
-    // transcreve qualquer um deles: "· A" vs "• A" não é divergência real.
-    .replace(/[•∙●・]/g, '·')
+    // transcreve qualquer um deles ("MESA · PRAIA" vira "MESA . PRAIA"):
+    // unificar a família toda no ponto simples não afeta preço (a vírgula de
+    // "R$ 49,90" continua vírgula).
+    .replace(/[•∙●・·]/g, '.')
+    // A visão também espalha espaços em volta da pontuação ("VITÓRIA - ES",
+    // "CANTO , VITÓRIA"). Colar a pontuação nos vizinhos normaliza os DOIS
+    // lados da comparação sem tocar na pontuação em si.
+    .replace(/\s*([.,;:!?\-])\s*/g, '$1')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase()
