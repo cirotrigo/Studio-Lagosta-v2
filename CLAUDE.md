@@ -726,6 +726,13 @@ da rota improve (casca fina), `renderPageAndRegister` compartilhado. Regras:
 - **Dedupe de melhoria**: `sourceGenerationId` + PROCESSING + janela de 10 min
   no serviço — retry do modelo no chat não pode virar segunda cobrança.
 - `/api/mcp` tem `maxDuration = 300` por causa do `after()` da melhoria.
+- **Gestão de agenda (01/08, total 28 tools)**: `ver-agenda` devolve situação
+  em PT/hora BRT/capa (nunca reintroduzir enum+UTC cru — é o que fazia o chat
+  vazar jargão); `sugerir-posts` lê cadência do histórico (não há campo de
+  cadência configurada — decisão de 01/08); `postar-agora` = agendado
+  now+3min com gate de confirmação; `editar-post` SÓ rascunho (aprovado →
+  voltar-para-rascunho primeiro, senão editaria publicação armada sem
+  re-aprovação).
 
 `docs/SESSAO-2026-08-01-AUTOCORRECAO-GEOMETRICA.md` fecha o texto que vazava
 da caixa no export (By Rock, template 140): validação geométrica + escada de
@@ -756,6 +763,12 @@ autocorreção pré-render nos três geradores de arte. Regras:
   `max(4px, 0.18×fontSize)`; overflow vertical é PARIDADE COM O TRUNCAMENTO
   (linhas cortadas), não diferença de fórmula — caixa menor que a fórmula com
   a mesma contagem de linhas é design válido, não defeito.
+- **Camada de imagem NUNCA guarda thumbnailLink do Drive** (lh3 é assinado e
+  expira em horas) — sempre a cópia permanente `drive-cache/{fileId}-s1920.jpg`
+  via `resolveImageUrl`. O legado (77 páginas) foi reapontado em 01/08 por
+  `scripts/reparar-lh3-legado.ts`; 38 ficaram irrecuperáveis porque a foto foi
+  excluída do Drive na curadoria de julho sem cópia em lugar nenhum — apagar
+  foto do acervo mata páginas que apontavam para ela.
 
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora

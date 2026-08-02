@@ -24,10 +24,17 @@ import { registerProjectFonts } from '@/lib/posts/register-project-fonts'
 import { createArteLivre, listFontCombinations } from '@/lib/creatives/arte-livre'
 import { CreativeError } from '@/lib/creatives/errors'
 import { buscarNoAcervo, listarImagensDoDrive } from '@/lib/creatives/acervo'
-import { agendarPost } from '@/lib/creatives/agendar'
+import { agendarPost, postarAgora } from '@/lib/creatives/agendar'
 import { KnowledgeCategory } from '@prisma/client'
 import type { McpPrincipal } from '@/lib/mcp/oauth'
-import { processarAprovacao, reagendarPost, cancelarPost } from '@/lib/posts/agenda-acoes'
+import {
+  processarAprovacao,
+  reagendarPost,
+  cancelarPost,
+  editarPost,
+  formatarBRT,
+} from '@/lib/posts/agenda-acoes'
+import { sugerirPosts } from '@/lib/posts/sugerir-posts'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
@@ -244,28 +251,56 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'ver-agenda',
     description:
-      'Mostra o que já está na agenda do cliente num período. Consulte antes de propor uma data, para não repetir tema nem empilhar posts no mesmo horário.',
+      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília e a capa de cada arte. Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.',
     inputSchema: {
       type: 'object',
       properties: {
-        projectId: { type: 'number', description: 'ID do projeto.' },
-        from: { type: 'string', description: 'Data inicial ISO (opcional).' },
-        to: { type: 'string', description: 'Data final ISO (opcional).' },
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        from: { type: 'string', description: 'Data inicial ("AAAA-MM-DD" ou ISO). Default: ontem.' },
+        to: { type: 'string', description: 'Data final (opcional).' },
+        situacao: {
+          type: 'string',
+          enum: ['rascunho', 'agendado', 'publicado', 'falhou'],
+          description: 'Filtra por situação (opcional).',
+        },
         limit: { type: 'number', description: 'Máximo de posts (default 50).' },
       },
       required: ['projectId'],
       additionalProperties: false,
     },
     handler: async (args, principal) => {
-      await assertProjetoPermitido(requireNumber(args, 'projectId'), principal)
-      const from = typeof args.from === 'string' ? new Date(args.from) : null
-      const to = typeof args.to === 'string' ? new Date(args.to) : null
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const PARA_STATUS: Record<string, string> = {
+        rascunho: 'DRAFT',
+        agendado: 'SCHEDULED',
+        publicado: 'POSTED',
+        falhou: 'FAILED',
+      }
+      const PARA_SITUACAO: Record<string, string> = {
+        DRAFT: 'rascunho',
+        SCHEDULED: 'agendado',
+        POSTING: 'publicando',
+        POSTED: 'publicado',
+        FAILED: 'falhou',
+      }
+      const DIAS = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado']
+
+      const from = typeof args.from === 'string'
+        ? new Date(args.from.length === 10 ? `${args.from}T00:00:00-03:00` : args.from)
+        : new Date(Date.now() - 24 * 3600_000)
+      const to = typeof args.to === 'string'
+        ? new Date(args.to.length === 10 ? `${args.to}T23:59:59-03:00` : args.to)
+        : null
+      const statusFiltro =
+        typeof args.situacao === 'string' ? PARA_STATUS[args.situacao] : undefined
+
       const posts = await db.socialPost.findMany({
         where: {
-          projectId: requireNumber(args, 'projectId'),
-          ...(from || to
-            ? { scheduledDatetime: { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) } }
-            : {}),
+          projectId,
+          scheduledDatetime: { gte: from, ...(to ? { lte: to } : {}) },
+          ...(statusFiltro ? { status: statusFiltro as never } : {}),
         },
         select: {
           id: true,
@@ -274,11 +309,126 @@ export const MCP_TOOLS: McpTool[] = [
           caption: true,
           scheduledDatetime: true,
           publishedUrl: true,
+          publishType: true,
+          mediaUrls: true,
+          generationId: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
       })
-      return { count: posts.length, posts }
+
+      const dias: Array<{ data: string; diaSemana: string; posts: unknown[] }> = []
+      for (const post of posts) {
+        const quando = post.scheduledDatetime!
+        const brt = new Date(quando.getTime() - 3 * 3600_000)
+        const dataISO = brt.toISOString().slice(0, 10)
+        let grupo = dias.find((d) => d.data === dataISO)
+        if (!grupo) {
+          grupo = { data: dataISO, diaSemana: DIAS[brt.getUTCDay()], posts: [] }
+          dias.push(grupo)
+        }
+        grupo.posts.push({
+          postId: post.id,
+          tipo: post.postType === 'STORY' ? 'story' : post.postType.toLowerCase(),
+          situacao: PARA_SITUACAO[post.status] ?? post.status.toLowerCase(),
+          hora: `${String(brt.getUTCHours()).padStart(2, '0')}:${String(brt.getUTCMinutes()).padStart(2, '0')}`,
+          quando: formatarBRT(quando),
+          legenda: post.caption ? post.caption.slice(0, 140) : null,
+          capa: post.mediaUrls?.[0] ?? null,
+          publicacao: post.publishType === 'REMINDER' ? 'manual (lembrete no WhatsApp)' : 'automática',
+          ...(post.generationId ? { generationId: post.generationId } : {}),
+          ...(post.publishedUrl ? { publishedUrl: post.publishedUrl } : {}),
+        })
+      }
+
+      return {
+        total: posts.length,
+        dias,
+        ...(posts.length === 0
+          ? { dica: 'Nada na agenda neste período. sugerir-posts monta uma proposta a partir da cadência do cliente.' }
+          : {}),
+      }
+    },
+  },
+
+  {
+    name: 'sugerir-posts',
+    description:
+      'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        dias: { type: 'number', description: 'Quantos dias à frente (default 7, máx 14).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return sugerirPosts({
+        projectId,
+        dias: typeof args.dias === 'number' ? args.dias : undefined,
+      })
+    },
+  },
+
+  {
+    name: 'postar-agora',
+    description:
+      'Publica IMEDIATAMENTE no Instagram do cliente: o post entra na fila na hora e sai em ~3 minutos. Não tem rascunho, não tem revisão depois — é publicação real.\n\nNunca chame por conta própria. Mostre a arte e a legenda e faça a pergunta direta: "isso vai pro Instagram de X AGORA, confirma?". Só chame depois do sim explícito. Se a pessoa tiver qualquer hesitação, prefira colocar-na-agenda como rascunho.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Tipo (padrão STORY).' },
+        caption: { type: 'string', description: 'Legenda. Story costuma ir sem.' },
+        pageId: { type: 'string', description: 'A arte criada aqui (de criar-arte ou criar-arte-de-modelo).' },
+        mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
+        generationId: { type: 'string', description: 'O generationId da arte, se houver (habilita melhorar depois).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return postarAgora({
+        projectId,
+        postType: args.postType,
+        caption: args.caption,
+        pageId: args.pageId,
+        mediaUrls: args.mediaUrls,
+        generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+      })
+    },
+  },
+
+  {
+    name: 'editar-post',
+    description:
+      'Edita a legenda e/ou o tipo de um RASCUNHO da agenda (o postId vem de ver-agenda). Post já aprovado não se edita direto: traga para rascunho antes (voltar-para-rascunho), edite e aprove de novo — editar algo armado mudaria uma publicação real sem re-aprovação. Para mudar horário use reagendar-post; para trocar a arte use ajustar-arte na página.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postId: { type: 'string', description: 'Id do rascunho (de ver-agenda).' },
+        caption: { type: 'string', description: 'Nova legenda (substitui a inteira).' },
+        postType: { type: 'string', enum: ['STORY', 'POST', 'REEL', 'CAROUSEL'], description: 'Novo tipo (opcional).' },
+      },
+      required: ['projectId', 'postId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return editarPost({
+        projectId,
+        postId: requireString(args, 'postId'),
+        caption: typeof args.caption === 'string' ? args.caption : undefined,
+        postType: args.postType,
+      })
     },
   },
   {

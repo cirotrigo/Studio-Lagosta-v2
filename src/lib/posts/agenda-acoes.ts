@@ -432,3 +432,71 @@ export async function cancelarPost(params: { projectId: number; postId: string }
     mensagem: `Post${quando} cancelado e removido da agenda.`,
   }
 }
+
+/**
+ * Edita legenda/tipo de um RASCUNHO. Post aprovado não se edita por aqui de
+ * propósito: mudar algo já armado alteraria uma publicação real (e abriria o
+ * pântano de sincronizar a edição com a fila remota) — o caminho é
+ * voltar-para-rascunho → editar → aprovar de novo. Mesma filosofia do
+ * "rascunho se edita, não se melhora" da melhoria com IA, invertida.
+ */
+export async function editarPost(params: {
+  projectId: number
+  postId: string
+  caption?: string
+  postType?: 'STORY' | 'POST' | 'REEL' | 'CAROUSEL'
+}) {
+  const { projectId, postId } = params
+
+  if (params.caption === undefined && params.postType === undefined) {
+    throw new CreativeError('SEM_EDICAO', 'Nada para editar: envie caption e/ou postType.', 400)
+  }
+
+  const post = await db.socialPost.findUnique({
+    where: { id: postId },
+    select: { id: true, projectId: true, status: true, scheduledDatetime: true, postType: true },
+  })
+  if (!post || post.projectId !== projectId) {
+    throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto.', 404)
+  }
+
+  if (post.status === PostStatus.POSTED) {
+    throw new CreativeError('POST_JA_PUBLICADO', 'Este post já foi publicado — não dá mais para editar.', 400)
+  }
+  if (post.status === PostStatus.POSTING) {
+    throw new CreativeError('POST_SAINDO', 'Este post está sendo publicado agora — não dá mais para editar.', 400)
+  }
+  if (post.status === PostStatus.SCHEDULED) {
+    throw new CreativeError(
+      'POST_APROVADO',
+      'Este post já está aprovado e armado para publicar. Traga-o de volta para rascunho (voltar-para-rascunho), edite, e aprove de novo — editar algo armado mudaria uma publicação real sem re-aprovação.',
+      400,
+    )
+  }
+  if (post.status === PostStatus.FAILED) {
+    throw new CreativeError(
+      'POST_FALHOU',
+      'Este post falhou ao publicar — o caminho é a interface ("Tentar novamente") ou criar um post novo.',
+      400,
+    )
+  }
+
+  const atualizado = await db.socialPost.update({
+    where: { id: post.id },
+    data: {
+      ...(params.caption !== undefined ? { caption: params.caption } : {}),
+      ...(params.postType !== undefined ? { postType: params.postType } : {}),
+    },
+    select: { id: true, caption: true, postType: true, scheduledDatetime: true },
+  })
+
+  const quandoBRT = atualizado.scheduledDatetime ? formatarBRT(atualizado.scheduledDatetime) : null
+  return {
+    editado: true,
+    postId: atualizado.id,
+    tipo: atualizado.postType === 'STORY' ? 'story' : atualizado.postType.toLowerCase(),
+    legenda: atualizado.caption,
+    ...(quandoBRT ? { quando: quandoBRT } : {}),
+    mensagem: `Rascunho atualizado${quandoBRT ? ` (segue na agenda para ${quandoBRT})` : ''}. Continua sem publicar até ser aprovado.`,
+  }
+}

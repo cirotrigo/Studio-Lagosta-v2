@@ -205,3 +205,27 @@ export async function agendarPost(input: AgendarPostInput) {
       : `Deixei como rascunho na agenda de ${project.name}, para ${quandoBRT}. Rascunho não publica — é só avisar quando quiser que eu agende de verdade.`,
   }
 }
+
+/**
+ * "Postar agora": agenda como AGENDADO para daqui a poucos minutos — o
+ * executor manda à fila de publicação em ~1min e o post sai no horário. Os 3
+ * minutos são a folga para o PRE-SEND não esbarrar no guard de horário
+ * passado e para a pessoa ainda conseguir cancelar um engano.
+ *
+ * Publica DE VERDADE: quem chama é responsável pelo gate de confirmação
+ * explícita (mesma regra do aprovar-rascunhos).
+ */
+export async function postarAgora(
+  input: Omit<AgendarPostInput, 'scheduledDatetime' | 'situacao'>,
+) {
+  const quando = new Date(Date.now() + 3 * 60_000)
+  const brt = new Date(quando.getTime() - 3 * 3600_000)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  const scheduledDatetime = `${brt.getUTCFullYear()}-${pad(brt.getUTCMonth() + 1)}-${pad(brt.getUTCDate())} ${pad(brt.getUTCHours())}:${pad(brt.getUTCMinutes())}`
+
+  const resultado = await agendarPost({ ...input, scheduledDatetime, situacao: 'agendado' })
+  return {
+    ...resultado,
+    mensagem: `No ar em instantes: este ${resultado.tipo} entra na fila agora e publica ~${resultado.quando} no Instagram do cliente. Para desfazer, cancele nos próximos 2 minutos.`,
+  }
+}

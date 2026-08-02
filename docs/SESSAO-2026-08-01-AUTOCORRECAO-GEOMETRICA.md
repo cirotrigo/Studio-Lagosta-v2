@@ -117,3 +117,32 @@ famílias) e `normalizeForComparison` unifica variantes de bullet (·•∙●) 
 Moral do teste: o ink-check por região validou o render local "correto"
 enquanto o texto estava 4× maior — verificação por proxy engana; olhar a
 imagem de verdade (conferir-arte) foi o que pegou tudo.
+
+## Gestão de agenda no conector (mesma madrugada, feedback do uso mobile)
+
+Quatro adições a partir do uso real pelo celular (total: 28 tools):
+
+- **`ver-agenda` humanizado** — agrupado por dia com `diaSemana`, situação em
+  PT (rascunho/agendado/publicado/falhou/publicando), hora em Brasília,
+  `capa` (primeira mídia), `publicacao` (automática vs lembrete manual) e
+  filtro `situacao`. Devolver DRAFT/UTC cru obrigava o assistente a traduzir
+  enum e fuso a cada frase — era daí que vazava jargão.
+- **`sugerir-posts`** (`src/lib/posts/sugerir-posts.ts`) — cadência lida do
+  HISTÓRICO (56 dias de POSTED+SCHEDULED, dia da semana × blocos de 30min em
+  BRT; slot típico = apareceu em ≥2 semanas distintas). Devolve os buracos
+  dos próximos dias com motivo ("3x nas últimas 6 ocasiões"), modelo do
+  cliente tagueado para o dia e campanhas da base que citam o dia (heurística
+  de texto: "Quinta do Vinho" → quinta). Zero configuração nova; validado no
+  By Rock real (102 posts → 6 dias de cadência, campanhas certas por dia).
+- **`postar-agora`** (`postarAgora` em agendar.ts) — agenda como AGENDADO para
+  agora+3min; o executor despacha em ~1min. A folga existe para o guard de
+  horário passado e para dar 2min de arrependimento. Gate de confirmação
+  explícita na descrição, mesmo padrão do aprovar.
+- **`editar-post`** (`editarPost` em agenda-acoes.ts) — legenda/tipo de
+  RASCUNHO apenas. Aprovado → recusa apontando voltar-para-rascunho (editar
+  algo armado mudaria publicação real sem re-aprovação; e evita sincronizar
+  edição com o Zernio). FAILED → interface; POSTED/POSTING → recusa.
+
+Limitação de plataforma registrada: foto ANEXADA no chat do claude.ai não
+chega ao conector (argumentos de tool são texto do modelo) — foto entra por
+Drive/acervo ou URL pública.
