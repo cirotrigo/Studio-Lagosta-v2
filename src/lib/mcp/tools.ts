@@ -732,7 +732,7 @@ export const MCP_TOOLS: McpTool[] = [
         scheduledDatetime: { type: 'string', description: 'Quando: "AAAA-MM-DD HH:mm" no horário de Brasília.' },
         pageId: { type: 'string', description: 'A arte criada aqui (veio de criar-arte ou criar-arte-de-modelo).' },
         mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
-        generationId: { type: 'string', description: 'O generationId que criar-arte devolveu. Vincula o criativo ao post e habilita "Melhorar com IA" na agenda depois de aprovado. Passe sempre que tiver.' },
+        generationId: { type: 'string', description: 'O generationId da arte. Para arte MELHORADA, basta ele — a imagem é resolvida sozinha (sem copiar URL). Vincula o criativo ao post e habilita melhorar depois. Passe sempre que tiver.' },
         situacao: {
           type: 'string',
           enum: ['rascunho', 'agendado'],
@@ -1060,14 +1060,14 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'melhorar-arte',
     description:
-      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Para aplicar direto a um post da agenda, o post precisa estar APROVADO (agendado) — rascunho se corrige com ajustar-arte, não se melhora. Não chame de novo enquanto houver melhoria em andamento da mesma arte.',
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.',
     inputSchema: {
       type: 'object',
       properties: {
         projectId: { type: 'number', description: 'ID do cliente.' },
         generationId: { type: 'string', description: 'A arte a melhorar (de criar-arte, criar-arte-de-modelo, ajustar-arte ou do post).' },
-        pedido: { type: 'string', description: 'O que melhorar, em linguagem natural (máx 500 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
-        postId: { type: 'string', description: 'Post APROVADO da agenda que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
+        pedido: { type: 'string', description: 'Instruções de melhoria vindas da sua análise da arte (máx 1200 caracteres). Vazio = só as diretrizes do Diretor de Arte da marca.' },
+        postId: { type: 'string', description: 'Post da agenda (rascunho ou agendado) que recebe a arte melhorada ao final (opcional — sem ele a melhoria fica na galeria).' },
       },
       required: ['projectId', 'generationId'],
       additionalProperties: false,

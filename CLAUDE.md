@@ -595,8 +595,13 @@ fecha as duas divergências de maior alcance da tabela e o Auto da caixa:
 `docs/SESSAO-2026-07-29-MELHORIA-IA-CRIATIVOS.md` traz a melhoria com IA para a
 agenda e corrige três defeitos do editor. Regras que ficaram:
 
-- **Melhorar com IA só em post APROVADO** (SCHEDULED). Rascunho se edita, não se
-  melhora — gate na UI *e* na rota, que recusa antes de cobrar crédito.
+- **Melhorar com IA vale para RASCUNHO e AGENDADO** (regra invertida em
+  01/08/2026 pelo Ciro: a arte criada é o esboço e a melhoria é o acabamento
+  da criação — ~100% das artes passam por ela). Publicado/publicando/falhou
+  seguem recusados antes de cobrar crédito; a aplicação ao post é guardada por
+  `status in [DRAFT, SCHEDULED]` no runner. `pedido` até 1200 chars (instrução
+  vem da análise visual do chat via conferir-arte). `colocar-na-agenda` aceita
+  só o `generationId` da melhorada (resolve o resultUrl sozinho, NOT_NEEDED).
 - **Post melhorado vira `renderStatus: NOT_NEEDED`**, senão `render-stories` e
   `invalidateScheduledRenders` sobrescrevem a arte em minutos. O preço é que
   editar o template deixa de atualizar a arte daquele post.

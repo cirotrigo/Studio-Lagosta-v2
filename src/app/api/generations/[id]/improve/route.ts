@@ -22,7 +22,7 @@ export const maxDuration = 300
 // Diretor de Arte sem mudanças de conteúdo. O cliente do OpenAI lida com isso
 // substituindo a seção [PEDIDO DO CLIENTE] por uma instrução padrão.
 const bodySchema = z.object({
-  userRequest: z.string().max(500).default(''),
+  userRequest: z.string().max(1200).default(''),
   backgroundImageUrl: z.string().url().optional().nullable(),
   selectedLogoIds: z
     .array(z.number().int().positive())
@@ -35,9 +35,9 @@ const bodySchema = z.object({
     .optional()
     .default([]),
   /**
-   * Post da agenda que deve receber a arte melhorada ao final. Regra de
-   * negócio: só post APROVADO (status SCHEDULED) pode ser melhorado — rascunho
-   * se edita, não se melhora.
+   * Post da agenda que deve receber a arte melhorada ao final. Vale para
+   * RASCUNHO e AGENDADO (desde 01/08/2026); publicado/publicando/falhou são
+   * recusados pelo serviço.
    */
   applyToPostId: z.string().min(1).optional().nullable(),
   /**

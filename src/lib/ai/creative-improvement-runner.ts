@@ -429,14 +429,14 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     }
 
     if (args.applyToPostId) {
-      // A melhoria demora ~1min; o post pode ter sido publicado ou despromovido
-      // nesse meio-tempo. Só aplica se AINDA estiver aprovado — trocar a mídia
-      // de um post POSTING/POSTED mentiria sobre o que foi publicado.
+      // A melhoria demora ~1min; o post pode ter sido publicado nesse
+      // meio-tempo. Só aplica se AINDA estiver em rascunho/agendado — trocar
+      // a mídia de um post POSTING/POSTED mentiria sobre o que foi publicado.
       const updated = await db.socialPost.updateMany({
         where: {
           id: args.applyToPostId,
           projectId: args.projectId,
-          status: 'SCHEDULED',
+          status: { in: ['DRAFT', 'SCHEDULED'] },
         },
         data: {
           mediaUrls: [blob.url],

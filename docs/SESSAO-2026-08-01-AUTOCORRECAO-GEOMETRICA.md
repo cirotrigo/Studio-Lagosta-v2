@@ -147,6 +147,26 @@ Limitação de plataforma registrada: foto ANEXADA no chat do claude.ai não
 chega ao conector (argumentos de tool são texto do modelo) — foto entra por
 Drive/acervo ou URL pública.
 
+## Melhoria vira acabamento da criação (mesma madrugada)
+
+Constatação do Ciro no uso real: ~100% das artes criadas via API precisam da
+melhoria — a arte gerada é o BRIEFING (layout + textos verbatim) e a melhoria
+é o acabamento. Mudanças:
+
+- **Gate invertido**: melhorar-arte aceita postId de RASCUNHO e AGENDADO
+  (antes só aprovado — regra de 29/07 revogada pelo próprio Ciro). O runner
+  aplica com guard `status in [DRAFT, SCHEDULED]`; publicado/publicando/
+  falhou recusados (`POST_NAO_MELHORAVEL`). UI da agenda acompanhou
+  (botão em rascunho também).
+- **Fluxo canônico ensinado nas INSTRUCTIONS**: criar → conferir → ANALISAR
+  (papel de diretor de arte: hierarquia, contraste, luz, integração
+  texto-fundo, contra o DNA) → melhorar com instruções concretas → conferir
+  a melhorada → agendar rascunho já com a arte boa. `pedido` subiu de 500
+  para 1200 chars para caber instrução vinda de análise.
+- **`colocar-na-agenda` aceita só o generationId** da arte melhorada: resolve
+  o resultUrl sozinho (guard `CRIATIVO_SEM_IMAGEM` para melhoria em
+  andamento) e nasce `NOT_NEEDED` — sem copy-paste de URL no chat.
+
 ## Foto do celular via link de um toque (sequência da limitação acima)
 
 Como o anexo não atravessa a plataforma, o caminho implementado (total: 30

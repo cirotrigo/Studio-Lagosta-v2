@@ -69,8 +69,11 @@ export async function startImprovement(
   const selectedLogoIds = input.selectedLogoIds ?? []
   const selectedElementIds = input.selectedElementIds ?? []
 
-  if (userRequest.length > 500) {
-    throw new CreativeError('PEDIDO_LONGO', 'O pedido de melhoria passou de 500 caracteres.', 400)
+  // 1200 e não 500: as instruções agora costumam vir da ANÁLISE VISUAL do
+  // assistente (conferir-arte → diretor de arte), que é mais rica que um
+  // pedido digitado.
+  if (userRequest.length > 1200) {
+    throw new CreativeError('PEDIDO_LONGO', 'O pedido de melhoria passou de 1200 caracteres.', 400)
   }
   if (selectedLogoIds.length > MAX_SELECTED_LOGOS || selectedElementIds.length > MAX_SELECTED_ELEMENTS) {
     throw new CreativeError('REFERENCIAS_DEMAIS', 'Referências demais para uma melhoria.', 400)
@@ -116,14 +119,15 @@ export async function startImprovement(
     if (!post) {
       throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto', 404)
     }
-    // Regra de negócio: melhorar com IA só arte APROVADA. Rascunho se edita
-    // no editor; a melhoria entra depois da aprovação.
-    if (post.status !== 'SCHEDULED') {
+    // A melhoria vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
+    // arte da API virou o briefing e a melhoria é o acabamento da criação;
+    // a regra antiga de "só aprovado" fazia o acabamento chegar tarde).
+    // Publicado/publicando/falhou seguem fora: mexer neles mentiria sobre o
+    // que foi ou está sendo publicado.
+    if (post.status !== 'SCHEDULED' && post.status !== 'DRAFT') {
       throw new CreativeError(
-        'POST_NAO_APROVADO',
-        post.status === 'DRAFT'
-          ? 'Este post ainda é rascunho. Aprove-o primeiro — só arte aprovada pode ser melhorada com IA.'
-          : `Este post não pode ser melhorado (status ${post.status}).`,
+        'POST_NAO_MELHORAVEL',
+        `Este post não pode ser melhorado (status ${post.status}).`,
         400,
       )
     }

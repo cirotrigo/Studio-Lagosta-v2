@@ -63,10 +63,12 @@ export async function agendarPost(input: AgendarPostInput) {
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${input.projectId}`, 404)
   }
 
-  if (!input.pageId && !input.mediaUrls?.length) {
+  // generationId sozinho também serve: a mídia é resolvida do resultUrl da
+  // Generation mais abaixo (caso da arte MELHORADA, que não tem página).
+  if (!input.pageId && !input.mediaUrls?.length && !input.generationId) {
     throw new CreativeError(
       'SEM_MIDIA',
-      'Informe pageId (arte criada aqui) ou mediaUrls — o post precisa de imagem.',
+      'Informe pageId (arte criada aqui), generationId (arte da galeria/melhorada) ou mediaUrls — o post precisa de imagem.',
       400,
     )
   }
@@ -122,7 +124,7 @@ export async function agendarPost(input: AgendarPostInput) {
   if (input.generationId) {
     const gen = await db.generation.findFirst({
       where: { id: input.generationId, projectId: project.id },
-      select: { id: true },
+      select: { id: true, resultUrl: true },
     })
     if (!gen) {
       throw new CreativeError(
@@ -132,6 +134,19 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     generationId = gen.id
+    // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
+    // própria Generation — é o caso da arte MELHORADA (que não tem página) e
+    // poupa o chat de copiar URL à mão, com os erros que isso traz.
+    if (mediaUrls.length === 0 && !input.pageId) {
+      if (!gen.resultUrl) {
+        throw new CreativeError(
+          'CRIATIVO_SEM_IMAGEM',
+          'Este criativo ainda não tem imagem pronta (melhoria em andamento ou falhada). Confira com ver-melhoria antes de agendar.',
+          400,
+        )
+      }
+      mediaUrls = [gen.resultUrl]
+    }
   } else if (mediaUrls.length > 0) {
     const gen = await db.generation.findFirst({
       where: { projectId: project.id, resultUrl: mediaUrls[0] },

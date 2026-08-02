@@ -133,12 +133,13 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
 
   /**
-   * Melhorar com IA exige: post APROVADO (SCHEDULED — rascunho se edita, não
-   * se melhora), uma Generation vinculada (é o que a rota de melhoria recebe)
-   * e uma imagem atual. Posts antigos sem generationId não mostram o botão.
+   * Melhorar com IA vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
+   * melhoria virou etapa do acabamento da criação, não pós-aprovação), com
+   * uma Generation vinculada (é o que a rota de melhoria recebe) e uma imagem
+   * atual. Posts antigos sem generationId não mostram o botão.
    */
   const canImprove =
-    post.status === 'SCHEDULED' &&
+    (post.status === 'SCHEDULED' || post.status === 'DRAFT') &&
     !!post.generationId &&
     mediaUrls.length > 0 &&
     !isCurrentMediaVideo
