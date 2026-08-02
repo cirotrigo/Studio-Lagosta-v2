@@ -771,9 +771,14 @@ autocorreção pré-render nos três geradores de arte. Regras:
 - **Camada de imagem NUNCA guarda thumbnailLink do Drive** (lh3 é assinado e
   expira em horas) — sempre a cópia permanente `drive-cache/{fileId}-s1920.jpg`
   via `resolveImageUrl`. O legado (77 páginas) foi reapontado em 01/08 por
-  `scripts/reparar-lh3-legado.ts`; 38 ficaram irrecuperáveis porque a foto foi
-  excluída do Drive na curadoria de julho sem cópia em lugar nenhum — apagar
-  foto do acervo mata páginas que apontavam para ela.
+  `scripts/reparar-lh3-legado.ts`; em 39 delas a foto original foi recuperada
+  (fileId reconstruído de Generation/slotValues/doc da semana, bytes vindos do
+  Drive, de `uploads/` do Blob ou do arquivo do fotógrafo). Nas outras 38 a
+  foto tinha sido excluída do Drive na curadoria de julho **sem cópia em lugar
+  nenhum** — as 15 visivelmente quebradas ganharam fotos novas do acervo em
+  02/08 e as 23 cobertas por outra imagem seguem com a camada morta por baixo.
+  **Apagar foto do acervo mata páginas que apontavam para ela**: antes de
+  expurgar, varra `Page.layers` e `Generation.fieldValues`.
 
 `docs/SESSAO-2026-07-27-TEXTO-ALINHAMENTO.md` cobre o dia seguinte: padrão do
 texto novo, setas do teclado, alinhamento pela margem de segurança, âncora
