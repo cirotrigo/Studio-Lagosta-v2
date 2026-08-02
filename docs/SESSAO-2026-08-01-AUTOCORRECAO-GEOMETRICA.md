@@ -146,3 +146,23 @@ Quatro adições a partir do uso real pelo celular (total: 28 tools):
 Limitação de plataforma registrada: foto ANEXADA no chat do claude.ai não
 chega ao conector (argumentos de tool são texto do modelo) — foto entra por
 Drive/acervo ou URL pública.
+
+## Foto do celular via link de um toque (sequência da limitação acima)
+
+Como o anexo não atravessa a plataforma, o caminho implementado (total: 30
+tools): **`pedir-foto`** gera um link `/envio/{token}` (token = cuid da linha
+`ChatUpload`, validade 30min, escopo de um projeto) → a pessoa toca, escolhe
+a foto na página mobile (fora do layout de marketing, sem cookie banner) → a
+rota pública `/api/chat-upload/[token]` recebe os bytes, **auto-orienta pelo
+EXIF** (foto de celular vem deitada), limita a 2048px e grava
+`chat-uploads/{projectId}/{token}.jpg` no Blob (allowOverwrite: reenvio no
+prazo SUBSTITUI — mandou a errada, manda de novo no mesmo link) →
+**`ver-foto-enviada`** devolve a fotoUrl pronta para `criar-arte`/
+`ajustar-arte`.
+
+Peças: `src/lib/creatives/chat-upload.ts` (pedirFoto/receberFoto/verFoto),
+migration `20260801080000_add_chat_upload`, página `src/app/envio/[token]`,
+rotas públicas no middleware (`/envio(.*)`, `/api/chat-upload(.*)` — auth é o
+próprio token). E2E: EXIF 800x600→600x800 conferido, reenvio, recusas
+(inválido/não-imagem/expirado/projeto alheio), página validada no browser em
+viewport mobile (estados escolher/recebida/inválido).

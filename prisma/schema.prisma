@@ -230,6 +230,7 @@ model Project {
   /// Autocorreção geométrica de texto pré-render (text-autofix). Desligar
   /// aqui vale para todas as artes do projeto.
   textAutofixEnabled          Boolean                 @default(true)
+  chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
   laterAccountId              String?
   laterProfileId              String?
@@ -1560,4 +1561,20 @@ model McpOAuthToken {
 
   @@index([userId])
   @@index([clientId])
+}
+
+/// Foto enviada pelo celular via link de um toque (tool pedir-foto do
+/// conector). O token É o id — cuid não-adivinhável, com validade curta.
+model ChatUpload {
+  id        String   @id @default(cuid())
+  projectId Int
+  /// PENDING (aguardando envio) | RECEIVED (blobUrl preenchido)
+  status    String   @default("PENDING")
+  blobUrl   String?
+  fileName  String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+  Project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
 }

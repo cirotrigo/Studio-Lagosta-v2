@@ -35,6 +35,7 @@ import {
   formatarBRT,
 } from '@/lib/posts/agenda-acoes'
 import { sugerirPosts } from '@/lib/posts/sugerir-posts'
+import { pedirFoto, verFoto } from '@/lib/creatives/chat-upload'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
@@ -656,6 +657,45 @@ export const MCP_TOOLS: McpTool[] = [
         quality: args.quality,
         limit: args.limit,
       })
+    },
+  },
+
+  {
+    name: 'pedir-foto',
+    description:
+      'Gera um link de UM TOQUE para a pessoa enviar uma foto do celular direto ao estúdio. Use quando ela anexar uma foto no chat (o anexo NÃO chega até você — os bytes ficam na plataforma) ou disser que quer usar uma foto do aparelho: mande o link, peça para tocar e escolher a foto, e confira com ver-foto-enviada quando ela avisar. O link vale 30 minutos; reenviar dentro do prazo substitui a foto (mandou a errada → manda de novo, mesmo link).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente (a foto fica no acervo de envio dele).' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return pedirFoto({ projectId })
+    },
+  },
+
+  {
+    name: 'ver-foto-enviada',
+    description:
+      'Confere se a foto do link de pedir-foto já chegou. Quando chegar, devolve a fotoUrl pronta para usar como imageUrl em criar-arte (arte nova) ou ajustar-arte (trocar o fundo de uma arte existente).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        uploadId: { type: 'string', description: 'O uploadId devolvido por pedir-foto.' },
+      },
+      required: ['projectId', 'uploadId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return verFoto({ projectId, uploadId: requireString(args, 'uploadId') })
     },
   },
 

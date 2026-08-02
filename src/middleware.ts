@@ -11,6 +11,8 @@ const isPublicRoute = createRouteMatcher([
   '/api/cron(.*)', // Allow Vercel Cron jobs (authenticated via Bearer token in route handler)
   '/api/external(.*)', // Service-to-service API (authenticated via EXTERNAL_API_SECRET in route handler)
   '/api/mcp(.*)', // Remote MCP endpoint (authenticated via EXTERNAL_API_SECRET or OAuth token in route handler)
+  '/envio(.*)', // Página de envio de foto do chat (auth = token cuid com validade na própria URL)
+  '/api/chat-upload(.*)', // Recebe os bytes da página de envio (mesmo token)
   // Descoberta e registro OAuth do conector MCP: precisam responder sem sessão.
   // A tela de consentimento (/oauth/authorize) fica de fora de propósito — ela
   // exige login, e é lá que o acesso é concedido.

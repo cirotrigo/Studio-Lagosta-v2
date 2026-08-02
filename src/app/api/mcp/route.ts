@@ -57,6 +57,7 @@ MANTER A BASE ATUALIZADA
 FOTOS
 - Escolha no acervo do projeto, variando as pastas para não repetir imagem entre os posts da mesma leva.
 - Evite fotos com clientes identificáveis em primeiro plano.
+- Foto ANEXADA no chat não chega até você (fica na plataforma). Quando a pessoa anexar uma foto ou quiser usar uma do celular: pedir-foto gera um link de um toque — mande o link, e quando ela avisar que enviou, confira com ver-foto-enviada e use a fotoUrl na arte. Mandou a errada? O mesmo link aceita reenvio por 30 minutos.
 
 ARTES — crie, confira, corrija
 - Depois de criar ou ajustar uma arte, use conferir-arte ANTES de mostrá-la à pessoa: a miniatura e a conferência de texto pegam texto cortado, sobreposto ou errado. Achou problema? Corrija com ajustar-arte e confira de novo.
