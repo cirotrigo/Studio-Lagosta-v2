@@ -9,6 +9,7 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
+import { ingerirMidiaExterna } from '@/lib/creatives/ingerir-midia'
 import { PostType, PostStatus } from '@prisma/client'
 
 /**
@@ -156,6 +157,25 @@ export async function agendarPost(input: AgendarPostInput) {
     generationId = gen?.id ?? null
   }
 
+  /**
+   * Só agora, depois do match por `resultUrl` acima — que precisa da URL como
+   * ela veio — a mídia de fora é trazida para o Blob. Sem isso o post nasce
+   * apontando para o CDN de quem gerou a arte: a agenda não consegue mostrar a
+   * capa (host fora de `images.remotePatterns`), o revert fica bloqueado e a
+   * publicação passa a depender de um link de terceiro sobreviver até a hora.
+   */
+  let avisoMidia: string | undefined
+  if (mediaUrls.length > 0) {
+    const ingestao = await ingerirMidiaExterna(mediaUrls, project.id)
+    mediaUrls = ingestao.urls
+    if (ingestao.falhas.length > 0) {
+      avisoMidia =
+        `Não deu para trazer ${ingestao.falhas.length} imagem(ns) para o armazenamento do Studio ` +
+        `(${ingestao.falhas[0].motivo}). O post foi criado apontando para o link original, que pode ` +
+        `sair do ar — vale conferir a arte na agenda.`
+    }
+  }
+
   const vaiPublicar = input.situacao === 'agendado'
   const status = (vaiPublicar ? 'SCHEDULED' : 'DRAFT') as PostStatus
   const quando = parseBRT(input.scheduledDatetime)
@@ -213,6 +233,7 @@ export async function agendarPost(input: AgendarPostInput) {
     tipo,
     quando: quandoBRT,
     imagens: post.mediaUrls,
+    ...(avisoMidia ? { aviso: avisoMidia } : {}),
     agendaUrl: `${getPublicAppUrl()}/projects/${project.id}?tab=agenda`,
     // Frase pronta para o modelo repetir: evita que ele traduza "DRAFT" sozinho
     mensagem: vaiPublicar

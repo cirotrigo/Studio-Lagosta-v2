@@ -12,6 +12,7 @@ import { db } from '@/lib/db'
 import { PostStatus } from '../../../prisma/generated/client'
 import { getLaterClient, LaterNotFoundError } from '@/lib/later'
 import { parseBRT } from '@/lib/creatives/agendar'
+import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 
 export type AcaoAprovacao = 'APPROVE' | 'REVERT'
@@ -32,15 +33,13 @@ export interface ResultadoAprovacao {
  * Studio, o CDN do Drive e o Supabase do Claudinho. Qualquer outra origem é
  * tratada como CDN do Zernio (o conservador certo: recusar o revert é
  * reversível, apagar a arte não é).
+ *
+ * A lista vive em `ingerir-midia.ts` porque é a mesma pergunta feita na entrada:
+ * o que não está aqui é trazido para o Blob no agendamento, e post novo nunca
+ * mais chega neste guard com mídia de fora.
  */
-const HOSTS_PROPRIOS = [
-  '.public.blob.vercel-storage.com',
-  'lh3.googleusercontent.com',
-  '.supabase.co',
-]
-
 export function midiaSobreviveAoZernio(mediaUrls: string[]): boolean {
-  return mediaUrls.every((url) => HOSTS_PROPRIOS.some((host) => url.includes(host)))
+  return mediaUrls.every((url) => ehHostProprio(url))
 }
 
 export const formatarBRT = (data: Date) =>
