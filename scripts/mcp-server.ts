@@ -2111,9 +2111,13 @@ function resolveLocalPath(input: string): string {
 }
 
 /** Diretório vira a lista de imagens que ele contém (sem recursão). */
-function expandUploadPaths(inputs: string[]): { files: string[]; errors: string[] } {
+function expandUploadPaths(
+  inputs: string[],
+  exts: Set<string> = UPLOAD_IMAGE_EXTS,
+): { files: string[]; errors: string[] } {
   const files: string[] = []
   const errors: string[] = []
+  const aceitos = Array.from(exts).map((e) => e.slice(1).toUpperCase()).join(', ')
 
   for (const raw of inputs) {
     const abs = resolveLocalPath(raw)
@@ -2124,15 +2128,15 @@ function expandUploadPaths(inputs: string[]): { files: string[]; errors: string[
     if (fs.statSync(abs).isDirectory()) {
       const dentro = fs
         .readdirSync(abs)
-        .filter((n) => UPLOAD_IMAGE_EXTS.has(path.extname(n).toLowerCase()))
+        .filter((n) => exts.has(path.extname(n).toLowerCase()))
         .sort()
         .map((n) => path.join(abs, n))
-      if (dentro.length === 0) errors.push(`${raw}: pasta sem PNG/JPG/WebP`)
+      if (dentro.length === 0) errors.push(`${raw}: pasta sem ${aceitos}`)
       files.push(...dentro)
       continue
     }
-    if (!UPLOAD_IMAGE_EXTS.has(path.extname(abs).toLowerCase())) {
-      errors.push(`${raw}: extensão não aceita (use PNG, JPG ou WebP)`)
+    if (!exts.has(path.extname(abs).toLowerCase())) {
+      errors.push(`${raw}: extensão não aceita (use ${aceitos})`)
       continue
     }
     files.push(abs)
@@ -2209,6 +2213,107 @@ server.tool(
           }, null, 2),
         }],
         isError: enviadas.length === 0,
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
+    }
+  },
+)
+
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 21: upload-element
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Elemento também aceita SVG — vetor de ícone é comum no kit do designer. */
+const ELEMENT_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.svg'])
+/** Kit de designer chega em leva grande; o teto aqui é generoso de propósito. */
+const ELEMENT_MAX_FILES = 60
+
+server.tool(
+  'upload-element',
+  'Upload graphic elements (icons, seals, shapes, ornaments, shadows) FROM THIS MACHINE into a project\'s brand element library — the same library the Marca tab manages and get-brand-assets lists. Takes local file paths or folders (PNG/JPG/WebP/SVG); the server reads the bytes from disk and stores them on Vercel Blob under the project\'s official element URL, so art that references them picks up any later redraw done in the panel. Use this for a batch of elements from a designer. NOT for finished artwork (that is upload-creative, which creates schedulable creatives) and NOT for photos (those belong in the Drive archive via upload-to-drive).',
+  {
+    projectId: z.number().describe('Project ID (see list-projects)'),
+    filePaths: z
+      .array(z.string())
+      .min(1)
+      .describe('Absolute or ~/ paths of image files, or folders whose images should all go up (max 60 files per call)'),
+    category: z
+      .string()
+      .optional()
+      .describe('Group shown in the Marca tab (e.g. "selos", "sombras", "icones"). Omit to leave uncategorized.'),
+    permitirDuplicado: z
+      .boolean()
+      .optional()
+      .describe('By default an element whose name already exists in the project is skipped, so re-running a batch does not duplicate the library. Set true to upload anyway.'),
+  },
+  async ({ projectId, filePaths, category, permitirDuplicado }) => {
+    try {
+      const { files, errors } = expandUploadPaths(filePaths, ELEMENT_IMAGE_EXTS)
+
+      if (files.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'NENHUM_ARQUIVO', message: 'Nenhuma imagem para enviar.', detalhes: errors }, null, 2) }],
+          isError: true,
+        }
+      }
+      if (files.length > ELEMENT_MAX_FILES) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ARQUIVOS_DEMAIS', message: `${files.length} arquivos de uma vez; o limite é ${ELEMENT_MAX_FILES}. Envie em levas.` }, null, 2) }],
+          isError: true,
+        }
+      }
+
+      const { importarElemento, resolverUploaderDoProjeto } = await import('../src/lib/brand/elementos')
+      const uploadedBy = await resolverUploaderDoProjeto(projectId)
+
+      // Nomes já na biblioteca: rodar a mesma pasta duas vezes é o erro provável
+      // numa leva de dezenas, e elemento duplicado é chato de limpar à mão.
+      const existentes = new Set(
+        (await prisma.element.findMany({ where: { projectId }, select: { name: true } }))
+          .map((e) => e.name.toLowerCase()),
+      )
+
+      const enviados: unknown[] = []
+      const ignorados: { arquivo: string; motivo: string }[] = []
+      const falhas: { arquivo: string; motivo: string }[] = errors.map((motivo) => ({ arquivo: motivo.split(':')[0], motivo }))
+
+      for (const file of files) {
+        const fileName = path.basename(file)
+        const nome = fileName.replace(/\.[^.]+$/, '')
+        if (!permitirDuplicado && existentes.has(nome.toLowerCase())) {
+          ignorados.push({ arquivo: fileName, motivo: 'já existe um elemento com esse nome no projeto' })
+          continue
+        }
+        try {
+          const element = await importarElemento({
+            projectId,
+            bytes: fs.readFileSync(file),
+            fileName,
+            name: nome,
+            category,
+            uploadedBy,
+          })
+          existentes.add(nome.toLowerCase())
+          enviados.push(element)
+        } catch (error: any) {
+          falhas.push({ arquivo: fileName, motivo: error?.message ?? String(error) })
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            enviados: enviados.length,
+            ignorados: ignorados.length,
+            falharam: falhas.length,
+            elementos: enviados,
+            ...(ignorados.length > 0 ? { jaExistiam: ignorados } : {}),
+            ...(falhas.length > 0 ? { falhas } : {}),
+          }, null, 2),
+        }],
+        isError: enviados.length === 0 && ignorados.length === 0,
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }

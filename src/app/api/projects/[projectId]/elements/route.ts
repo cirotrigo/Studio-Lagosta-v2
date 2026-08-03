@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { put } from '@vercel/blob'
 import { db } from '@/lib/db'
+import { importarElemento } from '@/lib/brand/elementos'
+import { CreativeError } from '@/lib/creatives/errors'
 import { fetchProjectWithShares, hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 
 export const runtime = 'nodejs'
@@ -86,45 +87,27 @@ export async function POST(
     return NextResponse.json({ error: 'Nenhum arquivo enviado' }, { status: 400 })
   }
 
-  const token = process.env.BLOB_READ_WRITE_TOKEN
-  if (!token) {
-    return NextResponse.json(
-      {
-        error: 'BLOB_READ_WRITE_TOKEN não configurado',
-        help: 'Configure o token do Vercel Blob no arquivo .env. Veja SETUP-BLOB.md para instruções detalhadas.'
-      },
-      { status: 500 }
-    )
-  }
-
-  const maxMb = Number(process.env.BLOB_MAX_SIZE_MB || '100')
-  const maxBytes = Math.max(1, maxMb) * 1024 * 1024
-  if (file.size > maxBytes) {
-    return NextResponse.json({ error: `Arquivo muito grande (máx ${maxMb}MB)` }, { status: 413 })
-  }
-
-  const ext = file.name?.split('.').pop()?.toLowerCase() || 'bin'
-  const safeName = file.name?.replace(/[^a-z0-9._-]/gi, '_') || `element.${ext}`
-  const key = `projects/${projectIdNum}/elements/${Date.now()}-${safeName}`
-
-  const uploaded = await put(key, file, {
-    access: 'public',
-    token,
-    contentType: file.type,
-  })
-
-  const name = (form.get('name') as string | null)?.trim() || file.name || 'Elemento'
-  const category = (form.get('category') as string | null)?.trim() || null
-
-  const element = await db.element.create({
-    data: {
-      name,
-      category,
-      fileUrl: uploaded.url,
+  // A escrita mora no serviço, não aqui: o MCP local (upload-element) importa
+  // levas grandes pela MESMA função, então chave do Blob, formatos aceitos e
+  // teto de tamanho não podem divergir entre as duas portas.
+  try {
+    const element = await importarElemento({
       projectId: projectIdNum,
+      bytes: Buffer.from(await file.arrayBuffer()),
+      fileName: file.name || 'elemento',
+      name: (form.get('name') as string | null)?.trim() || file.name || undefined,
+      category: (form.get('category') as string | null)?.trim() || null,
       uploadedBy: userId,
-    },
-  })
-
-  return NextResponse.json(element, { status: 201 })
+    })
+    return NextResponse.json(element, { status: 201 })
+  } catch (error) {
+    if (error instanceof CreativeError) {
+      const help =
+        error.code === 'BLOB_NAO_CONFIGURADO'
+          ? 'Configure o token do Vercel Blob no arquivo .env. Veja SETUP-BLOB.md para instruções detalhadas.'
+          : undefined
+      return NextResponse.json({ error: error.message, ...(help ? { help } : {}) }, { status: error.status })
+    }
+    throw error
+  }
 }
