@@ -468,7 +468,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'consultar-dna',
     description:
-      'DNA da marca do cliente: tom de voz, regras, composição/layout, estilo visual e direção fotográfica — mais o que o sistema injeta sozinho (fontes, cores, logo). O DNA entra em TODA geração de copy e arte, sempre; a base de conhecimento é o conteúdo pesquisável (horários, cardápio, campanhas).\n\nConsulte antes de escrever textos para o cliente, e SEMPRE antes de atualizar-dna — você precisa mostrar à pessoa o que já existe.',
+      'DNA da marca do cliente: tom de voz, regras, composição/layout, estilo visual e direção fotográfica — mais o que o sistema injeta sozinho (fontes, cores, logo) e a biblioteca de elementos gráficos do projeto (ícones, selos, formas, ornamentos), cada um com `url` própria. O DNA entra em TODA geração de copy e arte, sempre; a base de conhecimento é o conteúdo pesquisável (horários, cardápio, campanhas).\n\nUse a `url` do elemento como está ao montar arte (ajustar-arte, camada de imagem) — é o arquivo oficial da biblioteca, então a arte acompanha sozinha qualquer troca feita no painel; cópia hospedada por fora congela a versão de hoje.\n\nConsulte antes de escrever textos para o cliente, e SEMPRE antes de atualizar-dna — você precisa mostrar à pessoa o que já existe.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -485,8 +485,22 @@ export const MCP_TOOLS: McpTool[] = [
         throw new CreativeError('PROJECT_NOT_FOUND', `Projeto não encontrado: ${projectId}`, 404)
       }
       const secoesVazias = BRAND_DNA_FIELDS.filter((f) => !brand.dna[f])
+      // Lido aqui, e não no loadBrandContext: a biblioteca de elementos é para
+      // MONTAR arte, não entra em prompt nenhum — carregá-la no loader faria
+      // toda geração de copy pagar por linhas que ninguém lê.
+      const elementos = await db.element.findMany({
+        where: { projectId },
+        select: { id: true, name: true, category: true, fileUrl: true },
+        orderBy: [{ category: 'asc' }, { id: 'asc' }],
+      })
       return {
         ...brand,
+        elementos: elementos.map((e) => ({
+          id: e.id,
+          nome: e.name,
+          categoria: e.category,
+          url: e.fileUrl,
+        })),
         // O modelo tende a não notar ausência — apontar o que falta transforma
         // a consulta num convite para completar o DNA com a pessoa.
         secoesVazias,

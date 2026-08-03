@@ -1796,7 +1796,7 @@ server.tool(
 
 server.tool(
   'get-brand-assets',
-  'Get all brand assets for a project: colors, custom fonts (with file URLs), logo, and a summary of the knowledge base. Used to cache project identity locally.',
+  'Get all brand assets for a project: colors, custom fonts (with file URLs), logos, graphic elements (icons, shapes, ornaments — name + public fileUrl each) and a summary of the knowledge base. The element fileUrls are public Blob URLs of the project library — reference them directly instead of re-hosting copies, so art picks up edits made in the panel.',
   {
     projectId: z.number().describe('Project ID'),
   },
@@ -1824,6 +1824,10 @@ server.tool(
           Logo: {
             select: { id: true, name: true, fileUrl: true, isProjectLogo: true },
             orderBy: [{ isProjectLogo: 'desc' }, { id: 'asc' }],
+          },
+          Element: {
+            select: { id: true, name: true, category: true, fileUrl: true },
+            orderBy: [{ category: 'asc' }, { id: 'asc' }],
           },
         },
       })
@@ -1868,6 +1872,7 @@ server.tool(
         logos: project.Logo,
         colors: project.BrandColor,
         fonts: project.CustomFont,
+        elements: project.Element,
         knowledge,
       }
 
