@@ -2088,6 +2088,129 @@ server.tool(
   },
 )
 
+// ═══════════════════════════════════════════════════════════════════════
+// TOOL 20: upload-creative
+// ═══════════════════════════════════════════════════════════════════════
+
+/** Extensões que o importador aceita (o formato real é conferido pelo sharp). */
+const UPLOAD_IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp'])
+/** Teto por chamada: um diretório errado não pode virar 200 criativos. */
+const UPLOAD_MAX_FILES = 20
+
+/** Expande `~`, resolve relativo ao cwd e devolve o caminho absoluto. */
+function resolveLocalPath(input: string): string {
+  const expanded = input.startsWith('~')
+    ? path.join(process.env.HOME ?? '', input.slice(1))
+    : input
+  return path.resolve(expanded)
+}
+
+/** Diretório vira a lista de imagens que ele contém (sem recursão). */
+function expandUploadPaths(inputs: string[]): { files: string[]; errors: string[] } {
+  const files: string[] = []
+  const errors: string[] = []
+
+  for (const raw of inputs) {
+    const abs = resolveLocalPath(raw)
+    if (!fs.existsSync(abs)) {
+      errors.push(`${raw}: arquivo não encontrado`)
+      continue
+    }
+    if (fs.statSync(abs).isDirectory()) {
+      const dentro = fs
+        .readdirSync(abs)
+        .filter((n) => UPLOAD_IMAGE_EXTS.has(path.extname(n).toLowerCase()))
+        .sort()
+        .map((n) => path.join(abs, n))
+      if (dentro.length === 0) errors.push(`${raw}: pasta sem PNG/JPG/WebP`)
+      files.push(...dentro)
+      continue
+    }
+    if (!UPLOAD_IMAGE_EXTS.has(path.extname(abs).toLowerCase())) {
+      errors.push(`${raw}: extensão não aceita (use PNG, JPG ou WebP)`)
+      continue
+    }
+    files.push(abs)
+  }
+
+  return { files: Array.from(new Set(files)), errors }
+}
+
+server.tool(
+  'upload-creative',
+  'Upload finished artwork FILES FROM THIS MACHINE into a project\'s Criativos gallery. Takes local file paths (or a folder — every PNG/JPG/WebP inside it) — no base64, the server reads the bytes from disk. Each image is stored on Vercel Blob as-is (no re-render), becomes an editable Page inside the project\'s "Arte Enviada" collector template and is registered as a COMPLETED Generation, so it shows up in Criativos and can be scheduled with the returned generationId or pageId. Use this for art produced outside the Studio (design skills, Photoshop/Canva exports, client-sent files); use create-arte-rapida when the Studio itself should compose the art.',
+  {
+    projectId: z.number().describe('Project ID (see list-projects)'),
+    filePaths: z
+      .array(z.string())
+      .min(1)
+      .describe('Absolute or ~/ paths of image files, or folders whose images should all go up (max 20 files per call)'),
+    name: z
+      .string()
+      .optional()
+      .describe('Name for the creative. With several files it gets numbered ("Nome 1", "Nome 2"). Default: the file name.'),
+    origem: z
+      .string()
+      .optional()
+      .describe('Free-form provenance kept in the gallery record (e.g. "skill human-image", "export do Figma")'),
+  },
+  async ({ projectId, filePaths, name, origem }) => {
+    try {
+      const { files, errors } = expandUploadPaths(filePaths)
+
+      if (files.length === 0) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'NENHUM_ARQUIVO', message: 'Nenhuma imagem para enviar.', detalhes: errors }, null, 2) }],
+          isError: true,
+        }
+      }
+      if (files.length > UPLOAD_MAX_FILES) {
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify({ error: 'ARQUIVOS_DEMAIS', message: `${files.length} arquivos de uma vez; o limite é ${UPLOAD_MAX_FILES}. Envie em levas.` }, null, 2) }],
+          isError: true,
+        }
+      }
+
+      const { importarArte } = await import('../src/lib/creatives/arte-enviada')
+
+      const enviadas: unknown[] = []
+      const falhas: { arquivo: string; motivo: string }[] = errors.map((motivo) => ({ arquivo: motivo.split(':')[0], motivo }))
+
+      // Uma falha não derruba a leva: o resto sobe e o relatório diz o que ficou.
+      for (const [i, file] of files.entries()) {
+        const fileName = path.basename(file)
+        try {
+          const result = await importarArte({
+            projectId,
+            bytes: fs.readFileSync(file),
+            fileName,
+            name: name ? (files.length > 1 ? `${name} ${i + 1}` : name) : undefined,
+            origem: origem ?? file,
+          })
+          enviadas.push(result)
+        } catch (error: any) {
+          falhas.push({ arquivo: fileName, motivo: error?.message ?? String(error) })
+        }
+      }
+
+      return {
+        content: [{
+          type: 'text' as const,
+          text: JSON.stringify({
+            enviadas: enviadas.length,
+            falharam: falhas.length,
+            artes: enviadas,
+            ...(falhas.length > 0 ? { falhas } : {}),
+          }, null, 2),
+        }],
+        isError: enviadas.length === 0,
+      }
+    } catch (error: any) {
+      return { content: [{ type: 'text' as const, text: formatCreativeError(error) }], isError: true }
+    }
+  },
+)
+
 // ─── Start Server ────────────────────────────────────────────────────
 
 async function main() {

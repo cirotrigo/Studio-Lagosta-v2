@@ -39,14 +39,21 @@ export function inferTemplateType(width: number, height: number): TemplateType {
   return 'FEED'
 }
 
-/** Acha (ou cria no primeiro uso) o template coletor do projeto para o formato. */
+/**
+ * Acha (ou cria no primeiro uso) o template coletor do projeto para o formato.
+ *
+ * `templateName` sobrepõe o nome padrão — é como a arte trazida de fora
+ * (arte-enviada) fica num coletor separado, sem se misturar com o que o
+ * gerador produziu.
+ */
 export async function ensureArteTemplate(
   projectId: number,
   userId: string,
   type: TemplateType,
   dimensions: string,
+  templateName?: string,
 ) {
-  const name = ARTE_TEMPLATE_NAMES[type]
+  const name = templateName ?? ARTE_TEMPLATE_NAMES[type]
   const existing = await db.template.findFirst({ where: { projectId, name } })
   if (existing) return existing
 

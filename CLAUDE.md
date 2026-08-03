@@ -797,6 +797,32 @@ valem para qualquer mexida no editor:
   nos dois — escrever em um só faz o editor e a arte agendada divergirem, e o
   download do editor (`stage.toDataURL()`, que lê o `style`) **não** revela isso.
 
+### Arte pronta trazida de fora (upload local, 03/08/2026)
+
+`src/lib/creatives/arte-enviada.ts` (`importarArte`) põe na galeria de
+Criativos um arquivo que já está pronto — export de skill, Photoshop, Canva,
+arte que o cliente mandou. A superfície é a tool **`upload-creative`** do MCP
+**local** (`scripts/mcp-server.ts`), que recebe CAMINHOS de arquivo (ou uma
+pasta) e lê os bytes do disco.
+
+- **Não renderiza nada**: os bytes enviados viram o `resultUrl` da Generation
+  tal e qual. Re-renderizar só reencodaria e arriscaria diferença.
+- Mesmo assim a arte nasce como **Page editável** (uma camada de imagem em tela
+  cheia, no template coletor `Arte Enviada[ — Feed| — Quadrado]`, criado no
+  primeiro uso). É o que dá editor, `ajustar-arte` e `conferir-arte` de graça.
+- **Agendar por `pageId` deixa a arte sujeita a re-render** (o post nasce
+  RENDERED e `invalidateScheduledRenders` o devolve à fila quando a página
+  muda). Quem quer o arquivo intocado agenda por `generationId`.
+- **O formato sai da PROPORÇÃO** (`classificarFormato`), não do
+  `inferTemplateType` do persist — aquele chama de STORY tudo mais alto que
+  largo, e o feed 4:5 caía no coletor de story. Corte em 1,5, entre 1,25 e 1,78.
+- Teto de 25MB e 20 arquivos por chamada; PNG/JPG/WebP (o formato real é lido
+  pelo sharp, não pela extensão). Arquivo com falha **não derruba a leva** — a
+  resposta traz `artes[]` e `falhas[]`.
+- **O conector remoto (`/api/mcp`) não tem como fazer isso**: os argumentos de
+  tool são texto do modelo e o servidor está na Vercel, sem acesso ao disco de
+  quem conversa. Pelo celular/claude.ai o caminho continua sendo `pedir-foto`.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
