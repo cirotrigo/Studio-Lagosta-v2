@@ -485,6 +485,15 @@ Regras que sobrevivem:
   `app/api/**` e o projeto é `src/app/**` — nenhuma entrada casa. É por isso que
   11 crons declaram inline; `/api/cron/posts` não declarava e rodava no default
   da plataforma.
+- **Voltar para rascunho reconstrói a arte** (`agenda-acoes.ts`, ramo REVERT):
+  marca `renderStatus: PENDING` quando o post tem página e a arte veio do
+  render. Sem isso havia uma ordem que publicava a versão antiga em silêncio —
+  editar o template AINDA congelado (a invalidação pula), voltar para rascunho
+  (não mexia em renderStatus) e aprovar (só força render com `mediaUrls`
+  vazio). Justamente a sequência que a agenda recomenda.
+  O guard `renderStatus === RENDERED` protege a arte MELHORADA com IA, que é
+  `NOT_NEEDED` porque não vem da página; `mediaUrls` fica intacto de propósito,
+  para o rascunho não ficar sem imagem se o render falhar.
 - **O backlog anterior ao deploy não é alcançado**: quem já está no Zernio sob a
   regra antiga segue congelado, e a invalidação segue sem efeito nele.
 

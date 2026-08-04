@@ -9,7 +9,7 @@
  */
 
 import { db } from '@/lib/db'
-import { PostStatus } from '../../../prisma/generated/client'
+import { PostStatus, RenderStatus } from '../../../prisma/generated/client'
 import { getLaterClient, LaterNotFoundError } from '@/lib/later'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
@@ -220,6 +220,33 @@ export async function processarAprovacao(params: {
       }
     }
 
+    /**
+     * Voltar para rascunho reconstrói a arte a partir da página.
+     *
+     * Quem volta um post para rascunho quase sempre volta PARA MEXER na arte —
+     * é literalmente a instrução que a agenda dá quando o post está congelado
+     * ("volte para rascunho e agende de novo"). Sem isto, essa instrução tem
+     * uma ordem que falha em silêncio:
+     *
+     *   editar o template AINDA congelado → a invalidação pula o post (não
+     *   pode zerar a arte de um post armado) → voltar para rascunho não mexe
+     *   em renderStatus → aprovar não re-renderiza, porque só força render
+     *   quando `mediaUrls` está vazio → publica a versão antiga, calada.
+     *
+     * Marcando PENDING aqui, a página volta a ser a fonte de verdade em
+     * qualquer ordem.
+     *
+     * `renderStatus === RENDERED` não é detalhe: NOT_NEEDED significa que a
+     * arte NÃO vem do render desta página — é upload, import, ou a arte
+     * MELHORADA com IA (que custou ~140s, 1 crédito e verificação por visão).
+     * Re-renderizar essas destruiria trabalho que a página não sabe refazer.
+     *
+     * `mediaUrls` fica intacto de propósito: o rascunho segue mostrando a arte
+     * anterior enquanto o render novo não chega, e um render que falhe não
+     * deixa o post sem imagem nenhuma.
+     */
+    const reconstroiArte = post.pageId !== null && post.renderStatus === RenderStatus.RENDERED
+
     await db.socialPost.update({
       where: { id: post.id },
       data: {
@@ -227,6 +254,14 @@ export async function processarAprovacao(params: {
         laterPostId: null,
         lateStatus: null,
         processingStartedAt: null,
+        ...(reconstroiArte
+          ? {
+              renderStatus: RenderStatus.PENDING,
+              nextRenderAt: agora,
+              renderAttempts: 0,
+              renderError: null,
+            }
+          : {}),
       },
     })
     processados.push(post.id)
