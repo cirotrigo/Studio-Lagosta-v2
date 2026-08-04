@@ -653,6 +653,14 @@ fecha as duas divergências de maior alcance da tabela e o Auto da caixa:
   — a de quebra e a de render/cache), altura alterada por fora (undo, alça do
   transformer) e `textTransform`/`fontStyle`. A trava por assinatura + o guard
   de |diff| < 1 são o que evita o loop de update — não remover nenhum dos dois.
+- **A altura medida é arredondada para CIMA (`Math.ceil`), nunca `round`**: o
+  nó da tela tem altura fixa e o Konva descarta a próxima linha INTEIRA quando
+  ela não cabe por qualquer fração de pixel. Com `round`, toda altura cujo
+  total de linhas tem decimal < 0,5 era gravada curta e a última linha sumia —
+  em `lineHeight` 1.2 e 3 linhas isso pegava 12 de 29 tamanhos de fonte, daí o
+  "some e volta a cada ajuste". O render server-side não trunca quando
+  `autoExpand` está ligado, então o defeito era só do editor: a prévia mentia
+  para menos.
 - **Auto-height nativo do Konva foi avaliado e rejeitado** (§4 do doc): a
   altura fixa do nó na tela é o contrato visível com o render server-side, que
   corta pela altura gravada; height auto esconderia a dessincronia.

@@ -365,7 +365,14 @@ export function KonvaEditableText({
       align: textNode.align(),
       wrap: textNode.wrap(),
     })
-    const natural = Math.round(medidor.height())
+    // CEIL, nunca round: o nó da tela tem altura FIXA e o Konva descarta a
+    // próxima linha inteira quando ela não cabe por qualquer fração de pixel
+    // (`currentHeightPx + lineHeightPx > maxHeightPx`, Text.js). Com round, a
+    // altura de N linhas cujo total tem parte decimal < 0,5 era gravada MENOR
+    // que o necessário e a última linha sumia — e voltava a aparecer no
+    // fontSize seguinte, porque a fração muda. Arredondar para cima sobra no
+    // máximo 1px e nunca corta.
+    const natural = Math.ceil(medidor.height())
     medidor.destroy()
 
     const atual = layer.size?.height ?? 0
