@@ -16,6 +16,12 @@ export interface TemplateDto {
   createdAt: string
   updatedAt: string
   createdBy: string
+  /**
+   * Ids dos posts que a edição NÃO alcança: já foram entregues ao publicador
+   * e vão ao ar com a arte anterior. Só vem quando há algum — o editor usa
+   * para avisar em vez de prometer que a arte foi atualizada.
+   */
+  postsCongelados?: string[]
 }
 
 export function useTemplate(templateId: number | null) {

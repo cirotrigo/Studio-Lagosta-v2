@@ -351,17 +351,40 @@ function TemplateEditorContent({
       // Remover toast de loading
       loadingToast.dismiss?.()
 
-      toast({
-        title: agendaMode ? 'Template salvo! Imagem será regenerada.' : 'Template salvo com sucesso!',
-        description: agendaMode
-          ? 'Os posts agendados terão a imagem atualizada em instantes.'
-          : thumbnailUrl
-            ? 'Thumbnail da primeira página gerado e alterações aplicadas.'
-            : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
-      })
+      /**
+       * Post já entregue ao publicador não recebe a edição — a arte que vai ao
+       * ar é a cópia que está lá. Prometer "imagem atualizada em instantes"
+       * nesse caso é mentira: a pessoa volta para a agenda achando que
+       * resolveu e o post publica a versão antiga.
+       */
+      const congelados = saved.postsCongelados?.length ?? 0
 
-      // In agenda mode, go back to agenda after save
-      if (agendaMode) {
+      if (congelados > 0) {
+        toast({
+          title:
+            congelados === 1
+              ? 'Template salvo — mas 1 post não recebeu a alteração'
+              : `Template salvo — mas ${congelados} posts não receberam a alteração`,
+          description:
+            `${congelados === 1 ? 'Esse post já foi enviado' : 'Esses posts já foram enviados'} para publicação e ` +
+            `${congelados === 1 ? 'vai sair' : 'vão sair'} com a arte anterior. Para trocar, volte ` +
+            `${congelados === 1 ? 'o post' : 'os posts'} para rascunho na agenda e agende de novo.`,
+          variant: 'destructive',
+        })
+      } else {
+        toast({
+          title: agendaMode ? 'Template salvo! Imagem será regenerada.' : 'Template salvo com sucesso!',
+          description: agendaMode
+            ? 'Os posts agendados terão a imagem atualizada em instantes.'
+            : thumbnailUrl
+              ? 'Thumbnail da primeira página gerado e alterações aplicadas.'
+              : 'Alterações aplicadas (thumbnail não pôde ser gerado).',
+        })
+      }
+
+      // In agenda mode, go back to agenda after save — a não ser que haja post
+      // congelado: voltar direto esconderia o aviso que a pessoa precisa ler.
+      if (agendaMode && congelados === 0) {
         router.back()
         return
       }

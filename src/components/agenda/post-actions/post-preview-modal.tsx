@@ -773,16 +773,35 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
               )}
 
               {isTemplateBased && post.templateId ? (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  asChild
-                >
-                  <Link href={`/templates/${post.templateId}/editor?pageId=${post.pageId}&from=agenda`}>
-                    <Paintbrush className="w-4 h-4 mr-2" />
+                /*
+                  Post congelado: editar o template daqui não muda a arte que
+                  vai ao ar, porque ela já está no publicador. Deixar o botão
+                  clicável mandava a pessoa ao editor, salvar, e voltar achando
+                  que resolveu — a interface prometia o que o sistema não podia
+                  cumprir. O caminho certo está no aviso logo acima.
+                */
+                janela.congelado ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled
+                    title="A arte já foi enviada para publicação. Volte o post para rascunho para poder editá-la."
+                  >
+                    <Lock className="w-4 h-4 mr-2" />
                     Editar Template
-                  </Link>
-                </Button>
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    asChild
+                  >
+                    <Link href={`/templates/${post.templateId}/editor?pageId=${post.pageId}&from=agenda`}>
+                      <Paintbrush className="w-4 h-4 mr-2" />
+                      Editar Template
+                    </Link>
+                  </Button>
+                )
               ) : (
                 <Button
                   variant="outline"

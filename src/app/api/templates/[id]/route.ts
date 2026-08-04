@@ -5,6 +5,7 @@ import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
+import { PostStatus } from '../../../../../prisma/generated/client'
 
 export const runtime = 'nodejs'
 
@@ -299,10 +300,32 @@ export async function PUT(
             pageIds: Array.from(paginasAlteradas),
           })
           invalidados = r.invalidados
-          congelados = r.congelados
           console.log(
             `[API] Template ${templateId}: ${paginasAlteradas.size} página(s) alterada(s) — ${invalidados} render(s) invalidado(s)`,
           )
+        }
+
+        /**
+         * Os congelados NÃO saem da invalidação, e sim de uma consulta própria
+         * sobre as páginas do payload.
+         *
+         * O PageSync já persistiu as camadas quando a pessoa clica em "Salvar
+         * e Voltar", então `paginasAlteradas` costuma vir VAZIO aqui — e a
+         * invalidação, que é quem devolveria os congelados, nem chega a rodar.
+         * Reportar só a partir dela deixaria o editor prometendo "imagem
+         * atualizada em instantes" justamente no caso que ele precisa negar.
+         */
+        const pageIdsDoPayload = Array.from(resolvedCurrentPageIds)
+        if (pageIdsDoPayload.length > 0) {
+          const armados = await tx.socialPost.findMany({
+            where: {
+              pageId: { in: pageIdsDoPayload },
+              status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
+              laterPostId: { not: null },
+            },
+            select: { id: true },
+          })
+          congelados = armados.map((p) => p.id)
         }
       }
 
