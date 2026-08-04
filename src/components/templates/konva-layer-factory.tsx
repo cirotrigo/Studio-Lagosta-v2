@@ -10,7 +10,14 @@ import { ICON_PATHS } from '@/lib/assets/icon-library'
 import { KonvaEditableText } from './konva-editable-text'
 import { KonvaMultiStyledText } from './konva-multi-styled-text'
 import { calculateImageCrop } from '@/lib/image-crop-utils'
-import { resolveImageSourceRect } from '@/lib/image-fit'
+import { cropForResizedBox, resolveImageSourceRect } from '@/lib/image-fit'
+
+/**
+ * Alças do MEIO. O `keepRatio` do Konva só vale nos cantos, então são estas que
+ * mudam a proporção da caixa — e é nelas que a imagem precisa ser recortada em
+ * vez de esticada.
+ */
+const LATERAL_ANCHORS = new Set(['middle-left', 'middle-right', 'top-center', 'bottom-center'])
 import { traceSvgPath } from '@/lib/konva/svg-path-clip'
 import { useTemplateEditor } from '@/contexts/template-editor-context'
 import { throttle, getPerformanceConfig } from '@/lib/performance-utils'
@@ -965,16 +972,79 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     )
   }, [image, width, height, layer.style])
 
+  /**
+   * Alça LATERAL redimensiona a janela, não a imagem.
+   *
+   * O Konva ignora `keepRatio` nas alças do meio (só vale nos cantos), então
+   * arrastar uma lateral mudava a proporção da caixa e o KonvaImage esticava a
+   * foto. A caixa é enquadramento: ela passa a mostrar mais ou menos imagem, na
+   * mesma escala, e quem reposiciona o recorte é o modo de recorte.
+   *
+   * A base do cálculo é congelada no início do gesto — refazer a conta a partir
+   * do estado já corrigido acumularia erro a cada frame.
+   */
+  const baseRecorteRef = React.useRef<{ box: { width: number; height: number }; style: Layer['style'] } | null>(null)
+
+  const anchorAtual = React.useCallback((node: Konva.Node | null) => {
+    const transformer = node?.getStage()?.findOne('Transformer') as Konva.Transformer | null
+    return transformer?.getActiveAnchor() ?? ''
+  }, [])
+
+  const handleTransformStart = React.useCallback(() => {
+    baseRecorteRef.current = { box: { width, height }, style: layer.style }
+  }, [width, height, layer.style])
+
+  /** Recorte para a caixa nova, na escala e no enquadramento do início do gesto */
+  const recorteParaCaixa = React.useCallback(
+    (novaLargura: number, novaAltura: number, anchor: string) => {
+      const base = baseRecorteRef.current
+      if (!base || !image) return undefined
+      return cropForResizedBox(
+        { width: image.width, height: image.height },
+        base.box,
+        { width: novaLargura, height: novaAltura },
+        base.style,
+        anchor,
+      )
+    },
+    [image],
+  )
+
   // Limpar cache durante transform para evitar conflito (Konva issue #835)
   const handleTransform = React.useCallback(() => {
-    const node = imageRef.current
-    if (!node) return
+    const imageNode = imageRef.current
+    if (!imageNode) return
 
     // Limpar cache durante transform
     if (filters.length > 0) {
-      node.clearCache()
+      imageNode.clearCache()
     }
-  }, [filters.length])
+
+    // Com wrapper (máscara/flip) quem é transformado é o Group
+    const node = hasWrapper ? groupRef.current : imageRef.current
+    if (!node || !image) return
+    const anchor = anchorAtual(node)
+    if (!LATERAL_ANCHORS.has(anchor)) return
+
+    const novaLargura = Math.max(5, imageNode.width() * node.scaleX())
+    const novaAltura = Math.max(5, imageNode.height() * node.scaleY())
+    const crop = recorteParaCaixa(novaLargura, novaAltura, anchor)
+    if (!crop) return
+
+    node.scaleX(1)
+    node.scaleY(1)
+    imageNode.width(novaLargura)
+    imageNode.height(novaAltura)
+    if (hasWrapper) {
+      imageNode.x(flipH ? novaLargura : 0)
+      imageNode.y(flipV ? novaAltura : 0)
+    }
+    imageNode.cropX(crop.x * image.width)
+    imageNode.cropY(crop.y * image.height)
+    imageNode.cropWidth(crop.width * image.width)
+    imageNode.cropHeight(crop.height * image.height)
+    node.getLayer()?.batchDraw()
+  }, [filters.length, hasWrapper, image, anchorAtual, recorteParaCaixa, flipH, flipV])
 
   // Handler customizado - recalcular crop manualmente
   const handleTransformEnd = React.useCallback(() => {
@@ -984,12 +1054,42 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
     const node = hasWrapper ? groupRef.current : imageRef.current
     if (!node || !imageNode || !image) return
 
+    const anchor = anchorAtual(node)
+    const lateral = LATERAL_ANCHORS.has(anchor)
+
     const scaleX = node.scaleX()
     const scaleY = node.scaleY()
 
     // Calcular novas dimensões
     const newWidth = Math.max(5, imageNode.width() * scaleX)
     const newHeight = Math.max(5, imageNode.height() * scaleY)
+
+    // Alça lateral: a janela muda, a imagem não estica — grava o recorte
+    if (lateral) {
+      const crop = recorteParaCaixa(newWidth, newHeight, anchor)
+      baseRecorteRef.current = null
+      if (crop) {
+        node.scaleX(1)
+        node.scaleY(1)
+        imageNode.width(newWidth)
+        imageNode.height(newHeight)
+        if (hasWrapper) {
+          imageNode.x(flipH ? newWidth : 0)
+          imageNode.y(flipV ? newHeight : 0)
+        }
+        if (filters.length > 0) imageNode.cache()
+        node.getLayer()?.batchDraw()
+
+        onChange({
+          position: { x: Math.round(node.x()), y: Math.round(node.y()) },
+          size: { width: Math.round(newWidth), height: Math.round(newHeight) },
+          rotation: Math.round(node.rotation()),
+          style: { ...layer.style, crop },
+        })
+        return
+      }
+    }
+    baseRecorteRef.current = null
 
     // Resetar scale
     node.scaleX(1)
@@ -1036,7 +1136,17 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       },
       rotation: Math.round(node.rotation()),
     })
-  }, [onChange, image, layer.style, filters.length, hasWrapper, flipH, flipV])
+  }, [
+    onChange,
+    image,
+    layer.style,
+    filters.length,
+    hasWrapper,
+    flipH,
+    flipV,
+    anchorAtual,
+    recorteParaCaixa,
+  ])
 
   if (!image) {
     return (
@@ -1093,6 +1203,11 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
               }
             : undefined
         }
+        onTransformStart={handleTransformStart}
+        // O transformer transforma o GROUP: os eventos de transform nascem
+        // AQUI. Presos no KonvaImage de dentro (eventos do Konva sobem, não
+        // descem) eles nunca disparavam com máscara ou flip ligados.
+        onTransform={handleTransform}
         onTransformEnd={handleTransformEnd}
         onDblClick={handleDblClick}
         onDblTap={handleDblClick}
@@ -1106,7 +1221,6 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
           scaleY={flipV ? -1 : 1}
           width={width}
           height={height}
-          onTransform={handleTransform}
         />
       </Group>
     )
@@ -1119,6 +1233,7 @@ function ImageNode({ layer, commonProps, shapeRef, borderColor, borderWidth, bor
       {...visualProps}
       width={width}
       height={height}
+      onTransformStart={handleTransformStart}
       onTransform={handleTransform}
       onTransformEnd={handleTransformEnd}
       onDblClick={handleDblClick}

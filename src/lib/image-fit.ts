@@ -53,3 +53,85 @@ export function resolveImageSourceRect(
 
   return calculateImageCrop(natural, box, style?.cropPosition ?? 'center-middle')
 }
+
+/** Área da imagem que a caixa mostra hoje, sempre em px da imagem original */
+export function currentSourceRect(
+  natural: ImageSize,
+  box: ImageSize,
+  style?: Pick<LayerStyle, 'objectFit' | 'cropPosition' | 'crop'>,
+): CropData {
+  return (
+    resolveImageSourceRect(natural, box, style) ?? {
+      cropX: 0,
+      cropY: 0,
+      cropWidth: natural.width,
+      cropHeight: natural.height,
+    }
+  )
+}
+
+/**
+ * Recorte da imagem quando a CAIXA muda de forma (alças laterais).
+ *
+ * A caixa é uma janela: mudar a largura tem que mostrar MAIS ou MENOS imagem,
+ * nunca esticar a que está lá. Mantemos a escala (px de tela por px de imagem)
+ * e o centro do enquadramento; a janela revela ou esconde o entorno.
+ *
+ * Devolve frações 0..1 da imagem original — o mesmo `style.crop` que o recorte
+ * in-canvas grava e que o render server-side lê com precedência sobre tudo.
+ *
+ * A escala escolhida é a MENOR dos dois eixos: numa imagem que estava esticada
+ * (sem objectFit, caixa com outra proporção), é ela que preserva tudo que já
+ * aparecia — e a imagem sai da deformação em vez de continuar nela.
+ */
+export function cropForResizedBox(
+  natural: ImageSize,
+  previousBox: ImageSize,
+  nextBox: ImageSize,
+  style?: Pick<LayerStyle, 'objectFit' | 'cropPosition' | 'crop'>,
+  /** Alça arrastada: a borda OPOSTA fica parada, como em qualquer editor */
+  anchor?: string,
+): { x: number; y: number; width: number; height: number } | undefined {
+  if (!natural.width || !natural.height) return undefined
+  if (!previousBox.width || !previousBox.height) return undefined
+  if (!nextBox.width || !nextBox.height) return undefined
+
+  const src = currentSourceRect(natural, previousBox, style)
+  if (!src.cropWidth || !src.cropHeight) return undefined
+
+  const escala = Math.min(previousBox.width / src.cropWidth, previousBox.height / src.cropHeight)
+  if (!Number.isFinite(escala) || escala <= 0) return undefined
+
+  let width = nextBox.width / escala
+  let height = nextBox.height / escala
+
+  // Não dá para revelar mais do que a imagem tem: aproxima o mínimo necessário
+  const excesso = Math.max(width / natural.width, height / natural.height, 1)
+  width /= excesso
+  height /= excesso
+
+  // Arrastando a borda direita, a esquerda fica parada (e vice-versa): sem
+  // isso a foto escorrega para o lado enquanto a caixa cresce
+  const brutoX =
+    anchor === 'middle-right'
+      ? src.cropX
+      : anchor === 'middle-left'
+        ? src.cropX + src.cropWidth - width
+        : src.cropX + src.cropWidth / 2 - width / 2
+  const brutoY =
+    anchor === 'bottom-center'
+      ? src.cropY
+      : anchor === 'top-center'
+        ? src.cropY + src.cropHeight - height
+        : src.cropY + src.cropHeight / 2 - height / 2
+
+  const x = Math.min(Math.max(brutoX, 0), natural.width - width)
+  const y = Math.min(Math.max(brutoY, 0), natural.height - height)
+
+  return {
+    x: x / natural.width,
+    y: y / natural.height,
+    width: width / natural.width,
+    height: height / natural.height,
+  }
+}

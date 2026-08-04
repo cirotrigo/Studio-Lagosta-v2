@@ -38,6 +38,7 @@ interface Rect {
  */
 export function KonvaImageCropOverlay() {
   const { design, croppingLayerId, setCroppingLayerId, updateLayer, zoom } = useTemplateEditor()
+  const groupRef = React.useRef<Konva.Group | null>(null)
 
   const layer = React.useMemo(
     () => design.layers.find((item) => item.id === croppingLayerId) ?? null,
@@ -126,6 +127,63 @@ export function KonvaImageCropOverlay() {
       }),
     [clampImage, frameCenter],
   )
+
+  /**
+   * Retângulo VISÍVEL, em coordenadas do canvas.
+   *
+   * No modo contínuo (padrão do desktop) o stage tem o tamanho exato da página:
+   * tudo que a imagem tem para fora dela é cortado pela borda do stage —
+   * inclusive as alças dos cantos, que ficavam inalcançáveis assim que a foto
+   * passava a ser maior que a página (ou seja, quase sempre). É por isso que as
+   * alças são desenhadas presas a esta janela.
+   *
+   * Sai do próprio stage e não de `design.canvas`: no modo clássico o stage é
+   * do tamanho do CONTAINER, então ali sobra área em volta da página — e ela
+   * muda quando a janela é redimensionada.
+   */
+  const [view, setView] = React.useState<Rect | null>(null)
+  const viewRef = React.useRef<Rect | null>(null)
+  viewRef.current = view
+
+  const medirView = React.useCallback(() => {
+    const stage = groupRef.current?.getStage()
+    if (!stage) return
+    const escala = stage.scaleX() || 1
+    const proximo: Rect = {
+      x: -stage.x() / escala,
+      y: -stage.y() / escala,
+      width: stage.width() / escala,
+      height: stage.height() / escala,
+    }
+    setView((anterior) =>
+      anterior &&
+      Math.abs(anterior.x - proximo.x) < 0.5 &&
+      Math.abs(anterior.y - proximo.y) < 0.5 &&
+      Math.abs(anterior.width - proximo.width) < 0.5 &&
+      Math.abs(anterior.height - proximo.height) < 0.5
+        ? anterior
+        : proximo,
+    )
+  }, [])
+
+  React.useEffect(() => {
+    medirView()
+    // O zoom do modo clássico é aplicado no stage por um efeito do COMPONENTE
+    // PAI, que roda depois deste — sem o frame seguinte, a medição sairia com a
+    // escala anterior a cada mudança de zoom
+    const frame = requestAnimationFrame(medirView)
+    const container = groupRef.current?.getStage()?.container()
+    const observer = container ? new ResizeObserver(() => medirView()) : null
+    if (container && observer) observer.observe(container)
+    window.addEventListener('resize', medirView)
+    return () => {
+      cancelAnimationFrame(frame)
+      observer?.disconnect()
+      window.removeEventListener('resize', medirView)
+    }
+    // canvas.width/height: trocar o formato da página (painel Redimensionar)
+    // muda o tamanho do stage no modo contínuo — a janela precisa ser remedida
+  }, [medirView, zoom, image, design.canvas.width, design.canvas.height])
 
   const handleConfirm = React.useCallback(() => {
     if (!layer || !imageRect) return
@@ -237,18 +295,59 @@ export function KonvaImageCropOverlay() {
     [frameCenter, scaleAround],
   )
 
-  const handleScaleEnd = React.useCallback(() => {
-    scaleStartRef.current = null
-  }, [])
+  // Estado corrente para o reposicionamento da alça no fim do gesto (o React
+  // só reaplica x/y quando o valor muda, e o Konva deixa o círculo onde o
+  // ponteiro largou)
+  const imageRectRef = React.useRef(imageRect)
+  imageRectRef.current = imageRect
+
+  const handleScaleEnd = React.useCallback(
+    (event: KonvaEventObject<DragEvent>, index: number) => {
+      scaleStartRef.current = null
+      const rect = imageRectRef.current
+      if (!rect) return
+      const canto = [
+        [rect.x, rect.y],
+        [rect.x + rect.width, rect.y],
+        [rect.x, rect.y + rect.height],
+        [rect.x + rect.width, rect.y + rect.height],
+      ][index]
+      const janela = viewRef.current
+      const raio = 8 / (zoom || 1)
+      const folga = raio + 4 / (zoom || 1)
+      event.target.position(
+        janela
+          ? {
+              x: Math.min(Math.max(canto[0], janela.x + folga), janela.x + janela.width - folga),
+              y: Math.min(Math.max(canto[1], janela.y + folga), janela.y + janela.height - folga),
+            }
+          : { x: canto[0], y: canto[1] },
+      )
+      event.target.getLayer()?.batchDraw()
+    },
+    [zoom],
+  )
 
   if (!layer || !image || !imageRect) return null
 
   // Área "infinita" para o esmaecido fora da moldura
   const BIG = 100000
   const handleRadius = 8 / (zoom || 1)
+  const traco = 2 / (zoom || 1)
+
+  // Alça presa à janela visível: o canto verdadeiro fica marcado pelo contorno
+  // tracejado da foto, mas o ponto de arrastar nunca sai da tela
+  const margem = handleRadius + 4 / (zoom || 1)
+  const emVista = (x: number, y: number): [number, number] => {
+    if (!view) return [x, y]
+    return [
+      Math.min(Math.max(x, view.x + margem), view.x + view.width - margem),
+      Math.min(Math.max(y, view.y + margem), view.y + view.height - margem),
+    ]
+  }
 
   return (
-    <Group name="crop-overlay">
+    <Group name="crop-overlay" ref={groupRef}>
       {/* Imagem inteira, arrastável */}
       <KonvaImage
         image={image}
@@ -286,6 +385,30 @@ export function KonvaImageCropOverlay() {
         </React.Fragment>
       ))}
 
+      {/* Arestas da FOTO INTEIRA: é o que dá noção do tamanho real e de quanto
+          sobra para cada lado. Duas linhas sobrepostas porque uma branca some
+          em foto clara e uma escura some em foto escura. */}
+      <Rect
+        x={imageRect.x}
+        y={imageRect.y}
+        width={imageRect.width}
+        height={imageRect.height}
+        stroke="rgba(0,0,0,0.65)"
+        strokeWidth={traco * 2}
+        dash={[10 / (zoom || 1), 7 / (zoom || 1)]}
+        listening={false}
+      />
+      <Rect
+        x={imageRect.x}
+        y={imageRect.y}
+        width={imageRect.width}
+        height={imageRect.height}
+        stroke="rgba(255,255,255,0.95)"
+        strokeWidth={traco}
+        dash={[10 / (zoom || 1), 7 / (zoom || 1)]}
+        listening={false}
+      />
+
       {/* Contorno da moldura fixa */}
       <Rect
         x={frame.x}
@@ -298,7 +421,7 @@ export function KonvaImageCropOverlay() {
         listening={false}
       />
 
-      {/* Alças nos cantos da IMAGEM: aproximar/afastar */}
+      {/* Alças dos cantos da IMAGEM: aproximar/afastar */}
       {(
         [
           [imageRect.x, imageRect.y],
@@ -306,21 +429,37 @@ export function KonvaImageCropOverlay() {
           [imageRect.x, imageRect.y + imageRect.height],
           [imageRect.x + imageRect.width, imageRect.y + imageRect.height],
         ] as Array<[number, number]>
-      ).map(([cx, cy], index) => (
-        <Circle
-          key={`scale-${index}`}
-          x={cx}
-          y={cy}
-          radius={handleRadius}
-          fill="#ffffff"
-          stroke="#00a8ff"
-          strokeWidth={2 / (zoom || 1)}
-          draggable
-          onDragStart={handleScaleStart}
-          onDragMove={handleScaleMove}
-          onDragEnd={handleScaleEnd}
-        />
-      ))}
+      ).map(([cantoX, cantoY], index) => {
+        const [cx, cy] = emVista(cantoX, cantoY)
+        const presaNaBorda = cx !== cantoX || cy !== cantoY
+        return (
+          <React.Fragment key={`scale-${index}`}>
+            {/* Canto fora da tela: uma linha liga a alça ao canto real */}
+            {presaNaBorda && (
+              <Line
+                points={[cx, cy, cantoX, cantoY]}
+                stroke="rgba(255,255,255,0.5)"
+                strokeWidth={traco / 2}
+                listening={false}
+              />
+            )}
+            <Circle
+              x={cx}
+              y={cy}
+              radius={handleRadius}
+              fill="#ffffff"
+              stroke="#00a8ff"
+              strokeWidth={traco}
+              shadowColor="rgba(0,0,0,0.6)"
+              shadowBlur={6 / (zoom || 1)}
+              draggable
+              onDragStart={handleScaleStart}
+              onDragMove={handleScaleMove}
+              onDragEnd={(event) => handleScaleEnd(event, index)}
+            />
+          </React.Fragment>
+        )
+      })}
     </Group>
   )
 }

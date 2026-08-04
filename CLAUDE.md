@@ -755,6 +755,27 @@ limpeza. Regras que ficaram:
 - **CI mínimo no ar** (`.github/workflows/ci.yml`): typecheck + lint em
   push/PR. Lint com ERRO agora quebra o CI — a main foi zerada nesta sessão.
 
+### Imagem: caixa é janela, não elástico (04/08/2026)
+
+- **`keepRatio` do Konva só vale nas alças dos CANTOS.** As do meio mudam um
+  eixo só, e por isso arrastar uma lateral esticava a foto. Hoje elas passam por
+  `cropForResizedBox` (`src/lib/image-fit.ts`): a escala e o enquadramento são
+  congelados no `transformstart` e a caixa passa a revelar/esconder imagem, com
+  a borda OPOSTA à alça parada. O resultado é gravado em `style.crop`, que o
+  render server-side já lê com precedência — editor e arte não divergem.
+- **Sem `objectFit: 'cover'` e sem `style.crop` o KonvaImage ESTICA** (é o
+  default de quase toda camada). A primeira lateral arrastada tira a foto da
+  deformação, porque a escala escolhida é a menor dos dois eixos.
+- **No modo contínuo o stage tem o tamanho EXATO da página**: o que a camada
+  tem para fora dela não é desenhado nem clicável. Era isso que sumia com as
+  alças do recorte in-canvas — elas agora ficam presas à janela visível
+  (medida do stage, não de `design.canvas`, porque no modo clássico o stage é
+  do tamanho do container). Overlay novo que desenhe fora da página precisa da
+  mesma trava.
+- **Evento de transform nasce no nó que o transformer segura**: com máscara ou
+  flip quem é transformado é o Group, e o `onTransform` estava no KonvaImage de
+  dentro — eventos do Konva sobem, não descem, então nunca disparava.
+
 ### DNA da Marca (30/07/2026)
 
 A identidade vive na tabela `BrandDNA` (1:1 com Project; tom de voz, regras,
