@@ -35,6 +35,7 @@ import {
   formatarBRT,
 } from '@/lib/posts/agenda-acoes'
 import { sugerirPosts } from '@/lib/posts/sugerir-posts'
+import { descreverJanela } from '@/lib/posts/freeze-window'
 import { pedirFoto, verFoto } from '@/lib/creatives/chat-upload'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
@@ -313,6 +314,7 @@ export const MCP_TOOLS: McpTool[] = [
           publishType: true,
           mediaUrls: true,
           generationId: true,
+          laterPostId: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
@@ -339,6 +341,11 @@ export const MCP_TOOLS: McpTool[] = [
           publicacao: post.publishType === 'REMINDER' ? 'manual (lembrete no WhatsApp)' : 'automática',
           ...(post.generationId ? { generationId: post.generationId } : {}),
           ...(post.publishedUrl ? { publishedUrl: post.publishedUrl } : {}),
+          // Só onde a pergunta se coloca: em rascunho ainda falta aprovar, e
+          // em publicado/falhou já não há o que editar.
+          ...(post.status === 'SCHEDULED'
+            ? { arte: descreverJanela(post).rotulo.toLowerCase() }
+            : {}),
         })
       }
 
@@ -894,7 +901,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'ajustar-arte',
     description:
-      'Ajusta uma arte já criada aqui: troca textos e/ou a foto na MESMA página e re-renderiza. Use depois de conferir-arte, quando algo saiu errado — texto estourando a caixa, foto ruim, erro de digitação. As chaves de slotValues são as mesmas da criação (id ou nome da camada; conferir-arte e o retorno da criação mostram os nomes).\n\nNão serve para páginas-modelo do cliente (essas se editam no editor). Se a arte já estiver em algum post da agenda, a arte do post é atualizada junto (re-render automático em alguns minutos).',
+      'Ajusta uma arte já criada aqui: troca textos e/ou a foto na MESMA página e re-renderiza. Use depois de conferir-arte, quando algo saiu errado — texto estourando a caixa, foto ruim, erro de digitação. As chaves de slotValues são as mesmas da criação (id ou nome da camada; conferir-arte e o retorno da criação mostram os nomes).\n\nNão serve para páginas-modelo do cliente (essas se editam no editor). Se a arte já estiver em algum post da agenda, a arte do post é atualizada junto (re-render automático em alguns minutos).\n\nATENÇÃO: post agendado é enviado para publicação 5 minutos antes do horário, e a partir daí a arte dele NÃO muda mais. Se a resposta trouxer `aviso`, repita-o para a pessoa — o ajuste valeu para a página, mas aquele post vai ao ar com a arte anterior. Para trocar mesmo: voltar-para-rascunho, ajustar, e agendar de novo.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -915,7 +922,7 @@ export const MCP_TOOLS: McpTool[] = [
     handler: async (args, principal) => {
       const projectId = requireNumber(args, 'projectId')
       await assertProjetoPermitido(projectId, principal)
-      return ajustarArte({
+      const r = await ajustarArte({
         projectId,
         pageId: requireString(args, 'pageId'),
         slotValues: (args.slotValues && typeof args.slotValues === 'object'
@@ -925,6 +932,25 @@ export const MCP_TOOLS: McpTool[] = [
         driveImageId: typeof args.driveImageId === 'string' ? args.driveImageId : undefined,
         name: typeof args.name === 'string' ? args.name : undefined,
       })
+
+      /**
+       * O ajuste vale para a página, mas post já entregue ao publicador vai ao
+       * ar com a arte anterior. Sem esta frase o chat responde "pronto,
+       * ajustei" e a pessoa só descobre a divergência quando o post sai — que
+       * é exatamente o defeito que a janela de congelamento veio corrigir.
+       */
+      if (r.postsCongelados && r.postsCongelados > 0) {
+        const n = r.postsCongelados
+        return {
+          ...r,
+          aviso:
+            `Atenção: ${n === 1 ? '1 post desta arte já foi enviado' : `${n} posts desta arte já foram enviados`} ` +
+            `para publicação e ${n === 1 ? 'vai sair' : 'vão sair'} com a arte ANTERIOR — o ajuste não ${n === 1 ? 'o' : 'os'} alcança. ` +
+            `Para trocar de verdade: voltar-para-rascunho, ajustar e agendar de novo.`,
+        }
+      }
+
+      return r
     },
   },
 
@@ -1074,7 +1100,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'melhorar-arte',
     description:
-      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.',
+      'Melhora uma arte com IA: o modelo de imagem refina a composição inteira (luz, sombra, textura, integração do texto com a foto) seguindo a direção de arte e a identidade da marca. Os textos são mantidos EXATAMENTE como estão e conferidos por visão ao final — se divergirem, a melhoria é descartada e a arte original continua valendo.\n\nNo fluxo normal a melhoria é o ACABAMENTO da criação: a arte criada é o esboço fiel (layout + textos certos) e esta etapa a leva ao nível de publicação. Antes de chamar, olhe a arte com conferir-arte e escreva o pedido a partir da SUA análise: aponte o que corrigir em concreto (hierarquia, contraste, luz da foto, integração do texto com o fundo, poluição) e o que preservar — sem falar dos textos, que são preservados automaticamente. Pedido vago ("deixe mais bonita") desperdiça a geração.\n\nDemora cerca de 2 minutos e custa créditos: a resposta volta na hora com melhoriaId, acompanhe com ver-melhoria. Com postId, aplica ao post da agenda ao final — vale para rascunho e agendado. Não chame de novo enquanto houver melhoria em andamento da mesma arte.\n\nPost agendado é enviado para publicação 5 minutos antes do horário e a partir daí a arte não muda mais: melhorar um post nesse estado é recusado (a melhoria leva ~2 min e não chegaria a tempo). Em ver-agenda o campo `arte` diz até quando dá — se estiver "enviada para publicação", não tente: traga o post para rascunho antes (voltar-para-rascunho) ou proponha melhorar a arte para um próximo post.',
     inputSchema: {
       type: 'object',
       properties: {

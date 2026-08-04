@@ -545,7 +545,7 @@ server.tool(
 
 server.tool(
   'list-posts',
-  'List posts by project, date range, status, or type',
+  'List posts by project, date range, status, or type. `congelado: true` means the art was already handed to the publisher — editing the page no longer changes what goes out.',
   {
     projectId: z.number().describe('Project ID'),
     dateFrom: z.string().optional().describe('Start date (YYYY-MM-DD, BRT)'),
@@ -580,16 +580,20 @@ server.tool(
           mediaUrls: true,
           renderedImageUrl: true,
           createdAt: true,
+          laterPostId: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: Math.min(limit ?? 50, 200),
       })
 
-      const result = posts.map((p: any) => ({
+      const result = posts.map(({ laterPostId, ...p }: any) => ({
         ...p,
         caption: p.caption?.length > 120 ? p.caption.slice(0, 120) + '...' : p.caption,
         scheduledBRT: p.scheduledDatetime ? formatBRT(p.scheduledDatetime) : null,
         mediaCount: p.mediaUrls?.length ?? 0,
+        // Arte já entregue ao publicador: editar a pagina nao muda mais o que
+        // vai ao ar. Ver src/lib/posts/freeze-window.ts.
+        congelado: laterPostId != null,
       }))
 
       return {
