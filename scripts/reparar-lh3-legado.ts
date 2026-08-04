@@ -345,7 +345,13 @@ async function main() {
   let invalidados = 0
   if (APLICAR) {
     const recuperaveis = REGRAS.filter((r) => r.acao.tipo !== 'irrecuperavel').flatMap((r) => r.pages)
-    invalidados = await comReconexao(() => invalidateScheduledRenders(db, { pageIds: recuperaveis }))
+    const r = await comReconexao(() => invalidateScheduledRenders(db, { pageIds: recuperaveis }))
+    invalidados = r.invalidados
+    if (r.congelados.length > 0) {
+      console.warn(
+        `  ⚠ ${r.congelados.length} post(s) já entregues ao publicador não recebem a correção: ${r.congelados.join(', ')}`,
+      )
+    }
   }
 
   const manifestPath = `scripts/.tmp-lh3-fix-manifest-${new Date().toISOString().slice(0, 10)}${APLICAR ? '' : '-dryrun'}.json`

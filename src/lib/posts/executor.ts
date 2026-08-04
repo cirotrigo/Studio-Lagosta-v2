@@ -12,12 +12,49 @@ import {
 import { getLaterClient } from '@/lib/later/client'
 import { LaterNotFoundError } from '@/lib/later/errors'
 import { NOTIFY_AFTER_ATTEMPT, notifyPublishFailure } from './failure-handler'
+import { FREEZE_WINDOW_MS } from './freeze-window'
+import { renderPostArt } from './render-post-art'
 
 export class PostExecutor {
   private scheduler: PostScheduler
 
   constructor() {
     this.scheduler = new PostScheduler()
+  }
+
+  /**
+   * Registra falha de arte: log SEMPRE, aviso no grupo no máximo uma vez a
+   * cada 15 minutos.
+   *
+   * O post vencido continua elegível pelo catch-up a cada minuto, e cada
+   * execução do cron abre um batch novo — o `dedupeByPost` do
+   * `withFailureNotificationBatch` só protege dentro de um batch. Sem esta
+   * trava, um único post com um único problema renderia um aviso por minuto.
+   * É a mesma solução que o cron de lembretes já usa.
+   */
+  private async registrarFalhaDeArte(
+    postId: string,
+    mensagemLog: string,
+    mensagemAviso: string,
+  ) {
+    const quinzeMinutosAtras = new Date(Date.now() - 15 * 60 * 1000)
+
+    const jaAvisado = await db.postLog.findFirst({
+      where: {
+        postId,
+        event: PostLogEvent.FAILED,
+        createdAt: { gte: quinzeMinutosAtras },
+      },
+      select: { id: true },
+    })
+
+    await db.postLog.create({
+      data: { postId, event: PostLogEvent.FAILED, message: mensagemLog },
+    })
+
+    if (!jaAvisado) {
+      await notifyPublishFailure(postId, mensagemAviso)
+    }
   }
 
   async executeScheduledPosts() {
@@ -80,14 +117,30 @@ export class PostExecutor {
         },
       })
 
-      // PRE-SEND: Find future posts that are rendered and ready to be sent to Zernio
-      // Zernio handles native scheduling, so we can send them ahead of time
+      /**
+       * CONGELAMENTO: entrega ao Zernio os posts que entraram na janela.
+       *
+       * O Zernio cuida do agendamento nativo, então o post é entregue alguns
+       * minutos antes e publica no horário. O que mudou em 03/08/2026 foi o
+       * TETO: antes não havia nenhum, e todo post futuro era entregue assim
+       * que ficava renderizado — mediana de 39 segundos após o agendamento,
+       * com posts congelados por até 27 dias. Como nada no funil de render
+       * fala com o Zernio, editar a arte depois disso não mudava mais o que
+       * ia ao ar: 29 posts em 33 dias publicaram a versão velha, em silêncio.
+       *
+       * Com o teto, a arte no banco é a fonte de verdade até FREEZE_WINDOW_MS
+       * antes do horário. É o `lte` abaixo que sustenta essa promessa — quem
+       * mexer aqui precisa mexer também em `descreverJanela` e nos guards de
+       * edição, ou a interface passa a prometer o que o executor não cumpre.
+       */
+      const freezeCutoff = new Date(now.getTime() + FREEZE_WINDOW_MS)
       const futurePosts = await db.socialPost.findMany({
         where: {
           status: PostStatus.SCHEDULED,
           laterPostId: null,
           scheduledDatetime: {
             gt: windowEnd, // Future posts (beyond current window)
+            lte: freezeCutoff, // ...mas só os que já entraram na janela
           },
           publishType: {
             not: 'REMINDER',
@@ -107,7 +160,11 @@ export class PostExecutor {
             },
           },
         },
-        take: 10,
+        // Com o teto, esta lista deixou de ser "todos os posts futuros" e
+        // passou a ser "os que congelam nos próximos minutos" — o take vira
+        // proteção contra rajada, não corte de fila. Máximo medido em 90
+        // dias: 10 posts no mesmo minuto.
+        take: 25,
         orderBy: {
           scheduledDatetime: 'asc',
         },
@@ -149,8 +206,84 @@ export class PostExecutor {
         // Guard: template-based Stories must be rendered before sending
         if (post.postType === PostType.STORY && post.pageId) {
           if (post.renderStatus === RenderStatus.PENDING || post.renderStatus === RenderStatus.RENDERING) {
-            console.log(`⏳ Skipping post ${post.id} — still rendering (${post.renderStatus})`)
-            continue
+            /**
+             * Arte ainda não pronta na hora de publicar.
+             *
+             * Antes isto era `console.log` + `continue`: o post sumia da
+             * rodada sem log no banco e sem aviso. Quem edita a arte perto do
+             * horário deixa o post exatamente nesse estado, e a versão antiga
+             * fazia essa edição virar "o post não saiu".
+             *
+             * Este ramo alcança quem está na janela de publicação (T±1min) ou
+             * atrasado — o congelamento em si exige RENDERED/NOT_NEEDED, então
+             * quem prepara a arte a tempo é o cron `render-stories`, que
+             * prioriza os próximos 15 minutos. Aqui é o último recurso.
+             *
+             * RENDERING é de outra execução: não dá para atropelar. PENDING é
+             * nosso — mas só respeitando o backoff (ver abaixo).
+             */
+            if (post.renderStatus === RenderStatus.PENDING) {
+              /**
+               * O orçamento de `renderAttempts` é COMPARTILHADO com o cron
+               * `render-stories`, e `renderPostArt` reserva apenas por
+               * `renderStatus: PENDING` — os portões de `renderAttempts < 3` e
+               * `nextRenderAt <= agora` vivem na query do cron, não na função.
+               *
+               * Sem repeti-los aqui, este laço (que roda a cada minuto)
+               * queimaria as 3 tentativas em 3 minutos e marcaria RENDER_FAILED
+               * — que é terminal, nada volta de lá automaticamente. Uma
+               * instabilidade passageira do Blob mataria o post.
+               *
+               * A primeira tentativa continua imediata, porque a invalidação
+               * grava `nextRenderAt: agora` — é o caso de uso da janela. Só as
+               * seguintes esperam os 4 e 8 minutos do backoff.
+               */
+              const podeTentarAgora =
+                post.renderAttempts < 3 &&
+                (!post.nextRenderAt || post.nextRenderAt <= now)
+
+              if (!podeTentarAgora) {
+                console.log(
+                  `⏳ ${post.id} — aguardando backoff do render (tentativas: ${post.renderAttempts})`
+                )
+                continue
+              }
+
+              console.log(`🎨 Post ${post.id} sem arte pronta na hora — renderizando agora`)
+              const render = await renderPostArt({
+                id: post.id,
+                pageId: post.pageId,
+                slotValues: post.slotValues,
+                renderAttempts: post.renderAttempts,
+              })
+
+              if (render.ok) {
+                console.log(`🎨 ✓ ${post.id} renderizado na hora → ${render.url}`)
+                // sendToLater relê do banco; a mutação local é só para manter
+                // o objeto coerente com o que já foi gravado.
+                post.mediaUrls = [render.url]
+                post.renderStatus = RenderStatus.RENDERED
+              } else if (render.motivo === 'falhou') {
+                // Vencido e sem arte é falha de publicação, não silêncio.
+                if (isOverdue) {
+                  await this.registrarFalhaDeArte(
+                    post.id,
+                    `Arte não ficou pronta a tempo: ${render.erro ?? 'erro no render'}`,
+                    'A arte não ficou pronta a tempo da publicação'
+                  )
+                  failureCount++
+                }
+                continue
+              } else {
+                // 'ocupado' ou 'invalidado': outra execução está cuidando, ou
+                // a página mudou de novo. Volta na próxima rodada.
+                console.log(`⏳ ${post.id} — render ${render.motivo}, tentando na próxima rodada`)
+                continue
+              }
+            } else {
+              console.log(`⏳ Skipping post ${post.id} — still rendering (${post.renderStatus})`)
+              continue
+            }
           }
           if (post.renderStatus === RenderStatus.RENDER_FAILED) {
             console.log(`❌ Post ${post.id} — render failed after 3 attempts, marking FAILED`)
@@ -162,17 +295,13 @@ export class PostExecutor {
                 failedAt: new Date(),
               },
             })
-            await db.postLog.create({
-              data: {
-                postId: post.id,
-                event: PostLogEvent.FAILED,
-                message: 'Story image rendering failed after 3 attempts',
-              },
-            })
             // Sem retry: a arte já falhou nas 3 tentativas de render, reenviar
-            // não muda nada. Avisa a equipe direto.
-            await notifyPublishFailure(
+            // não muda nada. Avisa a equipe — pela mesma trava de 15 min, para
+            // não emendar num aviso que o render de última hora acabou de
+            // mandar sobre este mesmo post.
+            await this.registrarFalhaDeArte(
               post.id,
+              'Story image rendering failed after 3 attempts',
               'Não foi possível gerar a arte do story depois de 3 tentativas'
             )
             failureCount++

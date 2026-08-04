@@ -558,100 +558,87 @@ export class LaterPostScheduler {
         forceImmediate,
       })
 
-      // SOLUÇÃO 1: Lock distribuído com transação para evitar processamento duplo
-      const post = await db.$transaction(async (tx) => {
-        console.log(`[Later Scheduler] Transaction started for post ${postId}`)
-
-        // Busca e lock pessimista do post
-        const lockedPost = await tx.socialPost.findUnique({
-          where: { id: postId },
-          include: {
-            Project: {
-              select: {
-                id: true,
-                name: true,
-                laterAccountId: true,
-                laterProfileId: true,
-                instagramAccountId: true,
-                instagramUsername: true,
-                organizationProjects: {
-                  select: {
-                    organization: {
-                      select: {
-                        clerkOrgId: true,
-                      },
-                    },
-                  },
-                  take: 1,
-                },
-              },
-            },
-          },
-        })
-
-        if (!lockedPost) {
-          throw new Error('Post não encontrado')
-        }
-
-        // Se já tem laterPostId, já foi enviado - skip
-        if (lockedPost.laterPostId) {
-          console.log(
-            `[Later Scheduler] Post ${lockedPost.id} already sent to Later (${lockedPost.laterPostId}) - skipping duplicate send`
-          )
-          return null // Retorna null para indicar skip
-        }
-
-        // Se já está sendo processado, skip
-        if (lockedPost.status === PostStatus.POSTING) {
-          console.log(
-            `[Later Scheduler] Post ${lockedPost.id} already in POSTING status - skipping to prevent duplicate`
-          )
-          return null // Retorna null para indicar skip
-        }
-
-        // Marca imediatamente como POSTING com timestamp de processamento
-        const updatedPost = await tx.socialPost.update({
-          where: { id: postId },
-          data: {
-            status: PostStatus.POSTING,
-            processingStartedAt: new Date() // Campo agora existe em produção
-          },
-          include: {
-            Project: {
-              select: {
-                id: true,
-                name: true,
-                laterAccountId: true,
-                laterProfileId: true,
-                instagramAccountId: true,
-                instagramUsername: true,
-                organizationProjects: {
-                  select: {
-                    organization: {
-                      select: {
-                        clerkOrgId: true,
-                      },
-                    },
-                  },
-                  take: 1,
-                },
-              },
-            },
-          },
-        })
-
-        return updatedPost // Retorna o post atualizado com status POSTING e dados do Project
-      }, {
-        timeout: 10000 // 10 second timeout for transaction
+      /**
+       * RESERVA ATÔMICA — a trava contra envio duplicado.
+       *
+       * Isto era `findUnique` → dois `if` → `update` dentro de uma transação.
+       * Sob READ COMMITTED (o padrão do Postgres) e sem `FOR UPDATE`, o
+       * `findUnique` não segura a linha: duas execuções do cron podiam ler o
+       * mesmo post com `laterPostId` nulo, as duas passarem pelos `if`, e as
+       * duas mandarem — dois stories no Instagram do cliente. A transação
+       * dava a impressão de lock sem dar o lock.
+       *
+       * O `updateMany` com as condições no WHERE resolve no banco: só uma
+       * execução consegue `count === 1`; a outra vê 0 e desiste. É o mesmo
+       * idioma que o cron render-stories usa para não gravar render vencido.
+       *
+       * O WHERE reproduz os dois `if` antigos (laterPostId nulo, status
+       * diferente de POSTING) e acrescenta POSTED — post já publicado nunca
+       * deveria ser reenviado, e antes só escapava porque quem publica grava
+       * `laterPostId` junto.
+       *
+       * O que NÃO dá para exigir é `status: SCHEDULED`: quebraria o retry,
+       * porque post que falha fica FAILED e é reenviado por `executeRetries`.
+       */
+      const reserva = await db.socialPost.updateMany({
+        where: {
+          id: postId,
+          laterPostId: null,
+          status: { notIn: [PostStatus.POSTING, PostStatus.POSTED] },
+        },
+        data: {
+          status: PostStatus.POSTING,
+          processingStartedAt: new Date(),
+        },
       })
 
-      console.log(`[Later Scheduler] Transaction completed, post status: ${post?.status}`)
-
-      // Se o post foi skipado (null), retornar sucesso com flag skipped
-      if (!post) {
-        console.log(`[Later Scheduler] Post was skipped (already processing or sent)`)
+      if (reserva.count === 0) {
+        // Não conseguiu reservar: ou já foi entregue, ou outra execução pegou
+        // primeiro, ou o post sumiu. Leitura barata só para o log dizer qual.
+        const atual = await db.socialPost.findUnique({
+          where: { id: postId },
+          select: { id: true, laterPostId: true, status: true },
+        })
+        if (!atual) {
+          throw new Error('Post não encontrado')
+        }
+        console.log(
+          `[Later Scheduler] Post ${postId} não reservado (laterPostId=${atual.laterPostId ?? 'null'}, status=${atual.status}) — envio duplicado evitado`
+        )
         return { success: true, skipped: true }
       }
+
+      const post = await db.socialPost.findUnique({
+        where: { id: postId },
+        include: {
+          Project: {
+            select: {
+              id: true,
+              name: true,
+              laterAccountId: true,
+              laterProfileId: true,
+              instagramAccountId: true,
+              instagramUsername: true,
+              organizationProjects: {
+                select: {
+                  organization: {
+                    select: {
+                      clerkOrgId: true,
+                    },
+                  },
+                },
+                take: 1,
+              },
+            },
+          },
+        },
+      })
+
+      if (!post) {
+        throw new Error('Post não encontrado')
+      }
+
+      console.log(`[Later Scheduler] Post ${postId} reservado (status: ${post.status})`)
 
       // NOTE: Media normalization already done in createPost() - no need to re-normalize here
       console.log('[Later Scheduler] Using pre-normalized media URLs from database')

@@ -91,13 +91,33 @@ async function main() {
 
   // Por postIds, não por página: um post pulado pela guarda de 15 min pode
   // dividir a página com um alvo, e não pode ser arrastado junto
-  const count = await invalidateScheduledRenders(db, { postIds: alvos.map((p) => p.id) })
-  console.log(`\n✅ ${count} post(s) invalidado(s) — o cron re-renderiza em até 2 min.`)
-
-  // Conferência: nenhum dos alvos deve seguir RENDERED
-  const sobras = await db.socialPost.count({
-    where: { id: { in: alvos.map((p) => p.id) }, renderStatus: 'RENDERED' },
+  const { invalidados, congelados } = await invalidateScheduledRenders(db, {
+    postIds: alvos.map((p) => p.id),
   })
+  console.log(`\n✅ ${invalidados} post(s) invalidado(s) — o cron re-renderiza em até 2 min.`)
+
+  /**
+   * Post já entregue ao publicador não volta para a fila: a arte que vai ao ar
+   * é a cópia que está no Zernio, e re-renderizar aqui não a alcança. Sem
+   * listar isso, a conferência abaixo acusaria "ainda RENDERED" sem explicar
+   * por quê — e este script existe justamente para rodar depois de um deploy
+   * que muda o código de render.
+   */
+  if (congelados.length > 0) {
+    console.log(
+      `\n⚠️  ${congelados.length} post(s) já entregues ao publicador — a arte deles NÃO muda:`,
+    )
+    for (const id of congelados) console.log(`   ${id}`)
+    console.log('   Para trocar a arte: cancele o agendamento e agende de novo.')
+  }
+
+  // Conferência: nenhum dos alvos ALCANÇÁVEIS deve seguir RENDERED
+  const alcancaveis = alvos.map((p) => p.id).filter((id) => !congelados.includes(id))
+  const sobras = alcancaveis.length
+    ? await db.socialPost.count({
+        where: { id: { in: alcancaveis }, renderStatus: 'RENDERED' },
+      })
+    : 0
   console.log(sobras === 0 ? '✅ conferência: todos voltaram a PENDING.' : `❌ conferência: ${sobras} ainda RENDERED.`)
 }
 

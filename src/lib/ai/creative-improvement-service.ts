@@ -14,6 +14,7 @@
 
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
+import { descreverJanela } from '@/lib/posts/freeze-window'
 import { validateCreditsForFeature } from '@/lib/credits/deduct'
 import { InsufficientCreditsError } from '@/lib/credits/errors'
 import { getCurrentImageModel } from '@/lib/ai/openai-image-client'
@@ -114,10 +115,23 @@ export async function startImprovement(
   if (input.applyToPostId) {
     const post = await db.socialPost.findFirst({
       where: { id: input.applyToPostId, projectId: original.projectId },
-      select: { id: true, status: true },
+      select: { id: true, status: true, laterPostId: true, scheduledDatetime: true },
     })
     if (!post) {
       throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto', 404)
+    }
+    /**
+     * Post já entregue ao publicador não aceita mais troca de arte: o que vai
+     * ao ar é a cópia que está no Zernio. Recusar ANTES de cobrar o crédito —
+     * a melhoria custa ~140s e 1 crédito, e aplicá-la a um post congelado
+     * gastaria os dois para mudar só o que a agenda mostra.
+     */
+    if (post.laterPostId) {
+      throw new CreativeError(
+        'POST_CONGELADO',
+        descreverJanela(post).mensagem,
+        409,
+      )
     }
     // A melhoria vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
     // arte da API virou o briefing e a melhoria é o acabamento da criação;

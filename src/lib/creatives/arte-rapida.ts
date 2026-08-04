@@ -631,6 +631,12 @@ export interface AjustarArteResult {
   camposAlterados: string[]
   /** Posts da agenda que voltaram à fila de render por usarem esta página. */
   postsInvalidados: number
+  /**
+   * Posts que o ajuste NÃO alcança: já foram entregues ao publicador e vão ao
+   * ar com a arte anterior. O chat precisa dizer isso — deixar passar em
+   * silêncio é o bug que a janela de congelamento veio corrigir.
+   */
+  postsCongelados?: number
   /** Relatório da autocorreção geométrica de texto (sempre presente). */
   autocorrecao: AutofixReport
   avisos?: string[]
@@ -766,7 +772,8 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
 
   // Page.layers mudou: posts da agenda que usam esta página precisam voltar à
   // fila de render, senão publicam a arte antiga em silêncio.
-  const postsInvalidados = await invalidateScheduledRenders(db, { pageIds: [page.id] })
+  const invalidacao = await invalidateScheduledRenders(db, { pageIds: [page.id] })
+  const postsInvalidados = invalidacao.invalidados
 
   const camposAlterados = (layers as any[])
     .filter((l) => changedTextIds.includes(l.id))
@@ -779,6 +786,9 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     ...(imageWarning ? { imageWarning } : {}),
     camposAlterados,
     postsInvalidados,
+    ...(invalidacao.congelados.length > 0
+      ? { postsCongelados: invalidacao.congelados.length }
+      : {}),
     autocorrecao: fix.autocorrecao,
     ...(fix.avisos.length > 0 ? { avisos: fix.avisos } : {}),
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { renderStoryImage } from '@/lib/posts/story-renderer'
+import { renderPostArt } from '@/lib/posts/render-post-art'
+import { PRIORIDADE_RENDER_MS } from '@/lib/posts/freeze-window'
 import { PostStatus, RenderStatus } from '../../../../../prisma/generated/client'
 
 export const maxDuration = 120
@@ -21,17 +22,47 @@ export async function GET(req: NextRequest) {
     // da aprovação. `nextRenderAt: asc` mantém a prioridade certa — rascunho
     // reinvalidado a cada autosave volta para o fim da fila, nunca na frente
     // de um agendado esperando desde antes.
-    const postsToRender = await db.socialPost.findMany({
+    const filaBase = {
+      renderStatus: RenderStatus.PENDING,
+      nextRenderAt: { lte: now },
+      renderAttempts: { lt: 3 },
+      status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
+      pageId: { not: null },
+    }
+
+    /**
+     * Quem congela primeiro renderiza primeiro.
+     *
+     * A ordem por `nextRenderAt` é justa mas cega ao horário de publicação:
+     * um rascunho sem data reinvalidado agora entrava na frente de um story
+     * que vai ser entregue ao publicador em 3 minutos. Com a janela de
+     * congelamento isso passou a ser a diferença entre a arte nova entrar ou
+     * o post sair com a anterior — o executor até renderiza na hora, mas
+     * gastando o orçamento do cron de publicação.
+     */
+    const urgentes = await db.socialPost.findMany({
       where: {
-        renderStatus: RenderStatus.PENDING,
-        nextRenderAt: { lte: now },
-        renderAttempts: { lt: 3 },
-        status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
-        pageId: { not: null },
+        ...filaBase,
+        status: PostStatus.SCHEDULED,
+        laterPostId: null,
+        scheduledDatetime: {
+          gt: now,
+          lte: new Date(now.getTime() + PRIORIDADE_RENDER_MS),
+        },
       },
-      orderBy: { nextRenderAt: 'asc' },
-      take: 5, // Limit to 5 per execution (Vercel 120s timeout)
+      orderBy: { scheduledDatetime: 'asc' },
+      take: 5,
     })
+
+    const restantes = urgentes.length < 5
+      ? await db.socialPost.findMany({
+          where: { ...filaBase, id: { notIn: urgentes.map((p) => p.id) } },
+          orderBy: { nextRenderAt: 'asc' },
+          take: 5 - urgentes.length,
+        })
+      : []
+
+    const postsToRender = [...urgentes, ...restantes]
 
     if (postsToRender.length === 0) {
       return NextResponse.json({ success: true, rendered: 0 })
@@ -42,77 +73,28 @@ export async function GET(req: NextRequest) {
     let rendered = 0
     let failed = 0
 
+    // A reserva, o render e o descarte-em-voo vivem em `renderPostArt`, porque
+    // o executor precisa do mesmo comportamento quando um post entra na janela
+    // de congelamento sem a arte pronta.
     for (const post of postsToRender) {
-      try {
-        // Lock: set status to RENDERING
-        await db.socialPost.update({
-          where: { id: post.id },
-          data: { renderStatus: RenderStatus.RENDERING },
-        })
+      const result = await renderPostArt({
+        id: post.id,
+        pageId: post.pageId,
+        slotValues: post.slotValues,
+        renderAttempts: post.renderAttempts,
+      })
 
-        // Render the story image
-        const result = await renderStoryImage(
-          post.pageId!,
-          post.id,
-          post.slotValues as Record<string, unknown> | undefined,
-        )
-
-        // Success: gravar SÓ se o post ainda está RENDERING. Se uma edição
-        // invalidou o render no meio do voo (status voltou a PENDING), gravar
-        // aqui ressuscitaria a arte velha por cima da invalidação — o certo é
-        // descartar este resultado e deixar o próximo ciclo re-renderizar.
-        const confirmed = await db.socialPost.updateMany({
-          where: { id: post.id, renderStatus: RenderStatus.RENDERING },
-          data: {
-            renderStatus: RenderStatus.RENDERED,
-            renderedImageUrl: result.url,
-            renderedAt: new Date(),
-            renderError: null,
-            // Also set mediaUrls so the executor can use it
-            mediaUrls: [result.url],
-          },
-        })
-
-        if (confirmed.count === 0) {
-          console.log(`[render-stories] ↩ ${post.id} invalidated mid-render — discarding, will re-render`)
-          continue
-        }
-
+      if (result.ok) {
         console.log(`[render-stories] ✓ ${post.id} rendered → ${result.url}`)
         rendered++
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-        console.error(`[render-stories] ✗ ${post.id} failed:`, errorMessage)
+        continue
+      }
 
-        const newAttempts = post.renderAttempts + 1
-
-        if (newAttempts >= 3) {
-          // Max retries exceeded. Condicional pelo mesmo motivo do sucesso:
-          // se uma edição invalidou no meio, o post voltou a PENDING com
-          // tentativas zeradas — o dado mudou, a falha antiga não vale mais.
-          await db.socialPost.updateMany({
-            where: { id: post.id, renderStatus: RenderStatus.RENDERING },
-            data: {
-              renderStatus: RenderStatus.RENDER_FAILED,
-              renderAttempts: newAttempts,
-              renderError: errorMessage,
-            },
-          })
-        } else {
-          // Schedule retry with exponential backoff: 2^attempts * 2 minutes
-          const backoffMs = Math.pow(2, newAttempts) * 2 * 60 * 1000
-          await db.socialPost.updateMany({
-            where: { id: post.id, renderStatus: RenderStatus.RENDERING },
-            data: {
-              renderStatus: RenderStatus.PENDING,
-              renderAttempts: newAttempts,
-              renderError: errorMessage,
-              nextRenderAt: new Date(Date.now() + backoffMs),
-            },
-          })
-        }
-
+      if (result.motivo === 'falhou') {
+        console.error(`[render-stories] ✗ ${post.id} failed:`, result.erro)
         failed++
+      } else {
+        console.log(`[render-stories] ↩ ${post.id} ${result.motivo} — será renderizado no próximo ciclo`)
       }
     }
 

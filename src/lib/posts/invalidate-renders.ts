@@ -31,27 +31,62 @@ export type InvalidateTarget = { templateId: number } | { pageIds: string[] } | 
  * aprovar).
  */
 
+export interface InvalidateResult {
+  /** Posts devolvidos à fila de render. */
+  invalidados: number
+  /**
+   * Posts que a edição NÃO alcança porque já foram entregues ao publicador.
+   * Quem chama deve contar isso a quem editou — silêncio aqui é o bug que a
+   * janela de congelamento veio corrigir.
+   */
+  congelados: string[]
+}
+
 export async function invalidateScheduledRenders(
   client: DbClient,
   target: InvalidateTarget,
-): Promise<number> {
-  if ('pageIds' in target && target.pageIds.length === 0) return 0
-  if ('postIds' in target && target.postIds.length === 0) return 0
+): Promise<InvalidateResult> {
+  const vazio: InvalidateResult = { invalidados: 0, congelados: [] }
+  if ('pageIds' in target && target.pageIds.length === 0) return vazio
+  if ('postIds' in target && target.postIds.length === 0) return vazio
+
+  const alvo =
+    'templateId' in target
+      ? { templateId: target.templateId, pageId: { not: null } }
+      : 'pageIds' in target
+        ? { pageId: { in: target.pageIds } }
+        : { id: { in: target.postIds }, pageId: { not: null } }
+
+  const base = {
+    // DRAFT entra junto: o rascunho criado pelo chat guarda o PNG do momento
+    // da criação, e sem invalidar ele mostra a arte velha na agenda — e
+    // publica ela na aprovação, porque a aprovação só manda renderizar
+    // quando o post está sem mídia.
+    status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
+    renderStatus: { in: [RenderStatus.RENDERED, RenderStatus.PENDING, RenderStatus.RENDERING] },
+    ...alvo,
+  }
+
+  /**
+   * Post já entregue ao publicador é INTOCÁVEL.
+   *
+   * A arte que vai ao ar é a cópia que está no Zernio, e nada aqui fala com
+   * ele. Zerar `mediaUrls` de um post armado seria o pior dos dois mundos: a
+   * publicação sairia com a arte antiga do mesmo jeito, e o post local
+   * ficaria sem mídia — quebrando a capa na agenda e o recover manual, que
+   * reconstrói a publicação a partir de `mediaUrls`.
+   *
+   * Antes da janela de congelamento isso alcançava quase todo post agendado
+   * (a entrega acontecia ~39s após o agendamento). Agora só alcança quem está
+   * nos últimos minutos antes do horário.
+   */
+  const congeladosRows = await client.socialPost.findMany({
+    where: { ...base, laterPostId: { not: null } },
+    select: { id: true },
+  })
 
   const result = await client.socialPost.updateMany({
-    where: {
-      // DRAFT entra junto: o rascunho criado pelo chat guarda o PNG do momento
-      // da criação, e sem invalidar ele mostra a arte velha na agenda — e
-      // publica ela na aprovação, porque a aprovação só manda renderizar
-      // quando o post está sem mídia.
-      status: { in: [PostStatus.SCHEDULED, PostStatus.DRAFT] },
-      renderStatus: { in: [RenderStatus.RENDERED, RenderStatus.PENDING, RenderStatus.RENDERING] },
-      ...('templateId' in target
-        ? { templateId: target.templateId, pageId: { not: null } }
-        : 'pageIds' in target
-          ? { pageId: { in: target.pageIds } }
-          : { id: { in: target.postIds }, pageId: { not: null } }),
-    },
+    where: { ...base, laterPostId: null },
     data: {
       renderStatus: RenderStatus.PENDING,
       renderedImageUrl: null,
@@ -63,7 +98,7 @@ export async function invalidateScheduledRenders(
     },
   })
 
-  return result.count
+  return { invalidados: result.count, congelados: congeladosRows.map((p) => p.id) }
 }
 
 /**

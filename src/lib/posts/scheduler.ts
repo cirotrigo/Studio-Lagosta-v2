@@ -9,7 +9,7 @@ import {
   PublishType,
 } from '../../../prisma/generated/client'
 import { LaterPostScheduler } from './later-scheduler'
-import { handlePublishFailure, RETRY_DELAY_MS } from './failure-handler'
+import { handlePublishFailure, notifyPublishFailure, RETRY_DELAY_MS } from './failure-handler'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -147,6 +147,36 @@ export class PostScheduler {
       select: { id: true, laterPostId: true, scheduledDatetime: true },
     })
 
+    /**
+     * Case (c): SCHEDULED que passou do horário e nunca foi entregue.
+     *
+     * Enquanto o PRE-SEND entregava todo post futuro assim que ficava pronto,
+     * uma queda do nosso cron era irrelevante — o post já estava no publicador
+     * e saía sozinho. Com a janela de congelamento a entrega acontece nos
+     * minutos finais, então o cron passou a ser o único responsável pelo
+     * horário: se ele estiver fora do ar nesses minutos, ninguém publica.
+     *
+     * O catch-up do executor cobre 6 horas. Passado esse piso, nenhum caminho
+     * enxergava o post: o caso (a) exige POSTING e o caso (b) exige
+     * laterPostId. Havia 19 posts assim no banco (o mais recente de
+     * 01/01/2026), parados em silêncio — o ralo é anterior a esta mudança,
+     * mas a janela amplia muito quem cai nele.
+     *
+     * O limite inferior de 7 dias não é detalhe: sem ele, esses 19 zumbis
+     * antigos virariam uma enxurrada no grupo do WhatsApp na primeira rodada.
+     */
+    const seisHorasAtras = new Date(Date.now() - 6 * 60 * 60 * 1000)
+    const umaSemanaAtras = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    const naoEntregues = await db.socialPost.findMany({
+      where: {
+        status: PostStatus.SCHEDULED,
+        laterPostId: null,
+        publishType: { not: PublishType.REMINDER },
+        scheduledDatetime: { lt: seisHorasAtras, gt: umaSemanaAtras },
+      },
+      select: { id: true },
+    })
+
     const orphans: string[] = []
     if (orphanCandidates.length > 0) {
       const { getLaterClient } = await import('@/lib/later')
@@ -163,7 +193,7 @@ export class PostScheduler {
       }
     }
 
-    if (stuckPosts.length === 0 && orphans.length === 0) {
+    if (stuckPosts.length === 0 && orphans.length === 0 && naoEntregues.length === 0) {
       console.log('✅ No stuck posts found')
       return { updated: 0 }
     }
@@ -228,6 +258,41 @@ export class PostScheduler {
         await handlePublishFailure(
           id,
           new Error('O agendador descartou o post e não publicou')
+        )
+      }
+    }
+
+    if (naoEntregues.length > 0) {
+      const ids = naoEntregues.map((p) => p.id)
+      const result = await db.socialPost.updateMany({
+        where: { id: { in: ids } },
+        data: {
+          status: PostStatus.FAILED,
+          errorMessage:
+            'Passou do horário e nunca foi entregue ao agendador - o cron de publicação não alcançou este post',
+          failedAt: new Date(),
+        },
+      })
+      updatedCount += result.count
+      await Promise.all(
+        ids.map((id) =>
+          this.createLog(
+            id,
+            PostLogEvent.FAILED,
+            'Passou mais de 6h do horário sem ser entregue ao agendador - marcado como FAILED'
+          )
+        )
+      )
+
+      /**
+       * `notifyPublishFailure`, não `handlePublishFailure`: publicar de
+       * madrugada um story que era para as 20h é pior que não publicar. O
+       * horário faz parte do conteúdo — quem decide republicar é gente.
+       */
+      for (const id of ids) {
+        await notifyPublishFailure(
+          id,
+          'Passou do horário sem ser publicado — o agendamento não chegou a ser enviado'
         )
       }
     }

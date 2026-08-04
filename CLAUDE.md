@@ -436,6 +436,58 @@ alcance do token global. Cada projeto pode ter o seu:
 - **Security**: All error messages sanitized to remove tokens before logging
 - **Monitoring**: Verification results logged with structured data for debugging
 
+### Janela de congelamento — até quando a arte é editável (03/08/2026)
+
+O post só é entregue ao Zernio **5 minutos antes do horário**
+(`FREEZE_WINDOW_MS` em `src/lib/posts/freeze-window.ts`). Antes disso a arte no
+banco é a única fonte de verdade e pode ser editada à vontade; depois, o que
+vai ao ar é a cópia que está no Zernio.
+
+**O que havia antes**: o PRE-SEND do executor entregava TODO post futuro assim
+que ficasse renderizado, sem teto de data — mediana de **39 segundos** após o
+agendamento, com posts congelados por até 27 dias. Como nada no funil de render
+fala com o Zernio, editar a arte depois disso não mudava o que era publicado:
+**29 posts em 33 dias publicaram a versão velha, em silêncio**, com a agenda
+mostrando a arte certa. O PRE-SEND não nasceu de incidente nenhum — entrou como
+bullet do commit de rebrand `b7409a5` (17/04/2026); até ali o Studio era o
+relógio, com `publishNow` fixo.
+
+Regras que sobrevivem:
+
+- **`laterPostId` não nulo significa INTOCÁVEL.** `invalidateScheduledRenders`
+  não mexe nesses posts e os devolve em `congelados[]` — zerar `mediaUrls` de um
+  post armado publicaria a arte velha do mesmo jeito **e** quebraria a capa na
+  agenda e o `recover-stuck-post`, que reconstrói a publicação a partir dela.
+  Quem chama a invalidação precisa contar isso a quem editou.
+- **A invalidação devolve `{ invalidados, congelados }`, não `number`.** São 7
+  chamadores; o `tsc` **não** pega quem interpola o retorno em template literal
+  (foi assim que `rerender-agendados.ts` passou batido na primeira leva).
+- **Encurtar a janela mexe em duas coisas opostas**: mais tempo editável, menos
+  folga para o sistema se recuperar. Com 5 min a cadeia de retry (~7 min) já
+  não cabe inteira. E a janela mudou **quem responde pelo horário**: com a
+  entrega horas antes, queda do nosso cron era irrelevante; agora, se o cron
+  estiver fora do ar nos minutos finais, ninguém publica.
+- **`checkStuckPosts` ganhou o caso (c)**: SCHEDULED sem `laterPostId` que
+  passou 6h do horário vira FAILED + aviso. Os casos (a) e (b) exigem POSTING e
+  `laterPostId` — nenhum enxergava esse post, e havia **19 parados em silêncio**
+  no banco. O piso de 7 dias existe para os zumbis antigos não virarem enxurrada
+  no grupo.
+- **`renderPostArt` (`src/lib/posts/render-post-art.ts`) reserva apenas por
+  `renderStatus: PENDING`** — os portões de `renderAttempts < 3` e
+  `nextRenderAt <= agora` vivem nas queries de quem chama, e o orçamento de
+  tentativas é **compartilhado** entre o cron `render-stories` e o render de
+  última hora do executor. Chamador novo que esqueça os portões queima as 3
+  tentativas em 3 minutos e marca `RENDER_FAILED`, que é terminal.
+- **Aviso de falha de arte tem trava de 15 min** (`registrarFalhaDeArte`): o
+  `dedupeByPost` do batch só protege dentro de UMA execução do cron, e o post
+  vencido volta a cada minuto. Log sempre, aviso uma vez.
+- **`maxDuration` de rota vai INLINE, não no `vercel.json`**: o glob de lá é
+  `app/api/**` e o projeto é `src/app/**` — nenhuma entrada casa. É por isso que
+  11 crons declaram inline; `/api/cron/posts` não declarava e rodava no default
+  da plataforma.
+- **O backlog anterior ao deploy não é alcançado**: quem já está no Zernio sob a
+  regra antiga segue congelado, e a invalidação segue sem efeito nele.
+
 ### Retry de publicação e avisos de falha no WhatsApp
 
 Post que falha **continua FAILED** (não existe status novo, não volta para
@@ -569,8 +621,12 @@ página/camada, e a troca de fonte com medição de caixa. Regras que ficaram:
   e o peso pedido tem de existir no arquivo — faux-bold só existe no browser.
 - **Trocar fonte muda a métrica**: medir a caixa com a fonte nova, senão o
   texto quebra e a linha extra é cortada pela altura.
-- O RenderEngine ainda ignora `letterSpacing`, fundo de texto, contorno,
-  curved/blur e `richTextStyles` — lista completa e alcances na § 3 do doc.
+- ~~O RenderEngine ainda ignora `letterSpacing`, fundo de texto, contorno,
+  curved/blur e `richTextStyles`~~ — **desatualizado, corrigido em 03/08/2026**:
+  todos esses já existem em `src/lib/render-engine.ts` (fundo :111, contorno
+  :457, curvo :368, blur :408, rich-text via `flattenRichTextStyles`,
+  letterSpacing :601). Sobra só o kerning (~1px). A linha contradizia a própria
+  seção seguinte deste arquivo e já produziu diagnóstico falso.
 
 `docs/SESSAO-2026-07-28-LETTERSPACING-AUTOEXPAND.md` (tarde do mesmo dia)
 fecha as duas divergências de maior alcance da tabela e o Auto da caixa:

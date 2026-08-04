@@ -437,6 +437,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           id: args.applyToPostId,
           projectId: args.projectId,
           status: { in: ['DRAFT', 'SCHEDULED'] },
+          // Post já entregue ao publicador vai ao ar com a arte que está no
+          // Zernio; trocar `mediaUrls` aqui só faria a agenda mentir sobre o
+          // que foi publicado. A checagem é feita duas vezes — o serviço
+          // recusa ao aceitar o pedido, e aqui de novo, porque a melhoria
+          // leva ~140s em `after()` e a janela pode ter fechado no meio.
+          laterPostId: null,
         },
         data: {
           mediaUrls: [blob.url],

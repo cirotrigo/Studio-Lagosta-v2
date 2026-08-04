@@ -156,15 +156,16 @@ export async function PATCH(
     // "Unable to start a transaction in the given time" no meio da edição.
     let page
     let invalidated = 0
+    let congelados: string[] = []
     if (visualChanged) {
-      ;({ page, invalidated } = await db.$transaction(
+      ;({ page, invalidated, congelados } = await db.$transaction(
         async (tx) => {
           const updated = await tx.page.update({
             where: { id: pageId },
             data: updateData,
           })
-          const count = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
-          return { page: updated, invalidated: count }
+          const r = await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+          return { page: updated, invalidated: r.invalidados, congelados: r.congelados }
         },
         // Accelerate: o maxWait default (2s) estourava com autosaves em
         // sequência — "Unable to start a transaction in the given time"
@@ -180,11 +181,19 @@ export async function PATCH(
     if (invalidated > 0) {
       console.log(`[API] Page ${pageId} changed — invalidated ${invalidated} scheduled render(s)`)
     }
+    if (congelados.length > 0) {
+      console.warn(
+        `[API] Page ${pageId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
+      )
+    }
 
     // Deserializar layers na resposta
     const pageWithParsedLayers = {
       ...page,
       layers: typeof page.layers === 'string' ? JSON.parse(page.layers) : page.layers,
+      // O autosave do editor bate aqui a cada pausa: é o ponto natural para
+      // avisar que a edição não alcança mais um post já entregue.
+      ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
     }
 
     return NextResponse.json(pageWithParsedLayers)

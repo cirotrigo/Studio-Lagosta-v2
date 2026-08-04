@@ -79,7 +79,7 @@ export async function PATCH(
     ;(layers as any[])[layerIndex] = updatedLayer
 
     // Salvar de volta no banco (e invalidar renders na mesma transação)
-    const { updatedPage, invalidated } = await db.$transaction(async (tx) => {
+    const { updatedPage, invalidated, congelados } = await db.$transaction(async (tx) => {
       const saved = await tx.page.update({
         where: { id: pageId },
         data: {
@@ -87,12 +87,19 @@ export async function PATCH(
           updatedAt: new Date(),
         },
       })
-      const count = layerChanged ? await invalidateScheduledRenders(tx, { pageIds: [pageId] }) : 0
-      return { updatedPage: saved, invalidated: count }
+      const r = layerChanged
+        ? await invalidateScheduledRenders(tx, { pageIds: [pageId] })
+        : { invalidados: 0, congelados: [] as string[] }
+      return { updatedPage: saved, invalidated: r.invalidados, congelados: r.congelados }
     })
 
     if (invalidated > 0) {
       console.log(`[API] Layer ${layerId} changed — invalidated ${invalidated} scheduled render(s)`)
+    }
+    if (congelados.length > 0) {
+      console.warn(
+        `[API] Layer ${layerId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
+      )
     }
 
     return NextResponse.json({
@@ -102,6 +109,7 @@ export async function PATCH(
         ...updatedPage,
         layers: typeof updatedPage.layers === 'string' ? JSON.parse(updatedPage.layers) : updatedPage.layers,
       },
+      ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
     })
   } catch (error) {
     console.error('Error updating layer:', error)

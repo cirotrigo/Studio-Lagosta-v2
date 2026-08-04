@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { updateTemplateSchema } from '@/lib/validations/studio'
 import type { Prisma } from '@/lib/prisma-types'
 import { hasProjectReadAccess, hasProjectWriteAccess } from '@/lib/projects/access'
-import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
+import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 
 export const runtime = 'nodejs'
 
@@ -130,6 +130,9 @@ export async function PUT(
       data.localId = parsed.localId
     }
 
+    let invalidados = 0
+    let congelados: string[] = []
+
     // Use transaction to update template and pages together
     const updated = await db.$transaction(async (tx) => {
       const updatedTemplate = await tx.template.update({
@@ -145,8 +148,58 @@ export async function PUT(
         // fall back to matching the current template page by order/name.
         const existingPages = await tx.page.findMany({
           where: { templateId },
-          select: { id: true, name: true, order: true },
+          // layers/background/width/height entram para permitir comparar o
+          // que mudou de VERDADE — ver `paginasAlteradas` mais abaixo.
+          select: {
+            id: true,
+            name: true,
+            order: true,
+            layers: true,
+            background: true,
+            width: true,
+            height: true,
+          },
         })
+        const estadoVisualAnterior = new Map(
+          existingPages.map((p) => [
+            p.id,
+            {
+              layers: normalizeLayersString(p.layers),
+              background: p.background,
+              width: p.width,
+              height: p.height,
+            },
+          ]),
+        )
+        /**
+         * Só as páginas cujo VISUAL mudou voltam para a fila de render.
+         *
+         * Até 03/08/2026 este handler invalidava por `templateId` inteiro, e a
+         * chamada estava fora do `if (designData?.pages)` — salvar só o nome do
+         * template devolvia à fila todos os posts de todas as páginas. Num
+         * template com 10 posts vivos em 10 páginas, um "Salvar" re-renderizava
+         * os 10. É a mesma regra que o PATCH de página já aplicava (o
+         * `visualChanged` de lá); aqui ela faltava.
+         */
+        const paginasAlteradas = new Set<string>()
+        const marcarSeMudou = (
+          pageId: string,
+          novo: { layers: string; background: string; width: number; height: number },
+        ) => {
+          const anterior = estadoVisualAnterior.get(pageId)
+          if (!anterior) {
+            paginasAlteradas.add(pageId)
+            return
+          }
+          if (
+            normalizeLayersString(novo.layers) !== anterior.layers ||
+            novo.background !== anterior.background ||
+            novo.width !== anterior.width ||
+            novo.height !== anterior.height
+          ) {
+            paginasAlteradas.add(pageId)
+          }
+        }
         const existingPageIds = new Set(existingPages.map((p) => p.id))
         const incomingPageIds = Array.from(
           new Set(designData.pages.map((p) => p.id).filter((pageId): pageId is string => typeof pageId === 'string' && pageId.length > 0))
@@ -196,6 +249,7 @@ export async function PUT(
           }
 
           if (requestedPageId && existingPageIds.has(requestedPageId)) {
+            marcarSeMudou(requestedPageId, pageData)
             await tx.page.update({
               where: { id: requestedPageId },
               data: pageData,
@@ -207,6 +261,7 @@ export async function PUT(
             const hasForeignIdConflict = requestedPageId ? foreignPageIds.has(requestedPageId) : false
 
             if (fallbackPage) {
+              marcarSeMudou(fallbackPage.id, pageData)
               await tx.page.update({
                 where: { id: fallbackPage.id },
                 data: pageData,
@@ -234,20 +289,39 @@ export async function PUT(
             where: { id: { in: pagesToDelete } },
           })
         }
-      }
 
-      // Salvar o template muda a arte: os posts agendados voltam para PENDING
-      // e o cron re-renderiza (a regra vive em invalidate-renders, compartilhada
-      // com as rotas de página)
-      const invalidated = await invalidateScheduledRenders(tx, { templateId })
-      if (invalidated > 0) {
-        console.log(`[API] Invalidated renders for ${invalidated} scheduled posts`)
+        // Página cujo visual mudou faz a arte agendada valer nada: volta para
+        // a fila de render. Só as alteradas — e só quando o payload traz
+        // páginas (um PUT que muda apenas o nome do template não mexe em arte
+        // nenhuma).
+        if (paginasAlteradas.size > 0) {
+          const r = await invalidateScheduledRenders(tx, {
+            pageIds: Array.from(paginasAlteradas),
+          })
+          invalidados = r.invalidados
+          congelados = r.congelados
+          console.log(
+            `[API] Template ${templateId}: ${paginasAlteradas.size} página(s) alterada(s) — ${invalidados} render(s) invalidado(s)`,
+          )
+        }
       }
 
       return updatedTemplate
     })
 
-    return NextResponse.json(updated)
+    if (congelados.length > 0) {
+      console.warn(
+        `[API] Template ${templateId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
+      )
+    }
+
+    return NextResponse.json({
+      ...updated,
+      // A edição não alcança post já entregue ao publicador. Devolver isso é o
+      // que permite ao editor avisar em vez de deixar a pessoa achar que a
+      // mudança valeu para tudo.
+      ...(congelados.length > 0 ? { postsCongelados: congelados } : {}),
+    })
   } catch (error) {
     console.error('[API] Failed to update template:', error)
 
