@@ -29,6 +29,7 @@ import { cropToInstagramFeed } from '@/lib/images/auto-crop'
 import { handlePublishFailure } from './failure-handler'
 import { isVideoUrl } from '@/lib/media-type'
 import { pageContainsVideoLayer } from './page-to-design-data'
+import { ensurePostGeneration } from './ensure-post-generation'
 
 interface RecurringConfig {
   frequency: RecurrenceFrequency
@@ -327,6 +328,20 @@ export class LaterPostScheduler {
 
     // Log creation
     await this.createLog(post.id, PostLogEvent.CREATED, 'Post criado via Later')
+
+    /**
+     * Vincula a Generation que habilita "Melhorar com IA" na agenda.
+     *
+     * O modal "Agendar" do editor manda `generationIds: []` fixo, então todo
+     * post criado por ele nascia sem vínculo — 193 de 193 em produção. Aqui a
+     * arte já existe (o modal sobe o export do stage antes de criar o post),
+     * então é só registrá-la. Post de página sem arte ainda volta vazio; quem
+     * o vincula é o `renderPostArt`, quando o render termina.
+     */
+    if (!post.generationId && post.pageId) {
+      const generationId = await ensurePostGeneration(post.id)
+      if (generationId) post = { ...post, generationId }
+    }
 
     // For IMMEDIATE posts, send to Later API now
     // For SCHEDULED posts, keep in database and send via cron job later

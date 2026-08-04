@@ -14,6 +14,7 @@
  */
 import { db } from '@/lib/db'
 import { renderStoryImage } from '@/lib/posts/story-renderer'
+import { ensurePostGeneration } from './ensure-post-generation'
 import { RenderStatus } from '../../../prisma/generated/client'
 
 /**
@@ -86,6 +87,18 @@ export async function renderPostArt(post: RenderablePost): Promise<RenderPostArt
     if (confirmed.count === 0) {
       return { ok: false, motivo: 'invalidado' }
     }
+
+    /**
+     * Só agora a arte existe: é o momento de vincular a Generation que habilita
+     * "Melhorar com IA". Cobre o caminho do MCP (`create-post` cria o post sem
+     * arte e deixa o cron renderizar) — sem isto, esses posts ficariam sem
+     * vínculo para sempre, como os 193 medidos em 03/08/2026.
+     *
+     * Não vincula de novo em re-render: `ensurePostGeneration` sai cedo quando
+     * o post já tem `generationId`, então a arte melhorada continua sendo a
+     * dona do vínculo.
+     */
+    await ensurePostGeneration(post.id)
 
     return { ok: true, url: result.url }
   } catch (error) {
