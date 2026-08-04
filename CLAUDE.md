@@ -855,6 +855,18 @@ valem para qualquer mexida no editor:
   `konva-editable-text.tsx`, senão o controle simplesmente não funciona.
 - **Alinhamento vive em duas telas** (painel de propriedades e
   `alignment-toolbar`); mudou a regra, mude nas duas.
+- **UI do app NUNCA é montada em `createRoot` avulso.** Componente dentro da
+  árvore do Konva não pode renderizar DOM; a saída é publicar um pedido num
+  store (`rich-text-edit-store.ts`) e deixar um host na árvore DOM abrir o
+  modal (`RichTextEditorHost`, montado no `EditorCanvas`). O modal de Rich Text
+  era criado com `createRoot(document.body…)` e ficava SEM providers: abrir o
+  seletor de cor chamava `useBrandColors` → `useQuery` sem QueryClient →
+  exceção sem error boundary → o React derrubava aquela raiz inteira. O modal
+  sumia e não reabria, porque o `open` continuava `true` na camada.
+- **Modal aberto sobre o canvas precisa desarmar os atalhos globais**: o
+  `keydown` do `EditorCanvas` só ignorava input/textarea/contenteditable, então
+  Backspace com uma palavra selecionada no editor de Rich Text apagava a
+  CAMADA. Hoje ele sai cedo quando `getRichTextEditRequest()` existe.
 - **O crescimento automático da caixa é do editor**, não do `render-engine`: um
   `slotValues` mais longo que o texto do template é cortado na altura gravada.
 - **A entrelinha mora em dois campos** e o render server-side prefere

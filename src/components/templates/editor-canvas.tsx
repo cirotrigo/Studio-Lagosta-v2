@@ -11,6 +11,8 @@ import { TextToolbar } from './text-toolbar'
 import { ImageToolbar } from './image-toolbar'
 import { EffectsPanel } from '@/components/canvas/effects'
 import { AlignmentToolbar } from './alignment-toolbar'
+import { RichTextEditorHost } from './rich-text-editor-host'
+import { getRichTextEditRequest } from './rich-text-edit-store'
 import { ZoomControls } from './zoom-controls'
 import { useEditorViewMode } from '@/hooks/use-editor-view-mode'
 import { useIsMobile } from '@/hooks/use-media-query'
@@ -184,6 +186,10 @@ export function EditorCanvas() {
         return
       }
 
+      // Editor de rich text aberto: as teclas são dele, não do canvas
+      // (sem isso, Backspace com uma palavra selecionada apagava a camada)
+      if (getRichTextEditRequest()) return
+
       // Modo de recorte: Enter/Esc são do overlay; nada de deletar/mover aqui
       if (croppingLayerId) return
 
@@ -264,6 +270,10 @@ export function EditorCanvas() {
 
   return (
     <div ref={containerRef} className="flex flex-col h-full w-full">
+      {/* Editor de Rich Text — precisa ficar AQUI, na árvore DOM do app, para
+          herdar QueryClient/tema/contexto do editor */}
+      <RichTextEditorHost />
+
       {/* Zona de toolbars com altura FIXA — o canvas nunca se move ao selecionar uma camada */}
       <div
         className="flex-shrink-0 z-30 flex flex-col items-center justify-start gap-1 overflow-hidden px-2 pt-2"

@@ -1,14 +1,17 @@
 "use client"
 
 import * as React from 'react'
-import { createRoot } from 'react-dom/client'
 import Konva from 'konva'
 import { Group, Text, Rect } from 'react-konva'
 import type { KonvaEventObject } from 'konva/lib/Node'
 import type { Layer, LayerStyle, RichTextStyle } from '@/types/template'
 import type { TextStyleSegment, RichTextRenderOptions, LayoutResult } from '@/types/rich-text'
 import { flattenRichTextStyles } from '@/lib/rich-text-styles'
-import { RichTextEditorModal } from './modals/rich-text-editor-modal'
+import {
+  closeRichTextEditor,
+  getRichTextEditRequest,
+  openRichTextEditor,
+} from './rich-text-edit-store'
 
 /**
  * KonvaMultiStyledText - Componente para renderizar texto com múltiplos estilos
@@ -56,24 +59,7 @@ export function KonvaMultiStyledText({
   onChange,
   projectId = 0,
 }: KonvaMultiStyledTextProps) {
-  const [modalOpen, setModalOpen] = React.useState(false)
   const [isHovering, setIsHovering] = React.useState(false) // Hover state
-
-  // DEBUG: Log quando componente é montado
-  React.useEffect(() => {
-    console.log('✨ KonvaMultiStyledText montado!', {
-      layerId: layer.id,
-      content: layer.content,
-      listening: commonProps.listening,
-      draggable: commonProps.draggable,
-      position: { x: commonProps.x, y: commonProps.y }
-    })
-  }, [])
-
-  // DEBUG: Log quando modal abre/fecha
-  React.useEffect(() => {
-    console.log(modalOpen ? '📂 Modal ABERTO' : '📁 Modal fechado')
-  }, [modalOpen])
 
   // Apply text transform based on style (uppercase, lowercase, capitalize)
   const applyTextTransform = React.useCallback((text: string, transform?: string) => {
@@ -98,49 +84,49 @@ export function KonvaMultiStyledText({
 
   // Handler para clique simples
   const handleClick = React.useCallback((event: KonvaEventObject<MouseEvent | TouchEvent>) => {
-    console.log('👆 Rich text clicado (click simples)')
     commonProps.onClick(event)
   }, [commonProps])
 
-  // Handler para duplo-clique - abre modal de edição
-  const handleDblClick = React.useCallback((event: KonvaEventObject<MouseEvent | TouchEvent>) => {
-    console.log('👆👆 Rich text DUPLO-CLICADO! Abrindo modal...')
-    event.cancelBubble = true
-    setModalOpen(true)
-  }, [])
-
-  // Snapshot do layer quando o modal abre (não muda durante a edição)
-  const layerSnapshot = React.useRef<Layer | null>(null)
-
-  // Ref para onChange (sempre atualizado, mas não causa re-render)
+  // Refs sempre atualizados: o modal vive fora desta árvore e não pode
+  // depender do closure do render em que foi aberto
+  const layerRef = React.useRef(layer)
   const onChangeRef = React.useRef(onChange)
   React.useEffect(() => {
+    layerRef.current = layer
     onChangeRef.current = onChange
-  }, [onChange])
-
-  React.useEffect(() => {
-    if (modalOpen && !layerSnapshot.current) {
-      console.log('📸 Capturando snapshot do layer:', layer.id)
-      layerSnapshot.current = layer
-    } else if (!modalOpen) {
-      console.log('🗑️ Limpando snapshot do layer')
-      layerSnapshot.current = null
-    }
-  }, [modalOpen, layer])
+  })
 
   // Handler para salvar mudanças do modal
-  // Usa ref para onChange - não causa recriação do modal
   const handleSaveFromModal = React.useCallback(
     (content: string, styles: RichTextStyle[]) => {
-      console.log('💾 Salvando mudanças do modal')
       onChangeRef.current({
         content,
         richTextStyles: styles,
       })
-      setModalOpen(false)
     },
     [] // ← SEM dependências - usa ref
   )
+
+  // Handler para duplo-clique - abre o modal de edição (renderizado pelo
+  // RichTextEditorHost, na árvore DOM do app)
+  const handleDblClick = React.useCallback((event: KonvaEventObject<MouseEvent | TouchEvent>) => {
+    event.cancelBubble = true
+    openRichTextEditor({
+      // Snapshot: o modal edita uma cópia e só devolve no "Salvar"
+      layer: layerRef.current,
+      projectId,
+      onSave: handleSaveFromModal,
+    })
+  }, [projectId, handleSaveFromModal])
+
+  // Camada removida com o modal aberto: fecha para não editar no vazio.
+  // Só fecha o que é DESTA camada — outra pode ter assumido o modal.
+  const layerId = layer.id
+  React.useEffect(() => {
+    return () => {
+      if (getRichTextEditRequest()?.layer.id === layerId) closeRichTextEditor()
+    }
+  }, [layerId])
 
   // Parsear rich text styles em segments
   const segments = React.useMemo(() => {
@@ -237,60 +223,6 @@ export function KonvaMultiStyledText({
     return calculatedLayout
   }, [segments, layer.size, layer.style, displayText])
 
-  // Renderizar modal fora da árvore Konva usando useEffect
-  React.useEffect(() => {
-    console.log('⚡ useEffect do modal disparou:', {
-      modalOpen,
-      hasDocument: typeof document !== 'undefined',
-      hasSnapshot: !!layerSnapshot.current,
-      projectId,
-    })
-
-    if (!modalOpen || typeof document === 'undefined' || !layerSnapshot.current) {
-      console.log('❌ Não vai criar modal (condição não satisfeita)')
-      return
-    }
-
-    console.log('🔧 Criando modal fora do Konva...', {
-      modalOpen,
-      hasSnapshot: !!layerSnapshot.current,
-      projectId,
-    })
-
-    // Usar snapshot do layer (não muda durante edição, evita recriar modal)
-    const currentLayer = layerSnapshot.current
-
-    // Criar container div para o modal
-    const modalContainer = document.createElement('div')
-    modalContainer.id = `rich-text-modal-${currentLayer.id}`
-    document.body.appendChild(modalContainer)
-
-    // Renderizar modal no container usando createRoot
-    const root = createRoot(modalContainer)
-    root.render(
-      <RichTextEditorModal
-        open={modalOpen}
-        onClose={() => setModalOpen(false)}
-        layer={currentLayer}
-        projectId={projectId}
-        onSave={handleSaveFromModal}
-      />
-    )
-
-    console.log('✅ Modal criado e renderizado fora do Konva!')
-
-    // Cleanup: remover modal quando fechar ou componente desmontar
-    // IMPORTANTE: usar setTimeout para fazer unmount assíncrono (evita race condition)
-    return () => {
-      console.log('🗑️ Removendo modal do DOM...')
-      setTimeout(() => {
-        root.unmount()
-        setTimeout(() => {
-          modalContainer.remove()
-        }, 0)
-      }, 0)
-    }
-  }, [modalOpen, projectId, handleSaveFromModal])
 
   // Usar dimensões do layer (preservar caixa de texto original)
   const boxWidth = layer.size?.width ?? layout.bounds.width
