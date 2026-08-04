@@ -758,17 +758,21 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                 </>
               )}
 
-              {/* Melhorar com IA: só arte APROVADA. Rascunho se edita no
-                  editor — a melhoria entra depois da aprovação, e o servidor
-                  reforça a mesma regra. */}
+              {/* Melhorar com IA — vale para rascunho e agendado; o servidor
+                  reforça a mesma regra. Em carrossel age no slide visível. */}
               {canImprove && (
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => setImproveOpen(true)}
+                  title={
+                    isCarousel
+                      ? `Melhora só o slide ${currentImageIndex + 1} — os outros ficam como estão`
+                      : undefined
+                  }
                 >
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Melhorar com IA
+                  {isCarousel ? `Melhorar slide ${currentImageIndex + 1} com IA` : 'Melhorar com IA'}
                 </Button>
               )}
 
@@ -873,10 +877,16 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
             id: post.generationId,
             projectId: post.projectId,
             // A arte que se melhora é a que está NO POST, não o resultUrl da
-            // Generation — o cron pode ter re-renderizado depois dela.
-            resultUrl: mediaUrls[0],
-            templateName: `${isStory ? 'Story' : 'Post'} agendado — ${formatPostDateTimeBR(post)}`,
+            // Generation — o cron pode ter re-renderizado depois dela. Em
+            // carrossel é o slide que está NA TELA: mandar sempre o primeiro
+            // melhorava a imagem errada.
+            resultUrl: currentMediaUrl,
+            templateName: isCarousel
+              ? `${isStory ? 'Story' : 'Post'} agendado, slide ${currentImageIndex + 1}/${mediaUrls.length} — ${formatPostDateTimeBR(post)}`
+              : `${isStory ? 'Story' : 'Post'} agendado — ${formatPostDateTimeBR(post)}`,
             applyToPostId: post.id,
+            // Só este slide é substituído; os outros ficam intactos
+            applyToPostMediaIndex: currentImageIndex,
           }}
           open={improveOpen}
           onOpenChange={setImproveOpen}

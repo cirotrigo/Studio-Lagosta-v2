@@ -51,6 +51,17 @@ export interface ImprovementJobArgs {
   originalGenerationId: string
   originalResultUrl: string
   applyToPostId: string | null
+  /**
+   * Slide do carrossel que recebe a arte melhorada. Sem isso a melhoria
+   * gravava `mediaUrls: [nova]` e APAGAVA os outros slides do post.
+   */
+  applyToPostMediaIndex?: number | null
+  /**
+   * A arte melhorada não é a da Generation de origem (outro slide do
+   * carrossel): os textos esperados são de outra imagem e conferi-los
+   * reprovaria uma arte correta.
+   */
+  skipTextVerification?: boolean
   userId: string
   orgId?: string
   projectId: number
@@ -262,6 +273,15 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         break
       }
 
+      if (args.skipTextVerification) {
+        improvedBuffer = candidate
+        textCheckInfo = {
+          textCheck: 'skipped',
+          textCheckReason: 'outro slide do carrossel — os textos esperados são de outra arte',
+        }
+        break
+      }
+
       try {
         const checkStartedAt = Date.now()
         const check = await verifyImageTexts(candidate, expectedTexts)
@@ -429,6 +449,27 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     }
 
     if (args.applyToPostId) {
+      /**
+       * Carrossel: substitui SÓ o slide melhorado.
+       *
+       * Antes daqui saía `mediaUrls: [nova]`, o que apagava os outros slides
+       * de um carrossel agendado — perda silenciosa, e sem volta, porque a
+       * melhoria também marca `renderStatus: NOT_NEEDED` e tira o post do
+       * alcance do re-render. A regra agora é: a melhoria NUNCA reduz a
+       * quantidade de mídias do post, venha de onde vier o pedido.
+       */
+      const atual = await db.socialPost.findFirst({
+        where: { id: args.applyToPostId, projectId: args.projectId },
+        select: { mediaUrls: true },
+      })
+      const midiasAtuais = atual?.mediaUrls ?? []
+      const indice = Math.min(
+        Math.max(args.applyToPostMediaIndex ?? 0, 0),
+        Math.max(midiasAtuais.length - 1, 0),
+      )
+      const novasMidias = midiasAtuais.length > 0 ? [...midiasAtuais] : [blob.url]
+      novasMidias[indice] = blob.url
+
       // A melhoria demora ~1min; o post pode ter sido publicado nesse
       // meio-tempo. Só aplica se AINDA estiver em rascunho/agendado — trocar
       // a mídia de um post POSTING/POSTED mentiria sobre o que foi publicado.
@@ -443,9 +484,12 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           // recusa ao aceitar o pedido, e aqui de novo, porque a melhoria
           // leva ~140s em `after()` e a janela pode ter fechado no meio.
           laterPostId: null,
+          // Compare-and-swap: se outra edição mexeu nas mídias entre a leitura
+          // e agora, esta escrita desiste em vez de ressuscitar a lista velha
+          ...(atual ? { mediaUrls: { equals: midiasAtuais } } : {}),
         },
         data: {
-          mediaUrls: [blob.url],
+          mediaUrls: novasMidias,
           generationId: args.jobGenerationId,
           // A arte agora é uma derivação de IA, não o render da página:
           // NOT_NEEDED tira o post do alcance do cron render-stories e da
@@ -458,10 +502,13 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
       })
       if (updated.count === 0) {
         console.warn(
-          `[improve.bg] post ${args.applyToPostId} não estava mais SCHEDULED — arte melhorada ficou só na galeria (${args.jobGenerationId})`,
+          `[improve.bg] post ${args.applyToPostId} mudou de estado ou de mídias — arte melhorada ficou só na galeria (${args.jobGenerationId})`,
         )
       } else {
-        console.log(`[improve.bg] arte melhorada aplicada ao post ${args.applyToPostId}`)
+        console.log(
+          `[improve.bg] arte melhorada aplicada ao post ${args.applyToPostId}` +
+            (novasMidias.length > 1 ? ` (slide ${indice + 1}/${novasMidias.length})` : ''),
+        )
       }
     }
   } catch (error) {

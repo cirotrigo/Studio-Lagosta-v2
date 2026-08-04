@@ -19,6 +19,8 @@ export interface ImproveJob {
   applyToPostId?: string | null
   /** Arte atual do post, quando difere do resultUrl da Generation. */
   sourceImageUrl?: string | null
+  /** Slide do carrossel que recebe a arte melhorada (0 = primeiro). */
+  applyToPostMediaIndex?: number | null
   status: ImproveJobStatus
   createdAt: number
   startedAt?: number
@@ -42,6 +44,7 @@ interface AddJobInput {
   selectedElementIds?: number[]
   applyToPostId?: string | null
   sourceImageUrl?: string | null
+  applyToPostMediaIndex?: number | null
 }
 
 interface ImproveQueueState {

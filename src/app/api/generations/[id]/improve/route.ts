@@ -46,6 +46,11 @@ const bodySchema = z.object({
    * criada, e o que se melhora é a arte que está NO POST.
    */
   sourceImageUrl: z.string().url().optional().nullable(),
+  /**
+   * Slide do carrossel que recebe a arte melhorada (0 = primeiro). Ausente,
+   * vale o primeiro — e os outros slides ficam intactos de qualquer forma.
+   */
+  applyToPostMediaIndex: z.number().int().min(0).optional().nullable(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -88,6 +93,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       selectedElementIds: parsed.data.selectedElementIds,
       applyToPostId: parsed.data.applyToPostId,
       sourceImageUrl: parsed.data.sourceImageUrl,
+      applyToPostMediaIndex: parsed.data.applyToPostMediaIndex,
       actorClerkId: userId,
       orgId: orgId ?? undefined,
     })

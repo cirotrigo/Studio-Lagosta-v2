@@ -675,6 +675,18 @@ agenda e corrige três defeitos do editor. Regras que ficaram:
   `status in [DRAFT, SCHEDULED]` no runner. `pedido` até 1200 chars (instrução
   vem da análise visual do chat via conferir-arte). `colocar-na-agenda` aceita
   só o `generationId` da melhorada (resolve o resultUrl sozinho, NOT_NEEDED).
+- **A melhoria NUNCA reduz a quantidade de mídias do post.** O runner gravava
+  `mediaUrls: [nova]`, o que em carrossel agendado apagava todos os outros
+  slides — em silêncio e sem volta, porque a melhoria também marca
+  `NOT_NEEDED` e tira o post do alcance do re-render. Hoje ele lê a lista,
+  troca **só** a posição de `applyToPostMediaIndex` (default 0) e escreve com
+  compare-and-swap em `mediaUrls`. A agenda manda o slide que está NA TELA;
+  quem não informa índice (galeria, MCP) mexe no primeiro e preserva o resto.
+- **Slide ≠ arte da Generation pula a conferência de texto**: os textos
+  esperados são de UMA arte, e conferir o slide 3 contra os textos do slide 1
+  reprovaria arte correta. A trava é estreita de propósito
+  (`midias.length > 1 && midias[i] !== original.resultUrl`) — post de imagem
+  única, inclusive re-renderizado pelo cron, continua sendo conferido.
 - **Post melhorado vira `renderStatus: NOT_NEEDED`**, senão `render-stories` e
   `invalidateScheduledRenders` sobrescrevem a arte em minutos. O preço é que
   editar o template deixa de atualizar a arte daquele post.

@@ -36,6 +36,11 @@ interface ImproveTarget {
    */
   applyToPostId?: string | null
   /**
+   * Carrossel: slide que está sendo melhorado (0 = primeiro). Só ele é
+   * substituído no post — os outros continuam como estão.
+   */
+  applyToPostMediaIndex?: number | null
+  /**
    * "Melhorar de novo": pré-preenche o pedido com o userRequest gravado na
    * melhoria anterior (fieldValues.userRequest).
    */
@@ -251,6 +256,7 @@ export function ImproveCreativeModal({
       // A arte que se melhora é a que está no post — pode diferir do resultUrl
       // da Generation se o cron re-renderizou a página depois.
       sourceImageUrl: generation.applyToPostId ? generation.resultUrl : null,
+      applyToPostMediaIndex: generation.applyToPostMediaIndex ?? null,
     })
 
     toast({

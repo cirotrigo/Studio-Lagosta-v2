@@ -52,6 +52,9 @@ export function useImproveQueueProcessor() {
             : {}),
           ...(next.applyToPostId ? { applyToPostId: next.applyToPostId } : {}),
           ...(next.sourceImageUrl ? { sourceImageUrl: next.sourceImageUrl } : {}),
+          ...(typeof next.applyToPostMediaIndex === 'number'
+            ? { applyToPostMediaIndex: next.applyToPostMediaIndex }
+            : {}),
         }
       )
 

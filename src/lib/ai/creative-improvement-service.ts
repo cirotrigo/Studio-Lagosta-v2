@@ -44,6 +44,11 @@ export interface StartImprovementInput {
   applyToPostId?: string | null
   /** Imagem a melhorar quando diferente do resultUrl (arte ATUAL do post). */
   sourceImageUrl?: string | null
+  /**
+   * Slide do carrossel que está sendo melhorado (0 = primeiro). Só ele é
+   * substituído no post; os demais ficam como estão.
+   */
+  applyToPostMediaIndex?: number | null
   /** Quem paga os créditos e assina a Generation — id do CLERK (user_…). */
   actorClerkId: string
   orgId?: string
@@ -112,10 +117,21 @@ export async function startImprovement(
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
   }
 
+  // Slide do carrossel a substituir e se os textos da Generation de origem
+  // valem para ele (ver o bloco do post logo abaixo)
+  let mediaIndex: number | null = null
+  let skipTextVerification = false
+
   if (input.applyToPostId) {
     const post = await db.socialPost.findFirst({
       where: { id: input.applyToPostId, projectId: original.projectId },
-      select: { id: true, status: true, laterPostId: true, scheduledDatetime: true },
+      select: {
+        id: true,
+        status: true,
+        laterPostId: true,
+        scheduledDatetime: true,
+        mediaUrls: true,
+      },
     })
     if (!post) {
       throw new CreativeError('POST_NAO_ENCONTRADO', 'Post não encontrado neste projeto', 404)
@@ -144,6 +160,35 @@ export async function startImprovement(
         `Este post não pode ser melhorado (status ${post.status}).`,
         400,
       )
+    }
+
+    /**
+     * Carrossel: a melhoria troca UM slide, nunca a lista inteira.
+     *
+     * Quem não informa o índice fica no primeiro (é o que a galeria e o MCP
+     * melhoram), e o runner preserva os demais de qualquer jeito.
+     */
+    const midias = post.mediaUrls ?? []
+    if (midias.length > 0) {
+      const pedido = input.applyToPostMediaIndex ?? 0
+      if (!Number.isInteger(pedido) || pedido < 0 || pedido >= midias.length) {
+        throw new CreativeError(
+          'SLIDE_INVALIDO',
+          `Este post tem ${midias.length} imagem(ns); slide ${pedido + 1} não existe.`,
+          400,
+        )
+      }
+      mediaIndex = pedido
+
+      /**
+       * Os textos esperados vêm da Generation de origem, que é a arte de UM
+       * slide. Conferir a arte do slide 3 contra os textos do slide 1
+       * reprovaria uma arte correta e jogaria a melhoria fora — então a
+       * conferência é pulada quando o que se melhora comprovadamente não é a
+       * arte daquela Generation. Post de imagem única não muda de
+       * comportamento.
+       */
+      skipTextVerification = midias.length > 1 && midias[pedido] !== original.resultUrl
     }
   }
 
@@ -201,6 +246,7 @@ export async function startImprovement(
         selectedLogoIds,
         selectedElementIds,
         applyToPostId: input.applyToPostId ?? null,
+        applyToPostMediaIndex: mediaIndex,
         model: getCurrentImageModel(),
         quality: 'high',
         inputSize: openaiSize,
@@ -222,6 +268,8 @@ export async function startImprovement(
       originalGenerationId: original.id,
       originalResultUrl: input.sourceImageUrl ?? original.resultUrl,
       applyToPostId: input.applyToPostId ?? null,
+      applyToPostMediaIndex: mediaIndex,
+      skipTextVerification,
       userId: input.actorClerkId,
       orgId: input.orgId,
       projectId: original.projectId,
