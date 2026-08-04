@@ -115,6 +115,9 @@ export async function GET(request: NextRequest) {
         templateId: true,
         renderStatus: true,
         renderedImageUrl: true,
+        // Só para derivar `congelado` na resposta — o id do publicador externo
+        // não vai para o cliente.
+        laterPostId: true,
         Project: {
           select: {
             id: true,
@@ -184,6 +187,9 @@ export async function GET(request: NextRequest) {
         templateId: true,
         renderStatus: true,
         renderedImageUrl: true,
+        // Só para derivar `congelado` na resposta — o id do publicador externo
+        // não vai para o cliente.
+        laterPostId: true,
         Project: {
           select: {
             id: true,
@@ -237,7 +243,17 @@ export async function GET(request: NextRequest) {
       return dateA - dateB
     })
 
-    return NextResponse.json(allPosts)
+    /**
+     * `congelado` em vez do `laterPostId` cru: a agenda só precisa saber se a
+     * arte ainda aceita alteração, e id de sistema externo não tem por que
+     * trafegar para o cliente (mesma regra do `hasInstagramToken`).
+     */
+    const resposta = allPosts.map(({ laterPostId, ...post }) => ({
+      ...post,
+      congelado: laterPostId != null,
+    }))
+
+    return NextResponse.json(resposta)
   } catch (error) {
     console.error('[POSTS_CALENDAR_GET]', error)
     return NextResponse.json(

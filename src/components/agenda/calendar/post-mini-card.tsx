@@ -1,7 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon, FileEdit } from 'lucide-react'
+import { Video, Layers, RefreshCw, Loader2, CheckCircle2, XCircle, ShieldCheck, ShieldAlert, Clock, Bell, ImageIcon, FileEdit, Lock } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import Image from 'next/image'
 import { formatPostTime } from './calendar-utils'
@@ -10,6 +10,8 @@ import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface PostMiniCardProps {
   post: SocialPost & {
+    /** Derivado pela rota da agenda: a arte já foi entregue ao publicador. */
+    congelado?: boolean
     Project?: {
       id: number
       name: string
@@ -31,6 +33,8 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
     const videoExtensions = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
     return videoExtensions.some(ext => url.toLowerCase().includes(ext))
   }
+
+  const congelado = post.congelado === true
 
   const firstMediaUrl = post.renderedImageUrl || post.mediaUrls?.[0]
   const isVideo = firstMediaUrl ? isVideoUrl(firstMediaUrl) : false
@@ -154,6 +158,18 @@ export const PostMiniCard = memo(function PostMiniCard({ post, onClick }: PostMi
           </Badge>
           {getIcon()}
           {post.isRecurring && <RefreshCw className="w-3 h-3 text-muted-foreground" />}
+
+          {/*
+            Cadeado: a arte já foi entregue ao publicador e não muda mais.
+            No card cabe só o ícone — o porquê está no modal, que é onde a
+            pessoa vai quando estranha.
+          */}
+          {post.status === 'SCHEDULED' && congelado && (
+            <Lock
+              className="w-3 h-3 text-muted-foreground shrink-0"
+              aria-label="Arte já enviada para publicação"
+            />
+          )}
 
           {/* Badge de Rascunho - ainda não entrou na fila de publicação */}
           {post.status === 'DRAFT' && (

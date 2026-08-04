@@ -27,7 +27,8 @@ import {
   FileEdit,
   Undo2,
   Loader2,
-  Sparkles
+  Sparkles,
+  Lock
 } from 'lucide-react'
 import Link from 'next/link'
 import {
@@ -47,6 +48,7 @@ import { ApprovePostsDialog } from './approve-posts-dialog'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
 import { toast } from 'sonner'
 import { getPostDate, formatPostDateTimeBR } from '../calendar/calendar-utils'
+import { descreverJanela } from '@/lib/posts/freeze-window'
 import type { SocialPost } from '../../../../prisma/generated/client'
 import Image from 'next/image'
 import { cn, isExternalImage } from '@/lib/utils'
@@ -133,16 +135,25 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
   const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
 
   /**
+   * Até quando esta arte ainda aceita alteração. O servidor recusa melhoria e
+   * ignora invalidação em post já entregue ao publicador — a interface precisa
+   * dizer isso ANTES, senão a pessoa gasta 25 créditos para descobrir.
+   */
+  const janela = descreverJanela(post as { congelado?: boolean; scheduledDatetime?: Date | null })
+
+  /**
    * Melhorar com IA vale para RASCUNHO e AGENDADO (decisão de 01/08/2026 — a
    * melhoria virou etapa do acabamento da criação, não pós-aprovação), com
    * uma Generation vinculada (é o que a rota de melhoria recebe) e uma imagem
-   * atual. Posts antigos sem generationId não mostram o botão.
+   * atual. Posts antigos sem generationId não mostram o botão; post já
+   * entregue ao publicador também não, porque a arte dele não muda mais.
    */
   const canImprove =
     (post.status === 'SCHEDULED' || post.status === 'DRAFT') &&
     !!post.generationId &&
     mediaUrls.length > 0 &&
-    !isCurrentMediaVideo
+    !isCurrentMediaVideo &&
+    !janela.congelado
 
   const handlePrevImage = () => {
     setCurrentImageIndex((prev) => (prev === 0 ? mediaUrls.length - 1 : prev - 1))
@@ -610,7 +621,50 @@ export function PostPreviewModal({ post, open, onClose, onEdit }: PostPreviewMod
                   )}
                 </>
               )}
+
+              {/*
+                Janela de congelamento: até quando editar a arte ainda vale.
+                Só faz sentido enquanto o post pode publicar — em rascunho a
+                entrega nem está marcada, e em publicado/falhou a pergunta já
+                não se coloca.
+              */}
+              {post.status === 'SCHEDULED' && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'flex items-center gap-1 text-xs',
+                    janela.congelado
+                      ? 'border-slate-400 text-slate-600 dark:text-slate-300'
+                      : janela.iminente
+                        ? 'border-amber-400 text-amber-700 dark:text-amber-400'
+                        : 'border-emerald-400 text-emerald-700 dark:text-emerald-400',
+                  )}
+                  title={janela.mensagem}
+                >
+                  {janela.congelado ? <Lock className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
+                  <span>{janela.rotulo}</span>
+                </Badge>
+              )}
             </div>
+
+            {/*
+              Congelado é a explicação de por que editar a arte deixou de ter
+              efeito. Sem este aviso a pessoa edita, vê a agenda atualizar e o
+              Instagram publicar a versão antiga — o defeito que a janela veio
+              corrigir.
+            */}
+            {post.status === 'SCHEDULED' && janela.congelado && (
+              <div className="border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40 rounded-md p-3 text-sm">
+                <div className="font-semibold mb-1 flex items-center gap-2">
+                  <Lock className="w-4 h-4" />
+                  A arte já foi enviada para publicação
+                </div>
+                <p className="text-muted-foreground">
+                  Editar o template a partir de agora não muda mais o que vai ao ar.
+                  Para trocar a arte, volte o post para rascunho e agende de novo.
+                </p>
+              </div>
+            )}
 
             {/* Rascunho: o estado mais fácil de confundir com "vai publicar" */}
             {isRascunho && (

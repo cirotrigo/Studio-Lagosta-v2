@@ -63,8 +63,16 @@ export function congelaEm(scheduledDatetime: Date): Date {
  * O post já foi entregue ao publicador? É um fato, não uma previsão: o que
  * decide é ter `laterPostId`, não o relógio. Post que ainda não coube na
  * rodada do cron continua editável mesmo depois do horário de congelar.
+ *
+ * Aceita as duas formas porque as rotas da agenda NÃO mandam o `laterPostId`
+ * para o cliente — id de sistema externo não precisa trafegar — e sim o
+ * booleano `congelado` já derivado.
  */
-export function estaCongelado(post: { laterPostId?: string | null }): boolean {
+export function estaCongelado(post: {
+  laterPostId?: string | null
+  congelado?: boolean
+}): boolean {
+  if (typeof post.congelado === 'boolean') return post.congelado
   return post.laterPostId != null
 }
 
@@ -87,23 +95,32 @@ export function entrouNaJanela(
  */
 export function descreverJanela(post: {
   laterPostId?: string | null
-  scheduledDatetime?: Date | null
+  congelado?: boolean
+  scheduledDatetime?: Date | string | null
   status?: PostStatus | string | null
-}): { congelado: boolean; mensagem: string; congelaEm?: Date } {
+}): { congelado: boolean; iminente: boolean; rotulo: string; mensagem: string; congelaEm?: Date } {
   if (estaCongelado(post)) {
     return {
       congelado: true,
+      iminente: false,
+      rotulo: 'Enviada para publicação',
       mensagem:
         'Esta arte já foi enviada para publicação e não aceita mais alteração. ' +
         'Para trocar, cancele o agendamento e agende de novo.',
     }
   }
 
-  if (!post.scheduledDatetime) {
-    return { congelado: false, mensagem: 'Esta arte ainda pode ser editada.' }
+  const agendado = post.scheduledDatetime ? new Date(post.scheduledDatetime) : null
+  if (!agendado || Number.isNaN(agendado.getTime())) {
+    return {
+      congelado: false,
+      iminente: false,
+      rotulo: 'Editável',
+      mensagem: 'Esta arte ainda pode ser editada.',
+    }
   }
 
-  const quando = congelaEm(post.scheduledDatetime)
+  const quando = congelaEm(agendado)
   const horaBRT = quando.toLocaleString('pt-BR', {
     timeZone: 'America/Sao_Paulo',
     dateStyle: 'short',
@@ -113,7 +130,9 @@ export function descreverJanela(post: {
   if (quando.getTime() <= Date.now()) {
     return {
       congelado: false,
+      iminente: true,
       congelaEm: quando,
+      rotulo: 'Congela a qualquer momento',
       mensagem:
         'Esta arte vai ser enviada para publicação a qualquer momento — ' +
         'edição a partir de agora pode não entrar.',
@@ -122,7 +141,9 @@ export function descreverJanela(post: {
 
   return {
     congelado: false,
+    iminente: false,
     congelaEm: quando,
+    rotulo: `Editável até ${horaBRT}`,
     mensagem: `Editável até ${horaBRT}, quando a arte é enviada para publicação.`,
   }
 }
