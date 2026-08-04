@@ -2,7 +2,7 @@
 
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripVertical, X, Play, Sparkles } from 'lucide-react'
+import { GripVertical, X, Play, Sparkles, Crop } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import Image from 'next/image'
@@ -17,12 +17,16 @@ interface MediaItem {
   name: string
   size?: number
   mimeType?: string
+  /** Já passou pelo enquadramento — a URL é a da imagem recortada */
+  cropped?: boolean
 }
 
 interface SortableMediaItemProps {
   item: MediaItem
   index: number
   onRemove: (id: string) => void
+  /** Ausente = enquadramento indisponível para esta mídia (vídeo, por exemplo) */
+  onCrop?: (id: string) => void
   isDragging?: boolean
 }
 
@@ -50,6 +54,7 @@ export function SortableMediaItem({
   item,
   index,
   onRemove,
+  onCrop,
 }: SortableMediaItemProps) {
   const {
     attributes,
@@ -158,12 +163,23 @@ export function SortableMediaItem({
           <GripVertical className="w-3 h-3" />
         </div>
 
-        {/* Remove button - Needs to stop propagation */}
+        {/* Ações — precisam parar a propagação para não virar arraste */}
         <div
-          className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+          className="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
+          {onCrop && !isVideo && (
+            <Button
+              size="icon"
+              variant="secondary"
+              className="h-6 w-6"
+              title="Enquadrar"
+              onClick={() => onCrop(item.id)}
+            >
+              <Crop className="w-3 h-3" />
+            </Button>
+          )}
           <Button
             size="icon"
             variant="destructive"

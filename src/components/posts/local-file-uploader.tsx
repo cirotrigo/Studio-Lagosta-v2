@@ -8,7 +8,15 @@ import { UploadIcon, Loader2, X } from 'lucide-react'
 import { toast } from 'sonner'
 import Image from 'next/image'
 import { upload } from '@vercel/blob/client'
-import { resizeToInstagramFeed, isImageFile, isVideoFile } from '@/lib/images/client-resize'
+import {
+  cropToPostType,
+  isImageFile,
+  isVideoFile,
+  readImageSize,
+  type CropPostType,
+  type CropRegion,
+} from '@/lib/images/client-resize'
+import { CropDialog, centeredCrop, matchesPostRatio } from './crop/crop-dialog'
 
 interface UploadedFile {
   id: string
@@ -23,28 +31,39 @@ interface LocalFileUploaderProps {
   onUploadComplete: (files: UploadedFile[]) => void
   maxFiles: number
   mediaMode?: 'images' | 'videos' | 'both'
+  /** Formato de destino do recorte. Sem ele, nada é recortado. */
+  postType?: CropPostType
+}
+
+/** Imagem esperando a pessoa escolher o enquadramento */
+interface PendingCrop {
+  file: File
+  previewUrl: string
+  naturalSize: { width: number; height: number }
 }
 
 export function LocalFileUploader({
   onUploadComplete,
   maxFiles,
-  mediaMode = 'both'
+  mediaMode = 'both',
+  postType,
 }: LocalFileUploaderProps) {
   const [uploading, setUploading] = useState(false)
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([])
+  // Fila de enquadramento: uma imagem por vez, na ordem em que foram soltas
+  const [cropQueue, setCropQueue] = useState<PendingCrop[]>([])
+  const [cropTotal, setCropTotal] = useState(0)
 
-  const handleUpload = useCallback(async (acceptedFiles: File[]) => {
-    if (uploadedFiles.length + acceptedFiles.length > maxFiles) {
-      toast.error(`Máximo de ${maxFiles} arquivos`)
-      return
-    }
-
+  const uploadFiles = useCallback(async (
+    entries: Array<{ file: File; crop?: CropRegion }>,
+  ) => {
+    if (entries.length === 0) return
     setUploading(true)
 
     try {
       const newFiles: UploadedFile[] = []
 
-      for (const file of acceptedFiles) {
+      for (const { file, crop } of entries) {
         // Validate file size (max 50MB)
         if (file.size > 50 * 1024 * 1024) {
           throw new Error(`O arquivo "${file.name}" é muito grande. O tamanho máximo é 50MB.`)
@@ -52,31 +71,24 @@ export function LocalFileUploader({
 
         let fileToUpload = file
 
-        // Auto-resize images to Instagram feed format (4:5 ratio - 1080x1350)
-        // Only resize images, not videos
-        // Only resize when mode is 'images' (for POST and CAROUSEL types)
+        // Imagem vai para o formato do post. Com `crop`, é o enquadramento que
+        // a pessoa escolheu; sem ele, o corte pelo centro (padrão de quem não
+        // quis escolher). Vídeo nunca é tocado.
         const isImage = isImageFile(file)
-        console.log('[Upload] Processing file:', {
-          name: file.name,
-          type: file.type,
-          size: file.size,
-          isImage,
-          mediaMode,
-          willResize: isImage && mediaMode === 'images'
-        })
 
-        if (isImage && mediaMode === 'images') {
+        if (isImage && postType) {
           try {
-            console.log('[Upload] Starting resize for Instagram feed (1080x1350):', file.name)
             const originalSize = file.size
-            fileToUpload = await resizeToInstagramFeed(file)
-            console.log('[Upload] Image resized successfully:', {
+            fileToUpload = await cropToPostType(file, postType, crop)
+            console.log('[Upload] Imagem enquadrada:', {
+              name: file.name,
+              postType,
+              escolhido: !!crop,
               originalSize,
               newSize: fileToUpload.size,
-              reduction: `${Math.round((1 - fileToUpload.size / originalSize) * 100)}%`
             })
           } catch (resizeError) {
-            console.error('[Upload] Failed to resize image, using original:', resizeError)
+            console.error('[Upload] Falha ao enquadrar, subindo original:', resizeError)
             // Continue with original file if resize fails
           }
         }
@@ -110,9 +122,13 @@ export function LocalFileUploader({
         })
       }
 
-      const updated = [...uploadedFiles, ...newFiles]
-      setUploadedFiles(updated)
-      onUploadComplete(updated)
+      // Forma funcional: entre soltar o arquivo e terminar o upload passa o
+      // enquadramento, e a lista capturada no closure já estaria velha
+      setUploadedFiles((prev) => {
+        const updated = [...prev, ...newFiles]
+        onUploadComplete(updated)
+        return updated
+      })
       toast.success(`${newFiles.length} arquivo(s) enviado(s)`)
     } catch (error) {
       console.error('Upload error:', error)
@@ -121,7 +137,81 @@ export function LocalFileUploader({
     } finally {
       setUploading(false)
     }
-  }, [uploadedFiles, maxFiles, onUploadComplete, mediaMode])
+  }, [onUploadComplete, postType])
+
+  /**
+   * Ao soltar arquivos: o que precisa de enquadramento entra na fila; o resto
+   * (vídeo, imagem já na proporção, ou post sem formato definido) sobe direto.
+   */
+  const handleDrop = useCallback(async (acceptedFiles: File[]) => {
+    if (uploadedFiles.length + acceptedFiles.length > maxFiles) {
+      toast.error(`Máximo de ${maxFiles} arquivos`)
+      return
+    }
+
+    const direto: Array<{ file: File; crop?: CropRegion }> = []
+    const paraEnquadrar: PendingCrop[] = []
+
+    for (const file of acceptedFiles) {
+      if (!postType || !isImageFile(file)) {
+        direto.push({ file })
+        continue
+      }
+      try {
+        const naturalSize = await readImageSize(file)
+        if (matchesPostRatio(naturalSize, postType)) {
+          // Já está no formato: enquadrar não mudaria nada
+          direto.push({ file })
+        } else {
+          paraEnquadrar.push({ file, previewUrl: URL.createObjectURL(file), naturalSize })
+        }
+      } catch {
+        // Não deu para ler as dimensões — segue pelo caminho antigo
+        direto.push({ file })
+      }
+    }
+
+    if (direto.length > 0) await uploadFiles(direto)
+    if (paraEnquadrar.length > 0) {
+      setCropTotal(paraEnquadrar.length)
+      setCropQueue(paraEnquadrar)
+    }
+  }, [uploadedFiles.length, maxFiles, postType, uploadFiles])
+
+  const encerrarItemDaFila = useCallback(() => {
+    setCropQueue((fila) => {
+      if (fila[0]) URL.revokeObjectURL(fila[0].previewUrl)
+      const resto = fila.slice(1)
+      if (resto.length === 0) setCropTotal(0)
+      return resto
+    })
+  }, [])
+
+  const handleCropConfirm = useCallback(async (crop: CropRegion) => {
+    const atual = cropQueue[0]
+    if (!atual) return
+    encerrarItemDaFila()
+    await uploadFiles([{ file: atual.file, crop }])
+  }, [cropQueue, encerrarItemDaFila, uploadFiles])
+
+  /** Desistiu do enquadramento desta imagem: ela não entra no post */
+  const handleCropCancel = useCallback(() => {
+    encerrarItemDaFila()
+  }, [encerrarItemDaFila])
+
+  /** "Usar o centro nas demais": sobe a fila inteira com o corte central */
+  const handleCropSkipRemaining = useCallback(async () => {
+    const pendentes = cropQueue
+    setCropQueue([])
+    setCropTotal(0)
+    pendentes.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    await uploadFiles(
+      pendentes.map((item) => ({
+        file: item.file,
+        crop: postType ? centeredCrop(item.naturalSize, postType) : undefined,
+      })),
+    )
+  }, [cropQueue, postType, uploadFiles])
 
   // Configure accepted file types based on mediaMode
   const acceptedFiles = React.useMemo(() => {
@@ -143,7 +233,7 @@ export function LocalFileUploader({
   }, [mediaMode])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: handleUpload,
+    onDrop: handleDrop,
     accept: acceptedFiles,
     maxFiles,
     disabled: uploading || uploadedFiles.length >= maxFiles,
@@ -155,8 +245,26 @@ export function LocalFileUploader({
     onUploadComplete(updated)
   }
 
+  const cropAtual = cropQueue[0]
+
   return (
     <div className="space-y-4">
+      {/* Enquadramento — uma imagem por vez, na ordem em que foram soltas */}
+      {cropAtual && postType && (
+        <CropDialog
+          open
+          src={cropAtual.previewUrl}
+          naturalSize={cropAtual.naturalSize}
+          postType={postType}
+          stepLabel={
+            cropTotal > 1 ? `Imagem ${cropTotal - cropQueue.length + 1} de ${cropTotal}` : undefined
+          }
+          onSkipRemaining={cropQueue.length > 1 ? handleCropSkipRemaining : undefined}
+          onCancel={handleCropCancel}
+          onConfirm={handleCropConfirm}
+        />
+      )}
+
       {/* Dropzone */}
       <Card
         {...getRootProps()}

@@ -13,6 +13,12 @@ import { SortableMediaItem } from './sortable-media-item'
 import { GoogleDriveInlineSelector } from './google-drive-inline-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { toast } from 'sonner'
+import { CropDialog } from './crop/crop-dialog'
+import {
+  readImageSizeFromUrl,
+  type CropPostType,
+  type CropRegion,
+} from '@/lib/images/client-resize'
 import { useMutation } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import Image from 'next/image'
@@ -42,6 +48,8 @@ interface MediaItem {
   name: string
   size?: number
   mimeType?: string
+  /** Já passou pelo enquadramento — a URL é a da imagem recortada */
+  cropped?: boolean
 }
 
 interface MediaUploadSystemProps {
@@ -248,15 +256,26 @@ export function MediaUploadSystem({
   // The selector always reports the COMPLETE list of selected generations, so we
   // atomically swap the 'generation' slice while preserving every other type.
   const handleGenerationsChange = useCallback((ids: string[], generations: Generation[]) => {
-    const newMedia: MediaItem[] = generations.map(g => ({
-      id: g.id,
-      type: 'generation' as const,
-      url: g.resultUrl,
-      thumbnailUrl: g.thumbnailUrl || g.resultUrl,
-      name: g.templateName,
-    }))
-
-    onSelectionChange((prev) => [...prev.filter(m => m.type !== 'generation'), ...newMedia])
+    onSelectionChange((prev) => {
+      // O seletor reporta a lista inteira a cada toque, então quem já foi
+      // enquadrado precisa ser preservado — senão a arte recortada voltaria
+      // para a original ao marcar outro criativo
+      const anteriores = new Map(
+        prev.filter(m => m.type === 'generation').map(m => [m.id, m] as const),
+      )
+      const newMedia: MediaItem[] = generations.map(g => {
+        const anterior = anteriores.get(g.id)
+        if (anterior?.cropped) return anterior
+        return {
+          id: g.id,
+          type: 'generation' as const,
+          url: g.resultUrl,
+          thumbnailUrl: g.thumbnailUrl || g.resultUrl,
+          name: g.templateName,
+        }
+      })
+      return [...prev.filter(m => m.type !== 'generation'), ...newMedia]
+    })
   }, [onSelectionChange])
 
   // Handler para seleção de AI Images.
@@ -314,6 +333,59 @@ export function MediaUploadSystem({
 
     onSelectionChange((prev) => [...prev.filter(m => m.type !== 'upload'), ...newMedia])
   }, [onSelectionChange])
+
+  /**
+   * Enquadramento de mídia que veio por URL (Criativos, IA, Drive).
+   *
+   * O upload local já é recortado no navegador antes de subir; aqui a origem é
+   * uma URL, então quem recorta é o servidor (`/api/posts/media/crop`) e a
+   * mídia do post passa a apontar para o arquivo novo. A arte de origem fica
+   * intacta — o mesmo criativo pode ir para dois posts com enquadramentos
+   * diferentes.
+   */
+  const [cropAlvo, setCropAlvo] = useState<
+    { id: string; url: string; naturalSize: { width: number; height: number } } | null
+  >(null)
+  const [cropEnviando, setCropEnviando] = useState(false)
+
+  // REEL é só vídeo — não há enquadramento de imagem ali
+  const cropPostType: CropPostType | null = postType === 'REEL' ? null : postType
+
+  const handleAbrirEnquadramento = useCallback(async (id: string) => {
+    const item = selectedMedia.find((m) => m.id === id)
+    if (!item) return
+    try {
+      const naturalSize = await readImageSizeFromUrl(item.url)
+      setCropAlvo({ id, url: item.url, naturalSize })
+    } catch {
+      toast.error('Não foi possível abrir esta imagem para enquadrar')
+    }
+  }, [selectedMedia])
+
+  const handleCropConfirm = useCallback(async (crop: CropRegion) => {
+    if (!cropAlvo || !cropPostType) return
+    setCropEnviando(true)
+    try {
+      const resposta = await api.post<{ url: string; pathname: string }>(
+        '/api/posts/media/crop',
+        { sourceUrl: cropAlvo.url, postType: cropPostType, crop },
+      )
+      onSelectionChange((prev) =>
+        prev.map((m) =>
+          m.id === cropAlvo.id
+            ? { ...m, url: resposta.url, thumbnailUrl: resposta.url, pathname: resposta.pathname, cropped: true }
+            : m,
+        ),
+      )
+      setCropAlvo(null)
+      toast.success('Enquadramento aplicado')
+    } catch (error) {
+      console.error('[crop] falha ao enquadrar mídia', error)
+      toast.error('Não foi possível enquadrar a imagem')
+    } finally {
+      setCropEnviando(false)
+    }
+  }, [cropAlvo, cropPostType, onSelectionChange])
 
   // Handler para remover item — remove ONLY the requested item, by id (never by
   // array index, which can drift when downloads resolve concurrently).
@@ -452,6 +524,9 @@ export function MediaUploadSystem({
             onUploadComplete={handleLocalUpload}
             maxFiles={uploadMaxSelection}
             mediaMode={mediaMode}
+            // Formato de destino do enquadramento. REEL é só vídeo — imagem ali
+            // não existe, e passar o tipo não muda nada.
+            postType={postType === 'REEL' ? undefined : postType}
           />
         </TabsContent>
       </Tabs>
@@ -491,6 +566,11 @@ export function MediaUploadSystem({
                     item={item}
                     index={index}
                     onRemove={handleRemoveItem}
+                    onCrop={
+                      cropPostType && item.type !== 'upload'
+                        ? handleAbrirEnquadramento
+                        : undefined
+                    }
                   />
                 ))}
               </div>
@@ -505,6 +585,19 @@ export function MediaUploadSystem({
           <Loader2 className="w-4 h-4 animate-spin" />
           <span>Processando arquivos do Google Drive...</span>
         </div>
+      )}
+
+      {/* Enquadramento de mídia vinda por URL */}
+      {cropAlvo && cropPostType && (
+        <CropDialog
+          open
+          src={cropAlvo.url}
+          naturalSize={cropAlvo.naturalSize}
+          postType={cropPostType}
+          busy={cropEnviando}
+          onCancel={() => setCropAlvo(null)}
+          onConfirm={handleCropConfirm}
+        />
       )}
 
       {downloadAIImagesMutation.isPending && (

@@ -490,7 +490,12 @@ export function PostComposer({ projectId, open, onClose, initialData, postId }: 
 
   return (
     <Dialog open={open} onOpenChange={handleDialogOpenChange}>
-      <DialogContent className="max-w-[1400px] max-h-[90vh] overflow-y-auto">
+      {/*
+        `sm:max-w-*`, não `max-w-*`: o DialogContent base declara `sm:max-w-lg`,
+        e regra com media query vence regra sem — em qualquer tela ≥640px este
+        modal saía com 512px em vez dos 1400px declarados aqui.
+      */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[1400px]">
         <DialogHeader>
           <DialogTitle>
             {initialData ? 'Editar Post' : 'Criar Novo Post'}

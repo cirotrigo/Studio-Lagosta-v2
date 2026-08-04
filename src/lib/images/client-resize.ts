@@ -175,6 +175,111 @@ export async function resizeToInstagramFeed(file: File): Promise<File> {
 }
 
 /**
+ * Dimensões finais por tipo de post — as mesmas do app desktop
+ * (`desktop-app/electron/ipc/image-processor.ts`) e do
+ * `/api/tools/process-image`. Mudou aqui, mude nos três.
+ */
+export const POST_TYPE_DIMENSIONS = {
+  POST: { width: 1080, height: 1350 },
+  CAROUSEL: { width: 1080, height: 1350 },
+  STORY: { width: 1080, height: 1920 },
+  REEL: { width: 1080, height: 1920 },
+} as const
+
+export type CropPostType = keyof typeof POST_TYPE_DIMENSIONS
+
+/** Região recortada, em pixels da imagem ORIGINAL */
+export interface CropRegion {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+/** Lê as dimensões naturais de um arquivo de imagem */
+export function readImageSize(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new window.Image()
+    img.onload = () => {
+      const size = { width: img.naturalWidth, height: img.naturalHeight }
+      URL.revokeObjectURL(url)
+      resolve(size)
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Não foi possível ler a imagem'))
+    }
+    img.src = url
+  })
+}
+
+/**
+ * Dimensões naturais de uma imagem que já está numa URL.
+ *
+ * Sem `crossOrigin`: só lemos `naturalWidth/Height`, que não exige CORS — pedir
+ * `anonymous` faria a imagem do Drive (sem cabeçalho CORS) falhar à toa.
+ */
+export function readImageSizeFromUrl(url: string): Promise<{ width: number; height: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new window.Image()
+    img.onload = () => resolve({ width: img.naturalWidth, height: img.naturalHeight })
+    img.onerror = () => reject(new Error('Não foi possível ler a imagem'))
+    img.src = url
+  })
+}
+
+/**
+ * Recorta a região escolhida e devolve o arquivo no tamanho final do formato.
+ *
+ * Sem `cropRegion` cai no comportamento antigo (corte pelo CENTRO), que é o
+ * padrão quando a pessoa não quer escolher enquadramento.
+ */
+export async function cropToPostType(
+  file: File,
+  postType: CropPostType,
+  cropRegion?: CropRegion,
+): Promise<File> {
+  const target = POST_TYPE_DIMENSIONS[postType]
+
+  if (!cropRegion) {
+    return resizeImage(file, {
+      targetWidth: target.width,
+      targetHeight: target.height,
+      quality: 0.92,
+    })
+  }
+
+  const bitmap = await createImageBitmap(file)
+  try {
+    // Nunca pedir ao canvas um pedaço fora da imagem: `drawImage` com origem
+    // fora dos limites desenha transparente e o JPEG sai com faixa preta
+    const left = Math.max(0, Math.min(Math.round(cropRegion.left), bitmap.width - 1))
+    const top = Math.max(0, Math.min(Math.round(cropRegion.top), bitmap.height - 1))
+    const width = Math.max(1, Math.min(Math.round(cropRegion.width), bitmap.width - left))
+    const height = Math.max(1, Math.min(Math.round(cropRegion.height), bitmap.height - top))
+
+    const canvas = document.createElement('canvas')
+    canvas.width = target.width
+    canvas.height = target.height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('Canvas indisponível')
+    ctx.imageSmoothingQuality = 'high'
+    ctx.drawImage(bitmap, left, top, width, height, 0, 0, target.width, target.height)
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.92),
+    )
+    if (!blob) throw new Error('Falha ao gerar a imagem recortada')
+
+    const name = file.name.replace(/\.[^.]+$/, '') || 'imagem'
+    return new File([blob], `${name}.jpg`, { type: 'image/jpeg', lastModified: Date.now() })
+  } finally {
+    bitmap.close()
+  }
+}
+
+/**
  * Image file extensions for fallback detection
  */
 const IMAGE_EXTENSIONS = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp', '.tiff', '.svg']
