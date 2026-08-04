@@ -360,10 +360,10 @@ export function KonvaImageCropOverlay() {
       />
 
       {/* Esmaecido fora da moldura (não captura clique: o arraste é da imagem) */}
-      <Rect x={-BIG} y={-BIG} width={BIG * 2} height={BIG + frame.y} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={-BIG} y={frame.y + frame.height} width={BIG * 2} height={BIG} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={-BIG} y={frame.y} width={BIG + frame.x} height={frame.height} fill="rgba(0,0,0,0.55)" listening={false} />
-      <Rect x={frame.x + frame.width} y={frame.y} width={BIG} height={frame.height} fill="rgba(0,0,0,0.55)" listening={false} />
+      <Rect x={-BIG} y={-BIG} width={BIG * 2} height={BIG + frame.y} fill="rgba(0,0,0,0.45)" listening={false} />
+      <Rect x={-BIG} y={frame.y + frame.height} width={BIG * 2} height={BIG} fill="rgba(0,0,0,0.45)" listening={false} />
+      <Rect x={-BIG} y={frame.y} width={BIG + frame.x} height={frame.height} fill="rgba(0,0,0,0.45)" listening={false} />
+      <Rect x={frame.x + frame.width} y={frame.y} width={BIG} height={frame.height} fill="rgba(0,0,0,0.45)" listening={false} />
 
       {/* Grade de terços dentro da moldura */}
       {[1, 2].map((i) => (

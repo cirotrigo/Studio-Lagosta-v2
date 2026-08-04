@@ -772,6 +772,11 @@ limpeza. Regras que ficaram:
   (medida do stage, não de `design.canvas`, porque no modo clássico o stage é
   do tamanho do container). Overlay novo que desenhe fora da página precisa da
   mesma trava.
+- **Enquanto o recorte está aberto o stage embutido ganha 35% de folga** e
+  transborda o slot da coluna por `position: absolute` — é o que deixa ver a
+  foto inteira. O slot NÃO muda de tamanho de propósito: crescê-lo empurraria
+  as páginas vizinhas e a coluna saltaria. Foto maior que a folga continua
+  coberta pelas alças presas à borda.
 - **Evento de transform nasce no nó que o transformer segura**: com máscara ou
   flip quem é transformado é o Group, e o `onTransform` estava no KonvaImage de
   dentro — eventos do Konva sobem, não descem, então nunca disparava.

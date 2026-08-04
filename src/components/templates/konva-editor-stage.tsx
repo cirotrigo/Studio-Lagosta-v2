@@ -992,14 +992,34 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   const scaledWidth = Math.max(1, Math.round(canvasWidth * zoom))
   const scaledHeight = Math.max(1, Math.round(canvasHeight * zoom))
 
+  /**
+   * Folga em volta da página enquanto o recorte está aberto (só no modo
+   * embutido).
+   *
+   * O stage embutido tem o tamanho EXATO da página, então a foto inteira — que
+   * quase sempre é maior que a moldura — era cortada na borda do canvas e o
+   * usuário não via o que sobrava para cada lado. Com a folga o stage passa a
+   * desenhar além da página; o overlay esmaece essa área e a foto aparece
+   * inteira. No modo clássico não é preciso: lá o stage já é do tamanho do
+   * container.
+   */
+  const cropMargin =
+    embedded && croppingLayerId
+      ? Math.round(Math.max(canvasWidth, canvasHeight) * 0.35 * zoom)
+      : 0
+
   const stageElement = (
         <Stage
           ref={stageRef}
-          width={embedded ? scaledWidth : canvasWidth}
-          height={embedded ? scaledHeight : canvasHeight}
+          width={embedded ? scaledWidth + cropMargin * 2 : canvasWidth}
+          height={embedded ? scaledHeight + cropMargin * 2 : canvasHeight}
+          x={embedded ? cropMargin : undefined}
+          y={embedded ? cropMargin : undefined}
           scaleX={embedded ? zoom : undefined}
           scaleY={embedded ? zoom : undefined}
-          className="rounded-md shadow-2xl ring-1 ring-border/20"
+          // Com folga, a moldura arredondada e a sombra são da PÁGINA, não da
+          // área expandida — o fundo da página já desenha o canto arredondado
+          className={cropMargin ? undefined : 'rounded-md shadow-2xl ring-1 ring-border/20'}
           pixelRatio={window.devicePixelRatio || 2}
           onMouseDown={handleStagePointerDown}
           onTouchStart={handleStagePointerDown}
@@ -1233,7 +1253,16 @@ export function KonvaEditorStage({ embedded = false }: KonvaEditorStageProps = {
   if (embedded) {
     return (
       <div className="relative" style={{ width: scaledWidth, height: scaledHeight }}>
-        {stageElement}
+        {cropMargin ? (
+          // O slot da coluna mantém o tamanho da página: a área extra do stage
+          // transborda por cima do resto do workspace, em vez de empurrar as
+          // páginas vizinhas
+          <div style={{ position: 'absolute', left: -cropMargin, top: -cropMargin, zIndex: 30 }}>
+            {stageElement}
+          </div>
+        ) : (
+          stageElement
+        )}
       </div>
     )
   }

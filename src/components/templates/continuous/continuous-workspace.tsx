@@ -280,6 +280,22 @@ export function ContinuousWorkspace() {
     }, 80)
   }, [currentPageId, design.layers, selectLayer])
 
+  /**
+   * Clique na área ao redor das páginas desmarca o que estiver selecionado.
+   *
+   * Só quando o alvo é o PRÓPRIO fundo (`target === currentTarget`): o clique
+   * dentro de uma página é do stage, e o da faixa de controles é dos botões.
+   * Durante o recorte não mexe em nada — sair dali é Aplicar/Cancelar.
+   */
+  const handleBackgroundMouseDown = React.useCallback(
+    (event: React.MouseEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) return
+      if (croppingRef.current) return
+      selectLayer(null)
+    },
+    [selectLayer],
+  )
+
   const handleSlotMouseDown = React.useCallback(
     (event: React.MouseEvent<HTMLDivElement>, pageId: string) => {
       if (pageId === currentPageIdRef.current) return
@@ -399,10 +415,14 @@ export function ContinuousWorkspace() {
     <div
       ref={containerRef}
       onScroll={handleScroll}
+      onMouseDown={handleBackgroundMouseDown}
       className="h-full w-full overflow-y-auto overflow-x-auto bg-[#f5f5f5] dark:bg-[#1a1a1a]"
       data-testid="continuous-workspace"
     >
-      <div className="flex min-h-full flex-col items-center gap-6 px-8 py-6">
+      <div
+        className="flex min-h-full flex-col items-center gap-6 px-8 py-6"
+        onMouseDown={handleBackgroundMouseDown}
+      >
         {sortedPages.map((page, index) => {
           const isActive = page.id === currentPageId
           // A ativa usa as dimensões vivas do design (resize antes do autosave);
