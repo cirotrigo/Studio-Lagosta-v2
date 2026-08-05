@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useMemo, useRef } from 'react'
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,7 +13,7 @@ import { SortableMediaItem } from './sortable-media-item'
 import { GoogleDriveInlineSelector } from './google-drive-inline-selector'
 import type { GoogleDriveItem } from '@/types/google-drive'
 import { toast } from 'sonner'
-import { CropDialog } from './crop/crop-dialog'
+import { CropDialog, centeredCrop, matchesPostRatio } from './crop/crop-dialog'
 import {
   readImageSizeFromUrl,
   type CropPostType,
@@ -50,6 +50,21 @@ interface MediaItem {
   mimeType?: string
   /** Já passou pelo enquadramento — a URL é a da imagem recortada */
   cropped?: boolean
+}
+
+/** Imagem escolhida que ainda espera a decisão de enquadramento */
+interface PendenteDeCrop {
+  id: string
+  url: string
+  naturalSize: { width: number; height: number }
+}
+
+const EXTENSOES_VIDEO = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.m4v']
+
+function ehVideo(item: MediaItem): boolean {
+  if (item.mimeType?.startsWith('video/')) return true
+  const alvo = `${item.url ?? ''} ${item.name ?? ''}`.toLowerCase()
+  return EXTENSOES_VIDEO.some((ext) => alvo.includes(ext))
 }
 
 interface MediaUploadSystemProps {
@@ -343,41 +358,101 @@ export function MediaUploadSystem({
    * intacta — o mesmo criativo pode ir para dois posts com enquadramentos
    * diferentes.
    */
-  const [cropAlvo, setCropAlvo] = useState<
-    { id: string; url: string; naturalSize: { width: number; height: number } } | null
-  >(null)
+  const [filaCrop, setFilaCrop] = useState<PendenteDeCrop[]>([])
   const [cropEnviando, setCropEnviando] = useState(false)
+  // Ids já medidos — sem isso o efeito reabriria a fila a cada render
+  const medidosRef = useRef<Set<string>>(new Set())
 
   // REEL é só vídeo — não há enquadramento de imagem ali
   const cropPostType: CropPostType | null = postType === 'REEL' ? null : postType
 
+  /**
+   * Toda imagem fora da proporção do formato entra na fila de enquadramento
+   * assim que é escolhida.
+   *
+   * Antes, quem cortava as fotos do Drive e da IA era a própria rota de
+   * download, no ato da seleção: a foto chegava cortada no centro e o que ficou
+   * de fora sumia. Hoje ela sobe inteira e a escolha acontece aqui, no momento
+   * de montar o post — que é onde se sabe o formato.
+   */
+  useEffect(() => {
+    if (!cropPostType) return
+    const pendentes = selectedMedia.filter(
+      (m) => !m.cropped && !medidosRef.current.has(m.id) && !ehVideo(m),
+    )
+    if (pendentes.length === 0) return
+
+    let cancelado = false
+    void (async () => {
+      const novos: PendenteDeCrop[] = []
+      for (const item of pendentes) {
+        medidosRef.current.add(item.id)
+        try {
+          const naturalSize = await readImageSizeFromUrl(item.url)
+          if (!matchesPostRatio(naturalSize, cropPostType)) {
+            novos.push({ id: item.id, url: item.url, naturalSize })
+          }
+        } catch {
+          // Imagem que não carrega não entra na fila; o envio ao publicador
+          // ainda normaliza o que sobrar
+        }
+      }
+      if (!cancelado && novos.length > 0) setFilaCrop((fila) => [...fila, ...novos])
+    })()
+
+    return () => {
+      cancelado = true
+    }
+  }, [selectedMedia, cropPostType])
+
+  // Trocar de formato muda o que é "fora da proporção": tudo é remedido
+  useEffect(() => {
+    medidosRef.current = new Set()
+    setFilaCrop([])
+  }, [cropPostType])
+
+  const aplicarCrop = useCallback(async (item: PendenteDeCrop, crop: CropRegion) => {
+    if (!cropPostType) return
+    const resposta = await api.post<{ url: string; pathname: string }>(
+      '/api/posts/media/crop',
+      { sourceUrl: item.url, postType: cropPostType, crop },
+    )
+    onSelectionChange((prev) =>
+      prev.map((m) =>
+        m.id === item.id
+          ? {
+              ...m,
+              url: resposta.url,
+              thumbnailUrl: resposta.url,
+              pathname: resposta.pathname,
+              cropped: true,
+            }
+          : m,
+      ),
+    )
+  }, [cropPostType, onSelectionChange])
+
+  /** Botão "Enquadrar" do card — reabre a escolha de uma mídia específica */
   const handleAbrirEnquadramento = useCallback(async (id: string) => {
     const item = selectedMedia.find((m) => m.id === id)
     if (!item) return
     try {
       const naturalSize = await readImageSizeFromUrl(item.url)
-      setCropAlvo({ id, url: item.url, naturalSize })
+      setFilaCrop((fila) =>
+        fila.some((f) => f.id === id) ? fila : [{ id, url: item.url, naturalSize }, ...fila],
+      )
     } catch {
       toast.error('Não foi possível abrir esta imagem para enquadrar')
     }
   }, [selectedMedia])
 
   const handleCropConfirm = useCallback(async (crop: CropRegion) => {
-    if (!cropAlvo || !cropPostType) return
+    const atual = filaCrop[0]
+    if (!atual) return
     setCropEnviando(true)
     try {
-      const resposta = await api.post<{ url: string; pathname: string }>(
-        '/api/posts/media/crop',
-        { sourceUrl: cropAlvo.url, postType: cropPostType, crop },
-      )
-      onSelectionChange((prev) =>
-        prev.map((m) =>
-          m.id === cropAlvo.id
-            ? { ...m, url: resposta.url, thumbnailUrl: resposta.url, pathname: resposta.pathname, cropped: true }
-            : m,
-        ),
-      )
-      setCropAlvo(null)
+      await aplicarCrop(atual, crop)
+      setFilaCrop((fila) => fila.slice(1))
       toast.success('Enquadramento aplicado')
     } catch (error) {
       console.error('[crop] falha ao enquadrar mídia', error)
@@ -385,7 +460,33 @@ export function MediaUploadSystem({
     } finally {
       setCropEnviando(false)
     }
-  }, [cropAlvo, cropPostType, onSelectionChange])
+  }, [filaCrop, aplicarCrop])
+
+  /** "Usar o centro" — o padrão de quem não quer escolher, para a fila inteira */
+  const handleCropCentroEmTodas = useCallback(async () => {
+    if (!cropPostType) return
+    const pendentes = filaCrop
+    setCropEnviando(true)
+    try {
+      for (const item of pendentes) {
+        await aplicarCrop(item, centeredCrop(item.naturalSize, cropPostType))
+      }
+      setFilaCrop([])
+      toast.success(
+        pendentes.length > 1 ? `${pendentes.length} imagens enquadradas no centro` : 'Enquadrada no centro',
+      )
+    } catch (error) {
+      console.error('[crop] falha ao enquadrar no centro', error)
+      toast.error('Não foi possível enquadrar as imagens')
+    } finally {
+      setCropEnviando(false)
+    }
+  }, [filaCrop, cropPostType, aplicarCrop])
+
+  /** Deixar a foto como está: o publicador normaliza para 4:5 no envio */
+  const handleCropDispensar = useCallback(() => {
+    setFilaCrop((fila) => fila.slice(1))
+  }, [])
 
   // Handler para remover item — remove ONLY the requested item, by id (never by
   // array index, which can drift when downloads resolve concurrently).
@@ -588,14 +689,18 @@ export function MediaUploadSystem({
       )}
 
       {/* Enquadramento de mídia vinda por URL */}
-      {cropAlvo && cropPostType && (
+      {filaCrop[0] && cropPostType && (
         <CropDialog
           open
-          src={cropAlvo.url}
-          naturalSize={cropAlvo.naturalSize}
+          src={filaCrop[0].url}
+          naturalSize={filaCrop[0].naturalSize}
           postType={cropPostType}
           busy={cropEnviando}
-          onCancel={() => setCropAlvo(null)}
+          stepLabel={filaCrop.length > 1 ? `Imagem 1 de ${filaCrop.length}` : undefined}
+          onSkipRemaining={handleCropCentroEmTodas}
+          skipLabel={filaCrop.length > 1 ? 'Usar o centro em todas' : 'Usar o centro'}
+          cancelLabel="Deixar como está"
+          onCancel={handleCropDispensar}
           onConfirm={handleCropConfirm}
         />
       )}

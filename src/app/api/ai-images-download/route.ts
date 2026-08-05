@@ -4,7 +4,7 @@ import { db } from '@/lib/db'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import { hasProjectReadAccess } from '@/lib/projects/access'
 import { put } from '@vercel/blob'
-import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
+import { getImageInfo } from '@/lib/images/auto-crop'
 import { z } from 'zod'
 
 export const runtime = 'nodejs'
@@ -92,19 +92,18 @@ export async function POST(req: NextRequest) {
         }
 
         const arrayBuffer = await response.arrayBuffer()
-        let buffer = Buffer.from(arrayBuffer)
+        const buffer = Buffer.from(arrayBuffer)
 
-        // Auto-crop images to Instagram feed format (1080x1350)
+        /**
+         * A imagem sobe INTEIRA — ver o comentário equivalente em
+         * `/api/google-drive-download`. Cortar aqui tirava da pessoa a escolha
+         * do enquadramento e descartava o resto da imagem para sempre.
+         */
         try {
           const imageInfo = await getImageInfo(buffer)
-          console.log(`📷 AI image: ${imageInfo.width}x${imageInfo.height} (${aiImage.name})`)
-
-          const croppedBuffer = await cropToInstagramFeed(buffer)
-          buffer = Buffer.from(croppedBuffer)
-          console.log('✂️ Image cropped to 1080x1350')
-        } catch (cropError) {
-          console.warn('⚠️ Using original image (crop failed):', cropError)
-          // Continue with original buffer if crop fails
+          console.log(`📷 AI image: ${imageInfo.width}x${imageInfo.height} (${aiImage.name}) — sem corte`)
+        } catch {
+          // Só telemetria
         }
 
         // Upload to Vercel Blob

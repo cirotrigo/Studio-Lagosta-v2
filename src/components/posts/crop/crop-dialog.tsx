@@ -41,8 +41,12 @@ export interface CropDialogProps {
   postType: CropPostType
   /** Rótulo da fila: "Imagem 2 de 5" */
   stepLabel?: string
-  /** Oferece "usar centro no resto" quando ainda há imagens na fila */
+  /** Oferece o atalho do centro quando a pessoa não quer escolher */
   onSkipRemaining?: () => void
+  /** Rótulo do atalho do centro (default: "Usar o centro nas demais") */
+  skipLabel?: string
+  /** Rótulo do botão de sair sem enquadrar (default: "Cancelar") */
+  cancelLabel?: string
   /** Recorte em andamento no servidor — trava o botão e avisa */
   busy?: boolean
   onCancel: () => void
@@ -98,6 +102,8 @@ export function CropDialog({
   postType,
   stepLabel,
   onSkipRemaining,
+  skipLabel = 'Usar o centro nas demais',
+  cancelLabel = 'Cancelar',
   busy = false,
   onCancel,
   onConfirm,
@@ -449,13 +455,13 @@ export function CropDialog({
             Centralizar
           </Button>
           {onSkipRemaining && (
-            <Button variant="ghost" size="sm" onClick={onSkipRemaining}>
-              Usar o centro nas demais
+            <Button variant="ghost" size="sm" onClick={onSkipRemaining} disabled={busy}>
+              {skipLabel}
             </Button>
           )}
           <div className="ml-auto flex gap-2">
             <Button variant="outline" onClick={onCancel} disabled={busy}>
-              Cancelar
+              {cancelLabel}
             </Button>
             <Button onClick={aplicar} disabled={!frame || busy}>
               {busy ? 'Enquadrando…' : 'Aplicar'}

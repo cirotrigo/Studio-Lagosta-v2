@@ -5,7 +5,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { hasProjectReadAccess } from '@/lib/projects/access'
 import { google } from 'googleapis'
 import { put } from '@vercel/blob'
-import { cropToInstagramFeed, getImageInfo } from '@/lib/images/auto-crop'
+import { getImageInfo } from '@/lib/images/auto-crop'
 import { z } from 'zod'
 
 export const runtime = 'nodejs'
@@ -101,19 +101,27 @@ export async function POST(req: NextRequest) {
           { responseType: 'arraybuffer' }
         )
 
-        let buffer = Buffer.from(response.data as any)
+        const buffer = Buffer.from(response.data as any)
         const mimeType = metadata.data.mimeType || ''
         const isImage = mimeType.startsWith('image/')
 
-        // Auto-crop images to Instagram feed format
+        /**
+         * A foto sobe INTEIRA.
+         *
+         * Aqui se cortava para 1080x1350 no ato do download — a pessoa escolhia
+         * a foto no Drive e ela já chegava cortada no centro, sem chance de
+         * escolher o enquadramento, e o que ficava de fora ia embora para
+         * sempre. Pior: o corte era sempre de FEED, mesmo quando o post era
+         * story. Quem recorta agora é o composer, no momento de montar o post,
+         * que sabe o formato e mostra a moldura; e o `later-scheduler` continua
+         * normalizando o que sobrar para 4:5 antes de publicar.
+         */
         if (isImage) {
           try {
             const imageInfo = await getImageInfo(buffer)
-            console.log(`📷 Google Drive image: ${imageInfo.width}x${imageInfo.height}`)
-            buffer = await cropToInstagramFeed(buffer)
-            console.log('✂️ Image cropped to 1080x1350')
-          } catch (_cropError) {
-            console.warn('⚠️ Using original image (crop failed)')
+            console.log(`📷 Google Drive image: ${imageInfo.width}x${imageInfo.height} (sem corte)`)
+          } catch {
+            // Só telemetria — imagem ilegível pelo sharp segue para o Blob
           }
         }
 
