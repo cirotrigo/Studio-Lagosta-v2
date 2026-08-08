@@ -3,9 +3,10 @@
 import { memo } from 'react'
 import Image from 'next/image'
 import { Badge } from '@/components/ui/badge'
-import { Layers, Video, Loader2, ImageIcon, FileEdit, Bell, Lock } from 'lucide-react'
+import { Layers, Video, Loader2, ImageIcon, FileEdit, Bell, Lock, Sparkles } from 'lucide-react'
 import { cn, isExternalImage } from '@/lib/utils'
 import { formatPostTime, isVideoUrl, aspectClassForPostType } from '../calendar/calendar-utils'
+import { useImproveJobForPost } from '@/stores/improve-queue-store'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 export type PostComProjeto = SocialPost & {
@@ -60,6 +61,10 @@ export const PostArtCard = memo(function PostArtCard({
     (post.renderStatus === 'PENDING' || post.renderStatus === 'RENDERING')
 
   const logoProjeto = post.Project?.logoUrl || post.Project?.Logo?.[0]?.fileUrl
+
+  // Melhoria com IA em andamento: o card avisa igual à tela do post, para quem
+  // pediu a melhoria e voltou para a agenda.
+  const melhoriaEmAndamento = useImproveJobForPost(post.id)
 
   const corDaBorda = () => {
     switch (post.status) {
@@ -158,6 +163,15 @@ export const PostArtCard = memo(function PostArtCard({
           >
             <Lock className="h-3 w-3" />
           </span>
+        )}
+
+        {melhoriaEmAndamento && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-black/65 text-white backdrop-blur-[2px]">
+            <Sparkles className="h-5 w-5 animate-pulse" />
+            <span className="px-2 text-center text-[11px] font-semibold leading-tight">
+              {melhoriaEmAndamento.status === 'pending' ? 'Na fila' : 'Melhorando com IA…'}
+            </span>
+          </div>
         )}
       </div>
 

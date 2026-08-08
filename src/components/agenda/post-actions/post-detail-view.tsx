@@ -41,6 +41,7 @@ import { usePostActions } from '@/hooks/use-post-actions'
 import { usePostApproval } from '@/hooks/use-post-approval'
 import { usePostStatusPolling } from '@/hooks/use-post-status-polling'
 import { useProject } from '@/hooks/use-project'
+import { useImproveJobForPost } from '@/stores/improve-queue-store'
 import { RescheduleDialog } from './reschedule-dialog'
 import { DuplicateDialog } from './duplicate-dialog'
 import { ApprovePostsDialog } from './approve-posts-dialog'
@@ -143,6 +144,19 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
 
   // Proporção real do formato: 9:16 em story/reel, 4:5 no feed e no carrossel.
   const aspectClass = isStory ? 'aspect-[9/16]' : 'aspect-[4/5]'
+
+  /*
+    Melhoria com IA em andamento. A arte só troca quando a fila termina, um
+    minuto ou mais depois — antes disto o modal fechava e a tela seguia
+    idêntica, sem nada dizendo que havia algo acontecendo.
+
+    Em carrossel a melhoria age num slide só, então o aviso acompanha o slide
+    certo: `applyToPostMediaIndex` ausente significa o primeiro.
+  */
+  const melhoriaEmAndamento = useImproveJobForPost(post.id)
+  const slideEmMelhoria = melhoriaEmAndamento?.applyToPostMediaIndex ?? 0
+  const melhorandoEsteSlide =
+    !!melhoriaEmAndamento && slideEmMelhoria === currentImageIndex
 
   const currentMediaUrl = mediaUrls[currentImageIndex]
   const isCurrentMediaVideo = currentMediaUrl ? isVideoUrl(currentMediaUrl) : false
@@ -511,6 +525,24 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
                       Recorrente
                     </Badge>
                   )}
+
+                  {/* Melhorando: a arte antiga fica por baixo, escurecida —
+                      some seria pior, porque é ela que ainda vai ao ar caso a
+                      melhoria falhe. */}
+                  {melhorandoEsteSlide && (
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/65 text-white backdrop-blur-[2px]">
+                      <Sparkles className="h-7 w-7 animate-pulse" />
+                      <span className="text-sm font-semibold">
+                        {melhoriaEmAndamento?.status === 'pending'
+                          ? 'Na fila para melhorar…'
+                          : 'Melhorando com IA…'}
+                      </span>
+                      <span className="max-w-[85%] text-center text-xs text-white/80">
+                        A arte nova aparece aqui sozinha quando ficar pronta. Pode sair desta
+                        tela — a fila continua.
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -811,14 +843,23 @@ export function PostDetailView({ post, onBack, onEdit }: PostDetailViewProps) {
               size="sm"
               className="hidden flex-1 sm:flex sm:min-w-[9rem] lg:flex-none"
               onClick={() => setImproveOpen(true)}
+              // Já tem melhoria em andamento: pedir de novo não gera uma
+              // segunda arte (o servidor deduplica), só confunde.
+              disabled={!!melhoriaEmAndamento}
               title={
-                isCarousel
-                  ? `Melhora só o slide ${currentImageIndex + 1} — os outros ficam como estão`
-                  : undefined
+                melhoriaEmAndamento
+                  ? 'Já existe uma melhoria em andamento para este post'
+                  : isCarousel
+                    ? `Melhora só o slide ${currentImageIndex + 1} — os outros ficam como estão`
+                    : undefined
               }
             >
-              <Sparkles className="mr-2 h-4 w-4" />
-              {isCarousel ? `Melhorar slide ${currentImageIndex + 1}` : 'Melhorar com IA'}
+              <Sparkles className={cn('mr-2 h-4 w-4', melhoriaEmAndamento && 'animate-pulse')} />
+              {melhoriaEmAndamento
+                ? 'Melhorando…'
+                : isCarousel
+                  ? `Melhorar slide ${currentImageIndex + 1}`
+                  : 'Melhorar com IA'}
             </Button>
           )}
 

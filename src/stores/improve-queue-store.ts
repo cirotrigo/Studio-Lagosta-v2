@@ -196,3 +196,25 @@ export const selectPendingJobs = (state: ImproveQueueState) =>
 
 export const selectActiveJobs = (state: ImproveQueueState) =>
   state.jobs.filter((j) => j.status === 'pending' || j.status === 'processing')
+
+/**
+ * A melhoria em andamento (na fila ou já rodando) de um post — é o que permite
+ * a agenda e a tela do post mostrarem "Melhorando com IA…" em cima da arte.
+ *
+ * Sem isso o modal fechava e a tela seguia idêntica: a arte só mudava um minuto
+ * depois, sem nada indicando que havia algo acontecendo.
+ *
+ * Devolve o próprio item do array, então a referência só muda quando o job
+ * muda — não provoca re-render a cada tick.
+ */
+export function useImproveJobForPost(postId?: string | null): ImproveJob | undefined {
+  return useImproveQueueStore((state) =>
+    postId
+      ? state.jobs.find(
+        (job) =>
+          job.applyToPostId === postId &&
+          (job.status === 'pending' || job.status === 'processing'),
+      )
+      : undefined,
+  )
+}
