@@ -160,7 +160,7 @@ function agendaLink(projectId: number): string {
     'http://localhost:3000'
   ).replace(/\/+$/, '')
 
-  return `${baseUrl}/projects/${projectId}?tab=agenda`
+  return `${baseUrl}/projects/${projectId}/agenda`
 }
 
 function describe(notice: PostFailureNotice): string {

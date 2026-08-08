@@ -171,6 +171,10 @@ ali. Cada card de mídia (`sortable-media-item.tsx`) ganha a ação "Enquadrar".
 
 ## 4. FASE 2 — Navegação e organização (depois do crop)
 
+> **Detalhamento em 08/08/2026**: `PLANO-AGENDA-WEB-FASE2-2026-08-08.md` —
+> estudo do código das duas agendas + mobile integrado em cada etapa. Esta
+> seção fica como registro da ideia original.
+
 ### 4.1 Rotas no lugar de modais
 
 Hoje a agenda é uma aba (`?tab=agenda`) e toda ação é modal. Proposta, usando o

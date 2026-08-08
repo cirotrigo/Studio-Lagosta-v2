@@ -12,7 +12,8 @@ import {
   AlertCircle,
   Menu,
   Filter,
-  ArrowRight
+  ArrowRight,
+  LayoutGrid
 } from 'lucide-react'
 import {
   Tooltip,
@@ -40,7 +41,7 @@ import Image from 'next/image'
 import type { PostType } from '../../../../prisma/generated/client'
 import type { ProjectResponse } from '@/hooks/use-project'
 
-type ViewMode = 'month' | 'week' | 'day'
+import { formatMonthYear, formatMonthYearShort, type ViewMode } from './calendar-utils'
 
 /**
  * Filtro de situação da agenda. "DRAFT" isola os rascunhos, que aparecem no
@@ -96,6 +97,7 @@ export function CalendarHeader({
     } else if (viewMode === 'day') {
       newDate.setDate(newDate.getDate() + step)
     } else {
+      // Mês e grade andam de mês em mês — a grade mostra o mês agrupado por dia.
       newDate.setMonth(newDate.getMonth() + step)
     }
 
@@ -169,10 +171,12 @@ export function CalendarHeader({
                     selectedProject.name.substring(0, 2).toUpperCase()
                   )}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-2">
+                    {/* `truncate`: sem ele o nome quebra no meio da palavra
+                        ("by.-rock") na largura do celular. */}
                     <h1 className={cn(
-                      "font-bold",
+                      "truncate font-bold",
                       isMobile ? "text-lg" : "text-2xl"
                     )}>
                       {selectedProject.instagramUsername || selectedProject.name}
@@ -241,32 +245,50 @@ export function CalendarHeader({
               </Tooltip>
             </TooltipProvider>
           )}
-          {/* View Mode Selector - apenas desktop */}
-          {!isMobile && (
-            <div className="flex items-center gap-1 border border-border/40 rounded-lg p-1">
-              <Button
-                variant={viewMode === 'month' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => onViewModeChange('month')}
-              >
-                <Grid3x3 className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'week' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => onViewModeChange('week')}
-              >
-                <List className="w-4 h-4" />
-              </Button>
-              <Button
-                variant={viewMode === 'day' ? 'secondary' : 'ghost'}
-                size="sm"
-                onClick={() => onViewModeChange('day')}
-              >
-                <CalendarIcon className="w-4 h-4" />
-              </Button>
-            </div>
-          )}
+          {/*
+            Seletor de visão — agora TAMBÉM no celular. Antes ele era escondido
+            abaixo de 768px, e o telefone ficava preso na visão que estivesse
+            no estado, sem como sair. No celular só aparecem GRADE e DIA:
+            calendário de mês e de semana em 375px é ilegível.
+          */}
+          <div className="flex items-center gap-1 rounded-lg border border-border/40 p-1">
+            <Button
+              variant={viewMode === 'grade' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onViewModeChange('grade')}
+              title="Grade — a arte grande, por dia"
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            {!isMobile && (
+              <>
+                <Button
+                  variant={viewMode === 'month' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => onViewModeChange('month')}
+                  title="Mês"
+                >
+                  <Grid3x3 className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant={viewMode === 'week' ? 'secondary' : 'ghost'}
+                  size="sm"
+                  onClick={() => onViewModeChange('week')}
+                  title="Semana"
+                >
+                  <List className="h-4 w-4" />
+                </Button>
+              </>
+            )}
+            <Button
+              variant={viewMode === 'day' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => onViewModeChange('day')}
+              title="Dia"
+            >
+              <CalendarIcon className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -284,12 +306,7 @@ export function CalendarHeader({
           </Button>
 
           <div className="min-w-[200px] text-center">
-            <h2 className="text-lg font-semibold capitalize">
-              {selectedDate.toLocaleDateString('pt-BR', {
-                month: 'long',
-                year: 'numeric'
-              })}
-            </h2>
+            <h2 className="text-lg font-semibold">{formatMonthYear(selectedDate)}</h2>
           </div>
 
           <Button
@@ -395,12 +412,11 @@ export function CalendarHeader({
               <ChevronLeft className="w-4 h-4" />
             </Button>
 
-            <div className="text-center">
-              <h2 className="text-sm font-semibold capitalize">
-                {selectedDate.toLocaleDateString('pt-BR', {
-                  month: 'long',
-                  year: 'numeric'
-                })}
+            {/* `whitespace-nowrap`: em 261px de largura útil o mês quebrava em
+                três linhas, partindo a palavra ("Agos-to De 2026"). */}
+            <div className="min-w-0 text-center">
+              <h2 className="whitespace-nowrap text-sm font-semibold">
+                {formatMonthYearShort(selectedDate)}
               </h2>
             </div>
 

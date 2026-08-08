@@ -1,398 +1,49 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useAgendaPosts } from '@/hooks/use-agenda-posts'
-import { useNextScheduledPost } from '@/hooks/use-next-scheduled-post'
-import { CalendarHeader, type StatusFilter } from '@/components/agenda/calendar/calendar-header'
-import { DraftsBanner } from '@/components/agenda/drafts-banner'
-import { CalendarGrid } from '@/components/agenda/calendar/calendar-grid'
-import { CalendarWeekView } from '@/components/agenda/calendar/calendar-week-view'
-import { CalendarDayView } from '@/components/agenda/calendar/calendar-day-view'
-
-import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
-import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
-import type { SocialPost, PostType } from '../../../prisma/generated/client'
-import { DndContext, DragOverlay, useSensor, useSensors, MouseSensor, TouchSensor, type DragEndEvent, type DragStartEvent } from '@dnd-kit/core'
-import { PostMiniCard } from '@/components/agenda/calendar/post-mini-card'
-import { toast } from 'sonner'
-import { Portal } from '@/components/ui/portal'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '@/lib/api-client'
+import { AgendaWorkspace } from '@/components/agenda/agenda-workspace'
+import { novoPostHref, postHref } from '@/lib/agenda-routes'
 import type { ProjectResponse } from '@/hooks/use-project'
-
-type ViewMode = 'month' | 'week' | 'day'
-type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
-
-const RECURRENCE_FREQUENCIES: ReadonlyArray<RecurringFormValue['frequency']> = ['DAILY', 'WEEKLY', 'MONTHLY']
-
-function isRecurrenceFrequency(value: unknown): value is RecurringFormValue['frequency'] {
-  return typeof value === 'string' && RECURRENCE_FREQUENCIES.includes(value as RecurringFormValue['frequency'])
-}
-
-function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
-  if (!config || typeof config !== 'object') return undefined
-
-  const raw = config as Record<string, unknown>
-  const frequency = raw.frequency
-  const time = raw.time
-
-  if (!isRecurrenceFrequency(frequency) || typeof time !== 'string') {
-    return undefined
-  }
-
-  const days = Array.isArray(raw.daysOfWeek)
-    ? raw.daysOfWeek.filter((day): day is number => typeof day === 'number')
-    : undefined
-  const endDateValue = raw.endDate
-  const endDate =
-    typeof endDateValue === 'string' && endDateValue
-      ? new Date(endDateValue)
-      : undefined
-
-  return {
-    frequency,
-    time,
-    ...(days && days.length > 0 ? { daysOfWeek: days } : {}),
-    ...(endDate ? { endDate } : {}),
-  }
-}
-
-function getMonthStart(date: Date) {
-  const start = new Date(date)
-  start.setDate(1)
-  start.setHours(0, 0, 0, 0)
-  const day = start.getDay()
-  const diff = day === 0 ? 6 : day - 1
-  start.setDate(start.getDate() - diff)
-  return start
-}
-
-function getMonthEnd(date: Date) {
-  const end = new Date(date)
-  end.setMonth(end.getMonth() + 1, 0)
-  end.setHours(23, 59, 59, 999)
-  const day = end.getDay()
-  const diff = day === 0 ? 0 : 7 - day
-  end.setDate(end.getDate() + diff)
-  return end
-}
-
-function getWeekRange(date: Date) {
-  const start = new Date(date)
-  const day = start.getDay()
-  const diff = day === 0 ? 6 : day - 1
-  start.setDate(start.getDate() - diff)
-  start.setHours(0, 0, 0, 0)
-
-  const end = new Date(start)
-  end.setDate(start.getDate() + 6)
-  end.setHours(23, 59, 59, 999)
-
-  return { startDate: start, endDate: end }
-}
-
-function getDayRange(date: Date) {
-  const start = new Date(date)
-  start.setHours(0, 0, 0, 0)
-
-  const end = new Date(date)
-  end.setHours(23, 59, 59, 999)
-
-  return { startDate: start, endDate: end }
-}
 
 interface ProjectAgendaViewProps {
   project: ProjectResponse
   projectId: number
 }
 
+/**
+ * A agenda de UM cliente — a casca da rota `/projects/[id]/agenda`.
+ *
+ * Todo o miolo é o `AgendaWorkspace`, o mesmo da agenda global. O que sobra
+ * aqui é o que só existe nesta tela: o cliente já está definido, e os links
+ * antigos com `?postId` precisam de redirecionamento.
+ */
 export function ProjectAgendaView({ project, projectId }: ProjectAgendaViewProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [viewMode, setViewMode] = useState<ViewMode>('month')
-  const [selectedDate, setSelectedDate] = useState(new Date())
-  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
-  const [isComposerOpen, setIsComposerOpen] = useState(false)
-  const [editingPost, setEditingPost] = useState<SocialPost | null>(null)
 
-  // Deep-link: when /projects/[id]?tab=agenda&postId=X is opened (e.g. from
-  // the arte-rapida skill response), fetch that post and open the editor for
-  // it directly — without forcing the user to navigate the calendar.
+  /**
+   * Deep-link antigo: `?tab=agenda&postId=X`, gerado pela skill arte-rápida,
+   * pelos avisos de falha e pelos lembretes — links que vivem em conversas de
+   * WhatsApp que ninguém apaga. Antes ele buscava o post e abria o COMPOSER;
+   * hoje leva à tela do post, de onde editar é um toque. Para um link
+   * recebido no celular, abrir o formulário de edição direto era a semântica
+   * mais arriscada das duas.
+   */
   const postIdParam = searchParams.get('postId')
   useEffect(() => {
     if (!postIdParam) return
-    let cancelled = false
-    ;(async () => {
-      try {
-        const post = await api.get<SocialPost>(
-          `/api/projects/${projectId}/posts/${postIdParam}`,
-        )
-        if (cancelled) return
-        setEditingPost(post)
-        if (post.scheduledDatetime) {
-          setSelectedDate(new Date(post.scheduledDatetime))
-        }
-        // Clean the postId param from the URL so the effect doesn't re-fire
-        // on subsequent re-renders or when the user closes/reopens the dialog.
-        router.replace(`/projects/${projectId}?tab=agenda`, { scroll: false })
-      } catch (err) {
-        console.error('[ProjectAgendaView] Failed to load post for editing', err)
-        toast.error('Não foi possível abrir o post para edição')
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
+    router.replace(postHref(projectId, postIdParam))
   }, [postIdParam, projectId, router])
-  const [postTypeFilter, setPostTypeFilter] = useState<PostType | 'ALL'>('ALL')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
-  const [timingFilter, setTimingFilter] = useState<'ALL' | 'UPCOMING' | 'OVERDUE'>('ALL')
-  const [activePost, setActivePost] = useState<SocialPost | null>(null)
-  const queryClient = useQueryClient()
 
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 10,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 250,
-        tolerance: 5,
-      },
-    })
+  const criarPost = useCallback(
+    (quando?: Date) => {
+      const data = quando ? new Date(quando) : undefined
+      if (data) data.setHours(10, 0, 0, 0)
+      router.push(novoPostHref(projectId, data))
+    },
+    [router, projectId],
   )
 
-  const updatePostMutation = useMutation({
-    mutationFn: async ({ post, date }: { post: SocialPost; date: Date }) => {
-      const newDate = new Date(date)
-      if (post.scheduledDatetime) {
-        const oldDate = new Date(post.scheduledDatetime)
-        newDate.setHours(oldDate.getHours(), oldDate.getMinutes(), 0, 0)
-      } else {
-        newDate.setHours(10, 0, 0, 0)
-      }
-
-      return api.put(`/api/projects/${post.projectId}/posts/${post.id}`, {
-        scheduledDatetime: newDate.toISOString(),
-        scheduleType: 'SCHEDULED',
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agenda-posts'] })
-      queryClient.invalidateQueries({ queryKey: ['social-posts'] })
-      toast.success('Post reagendado com sucesso')
-    },
-    onError: (err) => {
-      console.error(err)
-      toast.error('Erro ao reagendar post')
-    },
-  })
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event
-    const post = active.data.current?.post as SocialPost
-    if (post) {
-      setActivePost(post)
-    }
-  }
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event
-    setActivePost(null)
-
-    if (!over) return
-
-    const post = active.data.current?.post as SocialPost
-    const date = over.data.current?.date as Date
-
-    if (post && date) {
-      const postDate = post.scheduledDatetime ? new Date(post.scheduledDatetime) : null
-      if (postDate && postDate.toDateString() === date.toDateString()) {
-        return
-      }
-      updatePostMutation.mutate({ post, date })
-    }
-  }
-
-  // Determine date range based on view mode
-  const { startDate, endDate } = useMemo(() => {
-    switch (viewMode) {
-      case 'week':
-        return getWeekRange(selectedDate)
-      case 'day':
-        return getDayRange(selectedDate)
-      default:
-        return {
-          startDate: getMonthStart(selectedDate),
-          endDate: getMonthEnd(selectedDate),
-        }
-    }
-  }, [selectedDate, viewMode])
-
-  const { data: posts, isLoading } = useAgendaPosts({
-    projectId,
-    startDate,
-    endDate,
-    postType: postTypeFilter,
-  })
-
-  // Apply status and timing filters client-side
-  const filteredPosts = useMemo(() => {
-    if (!posts) return []
-
-    let filtered = posts as SocialPost[]
-    const now = new Date()
-
-    // Apply status filter
-    if (statusFilter !== 'ALL') {
-      filtered = filtered.filter(post => post.status === statusFilter)
-    }
-
-    // Apply timing filter
-    if (timingFilter !== 'ALL') {
-      filtered = filtered.filter(post => {
-        if (!post.scheduledDatetime) return false
-        const scheduledDate = new Date(post.scheduledDatetime)
-
-        if (timingFilter === 'UPCOMING') {
-          return scheduledDate > now && post.status === 'SCHEDULED'
-        } else if (timingFilter === 'OVERDUE') {
-          return scheduledDate < now && post.status === 'SCHEDULED'
-        }
-        return true
-      })
-    }
-
-    return filtered
-  }, [posts, statusFilter, timingFilter])
-
-  const { data: nextScheduledData } = useNextScheduledPost(projectId)
-  const nextScheduledDate = nextScheduledData?.nextDate ? new Date(nextScheduledData.nextDate) : null
-
-  const handleGoToNextScheduled = () => {
-    if (nextScheduledDate) {
-      setSelectedDate(nextScheduledDate)
-      if (viewMode === 'month') {
-        setViewMode('day')
-      }
-    }
-  }
-
-  const handlePostClick = (post: SocialPost) => {
-    setSelectedPost(post)
-  }
-
-  const handleEditPost = (post: SocialPost) => {
-    setEditingPost(post)
-    setSelectedPost(null)
-    setIsComposerOpen(true)
-  }
-
-  const handleCreatePost = () => {
-    setEditingPost(null)
-    setIsComposerOpen(true)
-  }
-
-  const handleComposerClose = () => {
-    setIsComposerOpen(false)
-    setEditingPost(null)
-  }
-
-  const initialFormData: Partial<PostFormData> | undefined = editingPost
-    ? {
-      caption: editingPost.caption || '',
-      mediaUrls: editingPost.mediaUrls as string[],
-      postType: editingPost.postType,
-      scheduleType: editingPost.scheduleType,
-      scheduledDatetime: editingPost.scheduledDatetime || undefined,
-      recurringConfig: parseRecurringConfig(editingPost.recurringConfig),
-    }
-    : undefined
-
-  return (
-    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="flex flex-col h-[calc(100dvh-12rem)]">
-        <CalendarHeader
-          selectedDate={selectedDate}
-          onDateChange={setSelectedDate}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-          selectedProject={project}
-          onCreatePost={handleCreatePost}
-          postTypeFilter={postTypeFilter}
-          onPostTypeFilterChange={setPostTypeFilter}
-          statusFilter={statusFilter}
-          onStatusFilterChange={setStatusFilter}
-          timingFilter={timingFilter}
-          onTimingFilterChange={setTimingFilter}
-          nextScheduledDate={nextScheduledDate}
-          onGoToNextScheduled={handleGoToNextScheduled}
-        />
-
-        <DraftsBanner
-          posts={(posts ?? []) as SocialPost[]}
-          projectId={projectId}
-          contaLabel={project.instagramUsername || project.name}
-          filtroAtivo={statusFilter === 'DRAFT'}
-          onVerRascunhos={() => setStatusFilter('DRAFT')}
-        />
-
-        <div className="flex-1 overflow-auto">
-          {viewMode === 'month' && (
-            <CalendarGrid
-              selectedDate={selectedDate}
-              posts={filteredPosts}
-              isLoading={isLoading}
-              onPostClick={handlePostClick}
-            />
-          )}
-          {viewMode === 'week' && (
-            <CalendarWeekView
-              selectedDate={selectedDate}
-              posts={filteredPosts}
-              isLoading={isLoading}
-              onPostClick={handlePostClick}
-            />
-          )}
-          {viewMode === 'day' && (
-            <CalendarDayView
-              selectedDate={selectedDate}
-              posts={filteredPosts}
-              isLoading={isLoading}
-              onPostClick={handlePostClick}
-            />
-          )}
-        </div>
-
-        {selectedPost && (
-          <PostPreviewModal
-            post={selectedPost}
-            open={!!selectedPost}
-            onClose={() => setSelectedPost(null)}
-            onEdit={handleEditPost}
-          />
-        )}
-
-        {isComposerOpen && (
-          <PostComposer
-            projectId={projectId}
-            postId={editingPost?.id}
-            open={isComposerOpen}
-            onClose={handleComposerClose}
-            initialData={initialFormData}
-          />
-        )}
-        <DragOverlay>
-          {activePost ? (
-            <div className="w-[180px] opacity-80 rotate-2 cursor-grabbing">
-              <PostMiniCard post={activePost} onClick={() => { }} />
-            </div>
-          ) : null}
-        </DragOverlay>
-      </div>
-    </DndContext>
-  )
+  return <AgendaWorkspace projectId={projectId} project={project} onCreatePost={criarPost} />
 }

@@ -3,7 +3,7 @@
 import { useMemo, memo } from 'react'
 import { CalendarDayCell } from './calendar-day-cell'
 import { Skeleton } from '@/components/ui/skeleton'
-import { getPostDateKey, createDateKey } from './calendar-utils'
+import { getPostDateKey, createDateKey, WEEKDAY_HEADERS } from './calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
 
 interface CalendarGridProps {
@@ -58,7 +58,7 @@ export const CalendarGrid = memo(function CalendarGrid({
     <div className="p-6">
       {/* Header dos dias da semana */}
       <div className="grid grid-cols-7 gap-px mb-px">
-        {['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'].map(day => (
+        {WEEKDAY_HEADERS.map(day => (
           <div
             key={day}
             className="bg-muted/30 text-center text-sm font-semibold text-muted-foreground py-3"
@@ -92,7 +92,8 @@ function generateCalendarDays(date: Date) {
   const month = date.getMonth()
   const firstDay = new Date(year, month, 1)
   const lastDay = new Date(year, month + 1, 0)
-  const startDay = firstDay.getDay() // 0 = Sunday
+  // Quantas colunas vazias antes do dia 1, numa grade que começa na SEGUNDA.
+  const startDay = (firstDay.getDay() + 6) % 7
   const daysInMonth = lastDay.getDate()
 
   const days: Array<{

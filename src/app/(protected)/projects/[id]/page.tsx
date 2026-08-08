@@ -37,7 +37,7 @@ import { BrandDnaSection } from '@/components/projects/brand-dna-section'
 import { ProjectTagsConfig } from '@/components/projects/project-tags-config'
 import { InstagramTokenConfig } from '@/components/projects/instagram-token-config'
 import { ProjectAnalyticsPanel } from '@/components/analytics/project-analytics-panel'
-import { ProjectAgendaView } from '@/components/projects/project-agenda-view'
+import { agendaHref, postHref } from '@/lib/agenda-routes'
 import { DrivePage as ProjectDrivePage } from '@/app/(protected)/drive/_components/drive-page'
 import { useProject } from '@/hooks/use-project'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -74,6 +74,21 @@ export default function ProjectDetailPage() {
   const queryClient = useQueryClient()
 
   const activeTab = searchParams.get('tab') || 'templates'
+
+  /*
+    A agenda saiu da aba e virou rota (`/projects/[id]/agenda`) em 08/08/2026.
+    Os links `?tab=agenda` continuam chegando — vivem em conversas de WhatsApp
+    que ninguém apaga, geradas pelos avisos de falha, pelos lembretes, pelo
+    `agendar.ts` e pelo MCP — então a aba redireciona em vez de renderizar.
+    Com `postId` junto, vai direto para a tela do post.
+  */
+  const postIdParam = searchParams.get('postId')
+  useEffect(() => {
+    if (activeTab !== 'agenda' || Number.isNaN(projectId)) return
+    router.replace(
+      postIdParam ? postHref(projectId, postIdParam) : agendaHref(projectId),
+    )
+  }, [activeTab, postIdParam, projectId, router])
 
   const {
     data: projectDetails,
@@ -193,7 +208,12 @@ export default function ProjectDetailPage() {
 
       <Tabs
         value={activeTab}
-        onValueChange={(value) => router.push(`/projects/${projectId}?tab=${value}`)}
+        onValueChange={(value) =>
+          // A agenda não é mais uma aba: clicar nela navega para a tela cheia.
+          value === 'agenda'
+            ? router.push(agendaHref(projectId))
+            : router.push(`/projects/${projectId}?tab=${value}`)
+        }
         className="w-full max-w-full overflow-x-hidden"
       >
         <TabsList>
@@ -310,22 +330,14 @@ export default function ProjectDetailPage() {
           <CreativesGallery projectId={projectId} />
         </TabsContent>
 
+        {/* A agenda vive em `/projects/[id]/agenda`. O efeito acima redireciona
+            quem chegar por `?tab=agenda`; este conteúdo é só o que se vê no
+            quadro entre o clique e a navegação. */}
         <TabsContent value="agenda" className="mt-3 md:mt-4">
-          {isLoadingProject ? (
-            <Card className="p-6">
-              <Skeleton className="h-6 w-60" />
-              <Skeleton className="mt-4 h-96 w-full" />
-            </Card>
-          ) : projectDetails ? (
-            <ProjectAgendaView project={projectDetails} projectId={projectId} />
-          ) : (
-            <Card className="p-6">
-              <h4 className="text-base font-semibold">Não foi possível carregar a agenda</h4>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {projectError instanceof Error ? projectError.message : 'Tente atualizar a página e tente novamente.'}
-              </p>
-            </Card>
-          )}
+          <Card className="p-6">
+            <Skeleton className="h-6 w-60" />
+            <Skeleton className="mt-4 h-96 w-full" />
+          </Card>
         </TabsContent>
 
         <TabsContent value="assets" className="mt-3 md:mt-4">

@@ -4,7 +4,7 @@ import { useMemo } from 'react'
 import { Skeleton } from '@/components/ui/skeleton'
 import { PostMiniCard } from './post-mini-card'
 import { DraggablePost } from './draggable-post'
-import { getPostDateKey, sortPostsByDate } from './calendar-utils'
+import { getPostDateKey, sortPostsByDate, startOfWeek, WEEKDAY_BY_INDEX } from './calendar-utils'
 import { useDroppable } from '@dnd-kit/core'
 import { cn } from '@/lib/utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
@@ -15,8 +15,6 @@ interface CalendarWeekViewProps {
   onPostClick: (post: SocialPost) => void
   isLoading: boolean
 }
-
-const WEEKDAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado']
 
 export function CalendarWeekView({
   posts,
@@ -88,7 +86,7 @@ function WeekDayColumn({ day, posts, onPostClick }: WeekDayColumnProps) {
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs text-muted-foreground uppercase">
-            {WEEKDAY_LABELS[day.date.getDay()]}
+            {WEEKDAY_BY_INDEX[day.date.getDay()]}
           </p>
           <p className="text-lg font-semibold">{day.date.getDate()}</p>
         </div>
@@ -117,10 +115,7 @@ function WeekDayColumn({ day, posts, onPostClick }: WeekDayColumnProps) {
 }
 
 function getWeekDays(date: Date) {
-  const start = new Date(date)
-  const day = start.getDay()
-  start.setDate(start.getDate() - day)
-  start.setHours(0, 0, 0, 0)
+  const start = startOfWeek(date)
 
   return Array.from({ length: 7 }).map((_, index) => {
     const dayDate = new Date(start)

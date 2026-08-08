@@ -1265,9 +1265,9 @@ server.tool(
       // Build a clickable admin URL for editing this specific post.
       // Uses STUDIO_LAGOSTA_PUBLIC_URL (or NEXT_PUBLIC_APP_URL fallback) so the
       // MCP can be pointed at the deployed site even when running locally.
-      // The agenda view honors ?postId= and auto-opens the editor for that post.
+      // O post tem tela própria desde 08/08/2026 — o link abre direto nela.
       const appUrl = getPublicAppUrl()
-      const editUrl = `${appUrl}/projects/${page.Template.projectId}?tab=agenda&postId=${encodeURIComponent(postId)}`
+      const editUrl = `${appUrl}/projects/${page.Template.projectId}/agenda/${encodeURIComponent(postId)}`
 
       return {
         content: [{

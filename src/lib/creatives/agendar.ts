@@ -234,7 +234,7 @@ export async function agendarPost(input: AgendarPostInput) {
     quando: quandoBRT,
     imagens: post.mediaUrls,
     ...(avisoMidia ? { aviso: avisoMidia } : {}),
-    agendaUrl: `${getPublicAppUrl()}/projects/${project.id}?tab=agenda`,
+    agendaUrl: `${getPublicAppUrl()}/projects/${project.id}/agenda`,
     // Frase pronta para o modelo repetir: evita que ele traduza "DRAFT" sozinho
     mensagem: vaiPublicar
       ? `Agendado: este ${tipo} vai ser publicado no Instagram de ${project.name} em ${quandoBRT}.`

@@ -7,27 +7,12 @@ import { Button } from '@/components/ui/button'
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Image as ImageIcon, Plus, Clock, CheckCircle2, XCircle, Loader2, Bell } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostPreviewModal } from '@/components/agenda/post-actions/post-preview-modal'
-import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
+import { PostComposer, parseRecurringConfig, type PostFormData } from '@/components/posts/post-composer'
+import { getMonthRange } from '@/components/agenda/calendar/calendar-utils'
 import type { SocialPost } from '../../../../prisma/generated/client'
-
-type RecurringFormValue = NonNullable<PostFormData['recurringConfig']>
 
 interface AgendaPanelProps {
   projectId: number
-}
-
-function getMonthStart(date: Date) {
-  const start = new Date(date)
-  start.setDate(1)
-  start.setHours(0, 0, 0, 0)
-  return start
-}
-
-function getMonthEnd(date: Date) {
-  const end = new Date(date)
-  end.setMonth(end.getMonth() + 1, 0)
-  end.setHours(23, 59, 59, 999)
-  return end
 }
 
 function getCalendarDays(date: Date) {
@@ -55,17 +40,6 @@ function getCalendarDays(date: Date) {
   return days
 }
 
-function parseRecurringConfig(config: unknown): RecurringFormValue | undefined {
-  if (!config || typeof config !== 'object') return undefined
-  const c = config as any
-  return {
-    frequency: c.frequency || 'DAILY',
-    time: c.time || '09:00',
-    daysOfWeek: c.daysOfWeek,
-    endDate: c.endDate ? new Date(c.endDate) : undefined,
-  }
-}
-
 export function AgendaPanel({ projectId }: AgendaPanelProps) {
   const [selectedDate, setSelectedDate] = React.useState(new Date())
   const [currentMonth, setCurrentMonth] = React.useState(new Date())
@@ -73,8 +47,16 @@ export function AgendaPanel({ projectId }: AgendaPanelProps) {
   const [isComposerOpen, setIsComposerOpen] = React.useState(false)
   const [editingPost, setEditingPost] = React.useState<SocialPost | null>(null)
 
-  const startDate = React.useMemo(() => getMonthStart(currentMonth), [currentMonth])
-  const endDate = React.useMemo(() => getMonthEnd(currentMonth), [currentMonth])
+  /*
+    `getMonthRange` preenche até a borda da SEMANA. Este calendário desenha 42
+    dias — inclui os do mês vizinho —, mas buscava só do dia 1 ao último: post
+    marcado numa dessas células nunca aparecia. Mesmo defeito que a agenda
+    global tinha, corrigido junto na unificação de 08/08/2026.
+  */
+  const { startDate, endDate } = React.useMemo(
+    () => getMonthRange(currentMonth),
+    [currentMonth],
+  )
 
   const { data: posts, isLoading, isError, error, refetch } = useAgendaPosts({
     projectId,
