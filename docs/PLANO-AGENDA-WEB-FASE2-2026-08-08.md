@@ -345,6 +345,25 @@ DENTRO do editor de templates (modal do post e composer modal — as duas
 lacunas que a 2.3 tinha deixado em aberto), e a correção do range aparecendo
 nos dois lugares.
 
+## 4.5 Ajustes depois do teste em produção (08/08/2026)
+
+Commit `f1c4d9d`, depois do `7b2d1ff` que subiu a Fase 2 inteira.
+
+- **A GRADE virou a visão padrão** das duas agendas (`useAgendaViewState('grade')`).
+- **A grade mostra de HOJE em diante** (`getGradeRange`): no dia 20, começar
+  pelo dia 1 punha uma semana e meia de posts já publicados na frente do que
+  interessa. Mês inteiramente no passado fica vazio por definição — a tela diz
+  isso, senão parece que os posts sumiram.
+- **Consequência a saber**: rascunho atrasado de dias anteriores deixa de
+  aparecer na grade, e de contar no `DraftsBanner` enquanto ela estiver ativa.
+  Continua na visão de mês e no filtro de atrasados.
+
+Conferido em produção com um agendado real (`cmsggqblr…`, Seu Quinto, story de
+09/08 às 20:00): a tela do post traz "Editável até 09/08/2026, 19:55" (5 min
+antes, como manda a janela de congelamento), o "Melhorar com IA" aparece porque
+o post tem Generation e não está congelado, e o "Editar Template" aponta para
+`/templates/159/editor?pageId=cmsgfwvne…` — os mesmos ids que o banco guarda.
+
 ## 5. Armadilhas (do estudo + regras da casa)
 
 - **`useIsMobile` nasce `false`** — layout por CSS; o hook só para montar/não
