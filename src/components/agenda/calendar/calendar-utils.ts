@@ -86,12 +86,31 @@ export function getStrictMonthRange(date: Date): { startDate: Date; endDate: Dat
 }
 
 /**
+ * O que a GRADE cobre: de HOJE até o fim do mês em que se está.
+ *
+ * Ela é a visão de quem abre a agenda para ver o que vem — dia que já passou é
+ * ruído ali (decisão do Ciro em 08/08/2026). Num mês inteiramente no passado o
+ * início fica depois do fim e a busca não devolve nada; a tela explica que a
+ * grade começa em hoje e manda para a visão de mês, onde o passado continua
+ * inteiro.
+ */
+export function getGradeRange(
+  date: Date,
+  hoje: Date = new Date(),
+): { startDate: Date; endDate: Date } {
+  const { startDate, endDate } = getStrictMonthRange(date)
+  const inicioDeHoje = new Date(hoje)
+  inicioDeHoje.setHours(0, 0, 0, 0)
+
+  return { startDate: inicioDeHoje > startDate ? inicioDeHoje : startDate, endDate }
+}
+
+/**
  * O período que cada visão cobre.
  *
- * Mês e grade cobrem o mesmo mês, mas com bordas diferentes de propósito: a
- * visão de MÊS desenha 42 células e precisa dos dias do mês vizinho que
- * aparecem nelas; a GRADE só lista por dia, então trazer 27 de julho debaixo
- * de um cabeçalho que diz "Agosto de 2026" seria mentira.
+ * Mês e grade partem do mesmo mês, com bordas diferentes de propósito: a visão
+ * de MÊS desenha 42 células e precisa dos dias do mês vizinho que aparecem
+ * nelas; a GRADE lista por dia e começa em hoje.
  */
 export function getRangeForView(view: ViewMode, date: Date): { startDate: Date; endDate: Date } {
   switch (view) {
@@ -100,7 +119,7 @@ export function getRangeForView(view: ViewMode, date: Date): { startDate: Date; 
     case 'day':
       return getDayRange(date)
     case 'grade':
-      return getStrictMonthRange(date)
+      return getGradeRange(date)
     default:
       return getMonthRange(date)
   }

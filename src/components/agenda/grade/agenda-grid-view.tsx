@@ -74,8 +74,12 @@ export function AgendaGridView({
       <div className="flex h-full flex-col items-center justify-center p-8 text-center">
         <div className="mb-3 text-5xl">📅</div>
         <h3 className="mb-1 text-base font-semibold">Nada por aqui</h3>
-        <p className="text-sm text-muted-foreground">
-          Nenhum post neste período. Mude o mês ou tire os filtros.
+        <p className="max-w-sm text-sm text-muted-foreground">
+          {/* Num mês que já passou a grade fica vazia por definição — o aviso
+              precisa dizer isso, senão parece que os posts sumiram. */}
+          A grade mostra de hoje em diante. Para ver o que já foi publicado,
+          troque para a visão de mês; para o que vem, avance o mês ou tire os
+          filtros.
         </p>
       </div>
     )

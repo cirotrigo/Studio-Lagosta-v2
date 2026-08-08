@@ -82,7 +82,9 @@ export function AgendaWorkspace({
     setStatusFilter,
     timingFilter,
     setTimingFilter,
-  } = useAgendaViewState('month')
+    // GRADE é a visão padrão desde 08/08/2026: quem abre a agenda quer ver as
+    // ARTES, não chips num calendário. Mês, semana e dia continuam a um clique.
+  } = useAgendaViewState('grade')
 
   /*
     Mês e semana são ilegíveis em 375px — sete colunas não cabem. No celular
