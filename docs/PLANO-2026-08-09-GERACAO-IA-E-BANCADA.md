@@ -166,14 +166,31 @@ criar um quinto caminho.
 
 ### Fase 2 — Multi-seleção de acervo + DNA profundo · ~1 semana
 
-> **STATUS 09/08/2026: itens 2 e 3 implementados.** Anchor sheet no ar
+> **STATUS 09/08/2026: itens 1, 2 e 3 implementados.** Anchor sheet no ar
 > (`ProjectAnchorImage` + migration aplicada em produção, injeção automática
 > da âncora "ambiente" na trilha imagem, tools MCP `definir-ancora` /
-> `listar-ancoras`). Importador de DNA pronto
-> (`scripts/importar-dna-clientes.ts`, uma chamada LLM por seção com laço de
-> correção; dry-run gera propostas em `scripts/.tmp-dna-import/` — **aplicar
-> exige revisão do Ciro + `--aplicar`**). Pendentes: item 1 (UI
-> multi-seleção com chips de papel) e item 4 (crivo por projeto).
+> `listar-ancoras`). DNAs dos 9 clientes **aplicados em produção** pelo
+> `scripts/importar-dna-clientes.ts` (uma chamada LLM por seção com laço de
+> correção; o conteúdo anterior está preservado nos `.md` de
+> `scripts/.tmp-dna-import/` — é o rollback).
+>
+> **UI de multi-seleção no ar**: `arte-ia-image-picker.tsx` (acervo com busca
+> por tema, chips de pasta do Drive, rodízio "menos usadas primeiro", upload,
+> e o CHIP DE PAPEL por imagem com os tetos do backend) +
+> `gerar-arte-ia-modal.tsx` (trilha, formato, copy verbatim, instrução de foto
+> opt-in) + botão "Gerar com IA" na aba Criativos, que passou a se atualizar
+> sozinha enquanto houver Generation PROCESSING. Rotas novas:
+> `/api/projects/[id]/acervo` (expõe o catálogo semântico que só o MCP via,
+> com fallback para a listagem crua) e `/api/projects/[id]/ancoras`.
+> Verificado no navegador com o By Rock: 840 fotos do acervo, papel atribuído
+> automaticamente (2ª foto → Ambiente), chip bloqueado quando o teto estoura,
+> e POST real criando a Generation com as duas refs e a copy.
+>
+> ⚠ **Duas galerias**: o botão foi para `creatives-gallery.tsx` (aba do
+> projeto). A rota `/projects/[id]/creativos` é uma implementação DUPLICADA e
+> ficou sem o recurso — unificar (tarefa registrada).
+>
+> Pendente: item 4 (crivo por projeto).
 
 1. **UI multi-seleção**: no modal de geração/melhoria, o seletor de Drive e da
    galeria passam a multi-select; cada imagem escolhida ganha um chip de papel

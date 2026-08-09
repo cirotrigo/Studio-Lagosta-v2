@@ -19,11 +19,12 @@ import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from './gallery-item'
 import { MemberFilter } from '../filters/member-filter'
-import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar } from 'lucide-react'
+import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
 import { ImproveCreativeModal } from '@/components/creatives/improve-creative-modal'
+import { GerarArteIaModal } from '@/components/creatives/gerar-arte-ia-modal'
 import {
   CompareImprovementDialog,
   type CompareTarget,
@@ -156,6 +157,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   // "Melhorar de novo" reabre o modal com o pedido anterior pré-preenchido.
   const [improveInitialRequest, setImproveInitialRequest] = React.useState<string | null>(null)
   const [compareTarget, setCompareTarget] = React.useState<CompareTarget | null>(null)
+  const [gerarArteAberto, setGerarArteAberto] = React.useState(false)
 
   // Serializa weekdays ordenados pra estabilidade do queryKey
   const weekdaysParam = React.useMemo(
@@ -193,6 +195,15 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         ? lastPage.pagination.page + 1
         : undefined,
     staleTime: 10_000,
+    // Enquanto houver arte sendo gerada (melhoria ou geração por IA), a
+    // galeria se atualiza sozinha — é onde a pessoa acompanha o resultado, e
+    // sem isso ela precisaria recarregar a página para ver a arte chegar.
+    refetchInterval: (query) =>
+      query.state.data?.pages.some((page) =>
+        page.generations.some((g) => g.status === 'PROCESSING'),
+      )
+        ? 8_000
+        : false,
   })
 
   const allGenerations = React.useMemo(
@@ -812,6 +823,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               <span className="hidden sm:inline">Excluir ({selectedIds.size})</span>
               <span className="sm:hidden ml-2">({selectedIds.size})</span>
             </Button>
+            <Button size="sm" onClick={() => setGerarArteAberto(true)} className="flex-1 sm:flex-none">
+              <Sparkles className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Gerar com IA</span>
+            </Button>
             <Button variant="ghost" size="icon" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4" />
             </Button>
@@ -1153,6 +1168,12 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
           initialData={composerInitialData}
         />
       )}
+
+      <GerarArteIaModal
+        projectId={projectId}
+        open={gerarArteAberto}
+        onOpenChange={setGerarArteAberto}
+      />
 
       {/* Improve Creative Modal */}
       <ImproveCreativeModal
