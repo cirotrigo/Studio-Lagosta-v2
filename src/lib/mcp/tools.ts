@@ -46,6 +46,11 @@ import {
   VERCEL_BLOB_HOST_REGEX,
 } from '@/lib/ai/creative-improvement-service'
 import { processImprovementInBackground } from '@/lib/ai/creative-improvement-runner'
+import { startArtGeneration } from '@/lib/ai/creative-generation-service'
+import {
+  processArtGenerationInBackground,
+  type ArtGenerationReference,
+} from '@/lib/ai/creative-generation-runner'
 import {
   loadExpectedTextsForGeneration,
   verifyImageTexts,
@@ -1253,6 +1258,125 @@ export const MCP_TOOLS: McpTool[] = [
         verificacaoTexto: fv.textCheck ?? undefined,
         mensagem:
           'A melhoria foi descartada e a arte original continua valendo — nada mudou no post nem na galeria. Dá para tentar de novo com um pedido mais específico.',
+      }
+    },
+  },
+
+  {
+    name: 'gerar-imagem',
+    description:
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nDemora 1–3 minutos e custa créditos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        trilha: {
+          type: 'string',
+          enum: ['imagem', 'arte'],
+          description: '"imagem" = cena sem texto; "arte" = peça com os textos desenhados.',
+        },
+        pedido: {
+          type: 'string',
+          description:
+            'O que gerar, em português (máx 1200). Obrigatório na trilha imagem; na trilha arte é instrução adicional opcional.',
+        },
+        copy: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Trilha arte: os blocos de texto EXATOS da peça, na ordem de leitura (máx 12 blocos de 200 chars). São reproduzidos verbatim e conferidos por visão.',
+        },
+        formato: { type: 'string', enum: ['story', 'feed', 'quadrado'], description: 'story 9:16, feed 4:5, quadrado 1:1.' },
+        referencias: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              role: {
+                type: 'string',
+                enum: ['subject', 'anchor-ambient', 'anchor-dish', 'style'],
+                description: 'Papel da foto na geração.',
+              },
+              driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos / listar-fotos-da-pasta).' },
+              url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio (Blob).' },
+              label: { type: 'string', description: 'Rótulo curto (ex: "salão principal", "picanha na tábua").' },
+            },
+            required: ['role'],
+            additionalProperties: false,
+          },
+          description: '1 a 3 fotos reais com papel declarado. Máx: 1 subject + 3 âncoras + 2 style.',
+        },
+        instrucaoImagem: {
+          type: 'string',
+          description:
+            'Trilha arte, opcional: ajuste autorizado na FOTO (ex: "escurecer o fundo atrás do texto"). Sem isso a foto é preservada intocada — a regra da casa é "a foto se melhora, nunca se modifica".',
+        },
+        promptPronto: {
+          type: 'string',
+          description: 'Modo diretor (trilha imagem): prompt final em inglês, anatomia CAMERA:/LIGHT:/…; validado antes de usar.',
+        },
+        modelo: {
+          type: 'string',
+          description: 'Override do modelo (trilha imagem: "nano-banana-2" padrão ou "nano-banana-pro" para 4K).',
+        },
+        resolution: { type: 'string', enum: ['1K', '2K', '4K'], description: 'Trilha imagem. Padrão 2K.' },
+      },
+      required: ['projectId', 'trilha', 'formato'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const trilha = args.trilha === 'arte' ? ('arte' as const) : ('imagem' as const)
+      const formato =
+        args.formato === 'feed' ? ('feed' as const) : args.formato === 'quadrado' ? ('quadrado' as const) : ('story' as const)
+
+      const referencias: ArtGenerationReference[] = Array.isArray(args.referencias)
+        ? args.referencias
+            .filter((r: unknown): r is Record<string, string> => !!r && typeof r === 'object')
+            .map((r) => ({
+              role: r.role as ArtGenerationReference['role'],
+              driveFileId: typeof r.driveFileId === 'string' && r.driveFileId ? r.driveFileId : undefined,
+              url: typeof r.url === 'string' && r.url ? r.url : undefined,
+              label: typeof r.label === 'string' && r.label ? r.label.slice(0, 80) : undefined,
+            }))
+        : []
+
+      const dono = await resolverDono(projectId, principal)
+      const started = await startArtGeneration({
+        projectId,
+        track: trilha,
+        pedido: typeof args.pedido === 'string' ? args.pedido : undefined,
+        copy: Array.isArray(args.copy)
+          ? args.copy.filter((b: unknown): b is string => typeof b === 'string')
+          : undefined,
+        formato,
+        referencias,
+        instrucaoImagem: typeof args.instrucaoImagem === 'string' ? args.instrucaoImagem : null,
+        modelo: typeof args.modelo === 'string' && args.modelo ? args.modelo : undefined,
+        resolution:
+          args.resolution === '1K' || args.resolution === '2K' || args.resolution === '4K'
+            ? args.resolution
+            : undefined,
+        finalPrompt: typeof args.promptPronto === 'string' && args.promptPronto ? args.promptPronto : null,
+        actorClerkId: dono.clerkId,
+        dedupeWindowMinutes: 10,
+      })
+
+      if (!started.reused && started.runnerArgs) {
+        const runnerArgs = started.runnerArgs
+        after(() => processArtGenerationInBackground(runnerArgs))
+      }
+
+      return {
+        emAndamento: true,
+        geracaoId: started.jobGenerationId,
+        ...(started.reused ? { jaEstavaEmAndamento: true } : {}),
+        tempoEstimado: trilha === 'arte' ? 'cerca de 2 minutos' : 'cerca de 1 minuto',
+        mensagem: started.reused
+          ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
+          : `Geração iniciada. Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
       }
     },
   },

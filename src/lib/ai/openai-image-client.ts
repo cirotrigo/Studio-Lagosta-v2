@@ -307,6 +307,73 @@ function buildPrompt(args: BuildPromptArgs): string {
     .join('\n\n')
 }
 
+/**
+ * Chamada crua ao images.edit com prompt PRONTO e imagens já ordenadas.
+ *
+ * É o degrau que a geração de arte do zero usa (creative-generation-runner):
+ * lá o prompt é montado pelo image-prompt-builder (trilhas imagem/arte) e a
+ * ordem das imagens segue o contrato subject → âncoras → brand-card → logo —
+ * este função não reordena nem acrescenta nada.
+ */
+export interface RawEditImage {
+  buffer: Buffer
+  mimeType: string
+  /** Nome do arquivo enviado — aparece nos logs da OpenAI, ajuda depuração. */
+  name: string
+}
+
+export async function runImageEdit({
+  images,
+  prompt,
+  size,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+}: {
+  images: RawEditImage[]
+  prompt: string
+  size: string
+  timeoutMs?: number
+}): Promise<Buffer> {
+  if (images.length === 0) {
+    throw new Error('runImageEdit exige pelo menos uma imagem')
+  }
+  const client = getClient()
+
+  const files = await Promise.all(
+    images.map((img) => toFile(img.buffer, img.name, { type: img.mimeType })),
+  )
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), timeoutMs)
+  const startedAt = Date.now()
+  try {
+    const response = await client.images.edit(
+      {
+        model: IMAGE_MODEL,
+        image: files.length === 1 ? files[0] : files,
+        prompt,
+        size: size as never,
+        quality: 'high',
+        n: 1,
+      },
+      { signal: controller.signal },
+    )
+    const elapsed = Date.now() - startedAt
+    console.log(
+      `[runImageEdit] ${IMAGE_MODEL} ${size} concluído em ${(elapsed / 1000).toFixed(1)}s (${files.length} imagem/ns)`,
+    )
+    const b64 = response.data?.[0]?.b64_json
+    if (!b64) throw new Error('OpenAI não retornou dados de imagem')
+    return Buffer.from(b64, 'base64')
+  } catch (error) {
+    console.warn(
+      `[runImageEdit] ${IMAGE_MODEL} ${size} falhou após ${((Date.now() - startedAt) / 1000).toFixed(1)}s`,
+    )
+    throw error
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 interface ImproveCreativeOptions {
   imageBuffer: Buffer
   mimeType: string

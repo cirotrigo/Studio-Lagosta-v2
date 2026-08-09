@@ -9,6 +9,9 @@ export const FEATURE_CREDIT_COSTS = {
   social_media_post: 3,
   background_removal: 3,
   ai_creative_improvement: 25,
+  // Geração de arte do zero (foto + copy → peça pronta, gpt-image-2 high).
+  // Mesmo custo da melhoria: é a mesma chamada, com mais referências.
+  ai_art_generation: 25,
 } as const
 
 // Feature keys are derived from the config above to ensure type-safety across the codebase
@@ -23,6 +26,9 @@ const FEATURE_TO_OPERATION: Record<FeatureKey, OperationType> = {
   social_media_post: OperationType.SOCIAL_MEDIA_POST,
   background_removal: OperationType.BACKGROUND_REMOVAL,
   ai_creative_improvement: OperationType.AI_CREATIVE_IMPROVEMENT,
+  // Sem OperationType novo de propósito: enum é coluna do banco (migration).
+  // Para o extrato, geração de arte é uma geração de imagem por IA.
+  ai_art_generation: OperationType.AI_IMAGE_GENERATION,
 }
 
 export function toPrismaOperationType(feature: FeatureKey): OperationType {
