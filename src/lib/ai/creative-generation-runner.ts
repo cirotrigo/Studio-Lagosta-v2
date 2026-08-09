@@ -33,6 +33,8 @@ import {
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
+import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
+import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
 // Mesmo teto de sanitização do insta-automatico: foto acima de 4000px/lado
@@ -118,6 +120,35 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }),
     )
     loadedRefs.push(...downloads.filter((d): d is LoadedRef => d !== null))
+
+    // ── Âncora de ambiente automática (trilha `imagem`) ───────────────────
+    // A cena é GERADA nesta trilha; sem foto real do lugar o modelo inventa
+    // um ambiente genérico. Se o projeto tem anchor sheet e o chamador não
+    // escolheu âncora de ambiente, o sistema injeta a canônica.
+    let autoAnchorUsada: string | null = null
+    if (args.track === 'imagem' && !loadedRefs.some((r) => r.role === 'anchor-ambient')) {
+      const anchorsAtuais = loadedRefs.filter(
+        (r) => r.role === 'anchor-ambient' || r.role === 'anchor-dish',
+      ).length
+      if (anchorsAtuais < MAX_ANCHOR_REFS) {
+        const auto = await ancoraAmbienteAutomatica(args.projectId).catch(() => null)
+        if (auto) {
+          try {
+            const source = await fetchImageSource(auto.blobUrl)
+            const sane = await sanitizeInput(source.buffer, MAX_REF_DIM)
+            loadedRefs.push({
+              role: 'anchor-ambient',
+              label: auto.label ?? 'ambiente da casa',
+              ...sane,
+            })
+            autoAnchorUsada = auto.id
+            console.log(`[arte-ia.bg] âncora de ambiente automática injetada (${auto.id})`)
+          } catch (error) {
+            console.warn('[arte-ia.bg] âncora automática não baixou — seguindo sem ela:', error)
+          }
+        }
+      }
+    }
 
     // ── Referências do sistema: brand card + logo (só na trilha `arte`) ───
     if (args.track === 'arte') {
@@ -283,6 +314,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       prompt,
       promptIssues,
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
+      autoAnchorId: autoAnchorUsada,
       elapsedSeconds,
       ...textCheckInfo,
     })

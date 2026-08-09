@@ -52,6 +52,12 @@ import {
   type ArtGenerationReference,
 } from '@/lib/ai/creative-generation-runner'
 import {
+  listarAncoras,
+  definirAncora,
+  removerAncora,
+  AMBIENT_SCENE_TAG,
+} from '@/lib/ai/anchor-images'
+import {
   loadExpectedTextsForGeneration,
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
@@ -1265,7 +1271,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'gerar-imagem',
     description:
-      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nDemora 1–3 minutos e custa créditos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.',
+      'Gera uma imagem ou arte DO ZERO com IA, ancorada em fotos reais do cliente. Duas trilhas que nunca se misturam:\n\n- trilha "imagem": fotografia/cena SEM NENHUM texto (nem logo) — para fundo de peça, cena de ambiente, variação de foto. Requer `pedido` descrevendo a cena.\n- trilha "arte": peça PRONTA com os textos desenhados na imagem — requer `copy` (os blocos exatos, na ordem) e uma foto real como cena (referência com role "subject"). A identidade da marca (logo, paleta, fontes) entra sozinha; os textos são conferidos por visão ao final.\n\nREFERÊNCIAS (a alma da qualidade): passe 1 a 3 fotos REAIS do cliente com papel declarado — "subject" (a foto do prato/produto, obrigatória na trilha arte), "anchor-ambient" (foto do salão/ambiente: a cena acontece NESTE lugar; use SEMPRE que a cena mostrar o ambiente), "anchor-dish" (segundo ângulo do prato) e "style" (arte aprovada como referência de estilo). Poucas referências boas vencem muitas: refs demais fazem o visual derivar. Fotos vêm do acervo (buscar-fotos → driveFileId) ou de URL do Studio.\n\nMODO DIRETOR (opcional, trilha imagem): se você mesmo escrever o prompt de fotografia em inglês (anatomia CAMERA:/LENS:/LIGHT:/…, física em Kelvin/graus/IRE, sem buzzwords, ≤1500 chars, zero texto na imagem), passe em `promptPronto` — ele é validado e usado no lugar do redator automático.\n\nDemora 1–3 minutos e custa créditos. A resposta volta na hora com geracaoId; acompanhe com ver-melhoria (mesmo acompanhamento das melhorias). Disparos de temas DIFERENTES podem ser feitos em paralelo; o mesmo pedido repetido em 10 minutos é reaproveitado, não cobrado de novo.\n\nANCHOR SHEET: se o cliente tem âncora de tipo "ambiente" definida (listar-ancoras), toda cena gerada na trilha imagem a recebe automaticamente quando você não passar uma âncora de ambiente — não precisa repeti-la nas referências.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1377,6 +1383,87 @@ export const MCP_TOOLS: McpTool[] = [
         mensagem: started.reused
           ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
           : `Geração iniciada. Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
+      }
+    },
+  },
+
+  {
+    name: 'definir-ancora',
+    description:
+      'Marca uma foto REAL do cliente como âncora canônica de um tipo de cena ("ambiente", "mesa", "balcao", "chopp"…), ou remove uma âncora. As âncoras alimentam a geração de imagem (gerar-imagem): a de tipo "ambiente" é injetada AUTOMATICAMENTE em toda cena gerada quando nenhuma âncora foi escolhida — é o que impede o modelo de inventar um lugar genérico. Foto do Drive vira cópia permanente no Studio na hora.\n\nEscolha fotos que mostrem bem o que definem: para "ambiente", o salão como ele é (teto real, mobília, luz); para louça/uniforme, closes nítidos. Confirme com a pessoa antes de definir — âncora vale para todas as gerações do cliente.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        sceneTag: {
+          type: 'string',
+          description: 'Tipo de cena em kebab-case (ex: "ambiente", "mesa", "chopp"). "ambiente" é a tag da injeção automática.',
+        },
+        driveFileId: { type: 'string', description: 'Foto do acervo (de buscar-fotos).' },
+        url: { type: 'string', description: 'Alternativa: URL de imagem já no Studio.' },
+        label: { type: 'string', description: 'Rótulo curto (ex: "salão com teto real").' },
+        removerAncoraId: {
+          type: 'string',
+          description: 'Para REMOVER: id da âncora (de listar-ancoras). Ignora os outros campos.',
+        },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      if (typeof args.removerAncoraId === 'string' && args.removerAncoraId) {
+        await removerAncora(projectId, args.removerAncoraId)
+        return { ok: true, mensagem: 'Âncora removida.' }
+      }
+
+      const sceneTag = requireString(args, 'sceneTag')
+      const ancora = await definirAncora({
+        projectId,
+        sceneTag,
+        driveFileId: typeof args.driveFileId === 'string' ? args.driveFileId : null,
+        url: typeof args.url === 'string' ? args.url : null,
+        label: typeof args.label === 'string' ? args.label : null,
+      })
+      return {
+        ok: true,
+        ancora,
+        mensagem:
+          ancora.sceneTag === AMBIENT_SCENE_TAG
+            ? 'Âncora de ambiente definida — toda cena gerada deste cliente passa a acontecer neste lugar.'
+            : `Âncora "${ancora.sceneTag}" definida. Ela entra quando for escolhida como referência na geração.`,
+      }
+    },
+  },
+
+  {
+    name: 'listar-ancoras',
+    description:
+      'Lista as fotos-âncora canônicas do cliente por tipo de cena (anchor sheet). Use antes de gerar-imagem para saber o que já existe, e antes de definir-ancora para não duplicar.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      const ancoras = await listarAncoras(projectId)
+      return {
+        total: ancoras.length,
+        temAmbiente: ancoras.some((a) => a.sceneTag === AMBIENT_SCENE_TAG),
+        ancoras,
+        ...(ancoras.every((a) => a.sceneTag !== AMBIENT_SCENE_TAG)
+          ? {
+              aviso:
+                'Sem âncora de tipo "ambiente": cenas geradas não têm foto real do lugar e o modelo pode inventar um ambiente genérico. Sugira definir uma com definir-ancora.',
+            }
+          : {}),
       }
     },
   },

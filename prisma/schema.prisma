@@ -232,6 +232,7 @@ model Project {
   textAutofixEnabled          Boolean                 @default(true)
   chatUploads                 ChatUpload[]
   brandDNA                    BrandDNA?
+  anchorImages                ProjectAnchorImage[]
   laterAccountId              String?
   laterProfileId              String?
   postingProvider             PostingProvider?        @default(ZAPIER)
@@ -301,6 +302,27 @@ model BrandDNA {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+/// Anchor sheet do projeto: fotos-âncora canônicas por tipo de cena, usadas
+/// pela geração de arte por IA ("a âncora manda, o prompt só descreve a
+/// ação"). A trilha `imagem` injeta a âncora de ambiente automaticamente
+/// quando a cena é gerada e nenhuma foi escolhida.
+model ProjectAnchorImage {
+  id          String   @id @default(cuid())
+  projectId   Int
+  /// Tipo de cena normalizado em kebab-case: "ambiente", "mesa", "balcao",
+  /// "chopp"… A tag "ambiente" é a que a injeção automática procura primeiro.
+  sceneTag    String
+  /// Cópia permanente no Blob (nunca thumbnailLink do Drive — expira).
+  blobUrl     String
+  /// Origem no Drive, quando veio de lá (para reabrir/reprocessar).
+  driveFileId String?
+  label       String?
+  createdAt   DateTime @default(now())
+  Project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sceneTag])
 }
 
 model ProjectTag {
