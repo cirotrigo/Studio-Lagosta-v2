@@ -248,19 +248,27 @@ export type LogoMode = 'compor' | 'modelo'
  * O risco é o de sempre — modelo de imagem distorce logotipo. Por isso o modo
  * é OPT-IN e a peça é conferida por visão depois.
  */
-export function instrucaoLogoPeloModelo(corner: LogoCorner = 'bottom-right'): string {
-  const onde = {
-    'bottom-right': 'lower-right corner',
-    'bottom-left': 'lower-left corner',
-    'top-right': 'upper-right corner',
-    'top-left': 'upper-left corner',
-  }[corner]
+export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
+  const onde = corner
+    ? {
+        'bottom-right': 'lower-right corner',
+        'bottom-left': 'lower-left corner',
+        'top-right': 'upper-right corner',
+        'top-left': 'upper-left corner',
+      }[corner]
+    : null
+
   return [
     '[LOGO — REPRODUZA O ARQUIVO OFICIAL]',
     'Uma das imagens de referência é a LOGO OFICIAL da marca. Desenhe-a na peça reproduzindo EXATAMENTE a forma, as proporções, o desenho das letras e as cores do arquivo.',
-    `Coloque-a UMA ÚNICA VEZ, no ${onde}, ocupando cerca de 20% da largura do quadro.`,
+    onde
+      ? `Coloque-a UMA ÚNICA VEZ, no ${onde}, ocupando cerca de 20% da largura do quadro.`
+      : // Sem canto fixo: quem vê a foto sabe onde ela está vazia. As artes de
+        // referência do Espeto movem a marca de peça para peça (topo-esquerda,
+        // topo-direita, base-esquerda) conforme o enquadramento, e um canto
+        // cravado no prompt produziria a mesma assinatura em todas.
+        'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando cerca de 20% da largura do quadro. Não a ponha sobre o assunto nem sobre a copy.',
     '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
-    '⛔ Nenhuma linha da copy pode passar por baixo dela.',
     'Se não conseguir reproduzir a marca fielmente, deixe o canto VAZIO — arte sem marca é aproveitável, marca errada não é.',
   ].join('\n')
 }

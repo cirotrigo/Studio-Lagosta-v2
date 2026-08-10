@@ -495,19 +495,31 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
 
   const regras = [
     '[REGRAS DE COMPOSIÇÃO]',
-    '1. A fotografia é a protagonista (~90% da peça); o bloco de texto ocupa no máximo 25% da altura.',
+    // ÁREA, não altura. A distinção decide o layout: um teto de altura proíbe a
+    // coluna alta e estreita que o modelo escolhe quando o espaço livre da foto
+    // é vertical — e é justamente o layout das artes do Espeto que o Ciro
+    // aprovou em 10/08 (o "A PARTIR DAS 17H" ocupa ~40% da altura numa faixa de
+    // ~35% da largura). O teto de altura vale para a HEADLINE, que é onde o
+    // exagero realmente aparece.
+    '1. A fotografia é a protagonista: TODO o conjunto de texto (título + apoio + serviço + CTA) junto ocupa no máximo ~1/5 do QUADRO. Pode ser uma coluna alta e estreita ou uma faixa baixa e larga — o que a foto permitir.',
+    '2. A headline tem presença MODERADA e editorial: não passa de ~15% da altura do quadro. Hierarquia por PESO, COR e POSIÇÃO — nunca por tamanho. Nunca cartaz de varejo.',
     // O teto por PALAVRA é do insta-automatico e resolve um vício específico:
     // sem ele o modelo estica uma palavra sozinha até preencher a largura, e a
     // peça vira cartaz de varejo mesmo respeitando o teto de altura.
-    '2. Nenhuma palavra isolada passa de ~35% da largura útil. Hierarquia se faz por PESO, COR e POSIÇÃO — nunca ampliando uma palavra para preencher a linha.',
-    '3. O texto mora no espaço LIVRE da foto — nunca sobre o prato, rosto ou assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
+    '3. Nenhuma palavra isolada passa de ~35% da largura útil — nunca amplie uma palavra sozinha para preencher a linha.',
+    '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
     // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
     // defeito aparecia toda semana.
-    '4. Quebras de linha equilibradas: NUNCA deixe uma palavra sozinha na última linha de um bloco. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6.',
-    '5. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
-    '6. Paleta da marca apenas na camada gráfica (textos, destaques, filetes, selos); a fotografia mantém as cores reais — não dessature nem recolora madeira, tons de pele, verdes e dourados que já existem na foto.',
-    '7. Uma cor de destaque por peça.',
-    '8. Respeite a safe area do formato (story: 200px de topo e de rodapé livres de informação; feed: margens generosas, nada de texto ou logo encostado na borda).',
+    '5. Quebras de linha equilibradas: NUNCA deixe uma palavra sozinha na última linha de um bloco. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6.',
+    '6. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
+    '7. Paleta da marca apenas na camada gráfica (textos, destaques, filetes, selos); a fotografia mantém as cores reais — não dessature nem recolora madeira, tons de pele, verdes e dourados que já existem na foto.',
+    '8. Uma cor de destaque por peça.',
+    '9. Respeite a safe area do formato (story: 200px de topo e de rodapé livres de informação; feed: margens generosas, nada de texto ou logo encostado na borda).',
+    // A regra que faltava, e a mais importante para o resultado parecer feito
+    // por gente: ONDE o texto pousa é decisão de quem OLHA a foto. As regras
+    // acima são limites; dentro delas, quem diagrama é o modelo. Sem isto o
+    // prompt vira receita e todas as peças saem com o mesmo layout.
+    '10. AUTONOMIA: dentro destes limites, VOCÊ escolhe a composição. Leia a foto e ponha o texto onde ela é calma — o canto vazio, a parede desfocada, a faixa escura. Coluna alta à esquerda, faixa no rodapé, bloco no topo: o que ESTA foto pedir. Varie a diagramação entre peças; não repita o layout da anterior.',
   ]
   sections.push(regras.join('\n'))
 

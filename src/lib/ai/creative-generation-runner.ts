@@ -357,7 +357,11 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         blocoLogo: logoParaCompor
           ? instrucaoAreaReservada(LOGO_CORNER)
           : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
-            ? instrucaoLogoPeloModelo(LOGO_CORNER)
+            ? // Canto FIXO só no slide irmão de carrossel: ali o LOOK SPINE
+              // manda repetir o guia, e marca pulando de canto entre slides é
+              // o defeito que ele existe para evitar. Na peça avulsa o canto é
+              // escolha do modelo, que é quem enxerga onde a foto está calma.
+              instrucaoLogoPeloModelo(args.carrossel ? LOGO_CORNER : null)
             : null,
         carrossel: args.carrossel
           ? {
