@@ -18,7 +18,28 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PapelReferencia } from '@/components/creatives/arte-ia-image-picker'
 
-export type BancadaStatus = 'rascunho' | 'gerando' | 'pronto' | 'erro' | 'agendado'
+/**
+ * `guia-pronto` só existe no carrossel: capa e slide-guia ficaram prontos e a
+ * série espera a pessoa CONFIRMAR o look antes de gerar o resto. É a etapa
+ * que evita produzir 6 slides no estilo errado.
+ */
+export type BancadaStatus =
+  | 'rascunho'
+  | 'gerando'
+  | 'guia-pronto'
+  | 'pronto'
+  | 'erro'
+  | 'agendado'
+
+export interface BancadaSlide {
+  ordem: number
+  /** Vazio na capa (foto pura, sem texto). */
+  copy: string[]
+  referencia: BancadaReferencia
+  generationId?: string
+  resultUrl?: string | null
+  erro?: string | null
+}
 
 export interface BancadaReferencia {
   papel: PapelReferencia
@@ -33,6 +54,14 @@ export interface BancadaItem {
   projectId: number
   trilha: 'arte' | 'imagem'
   formato: 'story' | 'feed' | 'quadrado'
+  /** 'peca' = arte única; 'carrossel' = série de slides. */
+  tipo?: 'peca' | 'carrossel'
+  /** Carrossel: os slides, em ordem (1 = capa, foto pura). */
+  slides?: BancadaSlide[]
+  /** Carrossel: agrupa as Generations dos slides no banco. */
+  carouselGroupId?: string
+  /** Carrossel: legenda do post (obrigatória — carrossel vai para o feed). */
+  legenda?: string
   copy: string[]
   pedido: string
   instrucaoImagem?: string | null

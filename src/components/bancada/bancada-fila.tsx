@@ -22,6 +22,7 @@ import type { BancadaItem } from '@/stores/bancada-store'
 const ROTULO: Record<BancadaItem['status'], string> = {
   rascunho: 'na fila',
   gerando: 'gerando…',
+  'guia-pronto': 'confira o estilo',
   pronto: 'pronta',
   erro: 'falhou',
   agendado: 'na agenda',
@@ -30,13 +31,14 @@ const ROTULO: Record<BancadaItem['status'], string> = {
 const COR: Record<BancadaItem['status'], string> = {
   rascunho: 'bg-slate-500/15 text-slate-300',
   gerando: 'bg-primary/15 text-primary',
+  'guia-pronto': 'bg-sky-500/15 text-sky-400',
   pronto: 'bg-emerald-500/15 text-emerald-400',
   erro: 'bg-destructive/15 text-destructive',
   agendado: 'bg-amber-500/15 text-amber-400',
 }
 
 export function BancadaFila({ projectId }: { projectId: number }) {
-  const { itens, gerar, agendar, remover } = useBancada(projectId)
+  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, remover } = useBancada(projectId)
 
   if (itens.length === 0) {
     return (
@@ -55,7 +57,8 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           key={item.id}
           item={item}
           projectId={projectId}
-          onGerar={() => gerar(item)}
+          onGerar={() => (item.tipo === 'carrossel' ? gerarCapaEGuia(item) : gerar(item))}
+          onConfirmarEstilo={() => confirmarEstilo(item)}
           onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
           onRemover={() => remover(item.id)}
         />
@@ -68,17 +71,26 @@ function Card({
   item,
   projectId,
   onGerar,
+  onConfirmarEstilo,
   onAgendar,
   onRemover,
 }: {
   item: BancadaItem
   projectId: number
   onGerar: () => void
+  onConfirmarEstilo: () => void
   onAgendar: (quando: string, situacao: 'rascunho' | 'agendado') => void
   onRemover: () => void
 }) {
   const [quando, setQuando] = React.useState(() => paraInputs(item.quando))
-  const capa = item.resultUrl ?? item.referencias.find((r) => r.papel === 'subject')?.thumbUrl
+  const ehCarrossel = item.tipo === 'carrossel'
+  const slides = React.useMemo(
+    () => (item.slides ?? []).slice().sort((a, b) => a.ordem - b.ordem),
+    [item.slides],
+  )
+  const capa = ehCarrossel
+    ? (slides[0]?.resultUrl ?? slides[0]?.referencia.thumbUrl)
+    : (item.resultUrl ?? item.referencias.find((r) => r.papel === 'subject')?.thumbUrl)
 
   const quandoTexto = quando.data && quando.hora ? `${quando.data} ${quando.hora}` : ''
 
@@ -109,16 +121,68 @@ function Card({
             {ROTULO[item.status]}
           </span>
           <span className="text-[11px] text-muted-foreground">
-            {item.formato === 'story' ? 'Story' : item.formato === 'feed' ? 'Feed' : 'Quadrado'}
+            {ehCarrossel
+              ? `Carrossel · ${slides.length} slides`
+              : item.formato === 'story'
+                ? 'Story'
+                : item.formato === 'feed'
+                  ? 'Feed'
+                  : 'Quadrado'}
           </span>
           {item.quando && (
             <span className="text-[11px] text-muted-foreground">· {item.quando}</span>
           )}
         </div>
 
-        <p className="truncate text-sm font-medium">{item.copy[0] ?? '(sem copy)'}</p>
-        {item.copy.length > 1 && (
+        <p className="truncate text-sm font-medium">
+          {ehCarrossel
+            ? (slides.find((s) => s.copy.length > 0)?.copy[0] ?? '(carrossel)')
+            : (item.copy[0] ?? '(sem copy)')}
+        </p>
+        {!ehCarrossel && item.copy.length > 1 && (
           <p className="truncate text-xs text-muted-foreground">{item.copy.slice(1).join(' · ')}</p>
+        )}
+
+        {ehCarrossel && slides.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 pt-0.5">
+            {slides.map((s) => (
+              <div
+                key={s.ordem}
+                title={
+                  s.erro
+                    ? `Slide ${s.ordem}: ${s.erro}`
+                    : s.copy.length > 0
+                      ? `Slide ${s.ordem}: ${s.copy.join(' · ')}`
+                      : `Slide ${s.ordem}: capa (foto pura)`
+                }
+                className={cn(
+                  'relative h-14 w-11 overflow-hidden rounded border',
+                  s.erro
+                    ? 'border-destructive'
+                    : s.resultUrl
+                      ? 'border-emerald-500/60'
+                      : 'border-border/50 opacity-60',
+                )}
+              >
+                <Image
+                  src={s.resultUrl ?? s.referencia.thumbUrl}
+                  alt={`Slide ${s.ordem}`}
+                  fill
+                  sizes="44px"
+                  className="object-cover"
+                  unoptimized
+                />
+                <span className="absolute bottom-0 left-0 bg-background/80 px-1 text-[9px]">
+                  {s.ordem}
+                </span>
+                {s.generationId && !s.resultUrl && !s.erro && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-background/60">
+                    <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
         )}
         {item.motivoDoSlot && item.status === 'rascunho' && (
           <p className="text-[11px] text-muted-foreground">🎯 {item.motivoDoSlot}</p>
@@ -133,8 +197,27 @@ function Card({
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              {item.status === 'erro' ? 'Tentar de novo' : 'Gerar arte (25 créditos)'}
+              {item.status === 'erro'
+                ? 'Tentar de novo'
+                : ehCarrossel
+                  ? 'Gerar capa e guia (50 créditos)'
+                  : 'Gerar arte (25 créditos)'}
             </Button>
+          )}
+
+          {item.status === 'guia-pronto' && (
+            <div className="w-full space-y-2">
+              <p className="text-xs text-muted-foreground">
+                O slide 2 define o DESIGN da série (a capa é foto pura). Confirme o estilo para
+                gerar os {slides.filter((s) => s.ordem > 2).length} slides restantes com o mesmo
+                look.
+              </p>
+              <Button size="sm" onClick={onConfirmarEstilo}>
+                <Sparkles className="mr-2 h-4 w-4" />
+                Confirmar estilo e gerar o resto (
+                {slides.filter((s) => s.ordem > 2).length * 25} créditos)
+              </Button>
+            </div>
           )}
 
           {item.status === 'gerando' && (

@@ -129,6 +129,12 @@ interface Props {
   onChange: (refs: ReferenciaSelecionada[]) => void
   /** Papel sugerido para a próxima imagem escolhida. */
   papelPadrao?: PapelReferencia
+  /**
+   * Modo carrossel: cada foto escolhida é a cena de UM slide, na ordem de
+   * seleção. Não há papéis a distribuir — todas são `subject` — e o teto é o
+   * número de slides, não o de referências de uma peça.
+   */
+  modoSequencia?: { max: number } | null
 }
 
 export function ArteIaImagePicker({
@@ -136,6 +142,7 @@ export function ArteIaImagePicker({
   referencias,
   onChange,
   papelPadrao = 'subject',
+  modoSequencia = null,
 }: Props) {
   const { toast } = useToast()
   const [busca, setBusca] = React.useState('')
@@ -175,6 +182,17 @@ export function ArteIaImagePicker({
   const adicionar = (nova: Omit<ReferenciaSelecionada, 'papel'>) => {
     if (referencias.some((r) => r.key === nova.key)) {
       onChange(referencias.filter((r) => r.key !== nova.key))
+      return
+    }
+    if (modoSequencia) {
+      if (referencias.length >= modoSequencia.max) {
+        toast({
+          title: `Máximo de ${modoSequencia.max} slides`,
+          description: 'Remova um slide antes de acrescentar outro.',
+        })
+        return
+      }
+      onChange([...referencias, { ...nova, papel: 'subject' }])
       return
     }
     const papel = papelDisponivel(referencias)
@@ -226,12 +244,19 @@ export function ArteIaImagePicker({
         <div className="space-y-2 rounded-lg border border-border/60 bg-muted/20 p-3">
           <div className="flex items-center justify-between">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-              Referências escolhidas ({referencias.length})
+              {modoSequencia
+                ? `Slides (${referencias.length}/${modoSequencia.max})`
+                : `Referências escolhidas (${referencias.length})`}
             </Label>
           </div>
           <div className="space-y-2">
-            {referencias.map((ref) => (
+            {referencias.map((ref, indice) => (
               <div key={ref.key} className="flex items-center gap-3">
+                {modoSequencia && (
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                    {indice + 1}
+                  </span>
+                )}
                 <div className="relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md bg-background">
                   <Image
                     src={ref.thumbUrl}
@@ -243,8 +268,11 @@ export function ArteIaImagePicker({
                   />
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <p className="truncate text-xs text-muted-foreground">{ref.label ?? 'Imagem'}</p>
-                  <div className="flex flex-wrap gap-1">
+                  <p className="truncate text-xs text-muted-foreground">
+                    {modoSequencia && indice === 0 ? 'Capa (foto pura, sem texto) · ' : ''}
+                    {ref.label ?? 'Imagem'}
+                  </p>
+                  <div className={cn('flex flex-wrap gap-1', modoSequencia && 'hidden')}>
                     {PAPEIS.map((p) => {
                       const ativo = ref.papel === p.valor
                       const bloqueado = !ativo && !!bloqueioDoPapel(referencias, p.valor, ref.key)
@@ -285,7 +313,9 @@ export function ArteIaImagePicker({
           </div>
           <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <Info className="mt-0.5 h-3 w-3 flex-shrink-0" />
-            {PAPEIS.find((p) => p.valor === referencias[referencias.length - 1]?.papel)?.ajuda}
+            {modoSequencia
+              ? 'A ordem de escolha é a ordem dos slides. A primeira é a capa — foto pura, sem texto.'
+              : PAPEIS.find((p) => p.valor === referencias[referencias.length - 1]?.papel)?.ajuda}
           </p>
         </div>
       )}

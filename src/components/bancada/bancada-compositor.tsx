@@ -24,7 +24,12 @@ import {
   type PapelReferencia,
   type ReferenciaSelecionada,
 } from '@/components/creatives/arte-ia-image-picker'
-import { useBancadaStore, type NovoItem } from '@/stores/bancada-store'
+import {
+  useBancadaStore,
+  type NovoItem,
+  type BancadaSlide,
+  type BancadaReferencia,
+} from '@/stores/bancada-store'
 
 type Formato = 'story' | 'feed' | 'quadrado'
 
@@ -63,8 +68,10 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const adicionar = useBancadaStore((s) => s.adicionar)
   const itens = useBancadaStore((s) => s.itens)
 
+  const [tipo, setTipo] = React.useState<'peca' | 'carrossel'>('peca')
   const [formato, setFormato] = React.useState<Formato>('story')
   const [copyTexto, setCopyTexto] = React.useState('')
+  const [legenda, setLegenda] = React.useState('')
   const [pedido, setPedido] = React.useState('')
   const [instrucao, setInstrucao] = React.useState('')
   const [mostrarInstrucao, setMostrarInstrucao] = React.useState(false)
@@ -79,12 +86,31 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
     staleTime: 5 * 60_000,
   })
 
+  const ehCarrossel = tipo === 'carrossel'
   const blocos = React.useMemo(
     () => copyTexto.split('\n').map((l) => l.trim()).filter(Boolean),
     [copyTexto],
   )
   const temPrato = contarPorPapel(referencias, 'subject') > 0
   const papelPadrao: PapelReferencia = temPrato ? 'anchor-ambient' : 'subject'
+
+  /**
+   * Copy por slide, a partir do slide 2 — a capa é foto pura. Um textarea por
+   * slide (uma linha = um bloco), na ordem das fotos escolhidas.
+   */
+  const [copyPorSlide, setCopyPorSlide] = React.useState<Record<number, string>>({})
+  const slidesDaCopy = React.useMemo(
+    () =>
+      referencias.map((ref, i) => ({
+        ordem: i + 1,
+        ref,
+        blocos: (copyPorSlide[i + 1] ?? '')
+          .split('\n')
+          .map((l) => l.trim())
+          .filter(Boolean),
+      })),
+    [referencias, copyPorSlide],
+  )
 
   /**
    * Slots já reservados por itens que estão na fila — sem isso, dois itens da
@@ -109,6 +135,18 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const quando = quandoManual || slot || null
 
   const impedimento = (() => {
+    if (ehCarrossel) {
+      if (referencias.length < 3) return 'Escolha ao menos 3 fotos (capa + guia + 1 slide).'
+      if (!legenda.trim()) return 'A legenda é obrigatória — o carrossel vai para o feed.'
+      const semCopy = slidesDaCopy.filter((s) => s.ordem > 1 && s.blocos.length === 0)
+      if (semCopy.length > 0) {
+        return `Slide ${semCopy[0].ordem} sem copy (só a capa pode ficar sem texto).`
+      }
+      if (slidesDaCopy.some((s) => s.blocos.some((b) => b.length > 200))) {
+        return 'Cada bloco deve ter até 200 caracteres.'
+      }
+      return null
+    }
     if (blocos.length === 0) return 'Escreva a copy (um bloco por linha).'
     if (blocos.some((b) => b.length > 200)) return 'Cada bloco deve ter até 200 caracteres.'
     if (!temPrato) return 'Escolha a foto que será a cena (papel "Prato / produto").'
@@ -117,6 +155,8 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
 
   const limpar = () => {
     setCopyTexto('')
+    setCopyPorSlide({})
+    setLegenda('')
     setPedido('')
     setInstrucao('')
     setMostrarInstrucao(false)
@@ -129,9 +169,48 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const adicionarNaFila = () => {
     if (impedimento) return
     const motivo = disponiveis.find((s) => s.scheduledDatetime === slot)?.motivo
+
+    if (ehCarrossel) {
+      const slides: BancadaSlide[] = slidesDaCopy.map((s) => ({
+        ordem: s.ordem,
+        // A capa vai sem texto de propósito: capa com copy faz o modelo
+        // completar a peça com frases que ninguém pediu.
+        copy: s.ordem === 1 ? [] : s.blocos,
+        referencia: {
+          papel: 'subject',
+          driveFileId: s.ref.driveFileId,
+          url: s.ref.url,
+          label: s.ref.label,
+          thumbUrl: s.ref.thumbUrl,
+        } satisfies BancadaReferencia,
+      }))
+      adicionar({
+        projectId,
+        trilha: 'arte',
+        tipo: 'carrossel',
+        // Carrossel do Instagram é feed: 4:5.
+        formato: 'feed',
+        slides,
+        carouselGroupId:
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
+            ? crypto.randomUUID()
+            : `cg-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        legenda: legenda.trim(),
+        copy: [],
+        pedido: pedido.trim(),
+        instrucaoImagem: instrucao.trim() || null,
+        referencias: [],
+        quando,
+        motivoDoSlot: quandoManual ? null : (motivo ?? null),
+      })
+      limpar()
+      return
+    }
+
     const item: NovoItem = {
       projectId,
       trilha: 'arte',
+      tipo: 'peca',
       formato,
       copy: blocos,
       pedido: pedido.trim(),
@@ -153,52 +232,125 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   return (
     <div className="space-y-5 rounded-xl border border-border/60 bg-card/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Montar item
-        </h2>
-        <div className="flex gap-1">
-          {FORMATOS.map((f) => (
-            <button
-              key={f.valor}
-              type="button"
-              onClick={() => setFormato(f.valor)}
-              className={cn(
-                'rounded-full border px-3 py-1 text-xs transition-colors',
-                formato === f.valor
-                  ? 'border-primary bg-primary/10 text-foreground'
-                  : 'border-border/60 text-muted-foreground hover:border-primary/50',
-              )}
-            >
-              {f.titulo}
-            </button>
-          ))}
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Montar item
+          </h2>
+          <div className="flex gap-1">
+            {(['peca', 'carrossel'] as const).map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTipo(t)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs transition-colors',
+                  tipo === t
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-primary/50',
+                )}
+              >
+                {t === 'peca' ? 'Peça única' : 'Carrossel'}
+              </button>
+            ))}
+          </div>
         </div>
+        {/* Carrossel do Instagram é sempre feed 4:5 — sem escolha de formato. */}
+        {!ehCarrossel && (
+          <div className="flex gap-1">
+            {FORMATOS.map((f) => (
+              <button
+                key={f.valor}
+                type="button"
+                onClick={() => setFormato(f.valor)}
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs transition-colors',
+                  formato === f.valor
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-primary/50',
+                )}
+              >
+                {f.titulo}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label htmlFor="copy-bancada">Copy (um bloco por linha)</Label>
-          <span className="text-xs text-muted-foreground">{blocos.length} blocos</span>
+      {!ehCarrossel && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="copy-bancada">Copy (um bloco por linha)</Label>
+            <span className="text-xs text-muted-foreground">{blocos.length} blocos</span>
+          </div>
+          <Textarea
+            id="copy-bancada"
+            value={copyTexto}
+            onChange={(e) => setCopyTexto(e.target.value)}
+            rows={3}
+            placeholder={'HOJE TEM\nHAPPY HOUR\nchope em dobro até 20h'}
+            className="resize-none font-mono text-sm"
+          />
         </div>
-        <Textarea
-          id="copy-bancada"
-          value={copyTexto}
-          onChange={(e) => setCopyTexto(e.target.value)}
-          rows={3}
-          placeholder={'HOJE TEM\nHAPPY HOUR\nchope em dobro até 20h'}
-          className="resize-none font-mono text-sm"
-        />
-      </div>
+      )}
 
       <div className="space-y-2">
-        <Label>Fotos do acervo</Label>
+        <Label>{ehCarrossel ? 'Fotos dos slides (a ordem é a do carrossel)' : 'Fotos do acervo'}</Label>
         <ArteIaImagePicker
           projectId={projectId}
           referencias={referencias}
           onChange={setReferencias}
           papelPadrao={papelPadrao}
+          modoSequencia={ehCarrossel ? { max: 8 } : null}
         />
       </div>
+
+      {ehCarrossel && referencias.length > 0 && (
+        <div className="space-y-2">
+          <Label>Copy de cada slide</Label>
+          <div className="space-y-2">
+            {slidesDaCopy.map((s) => (
+              <div key={s.ref.key} className="flex items-start gap-2">
+                <span className="mt-2 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-medium text-primary">
+                  {s.ordem}
+                </span>
+                {s.ordem === 1 ? (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Capa: foto pura, sem texto — é o que faz a série abrir pela imagem.
+                  </p>
+                ) : (
+                  <Textarea
+                    value={copyPorSlide[s.ordem] ?? ''}
+                    onChange={(e) =>
+                      setCopyPorSlide((prev) => ({ ...prev, [s.ordem]: e.target.value }))
+                    }
+                    rows={2}
+                    placeholder={s.ordem === 2 ? 'O QUE ROLA\nna segunda do rock' : 'CHOPE EM DOBRO\naté 20h'}
+                    className="resize-none font-mono text-sm"
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            O slide 2 é o GUIA: ele define o visual da série, e os demais só são gerados depois
+            que você confirmar o estilo dele.
+          </p>
+        </div>
+      )}
+
+      {ehCarrossel && (
+        <div className="space-y-1.5">
+          <Label htmlFor="legenda-carrossel">Legenda do post</Label>
+          <Textarea
+            id="legenda-carrossel"
+            value={legenda}
+            onChange={(e) => setLegenda(e.target.value.slice(0, 2200))}
+            rows={2}
+            placeholder="A legenda que vai no feed junto com o carrossel."
+            className="resize-none"
+          />
+        </div>
+      )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="space-y-1.5">
