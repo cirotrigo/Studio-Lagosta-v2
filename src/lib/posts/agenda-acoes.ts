@@ -14,6 +14,7 @@ import { getLaterClient, LaterNotFoundError } from '@/lib/later'
 import { parseBRT } from '@/lib/creatives/agendar'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
+import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 
 export type AcaoAprovacao = 'APPROVE' | 'REVERT'
 
@@ -22,9 +23,19 @@ export interface Ignorado {
   motivo: string
 }
 
+export interface AvisoPost {
+  postId: string
+  aviso: string
+}
+
 export interface ResultadoAprovacao {
   processados: string[]
   ignorados: Ignorado[]
+  /**
+   * O post FOI aprovado, e ainda assim há algo para alguém olhar — hoje, post
+   * de campanha marcado para depois do fim dela. Aviso nunca vira veto.
+   */
+  avisos?: AvisoPost[]
   mensagem: string
 }
 
@@ -90,6 +101,7 @@ export async function processarAprovacao(params: {
       mediaUrls: true,
       pageId: true,
       renderStatus: true,
+      campaignId: true,
     },
   })
 
@@ -278,7 +290,23 @@ export async function processarAprovacao(params: {
         ? `${total} ${plural} ${total === 1 ? 'voltou' : 'voltaram'} para rascunho.`
         : 'Nenhum post voltou para rascunho.'
 
-  return { processados, ignorados, mensagem }
+  /**
+   * Só na aprovação, e só sobre o que foi de fato aprovado: aprovar é o
+   * momento em que a publicação passa a ser real, e é aí que "a campanha já
+   * terá acabado" ainda dá tempo de ser corrigido. Voltar para rascunho não
+   * precisa do alerta.
+   */
+  let avisos: AvisoPost[] = []
+  if (action === 'APPROVE' && processados.length > 0) {
+    const aprovados = new Set(processados)
+    const mapa = await avisosDeCampanhaVencida(
+      projectId,
+      posts.filter((p) => aprovados.has(p.id)),
+    )
+    avisos = [...mapa.entries()].map(([postId, aviso]) => ({ postId, aviso }))
+  }
+
+  return { processados, ignorados, ...(avisos.length > 0 ? { avisos } : {}), mensagem }
 }
 
 /**

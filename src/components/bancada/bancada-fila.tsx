@@ -218,6 +218,20 @@ function Card({
           {item.quando && (
             <span className="text-[11px] text-muted-foreground">· {item.quando}</span>
           )}
+          {/* Só fora da rotina: a marca precisa estar visível na revisão da
+              leva, mas repetir "rotina" em todo card seria só ruído. */}
+          {item.escopo && item.escopo !== 'ROTINA' && (
+            <span
+              className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+              title={
+                item.escopo === 'CAMPANHA'
+                  ? 'Post de campanha: aprende para a próxima edição dela, não para a rotina.'
+                  : 'Caso isolado: não entra no que o sistema aprende sobre o cliente.'
+              }
+            >
+              {item.escopo === 'CAMPANHA' ? 'campanha' : 'pontual'}
+            </span>
+          )}
         </div>
 
         <p className="truncate text-sm font-medium">

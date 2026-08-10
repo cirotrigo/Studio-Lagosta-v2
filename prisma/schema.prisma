@@ -1059,6 +1059,20 @@ model SocialPost {
   renderAttempts       Int                @default(0)
   nextRenderAt         DateTime?
   renderError          String?
+  // Escopo de aprendizado (ver enum LearningScope). Marcado POR ITEM: uma leva
+  // normal mistura rotina, campanha e post pontual.
+  learningScope        LearningScope      @default(ROTINA)
+  /// Entrada CAMPANHAS da base que dá o escopo temporal. Sem FK de propósito
+  /// (precedente de Generation.sourceGenerationId): arquivar a campanha não
+  /// pode arrastar o post.
+  campaignId           String?
+  /// Como a decisão nasceu: 'sugerido-aceito' | 'sugerido-editado' |
+  /// 'escolha-propria'. Texto porque o vocabulário ainda se move na F1.
+  origem               String?
+  /// Sugestão que originou o post (a tabela de sugestões chega na F1).
+  sugestaoId           String?
+  /// Quem decidiu, como User.id INTERNO (cuid) — NUNCA o clerkId.
+  decididoPor          String?
   logs                 PostLog[]
   retries              PostRetry[]
   Generation           Generation?        @relation(fields: [generationId], references: [id])
@@ -1085,6 +1099,7 @@ model SocialPost {
   @@index([projectId, scheduleType, status])
   @@index([status, scheduleType, scheduledDatetime])
   @@index([laterPostId])
+  @@index([projectId, learningScope])
   @@index([laterPostId, status])
   @@index([status, lastSyncAt])
   @@index([status, analyticsFetchedAt])
@@ -1567,6 +1582,18 @@ enum RenderStatus {
   RENDERING
   RENDERED
   RENDER_FAILED
+}
+
+/// O que o sistema pode aprender com este post.
+///
+/// ROTINA forma a cadência e o repertório do cliente; CAMPANHA vale para a
+/// próxima edição daquela campanha, não para a rotina; PONTUAL não ensina
+/// nada (evento único, aviso de feriado). A captura é SEMPRE — o que este
+/// campo faz é filtrar na AGREGAÇÃO.
+enum LearningScope {
+  ROTINA
+  CAMPANHA
+  PONTUAL
 }
 
 /// Cliente OAuth registrado dinamicamente (RFC 7591) por um conector MCP —

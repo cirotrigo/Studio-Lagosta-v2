@@ -10,6 +10,12 @@ import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { getPublicAppUrl } from '@/lib/creatives/persist'
 import { ingerirMidiaExterna } from '@/lib/creatives/ingerir-midia'
+import {
+  ESCOPO_PADRAO,
+  escopoEmPortugues,
+  type EscopoAprendizado,
+  type OrigemDecisao,
+} from '@/lib/posts/learning-scope'
 import { PostType, PostStatus } from '@prisma/client'
 
 /**
@@ -53,6 +59,23 @@ export interface AgendarPostInput {
    * publica de verdade. O vocabulário é o da pessoa, não o do banco.
    */
   situacao?: 'rascunho' | 'agendado'
+  /**
+   * O que o sistema pode aprender com este post: ROTINA (padrão) sempre,
+   * CAMPANHA com escopo temporal, PONTUAL nunca. Ver `learning-scope.ts` —
+   * a captura é sempre; isto é o filtro da AGREGAÇÃO.
+   */
+  learningScope?: EscopoAprendizado
+  /**
+   * Entrada CAMPANHAS da base que dá o escopo temporal. Informar só o
+   * `campaignId`, sem `learningScope`, já implica CAMPANHA.
+   */
+  campaignId?: string
+  /** Como a decisão nasceu. Quem preenche de verdade é a fase de captura. */
+  origem?: OrigemDecisao
+  /** Sugestão que originou o post (entidade da F1). */
+  sugestaoId?: string
+  /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. */
+  decididoPor?: string
 }
 
 export async function agendarPost(input: AgendarPostInput) {
@@ -164,15 +187,47 @@ export async function agendarPost(input: AgendarPostInput) {
    * capa (host fora de `images.remotePatterns`), o revert fica bloqueado e a
    * publicação passa a depender de um link de terceiro sobreviver até a hora.
    */
-  let avisoMidia: string | undefined
+  const avisos: string[] = []
   if (mediaUrls.length > 0) {
     const ingestao = await ingerirMidiaExterna(mediaUrls, project.id)
     mediaUrls = ingestao.urls
     if (ingestao.falhas.length > 0) {
-      avisoMidia =
+      avisos.push(
         `Não deu para trazer ${ingestao.falhas.length} imagem(ns) para o armazenamento do Studio ` +
-        `(${ingestao.falhas[0].motivo}). O post foi criado apontando para o link original, que pode ` +
-        `sair do ar — vale conferir a arte na agenda.`
+          `(${ingestao.falhas[0].motivo}). O post foi criado apontando para o link original, que pode ` +
+          `sair do ar — vale conferir a arte na agenda.`,
+      )
+    }
+  }
+
+  /**
+   * Escopo de aprendizado. `campaignId` sozinho já implica CAMPANHA: um id de
+   * campanha com escopo de rotina seria contraditório, e no chat é fácil o
+   * modelo informar um e esquecer o outro.
+   */
+  const learningScope: EscopoAprendizado =
+    input.learningScope ?? (input.campaignId ? 'CAMPANHA' : ESCOPO_PADRAO)
+
+  /**
+   * Campanha que não existe neste projeto vira AVISO, não erro: o ponteiro é
+   * frouxo (sem FK) e recusar o agendamento por causa de um metadado seria
+   * pior do que gravar um vínculo torto e visível.
+   */
+  if (input.campaignId) {
+    const campanha = await db.knowledgeBaseEntry.findFirst({
+      where: { id: input.campaignId, projectId: project.id },
+      select: { id: true, category: true },
+    })
+    if (!campanha) {
+      avisos.push(
+        `Não achei a campanha ${input.campaignId} na base deste cliente — o post foi marcado como ` +
+          `campanha assim mesmo, mas confira o vínculo.`,
+      )
+    } else if (campanha.category !== 'CAMPANHAS') {
+      avisos.push(
+        `A entrada ${input.campaignId} da base não é de CAMPANHAS — o vínculo foi gravado, mas ` +
+          `o escopo temporal só funciona com entrada de campanha.`,
+      )
     }
   }
 
@@ -220,8 +275,20 @@ export async function agendarPost(input: AgendarPostInput) {
       // Sem arte pronta o cron precisa renderizar — sem isso o post fica
       // PENDING com nextRenderAt null e nunca entra na fila de render.
       ...(mediaUrls.length === 0 ? { nextRenderAt: new Date() } : {}),
+      learningScope,
+      campaignId: input.campaignId ?? null,
+      origem: input.origem ?? null,
+      sugestaoId: input.sugestaoId ?? null,
+      decididoPor: input.decididoPor ?? null,
     },
-    select: { id: true, status: true, postType: true, scheduledDatetime: true, mediaUrls: true },
+    select: {
+      id: true,
+      status: true,
+      postType: true,
+      scheduledDatetime: true,
+      mediaUrls: true,
+      learningScope: true,
+    },
   })
 
   const quandoBRT = formatarBRT(post.scheduledDatetime!)
@@ -233,7 +300,12 @@ export async function agendarPost(input: AgendarPostInput) {
     tipo,
     quando: quandoBRT,
     imagens: post.mediaUrls,
-    ...(avisoMidia ? { aviso: avisoMidia } : {}),
+    // Só quando sai do padrão: repetir "rotina" em toda resposta vira ruído
+    // que o modelo acaba narrando na conversa.
+    ...(post.learningScope !== ESCOPO_PADRAO
+      ? { escopo: escopoEmPortugues(post.learningScope as EscopoAprendizado) }
+      : {}),
+    ...(avisos.length > 0 ? { aviso: avisos.join(' ') } : {}),
     agendaUrl: `${getPublicAppUrl()}/projects/${project.id}/agenda`,
     // Frase pronta para o modelo repetir: evita que ele traduza "DRAFT" sozinho
     mensagem: vaiPublicar

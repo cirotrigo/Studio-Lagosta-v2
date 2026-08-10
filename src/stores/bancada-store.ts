@@ -17,6 +17,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PapelReferencia } from '@/components/creatives/arte-ia-image-picker'
+import { ESCOPO_PADRAO, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 
 /**
  * `guia-pronto` só existe no carrossel: capa e slide-guia ficaram prontos e a
@@ -70,6 +71,12 @@ export interface BancadaItem {
   referencias: BancadaReferencia[]
   /** Horário planejado (slot da cadência ou escolha manual), "YYYY-MM-DD HH:mm". */
   quando?: string | null
+  /**
+   * O que o sistema pode aprender com este post (rotina/campanha/pontual).
+   * Vai junto no agendamento e vira coluna do post — o estado durável é o do
+   * banco, este campo é só o transporte da escolha feita no compositor.
+   */
+  escopo?: EscopoAprendizado
   /** Por que este horário (motivo do slot) — some quando o operador escolhe à mão. */
   motivoDoSlot?: string | null
   status: BancadaStatus
@@ -93,12 +100,23 @@ export type NovoItem = Omit<BancadaItem, 'id' | 'status' | 'criadoEm'>
 interface BancadaState {
   itens: BancadaItem[]
   hidratou: boolean
+  /**
+   * Escopo com que os PRÓXIMOS itens nascem marcados — o "modo aprendizado"
+   * como açúcar de UI, nunca como interruptor da captura: ele só pré-marca o
+   * chip do compositor, e o que vale é o escopo gravado em cada post.
+   *
+   * De propósito FORA do `partialize`: um padrão persistido em localStorage é
+   * exatamente o interruptor esquecido ligado que se quer evitar — semanas de
+   * arte marcadas "pontual" sem ninguém notar. Recarregou, volta para rotina.
+   */
+  escopoPadrao: EscopoAprendizado
 
   adicionar: (input: NovoItem) => string
   atualizar: (id: string, patch: Partial<BancadaItem>) => void
   remover: (id: string) => void
   limparFinalizados: (projectId: number) => void
   setHidratou: (v: boolean) => void
+  setEscopoPadrao: (escopo: EscopoAprendizado) => void
 }
 
 const STORAGE_KEY = 'lagosta.bancada'
@@ -114,6 +132,7 @@ export const useBancadaStore = create(
     (set) => ({
       itens: [],
       hidratou: false,
+      escopoPadrao: ESCOPO_PADRAO,
 
       adicionar: (input) => {
         const id = novoId()
@@ -138,6 +157,8 @@ export const useBancadaStore = create(
         })),
 
       setHidratou: (v) => set({ hidratou: v }),
+
+      setEscopoPadrao: (escopo) => set({ escopoPadrao: escopo }),
     }),
     {
       name: STORAGE_KEY,

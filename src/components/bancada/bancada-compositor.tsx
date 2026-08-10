@@ -44,6 +44,7 @@ import {
   type BancadaSlide,
   type BancadaReferencia,
 } from '@/stores/bancada-store'
+import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
 
 type Formato = 'story' | 'feed' | 'quadrado'
 
@@ -81,6 +82,8 @@ interface SlotsResposta {
 export function BancadaCompositor({ projectId }: { projectId: number }) {
   const adicionar = useBancadaStore((s) => s.adicionar)
   const itens = useBancadaStore((s) => s.itens)
+  const escopoPadrao = useBancadaStore((s) => s.escopoPadrao)
+  const setEscopoPadrao = useBancadaStore((s) => s.setEscopoPadrao)
 
   const [tipo, setTipo] = React.useState<'peca' | 'carrossel'>('peca')
   const [formato, setFormato] = React.useState<Formato>('story')
@@ -94,6 +97,11 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const [slot, setSlot] = React.useState('')
   const [dataManual, setDataManual] = React.useState('')
   const [horaManual, setHoraManual] = React.useState('')
+  /**
+   * Escopo de aprendizado DESTE item. Nasce do padrão da leva (que por sua vez
+   * nasce "rotina") — o caminho comum não pede decisão nenhuma.
+   */
+  const [escopo, setEscopo] = React.useState<EscopoAprendizado>(escopoPadrao)
 
   const { data: slots } = useQuery<SlotsResposta>({
     queryKey: ['projeto', projectId, 'slots'],
@@ -179,6 +187,9 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
     setDataManual('')
     setHoraManual('')
     setSlot('')
+    // Volta para o padrão da leva, não para "rotina": quem marcou a leva
+    // inteira como campanha não deveria remarcar item a item.
+    setEscopo(escopoPadrao)
   }
 
   const adicionarNaFila = () => {
@@ -217,6 +228,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
         referencias: [],
         quando,
         motivoDoSlot: quandoManual ? null : (motivo ?? null),
+        escopo,
       })
       limpar()
       return
@@ -239,6 +251,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
       })),
       quando,
       motivoDoSlot: quandoManual ? null : (motivo ?? null),
+      escopo,
     }
     adicionar(item)
     limpar()
@@ -471,6 +484,46 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
             />
           </div>
         </div>
+      </div>
+
+      {/* Escopo de aprendizado — chip discreto, "Rotina" já vem marcado.
+          A captura acontece de todo jeito; o que este marcador decide é se o
+          post entra no que o sistema aprende sobre o cliente. Por isso ele é
+          POR ITEM: uma leva normal mistura rotina, campanha e post pontual. */}
+      <div className="space-y-1.5">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <Label className="text-xs font-normal text-muted-foreground">Aprendizado</Label>
+          <div className="flex gap-1">
+            {ESCOPOS.map((e) => (
+              <button
+                key={e.valor}
+                type="button"
+                onClick={() => setEscopo(e.valor)}
+                title={e.ajuda}
+                className={cn(
+                  'rounded-full border px-2.5 py-0.5 text-[11px] transition-colors',
+                  escopo === e.valor
+                    ? 'border-primary bg-primary/10 text-foreground'
+                    : 'border-border/60 text-muted-foreground hover:border-primary/50',
+                )}
+              >
+                {e.rotulo}
+              </button>
+            ))}
+          </div>
+          {escopo !== escopoPadrao && (
+            <button
+              type="button"
+              onClick={() => setEscopoPadrao(escopo)}
+              className="text-[11px] text-muted-foreground underline underline-offset-2 hover:text-foreground"
+            >
+              usar nos próximos itens
+            </button>
+          )}
+        </div>
+        <p className="text-[11px] text-muted-foreground">
+          {ESCOPOS.find((e) => e.valor === escopo)?.ajuda}
+        </p>
       </div>
 
       <div className="space-y-2">
