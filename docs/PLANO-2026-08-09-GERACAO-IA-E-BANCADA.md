@@ -186,9 +186,12 @@ criar um quinto caminho.
 > automaticamente (2ª foto → Ambiente), chip bloqueado quando o teto estoura,
 > e POST real criando a Generation com as duas refs e a copy.
 >
-> ⚠ **Duas galerias**: o botão foi para `creatives-gallery.tsx` (aba do
-> projeto). A rota `/projects/[id]/creativos` é uma implementação DUPLICADA e
-> ficou sem o recurso — unificar (tarefa registrada).
+> ✅ **Duas galerias — unificado em 09/08/2026**: a rota
+> `/projects/[id]/creativos` tinha uma cópia inline da galeria e ficou sem o
+> botão. Agora ela é só cabeçalho + `<CreativesGallery/>`, o mesmo componente
+> da aba. De quebra a rota deixou de tratar todo criativo como 1080x1080 (lia
+> `generation.template`, minúsculo, enquanto a API devolve `Template`).
+> Continua separada a galeria GLOBAL `/criativos`, que é cross-projeto.
 >
 > Pendente: item 4 (crivo por projeto).
 
@@ -211,6 +214,21 @@ criar um quinto caminho.
    agendar.
 
 ### Fase 3 — Bancada de Stories (UI) · ~1 semana
+
+> **STATUS 09/08/2026: IMPLEMENTADA.** `/projects/[id]/bancada` — compositor
+> (acervo com papéis + copy + horário) → fila de cards com a ação de cada
+> estado. Rotas novas `/slots` (expõe `sugerirPosts`, o motor de cadência que
+> só o MCP consumia) e `/agendar` (expõe `agendarPost`, a mesma função da tool
+> `colocar-na-agenda`). Store em `src/stores/bancada-store.ts` (rascunho em
+> localStorage; a verdade passa ao banco no "Gerar") e `use-bancada.ts`.
+>
+> Ciclo validado ponta a ponta no navegador com o By Rock: montar → fila →
+> gerar (POST próprio por card, paralelo) → card vira "pronta" sozinho por
+> polling → agendar → post rascunho criado na agenda. Dados do teste
+> limpos do banco de dev.
+>
+> Armadilha medida: `sm:w-28` e `w-[7rem]` NÃO geram CSS neste repo
+> (`w-28`/`h-36` geram) — a miniatura do card virava largura total.
 
 Rota `/projects/[id]/bancada`: compositor (foto multi-fonte + copy em blocos +
 instrução opt-in + dica de copy via `quick-generate` adaptado + slot de
