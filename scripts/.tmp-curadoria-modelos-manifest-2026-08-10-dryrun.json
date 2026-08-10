@@ -1,0 +1,622 @@
+{
+  "aplicado": false,
+  "data": "2026-08-10T21:16:12.347Z",
+  "criterio": {
+    "janelaDias": 0,
+    "carenciaDias": 90,
+    "projeto": null
+  },
+  "despromovidos": [],
+  "recusados": [],
+  "inventario": [
+    {
+      "pageId": "cmn5ihayt000jswxqykc3y4ad",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Delivery - Layout 2",
+      "templateId": 142,
+      "template": "By Rock - Delivery",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "delivery"
+      ],
+      "templateTags": [
+        "delivery"
+      ],
+      "criadaEm": "2026-03-25T03:56:15.173Z",
+      "atualizadaEm": "2026-08-01T01:34:42.750Z",
+      "usos": {
+        "arteRapida": 1,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 1
+      },
+      "ultimoUso": "2026-08-02T14:42:55.233Z",
+      "chaves": [
+        "tema:delivery"
+      ],
+      "recomendacao": "manter",
+      "motivo": "1 uso(s) registrado(s), o último em 2026-08-02"
+    },
+    {
+      "pageId": "cmsg9o2e20007swsumyp3bpkj",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Modelo reutilizável — agenda musical (grade de 4 dias)",
+      "templateId": 212,
+      "template": "By Rock — Agenda musical da semana",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "musica-ao-vivo",
+        "agenda",
+        "modelo"
+      ],
+      "templateTags": [
+        "musica-ao-vivo",
+        "agenda",
+        "story"
+      ],
+      "criadaEm": "2026-08-05T15:53:33.722Z",
+      "atualizadaEm": "2026-08-05T15:59:27.500Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "tema:musica-ao-vivo",
+        "tema:agenda",
+        "tema:modelo",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 5 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmlpbexrv003nl8040zd0kyuj",
+      "projectId": 3,
+      "projeto": "TERO",
+      "nome": "Pag.08",
+      "templateId": 86,
+      "template": "Segunda-feira",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "Segunda-feira"
+      ],
+      "templateTags": [],
+      "criadaEm": "2026-02-16T15:14:26.300Z",
+      "atualizadaEm": "2026-08-01T01:31:47.694Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 1,
+        "postsDiretos": 1,
+        "postsDerivados": 0,
+        "total": 2
+      },
+      "ultimoUso": "2026-03-24T20:49:11.352Z",
+      "chaves": [
+        "dia:segunda"
+      ],
+      "recomendacao": "manter",
+      "motivo": "2 uso(s) registrado(s), o último em 2026-03-24"
+    },
+    {
+      "pageId": "cmjda49730001kz04nbk0ohmw",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Pag.06",
+      "templateId": 21,
+      "template": "Terça-feira",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "terca"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-12-19T19:45:29.488Z",
+      "atualizadaEm": "2026-08-01T03:05:24.222Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 1,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 1
+      },
+      "ultimoUso": "2026-02-03T17:30:18.910Z",
+      "chaves": [
+        "dia:terça"
+      ],
+      "recomendacao": "manter",
+      "motivo": "1 uso(s) registrado(s), o último em 2026-02-03"
+    },
+    {
+      "pageId": "cmn5ih9wk0009swxqcqlfoddm",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Happy Hour - Layout 1",
+      "templateId": 140,
+      "template": "By Rock - Happy Hour",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "happy-hour"
+      ],
+      "templateTags": [
+        "happy-hour"
+      ],
+      "criadaEm": "2026-03-25T03:56:13.796Z",
+      "atualizadaEm": "2026-08-01T01:34:28.118Z",
+      "usos": {
+        "arteRapida": 1,
+        "ui": 0,
+        "postsDiretos": 3,
+        "postsDerivados": 0,
+        "total": 4
+      },
+      "ultimoUso": "2026-08-01T03:07:56.855Z",
+      "chaves": [
+        "tema:happy-hour"
+      ],
+      "recomendacao": "manter",
+      "motivo": "4 uso(s) registrado(s), o último em 2026-08-01"
+    },
+    {
+      "pageId": "cmj3mmwv00001jo04em8k2muy",
+      "projectId": 2,
+      "projeto": "O Quintal Parrilla",
+      "nome": "Pag.01",
+      "templateId": 12,
+      "template": "Segunda-feira",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "Segunda-feira"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-12-13T01:38:13.597Z",
+      "atualizadaEm": "2026-08-03T17:10:06.529Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 3,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 3
+      },
+      "ultimoUso": "2026-02-01T20:25:37.285Z",
+      "chaves": [
+        "dia:segunda"
+      ],
+      "recomendacao": "manter",
+      "motivo": "3 uso(s) registrado(s), o último em 2026-02-01"
+    },
+    {
+      "pageId": "cmgwjaokz0005swmlw4oonoff",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Pag.01",
+      "templateId": 21,
+      "template": "Terça-feira",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "terca"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-10-18T17:10:56.243Z",
+      "atualizadaEm": "2026-08-01T03:05:21.363Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 2,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 2
+      },
+      "ultimoUso": "2026-02-04T14:34:13.766Z",
+      "chaves": [
+        "dia:terça"
+      ],
+      "recomendacao": "manter",
+      "motivo": "2 uso(s) registrado(s), o último em 2026-02-04"
+    },
+    {
+      "pageId": "cmsdtum6n0001sw903cpmtugl",
+      "projectId": 3,
+      "projeto": "TERO",
+      "nome": "1 · Dividido — titulo topo, apoio rodape",
+      "templateId": 208,
+      "template": "TERO — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "dividido"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T22:55:13.103Z",
+      "atualizadaEm": "2026-08-04T19:29:36.667Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:dividido",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmsdr04kq000pswaa7jldml6h",
+      "projectId": 11,
+      "projeto": "Wine Vix",
+      "nome": "1 · Dividido — titulo topo, apoio rodape",
+      "templateId": 207,
+      "template": "Wine Vix — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "dividido"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T21:35:31.371Z",
+      "atualizadaEm": "2026-08-03T23:20:23.242Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:dividido",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmhz1mkkt0001lg04btppiwqp",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Pag.09",
+      "templateId": 50,
+      "template": "Domingo",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "domingo"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-11-14T15:59:18.702Z",
+      "atualizadaEm": "2026-08-01T03:05:46.672Z",
+      "usos": {
+        "arteRapida": 2,
+        "ui": 3,
+        "postsDiretos": 0,
+        "postsDerivados": 1,
+        "total": 6
+      },
+      "ultimoUso": "2026-08-02T14:42:50.015Z",
+      "chaves": [
+        "dia:domingo"
+      ],
+      "recomendacao": "manter",
+      "motivo": "6 uso(s) registrado(s), o último em 2026-08-02"
+    },
+    {
+      "pageId": "cmn5iha0s000bswxqynkwofrh",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Happy Hour - Layout 2",
+      "templateId": 140,
+      "template": "By Rock - Happy Hour",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "happy-hour"
+      ],
+      "templateTags": [
+        "happy-hour"
+      ],
+      "criadaEm": "2026-03-25T03:56:13.948Z",
+      "atualizadaEm": "2026-08-01T01:34:38.431Z",
+      "usos": {
+        "arteRapida": 1,
+        "ui": 0,
+        "postsDiretos": 5,
+        "postsDerivados": 0,
+        "total": 6
+      },
+      "ultimoUso": "2026-08-01T03:12:52.163Z",
+      "chaves": [
+        "tema:happy-hour"
+      ],
+      "recomendacao": "manter",
+      "motivo": "6 uso(s) registrado(s), o último em 2026-08-01"
+    },
+    {
+      "pageId": "cml59ykr10005if04qvbsbgra",
+      "projectId": 11,
+      "projeto": "Wine Vix",
+      "nome": "Página 1",
+      "templateId": 109,
+      "template": "Sexta",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "Sexta"
+      ],
+      "templateTags": [],
+      "criadaEm": "2026-02-02T14:38:19.790Z",
+      "atualizadaEm": "2026-08-01T01:36:00.460Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 2,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 2
+      },
+      "ultimoUso": "2026-02-02T20:24:53.880Z",
+      "chaves": [
+        "dia:sexta"
+      ],
+      "recomendacao": "manter",
+      "motivo": "2 uso(s) registrado(s), o último em 2026-02-02"
+    },
+    {
+      "pageId": "cmsdr04xi000tswaalrmpa6km",
+      "projectId": 11,
+      "projeto": "Wine Vix",
+      "nome": "3 · Rodape — base limpa",
+      "templateId": 207,
+      "template": "Wine Vix — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "rodape"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T21:35:31.831Z",
+      "atualizadaEm": "2026-08-03T23:19:21.573Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:rodape",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmsdr04t9000rswaae6z5hr0f",
+      "projectId": 11,
+      "projeto": "Wine Vix",
+      "nome": "2 · Topo — assunto ocupa centro e base",
+      "templateId": 207,
+      "template": "Wine Vix — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "topo"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T21:35:31.677Z",
+      "atualizadaEm": "2026-08-03T23:19:36.962Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:topo",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmsdtumiy0005sw90ajngxhbj",
+      "projectId": 3,
+      "projeto": "TERO",
+      "nome": "3 · Rodape — base limpa",
+      "templateId": 208,
+      "template": "TERO — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "rodape"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T22:55:13.546Z",
+      "atualizadaEm": "2026-08-03T23:39:37.972Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:rodape",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmsdtumet0003sw90eoyebhg5",
+      "projectId": 3,
+      "projeto": "TERO",
+      "nome": "2 · Topo — assunto ocupa centro e base",
+      "templateId": 208,
+      "template": "TERO — Story base (3 layouts)",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "topo"
+      ],
+      "templateTags": [
+        "base",
+        "story",
+        "quinta"
+      ],
+      "criadaEm": "2026-08-03T22:55:13.398Z",
+      "atualizadaEm": "2026-08-03T23:40:41.575Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 0
+      },
+      "ultimoUso": null,
+      "chaves": [
+        "dia:quinta",
+        "tema:topo",
+        "tema:base",
+        "tema:story"
+      ],
+      "recomendacao": "manter",
+      "motivo": "criado há 6 dia(s) — dentro da carência de 90, ainda não deu tempo de usar"
+    },
+    {
+      "pageId": "cmksfi9ti000rkz04vcjwyatu",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Página 8",
+      "templateId": 16,
+      "template": "Sábado",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "sabado"
+      ],
+      "templateTags": [],
+      "criadaEm": "2026-01-24T14:52:36.535Z",
+      "atualizadaEm": "2026-08-01T03:05:43.124Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 3,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 3
+      },
+      "ultimoUso": "2026-02-04T14:13:10.947Z",
+      "chaves": [
+        "dia:sábado"
+      ],
+      "recomendacao": "manter",
+      "motivo": "3 uso(s) registrado(s), o último em 2026-02-04"
+    },
+    {
+      "pageId": "cmgi4drbk0001jp04jdk5t30p",
+      "projectId": 1,
+      "projeto": "Real Gelateria",
+      "nome": "Página 2",
+      "templateId": 1,
+      "template": "Quarta-feira",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "Quarta-feira"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-10-08T15:04:39.056Z",
+      "atualizadaEm": "2026-08-06T02:02:12.421Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 0,
+        "postsDiretos": 1,
+        "postsDerivados": 0,
+        "total": 1
+      },
+      "ultimoUso": "2026-04-15T12:41:48.737Z",
+      "chaves": [
+        "dia:quarta"
+      ],
+      "recomendacao": "manter",
+      "motivo": "1 uso(s) registrado(s), o último em 2026-04-15"
+    },
+    {
+      "pageId": "cmjcbziqj0001ji04s45as0vy",
+      "projectId": 7,
+      "projeto": "By Rock",
+      "nome": "Pag.02",
+      "templateId": 16,
+      "template": "Sábado",
+      "tipo": "STORY",
+      "infra": false,
+      "tags": [
+        "sabado"
+      ],
+      "templateTags": [],
+      "criadaEm": "2025-12-19T03:50:01.627Z",
+      "atualizadaEm": "2026-08-01T03:05:40.120Z",
+      "usos": {
+        "arteRapida": 0,
+        "ui": 1,
+        "postsDiretos": 0,
+        "postsDerivados": 0,
+        "total": 1
+      },
+      "ultimoUso": "2026-02-04T14:00:14.476Z",
+      "chaves": [
+        "dia:sábado"
+      ],
+      "recomendacao": "manter",
+      "motivo": "1 uso(s) registrado(s), o último em 2026-02-04"
+    }
+  ],
+  "rollback": null
+}

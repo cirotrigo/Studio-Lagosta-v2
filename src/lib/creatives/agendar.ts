@@ -409,19 +409,26 @@ export async function agendarPost(input: AgendarPostInput) {
    * agendamento é o defeito que `captura.ts` foi escrito para impedir.
    */
   const superficie = input.superficie ?? 'chat'
-  await registrarSlotDoPost({
-    projectId: project.id,
-    postId: post.id,
-    quando,
-    postType: post.postType,
-    situacao: vaiPublicar ? 'agendado' : 'rascunho',
-    pageId: input.pageId ?? null,
-    generationId,
-    campaignId: input.campaignId ?? null,
-    sourcePageId,
-    decididoPor: input.decididoPor ?? null,
-    superficie,
-  })
+  /**
+   * Uma linha por slot, nunca duas. Com proposta, quem registra é
+   * `fecharSugestaoDeSlot` (logo abaixo), que já grava o proposto E o
+   * comprometido; sem proposta, é escolha absoluta e entra por aqui.
+   */
+  if (!input.sugestaoId) {
+    await registrarSlotDoPost({
+      projectId: project.id,
+      postId: post.id,
+      quando,
+      postType: post.postType,
+      situacao: vaiPublicar ? 'agendado' : 'rascunho',
+      pageId: input.pageId ?? null,
+      generationId,
+      campaignId: input.campaignId ?? null,
+      sourcePageId,
+      decididoPor: input.decididoPor ?? null,
+      superficie,
+    })
+  }
   await registrarCopyDoPost({
     projectId: project.id,
     postId: post.id,
@@ -442,6 +449,14 @@ export async function agendarPost(input: AgendarPostInput) {
       // de agendar, quem corrige o desfecho é o reagendamento — a janela vai
       // até a publicação e evidência mais forte sobrescreve.
       desfecho: input.origem === 'sugerido-editado' ? 'editada' : 'aceita-como-veio',
+      contexto: {
+        postType: post.postType,
+        situacao: vaiPublicar ? 'agendado' : 'rascunho',
+        sourcePageId,
+      },
+      pageId: input.pageId ?? null,
+      generationId,
+      campaignId: input.campaignId ?? null,
       decididoPor: input.decididoPor ?? null,
       superficie,
     })

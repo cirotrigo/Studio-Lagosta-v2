@@ -197,36 +197,42 @@ export async function processarAprovacao(params: {
        * o horário e armou a publicação. Nenhum outro ponto do fluxo tem uma
        * confirmação humana tão explícita.
        *
-       * Duas coisas acontecem aqui, e são distintas:
+       * UMA linha por slot, e qual delas depende de ter havido proposta:
        *
-       *  1. A linha de SLOT, na mesma chave que `agendarPost` usa
-       *     (`slot:post:<id>`). No caminho normal (criar rascunho → aprovar) o
-       *     agendamento já a gravou e isto é no-op — de propósito: duas linhas
-       *     para o mesmo horário do mesmo post dobrariam a cadência de quem usa
-       *     a agenda direito. O valor está no caminho de fora: post criado pela
-       *     bancada ou por um import, que nunca passou por `agendarPost` e sem
-       *     isto não teria registro nenhum.
-       *  2. O DESFECHO da sugestão de slot, quando o post nasceu de uma. É a
-       *     aceitação, e vale mesmo quando (1) não gravou nada.
+       *  - COM proposta: o desfecho da sugestão, que já é o registro completo
+       *    (o proposto, o comprometido e o contexto). `registrarSlotDoPost`
+       *    NÃO roda junto — ele grava `escolha-propria`, rótulo falso para
+       *    quem aceitou uma proposta, e a segunda linha dobrava o peso do
+       *    horário na cadência. Achado no teste ponta a ponta de 10/08/2026.
+       *  - SEM proposta: a linha de slot na mesma chave que `agendarPost` usa
+       *    (`slot:post:<id>`), idempotente. No caminho normal (criar rascunho
+       *    → aprovar) o agendamento já a gravou e isto é no-op; o valor está
+       *    no caminho de fora — post criado pela bancada ou por import, que
+       *    nunca passou por `agendarPost`.
        */
-      await registrarSlotDoPost({
-        projectId,
-        postId: post.id,
-        quando: post.scheduledDatetime,
-        postType: post.postType,
-        situacao: 'agendado',
-        pageId: post.pageId,
-        generationId: post.generationId,
-        campaignId: post.campaignId,
-        decididoPor: params.decididoPor ?? null,
-        superficie,
-      })
       if (post.sugestaoId) {
         await fecharSugestaoDeSlot({
           sugestaoId: post.sugestaoId,
           postId: post.id,
           quando: post.scheduledDatetime,
           desfecho: 'aceita-como-veio',
+          contexto: { postType: post.postType, situacao: 'agendado' },
+          pageId: post.pageId,
+          generationId: post.generationId,
+          campaignId: post.campaignId,
+          decididoPor: params.decididoPor ?? null,
+          superficie,
+        })
+      } else {
+        await registrarSlotDoPost({
+          projectId,
+          postId: post.id,
+          quando: post.scheduledDatetime,
+          postType: post.postType,
+          situacao: 'agendado',
+          pageId: post.pageId,
+          generationId: post.generationId,
+          campaignId: post.campaignId,
           decididoPor: params.decididoPor ?? null,
           superficie,
         })

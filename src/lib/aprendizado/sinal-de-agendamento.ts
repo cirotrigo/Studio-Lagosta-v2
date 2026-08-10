@@ -162,23 +162,51 @@ export async function registrarCopyDoPost(entrada: CopyDoPost): Promise<void> {
  * Fecha a SUGESTÃO de slot que originou o post, quando houve uma.
  *
  * `SocialPost.sugestaoId` guarda o ponteiro desde a F0.2. Quem o preenche é
- * quem emite a proposta (o `sugerir-posts` da fase seguinte); aqui só se
- * registra o desfecho — e ele pode ser revisto depois, porque a janela do
- * desfecho vai até a publicação (`desfechoVenceOAnterior`).
+ * quem emite a proposta (`sugerir-posts`); aqui só se registra o desfecho — e
+ * ele pode ser revisto depois, porque a janela do desfecho vai até a
+ * publicação (`desfechoVenceOAnterior`).
+ *
+ * ⚠️ Esta linha é a ÚNICA do slot quando houve proposta: `registrarSlotDoPost`
+ * NÃO deve rodar junto. Ela já é o registro completo — traz o que foi
+ * proposto, o que foi comprometido e o `contexto` que a outra carregava. Rodar
+ * as duas gravava dois sinais para o MESMO horário do MESMO post, um deles
+ * rotulado `escolha-propria`, o que é falso quando a pessoa aceitou uma
+ * proposta — e dobrava o peso daquele horário na cadência aprendida, ainda por
+ * cima misturando a linha que deve valer com desconto (aceite) com a que vale
+ * cheio (escolha própria). Achado no teste ponta a ponta de 10/08/2026.
  */
 export async function fecharSugestaoDeSlot(entrada: {
   sugestaoId: string
   postId: string
   quando: Date
   desfecho: 'aceita-como-veio' | 'editada' | 'descartada'
+  /** O mesmo contexto que `registrarSlotDoPost` grava, para não se perder. */
+  contexto?: {
+    postType?: string
+    situacao?: 'rascunho' | 'agendado'
+    sourcePageId?: string | null
+  }
+  pageId?: string | null
+  generationId?: string | null
+  campaignId?: string | null
   decididoPor?: string | null
   superficie?: Superficie
 }): Promise<void> {
   await registrarDesfecho({
     sugestaoId: entrada.sugestaoId,
     desfecho: entrada.desfecho,
-    escolhido: slotEmBrasilia(entrada.quando),
+    escolhido: {
+      ...slotEmBrasilia(entrada.quando),
+      ...(entrada.contexto?.postType ? { tipoDePost: entrada.contexto.postType } : {}),
+      ...(entrada.contexto?.situacao ? { situacao: entrada.contexto.situacao } : {}),
+      ...(entrada.contexto?.sourcePageId !== undefined
+        ? { sourcePageId: entrada.contexto.sourcePageId }
+        : {}),
+    },
     postId: entrada.postId,
+    pageId: entrada.pageId ?? null,
+    generationId: entrada.generationId ?? null,
+    campaignId: entrada.campaignId ?? null,
     decididoPor: entrada.decididoPor ?? null,
     superficie: entrada.superficie ?? 'agenda',
   })
