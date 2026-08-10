@@ -44,6 +44,7 @@ import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
 import { checarProporcao, conferirLogo, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
+import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -134,6 +135,12 @@ export interface ArtGenerationJobArgs {
    * composição ao custo do risco de distorção.
    */
   logoMode?: LogoMode
+  /**
+   * Job da fila durável que está executando este pipeline (F0.3). Presente,
+   * a retentativa acontece em OUTRA invocação — ver `pedirNovaTentativa`.
+   * Ausente (teste E2E, script), o comportamento antigo vale: retenta no laço.
+   */
+  queueJobId?: string
 }
 
 interface LoadedRef {
@@ -437,6 +444,19 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         qaInfo = { qa: 'failed', qaMotivo: ultimoQaMotivo, qaAspecto: { ...aspecto } }
         attemptsLog.push({ attempt, generationMs, qa: 'aspecto', ok: false, ...aspecto })
         console.warn(`[arte-ia.bg] tentativa ${attempt}: ${ultimoQaMotivo} — regerando em vez de cortar`)
+        /**
+         * Com fila durável, a segunda geração NUNCA roda nesta invocação: duas
+         * gerações de ~120s não cabem nos 300s da rota, e era isso que fazia a
+         * retentativa abortar no meio. Devolvida à fila, a Generation continua
+         * PROCESSING e a bancada continua acompanhando normalmente.
+         */
+        if (args.queueJobId) {
+          if (await pedirNovaTentativa(args.queueJobId, ultimoQaMotivo)) {
+            console.log(`[arte-ia.bg] devolvido à fila para outra invocação (${args.queueJobId})`)
+            return
+          }
+          throw new Error(`QA reprovou e as tentativas acabaram: ${ultimoQaMotivo}`)
+        }
         continue
       }
 

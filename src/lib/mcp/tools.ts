@@ -8,7 +8,6 @@
  * behaviour cannot drift.
  */
 
-import { after } from 'next/server'
 import sharp from 'sharp'
 import { db } from '@/lib/db'
 import {
@@ -58,12 +57,9 @@ import {
   startImprovement,
   VERCEL_BLOB_HOST_REGEX,
 } from '@/lib/ai/creative-improvement-service'
-import { processImprovementInBackground } from '@/lib/ai/creative-improvement-runner'
 import { startArtGeneration } from '@/lib/ai/creative-generation-service'
-import {
-  processArtGenerationInBackground,
-  type ArtGenerationReference,
-} from '@/lib/ai/creative-generation-runner'
+import type { ArtGenerationReference } from '@/lib/ai/creative-generation-runner'
+import { enfileirarArte, enfileirarMelhoria } from '@/lib/ai/generation-queue'
 import {
   listarAncoras,
   definirAncora,
@@ -1397,9 +1393,11 @@ export const MCP_TOOLS: McpTool[] = [
         dedupeWindowMinutes: 10,
       })
 
+      // Só ENFILEIRA (F0.3). O MCP não dispara na hora, de propósito: uma
+      // invocação daqui pode carregar várias tools (batch JSON-RPC resolvido
+      // com Promise.all) sob o mesmo `maxDuration = 300`.
       if (!started.reused && started.runnerArgs) {
-        const runnerArgs = started.runnerArgs
-        after(() => processImprovementInBackground(runnerArgs))
+        await enfileirarMelhoria(started.runnerArgs)
       }
 
       return {
@@ -1408,10 +1406,12 @@ export const MCP_TOOLS: McpTool[] = [
         ...(started.reused
           ? { jaEstavaEmAndamento: true }
           : {}),
-        tempoEstimado: 'cerca de 2 minutos',
+        // A execução saiu da invocação e passou pela fila (F0.3): pode
+        // esperar até um minuto pela varredura antes de começar.
+        tempoEstimado: 'de 2 a 3 minutos',
         mensagem: started.reused
           ? 'Já havia uma melhoria desta arte em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
-          : `Melhoria iniciada. Consulte ver-melhoria com melhoriaId=${started.jobGenerationId} em ~2 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
+          : `Melhoria iniciada. Consulte ver-melhoria com melhoriaId=${started.jobGenerationId} em ~3 minutos${postId ? '; se o texto conferir, a arte do post é trocada sozinha' : ''}.`,
       }
     },
   },
@@ -1604,16 +1604,16 @@ export const MCP_TOOLS: McpTool[] = [
         dedupeWindowMinutes: 10,
       })
 
+      // Enfileira e responde — ver a nota em melhorar-arte.
       if (!started.reused && started.runnerArgs) {
-        const runnerArgs = started.runnerArgs
-        after(() => processArtGenerationInBackground(runnerArgs))
+        await enfileirarArte(started.runnerArgs)
       }
 
       return {
         emAndamento: true,
         geracaoId: started.jobGenerationId,
         ...(started.reused ? { jaEstavaEmAndamento: true } : {}),
-        tempoEstimado: trilha === 'arte' ? 'cerca de 2 minutos' : 'cerca de 1 minuto',
+        tempoEstimado: trilha === 'arte' ? 'de 2 a 3 minutos' : 'de 1 a 2 minutos',
         mensagem: started.reused
           ? 'Já havia uma geração idêntica em andamento — acompanhe ela com ver-melhoria em vez de disparar outra.'
           : `Geração iniciada. Acompanhe com ver-melhoria (melhoriaId=${started.jobGenerationId}); quando pronta, use conferir-arte para VER o resultado antes de mostrar à pessoa.`,
@@ -1675,8 +1675,9 @@ export const MCP_TOOLS: McpTool[] = [
         pedido: typeof args.pedido === 'string' ? args.pedido : undefined,
         actorClerkId: dono.clerkId,
       })
+      // Duas gerações numa invocação era metade do problema que a fila resolve.
       for (const runnerArgs of r.runnerArgs) {
-        after(() => processArtGenerationInBackground(runnerArgs))
+        await enfileirarArte(runnerArgs)
       }
 
       return {
@@ -1711,8 +1712,10 @@ export const MCP_TOOLS: McpTool[] = [
       const dono = await resolverDono(projectId, principal)
 
       const r = await confirmarEstiloCarrossel({ projectId, carrosselId, actorClerkId: dono.clerkId })
+      // Até 6 slides. Era o pior caso do teto compartilhado: seis `after()`
+      // dividindo os mesmos 300s. Agora todos entram na fila e saem de lá.
       for (const runnerArgs of r.runnerArgs) {
-        after(() => processArtGenerationInBackground(runnerArgs))
+        await enfileirarArte(runnerArgs)
       }
 
       return {

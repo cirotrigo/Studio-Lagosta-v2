@@ -156,6 +156,59 @@ model Generation {
   @@index([templateId])
 }
 
+/**
+ * Fila durável da geração de arte por IA (F0.3).
+ *
+ * A execução deixou de morar no `after()` da invocação que pediu a arte: uma
+ * arte chega a ~290s e o teto da rota é 300s, então uma leva de 5-7 peças (ou
+ * um batch JSON-RPC do MCP) estourava o teto e deixava a Generation em
+ * PROCESSING para sempre, sem ninguém para recuperá-la.
+ *
+ * Tabela separada da Generation de propósito: aqui mora COMO o trabalho é
+ * executado (payload do runner, tentativas, lease), lá mora O QUE o usuário vê.
+ * Sem FK, pelo mesmo precedente de `sourceGenerationId` e `campaignId` — apagar
+ * a arte não pode explodir por causa de uma linha de fila.
+ */
+model GenerationJob {
+  id           String              @id @default(cuid())
+  /** Generation PROCESSING que este job produz. Único = enfileirar é idempotente. */
+  generationId String              @unique
+  kind         GenerationJobKind
+  status       GenerationJobStatus @default(PENDING)
+  /** Argumentos do runner, serializados. É o que permite rodar em OUTRA invocação. */
+  payload      Json
+  projectId    Int
+  attempts     Int                 @default(0)
+  /** Uma tentativa = uma chamada PAGA do modelo. 2 é o teto que os dois runners já prometiam. */
+  maxAttempts  Int                 @default(2)
+  /** Portão da query de quem varre — nunca aplicado dentro da reserva. */
+  nextAttemptAt DateTime           @default(now())
+  /** Fim do arrendamento: RUNNING vencido é invocação que morreu. */
+  leaseExpiresAt DateTime?
+  lastError    String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  startedAt    DateTime?
+  finishedAt   DateTime?
+
+  @@index([status, nextAttemptAt])
+  @@index([status, leaseExpiresAt])
+  @@index([projectId])
+  @@index([createdAt])
+}
+
+enum GenerationJobKind {
+  ARTE
+  MELHORIA
+}
+
+enum GenerationJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
 model Logo {
   id            Int      @id @default(autoincrement())
   name          String

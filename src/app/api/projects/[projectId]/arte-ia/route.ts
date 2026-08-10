@@ -4,11 +4,9 @@ import { z } from 'zod'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { startArtGeneration } from '@/lib/ai/creative-generation-service'
-import {
-  processArtGenerationInBackground,
-  type ArtGenerationReference,
-  type CarouselMeta,
-} from '@/lib/ai/creative-generation-runner'
+import type { ArtGenerationReference, CarouselMeta } from '@/lib/ai/creative-generation-runner'
+import { enfileirarArte } from '@/lib/ai/generation-queue'
+import { dispararJobAgora } from '@/lib/ai/generation-queue-executor'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -103,9 +101,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       orgId: orgId ?? undefined,
     })
 
+    /**
+     * A execução vai para a FILA DURÁVEL antes de qualquer coisa (F0.3): se
+     * esta invocação morrer, a varredura termina o serviço em vez de deixar a
+     * Generation em PROCESSING para sempre.
+     *
+     * O disparo imediato continua porque aqui cabe: cada POST da bancada é UM
+     * job na SUA invocação, e o acompanhamento na tela desiste em 8 minutos —
+     * esperar a próxima varredura só adicionaria espera. O job segue no banco,
+     * reservado, como rede.
+     */
     if (started.runnerArgs) {
-      const runnerArgs = started.runnerArgs
-      after(() => processArtGenerationInBackground(runnerArgs))
+      const jobId = await enfileirarArte(started.runnerArgs)
+      after(() => dispararJobAgora(jobId))
     }
 
     return NextResponse.json(

@@ -5,7 +5,8 @@ import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { startImprovement } from '@/lib/ai/creative-improvement-service'
-import { processImprovementInBackground } from '@/lib/ai/creative-improvement-runner'
+import { enfileirarMelhoria } from '@/lib/ai/generation-queue'
+import { dispararJobAgora } from '@/lib/ai/generation-queue-executor'
 import {
   MAX_SELECTED_LOGOS,
   MAX_SELECTED_ELEMENTS,
@@ -98,11 +99,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       orgId: orgId ?? undefined,
     })
 
-    // Dispara o trabalho pesado em background — response sai imediatamente,
-    // o Vercel mantém a function viva até o maxDuration ou o término da task.
+    // O trabalho pesado entra na FILA DURÁVEL (F0.3) e é disparado já, nesta
+    // invocação — cada POST é UM job, então não há teto disputado. O response
+    // sai imediatamente e, se a invocação morrer no meio, a varredura recupera
+    // em vez de deixar a melhoria em PROCESSING para sempre.
     if (started.runnerArgs) {
-      const runnerArgs = started.runnerArgs
-      after(() => processImprovementInBackground(runnerArgs))
+      const jobId = await enfileirarMelhoria(started.runnerArgs)
+      after(() => dispararJobAgora(jobId))
     }
 
     return NextResponse.json(

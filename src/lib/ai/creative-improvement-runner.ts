@@ -34,6 +34,7 @@ import {
   verifyImageTexts,
 } from '@/lib/ai/creative-text-verification'
 import { googleDriveService } from '@/server/google-drive-service'
+import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
 
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
 
@@ -84,6 +85,12 @@ export interface ImprovementJobArgs {
   selectedLogoIds: number[]
   selectedElementIds: number[]
   format: ImprovementFormat
+  /**
+   * Job da fila durável que está executando este pipeline (F0.3). Presente, a
+   * segunda geração (a que o texto divergente pede) acontece em OUTRA
+   * invocação. Ausente (teste E2E, script), vale o laço de antes.
+   */
+  queueJobId?: string
 }
 
 interface DownloadResult {
@@ -324,6 +331,21 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
           textCheck: 'failed',
           textCheckAttempts: attemptsLog,
           textCheckExtracted: check.extracted.slice(0, 30),
+        }
+        /**
+         * A segunda geração é item NOVO da fila, nunca a continuação desta
+         * invocação: a melhoria leva ~140s e duas não cabem nos 300s — foi
+         * assim que retentativas abortaram no meio, queimando a chamada paga.
+         * A Generation fica PROCESSING e quem acompanha nem percebe a troca.
+         */
+        if (args.queueJobId) {
+          const sampleRetry = check.missing.slice(0, 3).map((t) => `"${t}"`).join(', ')
+          if (await pedirNovaTentativa(args.queueJobId, `texto divergente: ${sampleRetry}`)) {
+            console.log(`[improve.bg] texto divergente — devolvido à fila para outra invocação (${args.queueJobId})`)
+            return
+          }
+          // Sem tentativa sobrando: cai no throw lá embaixo, com o motivo.
+          break
         }
       } catch (visionError) {
         // Verificador fora do ar não pode derrubar a melhoria — segue como

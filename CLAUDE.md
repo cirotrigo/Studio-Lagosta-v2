@@ -1222,6 +1222,50 @@ enche o pool que `prepareCreative` (`arte-rapida.ts`, escolhe `candidates[0]`),
   `template_page`): conteúdo marcado por engano fica preso até ser despromovido.
 - Curadoria do que já existe é outra frente, com aprovação item a item:
   `scripts/inventario-uso-modelos.ts` — **despromover, nunca excluir**.
+### Fila durável de geração de arte (F0.3, 10/08/2026)
+
+A geração e a melhoria de arte por IA **não rodam mais no `after()` da
+invocação que as pediu**. Cada pedido vira uma linha em `GenerationJob`
+(`src/lib/ai/generation-queue.ts`) e é executado por
+`/api/cron/generation-jobs`, de minuto em minuto, 3 por varredura.
+
+- **O motivo**: uma arte chega a ~290s contra o `maxDuration = 300` da rota, e
+  o MCP dividia esse teto entre vários `after()` — `confirmar-estilo-carrossel`
+  dispara até 6, e o batch JSON-RPC resolve tools com `Promise.all`. Estourado
+  o teto, a Generation ficava **PROCESSING para sempre**, sem recuperação.
+  "after() encadeado" foi avaliado e **riscado**: `after()` morre com a
+  invocação, que é exatamente o cenário de falha.
+- **Tabela separada da Generation de propósito**: ali mora COMO o trabalho é
+  executado (payload do runner, tentativas, arrendamento); na Generation, O QUE
+  o usuário vê. `fieldValues` é Json sem índice — varrer por path seria scan, e
+  ele já é o registro de auditoria que galeria, MCP e QA leem. Sem FK, mesmo
+  precedente de `sourceGenerationId`.
+- **Os portões de tentativa vivem na QUERY de quem varre** (`proximosJobs`:
+  `attempts < maxAttempts` e `nextAttemptAt <= agora`); a reserva olha só o
+  status, como em `renderPostArt`. Chamador novo que esqueça os portões queima
+  as tentativas em minutos.
+- **`maxAttempts` é 2 porque uma tentativa é uma chamada PAGA do modelo**
+  (~US$0,10-0,19) — é o mesmo teto que `MAX_GENERATION_ATTEMPTS` já prometia.
+  Durabilidade não pode virar cobrança extra.
+- **A segunda geração NUNCA roda na mesma invocação.** Proporção divergente
+  (geração) e texto divergente (melhoria) chamam `pedirNovaTentativa`, que
+  devolve o job à fila; a Generation continua PROCESSING e quem acompanha nem
+  percebe a troca de invocação. Sem `queueJobId` (teste E2E, script) vale o
+  laço antigo.
+- **As ROTAS HTTP enfileiram E disparam na hora** (`dispararJobAgora` dentro de
+  `after()`): cada POST da bancada é UM job na SUA invocação, e a tela desiste
+  de acompanhar em 8 minutos — esperar a varredura só adicionaria espera. **O
+  MCP só enfileira**, porque lá uma invocação carrega várias tools.
+- 🔴 **A varredura de órfãs IGNORA Generation ligada a `VideoProcessingJob`.**
+  O export de vídeo cria a Generation PROCESSING e a entrega a OUTRA fila, cujo
+  cron processa **um** job a cada 2 minutos — passar de 10 minutos em
+  PROCESSING ali é normal, e marcá-la FAILED mataria um vídeo saudável.
+  Produtor novo de Generation PROCESSING de vida longa precisa da mesma
+  exceção (ou de um job na fila).
+- Generation PROCESSING **sem job** e com mais de 10 minutos vira FAILED com
+  motivo legível: são as órfãs anteriores à fila (havia 1 em produção em
+  10/08). O `fieldValues` anterior é **preservado** — ele é o registro atômico
+  da run.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
