@@ -97,6 +97,11 @@ export async function sugerirPosts(params: {
         projectId,
         status: { in: ['POSTED', 'SCHEDULED'] },
         scheduledDatetime: { gte: inicioHistorico, lte: agora },
+        // Post marcado como PONTUAL não ensina cadência: um aviso de feriado
+        // às 9h de uma terça não pode virar "o cliente costuma postar terça
+        // às 9h". CAMPANHA continua contando aqui — separar o sub-perfil da
+        // campanha é da fase de destilação.
+        learningScope: { not: 'PONTUAL' },
       },
       select: { scheduledDatetime: true },
     }),
@@ -105,6 +110,8 @@ export async function sugerirPosts(params: {
         projectId,
         status: { in: ['DRAFT', 'SCHEDULED'] },
         scheduledDatetime: { gte: agora, lte: fimJanela },
+        // Sem filtro de escopo: um post pontual OCUPA o horário do mesmo
+        // jeito, e sugerir em cima dele empilharia dois posts.
       },
       select: { scheduledDatetime: true },
     }),
