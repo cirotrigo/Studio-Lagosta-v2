@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { z } from 'zod'
+import { db } from '@/lib/db'
 import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
 import { CreativeError } from '@/lib/creatives/errors'
 import { agendarPost } from '@/lib/creatives/agendar'
+import { normalizarEscopo } from '@/lib/posts/learning-scope'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -27,6 +29,13 @@ const bodySchema = z.object({
   situacao: z.enum(['rascunho', 'agendado']).optional().default('rascunho'),
   postType: z.enum(['STORY', 'POST', 'REEL', 'CAROUSEL']).optional(),
   caption: z.string().max(2200).optional(),
+  /**
+   * Escopo de aprendizado, no vocabulário da tela. Ausente = rotina, que é o
+   * caminho comum — a bancada só manda quando a pessoa marcou outra coisa.
+   */
+  escopo: z.enum(['rotina', 'campanha', 'pontual']).optional(),
+  /** Entrada CAMPANHAS da base que dá o escopo temporal. */
+  campanhaId: z.string().min(1).optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -53,6 +62,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       )
     }
 
+    /**
+     * `decididoPor` é o `User.id` INTERNO, nunca o clerkId — os dois espaços
+     * já produziram User fantasma no banco. Busca somente leitura de
+     * propósito: se o usuário ainda não existe na tabela, a coluna fica nula
+     * (é auditoria), e criar linha de User a partir daqui seria o próprio
+     * erro que se quer evitar.
+     */
+    const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
+
     const resultado = await agendarPost({
       projectId: id,
       generationId: parsed.data.generationId,
@@ -62,6 +80,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       situacao: parsed.data.situacao,
       postType: parsed.data.postType,
       caption: parsed.data.caption,
+      learningScope: normalizarEscopo(parsed.data.escopo),
+      campaignId: parsed.data.campanhaId,
+      decididoPor: dbUser?.id,
     })
 
     return NextResponse.json(resultado, { status: 201 })

@@ -340,6 +340,12 @@ export function useBancada(projectId: number) {
                 }),
             quando,
             situacao,
+            // Escopo de aprendizado do item. "rotina" é o padrão do servidor:
+            // não mandar nada quando é rotina mantém o corpo do pedido igual
+            // ao de antes para o caminho comum.
+            ...(item.escopo && item.escopo !== 'ROTINA'
+              ? { escopo: item.escopo.toLowerCase() as 'campanha' | 'pontual' }
+              : {}),
           },
         )
         atualizar(item.id, { status: 'agendado', postId: r.postId, quando: r.quando })

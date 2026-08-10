@@ -35,6 +35,12 @@ import {
   formatarBRT,
 } from '@/lib/posts/agenda-acoes'
 import { sugerirPosts } from '@/lib/posts/sugerir-posts'
+import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
+import {
+  escopoEmPortugues,
+  normalizarEscopo,
+  type EscopoAprendizado,
+} from '@/lib/posts/learning-scope'
 import { descreverJanela } from '@/lib/posts/freeze-window'
 import { pedirFoto, verFoto } from '@/lib/creatives/chat-upload'
 import { reindexEntry } from '@/lib/knowledge/indexer'
@@ -165,6 +171,24 @@ async function resolverAutor(projectId: number, principal: McpPrincipal): Promis
   return (await resolverDono(projectId, principal)).id
 }
 
+/**
+ * Quem decidiu, para a coluna `decididoPor` — `User.id` INTERNO, nunca o
+ * clerkId. Nunca propaga erro: isto é auditoria, e um projeto com dono
+ * pendurado (`resolverDono` levanta 500) não pode deixar de ser agendado por
+ * causa de um campo de registro.
+ */
+async function quemDecidiu(
+  projectId: number,
+  principal: McpPrincipal,
+): Promise<string | undefined> {
+  try {
+    return await resolverAutor(projectId, principal)
+  } catch (error) {
+    console.error('[mcp] não deu para resolver quem decidiu:', error)
+    return undefined
+  }
+}
+
 /** Barra o acesso a um projeto fora do alcance do portador. */
 async function assertProjetoPermitido(projectId: number, principal: McpPrincipal) {
   const permitidos = await projetosVisiveis(principal)
@@ -275,7 +299,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'ver-agenda',
     description:
-      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília e a capa de cada arte. Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.',
+      'Mostra a agenda do cliente já em linguagem de gente: agrupada por dia, com situação (rascunho/agendado/publicado/falhou), horário de Brasília e a capa de cada arte. Consulte antes de propor data, para não repetir tema nem empilhar posts. Sem período, mostra de ontem em diante. O postId de cada item serve para conferir-arte, editar-post, reagendar-post, aprovar-rascunhos e cancelar-post.\n\nQuando um item traz "aviso", repasse: é post de campanha marcado para depois do fim dela. O campo "escopo" só aparece quando o post não é rotina (campanha ou pontual).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -337,10 +361,16 @@ export const MCP_TOOLS: McpTool[] = [
           mediaUrls: true,
           generationId: true,
           laterPostId: true,
+          learningScope: true,
+          campaignId: true,
         },
         orderBy: { scheduledDatetime: 'asc' },
         take: typeof args.limit === 'number' ? Math.min(args.limit, 200) : 50,
       })
+
+      // Post de campanha marcado para depois do fim dela: aviso por post, com
+      // o texto pronto para o modelo repassar. Nunca esconde nem bloqueia.
+      const avisosCampanha = await avisosDeCampanhaVencida(projectId, posts)
 
       const dias: Array<{ data: string; diaSemana: string; posts: unknown[] }> = []
       for (const post of posts) {
@@ -368,6 +398,12 @@ export const MCP_TOOLS: McpTool[] = [
           ...(post.status === 'SCHEDULED'
             ? { arte: descreverJanela(post).rotulo.toLowerCase() }
             : {}),
+          // Só fora do padrão: "rotina" em todo item viraria ruído que o
+          // modelo acaba narrando na conversa.
+          ...(post.learningScope !== 'ROTINA'
+            ? { escopo: escopoEmPortugues(post.learningScope as EscopoAprendizado) }
+            : {}),
+          ...(avisosCampanha.has(post.id) ? { aviso: avisosCampanha.get(post.id) } : {}),
         })
       }
 
@@ -417,6 +453,16 @@ export const MCP_TOOLS: McpTool[] = [
         pageId: { type: 'string', description: 'A arte criada aqui (de criar-arte ou criar-arte-de-modelo).' },
         mediaUrls: { type: 'array', items: { type: 'string' }, description: 'Imagens prontas, se não vier de uma arte criada aqui.' },
         generationId: { type: 'string', description: 'O generationId da arte, se houver (habilita melhorar depois).' },
+        escopo: {
+          type: 'string',
+          enum: ['rotina', 'campanha', 'pontual'],
+          description:
+            'O que o sistema pode aprender com este post — mesma escolha de colocar-na-agenda. Publicação imediata costuma ser "pontual" (recado, aviso, algo que aconteceu agora): marcar assim evita que vire cadência.',
+        },
+        campanhaId: {
+          type: 'string',
+          description: 'Id da entrada de CAMPANHAS da base a que este post pertence (de consultar-base).',
+        },
       },
       required: ['projectId'],
       additionalProperties: false,
@@ -431,6 +477,9 @@ export const MCP_TOOLS: McpTool[] = [
         pageId: args.pageId,
         mediaUrls: args.mediaUrls,
         generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+        learningScope: normalizarEscopo(args.escopo),
+        campaignId: typeof args.campanhaId === 'string' ? args.campanhaId : undefined,
+        decididoPor: await quemDecidiu(projectId, principal),
       })
     },
   },
@@ -889,6 +938,17 @@ export const MCP_TOOLS: McpTool[] = [
           enum: ['rascunho', 'agendado'],
           description: 'rascunho (padrão) só aparece na agenda; agendado publica de verdade no Instagram do cliente. Use "agendado" apenas após confirmação explícita da pessoa.',
         },
+        escopo: {
+          type: 'string',
+          enum: ['rotina', 'campanha', 'pontual'],
+          description:
+            'O que o sistema pode aprender com este post. "rotina" (padrão) é o post normal, que forma a cadência e o repertório do cliente. "campanha" é post de ação com começo e fim (festival, semana temática, promoção datada) — aprende para a próxima edição dela, não para a rotina. "pontual" é caso isolado (aviso de feriado, mudança de horário, recado de emergência) e não deve virar padrão nenhum.\n\nMarque quando souber: uma leva costuma misturar os três, e post pontual contado como rotina faz o sistema sugerir aviso de feriado toda semana. Não pergunte à pessoa com esse vocabulário — deduza do que ela pediu.',
+        },
+        campanhaId: {
+          type: 'string',
+          description:
+            'Id da entrada de CAMPANHAS da base (de consultar-base) a que este post pertence. Informar isso já marca o post como campanha, e é o que permite avisar quando um post está marcado para depois do fim dela.',
+        },
       },
       required: ['projectId', 'scheduledDatetime'],
       additionalProperties: false,
@@ -910,13 +970,19 @@ export const MCP_TOOLS: McpTool[] = [
         mediaUrls: args.mediaUrls,
         generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
         situacao,
+        // Escopo desconhecido cai no padrão do serviço (ROTINA) em vez de
+        // derrubar o agendamento: marca errada se conserta, post perdido não.
+        learningScope: normalizarEscopo(args.escopo),
+        campaignId: typeof args.campanhaId === 'string' ? args.campanhaId : undefined,
+        // User.id INTERNO — nunca o clerkId. Falha aqui não derruba o agendamento.
+        decididoPor: await quemDecidiu(projectId, principal),
       })
     },
   },
   {
     name: 'aprovar-rascunhos',
     description:
-      'Aprova rascunhos: eles entram na fila e PUBLICAM DE VERDADE no Instagram do cliente, cada um no seu horário marcado.\n\nNunca chame por conta própria. Antes, mostre à pessoa o que vai ser aprovado (artes, datas e horários) e faça a pergunta direta — "isso vai publicar no Instagram de X, confirma?". Só chame depois do sim explícito.\n\nA resposta traz processados e ignorados (com o motivo de cada um, ex.: horário vencido, sem arte) — sempre repasse os ignorados à pessoa em vez de relatar sucesso genérico.',
+      'Aprova rascunhos: eles entram na fila e PUBLICAM DE VERDADE no Instagram do cliente, cada um no seu horário marcado.\n\nNunca chame por conta própria. Antes, mostre à pessoa o que vai ser aprovado (artes, datas e horários) e faça a pergunta direta — "isso vai publicar no Instagram de X, confirma?". Só chame depois do sim explícito.\n\nA resposta traz processados e ignorados (com o motivo de cada um, ex.: horário vencido, sem arte) — sempre repasse os ignorados à pessoa em vez de relatar sucesso genérico. Pode trazer também avisos: nesses o post FOI aprovado, mas há algo a conferir (ex.: post de campanha marcado para depois do fim dela). Repasse o aviso — ele não bloqueia nada.',
     inputSchema: {
       type: 'object',
       properties: {
