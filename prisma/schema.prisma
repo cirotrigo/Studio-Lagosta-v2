@@ -111,6 +111,14 @@ model Generation {
    * sendo gravado por compatibilidade.
    */
   sourceGenerationId   String?
+  /**
+   * Carrossel: agrupa os slides de uma mesma peça. Coluna solta, como a
+   * linhagem acima — apagar um slide não pode arrastar os irmãos, e o grupo
+   * nasce no primeiro slide sem uma entidade "carrossel" para apontar.
+   */
+  carouselGroupId      String?
+  /** Posição do slide (1 = capa). Null em arte avulsa. */
+  slideOrder           Int?
   resultUrl            String?
   projectId            Int
   authorName           String?
@@ -131,6 +139,7 @@ model Generation {
   @@index([createdBy])
   @@index([projectId])
   @@index([sourceGenerationId])
+  @@index([carouselGroupId, slideOrder])
   @@index([status])
   @@index([templateId])
 }

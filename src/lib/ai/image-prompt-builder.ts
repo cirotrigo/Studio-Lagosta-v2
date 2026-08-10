@@ -33,6 +33,7 @@ export type ArtReferenceRole =
   | 'anchor-ambient' // foto real do ambiente: a cena acontece NESTE lugar
   | 'anchor-dish' // segunda foto real do prato (outro ângulo/detalhe)
   | 'style' // referência de estilo/tonalidade (arte já aprovada, grid do feed)
+  | 'series-guide' // slide-guia do carrossel: define o look de toda a série
   | 'brand-card' // carta de identidade renderizada (logo + paleta + fontes)
   | 'logo' // logo em alta, para a trilha `arte`
 
@@ -129,8 +130,9 @@ export function orderReferences<T extends ArtReferenceDescriptor>(refs: T[]): T[
     'anchor-dish': 1,
     'anchor-ambient': 2,
     style: 3,
-    'brand-card': 4,
-    logo: 5,
+    'series-guide': 4,
+    'brand-card': 5,
+    logo: 6,
   }
   return [...refs].sort((a, b) => rank[a.role] - rank[b.role])
 }
@@ -169,6 +171,11 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
       case 'style':
         lines.push(
           `${idx} is a style reference${ref.label ? ` (${ref.label})` : ''} — copy its tonal register, luminosity and level of stylization, NOT its content. If this reference is light, the result is light.`,
+        )
+        break
+      case 'series-guide':
+        lines.push(
+          `${idx} is the APPROVED GUIDE SLIDE of this carousel${ref.label ? ` (${ref.label})` : ''}. Side by side with it, this slide must look shot in the SAME session and laid out by the SAME designer.`,
         )
         break
       case 'brand-card':
@@ -312,6 +319,57 @@ export interface BuildArtePromptArgs {
    * logomarca — aconteceu com o By Rock em 09/08/2026.
    */
   blocoLogo?: string | null
+  /** Papel deste slide no carrossel. Ausente = arte avulsa. */
+  carrossel?: {
+    slideOrder: number
+    totalSlides: number
+    /** true quando este é o slide que DEFINE o look da série (o guia). */
+    ehGuia: boolean
+    /** true quando há um guia aprovado nas referências. */
+    temGuia: boolean
+  } | null
+}
+
+/**
+ * LOOK SPINE — o parágrafo que faz a série parecer uma peça só.
+ *
+ * Repetido verbatim em todos os slides seguintes ao guia, junto com a imagem
+ * do guia como referência. É a técnica que o insta-automatico usa em produção:
+ * a coerência vem de MANDAR COPIAR atributos concretos (paleta aplicada,
+ * temperatura e direção da luz, tratamento, densidade do overlay, posição do
+ * bloco de texto) e deixar variar só o sujeito e os textos.
+ */
+export function buildLookSpine(): string {
+  return [
+    '[LOOK SPINE — COERÊNCIA DA SÉRIE]',
+    'REPLIQUE do slide-guia: a paleta aplicada, a temperatura e a direção da luz, o tratamento/grão, a densidade do véu de leitura, e a posição geral do bloco de texto.',
+    'MUDE apenas o sujeito da foto e os textos desta copy.',
+    'Lado a lado com o guia, este slide precisa parecer fotografado na MESMA sessão e diagramado pelo MESMO designer.',
+  ].join('\n')
+}
+
+/**
+ * TYPOGRAPHY LOCK — descrição travada da tipografia, copiada igual em todo
+ * slide.
+ *
+ * Sem isto o modelo escolhe uma fonte "parecida" diferente a cada slide, e o
+ * carrossel sai com três tipografias. A regra veio das skills: descrição vaga
+ * é reinterpretada; descrição travada e repetida verbatim, não.
+ */
+export function buildTypographyLock(brand: BrandContext | null): string {
+  if (!brand) return ''
+  const linhas: string[] = ['[TIPOGRAFIA TRAVADA — IDÊNTICA EM TODOS OS SLIDES]']
+  if (brand.fonts.title) {
+    linhas.push(`- Títulos: ${brand.fonts.title}, caixa alta, peso máximo, entrelinha curta.`)
+  }
+  const apoio = brand.fonts.subtitle ?? brand.fonts.body
+  if (apoio) linhas.push(`- Subtítulos e apoio: ${apoio}.`)
+  if (brand.fonts.body) linhas.push(`- Corpo e serviço: ${brand.fonts.body}.`)
+  if (linhas.length === 1) return ''
+  linhas.push(
+    'Use EXATAMENTE estas famílias, com o mesmo peso e a mesma escala relativa em todos os slides. Nunca substitua por fonte parecida e nunca varie de um slide para o outro.',
+  )
+  return linhas.join('\n')
 }
 
 /**
@@ -324,9 +382,22 @@ export interface BuildArtePromptArgs {
 export function buildArtePrompt(args: BuildArtePromptArgs): string {
   const sections: string[] = []
 
-  sections.push(
-    `Você é o DIRETOR DE ARTE desta marca. Componha uma peça de Instagram usando a foto real fornecida como cena final, adicionando APENAS a camada gráfica (textos e logo).`,
-  )
+  const carrossel = args.carrossel
+  if (carrossel) {
+    sections.push(
+      `Você é o DIRETOR DE ARTE desta marca. Componha o SLIDE ${carrossel.slideOrder} de ${carrossel.totalSlides} de um carrossel de Instagram, usando a foto real fornecida como cena final e adicionando APENAS a camada gráfica.` +
+        (carrossel.ehGuia
+          ? ' Este slide DEFINE o visual de toda a série: as decisões de cor, luz, tratamento e diagramação feitas aqui serão repetidas nos demais.'
+          : ''),
+    )
+    sections.push(
+      '[SEM NUMERAÇÃO]\nNão desenhe número de slide, contador, seta de "arraste" nem marcador de sequência.',
+    )
+  } else {
+    sections.push(
+      `Você é o DIRETOR DE ARTE desta marca. Componha uma peça de Instagram usando a foto real fornecida como cena final, adicionando APENAS a camada gráfica (textos e logo).`,
+    )
+  }
 
   // Regra de fidelidade — a mais forte do sistema de origem, verbatim adaptado.
   const fidelidade = [
@@ -376,6 +447,15 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     if (args.brand.dna.composition) identidade.push(`Composição da marca: ${args.brand.dna.composition}`)
     if (args.brand.dna.contentRules) identidade.push(`Regras da marca (respeite sempre): ${args.brand.dna.contentRules}`)
     if (identidade.length > 1) sections.push(identidade.join('\n'))
+  }
+
+  // Carrossel: a tipografia é travada em TODO slide (inclusive o guia, que é
+  // quem estabelece o padrão), e o LOOK SPINE só entra quando já existe um
+  // guia aprovado para copiar.
+  if (carrossel) {
+    const lock = buildTypographyLock(args.brand)
+    if (lock) sections.push(lock)
+    if (carrossel.temGuia) sections.push(buildLookSpine())
   }
 
   if (args.pedido?.trim()) {

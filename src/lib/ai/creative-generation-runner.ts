@@ -48,6 +48,16 @@ const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024
 
 const MAX_GENERATION_ATTEMPTS = 2
 /**
+ * Folga sobre a duração MEDIDA da primeira geração para decidir a segunda.
+ *
+ * Um teto fixo é chute: em 09/08/2026 o formato feed levou 131s e a
+ * retentativa começou com 117s de orçamento — abortou no meio, queimando dois
+ * minutos e a chamada da OpenAI para nada. Medir a primeira e exigir esse
+ * tempo (com folga) faz o runner ou retentar de verdade, ou falhar rápido
+ * dizendo o motivo.
+ */
+const RETRY_FOLGA = 1.2
+/**
  * Canto reservado para a logo. Fixo (e não escolhido pela medição de calma)
  * porque o prompt precisa saber ONDE deixar limpo ANTES de gerar — medir
  * depois só serviria para achar um canto que o modelo não preparou.
@@ -55,13 +65,22 @@ const MAX_GENERATION_ATTEMPTS = 2
 const LOGO_CORNER: LogoCorner = 'bottom-right'
 const BACKGROUND_BUDGET_MS = 290_000
 const FINALIZE_RESERVE_MS = 35_000
+/** Piso: abaixo disto nem a geração mais rápida cabe. */
 const MIN_RETRY_BUDGET_MS = 45_000
 
 export interface ArtGenerationReference {
-  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo'>
+  role: Exclude<ArtReferenceRole, 'brand-card' | 'logo' | 'series-guide'>
   url?: string
   driveFileId?: string
   label?: string
+}
+
+export interface CarouselMeta {
+  groupId: string
+  slideOrder: number
+  totalSlides: number
+  /** Generation do slide-guia aprovado, cuja ARTE entra como referência. */
+  guideGenerationId?: string | null
 }
 
 export interface ArtGenerationJobArgs {
@@ -85,6 +104,9 @@ export interface ArtGenerationJobArgs {
   finalPrompt: string | null
   feature: FeatureKey
   creditQuantity: number
+  carrossel?: CarouselMeta | null
+  /** URL da arte do guia, resolvida pelo serviço (evita ida ao banco aqui). */
+  guideResultUrl?: string | null
 }
 
 interface LoadedRef {
@@ -154,6 +176,19 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
             console.warn('[arte-ia.bg] âncora automática não baixou — seguindo sem ela:', error)
           }
         }
+      }
+    }
+
+    // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
+    // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
+    // reinterpreta; a arte do guia ele copia.
+    if (args.guideResultUrl) {
+      try {
+        const guia = await fetchImageSource(args.guideResultUrl)
+        const sane = await sanitizeInput(guia.buffer, MAX_REF_DIM)
+        loadedRefs.push({ role: 'series-guide', label: 'slide-guia aprovado', ...sane })
+      } catch (error) {
+        console.warn('[arte-ia.bg] slide-guia não baixou — o slide sai sem referência de série:', error)
       }
     }
 
@@ -227,6 +262,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         // Só reserva área quando existe logo para colar lá; sem logo, pedir
         // um canto vazio seria desperdiçar composição à toa.
         blocoLogo: logoParaCompor ? instrucaoAreaReservada(LOGO_CORNER) : null,
+        carrossel: args.carrossel
+          ? {
+              slideOrder: args.carrossel.slideOrder,
+              totalSlides: args.carrossel.totalSlides,
+              // O guia é o primeiro slide COM texto: é ele que estabelece o
+              // padrão que os demais copiam. A capa é foto pura e não conta.
+              ehGuia: !args.carrossel.guideGenerationId,
+              temGuia: !!args.guideResultUrl,
+            }
+          : null,
       })
     }
 
@@ -239,17 +284,25 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     let resultBuffer: Buffer | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
+    /** Duração da geração anterior — base para decidir se a próxima cabe. */
+    let ultimaGeracaoMs = 0
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
-      if (attempt > 1 && remainingMs < MIN_RETRY_BUDGET_MS) {
-        console.warn(`[arte-ia.bg] sem orçamento para a tentativa ${attempt} — parando`)
-        break
+      if (attempt > 1) {
+        const precisa = Math.max(MIN_RETRY_BUDGET_MS, Math.round(ultimaGeracaoMs * RETRY_FOLGA))
+        if (remainingMs < precisa) {
+          console.warn(
+            `[arte-ia.bg] sem orçamento para a tentativa ${attempt}: restam ${Math.round(remainingMs / 1000)}s e a geração anterior levou ${Math.round(ultimaGeracaoMs / 1000)}s — parando em vez de abortar no meio`,
+          )
+          break
+        }
       }
 
       const genStartedAt = Date.now()
       const candidate = await generateOnce(args, ordered, prompt, Math.max(30_000, remainingMs))
       const generationMs = Date.now() - genStartedAt
+      ultimaGeracaoMs = generationMs
 
       if (expectedTexts.length === 0) {
         resultBuffer = candidate
@@ -476,6 +529,16 @@ function buildFieldValues(
     formato: args.formato,
     referencias: args.referencias as unknown as Record<string, unknown>[],
     instrucaoImagem: args.instrucaoImagem,
+    ...(args.carrossel
+      ? {
+          carrossel: {
+            groupId: args.carrossel.groupId,
+            slideOrder: args.carrossel.slideOrder,
+            totalSlides: args.carrossel.totalSlides,
+            guideGenerationId: args.carrossel.guideGenerationId ?? null,
+          },
+        }
+      : {}),
     model: args.modelo,
     resolution: args.track === 'imagem' ? args.resolution : null,
     inputSize: args.track === 'arte' ? args.openaiSize : null,

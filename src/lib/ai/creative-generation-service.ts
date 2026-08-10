@@ -29,7 +29,11 @@ import {
   MAX_STYLE_REFS,
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
-import type { ArtGenerationJobArgs, ArtGenerationReference } from '@/lib/ai/creative-generation-runner'
+import type {
+  ArtGenerationJobArgs,
+  ArtGenerationReference,
+  CarouselMeta,
+} from '@/lib/ai/creative-generation-runner'
 import type { TemplateType } from '@prisma/client'
 
 /**
@@ -82,6 +86,12 @@ export interface StartArtGenerationInput {
   orgId?: string
   /** Reusa job PROCESSING recente idêntico (retry de modelo no MCP). */
   dedupeWindowMinutes?: number
+  /**
+   * Slide de carrossel. A capa (slideOrder 1) é foto pura e vai sem copy; o
+   * primeiro slide COM copy é o guia, e os seguintes recebem a arte dele como
+   * referência (`guideGenerationId`).
+   */
+  carrossel?: CarouselMeta | null
 }
 
 export interface StartArtGenerationResult {
@@ -103,10 +113,21 @@ export async function startArtGeneration(
   if (input.track === 'imagem' && !pedido) {
     throw new CreativeError('PEDIDO_OBRIGATORIO', 'Descreva a imagem que você quer gerar.', 400)
   }
-  if (input.track === 'arte' && copy.length === 0) {
+  // Capa de carrossel é foto PURA: sem copy de propósito. A regra veio de um
+  // defeito real do sistema de origem — capa com texto saía com frases e
+  // dados que ninguém pediu, porque o modelo "completa" a peça.
+  const ehCapaDeCarrossel = input.carrossel?.slideOrder === 1
+  if (input.track === 'arte' && copy.length === 0 && !ehCapaDeCarrossel) {
     throw new CreativeError(
       'COPY_OBRIGATORIA',
       'A trilha de arte precisa da copy (1 bloco por linha). Para imagem sem texto, use a trilha "imagem".',
+      400,
+    )
+  }
+  if (ehCapaDeCarrossel && copy.length > 0) {
+    throw new CreativeError(
+      'CAPA_SEM_TEXTO',
+      'A capa do carrossel é foto pura, sem texto — mova essa copy para o slide 2.',
       400,
     )
   }
@@ -165,6 +186,23 @@ export async function startArtGeneration(
     throw new CreativeError('PROJECT_NOT_FOUND', 'Projeto não encontrado', 404)
   }
 
+  // Guia do carrossel: a arte dele precisa existir para virar referência.
+  let guideResultUrl: string | null = null
+  if (input.carrossel?.guideGenerationId) {
+    const guia = await db.generation.findFirst({
+      where: { id: input.carrossel.guideGenerationId, projectId: input.projectId },
+      select: { resultUrl: true, status: true },
+    })
+    if (!guia || guia.status !== 'COMPLETED' || !guia.resultUrl) {
+      throw new CreativeError(
+        'GUIA_NAO_PRONTO',
+        'O slide-guia ainda não está pronto — confirme o estilo antes de gerar os demais slides.',
+        409,
+      )
+    }
+    guideResultUrl = guia.resultUrl
+  }
+
   const fmt = FORMATO_MAP[input.formato]
   const modelo =
     input.modelo ?? (input.track === 'arte' ? getCurrentImageModel() : 'nano-banana-2')
@@ -173,7 +211,19 @@ export async function startArtGeneration(
   // Dedupe ANTES dos créditos (mesma razão do improve): retry do modelo no
   // chat não pode virar segunda cobrança.
   const pedidoHash = createHash('sha1')
-    .update(JSON.stringify({ p: pedido, c: copy, f: input.formato, t: input.track, r: referencias }))
+    .update(
+      JSON.stringify({
+        p: pedido,
+        c: copy,
+        f: input.formato,
+        t: input.track,
+        r: referencias,
+        // Sem isto, os slides de um carrossel de fotos parecidas cairiam no
+        // dedupe uns dos outros e o carrossel sairia com slides faltando.
+        cg: input.carrossel?.groupId ?? null,
+        so: input.carrossel?.slideOrder ?? null,
+      }),
+    )
     .digest('hex')
     .slice(0, 16)
   if (input.dedupeWindowMinutes && input.dedupeWindowMinutes > 0) {
@@ -235,6 +285,8 @@ export async function startArtGeneration(
       status: 'PROCESSING',
       resultUrl: null,
       fileName: null,
+      carouselGroupId: input.carrossel?.groupId ?? null,
+      slideOrder: input.carrossel?.slideOrder ?? null,
       fieldValues: {
         source: 'arte-ia',
         track: input.track,
@@ -253,7 +305,9 @@ export async function startArtGeneration(
       templateName: ARTE_IA_TEMPLATE_NAMES[fmt.type],
       projectName: project.name,
       createdBy: input.actorClerkId,
-      authorName: 'Arte IA',
+      authorName: input.carrossel
+        ? `Slide ${input.carrossel.slideOrder}/${input.carrossel.totalSlides}`
+        : 'Arte IA',
     },
   })
 
@@ -281,6 +335,8 @@ export async function startArtGeneration(
       finalPrompt: input.finalPrompt?.trim() || null,
       feature,
       creditQuantity: quantidade,
+      carrossel: input.carrossel ?? null,
+      guideResultUrl,
     },
   }
 }

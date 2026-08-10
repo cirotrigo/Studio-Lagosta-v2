@@ -7,6 +7,7 @@ import { startArtGeneration } from '@/lib/ai/creative-generation-service'
 import {
   processArtGenerationInBackground,
   type ArtGenerationReference,
+  type CarouselMeta,
 } from '@/lib/ai/creative-generation-runner'
 
 export const runtime = 'nodejs'
@@ -38,6 +39,20 @@ const bodySchema = z.object({
   instrucaoImagem: z.string().max(500).optional().nullable(),
   modelo: z.string().max(40).optional(),
   resolution: z.enum(['1K', '2K', '4K']).optional(),
+  /**
+   * Slide de carrossel. O cliente é quem orquestra a série (capa → guia →
+   * confirmar → demais), então cada slide é uma chamada própria — é o que
+   * permite gerar os slides restantes em paralelo.
+   */
+  carrossel: z
+    .object({
+      groupId: z.string().min(8).max(64),
+      slideOrder: z.number().int().min(1).max(10),
+      totalSlides: z.number().int().min(2).max(10),
+      guideGenerationId: z.string().min(1).optional().nullable(),
+    })
+    .optional()
+    .nullable(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -81,6 +96,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       instrucaoImagem: parsed.data.instrucaoImagem ?? null,
       modelo: parsed.data.modelo,
       resolution: parsed.data.resolution,
+      // Cast pelo mesmo motivo das referências: o zod infere os campos do
+      // objeto como opcionais, ainda que o schema os exija.
+      carrossel: (parsed.data.carrossel as CarouselMeta | null | undefined) ?? null,
       actorClerkId: userId,
       orgId: orgId ?? undefined,
     })
