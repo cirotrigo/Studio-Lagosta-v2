@@ -70,6 +70,47 @@ O PhotoSwipe só sabe desenhar imagem. Item marcado com `data-pswp-type="video"`
 O `globals.css` força `video { height: auto !important }` abaixo de 768px; o
 `use-photoswipe.css` isenta `.pswp video`, como já fazia com `.pswp__img`.
 
+## O slide ficava EM BRANCO ao navegar (corrigido em 10/08/2026)
+
+Sintoma: contador andando, seta funcionando, tela preta. Parecia falha de
+carregamento — não era.
+
+O `globals.css` tem, em `@layer base`:
+
+```css
+.container,
+[class*="container"] { max-width: 100vw; overflow-x: hidden; }
+```
+
+O seletor por **substring** casa com `.pswp__container`, o carrossel do
+PhotoSwipe. Medido em produção no instante da falha:
+
+| elemento | transform | overflow |
+|---|---|---|
+| `.pswp__container` | `−2050px` | **`hidden auto`** |
+| slide ativo | `+2050px` | `hidden` |
+
+Os transforms se cancelam e a arte cai no centro da tela, mas o `overflow-x`
+faz o contêiner recortar pela **própria caixa**, que está em −2050 — o slide
+fica inteiro fora dela. Por isso **o primeiro slide sempre funcionava**
+(transform 0) e só quebrava ao navegar.
+
+A correção vive em `src/hooks/use-photoswipe.css`: devolve `overflow: visible`
+e `max-width: none` ao contêiner, e anula o `* { max-width: 100% }` dentro do
+`.pswp` (o PhotoSwipe dimensiona tudo por style inline e conta com isso). O
+arquivo fica **sem camada**, então vence o `@layer base` pela cascata.
+
+**Como isso foi encontrado, porque a próxima vez vai parecer igual:** a `<img>`
+estava impecável — `complete: true`, `opacity: 1`, `visibility: visible`,
+2160×3840, posicionada dentro da viewport. Quem denunciou foi
+`document.elementsFromPoint()` no centro dela, que devolvia
+`.pswp__scroll-wrap` e **nunca a imagem**. Caixa correta + ausente no hit-test
+do próprio centro = recorte de ancestral. Medir carregamento não enxerga isso.
+
+Ao mexer no `.pswp`, confira com um **controle**: um elemento qualquer com
+classe contendo "container" deve continuar saindo `overflow-x: hidden` /
+`max-width: 0px`. Se ele mudar, a exceção vazou para o resto do app.
+
 ## Miniatura enquanto a arte grande carrega
 
 O pacote usa placeholder de imagem **só no primeiro slide**. O código é
