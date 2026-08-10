@@ -327,6 +327,8 @@ export interface BuildArtePromptArgs {
     ehGuia: boolean
     /** true quando há um guia aprovado nas referências. */
     temGuia: boolean
+    /** Camada gráfica do guia, lida por visão (carousel-guide-decoder). */
+    descricaoDoGuia?: string | null
   } | null
 }
 
@@ -339,13 +341,34 @@ export interface BuildArtePromptArgs {
  * temperatura e direção da luz, tratamento, densidade do overlay, posição do
  * bloco de texto) e deixar variar só o sujeito e os textos.
  */
-export function buildLookSpine(): string {
-  return [
-    '[LOOK SPINE — COERÊNCIA DA SÉRIE]',
-    'REPLIQUE do slide-guia: a paleta aplicada, a temperatura e a direção da luz, o tratamento/grão, a densidade do véu de leitura, e a posição geral do bloco de texto.',
-    'MUDE apenas o sujeito da foto e os textos desta copy.',
-    'Lado a lado com o guia, este slide precisa parecer fotografado na MESMA sessão e diagramado pelo MESMO designer.',
-  ].join('\n')
+export function buildLookSpine(descricaoDoGuia?: string | null): string {
+  const linhas = [
+    '[LOOK SPINE — COERÊNCIA ESTRITA DA SÉRIE]',
+    'Este slide é uma CÓPIA do layout do slide-guia com outro sujeito e outros textos. Nada mais muda.',
+    '',
+    'REPLIQUE, item a item:',
+    '1. POSIÇÃO do bloco de texto: o mesmo canto, a mesma altura, a mesma margem.',
+    '2. ALINHAMENTO do texto (à esquerda, centro ou direita): idêntico ao do guia.',
+    '3. HIERARQUIA: o mesmo número de níveis de texto, com a mesma proporção de tamanho entre eles.',
+    '4. CAIXA de cada nível (ALTA ou baixa): igual à do nível correspondente no guia.',
+    '5. COR DE CADA NÍVEL: se no guia o título é branco, aqui também é branco. Se o guia usa cor de destaque, use-a no MESMO nível hierárquico — nunca em outro, nunca numa palavra a mais, nunca numa a menos.',
+    '6. ELEMENTOS GRÁFICOS (filete, onda, barra, ícone): os MESMOS, na mesma posição e no mesmo tamanho. Se o guia tem, este tem. Se o guia não tem, este não tem.',
+    '7. VÉU DE LEITURA: mesma direção e mesma densidade do gradiente.',
+    '8. LUZ E COR DA FOTO: mesma temperatura, mesma direção, mesmo tratamento e mesmo contraste.',
+    '',
+    'MUDE apenas: o sujeito da fotografia e as palavras da copy desta peça.',
+    '⛔ Não "melhore" a diagramação do guia, não reequilibre a composição e não introduza variação para dar ritmo à série. Variação aqui é DEFEITO.',
+    'Lado a lado com o guia, este slide precisa parecer diagramado pela mesma pessoa, no mesmo minuto.',
+  ]
+
+  // A descrição por visão do guia converte "copie o que você vê" em regra
+  // verificável — sem ela o modelo escolhe sozinho onde pôr o destaque, e foi
+  // assim que um slide saiu com a segunda linha em vermelho e o irmão não.
+  if (descricaoDoGuia?.trim()) {
+    linhas.push('', 'O QUE O GUIA FAZ (leia e repita exatamente):', descricaoDoGuia.trim())
+  }
+
+  return linhas.join('\n')
 }
 
 /**
@@ -455,7 +478,7 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   if (carrossel) {
     const lock = buildTypographyLock(args.brand)
     if (lock) sections.push(lock)
-    if (carrossel.temGuia) sections.push(buildLookSpine())
+    if (carrossel.temGuia) sections.push(buildLookSpine(carrossel.descricaoDoGuia))
   }
 
   if (args.pedido?.trim()) {

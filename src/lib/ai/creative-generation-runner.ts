@@ -34,6 +34,7 @@ import {
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
 import { comporLogo, instrucaoAreaReservada, type LogoCorner } from '@/lib/ai/logo-compositor'
+import { decodificarGuia } from '@/lib/ai/carousel-guide-decoder'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
@@ -182,11 +183,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
+    let guiaDescrito: string | null = null
     if (args.guideResultUrl) {
       try {
         const guia = await fetchImageSource(args.guideResultUrl)
         const sane = await sanitizeInput(guia.buffer, MAX_REF_DIM)
         loadedRefs.push({ role: 'series-guide', label: 'slide-guia aprovado', ...sane })
+        // A imagem sozinha deixa o modelo decidir o que é essencial; a
+        // descrição por visão transforma "copie o estilo" em lista de
+        // decisões explícitas. Indisponível, o LOOK SPINE textual segue.
+        guiaDescrito = await decodificarGuia(sane.buffer)
+        if (guiaDescrito) console.log('[arte-ia.bg] guia decodificado para o LOOK SPINE')
       } catch (error) {
         console.warn('[arte-ia.bg] slide-guia não baixou — o slide sai sem referência de série:', error)
       }
@@ -270,6 +277,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               // padrão que os demais copiam. A capa é foto pura e não conta.
               ehGuia: !args.carrossel.guideGenerationId,
               temGuia: !!args.guideResultUrl,
+              descricaoDoGuia: guiaDescrito,
             }
           : null,
       })
