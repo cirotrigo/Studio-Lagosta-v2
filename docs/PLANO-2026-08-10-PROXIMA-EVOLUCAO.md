@@ -20,10 +20,11 @@
 |---|---|---|
 | F0.1 vigência de campanha | **no ar** | #43 |
 | F0.2 escopo de aprendizado | **no ar**, migration aplicada em produção | #44 |
-| F0.3 fila durável | em implementação | — |
+| F0.3 fila durável | **no ar**, migration aplicada em produção | #46 |
 | F0.4 inventário de modelos | **no ar**; curadoria aplicada (41 → 19 modelos) | #42 |
 | causa-raiz da poluição (`create-page`) | **no ar** | #45 |
-| F1 captura | próxima | — |
+| F1 captura — núcleo | em implementação | — |
+| F1 captura — superfícies | depois do núcleo (2 tarefas em paralelo) | — |
 
 **Correções ao que este plano dizia, descobertas na execução:**
 
