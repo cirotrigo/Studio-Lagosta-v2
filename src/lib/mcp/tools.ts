@@ -58,6 +58,10 @@ import {
   AMBIENT_SCENE_TAG,
 } from '@/lib/ai/anchor-images'
 import {
+  definirReferenciaDeEstilo,
+  listarReferenciasDeEstilo,
+} from '@/lib/ai/style-references'
+import {
   iniciarCarrossel,
   confirmarEstiloCarrossel,
   verCarrossel,
@@ -589,6 +593,53 @@ export const MCP_TOOLS: McpTool[] = [
         atualizado: true,
         dna,
         mensagem: `DNA atualizado (${alteradas}). Já vale para as próximas gerações — do chat e do site.`,
+      }
+    },
+  },
+
+  {
+    name: 'marcar-referencia-de-estilo',
+    description:
+      'Marca (ou desmarca) uma arte pronta como REFERÊNCIA DE ESTILO do cliente — "gostei desta, faça as próximas parecidas". As marcadas entram num rodízio: cada nova arte recebe UMA delas como referência visual, sempre a menos usada, para as peças terem parentesco sem sair todas iguais.\n\nUse quando a pessoa elogiar uma arte ("essa ficou ótima", "quero mais assim"). Sem argumento `marcada`, marca. Chame sem `generationId` para LISTAR as referências atuais na ordem do rodízio.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        generationId: {
+          type: 'string',
+          description: 'A arte. Omita para apenas listar as referências atuais.',
+        },
+        marcada: {
+          type: 'boolean',
+          description: 'true marca (default), false tira das referências.',
+        },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      if (!args.generationId) {
+        const refs = await listarReferenciasDeEstilo(projectId)
+        return {
+          referencias: refs,
+          total: refs.length,
+          dica:
+            refs.length === 0
+              ? 'Nenhuma arte marcada ainda. Marque as que a pessoa aprovar — é o que dá cara própria às próximas.'
+              : 'A primeira da lista é a que entra na próxima geração (rodízio: menos usada primeiro).',
+        }
+      }
+
+      const marcada = args.marcada !== false
+      const r = await definirReferenciaDeEstilo(String(args.generationId), marcada)
+      return {
+        ...r,
+        mensagem: marcada
+          ? 'Marcada. As próximas artes deste cliente vão se inspirar nela, em rodízio com as outras.'
+          : 'Tirada das referências.',
       }
     },
   },

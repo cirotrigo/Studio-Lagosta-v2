@@ -119,6 +119,17 @@ model Generation {
   carouselGroupId      String?
   /** Posição do slide (1 = capa). Null em arte avulsa. */
   slideOrder           Int?
+  /**
+   * Marcada como REFERÊNCIA DE ESTILO da marca ("gostei desta"). Null = não é.
+   * A geração manda UMA delas como ref de papel `style`.
+   */
+  styleRefAt           DateTime?
+  /**
+   * Última vez que foi enviada numa geração. Null = nunca usada, e por isso
+   * vem primeiro no rodízio — é o que evita toda peça sair parecida com a
+   * mesma referência.
+   */
+  styleRefUsedAt       DateTime?
   resultUrl            String?
   projectId            Int
   authorName           String?
@@ -140,6 +151,7 @@ model Generation {
   @@index([projectId])
   @@index([sourceGenerationId])
   @@index([carouselGroupId, slideOrder])
+  @@index([projectId, styleRefAt, styleRefUsedAt])
   @@index([status])
   @@index([templateId])
 }

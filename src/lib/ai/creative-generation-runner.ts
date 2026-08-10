@@ -41,8 +41,9 @@ import {
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
-import { checarProporcao, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
+import { checarProporcao, conferirLogo, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
+import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -196,6 +197,37 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // ── Referência de estilo automática (artes aprovadas, em rodízio) ────
+    //
+    // Só quando ninguém escolheu uma à mão, e nunca no carrossel: ali quem
+    // manda no visual é o slide-guia, e uma segunda referência de estilo
+    // competiria com ele exatamente na coisa que o LOOK SPINE tenta travar.
+    //
+    // Uma por vez, sempre a MENOS USADA — referência fixa faz toda peça sair
+    // igual, que é o problema que este mecanismo existe para não criar.
+    let styleRefUsada: string | null = null
+    if (
+      args.track === 'arte' &&
+      !args.carrossel &&
+      !loadedRefs.some((r) => r.role === 'style')
+    ) {
+      const escolhida = await escolherReferenciaDeEstilo(args.projectId).catch(() => null)
+      if (escolhida) {
+        try {
+          const source = await fetchImageSource(escolhida.resultUrl)
+          const sane = await sanitizeInput(source.buffer, MAX_REF_DIM)
+          loadedRefs.push({ role: 'style', label: 'arte aprovada desta marca', ...sane })
+          styleRefUsada = escolhida.generationId
+          console.log(
+            `[arte-ia.bg] referência de estilo do rodízio: ${escolhida.generationId}` +
+              (escolhida.inedita ? ' (inédita)' : ''),
+          )
+        } catch (error) {
+          console.warn('[arte-ia.bg] referência de estilo não baixou — seguindo sem ela:', error)
+        }
+      }
+    }
+
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
@@ -228,8 +260,14 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // RECONHECER a marca. No modo `modelo`, o arquivo oficial entra como
     // referência e o prompt manda reproduzi-lo — é o caminho do
     // insta-automatico, opt-in aqui.
-    const logoMode: LogoMode = args.logoMode ?? 'compor'
+    // Default `modelo` desde 10/08/2026, por decisão do Ciro apoiada em teste
+    // real: a marca desenhada a partir do arquivo oficial saiu fiel e integrou
+    // melhor que a colagem — e o modo `compor` produzia DUAS logos, porque o
+    // modelo desenha a dele mesmo com o "DO NOT DRAW".
+    const logoMode: LogoMode = args.logoMode ?? 'modelo'
     let logoParaCompor: Buffer | null = null
+    /** Arquivo oficial guardado para o QA conferir o que o modelo desenhou. */
+    let logoOficialParaConferir: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {
         console.warn('[arte-ia.bg] brand card falhou — seguindo sem ele:', error)
@@ -258,6 +296,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               mimeType: logo.contentType || 'image/png',
               label: 'arquivo oficial — reproduzir fielmente',
             })
+            // Guardado para o QA comparar o que o modelo desenhou com o
+            // original — é o que substitui a garantia que a colagem dava.
+            logoOficialParaConferir = logo.buffer
           } else {
             logoParaCompor = logo.buffer
           }
@@ -401,19 +442,42 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           // peça COM texto, e só depois de o texto estar certo — inspecionar
           // arte que já vai ser regerada é chamada jogada fora.
           const visual = await inspecionarArte(candidate)
+
+          // A marca só é conferida quando foi o MODELO que a desenhou. No modo
+          // `compor` o PNG oficial é colado, e conferir isso seria conferir um
+          // `cp`.
+          const logoCheck =
+            logoMode === 'modelo' && logoOficialParaConferir
+              ? await conferirLogo(candidate, logoOficialParaConferir)
+              : null
+
           qaInfo = {
-            qa: visual.pulada ? 'skipped' : visual.aprovada ? 'passed' : 'failed',
+            qa: visual.pulada ? 'skipped' : visual.aprovada && logoCheck?.ok !== false ? 'passed' : 'failed',
             qaResumo: resumirQA(aspecto, visual),
             qaAspecto: { ...aspecto },
             qaVisual: visual.detalhe ?? null,
+            ...(logoCheck ? { qaLogo: logoCheck.detalhe ?? null, qaLogoPulada: logoCheck.pulada } : {}),
             ...(visual.motivo ? { qaMotivo: visual.motivo } : {}),
           }
-          console.log(`[arte-ia.bg] tentativa ${attempt}: ${resumirQA(aspecto, visual)}`)
+          console.log(
+            `[arte-ia.bg] tentativa ${attempt}: ${resumirQA(aspecto, visual)}` +
+              (logoCheck
+                ? ` | logo ${logoCheck.pulada ? 'não conferida' : logoCheck.ok ? 'fiel' : `DIVERGENTE (${logoCheck.detalhe?.divergencias.join('; ')})`}`
+                : ''),
+          )
 
           const ehUltima = attempt >= MAX_GENERATION_ATTEMPTS
-          if (!visual.aprovada && !ehUltima) {
-            ultimoQaMotivo = visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
+          if ((!visual.aprovada || logoCheck?.ok === false) && !ehUltima) {
+            ultimoQaMotivo =
+              logoCheck?.ok === false
+                ? `logo divergente: ${logoCheck.detalhe?.divergencias.join('; ') || 'não confere com o arquivo oficial'}`
+                : visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
             continue
+          }
+          if (logoCheck?.ok === false) {
+            console.warn(
+              `[arte-ia.bg] entregando com logo divergente (última tentativa): ${logoCheck.detalhe?.divergencias.join('; ')}`,
+            )
           }
           // Na última tentativa a peça é entregue mesmo com ressalva: o texto
           // está certo, e descartar arte legível-com-ressalva é pior do que
@@ -522,6 +586,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       promptIssues,
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
       autoAnchorId: autoAnchorUsada,
+      styleRefId: styleRefUsada,
       brandCardOrigem,
       elapsedSeconds,
       ...qaInfo,
@@ -542,6 +607,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       },
     })
     console.log(`[arte-ia.bg] concluído em ${elapsedSeconds}s → ${blob.url}`)
+
+    // Rodízio: a referência só vai para o fim da fila depois de a arte existir.
+    // Marcar antes faria uma geração que falhou "gastar" a referência.
+    if (styleRefUsada) await registrarUsoDaReferencia(styleRefUsada)
 
     // Dedução DEPOIS do sucesso e não-fatal (regra da casa desde a melhoria).
     try {

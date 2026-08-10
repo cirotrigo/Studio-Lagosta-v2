@@ -144,6 +144,74 @@ export async function inspecionarArte(buffer: Buffer): Promise<QAResult> {
   }
 }
 
+const logoSchema = z.object({
+  encontrada: z.boolean().describe('true se existe alguma marca/logo desenhada na arte'),
+  fiel: z
+    .boolean()
+    .describe('true se a marca na arte tem a MESMA forma, o MESMO desenho de letras e as MESMAS cores do arquivo oficial'),
+  quantas: z.number().describe('Quantas vezes a marca aparece na arte'),
+  divergencias: z.array(z.string()).describe('O que difere do arquivo oficial. Vazio quando está fiel.'),
+})
+
+export interface LogoCheck {
+  ok: boolean
+  pulada: boolean
+  motivo?: string
+  detalhe?: z.infer<typeof logoSchema>
+}
+
+/**
+ * Confere a marca desenhada pelo modelo contra o arquivo oficial.
+ *
+ * Só faz sentido no `logoMode: 'modelo'`. No modo `compor` a fidelidade é 100%
+ * por construção (o PNG é colado), e gastar uma chamada de visão ali seria
+ * conferir um `cp`.
+ *
+ * Esta é a rede que tornou seguro trocar o default para `modelo` em
+ * 10/08/2026: sem ela, a regra canônica "a logo nunca é desenhada pela IA"
+ * cairia sem nada no lugar. Logo errada é o defeito que mais custa — o cliente
+ * simplesmente não publica.
+ */
+export async function conferirLogo(arte: Buffer, logoOficial: Buffer): Promise<LogoCheck> {
+  try {
+    const { object } = await generateObject({
+      model: openai(VISION_MODEL),
+      temperature: 0,
+      maxOutputTokens: 500,
+      abortSignal: AbortSignal.timeout(40_000),
+      schema: logoSchema,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'image', image: logoOficial },
+            { type: 'image', image: arte },
+            {
+              type: 'text',
+              text: [
+                'A PRIMEIRA imagem é o arquivo OFICIAL da logomarca. A SEGUNDA é uma arte que deveria conter essa mesma marca.',
+                '',
+                'Compare a marca desenhada na arte com o arquivo oficial: silhueta, desenho das letras, palavras presentes e cores.',
+                'Diferença de tamanho, de posição, de perspectiva e de iluminação NÃO é divergência — a marca faz parte da composição.',
+                'São divergências: forma diferente, letra com outro tipo, palavra a mais ou a menos, cor trocada, marca inventada.',
+                'Informe também QUANTAS vezes a marca aparece: mais de uma é defeito.',
+              ].join('\n'),
+            },
+          ],
+        },
+      ],
+    })
+    // Marca ausente não reprova aqui: o prompt autoriza deixar o canto vazio
+    // quando o modelo não consegue reproduzi-la, e arte sem marca é editável.
+    const ok = !object.encontrada || (object.fiel && object.quantas <= 1)
+    return { ok, pulada: false, detalhe: object }
+  } catch (error) {
+    const motivo = error instanceof Error ? error.message : String(error)
+    console.warn('[qa] conferência da logo indisponível — arte segue sem ela:', motivo)
+    return { ok: true, pulada: true, motivo: `visão indisponível: ${motivo}` }
+  }
+}
+
 /** Resumo curto do QA para o log e para o `fieldValues`. */
 export function resumirQA(aspecto: AspectCheck, visual: QAResult | null): string {
   const partes: string[] = []
