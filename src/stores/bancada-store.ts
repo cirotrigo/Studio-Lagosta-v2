@@ -137,13 +137,34 @@ export const useBancadaStore = create(
       onRehydrateStorage: () => (state, error) => {
         if (error) console.error('[bancada] erro ao reidratar a fila', error)
         if (state) {
-          // Item que ficou "gerando" ao recarregar continua gerando NO
-          // SERVIDOR — o polling reata pelo generationId. Sem generationId,
-          // porém, o clique se perdeu antes do POST: volta a rascunho para
-          // não ficar um card girando para sempre.
-          state.itens = state.itens.map((i) =>
-            i.status === 'gerando' && !i.generationId ? { ...i, status: 'rascunho' } : i,
-          )
+          /**
+           * Item que ficou "gerando" ao recarregar continua gerando NO
+           * SERVIDOR — o polling reata pelo id da Generation. Sem NENHUM id,
+           * porém, o clique se perdeu antes do POST: volta a rascunho para
+           * não ficar um card girando para sempre.
+           *
+           * No carrossel o id não está no item, está nos SLIDES: olhar só
+           * `generationId` fazia a série voltar para "na fila" a cada recarga
+           * mesmo com capa e guia prontos — e quem clicasse em Gerar de novo
+           * pagaria duas vezes pelo mesmo trabalho.
+           */
+          const temTrabalhoNoServidor = (i: BancadaItem) =>
+            !!i.generationId || (i.slides ?? []).some((s) => !!s.generationId)
+
+          state.itens = state.itens.map((i) => {
+            if (i.status === 'gerando' && !temTrabalhoNoServidor(i)) {
+              return { ...i, status: 'rascunho' as const }
+            }
+            // Rede de segurança: rascunho que JÁ tem geração no servidor
+            // (estado que a versão anterior deste guard produzia) volta para
+            // "gerando" e deixa o polling reconciliar. Sem isso o card
+            // oferece "Gerar" de novo e a pessoa paga duas vezes pelo mesmo
+            // trabalho.
+            if (i.status === 'rascunho' && temTrabalhoNoServidor(i)) {
+              return { ...i, status: 'gerando' as const }
+            }
+            return i
+          })
           state.setHidratou(true)
         }
       },

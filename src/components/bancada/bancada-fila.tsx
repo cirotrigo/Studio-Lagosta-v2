@@ -205,20 +205,23 @@ function Card({
             </Button>
           )}
 
-          {item.status === 'guia-pronto' && (
-            <div className="w-full space-y-2">
-              <p className="text-xs text-muted-foreground">
-                O slide 2 define o DESIGN da série (a capa é foto pura). Confirme o estilo para
-                gerar os {slides.filter((s) => s.ordem > 2).length} slides restantes com o mesmo
-                look.
-              </p>
-              <Button size="sm" onClick={onConfirmarEstilo}>
-                <Sparkles className="mr-2 h-4 w-4" />
-                Confirmar estilo e gerar o resto (
-                {slides.filter((s) => s.ordem > 2).length * 25} créditos)
-              </Button>
-            </div>
-          )}
+          {item.status === 'guia-pronto' &&
+            (() => {
+              const faltam = slides.filter((s) => s.ordem > 2).length
+              return (
+                <div className="w-full space-y-2">
+                  <p className="text-xs text-muted-foreground">
+                    O slide 2 define o DESIGN da série (a capa é foto pura). Confirme o estilo
+                    para gerar {faltam === 1 ? 'o slide restante' : `os ${faltam} slides restantes`}{' '}
+                    com o mesmo look.
+                  </p>
+                  <Button size="sm" onClick={onConfirmarEstilo}>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Confirmar estilo e gerar o resto ({faltam * 25} créditos)
+                  </Button>
+                </div>
+              )
+            })()}
 
           {item.status === 'gerando' && (
             <span className="text-xs text-muted-foreground">
