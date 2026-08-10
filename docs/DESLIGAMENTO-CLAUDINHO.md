@@ -73,12 +73,9 @@ paridade.)
 
 **Ainda a resolver à mão** (nenhum script cobre):
 
-- **Logo preferida**: em 6 dos 10 projetos a logo marcada como `isProjectLogo`
-  no Studio NÃO é a que o Claudinho usava — ver a tabela na sessão de 10/08.
-  Os casos do Bacana (ícone sobre quadrado laranja opaco) e do Seu Quinto,
-  Empório Fonseca e Lagosta Criativa (só o símbolo, sem a assinatura) mudam a
-  arte de verdade. Decida um a um na aba Assets **antes** de desligar, enquanto
-  os arquivos originais ainda estão à mão em `templates/<slug>/assets/`.
+- ~~**Logo preferida**~~ — **RESOLVIDO em 10/08/2026**: os 6 projetos que
+  divergiam foram alinhados com o `LOGO_MAP` (`scripts/definir-logo-do-projeto.ts`).
+  Os 10 apontam para a assinatura da marca, não para um ícone.
 - **Referência de escala tipográfica do TERO**
   (`clientes/tero/referencias/escala-01-terca-feira.jpg`): pode virar âncora de
   papel `style` do projeto 3 (`definir-ancora`), ou ser descartada. Sem
@@ -155,7 +152,7 @@ Só considere desligado quando **todas** forem verdade:
 
 - [ ] Duas semanas de produção feita só na bancada do Studio, sem recorrer ao Claudinho
 - [ ] `brandManualUrl` preenchido nos 10 projetos
-- [ ] Divergência de logo resolvida projeto a projeto (§2)
+- [x] ~~Divergência de logo resolvida projeto a projeto~~ — feito em 10/08
 - [ ] Crivo importado e aparecendo na bancada
 - [ ] Fila do Redis vazia por 24h
 - [ ] Zero `agendamentos` em `pending`/`publishing` no Supabase

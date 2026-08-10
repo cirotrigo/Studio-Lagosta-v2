@@ -862,6 +862,19 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   injeta `visualStyle` inteiro, e DNA que fala em "luz dramática" convivia com
   "não reluza". A ressalva explícita existe no bloco de fidelidade — não a
   remova achando que é redundante.
+- 🔴 **`sharp(x).extract(r).stats()` IGNORA o `extract`** e devolve a
+  estatística da imagem INTEIRA. Materialize o recorte com `.toBuffer()` antes
+  de medir. Foi isso que fez a escolha de canto do `logo-compositor` medir os
+  quatro cantos IGUAIS desde que existe — a logo ia sempre para o canto
+  reservado, e o mecanismo de fugir do bloco de copy nunca funcionou. Vale para
+  qualquer medição por região.
+- **A logo do projeto é a ASSINATURA, não o ícone** (alinhado com o `LOGO_MAP`
+  do insta-automatico em 10/08). Como metade delas é branca (Quintal, TERO e
+  Bacana com luminância 255/255/252), o compositor passou a exigir **contraste**
+  entre a logo e o canto, além de calma: canto claro e liso é o mais calmo do
+  quadro e o pior lugar para logo branca. `isProjectLogo` é singular na prática
+  (`orderBy isProjectLogo desc, take 1`) — marcar duas vira sorteio por
+  `createdAt`.
 - **Módulo consumido pela bancada não pode importar o Prisma.**
   `parseApprovalChecklist` vive em `src/lib/brand/approval-checklist.ts`, sem
   dependências, porque `brand-context.ts` puxa `@/lib/db` e a bancada é client

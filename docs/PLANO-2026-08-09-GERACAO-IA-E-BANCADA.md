@@ -333,10 +333,12 @@ fire-and-forget (`after()` + polling), o serial é só escolha do cliente.
 > - `brand-manual.png`: os 10 existem lá e nenhum estava aqui. Coluna
 >   `Project.brandManualUrl` criada, o brand card passou a preferi-la, e
 >   `scripts/importar-brand-manuais.ts` sobe os arquivos (dry-run).
-> - Logos preferidas: **6 dos 10 divergem** do `isProjectLogo` do Studio,
->   comparadas visualmente. Não corrigidas — qual versão da marca assina a peça
->   é decisão de marca. O Bacana é o caso grave (ícone sobre quadrado laranja
->   OPACO, que o compositor cola sobre a foto).
+> - Logos preferidas: 6 dos 10 divergiam e foram **alinhadas pelo Ciro em
+>   10/08** (`scripts/definir-logo-do-projeto.ts`). A decisão expôs dois
+>   defeitos no `logo-compositor`: a escolha de canto NUNCA funcionou
+>   (`extract().stats()` do sharp ignora o recorte, então os quatro cantos
+>   mediam igual) e, com metade das logos agora em branco puro, calma sem
+>   contraste colocaria a marca num canto que a engole. Os dois corrigidos.
 > - Escala tipográfica: só o TERO tem. Cabe como âncora de papel `style`; um
 >   arquivo não justifica mecanismo novo.
 > - Regras de prompt do `gpt-image.js` sem equivalente aqui: portadas

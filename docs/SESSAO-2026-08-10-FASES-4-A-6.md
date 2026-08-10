@@ -15,7 +15,7 @@
 | Item | Onde vive lá | Existe no Studio? | Ação |
 |---|---|---|---|
 | **`brand-manual.png`** (manual feito por designer) | `templates/<slug>/assets/` — **os 10 clientes têm** | ❌ só o card auto-gerado | ✅ **feito**: coluna `Project.brandManualUrl`, o card passa a preferir o manual, `scripts/importar-brand-manuais.ts` sobe os 10 |
-| **`LOGO_MAP`** (logo preferida por slug) | `src/gpt-image.js:545` | ⚠️ existe `Logo.isProjectLogo`, mas **6 dos 10 divergem** | ⚠️ **decisão do Ciro** — tabela em §2 |
+| **`LOGO_MAP`** (logo preferida por slug) | `src/gpt-image.js:545` | ⚠️ existia `Logo.isProjectLogo`, mas **6 dos 10 divergiam** | ✅ **alinhado em 10/08** pelo Ciro — e a decisão expôs 2 defeitos no compositor (§2.1) |
 | **Referência de escala tipográfica** | `clientes/tero/referencias/escala-01*.jpg` — **só o TERO** | ❌ o papel `style` existe, mas fala de tom, não de escala | ⚠️ vale como âncora `style` do projeto 3; 1 arquivo não justifica mecanismo novo |
 | **Anti-órfã** (nunca 1 palavra sozinha na última linha) | regra 4 do prompt normal | ❌ ausente | ✅ **feito** — ver §5 |
 | **Teto de largura por palavra** (~35% da largura útil) | regra dura 3 | ❌ havia só teto de altura | ✅ **feito** |
@@ -49,12 +49,55 @@ Direita: a que o `LOGO_MAP` do Claudinho usa.
 | 12 Empório Fonseca | monograma **FE** em círculo | wordmark "EMPÓRIO FONSECA" | ⚠️ idem |
 | 5 Bacana | ícone branco sobre **quadrado laranja OPACO** | wordmark branco, fundo transparente | 🔴 **pior caso**: o `logo-compositor` cola isso sobre a foto e vira um bloco laranja na arte |
 
-**Não corrigido de propósito** — qual versão da marca assina a peça é decisão
-de quem cuida da marca, não de quem escreve o código. O caso do Bacana é o
-único que é defeito puro (fundo opaco), e mesmo ele fica para o Ciro.
+**RESOLVIDO no mesmo dia**: o Ciro passou as URLs e os 6 foram alinhados com
+`scripts/definir-logo-do-projeto.ts` (o Seu Quinto ficou com `Ativo 1branco.png`,
+a mais próxima da `logo-amarelo.png` do Claudinho). Os 10 projetos agora apontam
+para a **assinatura da marca**, não para um ícone.
 
 Reproduzir a comparação: `scripts/.tmp-comparar-logos.ts` (leitura-só, monta
 a folha de contato em `/tmp/comparacao-logos/`).
+
+### 2.1 A decisão expôs dois defeitos no compositor
+
+**O antigo, e o pior: a escolha de canto nunca funcionou.**
+`sharp(arte).extract(regiao).greyscale().stats()` **ignora o `extract`** e
+devolve a estatística da imagem inteira. Medido numa arte metade escura e
+metade clara: recortar o topo e recortar a base davam o mesmo `mean 134,
+stdev 108` (o do quadro todo); o recorte materializado com `.toBuffer()` dava
+`mean 26, stdev 0`.
+
+Ou seja, os quatro cantos sempre mediram igual. A "escolha do canto mais calmo"
+era empate perpétuo resolvido só pelo `RESERVED_BONUS` — a logo ia sempre para
+o canto reservado, e o mecanismo de fugir do bloco de copy, que a documentação
+do módulo descreve como o que salvou a peça quando o modelo ignorou a área
+reservada, **nunca chegou a existir**. Bate com o registro das runs:
+`logoCanto` sempre `bottom-right`, `logoMudouDeCanto` sempre `false`.
+
+**O novo, criado pela decisão de hoje: calma não basta.** Medindo a luminância
+média dos pixels visíveis das logos marcadas:
+
+| Projeto | Logo | Luminância |
+|---|---|---|
+| 2 O Quintal | Ativo 1logo.png | **255** ⚠️ |
+| 3 TERO | TERO_brasaevinho-branco.png | **255** ⚠️ |
+| 5 Bacana | bacana.png | **252** ⚠️ |
+| 4 Seu Quinto | Ativo 1branco.png | 212 |
+| 12 Empório Fonseca | Ativo 2icones.png | 178 |
+| 1 Real Gelateria | Ativo 3real.png | 177 |
+| 6 Espeto Gaúcho | logo-espeto-g.png | 143 |
+| 8 Lagosta Criativa | logo-lagosta-criativa-preto.png | 137 |
+| 7 By Rock | By Rock - logo.png | 89 |
+| 11 Wine Vix | Logo.png | 54 |
+
+O canto mais calmo de uma foto costuma ser uma parede lisa ou uma toalha — que
+é também o mais claro. Logo branca ali é logo invisível, e a peça sai "sem
+marca" sem que nada falhe. O score passou a somar calma **e** contraste, e
+canto que engole a marca é descartado antes de competir por calma.
+
+Validado com três casos sintéticos, sem gerar arte nenhuma: logo branca +
+canto reservado claro **foge** para o escuro (contraste 229, `moveu=true`);
+logo branca + canto reservado escuro **fica** (233); logo escura + canto
+reservado claro **fica** (153).
 
 ## 3. O elemento gráfico do carrossel: não era falta de menção, era enterro
 
