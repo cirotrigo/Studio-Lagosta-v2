@@ -18,6 +18,14 @@
  */
 import { PostStatus, RenderStatus, type Prisma, type PrismaClient } from '../../../prisma/generated/client'
 
+/**
+ * `normalizeLayersString` mudou de casa para `page-layers.ts` — um módulo SEM
+ * Prisma, para que o diff de copy do aprendizado (que precisa da MESMA leitura
+ * de camadas) possa importá-lo sem arrastar o banco. Continua exportada daqui:
+ * os chamadores existentes não mudam.
+ */
+export { normalizeLayersString } from './page-layers'
+
 type DbClient = PrismaClient | Prisma.TransactionClient
 
 export type InvalidateTarget = { templateId: number } | { pageIds: string[] } | { postIds: string[] }
@@ -101,26 +109,3 @@ export async function invalidateScheduledRenders(
   return { invalidados: result.count, congelados: congeladosRows.map((p) => p.id) }
 }
 
-/**
- * Normaliza `Page.layers` (array, string JSON ou string dupla-codificada)
- * para uma string canônica de comparação. `null` quando ilegível.
- *
- * Serve para detectar mudança real antes de invalidar: o PATCH da página
- * também recebe autosave e thumbnails do PageSync a cada troca de página —
- * invalidar sem comparar re-renderizaria os agendados toda vez que alguém
- * abre o editor.
- */
-export function normalizeLayersString(raw: unknown): string | null {
-  let value = raw
-  let depth = 0
-  while (typeof value === 'string' && depth < 3) {
-    try {
-      value = JSON.parse(value)
-      depth++
-    } catch {
-      return null
-    }
-  }
-  if (!Array.isArray(value)) return null
-  return JSON.stringify(value)
-}

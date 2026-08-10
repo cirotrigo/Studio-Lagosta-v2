@@ -25,25 +25,14 @@
  * precisar distinguir depois.
  */
 import { db } from '@/lib/db'
-import { parseLayers } from '@/lib/creatives/arte-rapida'
-
 /**
- * Textos da página, no formato que `extractExpectedTexts` lê (`slotValues`).
- *
- * É o que dá à melhoria com IA a verificação de texto: sem textos esperados
- * ela roda com `textCheck: 'skipped'` e ninguém confere se o modelo reescreveu
- * a headline. A chave é o nome da camada (o mesmo que o editor mostra).
+ * `textosDaPagina` era uma cópia local que lia as camadas com o `parseLayers`
+ * da arte-rápida — o decodificador de UM nível, que devolve `[]` em silêncio
+ * quando `Page.layers` está dupla-codificada. Nessas páginas a Generation
+ * nascia sem textos esperados e a melhoria rodava com `textCheck: 'skipped'`,
+ * sem ninguém conferir a headline. A versão compartilhada decodifica fundo.
  */
-function textosDaPagina(layers: unknown): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const layer of parseLayers(layers)) {
-    if (layer?.type !== 'text') continue
-    const conteudo = typeof layer.content === 'string' ? layer.content.trim() : ''
-    if (!conteudo) continue
-    out[layer.name ?? layer.id] = conteudo
-  }
-  return out
-}
+import { textosDaPagina } from '@/lib/posts/page-layers'
 
 /**
  * Devolve o `generationId` do post — reaproveitando o que existir, criando

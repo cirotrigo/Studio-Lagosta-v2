@@ -1,0 +1,144 @@
+/**
+ * Vocabulário da captura de sinais de uso (F1).
+ *
+ * Um SINAL é a unidade do aprendizado por uso: "isto foi proposto, aquilo foi
+ * escolhido". As duas metades moram na mesma linha (`LearningSignal`) e
+ * qualquer uma delas pode estar vazia:
+ *
+ *   - sugestão SEM desfecho  → proposta ainda em aberto (ou que expirou);
+ *   - desfecho SEM sugestão  → **escolha absoluta**, a pessoa decidiu sem que
+ *     o sistema tivesse proposto nada. Nas primeiras semanas, antes de a dica
+ *     de copy existir, é o ÚNICO corpus que haverá — por isso não é caso
+ *     especial nem linha órfã: é uma linha completa com a metade de cima nula.
+ *
+ * Este módulo NÃO importa Prisma nem `@/lib/db`, de propósito: o compositor da
+ * bancada é client e vai precisar dos rótulos (mesma razão de
+ * `learning-scope.ts`, `art-direction.ts` e `approval-checklist.ts`).
+ *
+ * Por que TEXT no banco em vez de enum do Postgres: é o precedente da F0.2
+ * (`SocialPost.origem` é TEXT "porque o vocabulário ainda se move na fase de
+ * captura") e há uma razão operacional — as migrations da casa são escritas à
+ * mão e aplicadas com `migrate deploy`, que roda cada migration numa
+ * transação, e `ALTER TYPE … ADD VALUE` não pode ser usado no mesmo bloco em
+ * que é criado. Vocabulário que ainda vai crescer na F2 fica em TEXT; a
+ * validação mora aqui, num só lugar.
+ */
+
+/** O que foi proposto/decidido. */
+export type TipoDeSinal =
+  /** Quando postar: dia e hora (o `sugerirPosts` emite estes). */
+  | 'slot'
+  /** O texto da peça — headline, subtítulo, legenda. */
+  | 'copy'
+  /** A imagem: foto do acervo, do Drive, upload. */
+  | 'foto'
+  /** A página-modelo que serve de base para a arte. */
+  | 'modelo'
+
+export const TIPOS_DE_SINAL: TipoDeSinal[] = ['slot', 'copy', 'foto', 'modelo']
+
+/**
+ * Como a proposta terminou.
+ *
+ * `escolha-propria` é o desfecho das linhas SEM sugestão — e é o que mantém a
+ * conta do KPI honesta: o denominador é "sugestões emitidas"
+ * (`sugeridoEm IS NOT NULL`), então a escolha absoluta entra no corpus sem
+ * entrar na taxa de aceitação.
+ */
+export type Desfecho =
+  /** Foi usado exatamente como veio. */
+  | 'aceita-como-veio'
+  /** Foi usado, mas alterado (a copy mudou, o horário andou). */
+  | 'editada'
+  /** Foi substituído por outra coisa (outro modelo, outra foto). */
+  | 'trocada'
+  /** Foi recusado sem substituto. */
+  | 'descartada'
+  /** Ninguém decidiu dentro da janela — a proposta perdeu a validade. */
+  | 'expirada'
+  /** Não houve sugestão nenhuma: a pessoa escolheu do zero. */
+  | 'escolha-propria'
+
+export const DESFECHOS: Desfecho[] = [
+  'aceita-como-veio',
+  'editada',
+  'trocada',
+  'descartada',
+  'expirada',
+  'escolha-propria',
+]
+
+/** Onde a decisão foi tomada. */
+export type Superficie =
+  | 'bancada'
+  | 'chat'
+  | 'editor'
+  | 'agenda'
+  /** Decidido por mecanismo, não por gente (a varredura que expira propostas). */
+  | 'sistema'
+
+export const SUPERFICIES: Superficie[] = ['bancada', 'chat', 'editor', 'agenda', 'sistema']
+
+/**
+ * Força do desfecho — a ordem em que uma revisão pode SOBRESCREVER a anterior.
+ *
+ * O desfecho não fecha no agendamento: a F4 exige que a janela vá até a
+ * publicação, porque uma edição posterior (`editar-post`, `ajustar-arte`, a
+ * agenda) diz mais sobre a proposta do que o "aceitei" de dez minutos antes.
+ * Sem essa regra, a taxa de aceitação infla sozinha.
+ *
+ * Só sobe: `aceita-como-veio` → `editada`/`trocada`/`descartada` é permitido;
+ * o caminho de volta, não. `expirada` é o mais fraco (só vale sobre o vazio) e
+ * `escolha-propria` não participa — é o desfecho de uma linha que nasce
+ * decidida.
+ */
+const FORCA: Record<Desfecho, number> = {
+  expirada: 1,
+  'aceita-como-veio': 2,
+  editada: 3,
+  trocada: 3,
+  descartada: 4,
+  'escolha-propria': 0,
+}
+
+/** `true` quando o novo desfecho é evidência mais forte que o já gravado. */
+export function desfechoVenceOAnterior(anterior: Desfecho | null | undefined, novo: Desfecho): boolean {
+  if (!anterior) return true
+  if (anterior === novo) return false
+  if (novo === 'escolha-propria' || anterior === 'escolha-propria') return false
+  return FORCA[novo] > FORCA[anterior]
+}
+
+/** Os desfechos que só fazem sentido com uma sugestão do outro lado. */
+export function exigeSugestao(desfecho: Desfecho): boolean {
+  return desfecho !== 'escolha-propria'
+}
+
+function normalizarTexto(valor: unknown): string | null {
+  if (typeof valor !== 'string') return null
+  const limpo = valor
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\s_]+/g, '-')
+  return limpo || null
+}
+
+/** Aceita variações de caixa/acento/underscore. `undefined` = desconhecido. */
+export function normalizarTipo(valor: unknown): TipoDeSinal | undefined {
+  const limpo = normalizarTexto(valor)
+  return TIPOS_DE_SINAL.find((t) => t === limpo)
+}
+
+/** Idem para o desfecho. Nunca inventa: valor estranho vira `undefined`. */
+export function normalizarDesfecho(valor: unknown): Desfecho | undefined {
+  const limpo = normalizarTexto(valor)
+  return DESFECHOS.find((d) => d === limpo)
+}
+
+/** Idem para a superfície. */
+export function normalizarSuperficie(valor: unknown): Superficie | undefined {
+  const limpo = normalizarTexto(valor)
+  return SUPERFICIES.find((s) => s === limpo)
+}

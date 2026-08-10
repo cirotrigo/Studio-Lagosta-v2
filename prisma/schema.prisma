@@ -130,6 +130,14 @@ model Generation {
    * mesma referência.
    */
   styleRefUsedAt       DateTime?
+  /**
+   * Página-modelo que originou esta arte. Espelho colunar de
+   * `fieldValues.sourcePageId` — que é Json SEM índice, e por isso minerar
+   * "qual modelo este cliente mais usa" hoje exige varredura por path.
+   * Coluna solta (sem FK), como a linhagem acima: apagar a página não pode
+   * arrastar a arte que já existe.
+   */
+  sourcePageId         String?
   resultUrl            String?
   projectId            Int
   authorName           String?
@@ -150,6 +158,7 @@ model Generation {
   @@index([createdBy])
   @@index([projectId])
   @@index([sourceGenerationId])
+  @@index([sourcePageId])
   @@index([carouselGroupId, slideOrder])
   @@index([projectId, styleRefAt, styleRefUsedAt])
   @@index([status])
@@ -195,6 +204,85 @@ model GenerationJob {
   @@index([status, leaseExpiresAt])
   @@index([projectId])
   @@index([createdAt])
+}
+
+/**
+ * Sinal de uso (F1) — a unidade do aprendizado por uso.
+ *
+ * Uma linha = um fato: "isto foi proposto, aquilo foi escolhido". As duas
+ * metades convivem na MESMA linha e qualquer uma pode estar vazia:
+ *
+ *  - `sugeridoEm` preenchido e `desfecho` nulo → proposta em aberto;
+ *  - `sugeridoEm` NULO e `desfecho: 'escolha-propria'` → **escolha absoluta**,
+ *    a pessoa decidiu sem que nada tivesse sido proposto. Nas primeiras
+ *    semanas, antes de a dica de copy existir, é o único corpus que haverá.
+ *
+ * UMA tabela, e não duas (sugestão + desfecho), porque:
+ *  1. a decisão SEM sugestão é o caso comum no começo — com duas tabelas ela
+ *     vira linha de desfecho com FK nula, isto é, o caso especial torto que o
+ *     desenho tinha de evitar; aqui é uma linha inteira com a metade de cima
+ *     vazia;
+ *  2. a relação é 1:1 por construção — uma leva de 5 slots são 5 propostas,
+ *     não uma com 5 desfechos;
+ *  3. o KPI da F4 (aceitas ÷ emitidas) vira agregação de tabela única, sem
+ *     LEFT JOIN e sem o cuidado com o lado nulo;
+ *  4. a idempotência do desfecho é compare-and-set na própria linha — com duas
+ *     tabelas seria um UNIQUE em `sugestaoId`, a mesma regra com mais peças.
+ *
+ * O precedente do `GenerationJob` (tabela separada) NÃO se aplica: lá o que se
+ * separou foi COMO o trabalho roda (payload, tentativas, lease) de O QUE o
+ * usuário vê — ciclos de vida e frequências de escrita diferentes. Aqui as
+ * duas metades são o mesmo fato e são sempre lidas juntas.
+ *
+ * Nenhum vínculo tem FOREIGN KEY, pelo precedente de
+ * `Generation.sourceGenerationId` e `SocialPost.campaignId`: apagar o post, a
+ * arte, a página ou a campanha não pode arrastar (nem travar) o registro do
+ * que aconteceu.
+ */
+model LearningSignal {
+  id           String    @id @default(cuid())
+  projectId    Int
+  /// 'slot' | 'copy' | 'foto' | 'modelo' — TEXT porque o vocabulário ainda se
+  /// move na F2 (mesmo motivo de `SocialPost.origem`). Validação em
+  /// `src/lib/aprendizado/vocabulario.ts`.
+  tipo         String
+  // ── metade SUGESTÃO (nula na escolha absoluta) ──────────────────────────
+  /// O que foi proposto. Forma livre por tipo.
+  sugerido     Json?
+  /// Quando a proposta foi EMITIDA. É o denominador do KPI de aceitação.
+  sugeridoEm   DateTime?
+  /// Proveniência: qual serviço emitiu ('sugerir-posts', 'prepare-creative'…).
+  servico      String?
+  /// Versão da heurística/prompt — sem ela não dá para comparar safras.
+  versao       String?
+  // ── metade DESFECHO (nula enquanto ninguém decidiu) ─────────────────────
+  /// 'aceita-como-veio' | 'editada' | 'trocada' | 'descartada' | 'expirada' |
+  /// 'escolha-propria' (este último só em linha SEM sugestão).
+  desfecho     String?
+  /// O que de fato foi escolhido.
+  escolhido    Json?
+  /// Diff estruturado, quando faz sentido (copy) — ver `diff-copy.ts`.
+  diff         Json?
+  decididoEm   DateTime?
+  /// `User.id` INTERNO (cuid), NUNCA o clerkId.
+  decididoPor  String?
+  /// 'bancada' | 'chat' | 'editor' | 'agenda' | 'sistema'.
+  superficie   String?
+  // ── vínculos frouxos, todos sem FK ──────────────────────────────────────
+  postId       String?
+  generationId String?
+  pageId       String?
+  campaignId   String?
+  /// Chave de idempotência do chamador. Com ela, o mesmo registro gravado
+  /// duas vezes (retry de rota, repetição de tool no chat) não duplica.
+  chave        String?   @unique
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([projectId, tipo, createdAt])
+  @@index([projectId, desfecho])
+  @@index([desfecho, sugeridoEm])
+  @@index([postId])
 }
 
 enum GenerationJobKind {
@@ -652,12 +740,20 @@ model Page {
   isTemplate     Boolean      @default(false)
   templateName   String?
   tags           String[]     @default([])
+  /// Quantas artes nasceram desta página. Espelho colunar do que só existia
+  /// dentro de `Generation.fieldValues` (Json sem índice). Precedente:
+  /// `Generation.styleRefAt/styleRefUsedAt`.
+  usedCount      Int          @default(0)
+  /// Última vez usada como base de uma arte. NULL = nunca usada — e por isso
+  /// o rodízio precisa de `nulls: 'first'` explícito (ASC é NULLS LAST no PG).
+  lastUsedAt     DateTime?
   Template       Template     @relation(fields: [templateId], references: [id], onDelete: Cascade)
   scheduledPosts SocialPost[]
 
   @@index([templateId])
   @@index([order])
   @@index([isTemplate])
+  @@index([isTemplate, lastUsedAt])
 }
 
 model UsageHistory {

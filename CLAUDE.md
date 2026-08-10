@@ -1267,6 +1267,58 @@ invocação que as pediu**. Cada pedido vira uma linha em `GenerationJob`
   10/08). O `fieldValues` anterior é **preservado** — ele é o registro atômico
   da run.
 
+### Captura de sinais de uso (F1 — núcleo, 11/08/2026)
+
+O aprendizado por uso escreve numa tabela só: **`LearningSignal`**. Uma linha é
+um fato — "isto foi proposto, aquilo foi escolhido" — e as duas metades
+convivem nela. Serviço em `src/lib/aprendizado/` (`captura.ts`,
+`diff-copy.ts`, `vocabulario.ts`, `uso-de-modelo.ts`).
+
+- **Uma tabela, não duas.** A **decisão SEM sugestão** (escolha absoluta de
+  copy/foto/horário) é o caso COMUM nas primeiras semanas — com tabelas
+  separadas ela seria uma linha de desfecho com FK nula, o caso especial torto
+  que o desenho tinha de evitar. Aqui é linha inteira com `sugeridoEm: null` e
+  `desfecho: 'escolha-propria'`, o que a mantém fora do denominador do KPI sem
+  filtro nenhum. O precedente do `GenerationJob` (tabela à parte) NÃO se
+  aplica: lá separou-se COMO o trabalho roda de O QUE o usuário vê.
+- **A sugestão é gravada quando é EMITIDA, não quando é aceita.** Sem isso a
+  proposta ignorada some e a taxa de aceitação vira 100% por construção.
+- **Falha de captura nunca derruba o fluxo principal** — toda função de
+  `captura.ts` engole o próprio erro e devolve valor neutro (`null`,
+  `'erro'`), o mesmo contrato de `sendWhatsAppText`. Registrar aprendizado não
+  pode impedir alguém de agendar um post.
+- **O desfecho não fecha no agendamento.** `desfechoVenceOAnterior` deixa
+  evidência mais forte sobrescrever (`aceita-como-veio` → `editada`/`trocada`/
+  `descartada`), nunca o contrário; o mesmo desfecho duas vezes é no-op. É o
+  que impede a taxa de aceitação de inflar quando alguém edita depois.
+- 🔴 **`Page.layers` só se lê por `src/lib/posts/page-layers.ts`.** O
+  `parseLayers` de `arte-rapida.ts` decodifica UM nível e devolve `[]` **em
+  silêncio** na string dupla-codificada — num diff de copy isso vira "o usuário
+  não editou nada", que é o pior defeito possível aqui. `lerCamadas` distingue
+  "página sem texto" de "não consegui ler", `diffDeCopy` carrega `ilegivel` e
+  `desfechoPeloDiff` devolve `null` nesse caso. **Ilegível nunca vira
+  aceitação.** `normalizeLayersString` e `textosDaPagina` mudaram de casa para
+  esse módulo (puro, sem Prisma) e seguem re-exportados de onde estavam.
+- **`normalizeForComparison` mudou para `src/lib/ai/text-comparison.ts`**, pelo
+  mesmo motivo: o diff usa as MESMAS regras de "o mesmo texto" da conferência
+  de arte, e o módulo antigo importa Prisma e o SDK de IA. Módulo que precise
+  ser testável sem banco não pode tocar `@/lib/db` — ele **lança no import**
+  quando falta `DATABASE_URL`.
+- **`tipo`, `desfecho` e `superficie` são TEXT**, não enum do Postgres:
+  precedente de `SocialPost.origem` e razão operacional — `migrate deploy` roda
+  cada migration numa transação, e `ALTER TYPE … ADD VALUE` não pode ser usado
+  no mesmo bloco em que o tipo é criado. A validação mora em `vocabulario.ts`.
+- **Nenhum vínculo tem FK** (`postId`, `generationId`, `pageId`, `campaignId`):
+  apagar o post, a arte, a página ou a campanha não pode arrastar o registro do
+  que aconteceu. Mesmo precedente de `sourceGenerationId`.
+- **Espelhos colunares**: `Page.usedCount`/`lastUsedAt` e
+  `Generation.sourcePageId` existem porque `fieldValues` é Json SEM índice —
+  minerar "qual modelo este cliente mais usa" exigia varredura por path.
+  Incremento por `registrarUsoDeModelo`; **os pontos de criação ainda não
+  chamam ninguém** (é a tarefa seguinte). Ordenar por "menos usado" exige
+  `MENOS_USADO_PRIMEIRO`: em Postgres `ASC` é NULLS LAST, e sem `nulls:
+  'first'` o já-usado vem antes do nunca-usado.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
