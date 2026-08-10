@@ -36,7 +36,10 @@ export type LogoCorner = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-lef
 const CORNER_ORDER: LogoCorner[] = ['bottom-right', 'bottom-left', 'top-right', 'top-left']
 
 /** Fração da largura da arte que a logo ocupa. Discreta, como manda a regra. */
-const LOGO_WIDTH_RATIO = 0.22
+// 0.22 → 0.15 em 10/08/2026, a pedido do Ciro olhando a leva real do Espeto:
+// "estou achando ela um pouco grande". Vale para os DOIS modos — o valor do
+// prompt (instrucaoLogoPeloModelo) acompanha, senão compor e modelo divergem.
+const LOGO_WIDTH_RATIO = 0.15
 /** Margem a partir da borda, também proporcional. */
 const MARGIN_RATIO = 0.055
 
@@ -262,12 +265,12 @@ export function instrucaoLogoPeloModelo(corner?: LogoCorner | null): string {
     '[LOGO — REPRODUZA O ARQUIVO OFICIAL]',
     'Uma das imagens de referência é a LOGO OFICIAL da marca. Desenhe-a na peça reproduzindo EXATAMENTE a forma, as proporções, o desenho das letras e as cores do arquivo.',
     onde
-      ? `Coloque-a UMA ÚNICA VEZ, no ${onde}, ocupando cerca de 20% da largura do quadro.`
+      ? `Coloque-a UMA ÚNICA VEZ, no ${onde}, ocupando cerca de 15% da largura do quadro — assinatura discreta, nunca protagonista.`
       : // Sem canto fixo: quem vê a foto sabe onde ela está vazia. As artes de
         // referência do Espeto movem a marca de peça para peça (topo-esquerda,
         // topo-direita, base-esquerda) conforme o enquadramento, e um canto
         // cravado no prompt produziria a mesma assinatura em todas.
-        'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando cerca de 20% da largura do quadro. Não a ponha sobre o assunto nem sobre a copy.',
+        'Coloque-a UMA ÚNICA VEZ, num CANTO CALMO da foto — o que estiver mais livre nesta imagem —, ocupando cerca de 15% da largura do quadro — assinatura discreta, nunca protagonista. Não a ponha sobre o assunto nem sobre a copy.',
     '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
     'Se não conseguir reproduzir a marca fielmente, deixe o canto VAZIO — arte sem marca é aproveitável, marca errada não é.',
   ].join('\n')
