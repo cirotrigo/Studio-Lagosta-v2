@@ -15,6 +15,17 @@
  * mais CALMO (menor desvio-padrão de luminância), que é o que o BRIEF do
  * Quintal descreveu como "a posição do logotipo depende de onde a foto é
  * calma".
+ *
+ * Calma não basta, e isso custou uma medição em 10/08/2026. O canto mais calmo
+ * de uma foto costuma ser uma parede lisa ou uma toalha — que é justamente o
+ * mais CLARO. E depois que as logos dos projetos foram alinhadas com as do
+ * insta-automatico, metade delas virou branco puro (Quintal, TERO e Bacana com
+ * luminância média 255, 255 e 252). Logo branca no canto mais calmo de uma foto
+ * clara é logo invisível: a peça sai "sem marca" sem que nada falhe.
+ *
+ * Por isso o score tem duas partes: calma E contraste entre a luminância média
+ * da logo e a do canto. Um canto que engole a logo é descartado antes de
+ * competir por calma.
  */
 
 import sharp from 'sharp'
@@ -34,6 +45,12 @@ export interface LogoCompositionResult {
   corner: LogoCorner
   /** Desvio-padrão de luminância da região escolhida (menor = mais calma). */
   calmness: number
+  /**
+   * Distância de luminância entre a logo e o canto escolhido (0–255). null
+   * quando não deu para medir a logo. Vai para o `fieldValues`: logo sumida na
+   * arte se explica por este número.
+   */
+  contraste: number | null
   /** true quando o canto reservado no prompt estava ocupado e a logo mudou de lugar. */
   moveu: boolean
 }
@@ -44,6 +61,42 @@ export interface LogoCompositionResult {
  * logo pular de canto entre peças da mesma leva.
  */
 const RESERVED_BONUS = 0.8
+
+/**
+ * Contraste mínimo (0–255) entre a luminância média da logo e a do canto para
+ * o canto ser considerado legível.
+ *
+ * 45 é a distância abaixo da qual uma logo branca sobre parede clara deixa de
+ * se destacar a olho nu na miniatura do feed. Não é WCAG — logo não é texto de
+ * corpo, e exigir contraste de leitura descartaria canto bom.
+ */
+const CONTRASTE_MINIMO = 45
+
+/**
+ * Peso do contraste no score. A calma continua mandando (é ela que faz a logo
+ * fugir do bloco de copy); o contraste desempata e afunda canto que engole a
+ * marca.
+ */
+const PESO_CONTRASTE = 0.6
+
+/** Luminância média dos pixels VISÍVEIS — pixel transparente não é a logo. */
+async function luminanciaDaLogo(logoPng: Buffer): Promise<number | null> {
+  try {
+    const { data, info } = await sharp(logoPng).ensureAlpha().raw().toBuffer({ resolveWithObject: true })
+    let soma = 0
+    let n = 0
+    for (let p = 0; p < data.length; p += info.channels) {
+      if (data[p + 3] < 128) continue
+      soma += 0.2126 * data[p] + 0.7152 * data[p + 1] + 0.0722 * data[p + 2]
+      n++
+    }
+    return n > 0 ? soma / n : null
+  } catch {
+    // Sem a medida, o comportamento volta a ser o antigo (só calma) — que é
+    // pior, mas não quebra nada.
+    return null
+  }
+}
 
 function cornerBox(
   corner: LogoCorner,
@@ -90,12 +143,16 @@ export async function comporLogo(
    * quando o modelo ignora a área reservada (aconteceu no primeiro teste: a
    * logo cobriu o "20h").
    */
-  let melhor: {
+  const lumLogo = await luminanciaDaLogo(logoRedim)
+
+  type Candidato = {
     corner: LogoCorner
     calmness: number
+    contraste: number
     score: number
     pos: { left: number; top: number }
-  } | null = null
+  }
+  const candidatos: Candidato[] = []
 
   for (const corner of CORNER_ORDER) {
     const pos = cornerBox(corner, { width, height }, box, margem)
@@ -106,19 +163,57 @@ export async function comporLogo(
       height: Math.min(box.height + 16, height - Math.max(0, pos.top - 8)),
     }
     let calmness = Number.POSITIVE_INFINITY
+    let contraste = Number.POSITIVE_INFINITY
     try {
-      const stats = await sharp(arteBuffer).extract(regiao).greyscale().stats()
+      // ⚠️ O `.toBuffer()` no meio NÃO é desperdício: `stats()` do sharp
+      // IGNORA o `extract()` do mesmo pipeline e devolve as estatísticas da
+      // imagem INTEIRA. Medido em 10/08/2026 numa arte metade escura e metade
+      // clara: recortar o topo e recortar a base davam o mesmo `mean 134,
+      // stdev 108` (o do quadro todo), enquanto o recorte materializado dava
+      // `mean 26, stdev 0`.
+      //
+      // Enquanto essa linha rodava encadeada, os quatro cantos mediam IGUAL —
+      // a escolha por calma era um empate perpétuo decidido só pelo
+      // RESERVED_BONUS, ou seja, a logo ia sempre para o canto reservado e o
+      // mecanismo de fugir do bloco de copy nunca chegou a existir.
+      const recorte = await sharp(arteBuffer).extract(regiao).toBuffer()
+      const stats = await sharp(recorte).greyscale().stats()
       calmness = stats.channels[0]?.stdev ?? Number.POSITIVE_INFINITY
+      const lumCanto = stats.channels[0]?.mean
+      if (lumLogo !== null && typeof lumCanto === 'number') {
+        contraste = Math.abs(lumLogo - lumCanto)
+      }
     } catch {
       // região inválida (arte menor que o esperado) — canto descartado
     }
-    const score = corner === cornerReservado ? calmness * RESERVED_BONUS : calmness
-    if (!melhor || score < melhor.score) melhor = { corner, calmness, score, pos }
+    if (!Number.isFinite(calmness)) continue
+
+    // Menor é melhor: calma pesa cheio, e falta de contraste vira penalidade.
+    // Contraste alto não dá bônus infinito — passado o mínimo, o que decide
+    // volta a ser a calma.
+    const deficit = Number.isFinite(contraste) ? Math.max(0, CONTRASTE_MINIMO - contraste) : 0
+    let score = calmness + deficit * PESO_CONTRASTE
+    if (corner === cornerReservado) score *= RESERVED_BONUS
+    candidatos.push({ corner, calmness, contraste, score, pos })
   }
 
-  if (!melhor || !Number.isFinite(melhor.calmness)) {
+  if (candidatos.length === 0) {
     throw new Error('nenhum canto válido para compor a logo')
   }
+
+  // Cantos que ENGOLEM a logo saem da disputa antes de competir por calma —
+  // uma parede branca lisa é o canto mais calmo do quadro e o pior lugar
+  // possível para uma logo branca. Se todos engolirem, a penalidade do score
+  // ainda escolhe o menos ruim.
+  const legiveis = candidatos.filter((c) => !Number.isFinite(c.contraste) || c.contraste >= CONTRASTE_MINIMO)
+  const disputa = legiveis.length > 0 ? legiveis : candidatos
+  if (legiveis.length === 0 && lumLogo !== null) {
+    console.warn(
+      `[logo] nenhum canto contrasta com a logo (luminância ${lumLogo.toFixed(0)}) — usando o menos ruim`,
+    )
+  }
+
+  const melhor = disputa.reduce((a, b) => (b.score < a.score ? b : a))
 
   const buffer = await sharp(arteBuffer)
     .composite([{ input: logoRedim, left: melhor.pos.left, top: melhor.pos.top }])
@@ -129,6 +224,7 @@ export async function comporLogo(
     buffer,
     corner: melhor.corner,
     calmness: melhor.calmness,
+    contraste: Number.isFinite(melhor.contraste) ? melhor.contraste : null,
     moveu: !!cornerReservado && melhor.corner !== cornerReservado,
   }
 }

@@ -448,10 +448,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           logoComposta: true,
           logoCanto: comLogo.corner,
           logoMudouDeCanto: comLogo.moveu,
+          logoContraste: comLogo.contraste,
         }
         console.log(
           `[arte-ia.bg] logo oficial composta no canto ${comLogo.corner}` +
-            (comLogo.moveu ? ` (o canto reservado ${LOGO_CORNER} estava ocupado)` : ''),
+            (comLogo.moveu ? ` (o canto reservado ${LOGO_CORNER} estava ocupado)` : '') +
+            (comLogo.contraste !== null ? ` | contraste ${comLogo.contraste.toFixed(0)}` : ''),
         )
       } catch (logoError) {
         const msg = logoError instanceof Error ? logoError.message : String(logoError)
