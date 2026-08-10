@@ -191,9 +191,14 @@ export async function conferirLogo(arte: Buffer, logoOficial: Buffer): Promise<L
               text: [
                 'A PRIMEIRA imagem é o arquivo OFICIAL da logomarca. A SEGUNDA é uma arte que deveria conter essa mesma marca.',
                 '',
-                'Compare a marca desenhada na arte com o arquivo oficial: silhueta, desenho das letras, palavras presentes e cores.',
+                'Localize a LOGOMARCA dentro da arte e compare SÓ ELA com o arquivo oficial: silhueta, desenho das letras, palavras presentes e cores.',
+                // Sem esta linha o verificador comparava a MANCHETE da arte com
+                // o arquivo da logo — "a palavra Corte do Dia não está presente
+                // no arquivo oficial" saiu como divergência numa peça em que a
+                // marca em si estava certa (medido em 10/08/2026).
+                'A arte também tem manchete, preços e outros textos — eles NÃO fazem parte da marca e não entram nesta comparação. Divergência é só o que estiver DENTRO da logomarca.',
                 'Diferença de tamanho, de posição, de perspectiva e de iluminação NÃO é divergência — a marca faz parte da composição.',
-                'São divergências: forma diferente, letra com outro tipo, palavra a mais ou a menos, cor trocada, marca inventada.',
+                'São divergências (sempre da logomarca, nunca do resto da arte): forma diferente, letra com outro tipo, palavra a mais ou a menos dentro da marca, cor trocada, marca inventada.',
                 'Informe também QUANTAS vezes a marca aparece: mais de uma é defeito.',
               ].join('\n'),
             },
