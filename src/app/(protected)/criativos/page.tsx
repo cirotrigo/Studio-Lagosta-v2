@@ -531,9 +531,14 @@ export default function GlobalCreativesPage() {
           </div>
         </Card>
       ) : (
+        // `grid` (ordem por LINHA), não `columns` (ordem por COLUNA): com
+        // colunas CSS a linha de cima mostrava os itens #1, #13, #25, #37 e
+        // #49 — as artes mais recentes não ficavam em cima, e o "próximo" do
+        // lightbox ia para o card de baixo em vez do card à direita.
+        // `items-start` preserva a aspect-ratio de cada card.
         <div
           id="creatives-gallery"
-          className="columns-2 sm:columns-3 lg:columns-4 xl:columns-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
+          className="grid grid-cols-2 items-start sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4 flex-1 pb-20 md:pb-4"
         >
           {filtered.map((generation) => {
             const selected = selectedIds.has(generation.id)
@@ -547,7 +552,7 @@ export default function GlobalCreativesPage() {
             const meta = generationMetaMap.get(generation.id) ?? buildGenerationMeta(generation)
 
             return (
-              <div key={generation.id} className="mb-3 md:mb-4 break-inside-avoid">
+              <div key={generation.id}>
                 <CreativeCard
                   id={generation.id}
                   displayUrl={meta.displayUrl}

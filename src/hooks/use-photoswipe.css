@@ -8,6 +8,42 @@
  */
 
 /*
+ * O LIGHTBOX FICAVA EM BRANCO AO NAVEGAR — regra global recortando o slide.
+ *
+ * O `globals.css` tem, em `@layer base`:
+ *
+ *     .container,
+ *     [class*="container"] { max-width: 100vw; overflow-x: hidden; }
+ *     * { max-width: 100%; }
+ *
+ * O seletor por SUBSTRING casa com `.pswp__container`, que é o carrossel do
+ * PhotoSwipe. Ele é transladado em -2050px enquanto o slide ativo vai para
+ * +2050px — os dois se cancelam e a arte cai no centro da tela. Mas com
+ * `overflow-x: hidden` o contêiner passa a RECORTAR pela própria caixa, que
+ * está lá em -2050: o slide fica inteiro fora dela e não é pintado.
+ *
+ * O sintoma era exatamente "navega mas a foto não carrega": contador andando,
+ * seta funcionando, `<img>` com `complete: true`, 2160x3840, `opacity: 1` e
+ * posição certa — e tela preta. Medido em produção: `elementsFromPoint` no
+ * centro da arte devolvia `.pswp__scroll-wrap`, nunca a `<img>`.
+ *
+ * Regra em `@layer base` perde para regra sem camada, e este arquivo não está
+ * em camada nenhuma — mas a especificidade extra fica assim mesmo, porque o
+ * `globals.css` já mostrou que muda.
+ */
+.pswp .pswp__container {
+  max-width: none;
+  overflow: visible;
+}
+
+/* `* { max-width: 100% }` também não vale dentro do lightbox: o PhotoSwipe
+   dimensiona tudo por style inline e conta com isso. */
+.pswp,
+.pswp * {
+  max-width: none;
+}
+
+/*
  * SETAS EM TELA DE TOQUE.
  *
  * O pacote esconde as setas em qualquer aparelho com toque:
@@ -30,16 +66,25 @@
   visibility: visible;
 }
 
-/* Alvo de toque maior e um pouco de contraste sobre foto clara. */
+/*
+ * Fundo circular na seta, em QUALQUER aparelho.
+ *
+ * O padrão do pacote é um chevron branco fino, sem fundo, colado na borda da
+ * janela. Numa tela de 1440px com uma arte 9:16 no centro, a seta fica a ~500px
+ * da imagem (centro medido em x=1403) e some contra foto clara — dá para olhar
+ * direto para ela e não perceber que é um botão. O fundo resolve a leitura sem
+ * mudar posição nem tamanho do alvo no desktop.
+ */
+.pswp.pswp--nav-sempre-visivel .pswp__button--arrow .pswp__icn {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+/* No toque o alvo encolhe um pouco para não cobrir tanto da arte. */
 @media (hover: none) and (pointer: coarse) {
   .pswp.pswp--nav-sempre-visivel .pswp__button--arrow {
     width: 60px;
-  }
-
-  .pswp.pswp--nav-sempre-visivel .pswp__button--arrow .pswp__icn {
-    background: rgba(0, 0, 0, 0.45);
-    border-radius: 999px;
-    padding: 4px;
   }
 }
 

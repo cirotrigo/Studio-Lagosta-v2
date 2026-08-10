@@ -589,9 +589,47 @@ comentário e a observação. Ver `src/lib/notifications/reminder-notifier.ts`.
 nada quebra** — o resto do fluxo segue normal. Valores só em ambiente, nunca no
 código; o `.env.example` tem apenas os nomes.
 
+### Galeria de criativos: grade, lightbox e o `globals.css` (10/08/2026)
+
+Arco completo em `docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md`
+(PRs #26 a #29). Regras que valem para código novo:
+
+- **`[class*="container"]` no `globals.css` pega classe de TERCEIRO.** A regra
+  `.container, [class*="container"] { max-width: 100vw; overflow-x: hidden }`
+  vive em `@layer base` e casa com qualquer classe que contenha a substring —
+  pegou o `.pswp__container` do PhotoSwipe e **recortava o slide ativo**, que é
+  transladado para fora da caixa do contêiner. Resultado: lightbox em branco ao
+  navegar, com a `<img>` perfeitamente carregada. Biblioteca nova cujo CSS use
+  "container" no nome da classe herda isso em silêncio.
+- **Elemento com caixa correta que não aparece no `elementsFromPoint` do
+  próprio centro é recorte de ancestral**, não falha de carregamento. Medir
+  `complete`/`naturalWidth`/`opacity` não enxerga o problema; subir a árvore
+  lendo `overflow` e `transform`, sim.
+- **A grade da galeria é `grid` (ordem por LINHA), não `columns` (ordem por
+  COLUNA).** Com colunas CSS a linha de cima mostrava os itens #1, #13, #25… —
+  as artes mais recentes não ficavam em cima e o "próximo" do lightbox ia para
+  o card de baixo. `items-start` é obrigatório: sem ele o item estica até a
+  altura da linha e a `aspect-ratio` do card é ignorada, deformando a arte.
+- **Não medir imagem baixando o original.** Um `new window.Image()` por card
+  apontando para a arte original custava **38,22 MB e 54 downloads** numa carga
+  da galeria. A proporção sai de graça do `onLoad` da `<Image>`, que já carrega
+  a miniatura otimizada.
+- **`data-pswp-*` sai do render, nunca de escrita imperativa concorrente.** O
+  estado guarda a PROPORÇÃO; as dimensões vêm de `dimensoesParaLightbox()`.
+  Gravar no estado o tamanho da MINIATURA fazia o re-render sobrescrever a
+  correção e o lightbox abria a arte em 360px.
+- **PhotoSwipe esconde as setas em tela de toque** e usa miniatura de
+  placeholder só no primeiro slide. As duas coisas são revertidas em
+  `src/hooks/use-photoswipe.css` e no filtro `placeholderSrc`. Ver
+  `docs/photoswipe-lightbox.md`.
+
 ### Registro de mudanças recentes
 
-`docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md` é o mais recente: o
+`docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md` é o mais recente:
+lightbox que não navegava (três causas independentes), a galeria baixando a si
+mesma em resolução cheia, e a responsividade no iPad e no celular.
+
+`docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md`: o
 Studio passou a CRIAR arte por IA (não só melhorar), com bancada, carrossel
 com visual coerente e referências por papel. O plano que originou o trabalho
 está em `docs/PLANO-2026-08-09-GERACAO-IA-E-BANCADA.md`, com o placar das

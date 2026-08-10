@@ -75,10 +75,23 @@ const STATUS_OPTIONS = [
   { value: 'FAILED', label: 'Falharam' },
 ]
 
+/**
+ * A grade é `grid` (ordem por LINHA), não `columns` (ordem por COLUNA).
+ *
+ * Com `columns-*` o CSS preenche a primeira coluna inteira antes de passar
+ * para a segunda: numa lista de 58 itens em 5 colunas, a linha de cima
+ * mostrava os itens #1, #13, #25, #37 e #49 — ou seja, as artes mais recentes
+ * NÃO ficavam em cima, e o "próximo" do lightbox (que segue a ordem do DOM) ia
+ * para o card de BAIXO em vez do card à direita. Era isso que fazia a
+ * navegação parecer quebrada mesmo com as setas funcionando.
+ *
+ * `items-start` é obrigatório: sem ele o item estica até a altura da linha e a
+ * `aspect-ratio` do card é ignorada, deformando a arte.
+ */
 const GRID_DENSITY_CONFIG = {
-  compact: { label: 'Compacto', columnsClass: 'columns-2 sm:columns-3 lg:columns-4 xl:columns-5 2xl:columns-6', gapClass: 'gap-2 mb-2' },
-  cozy: { label: 'Médio', columnsClass: 'columns-2 sm:columns-2 lg:columns-3 xl:columns-4', gapClass: 'gap-3 mb-3' },
-  comfortable: { label: 'Amplo', columnsClass: 'columns-1 sm:columns-2 lg:columns-3', gapClass: 'gap-4 mb-4' },
+  compact: { label: 'Compacto', columnsClass: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5', gapClass: 'gap-2' },
+  cozy: { label: 'Médio', columnsClass: 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4', gapClass: 'gap-3' },
+  comfortable: { label: 'Amplo', columnsClass: 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3', gapClass: 'gap-4' },
 } as const
 
 type GridDensity = keyof typeof GRID_DENSITY_CONFIG
@@ -1023,7 +1036,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       ) : viewMode === 'grid' ? (
         <div
           id="creatives-gallery"
-          className={cn('w-full', gridDensityConfig.columnsClass, gridDensityConfig.gapClass.split(' ')[0])}
+          className={cn('grid w-full items-start', gridDensityConfig.columnsClass, gridDensityConfig.gapClass)}
         >
           {filtered.map((generation, index) => {
             const selected = selectedIds.has(generation.id)
@@ -1070,7 +1083,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                 : null
 
             return (
-              <div key={generation.id} className={cn("break-inside-avoid", gridDensityConfig.gapClass.split(' ')[1])}>
+              <div key={generation.id}>
                 <GalleryItem
                   id={generation.id}
                   displayUrl={meta.displayUrl ?? null}
