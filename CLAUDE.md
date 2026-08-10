@@ -863,6 +863,30 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   ressalva no `fieldValues` — o texto está certo, e descartar arte
   legível-com-ressalva é pior do que entregar anotada. Visão fora do ar nunca
   derruba a peça.
+- 🔴 **QA que reprova PRECISA guardar o candidato.** O `continue` para retentar
+  aposta num orçamento que pode ser recusado logo depois — e aí não sobra nada:
+  crédito gasto, arte pronta, FAILED. Quatro artes do Espeto morreram assim em
+  10/08. Sempre `melhorCandidato`, entregue com a ressalva quando a retentativa
+  não acontece.
+- **A retentativa quase nunca acontece no formato story**: geração ~110-128s
+  contra `maxDuration = 300` da rota, e duas não cabem numa invocação. A margem
+  é ADITIVA (o que a checagem consome, ~20s), não proporcional — mas isso só
+  recupera casos de borda. `MAX_GENERATION_ATTEMPTS = 2` é 1 na prática até
+  alguém retentar em OUTRA invocação.
+- **O teto de texto da GERAÇÃO é de ÁREA (~1/5 do quadro), o da MELHORIA é de
+  ALTURA (15–20%, nunca >25%)** — e a divergência é de propósito. Um teto de
+  altura proíbe a coluna alta e estreita, que é o layout que o modelo escolhe
+  quando o espaço livre da foto é vertical (as artes aprovadas do Espeto fazem
+  isso). `art-direction.ts` é protegido: não alinhe os dois sem repetir o teste
+  de 29-30/07.
+- **O prompt precisa DAR AUTONOMIA, não só limites.** Regra 10 de
+  `buildArtePrompt`: o modelo lê a foto e põe o texto onde ela é calma, variando
+  a diagramação entre peças. Sem essa licença, dez regras viram receita e todas
+  as peças saem iguais. Pela mesma razão a logo não tem canto cravado na peça
+  avulsa (só no slide irmão de carrossel, onde o LOOK SPINE manda repetir).
+- **Separador de lista (`·`, `|`) é DIAGRAMAÇÃO, não conteúdo**: na comparação
+  de texto ele vira ESPAÇO. Virando ponto, a arte que desenhava o mesmo
+  conteúdo quebrando a linha nunca casava com o esperado.
 - **No slide IRMÃO do carrossel, o guia vence o DNA e vem ANTES dele.**
   `visualStyle` e `composition` saem do prompt (o guia já é a marca aplicada e
   aprovada; descrevê-la em prosa é concorrência), e o LOOK SPINE sobe. Medido:
