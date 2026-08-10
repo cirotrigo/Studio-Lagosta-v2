@@ -60,6 +60,12 @@ export function normalizeForComparison(value: string): string {
     // "CANTO , VITÓRIA"). Colar a pontuação nos vizinhos normaliza os DOIS
     // lados da comparação sem tocar na pontuação em si.
     .replace(/\s*([.,;:!?\-])\s*/g, '$1')
+    // "R$ 9,90" e "R$9,90" são o MESMO preço — o espaço após o símbolo é
+    // tipografia, e o modelo usa a forma correta (com espaço) mesmo quando a
+    // copy veio sem. Em 10/08/2026 isso reprovou uma arte do Espeto duas
+    // vezes: todos os blocos batiam, só o espaço do "R$ 9,90" divergia.
+    // O VALOR continua protegido: vírgula ou dígito trocado ainda reprova.
+    .replace(/R\$\s+/gi, 'R$')
     .replace(/\s+/g, ' ')
     .trim()
     .toUpperCase()

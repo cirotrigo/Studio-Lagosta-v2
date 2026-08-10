@@ -12,7 +12,7 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, RefreshCw, ExternalLink, Maximize2 } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, RefreshCw, ExternalLink, Maximize2, AlertTriangle } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
@@ -319,6 +319,15 @@ function Card({
             <span className="text-xs text-muted-foreground">
               A página atualiza sozinha quando ficar pronta.
             </span>
+          )}
+
+          {/* Arte pronta COM aviso: sai, mas pede o olho. É o contrato da
+              conferência desde 10/08 — o comparador avisa, nunca veta. */}
+          {item.status === 'pronto' && item.aviso && (
+            <p className="flex w-full items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+              {item.aviso}
+            </p>
           )}
 
           {item.status === 'pronto' && (

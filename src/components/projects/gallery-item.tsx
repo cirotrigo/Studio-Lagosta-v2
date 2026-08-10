@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2, Star } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2, Star, AlertTriangle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -28,6 +28,11 @@ interface GalleryItemProps {
   /** Marcada como referência de estilo — as próximas artes se inspiram nela. */
   isStyleRef?: boolean
   onToggleStyleRef?: () => void
+  /**
+   * Aviso da conferência automática (ex.: texto que o comparador não achou).
+   * A arte saiu mesmo assim — o badge existe para pedir o olho de quem aprova.
+   */
+  avisoConferencia?: string | null
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -88,6 +93,7 @@ export function GalleryItem({
   isImproved,
   isStyleRef,
   onToggleStyleRef,
+  avisoConferencia,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -433,6 +439,15 @@ export function GalleryItem({
               <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/20 px-2 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
                 <Sparkles className="h-2.5 w-2.5" />
                 melhorada
+              </span>
+            )}
+            {avisoConferencia && (
+              <span
+                title={avisoConferencia}
+                className="inline-flex items-center gap-1 rounded-full border border-amber-400/50 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-200 backdrop-blur-sm"
+              >
+                <AlertTriangle className="h-2.5 w-2.5" />
+                conferir texto
               </span>
             )}
             {status === 'COMPLETED' && (
