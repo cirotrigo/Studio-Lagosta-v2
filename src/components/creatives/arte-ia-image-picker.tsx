@@ -367,40 +367,81 @@ export function ArteIaImagePicker({
             </Button>
           </form>
 
-          {acervo && acervo.pastasDisponiveis.length > 0 && (
-            <div className="flex flex-wrap gap-1">
-              <button
-                type="button"
-                onClick={() => {
-                  setPasta('')
-                  setLimite(40)
-                }}
-                className={cn(
-                  'rounded-full border px-2 py-0.5 text-[11px]',
-                  pasta === '' ? 'border-primary bg-primary/10' : 'border-border/60',
+          {/* Navegação em DOIS NÍVEIS (pedido do Ciro, 10/08): primeiro as
+              pastas da RAIZ, e as subpastas só depois de entrar numa raiz.
+              A lista chapada anterior cortava em 12 chips — no By Rock são 67
+              pastas, então mais da metade do acervo simplesmente não tinha
+              como ser navegada. Raízes são poucas (9–15 por projeto) e as
+              subpastas de uma raiz também: nenhum nível precisa de corte. */}
+          {acervo && acervo.pastasDisponiveis.length > 0 && (() => {
+            const raizes = [...new Set(acervo.pastasDisponiveis.map((p) => p.split('/')[0]))]
+            const raizAtiva = pasta ? pasta.split('/')[0] : ''
+            const subpastas = raizAtiva
+              ? acervo.pastasDisponiveis.filter((p) => p.startsWith(`${raizAtiva}/`))
+              : []
+            const irPara = (destino: string) => {
+              setPasta(destino)
+              setLimite(40)
+            }
+            return (
+              <div className="space-y-1">
+                <div className="flex flex-wrap gap-1">
+                  <button
+                    type="button"
+                    onClick={() => irPara('')}
+                    className={cn(
+                      'rounded-full border px-2 py-0.5 text-[11px]',
+                      pasta === '' ? 'border-primary bg-primary/10' : 'border-border/60',
+                    )}
+                  >
+                    Todas
+                  </button>
+                  {raizes.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => irPara(r === raizAtiva ? '' : r)}
+                      title={r}
+                      className={cn(
+                        'max-w-[160px] truncate rounded-full border px-2 py-0.5 text-[11px]',
+                        raizAtiva === r ? 'border-primary bg-primary/10' : 'border-border/60',
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                {subpastas.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pl-3">
+                    <button
+                      type="button"
+                      onClick={() => irPara(raizAtiva)}
+                      className={cn(
+                        'rounded-full border px-2 py-0.5 text-[11px]',
+                        pasta === raizAtiva ? 'border-primary bg-primary/10' : 'border-border/60',
+                      )}
+                    >
+                      Toda a pasta
+                    </button>
+                    {subpastas.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => irPara(p === pasta ? raizAtiva : p)}
+                        title={p}
+                        className={cn(
+                          'max-w-[160px] truncate rounded-full border px-2 py-0.5 text-[11px]',
+                          pasta === p ? 'border-primary bg-primary/10' : 'border-border/60',
+                        )}
+                      >
+                        {p.slice(raizAtiva.length + 1)}
+                      </button>
+                    ))}
+                  </div>
                 )}
-              >
-                Todas
-              </button>
-              {acervo.pastasDisponiveis.slice(0, 12).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => {
-                    setPasta(p === pasta ? '' : p)
-                    setLimite(40)
-                  }}
-                  title={p}
-                  className={cn(
-                    'max-w-[160px] truncate rounded-full border px-2 py-0.5 text-[11px]',
-                    pasta === p ? 'border-primary bg-primary/10' : 'border-border/60',
-                  )}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-          )}
+              </div>
+            )
+          })()}
 
           {acervo?.aviso && (
             <p className="text-[11px] italic text-amber-600 dark:text-amber-500">{acervo.aviso}</p>
