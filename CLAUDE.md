@@ -1192,10 +1192,12 @@ que o sistema pode aprender com cada post. Vocabulário em
   ao resolvê-lo não pode derrubar o agendamento (é auditoria): `quemDecidiu`
   no MCP engole o erro, e a rota HTTP busca o User só para LEITURA, sem criar
   linha (criar é justamente como nascem os Users fantasma).
-- `origem`/`sugestaoId` existem na coluna e no serviço, mas ainda não são
-  preenchidos pela bancada: quem define "sugestão" é a fase de captura, e
-  rotular "aceitou o horário sugerido" como `sugerido-aceito` contaminaria o
-  corpus com uma semântica que não é a dela.
+- ~~`origem`/`sugestaoId` existem na coluna e no serviço, mas ainda não são
+  preenchidos pela bancada~~ — **superado em 11/08/2026**: a fase de captura
+  chegou, e quem preenche os dois é a rota `/agendar` (e `colocar-na-agenda`),
+  com a `origem` saindo da COMPARAÇÃO de horários, nunca do rótulo que a
+  superfície mandou. Ver "Captura de sinais: emissão e desfecho nas
+  superfícies".
 
 ### Página nasce CONTEÚDO; modelo é promoção deliberada (10/08/2026)
 
@@ -1318,6 +1320,65 @@ convivem nela. Serviço em `src/lib/aprendizado/` (`captura.ts`,
   chamam ninguém** (é a tarefa seguinte). Ordenar por "menos usado" exige
   `MENOS_USADO_PRIMEIRO`: em Postgres `ASC` é NULLS LAST, e sem `nulls:
   'first'` o já-usado vem antes do nunca-usado.
+
+### Captura de sinais: emissão e desfecho nas superfícies (F1, 11/08/2026)
+
+Quem EMITE proposta agora registra (`sugerirPosts` → `slot`, `buscarNoAcervo` →
+`foto`), e o que a bancada decide chega ao servidor por
+`POST /api/projects/[id]/aprendizado/desfecho`.
+
+- 🔴 **Toda emissão precisa de `chave` de idempotência.** `sugerirPosts` é
+  chamado pela bancada (que refaz a consulta ao voltar para a aba), pela rota
+  `/slots` e pela tool do MCP, e devolve **36 slots** com `dias: 14` (medido no
+  projeto 3). Sem chave, uma semana de uso normal gravaria milhares de linhas
+  para as mesmas dezenas de propostas e o denominador do KPI viraria ficção. A
+  unidade é a PROPOSTA, não a chamada: slot é `(projeto, horário)`; busca no
+  acervo é `(projeto, critérios, DIA)` — `limit` fica de fora, porque
+  "Carregar mais" mostra mais da mesma lista. Helpers em
+  `src/lib/aprendizado/chaves.ts`; `sugestoesJaEmitidas` faz a leva reemitida
+  custar **um SELECT e zero escritas**.
+- **A `versao` entra na chave.** Mudou a heurística (peso por recência, corte
+  de campanha — tudo isso é F2), a safra nova não pode herdar o desfecho de uma
+  proposta que era outra.
+- 🔴 **O desfecho é CALCULADO no servidor, nunca declarado pela superfície.**
+  `avaliarSlotSugerido` compara o horário proposto com o agendado
+  (tolerância de 1 min) e decide `aceita-como-veio`/`sugerido-aceito` ou
+  `editada`/`sugerido-editado` — a mesma comparação dá o desfecho do sinal e a
+  `origem` gravada no post. Quem agenda (a bancada, ou o modelo no chat) tem
+  todo incentivo a relatar acerto, e o card **deixa mudar data e hora** depois
+  de o item ter nascido de um slot: aceitar o rótulo da tela contaria edição
+  como aceitação. Sem os dois lados comparáveis, o sinal fica PENDENTE — nunca
+  vira aceitação por omissão.
+- **Uma foto: o que se mede é se levaram o TOPO.** A busca no acervo registra
+  UM sinal por lista ranqueada (não um por foto — vinte linhas por busca
+  inflariam o denominador com fotos que ninguém olhou), e o picker fecha o
+  desfecho na PRIMEIRA foto escolhida daquela busca. Fechar a cada clique faria
+  a segunda foto de um carrossel sobrescrever o "levou o topo" da primeira
+  (`trocada` vence `aceita-como-veio`), virando toda seleção múltipla em recusa.
+- **A copy da bancada é `escolha-propria`, e é de propósito.** Não há dica de
+  copy ainda; registrar o que a pessoa escreveu no momento do GERAR é o corpus
+  das primeiras semanas — sem ele o aprendizado só começa a existir quando o
+  sistema já estiver sugerindo texto, tarde demais para saber o que ele deveria
+  sugerir. Chave por `item.id` (a copy do card não é editável depois de montada,
+  e "tentar de novo" não pode virar segundo sinal).
+- **A rota de desfecho é fire-and-forget e responde 200 mesmo quando o núcleo
+  recusa o sinal** (`{ ok: false, resultado }`). 4xx só para pedido malformado:
+  quem chama ignora a resposta, e um erro ali não pode aparecer na bancada.
+  `useAprendizado` (`src/hooks/use-aprendizado.ts`) não é hook de dados — sem
+  TanStack Query, sem toast, `void` + `catch`.
+- **Gesto que vira sinal na bancada**: tirar o item da fila → `descartada`;
+  digitar horário com um slot pré-selecionado → `editada` (o seletor já vem
+  marcado, então digitar é recusa); agendar → o servidor decide; gerar → a copy.
+  **"Limpar finalizados" NÃO registra descarte**: item em `erro` falhou por
+  problema do sistema, e culpar a sugestão por isso seria mentira.
+- **A expiração pega carona no cron diário `archive-expired-knowledge`**, antes
+  do early return de "nada expirado" — mesma natureza de trabalho (o que venceu,
+  vence), e cron novo custaria uma entrada no `vercel.json` para um `updateMany`
+  que costuma tocar zero linha.
+- **`origem`/`sugestaoId` do `SocialPost` passaram a ser preenchidos** pela rota
+  `/agendar` e pela tool `colocar-na-agenda` (que ganhou o campo). A nota da
+  F0.2 dizendo que ninguém preenche está superada — o que a proibia era não
+  existir ainda quem definisse "sugestão".
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
