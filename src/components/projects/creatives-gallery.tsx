@@ -291,6 +291,10 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
       return { id, anterior: styleRefLocal[id] }
     },
     onSuccess: (_data, { marcada }) => {
+      // A tela de gestão (Modelos › Artes de referência) lê de outra query.
+      // Sem invalidar aqui, marcar na galeria e ir conferir lá mostrava
+      // "nenhuma arte marcada" — o dado certo escondido atrás do cache.
+      queryClient.invalidateQueries({ queryKey: ['style-references', projectId] })
       toast({
         title: marcada ? 'Virou referência' : 'Saiu das referências',
         description: marcada

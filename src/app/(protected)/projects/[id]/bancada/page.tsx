@@ -12,7 +12,7 @@ import * as React from 'react'
 import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
-import { usePageConfig } from '@/hooks/use-page-config'
+import { usePageMetadata } from '@/contexts/page-metadata'
 import { BancadaCompositor } from '@/components/bancada/bancada-compositor'
 import { BancadaFila } from '@/components/bancada/bancada-fila'
 import { useBancadaStore } from '@/stores/bancada-store'
@@ -32,16 +32,22 @@ export default function BancadaPage() {
       ).length,
   )
 
-  usePageConfig(
-    'Bancada',
-    'Monte a leva, gere as artes e mande para a agenda.',
-    [
-      { label: 'Dashboard', href: '/studio' },
-      { label: 'Projetos', href: '/projects' },
-      valido ? { label: `Projeto ${projectId}`, href: `/projects/${projectId}` } : undefined,
-      { label: 'Bancada' },
-    ].filter(Boolean) as { label: string; href?: string }[],
-  )
+  /*
+    Sem título, sem descrição e sem trilha: o mesmo que a página do projeto e a
+    agenda fazem. A faixa do `PageHeader` só some quando os TRÊS faltam — com
+    título definido ela renderiza mesmo com `showBreadcrumbs: false`, e era isso
+    que empurrava o menu do projeto para baixo só nesta tela.
+
+    O rótulo também era redundante: o item aceso no menu já diz "Bancada".
+
+    Restaurar no unmount é obrigatório — `useSetPageMetadata` não tem limpeza
+    própria, e sair daqui deixaria as outras páginas sem trilha.
+  */
+  const { setMetadata } = usePageMetadata()
+  React.useEffect(() => {
+    setMetadata({ showBreadcrumbs: false })
+    return () => setMetadata({ showBreadcrumbs: true })
+  }, [setMetadata])
 
   if (!valido) {
     return (
