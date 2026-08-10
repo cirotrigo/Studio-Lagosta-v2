@@ -12,11 +12,12 @@
 import * as React from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
-import { Loader2, Sparkles, Trash2, Calendar, RefreshCw, ExternalLink } from 'lucide-react'
+import { Loader2, Sparkles, Trash2, Calendar, RefreshCw, ExternalLink, Maximize2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
+import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -94,12 +95,47 @@ function Card({
 
   const quandoTexto = quando.data && quando.hora ? `${quando.data} ${quando.hora}` : ''
 
+  // Prévia: só o que JÁ virou arte. Miniatura de referência não entra — ver a
+  // foto crua em tela cheia não ajuda a decidir se a peça está boa.
+  const [previewAberta, setPreviewAberta] = React.useState(false)
+  const [previewInicial, setPreviewInicial] = React.useState<number | undefined>()
+  const slidesDaPreview: PreviewSlide[] = React.useMemo(() => {
+    if (ehCarrossel) {
+      return slides
+        .filter((s) => s.resultUrl)
+        .map((s) => ({
+          ordem: s.ordem,
+          url: s.resultUrl!,
+          legenda: s.copy.length > 0 ? s.copy.join(' · ') : 'capa (foto pura)',
+        }))
+    }
+    return item.resultUrl
+      ? [{ ordem: 1, url: item.resultUrl, legenda: item.copy.join(' · ') || undefined }]
+      : []
+  }, [ehCarrossel, slides, item.resultUrl, item.copy])
+
+  const podeVer = slidesDaPreview.length > 0
+  const abrirPreview = (ordem?: number) => {
+    if (!podeVer) return
+    setPreviewInicial(ordem)
+    setPreviewAberta(true)
+  }
+
   return (
     <div className="flex gap-3 rounded-xl border border-border/60 bg-card/40 p-3">
       {/* Miniatura em largura FIXA, sem variante responsiva: `sm:w-28` e
           `w-[7rem]` não geram CSS neste repo (medido em 09/08/2026 — a imagem
           ficava `w-full` e engolia o card). `w-28`/`h-36` geram. */}
-      <div className="relative h-36 w-28 flex-shrink-0 overflow-hidden rounded-lg bg-muted/40">
+      <button
+        type="button"
+        onClick={() => abrirPreview()}
+        disabled={!podeVer}
+        title={podeVer ? 'Ver em tamanho grande' : undefined}
+        className={cn(
+          'relative h-36 w-28 flex-shrink-0 overflow-hidden rounded-lg bg-muted/40',
+          podeVer && 'cursor-zoom-in ring-offset-background hover:ring-2 hover:ring-primary/50',
+        )}
+      >
         {capa ? (
           <Image src={capa} alt="" fill sizes="112px" className="object-cover" unoptimized />
         ) : null}
@@ -108,12 +144,17 @@ function Card({
             <Loader2 className="h-5 w-5 animate-spin text-primary" />
           </div>
         )}
-        {!item.resultUrl && item.status !== 'gerando' && capa && (
+        {!podeVer && item.status !== 'gerando' && capa && (
           <span className="absolute bottom-1 left-1 rounded bg-background/80 px-1.5 py-0.5 text-[10px]">
             📷 referência
           </span>
         )}
-      </div>
+        {podeVer && (
+          <span className="absolute bottom-1 right-1 rounded bg-background/80 p-1">
+            <Maximize2 className="h-3 w-3" />
+          </span>
+        )}
+      </button>
 
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
@@ -146,17 +187,23 @@ function Card({
         {ehCarrossel && slides.length > 0 && (
           <div className="flex flex-wrap gap-1.5 pt-0.5">
             {slides.map((s) => (
-              <div
+              <button
                 key={s.ordem}
+                type="button"
+                disabled={!s.resultUrl}
+                onClick={() => abrirPreview(s.ordem)}
                 title={
                   s.erro
                     ? `Slide ${s.ordem}: ${s.erro}`
-                    : s.copy.length > 0
-                      ? `Slide ${s.ordem}: ${s.copy.join(' · ')}`
-                      : `Slide ${s.ordem}: capa (foto pura)`
+                    : s.resultUrl
+                      ? `Ver o slide ${s.ordem} grande`
+                      : s.copy.length > 0
+                        ? `Slide ${s.ordem}: ${s.copy.join(' · ')}`
+                        : `Slide ${s.ordem}: capa (foto pura)`
                 }
                 className={cn(
                   'relative h-14 w-11 overflow-hidden rounded border',
+                  s.resultUrl && 'cursor-zoom-in hover:ring-2 hover:ring-primary/50',
                   s.erro
                     ? 'border-destructive'
                     : s.resultUrl
@@ -180,7 +227,7 @@ function Card({
                     <Loader2 className="h-3 w-3 animate-spin text-primary" />
                   </span>
                 )}
-              </div>
+              </button>
             ))}
           </div>
         )}
@@ -280,6 +327,18 @@ function Card({
           )}
         </div>
       </div>
+
+      <BancadaPreview
+        slides={slidesDaPreview}
+        inicial={previewInicial}
+        open={previewAberta}
+        onOpenChange={setPreviewAberta}
+        titulo={
+          ehCarrossel
+            ? `Carrossel — ${item.legenda?.slice(0, 60) || 'prévia'}`
+            : (item.copy[0] ?? 'Prévia')
+        }
+      />
     </div>
   )
 }
