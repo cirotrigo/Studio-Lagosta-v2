@@ -33,9 +33,17 @@ import {
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
-import { comporLogo, instrucaoAreaReservada, type LogoCorner } from '@/lib/ai/logo-compositor'
-import { decodificarGuia } from '@/lib/ai/carousel-guide-decoder'
+import {
+  comporLogo,
+  instrucaoAreaReservada,
+  instrucaoLogoPeloModelo,
+  type LogoCorner,
+  type LogoMode,
+} from '@/lib/ai/logo-compositor'
+import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
+import { checarProporcao, conferirLogo, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
+import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
 
@@ -49,15 +57,26 @@ const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024
 
 const MAX_GENERATION_ATTEMPTS = 2
 /**
- * Folga sobre a duração MEDIDA da primeira geração para decidir a segunda.
+ * Margem ADITIVA sobre a duração MEDIDA da geração anterior, para decidir a
+ * retentativa.
  *
- * Um teto fixo é chute: em 09/08/2026 o formato feed levou 131s e a
- * retentativa começou com 117s de orçamento — abortou no meio, queimando dois
- * minutos e a chamada da OpenAI para nada. Medir a primeira e exigir esse
- * tempo (com folga) faz o runner ou retentar de verdade, ou falhar rápido
- * dizendo o motivo.
+ * O princípio de 09/08/2026 continua: medir a primeira e exigir esse tempo, em
+ * vez de um teto fixo — foi um teto de 45s que fez a retentativa abortar no
+ * meio quando a geração levava 131s, queimando dois minutos e uma chamada da
+ * OpenAI para terminar no mesmo FAILED.
+ *
+ * A folga de 1,2× era proporcional ao tempo de GERAÇÃO, mas o que se gasta
+ * depois dela não escala com ela: é a checagem de texto (~5-10s) mais o QA por
+ * visão (~5-10s). Numa geração de 2 minutos, 20% viram 24s de exigência a mais
+ * sem nada para cobrir — e em 10/08 isso recusou uma retentativa que cabia,
+ * por 0,4 segundo (geração 109,5s, restavam 131s, exigiu 131,4s).
+ *
+ * ⚠️ Isto recupera só os casos de borda. O teto real é o `maxDuration = 300`
+ * da rota: duas gerações de ~120s não cabem numa invocação, e nenhuma folga
+ * resolve isso. A saída estrutural é retentar em OUTRA invocação (padrão da
+ * fila de render), não espremer esta.
  */
-const RETRY_FOLGA = 1.2
+const MARGEM_POS_GERACAO_MS = 20_000
 /**
  * Canto reservado para a logo. Fixo (e não escolhido pela medição de calma)
  * porque o prompt precisa saber ONDE deixar limpo ANTES de gerar — medir
@@ -108,6 +127,13 @@ export interface ArtGenerationJobArgs {
   carrossel?: CarouselMeta | null
   /** URL da arte do guia, resolvida pelo serviço (evita ida ao banco aqui). */
   guideResultUrl?: string | null
+  /**
+   * Quem põe a logo na peça. `compor` (default) cola o PNG oficial com sharp
+   * depois da geração; `modelo` manda o arquivo como referência e pede que o
+   * modelo o DESENHE — é o que o insta-automatico faz, e integra melhor à
+   * composição ao custo do risco de distorção.
+   */
+  logoMode?: LogoMode
 }
 
 interface LoadedRef {
@@ -121,6 +147,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   const startedAt = Date.now()
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
   let promptUsado: string | null = null
+  /** Registro atômico: qual referência de marca o modelo recebeu de fato. */
+  let brandCardOrigem: 'manual-designer' | 'card-gerado' | null = null
 
   try {
     const brand = await loadBrandContext(args.projectId)
@@ -180,10 +208,41 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // ── Referência de estilo automática (artes aprovadas, em rodízio) ────
+    //
+    // Só quando ninguém escolheu uma à mão, e nunca no carrossel: ali quem
+    // manda no visual é o slide-guia, e uma segunda referência de estilo
+    // competiria com ele exatamente na coisa que o LOOK SPINE tenta travar.
+    //
+    // Uma por vez, sempre a MENOS USADA — referência fixa faz toda peça sair
+    // igual, que é o problema que este mecanismo existe para não criar.
+    let styleRefUsada: string | null = null
+    if (
+      args.track === 'arte' &&
+      !args.carrossel &&
+      !loadedRefs.some((r) => r.role === 'style')
+    ) {
+      const escolhida = await escolherReferenciaDeEstilo(args.projectId).catch(() => null)
+      if (escolhida) {
+        try {
+          const source = await fetchImageSource(escolhida.resultUrl)
+          const sane = await sanitizeInput(source.buffer, MAX_REF_DIM)
+          loadedRefs.push({ role: 'style', label: 'arte aprovada desta marca', ...sane })
+          styleRefUsada = escolhida.generationId
+          console.log(
+            `[arte-ia.bg] referência de estilo do rodízio: ${escolhida.generationId}` +
+              (escolhida.inedita ? ' (inédita)' : ''),
+          )
+        } catch (error) {
+          console.warn('[arte-ia.bg] referência de estilo não baixou — seguindo sem ela:', error)
+        }
+      }
+    }
+
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
-    let guiaDescrito: string | null = null
+    let guiaLido: GuiaLido | null = null
     if (args.guideResultUrl) {
       try {
         const guia = await fetchImageSource(args.guideResultUrl)
@@ -192,30 +251,68 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         // A imagem sozinha deixa o modelo decidir o que é essencial; a
         // descrição por visão transforma "copie o estilo" em lista de
         // decisões explícitas. Indisponível, o LOOK SPINE textual segue.
-        guiaDescrito = await decodificarGuia(sane.buffer)
-        if (guiaDescrito) console.log('[arte-ia.bg] guia decodificado para o LOOK SPINE')
+        guiaLido = await decodificarGuia(sane.buffer)
+        if (guiaLido) {
+          console.log(
+            `[arte-ia.bg] guia decodificado para o LOOK SPINE` +
+              (guiaLido.elementosGraficos.length > 0
+                ? ` | elementos gráficos a replicar: ${guiaLido.elementosGraficos.join('; ')}`
+                : ' | guia sem elemento gráfico'),
+          )
+        }
       } catch (error) {
         console.warn('[arte-ia.bg] slide-guia não baixou — o slide sai sem referência de série:', error)
       }
     }
 
     // ── Referências do sistema: brand card (só na trilha `arte`) ─────────
-    // A logo NÃO entra como referência para o modelo desenhar: ela é composta
-    // depois (logo-compositor). O card mostra a logo apenas para o modelo
-    // reconhecer a marca, e o prompt proíbe reproduzi-la.
+    // No modo `compor` (default) a logo NÃO vai ao modelo para ser desenhada:
+    // ela é colada depois (logo-compositor), e o card só serve para o modelo
+    // RECONHECER a marca. No modo `modelo`, o arquivo oficial entra como
+    // referência e o prompt manda reproduzi-lo — é o caminho do
+    // insta-automatico, opt-in aqui.
+    // Default `modelo` desde 10/08/2026, por decisão do Ciro apoiada em teste
+    // real: a marca desenhada a partir do arquivo oficial saiu fiel e integrou
+    // melhor que a colagem — e o modo `compor` produzia DUAS logos, porque o
+    // modelo desenha a dele mesmo com o "DO NOT DRAW".
+    const logoMode: LogoMode = args.logoMode ?? 'modelo'
     let logoParaCompor: Buffer | null = null
+    /** Arquivo oficial guardado para o QA conferir o que o modelo desenhou. */
+    let logoOficialParaConferir: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {
         console.warn('[arte-ia.bg] brand card falhou — seguindo sem ele:', error)
         return null
       })
       if (card) {
-        loadedRefs.push({ role: 'brand-card', buffer: card.buffer, mimeType: card.mimeType })
+        brandCardOrigem = card.origem
+        loadedRefs.push({
+          role: 'brand-card',
+          buffer: card.buffer,
+          mimeType: card.mimeType,
+          // O rótulo entra no preâmbulo: o manual do designer é um documento
+          // de marca de verdade, e dizer isso muda o peso que o modelo dá.
+          label: card.origem === 'manual-designer' ? 'manual oficial de identidade' : undefined,
+        })
       }
       if (brand?.logoUrl) {
         try {
           const logo = await fetchImageSource(brand.logoUrl)
-          logoParaCompor = logo.buffer
+          if (logoMode === 'modelo') {
+            // Vai ao modelo em vez de esperar a composição. O preâmbulo do
+            // papel `logo` precisa mudar de tom junto (ver buildReferencePreamble).
+            loadedRefs.push({
+              role: 'logo',
+              buffer: logo.buffer,
+              mimeType: logo.contentType || 'image/png',
+              label: 'arquivo oficial — reproduzir fielmente',
+            })
+            // Guardado para o QA comparar o que o modelo desenhou com o
+            // original — é o que substitui a garantia que a colagem dava.
+            logoOficialParaConferir = logo.buffer
+          } else {
+            logoParaCompor = logo.buffer
+          }
         } catch (error) {
           console.warn('[arte-ia.bg] logo não baixou — a arte sai sem marca:', error)
         }
@@ -266,9 +363,17 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
-        // Só reserva área quando existe logo para colar lá; sem logo, pedir
-        // um canto vazio seria desperdiçar composição à toa.
-        blocoLogo: logoParaCompor ? instrucaoAreaReservada(LOGO_CORNER) : null,
+        // Três estados: colar depois (reserva o canto), o modelo desenhar
+        // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
+        blocoLogo: logoParaCompor
+          ? instrucaoAreaReservada(LOGO_CORNER)
+          : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
+            ? // Canto FIXO só no slide irmão de carrossel: ali o LOOK SPINE
+              // manda repetir o guia, e marca pulando de canto entre slides é
+              // o defeito que ele existe para evitar. Na peça avulsa o canto é
+              // escolha do modelo, que é quem enxerga onde a foto está calma.
+              instrucaoLogoPeloModelo(args.carrossel ? LOGO_CORNER : null)
+            : null,
         carrossel: args.carrossel
           ? {
               slideOrder: args.carrossel.slideOrder,
@@ -277,7 +382,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               // padrão que os demais copiam. A capa é foto pura e não conta.
               ehGuia: !args.carrossel.guideGenerationId,
               temGuia: !!args.guideResultUrl,
-              descricaoDoGuia: guiaDescrito,
+              descricaoDoGuia: guiaLido?.descricao ?? null,
+              elementosDoGuia: guiaLido?.elementosGraficos ?? null,
             }
           : null,
       })
@@ -287,18 +393,33 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     promptUsado = prompt
     console.log(`[arte-ia.bg] prompt pronto (${prompt.length} chars, trilha ${args.track})`)
 
-    // ── Geração (+ verificação de texto na trilha `arte`) ────────────────
+    // ── Geração (+ verificação de texto e QA na trilha `arte`) ───────────
     const expectedTexts = args.track === 'arte' ? args.copy : []
     let resultBuffer: Buffer | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
     let ultimaGeracaoMs = 0
+    /** Último QA rodado — vai para o registro atômico mesmo quando reprova. */
+    let qaInfo: Record<string, unknown> = {}
+    let ultimoQaMotivo: string | null = null
+    /**
+     * A melhor peça REPROVADA até aqui. Existe porque reprovar não pode
+     * significar jogar fora: quando a retentativa não acontece (orçamento), é
+     * ela que é entregue, com a ressalva anotada.
+     */
+    let melhorCandidato: {
+      buffer: Buffer
+      ressalva: string
+      aspecto: Awaited<ReturnType<typeof checarProporcao>>
+      visual: Awaited<ReturnType<typeof inspecionarArte>> | null
+      logoCheck: Awaited<ReturnType<typeof conferirLogo>> | null
+    } | null = null
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
       if (attempt > 1) {
-        const precisa = Math.max(MIN_RETRY_BUDGET_MS, Math.round(ultimaGeracaoMs * RETRY_FOLGA))
+        const precisa = Math.max(MIN_RETRY_BUDGET_MS, ultimaGeracaoMs + MARGEM_POS_GERACAO_MS)
         if (remainingMs < precisa) {
           console.warn(
             `[arte-ia.bg] sem orçamento para a tentativa ${attempt}: restam ${Math.round(remainingMs / 1000)}s e a geração anterior levou ${Math.round(ultimaGeracaoMs / 1000)}s — parando em vez de abortar no meio`,
@@ -312,12 +433,26 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
 
+      // ── QA 1: proporção. Roda ANTES da visão porque é local, instantâneo e
+      // pega o defeito mais caro. O `resize(fit: 'cover')` da finalização
+      // CORTA sem avisar quando a proporção diverge, e o corte come justamente
+      // a faixa onde o texto mora. Assert, nunca resize de proporção errada.
+      const aspecto = await checarProporcao(candidate, args.finalSize)
+      if (!aspecto.ok) {
+        ultimoQaMotivo = `proporção ${aspecto.largura}x${aspecto.altura} diverge ${(aspecto.desvio * 100).toFixed(0)}% da pedida (${args.finalSize.width}x${args.finalSize.height})`
+        qaInfo = { qa: 'failed', qaMotivo: ultimoQaMotivo, qaAspecto: { ...aspecto } }
+        attemptsLog.push({ attempt, generationMs, qa: 'aspecto', ok: false, ...aspecto })
+        console.warn(`[arte-ia.bg] tentativa ${attempt}: ${ultimoQaMotivo} — regerando em vez de cortar`)
+        continue
+      }
+
       if (expectedTexts.length === 0) {
         resultBuffer = candidate
         textCheckInfo =
           args.track === 'arte'
             ? { textCheck: 'skipped', textCheckReason: 'peça sem texto (capa pura)' }
             : { textCheck: 'skipped', textCheckReason: 'trilha imagem — peça não leva texto' }
+        qaInfo = { qa: 'passed', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
         break
       }
 
@@ -330,6 +465,62 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           `[arte-ia.bg] tentativa ${attempt}: geração ${(generationMs / 1000).toFixed(1)}s, checagem ${(checkMs / 1000).toFixed(1)}s → ${check.passed ? 'texto OK' : `divergente (${check.missing.length})`}`,
         )
         if (check.passed) {
+          // ── QA 2: legibilidade e texto cortado na borda. Só faz sentido em
+          // peça COM texto, e só depois de o texto estar certo — inspecionar
+          // arte que já vai ser regerada é chamada jogada fora.
+          const visual = await inspecionarArte(candidate)
+
+          // A marca só é conferida quando foi o MODELO que a desenhou. No modo
+          // `compor` o PNG oficial é colado, e conferir isso seria conferir um
+          // `cp`.
+          const logoCheck =
+            logoMode === 'modelo' && logoOficialParaConferir
+              ? await conferirLogo(candidate, logoOficialParaConferir)
+              : null
+
+          qaInfo = {
+            qa: visual.pulada ? 'skipped' : visual.aprovada && logoCheck?.ok !== false ? 'passed' : 'failed',
+            qaResumo: resumirQA(aspecto, visual),
+            qaAspecto: { ...aspecto },
+            qaVisual: visual.detalhe ?? null,
+            ...(logoCheck ? { qaLogo: logoCheck.detalhe ?? null, qaLogoPulada: logoCheck.pulada } : {}),
+            ...(visual.motivo ? { qaMotivo: visual.motivo } : {}),
+          }
+          console.log(
+            `[arte-ia.bg] tentativa ${attempt}: ${resumirQA(aspecto, visual)}` +
+              (logoCheck
+                ? ` | logo ${logoCheck.pulada ? 'não conferida' : logoCheck.ok ? 'fiel' : `DIVERGENTE (${logoCheck.detalhe?.divergencias.join('; ')})`}`
+                : ''),
+          )
+
+          const ehUltima = attempt >= MAX_GENERATION_ATTEMPTS
+          if ((!visual.aprovada || logoCheck?.ok === false) && !ehUltima) {
+            ultimoQaMotivo =
+              logoCheck?.ok === false
+                ? `logo divergente: ${logoCheck.detalhe?.divergencias.join('; ') || 'não confere com o arquivo oficial'}`
+                : visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
+            // ⚠️ GUARDA a peça antes de tentar de novo. O `continue` aposta numa
+            // retentativa que o orçamento pode recusar logo em seguida — e foi
+            // isso que jogou fora DUAS artes prontas do Espeto em 10/08: texto
+            // certo, proporção certa, e o único senão era a fidelidade da logo.
+            // Arte com ressalva vale mais que arte nenhuma, e o crédito já foi
+            // gasto de qualquer forma.
+            melhorCandidato = { buffer: candidate, ressalva: ultimoQaMotivo, aspecto, visual, logoCheck }
+            continue
+          }
+          if (logoCheck?.ok === false) {
+            console.warn(
+              `[arte-ia.bg] entregando com logo divergente (última tentativa): ${logoCheck.detalhe?.divergencias.join('; ')}`,
+            )
+          }
+          // Na última tentativa a peça é entregue mesmo com ressalva: o texto
+          // está certo, e descartar arte legível-com-ressalva é pior do que
+          // entregá-la com o defeito anotado para quem revisa.
+          if (!visual.aprovada) {
+            console.warn(
+              `[arte-ia.bg] entregando com ressalva de QA (última tentativa): ${visual.detalhe?.problemas.join('; ')}`,
+            )
+          }
           resultBuffer = candidate
           textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
           break
@@ -348,8 +539,33 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           textCheckReason: `visão indisponível: ${visionError instanceof Error ? visionError.message : String(visionError)}`,
           textCheckAttempts: attemptsLog,
         }
+        qaInfo = { qa: 'skipped', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
         break
       }
+    }
+
+    // Reprovado pelo QA e sem retentativa: entrega o guardado com a ressalva.
+    // Falhar aqui significaria cobrar o crédito e não entregar nada — e a peça
+    // existe, com o texto certo e a proporção certa.
+    if (!resultBuffer && melhorCandidato) {
+      console.warn(`[arte-ia.bg] entregando com ressalva de QA: ${melhorCandidato.ressalva}`)
+      resultBuffer = melhorCandidato.buffer
+      textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
+      qaInfo = {
+        qa: 'failed',
+        qaEntregueComRessalva: true,
+        qaMotivo: melhorCandidato.ressalva,
+        qaResumo: resumirQA(melhorCandidato.aspecto, melhorCandidato.visual),
+        qaAspecto: { ...melhorCandidato.aspecto },
+        qaVisual: melhorCandidato.visual?.detalhe ?? null,
+        qaLogo: melhorCandidato.logoCheck?.detalhe ?? null,
+      }
+    }
+
+    if (!resultBuffer && ultimoQaMotivo && lastMissing.length === 0) {
+      // Só chega aqui o que NÃO produziu peça aproveitável — proporção errada,
+      // que é o único QA sem candidato guardado (cortar seria pior que falhar).
+      throw new Error(`QA reprovou após ${attemptsLog.length} tentativa(s): ${ultimoQaMotivo}`)
     }
 
     if (!resultBuffer) {
@@ -368,7 +584,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // A logo REAL entra aqui, depois do resize — nunca desenhada pelo modelo.
     // Falha ao compor não derruba a arte: ela sai sem marca e o aviso fica
     // gravado, porque arte sem logo ainda é editável e uma logo inventada não.
-    let logoInfo: Record<string, unknown> = { logoComposta: false }
+    let logoInfo: Record<string, unknown> = { logoComposta: false, logoMode }
     if (logoParaCompor) {
       try {
         const comLogo = await comporLogo(finalBuffer, logoParaCompor, {
@@ -376,13 +592,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         })
         finalBuffer = comLogo.buffer
         logoInfo = {
+          logoMode,
           logoComposta: true,
           logoCanto: comLogo.corner,
           logoMudouDeCanto: comLogo.moveu,
+          logoContraste: comLogo.contraste,
         }
         console.log(
           `[arte-ia.bg] logo oficial composta no canto ${comLogo.corner}` +
-            (comLogo.moveu ? ` (o canto reservado ${LOGO_CORNER} estava ocupado)` : ''),
+            (comLogo.moveu ? ` (o canto reservado ${LOGO_CORNER} estava ocupado)` : '') +
+            (comLogo.contraste !== null ? ` | contraste ${comLogo.contraste.toFixed(0)}` : ''),
         )
       } catch (logoError) {
         const msg = logoError instanceof Error ? logoError.message : String(logoError)
@@ -419,7 +638,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       promptIssues,
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
       autoAnchorId: autoAnchorUsada,
+      styleRefId: styleRefUsada,
+      brandCardOrigem,
       elapsedSeconds,
+      ...qaInfo,
       ...logoInfo,
       ...textCheckInfo,
     })
@@ -437,6 +659,10 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       },
     })
     console.log(`[arte-ia.bg] concluído em ${elapsedSeconds}s → ${blob.url}`)
+
+    // Rodízio: a referência só vai para o fim da fila depois de a arte existir.
+    // Marcar antes faria uma geração que falhou "gastar" a referência.
+    if (styleRefUsada) await registrarUsoDaReferencia(styleRefUsada)
 
     // Dedução DEPOIS do sucesso e não-fatal (regra da casa desde a melhoria).
     try {

@@ -822,13 +822,24 @@ inteiro está em `docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md`.
 
 Regras que valem para código novo:
 
-- **A LOGO NUNCA é desenhada pela IA.** Modelo de imagem distorce logotipo — em
-  09/08 o gpt-image INVENTOU a logomarca do By Rock. O prompt proíbe desenhar
-  qualquer marca e o sistema compõe o PNG oficial com sharp
-  (`logo-compositor.ts`). Reservar área no prompt não basta: o modelo escreve
-  por cima, então o compositor mede o desvio-padrão de luminância dos 4 cantos
-  e foge do bloco de texto. Falha ao compor deixa a arte SEM marca, nunca com
-  uma inventada.
+- **A logo NUNCA é INVENTADA — mas desde 10/08/2026 ela é DESENHADA pelo
+  modelo** (`logoMode: 'modelo'`, o default). A regra anterior era "nunca
+  desenhada pela IA", e nasceu do caso certo pelo motivo errado: em 09/08 o
+  gpt-image inventou a logomarca do By Rock porque **nunca recebeu o arquivo**.
+  Recebendo, ele reproduz — teste real de 10/08 no mesmo By Rock: palheta,
+  "By Rock" manuscrito e STEAKHOUSE conferem, e a marca integra melhor à
+  composição do que a colagem.
+  O que sustenta a troca é a rede: `conferirLogo` (`creative-qa.ts`) compara
+  por visão o que o modelo desenhou com o arquivo oficial e **regera** quando
+  diverge ou quando aparece mais de uma. Marca ausente NÃO reprova — o prompt
+  autoriza deixar o canto vazio, e arte sem marca é editável.
+  **Nunca desligue essa conferência sem voltar o default para `compor`.**
+- **`logoMode: 'compor'` (colar o PNG com sharp) continua existindo** e é o
+  caminho de fidelidade garantida — use em marca de wordmark fino, onde o
+  modelo tende a errar letra. Mas saiba do efeito colateral medido: **o modelo
+  desenha a logo mesmo com o "DO NOT DRAW"**, então a peça sai com DUAS (a
+  dele, no canto reservado, e a colada). Enquanto isso não for resolvido no
+  prompt, `compor` exige olhar a peça.
 - **`Project.logoUrl` está NULL nos 10 projetos** — a logo mora na tabela
   `Logo` (aba Assets). `loadBrandContext` já cai nela; consumidor novo de
   identidade usa o loader, nunca um `select` próprio.
@@ -858,6 +869,106 @@ Regras que valem para código novo:
   aprender com cada run.
 - **Migration continua sendo escrita à mão + `db:deploy`** (as duas desta
   sessão foram assim).
+
+### Crivo, QA e coerência de carrossel (10/08/2026)
+
+Fecha as Fases 4 a 6 do plano. Detalhe em
+`docs/SESSAO-2026-08-10-FASES-4-A-6.md`; o desligamento do Claudinho está
+documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
+
+- 🔴 **`DATABASE_URL=… npx prisma …` NÃO aponta para o banco que você escreveu:
+  o Prisma CLI ignora a variável inline e usa o `.env`, que é PRODUÇÃO.**
+  Provado com uma URL inválida de propósito — o CLI reportou o endpoint de
+  produção mesmo assim. É pior que a armadilha do `dotenv-cli` já registrada,
+  porque a incantação parece explícita. **Sempre `npx tsx scripts/dev-db.ts …`**,
+  que compara o compute e recusa produção.
+- **O manual do designer vence o card auto-gerado.** `Project.brandManualUrl`
+  (upload) tem prioridade absoluta em `getBrandReferenceCard` — é a prática que
+  o insta-automatico já tinha, e a diferença de qualidade é grande. Sem manual,
+  cai no card desenhado pelo Studio.
+- **`BrandDNA.approvalChecklist` NUNCA entra em prompt de geração.** É a única
+  seção do DNA que não é instrução para o modelo: são perguntas binárias que
+  gente lê antes de agendar. Mora em coluna própria, e não dentro de
+  `contentRules`, justamente porque `contentRules` vai verbatim para o prompt.
+  A polaridade é MISTA (há pergunta que reprova no "sim" e outra no "não"):
+  não construa veredito automático em cima dela.
+- **Proporção se confere com assert, nunca com resize.** A finalização usa
+  `resize(fit: 'cover')`, que CORTA em silêncio quando a proporção diverge — e
+  o corte come a faixa do texto. `checarProporcao` (`creative-qa.ts`) roda antes,
+  com tolerância de 2%; fora dela, regera em vez de cortar.
+- **QA por visão reprova execução, nunca gosto**: só legibilidade e texto
+  cortado na borda. Reprovou na última tentativa, a peça é ENTREGUE com a
+  ressalva no `fieldValues` — o texto está certo, e descartar arte
+  legível-com-ressalva é pior do que entregar anotada. Visão fora do ar nunca
+  derruba a peça.
+- 🔴 **QA que reprova PRECISA guardar o candidato.** O `continue` para retentar
+  aposta num orçamento que pode ser recusado logo depois — e aí não sobra nada:
+  crédito gasto, arte pronta, FAILED. Quatro artes do Espeto morreram assim em
+  10/08. Sempre `melhorCandidato`, entregue com a ressalva quando a retentativa
+  não acontece.
+- **A retentativa quase nunca acontece no formato story**: geração ~110-128s
+  contra `maxDuration = 300` da rota, e duas não cabem numa invocação. A margem
+  é ADITIVA (o que a checagem consome, ~20s), não proporcional — mas isso só
+  recupera casos de borda. `MAX_GENERATION_ATTEMPTS = 2` é 1 na prática até
+  alguém retentar em OUTRA invocação.
+- **O teto de texto da GERAÇÃO é de ÁREA (~1/5 do quadro), o da MELHORIA é de
+  ALTURA (15–20%, nunca >25%)** — e a divergência é de propósito. Um teto de
+  altura proíbe a coluna alta e estreita, que é o layout que o modelo escolhe
+  quando o espaço livre da foto é vertical (as artes aprovadas do Espeto fazem
+  isso). `art-direction.ts` é protegido: não alinhe os dois sem repetir o teste
+  de 29-30/07.
+- **O prompt precisa DAR AUTONOMIA, não só limites.** Regra 10 de
+  `buildArtePrompt`: o modelo lê a foto e põe o texto onde ela é calma, variando
+  a diagramação entre peças. Sem essa licença, dez regras viram receita e todas
+  as peças saem iguais. Pela mesma razão a logo não tem canto cravado na peça
+  avulsa (só no slide irmão de carrossel, onde o LOOK SPINE manda repetir).
+- **Separador de lista (`·`, `|`) é DIAGRAMAÇÃO, não conteúdo**: na comparação
+  de texto ele vira ESPAÇO. Virando ponto, a arte que desenhava o mesmo
+  conteúdo quebrando a linha nunca casava com o esperado.
+- **No slide IRMÃO do carrossel, o guia vence o DNA e vem ANTES dele.**
+  `visualStyle` e `composition` saem do prompt (o guia já é a marca aplicada e
+  aprovada; descrevê-la em prosa é concorrência), e o LOOK SPINE sobe. Medido:
+  o arranjo anterior punha o LOOK SPINE aos 85% de um prompt de 13 mil chars,
+  atrás de 8,5 mil de DNA. O elemento gráfico do guia entra como ordem curta no
+  TOPO do LOOK SPINE — citar não bastava, ele já era citado 3 vezes.
+- **Descrição de fotografia do DNA não autoriza relumiar a foto.** O prompt
+  injeta `visualStyle` inteiro, e DNA que fala em "luz dramática" convivia com
+  "não reluza". A ressalva explícita existe no bloco de fidelidade — não a
+  remova achando que é redundante.
+- 🔴 **`sharp(x).extract(r).stats()` IGNORA o `extract`** e devolve a
+  estatística da imagem INTEIRA. Materialize o recorte com `.toBuffer()` antes
+  de medir. Foi isso que fez a escolha de canto do `logo-compositor` medir os
+  quatro cantos IGUAIS desde que existe — a logo ia sempre para o canto
+  reservado, e o mecanismo de fugir do bloco de copy nunca funcionou. Vale para
+  qualquer medição por região.
+- **A logo do projeto é a ASSINATURA, não o ícone** (alinhado com o `LOGO_MAP`
+  do insta-automatico em 10/08). Como metade delas é branca (Quintal, TERO e
+  Bacana com luminância 255/255/252), o compositor passou a exigir **contraste**
+  entre a logo e o canto, além de calma: canto claro e liso é o mais calmo do
+  quadro e o pior lugar para logo branca. `isProjectLogo` é singular na prática
+  (`orderBy isProjectLogo desc, take 1`) — marcar duas vira sorteio por
+  `createdAt`.
+- **Artes aprovadas viram referência de estilo, em RODÍZIO** (`styleRefAt` /
+  `styleRefUsedAt` na Generation + `style-references.ts`). Uma por geração,
+  sempre a menos usada, e nunca em carrossel (lá quem manda é o slide-guia).
+  Referência fixa faz toda peça sair igual — o rodízio é o mecanismo, não um
+  detalhe. O uso só é registrado DEPOIS de a arte existir.
+- 🔴 **Em Postgres, `ORDER BY … ASC` é NULLS LAST.** No rodízio isso punha a
+  referência JÁ USADA (timestamp) antes das nunca usadas (NULL), e a mesma arte
+  saía cinco vezes seguidas. Sempre `{ sort: 'asc', nulls: 'first' }` explícito
+  quando "nunca aconteceu" tem de vir primeiro — vale para qualquer fila por
+  "menos usado/mais antigo" no repo.
+- **Módulo consumido pela bancada não pode importar o Prisma.**
+  `parseApprovalChecklist` vive em `src/lib/brand/approval-checklist.ts`, sem
+  dependências, porque `brand-context.ts` puxa `@/lib/db` e a bancada é client
+  (mesma razão de `art-direction.ts`).
+- **`virar-regra` ACRESCENTA, `atualizar-dna` SUBSTITUI.** Correção aprovada na
+  conversa vira linha do DNA com data e motivo, sob o cabeçalho `Regras
+  aprendidas na prática:`. Só grava com `confirmado` — devolve `antes`/`depois`
+  primeiro.
+- **O dev server do painel Browser roda no diretório do projeto original,
+  mesmo em sessão de worktree** (confirmado por `lsof -d cwd`). Mudança feita
+  em worktree não é verificável por ele.
 
 ### Imagem: caixa é janela, não elástico (04/08/2026)
 

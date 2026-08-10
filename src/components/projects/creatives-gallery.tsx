@@ -43,6 +43,8 @@ interface GenerationRecord {
   templateId: number
   fieldValues: Record<string, unknown>
   sourceGenerationId?: string | null
+  /** Marcada como referência de estilo — vira a inspiração das próximas artes. */
+  styleRefAt?: string | null
   resultUrl: string | null
   googleDriveFileId?: string | null
   googleDriveBackupUrl?: string | null
@@ -281,6 +283,46 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
     },
     onError: () => {
       toast({ title: 'Erro ao deletar', description: 'Não foi possível deletar este criativo.', variant: 'destructive' })
+    },
+  })
+
+  /**
+   * Estrela: marca a arte como referência de estilo da marca.
+   *
+   * O estado otimista é local e não invalida a lista: a query é infinita e
+   * paginada, e refazê-la a cada clique jogaria o scroll do usuário para o
+   * topo no meio da curadoria — que é justamente quando ele está clicando
+   * várias estrelas seguidas.
+   */
+  const [styleRefLocal, setStyleRefLocal] = React.useState<Record<string, boolean>>({})
+
+  const styleRefMutation = useMutation({
+    mutationFn: ({ id, marcada }: { id: string; marcada: boolean }) =>
+      api.patch(`/api/generations/${id}`, { styleRef: marcada }),
+    onMutate: ({ id, marcada }) => {
+      setStyleRefLocal((atual) => ({ ...atual, [id]: marcada }))
+      return { id, anterior: styleRefLocal[id] }
+    },
+    onSuccess: (_data, { marcada }) => {
+      // A tela de gestão (Modelos › Artes de referência) lê de outra query.
+      // Sem invalidar aqui, marcar na galeria e ir conferir lá mostrava
+      // "nenhuma arte marcada" — o dado certo escondido atrás do cache.
+      queryClient.invalidateQueries({ queryKey: ['style-references', projectId] })
+      toast({
+        title: marcada ? 'Virou referência' : 'Saiu das referências',
+        description: marcada
+          ? 'As próximas artes desta marca vão se inspirar nela — em rodízio com as outras marcadas.'
+          : 'Ela não será mais enviada como referência.',
+      })
+    },
+    onError: (_e, { id }, contexto) => {
+      // Desfaz o otimismo: estrela acesa sem gravação é pior que estrela apagada.
+      setStyleRefLocal((atual) => ({ ...atual, [id]: contexto?.anterior ?? false }))
+      toast({
+        title: 'Não deu para marcar',
+        description: 'Tente de novo em instantes.',
+        variant: 'destructive',
+      })
     },
   })
 
@@ -1065,6 +1107,13 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onSchedule={() => handleSchedule(generation)}
                   onImprove={() => handleImprove(generation)}
                   isImproved={Boolean(generation.sourceGenerationId)}
+                  isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
+                  onToggleStyleRef={() =>
+                    styleRefMutation.mutate({
+                      id: generation.id,
+                      marcada: !(styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)),
+                    })
+                  }
                   onCompare={
                     generation.sourceGenerationId ? () => handleCompare(generation) : undefined
                   }

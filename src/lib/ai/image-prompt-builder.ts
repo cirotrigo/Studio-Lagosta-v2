@@ -184,8 +184,12 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         )
         break
       case 'logo':
+        // O papel `logo` só entra no image[] quando o modo é `modelo` — no modo
+        // `compor` a logo nem chega ao modelo. Por isso aqui o texto MANDA
+        // reproduzir: um preâmbulo que proibisse desenhar, junto de um bloco de
+        // prompt que manda desenhar, é ordem contraditória.
         lines.push(
-          `${idx} is the official logo${ref.label ? ` (${ref.label})` : ''}, shown for brand recognition only. Do NOT draw it into the piece — the system composites the real file after generation.`,
+          `${idx} is the OFFICIAL LOGO file${ref.label ? ` (${ref.label})` : ''}. Reproduce it in the piece EXACTLY as it appears here — same shape, same proportions, same letterforms, same colors. Never redraw, restyle or simplify it, and never letter the brand name in a different typeface.`,
         )
         break
     }
@@ -329,6 +333,11 @@ export interface BuildArtePromptArgs {
     temGuia: boolean
     /** Camada gráfica do guia, lida por visão (carousel-guide-decoder). */
     descricaoDoGuia?: string | null
+    /**
+     * Elementos gráficos do guia (filete, onda, barra, ícone), soltos. Viram
+     * uma ordem curta no TOPO do LOOK SPINE — ver `buildLookSpine`.
+     */
+    elementosDoGuia?: string[] | null
   } | null
 }
 
@@ -341,12 +350,38 @@ export interface BuildArtePromptArgs {
  * temperatura e direção da luz, tratamento, densidade do overlay, posição do
  * bloco de texto) e deixar variar só o sujeito e os textos.
  */
-export function buildLookSpine(descricaoDoGuia?: string | null): string {
+export function buildLookSpine(descricaoDoGuia?: string | null, elementosDoGuia?: string[] | null): string {
+  const elementos = (elementosDoGuia ?? []).map((e) => e.trim()).filter(Boolean)
+
   const linhas = [
     '[LOOK SPINE — COERÊNCIA ESTRITA DA SÉRIE]',
     'Este slide é uma CÓPIA do layout do slide-guia com outro sujeito e outros textos. Nada mais muda.',
+  ]
+
+  // Os elementos gráficos vão AQUI, no topo e como ordem imperativa — não só
+  // como item 6 e como linha da descrição no rodapé. Medido em 10/08/2026: a
+  // menção ao elemento existia três vezes no prompt e a mais específica caía
+  // aos 98% do texto, atrás de 8,5 mil caracteres de DNA. Citar não bastava:
+  // era preciso citar CEDO e no imperativo.
+  if (elementos.length > 0) {
+    linhas.push(
+      '',
+      `⚠️ DESENHE ESTES ELEMENTOS GRÁFICOS, obrigatoriamente — eles são a assinatura da série e ESTE slide precisa tê-los, iguais aos do guia:`,
+      ...elementos.map((e) => `- ${e}`),
+      'Não são opcionais, não são enfeite do guia e não podem ser substituídos por outro elemento.',
+    )
+  } else if (elementos.length === 0 && descricaoDoGuia) {
+    linhas.push(
+      '',
+      '⚠️ O guia NÃO tem elemento gráfico além do texto: não acrescente filete, onda, barra, moldura nem ícone.',
+    )
+  }
+
+  linhas.push(
     '',
     'REPLIQUE, item a item:',
+  )
+  linhas.push(...[
     '1. POSIÇÃO do bloco de texto: o mesmo canto, a mesma altura, a mesma margem.',
     '2. ALINHAMENTO do texto (à esquerda, centro ou direita): idêntico ao do guia.',
     '3. HIERARQUIA: o mesmo número de níveis de texto, com a mesma proporção de tamanho entre eles.',
@@ -359,7 +394,7 @@ export function buildLookSpine(descricaoDoGuia?: string | null): string {
     'MUDE apenas: o sujeito da fotografia e as palavras da copy desta peça.',
     '⛔ Não "melhore" a diagramação do guia, não reequilibre a composição e não introduza variação para dar ritmo à série. Variação aqui é DEFEITO.',
     'Lado a lado com o guia, este slide precisa parecer diagramado pela mesma pessoa, no mesmo minuto.',
-  ]
+  ])
 
   // A descrição por visão do guia converte "copie o que você vê" em regra
   // verificável — sem ela o modelo escolhe sozinho onde pôr o destaque, e foi
@@ -423,9 +458,18 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
   }
 
   // Regra de fidelidade — a mais forte do sistema de origem, verbatim adaptado.
+  //
+  // A terceira linha existe para desfazer um CONFLITO real deste prompt: mais
+  // abaixo ele injeta o `visualStyle` do DNA inteiro, e o DNA de várias marcas
+  // fala em "luz dramática", "golden hour", "alto contraste". Sem a ressalva, o
+  // modelo lê isso como autorização para relumiar a foto — foi exatamente o que
+  // o insta-automatico apanhou e resolveu com uma frase explícita.
   const fidelidade = [
     '[FIDELIDADE À FOTO]',
-    'A foto do prato/cena é a CENA FINAL da arte. NÃO recrie a cena, NÃO troque nem "melhore" o fundo, NÃO reluza, NÃO adicione nem remova objetos, pessoas ou arquitetura. O dono do restaurante precisa RECONHECER o próprio prato e o próprio salão.',
+    'A foto do prato/cena é a CENA FINAL da arte. NÃO recrie a cena, NÃO troque nem "melhore" o fundo, NÃO invente ambiente novo, NÃO adicione nem remova objetos, pessoas ou arquitetura. O dono do restaurante precisa RECONHECER o próprio prato e o próprio salão — se a arte parecer OUTRO lugar, está reprovada.',
+    'NÃO RELUMIE: direção da luz, temperatura de cor e aparência real do ambiente ficam como estão. Permitido apenas ajuste global MUITO sutil de contraste, exposição e nitidez.',
+    'As descrições de fotografia que aparecerem no DNA desta marca (luz dramática, golden hour, bokeh quente, alto contraste) definem o PADRÃO DE ESCOLHA da foto e a atmosfera da camada gráfica — NUNCA autorizam relumiar ou recriar esta foto.',
+    'Se o enquadramento exigir completar bordas, ESTENDA a própria cena com continuidade perfeita (mesma parede, mesma mesa, mesma luz) — nunca um cenário diferente.',
   ]
   if (args.instrucaoImagem?.trim()) {
     fidelidade.push(
@@ -451,34 +495,109 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
 
   const regras = [
     '[REGRAS DE COMPOSIÇÃO]',
-    '1. A fotografia é a protagonista (~90% da peça); o bloco de texto ocupa no máximo 25% da altura.',
-    '2. O texto mora no espaço LIVRE da foto — nunca sobre o prato, rosto ou assunto principal. Use gradiente de leitura sutil onde o texto pousar.',
-    '3. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
-    '4. Paleta da marca apenas na camada gráfica (textos, destaques); a fotografia mantém as cores reais.',
-    '5. Uma cor de destaque por peça.',
-    '6. Respeite a safe area do formato (story: 200px topo e rodapé livres de informação).',
+    // ÁREA, não altura. A distinção decide o layout: um teto de altura proíbe a
+    // coluna alta e estreita que o modelo escolhe quando o espaço livre da foto
+    // é vertical — e é justamente o layout das artes do Espeto que o Ciro
+    // aprovou em 10/08 (o "A PARTIR DAS 17H" ocupa ~40% da altura numa faixa de
+    // ~35% da largura). O teto de altura vale para a HEADLINE, que é onde o
+    // exagero realmente aparece.
+    '1. A fotografia é a protagonista: TODO o conjunto de texto (título + apoio + serviço + CTA) junto ocupa no máximo ~1/5 do QUADRO. Pode ser uma coluna alta e estreita ou uma faixa baixa e larga — o que a foto permitir.',
+    '2. A headline tem presença MODERADA e editorial: não passa de ~15% da altura do quadro. Hierarquia por PESO, COR e POSIÇÃO — nunca por tamanho. Nunca cartaz de varejo.',
+    // O teto por PALAVRA é do insta-automatico e resolve um vício específico:
+    // sem ele o modelo estica uma palavra sozinha até preencher a largura, e a
+    // peça vira cartaz de varejo mesmo respeitando o teto de altura.
+    '3. Nenhuma palavra isolada passa de ~35% da largura útil — nunca amplie uma palavra sozinha para preencher a linha.',
+    '4. O texto mora no espaço LIVRE da foto — nunca sobre o prato, o rosto ou o assunto principal. Use gradiente de leitura sutil onde o texto pousar, nunca um retângulo chapado.',
+    // Anti-órfã: regra 3 do modo REGENERAR_VISUAL de lá, que existe porque o
+    // defeito aparecia toda semana.
+    '5. Quebras de linha equilibradas: NUNCA deixe uma palavra sozinha na última linha de um bloco. Em manchete, 2 a 3 palavras por linha; em apoio, 4 a 6.',
+    '6. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
+    '7. Paleta da marca apenas na camada gráfica (textos, destaques, filetes, selos); a fotografia mantém as cores reais — não dessature nem recolora madeira, tons de pele, verdes e dourados que já existem na foto.',
+    '8. Uma cor de destaque por peça.',
+    '9. Respeite a safe area do formato (story: 200px de topo e de rodapé livres de informação; feed: margens generosas, nada de texto ou logo encostado na borda).',
+    // A regra que faltava, e a mais importante para o resultado parecer feito
+    // por gente: ONDE o texto pousa é decisão de quem OLHA a foto. As regras
+    // acima são limites; dentro delas, quem diagrama é o modelo. Sem isto o
+    // prompt vira receita e todas as peças saem com o mesmo layout.
+    '10. AUTONOMIA: dentro destes limites, VOCÊ escolhe a composição. Leia a foto e ponha o texto onde ela é calma — o canto vazio, a parede desfocada, a faixa escura. Coluna alta à esquerda, faixa no rodapé, bloco no topo: o que ESTA foto pedir. Varie a diagramação entre peças; não repita o layout da anterior.',
   ]
   sections.push(regras.join('\n'))
+
+  // A paleta em HEX, no texto. A imagem do card mostra as cores, mas o valor
+  // exato o modelo só respeita quando lê — é o que impede destaque em cor
+  // aleatória fora da paleta.
+  if (args.brand && args.brand.colors.length > 0) {
+    sections.push(
+      [
+        '[PALETA — só para a camada gráfica]',
+        args.brand.colors
+          .slice(0, 10)
+          .map((c) => `${c.name}: ${c.hexCode.toUpperCase()}`)
+          .join(' | '),
+        'Texto, filete, selo e overlay usam SOMENTE estas cores. A fotografia não é afetada por esta lista.',
+      ].join('\n'),
+    )
+  }
+
+  // TYPOGRAPHY LOCK também na peça avulsa: era exclusivo do carrossel, mas o
+  // vício que ele corrige — o modelo escolher uma fonte "parecida" — não tem
+  // nada de específico de série.
+  if (args.copy.length > 0 && !carrossel) {
+    const lock = buildTypographyLock(args.brand)
+    if (lock) sections.push(lock)
+  }
 
   // Depois das regras e antes do pedido: a proibição de desenhar logo precisa
   // estar acima do que o cliente pede, porque "coloque a marca" é pedido comum.
   if (args.blocoLogo) sections.push(args.blocoLogo)
 
+  // ── Slide irmão: o GUIA vence o DNA, e vem ANTES dele ────────────────────
+  //
+  // Ordem importa mais do que parece. Medição de 10/08/2026 no By Rock: no
+  // arranjo anterior o LOOK SPINE começava aos 85% de um prompt de 13.008
+  // caracteres, atrás de um bloco de DNA de 8.503 (65% do total), e a linha
+  // que descrevia o elemento gráfico caía aos 98%. Não era falta de menção —
+  // "onda sonora" aparecia três vezes —, era enterro. O gpt-image reescreve o
+  // prompt internamente e responde mal a paredão de regras, defeito que o
+  // insta-automatico já tinha documentado no próprio refactor.
+  //
+  // Num slide irmão o guia JÁ É a marca aplicada e aprovada: `visualStyle` e
+  // `composition` viram concorrência descrevendo em prosa o que a imagem do
+  // guia mostra. Ficam de fora; `contentRules` fica, porque proibição não é
+  // estilo e o guia não a contém.
+  const ehIrmao = !!carrossel?.temGuia
+
+  if (ehIrmao) {
+    const lock = buildTypographyLock(args.brand)
+    if (lock) sections.push(lock)
+    sections.push(buildLookSpine(carrossel!.descricaoDoGuia, carrossel!.elementosDoGuia))
+  }
+
   if (args.brand) {
     const identidade: string[] = [`[IDENTIDADE — ${args.brand.projectName}]`]
-    if (args.brand.dna.visualStyle) identidade.push(`Estilo visual: ${args.brand.dna.visualStyle}`)
-    if (args.brand.dna.composition) identidade.push(`Composição da marca: ${args.brand.dna.composition}`)
-    if (args.brand.dna.contentRules) identidade.push(`Regras da marca (respeite sempre): ${args.brand.dna.contentRules}`)
+    if (!ehIrmao) {
+      if (args.brand.dna.visualStyle) identidade.push(`Estilo visual: ${args.brand.dna.visualStyle}`)
+      if (args.brand.dna.composition) identidade.push(`Composição da marca: ${args.brand.dna.composition}`)
+    }
+    if (args.brand.dna.contentRules) {
+      identidade.push(`Regras da marca (respeite sempre): ${args.brand.dna.contentRules}`)
+      // Escopo da lista negativa — portado do `nuncaBloco` do insta-automatico.
+      // Sem ele, uma regra do tipo "nunca usar vermelho em bloco grande" era
+      // lida como licença para RECOLORIR a foto, ou para omitir um bloco da
+      // copy que citasse algo proibido. A lista governa o que o modelo CRIA.
+      identidade.push(
+        'ESCOPO destas regras: elas proíbem o que VOCÊ cria (camada gráfica) e o que você inventaria de conteúdo. NUNCA são motivo para recolorir, relumiar, recortar ou descartar elementos reais da fotografia, nem para omitir um bloco da COPY.',
+      )
+    }
     if (identidade.length > 1) sections.push(identidade.join('\n'))
   }
 
-  // Carrossel: a tipografia é travada em TODO slide (inclusive o guia, que é
-  // quem estabelece o padrão), e o LOOK SPINE só entra quando já existe um
-  // guia aprovado para copiar.
-  if (carrossel) {
+  // O guia (e a peça avulsa de carrossel sem guia ainda) mantém a tipografia
+  // travada aqui embaixo: é ele que ESTABELECE o padrão, e não tem com quem
+  // competir.
+  if (carrossel && !ehIrmao) {
     const lock = buildTypographyLock(args.brand)
     if (lock) sections.push(lock)
-    if (carrossel.temGuia) sections.push(buildLookSpine(carrossel.descricaoDoGuia))
   }
 
   if (args.pedido?.trim()) {

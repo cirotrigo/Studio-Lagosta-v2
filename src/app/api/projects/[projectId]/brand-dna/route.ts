@@ -33,6 +33,9 @@ const patchSchema = z
     composition: campo,
     visualStyle: campo,
     photoDirection: campo,
+    // Crivo de aprovação: editável como as demais seções, mas NUNCA entra em
+    // prompt de geração — é checklist de revisão humana antes de agendar.
+    approvalChecklist: campo,
   })
   .partial()
   .refine((data) => Object.keys(data).length > 0, {

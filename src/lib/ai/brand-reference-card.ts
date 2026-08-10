@@ -4,9 +4,12 @@
  *
  * Por que uma IMAGEM e não texto: instrução textual de fonte o modelo ignora
  * ou aproxima; referência VISUAL ele copia bem (aprendizado do insta-automatico,
- * que usa o mesmo truque em produção — e cuja versão feita por designer,
- * quando existe, "funciona MUITO melhor que a auto-gerada". O upload de um
- * brand-manual por projeto fica para a Fase 2).
+ * que usa o mesmo truque em produção).
+ *
+ * PRIORIDADE: quando `Project.brandManualUrl` existe, é ELE que vai ao modelo —
+ * o manual feito por designer "funciona MUITO melhor que a auto-gerada", que é
+ * a razão de a coluna existir. O card auto-gerado é o fallback de quem ainda
+ * não subiu manual nenhum.
  *
  * O card mostra: logo oficial, paleta com nome+hex e amostras tipográficas
  * desenhadas com as fontes REAIS do projeto (CustomFont registradas no
@@ -26,7 +29,9 @@ const CACHE_DIR = '/tmp/studio-lagosta-brand-card'
 
 export interface BrandCardResult {
   buffer: Buffer
-  mimeType: 'image/png'
+  mimeType: string
+  /** De onde veio: o manual do designer ou o card que o Studio desenha. */
+  origem: 'manual-designer' | 'card-gerado'
 }
 
 function cacheKey(brand: BrandContext): string {
@@ -47,6 +52,20 @@ function cacheKey(brand: BrandContext): string {
  */
 export async function getBrandReferenceCard(brand: BrandContext | null): Promise<BrandCardResult | null> {
   if (!brand) return null
+
+  // O manual do designer vence o card gerado — sem cache em disco, porque o
+  // Blob já é a cópia permanente e o arquivo é servido de CDN.
+  if (brand.brandManualUrl) {
+    try {
+      const { buffer, contentType } = await fetchImageSource(brand.brandManualUrl)
+      return { buffer, mimeType: contentType || 'image/png', origem: 'manual-designer' }
+    } catch (error) {
+      // Manual quebrado não pode deixar a peça sem referência de marca: cai
+      // para o card gerado, que é pior mas existe.
+      console.warn('[brand-card] manual do designer não carregou — usando o card gerado:', error)
+    }
+  }
+
   const hasAnything = brand.logoUrl || brand.colors.length > 0 || brand.fonts.title || brand.fonts.body
   if (!hasAnything) return null
 
@@ -54,7 +73,7 @@ export async function getBrandReferenceCard(brand: BrandContext | null): Promise
   const cachePath = path.join(CACHE_DIR, `${brand.projectId}-${key}.png`)
   try {
     if (fs.existsSync(cachePath)) {
-      return { buffer: fs.readFileSync(cachePath), mimeType: 'image/png' }
+      return { buffer: fs.readFileSync(cachePath), mimeType: 'image/png', origem: 'card-gerado' }
     }
   } catch {
     // cache é conveniência — falha de leitura só força re-render
@@ -69,7 +88,7 @@ export async function getBrandReferenceCard(brand: BrandContext | null): Promise
     // idem: sem cache ainda funciona
   }
 
-  return { buffer, mimeType: 'image/png' }
+  return { buffer, mimeType: 'image/png', origem: 'card-gerado' }
 }
 
 async function renderCard(brand: BrandContext): Promise<Buffer> {

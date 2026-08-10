@@ -65,10 +65,24 @@ export function descricaoDoGuia(g: GuiaDecodificado): string {
 }
 
 /**
- * Lê o slide-guia e devolve a descrição pronta para o prompt, ou null quando
- * a visão não está disponível (o chamador segue sem ela).
+ * O que o chamador leva do guia: a descrição corrida (vai para o fim do LOOK
+ * SPINE) e os elementos gráficos SOLTOS.
+ *
+ * Os elementos vêm separados porque precisam aparecer como ordem curta e ALTA
+ * no prompt, não só como item de uma lista no rodapé. Medição de 10/08/2026:
+ * num slide irmão do By Rock a linha "onda sonora" caía aos 98% de um prompt
+ * de 13 mil caracteres — citada três vezes e obedecida nenhuma.
  */
-export async function decodificarGuia(imagem: Buffer): Promise<string | null> {
+export interface GuiaLido {
+  descricao: string
+  elementosGraficos: string[]
+}
+
+/**
+ * Lê o slide-guia e devolve o que os irmãos precisam copiar, ou null quando a
+ * visão não está disponível (o chamador segue sem ela).
+ */
+export async function decodificarGuia(imagem: Buffer): Promise<GuiaLido | null> {
   try {
     const { object } = await generateObject({
       model: openai(VISION_MODEL),
@@ -93,7 +107,7 @@ export async function decodificarGuia(imagem: Buffer): Promise<string | null> {
         },
       ],
     })
-    return descricaoDoGuia(object)
+    return { descricao: descricaoDoGuia(object), elementosGraficos: object.elementosGraficos }
   } catch (error) {
     console.warn('[carrossel] decodificação do guia indisponível — seguindo só com o LOOK SPINE:', error)
     return null

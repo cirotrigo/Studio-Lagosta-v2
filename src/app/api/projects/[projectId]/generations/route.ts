@@ -132,6 +132,9 @@ export async function GET(
         templateId: true,
         fieldValues: true,
         sourceGenerationId: true,
+        // A estrela da galeria lê daqui — sem este campo ela nasceria apagada
+        // a cada recarga, mesmo com a arte marcada no banco.
+        styleRefAt: true,
         resultUrl: true,
         googleDriveFileId: true,
         googleDriveBackupUrl: true,

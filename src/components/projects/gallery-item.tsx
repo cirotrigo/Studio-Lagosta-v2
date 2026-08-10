@@ -4,7 +4,7 @@ import * as React from 'react'
 import Image from 'next/image'
 import { motion, useMotionTemplate, useMotionValue } from 'framer-motion'
 import { Button } from '@/components/ui/button'
-import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2 } from 'lucide-react'
+import { Download, Trash2, HardDrive, Loader2, Calendar, Sparkles, Columns2, Star } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { MemberAvatar } from '@/components/members/member-avatar'
 
@@ -25,6 +25,9 @@ interface GalleryItemProps {
   authorClerkId?: string
   /** true quando a Generation tem sourceGenerationId — arte melhorada por IA. */
   isImproved?: boolean
+  /** Marcada como referência de estilo — as próximas artes se inspiram nela. */
+  isStyleRef?: boolean
+  onToggleStyleRef?: () => void
   onToggleSelect: () => void
   onDownload: () => void
   onDelete: () => void
@@ -83,6 +86,8 @@ export function GalleryItem({
   isVideo,
   authorClerkId,
   isImproved,
+  isStyleRef,
+  onToggleStyleRef,
   onToggleSelect,
   onDownload,
   onDelete,
@@ -458,6 +463,35 @@ export function GalleryItem({
             title="Agendar"
           >
             <Calendar className="h-3.5 w-3.5" />
+          </Button>
+        )}
+
+        {/* Estrela: marca a arte como REFERÊNCIA DE ESTILO da marca. As
+            marcadas entram num rodízio e uma delas é enviada como referência a
+            cada geração — por isso a estrela vive junto das ações, e não como
+            enfeite: ela muda o que a IA produz depois. */}
+        {onToggleStyleRef && status === 'COMPLETED' && resolvedAssetUrl && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn(
+              'h-8 min-w-0 flex-1 rounded-md px-0 border',
+              isStyleRef
+                ? 'bg-amber-400/25 hover:bg-amber-400/35 text-amber-200 border-amber-300/50'
+                : 'bg-white/10 hover:bg-white/20 text-white border-white/20',
+            )}
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onToggleStyleRef()
+            }}
+            title={
+              isStyleRef
+                ? 'É referência de estilo — as próximas artes se inspiram nesta. Clique para tirar.'
+                : 'Usar como referência de estilo das próximas artes'
+            }
+          >
+            <Star className={cn('h-3.5 w-3.5', isStyleRef && 'fill-current')} />
           </Button>
         )}
 

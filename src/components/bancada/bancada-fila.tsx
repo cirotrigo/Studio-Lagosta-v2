@@ -18,6 +18,10 @@ import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
+import { BancadaCrivo } from '@/components/bancada/bancada-crivo'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api-client'
+import { parseApprovalChecklist } from '@/lib/brand/approval-checklist'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -40,6 +44,10 @@ const COR: Record<BancadaItem['status'], string> = {
 
 export function BancadaFila({ projectId }: { projectId: number }) {
   const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, remover } = useBancada(projectId)
+  const perguntasDoCrivo = useCrivoDoProjeto(projectId)
+
+  /** Agendamento segurado pelo crivo, esperando a leitura item a item. */
+  const [pendente, setPendente] = React.useState<{ item: BancadaItem; quando: string } | null>(null)
 
   if (itens.length === 0) {
     return (
@@ -60,11 +68,48 @@ export function BancadaFila({ projectId }: { projectId: number }) {
           projectId={projectId}
           onGerar={() => (item.tipo === 'carrossel' ? gerarCapaEGuia(item) : gerar(item))}
           onConfirmarEstilo={() => confirmarEstilo(item)}
-          onAgendar={(quando, situacao) => agendar(item, quando, situacao)}
+          onAgendar={(quando, situacao) => {
+            // O crivo guarda só o AGENDAR. Rascunho na agenda é o caminho de
+            // quem ainda não aprovou — pedir o crivo ali viraria pedágio, e
+            // pedágio se paga sem ler.
+            if (situacao === 'agendado' && perguntasDoCrivo.length > 0) {
+              setPendente({ item, quando })
+              return
+            }
+            agendar(item, quando, situacao)
+          }}
           onRemover={() => remover(item.id)}
         />
       ))}
+
+      <BancadaCrivo
+        perguntas={perguntasDoCrivo}
+        open={pendente !== null}
+        onOpenChange={(aberto) => {
+          if (!aberto) setPendente(null)
+        }}
+        onAprovar={() => {
+          if (pendente) agendar(pendente.item, pendente.quando, 'agendado')
+          setPendente(null)
+        }}
+      />
     </div>
+  )
+}
+
+/**
+ * As perguntas do crivo desta marca, já quebradas em itens. Sem crivo
+ * cadastrado devolve lista vazia — e aí o agendamento segue direto, como antes.
+ */
+function useCrivoDoProjeto(projectId: number): string[] {
+  const { data } = useQuery<{ dna?: { approvalChecklist?: string | null } }>({
+    queryKey: ['brand-dna', projectId],
+    queryFn: () => api.get(`/api/projects/${projectId}/brand-dna`),
+    staleTime: 5 * 60_000,
+  })
+  return React.useMemo(
+    () => parseApprovalChecklist(data?.dna?.approvalChecklist ?? null),
+    [data?.dna?.approvalChecklist],
   )
 }
 
