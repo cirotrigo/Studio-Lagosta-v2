@@ -1197,6 +1197,32 @@ que o sistema pode aprender com cada post. Vocabulário em
   rotular "aceitou o horário sugerido" como `sugerido-aceito` contaminaria o
   corpus com uma semântica que não é a dela.
 
+### Página nasce CONTEÚDO; modelo é promoção deliberada (10/08/2026)
+
+`Page.isTemplate = true` significa "layout reutilizável do cliente" e é o que
+enche o pool que `prepareCreative` (`arte-rapida.ts`, escolhe `candidates[0]`),
+`sugerirPosts` (modeloDoDia) e `listar-modelos` consultam. O default do schema
+é `false` — quem grava `true` está cadastrando acervo, não salvando uma arte.
+
+- **A tool `create-page` do MCP local marcava MODELO por default** (`?? true`),
+  e a skill `create-template-pages` a usa para montar as peças da semana: toda
+  arte datada virava candidata permanente. Era a origem estrutural da poluição
+  que forçou a despromoção de 22 modelos em 10/08. Hoje o default é `false` e a
+  promoção é explícita (`isTemplate: true`) ou posterior (`marcar-como-modelo`).
+- **Quem cria Page com `isTemplate: true` de propósito**: `create-template` do
+  MCP local (existe para cadastrar layout temático) e
+  `POST /api/projects/[id]/modelos` (o "criar modelo" da UI). Todo o resto —
+  editor, duplicar, `persist.ts`, `arte-enviada.ts`, `create-from-template`,
+  `gerar-criativo/finalize` — cria conteúdo, explícita ou implicitamente.
+- **Nada exige que a página seja modelo para virar post**: `get-template-pages`
+  não filtra por `isTemplate` e `create-post`/`render-story` não olham o campo.
+  Quem filtra é só o acervo (`plan-week`, `prepare-creative`, `sugerir-posts`,
+  `model-pages`, `template-pages`), que é justamente o que se quer limpo.
+- **Modelo não pode ser apagado pela UI** (`DELETE` de página devolve 403
+  `template_page`): conteúdo marcado por engano fica preso até ser despromovido.
+- Curadoria do que já existe é outra frente, com aprovação item a item:
+  `scripts/inventario-uso-modelos.ts` — **despromover, nunca excluir**.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`

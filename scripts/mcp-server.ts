@@ -425,7 +425,7 @@ server.tool(
 
 server.tool(
   'create-template',
-  'Create a new template with optional inline pages. Use for theme-based templates (abertura, almoco, happy-hour, etc.)',
+  'Create a new template with optional inline pages. Use for theme-based templates (abertura, almoco, happy-hour, etc.). This tool AUTHORS MODELS: every inline page is born as a reusable model of the project. For the artwork of a week of posts use create-page instead, which creates ordinary content.',
   {
     projectId: z.number().describe('Project ID'),
     name: z.string().describe('Template name (e.g., "By Rock - Happy Hour")'),
@@ -467,6 +467,9 @@ server.tool(
             layers: pageLayers,
             background: p.background ?? '#000000',
             order: i,
+            // Aqui MODELO é a intenção: create-template existe para cadastrar o
+            // layout temático que os geradores vão reusar. Ao contrário de
+            // create-page, cuja página nasce conteúdo.
             isTemplate: true,
             tags: p.tags ?? [],
             templateId: template.id,
@@ -497,7 +500,7 @@ server.tool(
 
 server.tool(
   'create-page',
-  'Create a new page in a template',
+  'Create a new page in a template. The page is born as ORDINARY CONTENT (one artwork), not as a reusable model — that is what you want for the pieces of a week of posts. Only pass isTemplate: true when the page really is a REUSABLE LAYOUT the project should pick from forever.',
   {
     templateId: z.number().describe('Template ID'),
     name: z.string().describe('Page name'),
@@ -505,7 +508,12 @@ server.tool(
     height: z.number().optional().describe('Canvas height (default: 1920)'),
     layers: z.string().optional().describe('JSON string of layers array'),
     background: z.string().optional().describe('Background color hex'),
-    isTemplate: z.boolean().optional().describe('Mark as reusable template (default: true)'),
+    isTemplate: z
+      .boolean()
+      .optional()
+      .describe(
+        'Promote the page to a REUSABLE MODEL of the project (default: false). A model joins the pool that prepare-creative, sugerir-posts and listar-modelos draw from, so one week of content marked as model pollutes every future suggestion. Content page = leave it out. Reusable layout = true, and give it theme tags, otherwise nothing finds it. Promotion can also be done later, deliberately, with marcar-como-modelo.',
+      ),
     tags: z.array(z.string()).optional().describe('Tags for searching'),
   },
   async ({ templateId, name, width, height, layers, background, isTemplate, tags }) => {
@@ -527,14 +535,28 @@ server.tool(
           layers: layersStr,
           background: background ?? '#ffffff',
           order: (maxOrder._max.order ?? -1) + 1,
-          isTemplate: isTemplate ?? true,
+          // Página nasce CONTEÚDO, como manda o default do schema. Até 10/08/2026
+          // este `?? true` marcava como MODELO toda página criada por aqui — e a
+          // skill create-template-pages usa esta tool para montar as peças da
+          // semana. O acervo de modelos, que prepareCreative/sugerirPosts/
+          // listar-modelos consultam, foi enchendo de arte datada.
+          // Promover é ato deliberado: isTemplate: true aqui ou marcar-como-modelo.
+          isTemplate: isTemplate ?? false,
           tags: tags ?? [],
           templateId,
         },
       })
 
       return {
-        content: [{ type: 'text' as const, text: JSON.stringify({ created: true, pageId: page.id, name: page.name }, null, 2) }],
+        content: [{ type: 'text' as const, text: JSON.stringify({
+          created: true,
+          pageId: page.id,
+          name: page.name,
+          isTemplate: page.isTemplate,
+          nota: page.isTemplate
+            ? 'Página criada como MODELO do projeto — ela vai concorrer em toda escolha futura de layout.'
+            : 'Página criada como conteúdo comum. Para virar modelo reutilizável, use marcar-como-modelo (com tags de tema).',
+        }, null, 2) }],
       }
     } catch (error: any) {
       return { content: [{ type: 'text' as const, text: `Error: ${error.message}` }], isError: true }
