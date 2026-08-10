@@ -184,8 +184,12 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         )
         break
       case 'logo':
+        // O papel `logo` só entra no image[] quando o modo é `modelo` — no modo
+        // `compor` a logo nem chega ao modelo. Por isso aqui o texto MANDA
+        // reproduzir: um preâmbulo que proibisse desenhar, junto de um bloco de
+        // prompt que manda desenhar, é ordem contraditória.
         lines.push(
-          `${idx} is the official logo${ref.label ? ` (${ref.label})` : ''}, shown for brand recognition only. Do NOT draw it into the piece — the system composites the real file after generation.`,
+          `${idx} is the OFFICIAL LOGO file${ref.label ? ` (${ref.label})` : ''}. Reproduce it in the piece EXACTLY as it appears here — same shape, same proportions, same letterforms, same colors. Never redraw, restyle or simplify it, and never letter the brand name in a different typeface.`,
         )
         break
     }

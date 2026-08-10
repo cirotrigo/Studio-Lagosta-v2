@@ -234,6 +234,37 @@ export async function comporLogo(
  * Em inglês porque fala com o modelo de imagem, e explícita porque o modelo
  * tende a "assinar" a peça por conta própria.
  */
+export type LogoMode = 'compor' | 'modelo'
+
+/**
+ * Instrução ALTERNATIVA: o modelo DESENHA a logo a partir do arquivo oficial
+ * enviado como referência, em vez de o sistema compor depois.
+ *
+ * É o que o insta-automatico faz em produção (a logo vai como IMAGEM 3, com
+ * "reproduza EXATAMENTE forma, proporção e cores"). A vantagem é integração:
+ * a marca nasce dentro da composição, com a luz e a perspectiva da peça, em
+ * vez de ser um adesivo colado num canto.
+ *
+ * O risco é o de sempre — modelo de imagem distorce logotipo. Por isso o modo
+ * é OPT-IN e a peça é conferida por visão depois.
+ */
+export function instrucaoLogoPeloModelo(corner: LogoCorner = 'bottom-right'): string {
+  const onde = {
+    'bottom-right': 'lower-right corner',
+    'bottom-left': 'lower-left corner',
+    'top-right': 'upper-right corner',
+    'top-left': 'upper-left corner',
+  }[corner]
+  return [
+    '[LOGO — REPRODUZA O ARQUIVO OFICIAL]',
+    'Uma das imagens de referência é a LOGO OFICIAL da marca. Desenhe-a na peça reproduzindo EXATAMENTE a forma, as proporções, o desenho das letras e as cores do arquivo.',
+    `Coloque-a UMA ÚNICA VEZ, no ${onde}, ocupando cerca de 20% da largura do quadro.`,
+    '⛔ Não redesenhe, não estilize, não simplifique e não "melhore" a marca. Não invente símbolo, monograma, contorno ou selo que não esteja no arquivo. Não escreva o nome da marca com outra fonte.',
+    '⛔ Nenhuma linha da copy pode passar por baixo dela.',
+    'Se não conseguir reproduzir a marca fielmente, deixe o canto VAZIO — arte sem marca é aproveitável, marca errada não é.',
+  ].join('\n')
+}
+
 export function instrucaoAreaReservada(corner: LogoCorner = 'bottom-right'): string {
   const onde = {
     'bottom-right': 'lower-right corner',

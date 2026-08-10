@@ -33,7 +33,13 @@ import {
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
-import { comporLogo, instrucaoAreaReservada, type LogoCorner } from '@/lib/ai/logo-compositor'
+import {
+  comporLogo,
+  instrucaoAreaReservada,
+  instrucaoLogoPeloModelo,
+  type LogoCorner,
+  type LogoMode,
+} from '@/lib/ai/logo-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
 import { checarProporcao, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
@@ -109,6 +115,13 @@ export interface ArtGenerationJobArgs {
   carrossel?: CarouselMeta | null
   /** URL da arte do guia, resolvida pelo serviço (evita ida ao banco aqui). */
   guideResultUrl?: string | null
+  /**
+   * Quem põe a logo na peça. `compor` (default) cola o PNG oficial com sharp
+   * depois da geração; `modelo` manda o arquivo como referência e pede que o
+   * modelo o DESENHE — é o que o insta-automatico faz, e integra melhor à
+   * composição ao custo do risco de distorção.
+   */
+  logoMode?: LogoMode
 }
 
 interface LoadedRef {
@@ -210,9 +223,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     }
 
     // ── Referências do sistema: brand card (só na trilha `arte`) ─────────
-    // A logo NÃO entra como referência para o modelo desenhar: ela é composta
-    // depois (logo-compositor). O card mostra a logo apenas para o modelo
-    // reconhecer a marca, e o prompt proíbe reproduzi-la.
+    // No modo `compor` (default) a logo NÃO vai ao modelo para ser desenhada:
+    // ela é colada depois (logo-compositor), e o card só serve para o modelo
+    // RECONHECER a marca. No modo `modelo`, o arquivo oficial entra como
+    // referência e o prompt manda reproduzi-lo — é o caminho do
+    // insta-automatico, opt-in aqui.
+    const logoMode: LogoMode = args.logoMode ?? 'compor'
     let logoParaCompor: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {
@@ -233,7 +249,18 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       if (brand?.logoUrl) {
         try {
           const logo = await fetchImageSource(brand.logoUrl)
-          logoParaCompor = logo.buffer
+          if (logoMode === 'modelo') {
+            // Vai ao modelo em vez de esperar a composição. O preâmbulo do
+            // papel `logo` precisa mudar de tom junto (ver buildReferencePreamble).
+            loadedRefs.push({
+              role: 'logo',
+              buffer: logo.buffer,
+              mimeType: logo.contentType || 'image/png',
+              label: 'arquivo oficial — reproduzir fielmente',
+            })
+          } else {
+            logoParaCompor = logo.buffer
+          }
         } catch (error) {
           console.warn('[arte-ia.bg] logo não baixou — a arte sai sem marca:', error)
         }
@@ -284,9 +311,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
-        // Só reserva área quando existe logo para colar lá; sem logo, pedir
-        // um canto vazio seria desperdiçar composição à toa.
-        blocoLogo: logoParaCompor ? instrucaoAreaReservada(LOGO_CORNER) : null,
+        // Três estados: colar depois (reserva o canto), o modelo desenhar
+        // (manda reproduzir o arquivo), ou nenhuma logo (não gasta prompt).
+        blocoLogo: logoParaCompor
+          ? instrucaoAreaReservada(LOGO_CORNER)
+          : logoMode === 'modelo' && ordered.some((r) => r.role === 'logo')
+            ? instrucaoLogoPeloModelo(LOGO_CORNER)
+            : null,
         carrossel: args.carrossel
           ? {
               slideOrder: args.carrossel.slideOrder,
@@ -437,7 +468,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // A logo REAL entra aqui, depois do resize — nunca desenhada pelo modelo.
     // Falha ao compor não derruba a arte: ela sai sem marca e o aviso fica
     // gravado, porque arte sem logo ainda é editável e uma logo inventada não.
-    let logoInfo: Record<string, unknown> = { logoComposta: false }
+    let logoInfo: Record<string, unknown> = { logoComposta: false, logoMode }
     if (logoParaCompor) {
       try {
         const comLogo = await comporLogo(finalBuffer, logoParaCompor, {
@@ -445,6 +476,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         })
         finalBuffer = comLogo.buffer
         logoInfo = {
+          logoMode,
           logoComposta: true,
           logoCanto: comLogo.corner,
           logoMudouDeCanto: comLogo.moveu,
