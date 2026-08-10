@@ -231,7 +231,57 @@ inteira — perder o DNA porque alguém quis somar uma linha seria o pior
 resultado possível. E não grava sozinha: sem `confirmado`, devolve
 `antes`/`depois` para a pessoa ver. Mesmo contrato do `atualizar-dna`.
 
-## 8. Armadilhas medidas nesta sessão
+## 8. A logo passou a ser desenhada pelo modelo
+
+Teste real no By Rock, 2 gerações com a mesma foto e a mesma copy, só o modo
+mudando — justamente a marca cuja logomarca o gpt-image inventou em 09/08.
+
+**O modo `modelo` (arquivo oficial como referência + prompt mandando
+reproduzir, que é o que o insta-automatico faz) saiu FIEL**: palheta, "By Rock"
+manuscrito e STEAKHOUSE conferem com o arquivo, e a marca integrou melhor à
+composição do que a colagem — nasce com a perspectiva e a luz da peça em vez de
+ser adesivo num canto.
+
+A regra antiga ("a logo NUNCA é desenhada pela IA") estava certa sobre o caso e
+errada sobre a causa: o modelo inventou a logomarca porque **nunca recebeu o
+arquivo**. Recebendo, ele reproduz.
+
+O teste também expôs um defeito do modo `compor`: **o modelo desenha a logo
+mesmo com o "DO NOT DRAW"**, e a peça saiu com DUAS — a dele, no canto
+reservado, e a colada depois. O compositor, aliás, se comportou certo: achou o
+canto reservado ocupado e fugiu para o outro (`moveu=true`, contraste 69), que
+é a lógica de escolha de canto funcionando pela primeira vez desde que existe,
+agora que o `extract` foi consertado.
+
+O default virou `modelo` por decisão do Ciro. O que sustenta a troca é a rede:
+`conferirLogo` compara por visão a marca desenhada com o arquivo oficial e
+**regera** quando diverge ou quando aparece mais de uma. Marca ausente não
+reprova (o prompt autoriza deixar o canto vazio, e arte sem marca é editável);
+marca ERRADA sim.
+
+## 9. Artes aprovadas como referência, em rodízio
+
+A estrela no card da galeria marca a arte como referência de estilo, e a
+geração manda UMA delas como ref de papel `style` — sempre a menos usada.
+
+O rodízio é o desenho, não um detalhe: referência fixa faz toda peça sair igual
+à anterior, que é o problema oposto ao de não ter referência nenhuma.
+Alternando, o resultado é parentesco em vez de clone.
+
+Uma por geração e não duas (o teto do papel é 2): duas aprovadas de levas
+diferentes puxariam a peça para lados opostos, que é a deriva visual que a
+regra-mãe manda evitar. E nunca em carrossel — ali quem manda é o slide-guia.
+
+O uso só é registrado depois de a arte existir: marcar antes faria uma geração
+que falhou "gastar" a referência sem ela ter chegado ao modelo.
+
+## 10. Armadilhas medidas nesta sessão
+
+- 🔴 **Em Postgres, `ORDER BY … ASC` é NULLS LAST** — e foi isso que quebrou o
+  rodízio na primeira versão: a referência já usada (timestamp) vinha ANTES das
+  nunca usadas (NULL), e cinco gerações seguidas escolheram a mesma arte. O
+  teste pegou; sem ele o defeito só apareceria como "as artes estão todas
+  parecidas", meses depois. `{ sort: 'asc', nulls: 'first' }` explícito.
 
 - 🔴 **`DATABASE_URL=… npx prisma …` NÃO funciona: o Prisma CLI ignora a
   variável inline e usa o `.env`, que aponta para PRODUÇÃO.** Testado com uma

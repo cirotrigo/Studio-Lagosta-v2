@@ -784,13 +784,24 @@ inteiro está em `docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md`.
 
 Regras que valem para código novo:
 
-- **A LOGO NUNCA é desenhada pela IA.** Modelo de imagem distorce logotipo — em
-  09/08 o gpt-image INVENTOU a logomarca do By Rock. O prompt proíbe desenhar
-  qualquer marca e o sistema compõe o PNG oficial com sharp
-  (`logo-compositor.ts`). Reservar área no prompt não basta: o modelo escreve
-  por cima, então o compositor mede o desvio-padrão de luminância dos 4 cantos
-  e foge do bloco de texto. Falha ao compor deixa a arte SEM marca, nunca com
-  uma inventada.
+- **A logo NUNCA é INVENTADA — mas desde 10/08/2026 ela é DESENHADA pelo
+  modelo** (`logoMode: 'modelo'`, o default). A regra anterior era "nunca
+  desenhada pela IA", e nasceu do caso certo pelo motivo errado: em 09/08 o
+  gpt-image inventou a logomarca do By Rock porque **nunca recebeu o arquivo**.
+  Recebendo, ele reproduz — teste real de 10/08 no mesmo By Rock: palheta,
+  "By Rock" manuscrito e STEAKHOUSE conferem, e a marca integra melhor à
+  composição do que a colagem.
+  O que sustenta a troca é a rede: `conferirLogo` (`creative-qa.ts`) compara
+  por visão o que o modelo desenhou com o arquivo oficial e **regera** quando
+  diverge ou quando aparece mais de uma. Marca ausente NÃO reprova — o prompt
+  autoriza deixar o canto vazio, e arte sem marca é editável.
+  **Nunca desligue essa conferência sem voltar o default para `compor`.**
+- **`logoMode: 'compor'` (colar o PNG com sharp) continua existindo** e é o
+  caminho de fidelidade garantida — use em marca de wordmark fino, onde o
+  modelo tende a errar letra. Mas saiba do efeito colateral medido: **o modelo
+  desenha a logo mesmo com o "DO NOT DRAW"**, então a peça sai com DUAS (a
+  dele, no canto reservado, e a colada). Enquanto isso não for resolvido no
+  prompt, `compor` exige olhar a peça.
 - **`Project.logoUrl` está NULL nos 10 projetos** — a logo mora na tabela
   `Logo` (aba Assets). `loadBrandContext` já cai nela; consumidor novo de
   identidade usa o loader, nunca um `select` próprio.
@@ -875,6 +886,16 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   quadro e o pior lugar para logo branca. `isProjectLogo` é singular na prática
   (`orderBy isProjectLogo desc, take 1`) — marcar duas vira sorteio por
   `createdAt`.
+- **Artes aprovadas viram referência de estilo, em RODÍZIO** (`styleRefAt` /
+  `styleRefUsedAt` na Generation + `style-references.ts`). Uma por geração,
+  sempre a menos usada, e nunca em carrossel (lá quem manda é o slide-guia).
+  Referência fixa faz toda peça sair igual — o rodízio é o mecanismo, não um
+  detalhe. O uso só é registrado DEPOIS de a arte existir.
+- 🔴 **Em Postgres, `ORDER BY … ASC` é NULLS LAST.** No rodízio isso punha a
+  referência JÁ USADA (timestamp) antes das nunca usadas (NULL), e a mesma arte
+  saía cinco vezes seguidas. Sempre `{ sort: 'asc', nulls: 'first' }` explícito
+  quando "nunca aconteceu" tem de vir primeiro — vale para qualquer fila por
+  "menos usado/mais antigo" no repo.
 - **Módulo consumido pela bancada não pode importar o Prisma.**
   `parseApprovalChecklist` vive em `src/lib/brand/approval-checklist.ts`, sem
   dependências, porque `brand-context.ts` puxa `@/lib/db` e a bancada é client
