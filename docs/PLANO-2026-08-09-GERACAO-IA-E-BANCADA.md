@@ -210,7 +210,15 @@ criar um quinto caminho.
 > `generation.template`, minúsculo, enquanto a API devolve `Template`).
 > Continua separada a galeria GLOBAL `/criativos`, que é cross-projeto.
 >
-> Pendente: item 4 (crivo por projeto).
+> **STATUS 10/08/2026: item 4 (crivo por projeto) IMPLEMENTADO.** Coluna
+> própria `BrandDNA.approvalChecklist` — e não texto dentro de `contentRules`,
+> que vai VERBATIM para o prompt de imagem. Editável na aba Marca, exibido pela
+> bancada antes de agendar (só no "Agendar", não no rascunho), sem veredito
+> automático porque a polaridade das perguntas é mista nos DNAs reais.
+> `scripts/importar-crivo-clientes.ts` extrai dos `DNA.md` de
+> `~/Documents/Clientes` (dry-run; 7 a 35 perguntas por cliente nos 9).
+>
+> Fase 2 completa.
 
 1. **UI multi-seleção**: no modal de geração/melhoria, o seletor de Drive e da
    galeria passam a multi-select; cada imagem escolhida ganha um chip de papel
@@ -263,6 +271,20 @@ fire-and-forget (`after()` + polling), o serial é só escolha do cliente.
 > de agendar entrou junto com a bancada. **Faltam**: o QA de legibilidade e
 > corte por visão, o checklist de reprovação de prato, e o botão "virar regra"
 > que grava a correção aprovada no BrandDNA.
+>
+> **STATUS 10/08/2026: itens 1 e 3 IMPLEMENTADOS.**
+> `src/lib/ai/creative-qa.ts` — assert de proporção (tolerância de 2%; fora
+> dela REGERA em vez de deixar o `resize(fit:'cover')` cortar em silêncio) e
+> inspeção por visão de legibilidade e texto cortado na borda, dentro do laço
+> de tentativas do runner (≤2). Reprova na última tentativa → entrega com a
+> ressalva gravada em `fieldValues`. `virarRegra()` em `brand-context.ts` +
+> tool MCP `virar-regra`: acrescenta ao fim da seção com data e motivo, e só
+> grava com `confirmado`.
+>
+> **Item 2 não foi feito**: o checklist de reprovação de prato exige comparar a
+> arte com a foto de ENTRADA (outra chamada de visão, outro critério), e o
+> crivo por projeto da Fase 2.4 já cobre a conferência humana. Registrado como
+> próximo passo, não como pendência esquecida.
 
 1. QA por visão além do texto: legibilidade, texto cortado, proporção
    (assert de aspect ratio — nunca resize de proporção errada), retry ≤2.
@@ -302,6 +324,26 @@ fire-and-forget (`after()` + polling), o serial é só escolha do cliente.
    Cada slide = uma Generation no padrão `after()` + polling (sem Redis).
 
 ### Fase 6 — Paralelo e desligamento · contínuo
+
+> **STATUS 10/08/2026: preparação FEITA, desligamento NÃO executado (é decisão
+> do Ciro).** Inventário completo na tabela §1 de
+> `docs/SESSAO-2026-08-10-FASES-4-A-6.md`; passo a passo em
+> `docs/DESLIGAMENTO-CLAUDINHO.md`.
+>
+> - `brand-manual.png`: os 10 existem lá e nenhum estava aqui. Coluna
+>   `Project.brandManualUrl` criada, o brand card passou a preferi-la, e
+>   `scripts/importar-brand-manuais.ts` sobe os arquivos (dry-run).
+> - Logos preferidas: **6 dos 10 divergem** do `isProjectLogo` do Studio,
+>   comparadas visualmente. Não corrigidas — qual versão da marca assina a peça
+>   é decisão de marca. O Bacana é o caso grave (ícone sobre quadrado laranja
+>   OPACO, que o compositor cola sobre a foto).
+> - Escala tipográfica: só o TERO tem. Cabe como âncora de papel `style`; um
+>   arquivo não justifica mecanismo novo.
+> - Regras de prompt do `gpt-image.js` sem equivalente aqui: portadas
+>   (anti-órfã, teto de largura por palavra, não-relumiar com a ressalva do
+>   DNA, extensão de borda, escopo da lista negativa, paleta em hex,
+>   typography lock em peça avulsa). Duas ficaram de fora com motivo escrito.
+> - **Ainda falta o paralelo de 1–2 semanas** comparando qualidade por cliente.
 
 Rodar bancada nova vs Claudinho/skills por 1–2 semanas comparando qualidade
 por cliente (TERO e Wine Vix como teste de aderência). Migrar o que só existe

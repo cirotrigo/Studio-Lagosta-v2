@@ -821,6 +821,59 @@ Regras que valem para código novo:
 - **Migration continua sendo escrita à mão + `db:deploy`** (as duas desta
   sessão foram assim).
 
+### Crivo, QA e coerência de carrossel (10/08/2026)
+
+Fecha as Fases 4 a 6 do plano. Detalhe em
+`docs/SESSAO-2026-08-10-FASES-4-A-6.md`; o desligamento do Claudinho está
+documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
+
+- 🔴 **`DATABASE_URL=… npx prisma …` NÃO aponta para o banco que você escreveu:
+  o Prisma CLI ignora a variável inline e usa o `.env`, que é PRODUÇÃO.**
+  Provado com uma URL inválida de propósito — o CLI reportou o endpoint de
+  produção mesmo assim. É pior que a armadilha do `dotenv-cli` já registrada,
+  porque a incantação parece explícita. **Sempre `npx tsx scripts/dev-db.ts …`**,
+  que compara o compute e recusa produção.
+- **O manual do designer vence o card auto-gerado.** `Project.brandManualUrl`
+  (upload) tem prioridade absoluta em `getBrandReferenceCard` — é a prática que
+  o insta-automatico já tinha, e a diferença de qualidade é grande. Sem manual,
+  cai no card desenhado pelo Studio.
+- **`BrandDNA.approvalChecklist` NUNCA entra em prompt de geração.** É a única
+  seção do DNA que não é instrução para o modelo: são perguntas binárias que
+  gente lê antes de agendar. Mora em coluna própria, e não dentro de
+  `contentRules`, justamente porque `contentRules` vai verbatim para o prompt.
+  A polaridade é MISTA (há pergunta que reprova no "sim" e outra no "não"):
+  não construa veredito automático em cima dela.
+- **Proporção se confere com assert, nunca com resize.** A finalização usa
+  `resize(fit: 'cover')`, que CORTA em silêncio quando a proporção diverge — e
+  o corte come a faixa do texto. `checarProporcao` (`creative-qa.ts`) roda antes,
+  com tolerância de 2%; fora dela, regera em vez de cortar.
+- **QA por visão reprova execução, nunca gosto**: só legibilidade e texto
+  cortado na borda. Reprovou na última tentativa, a peça é ENTREGUE com a
+  ressalva no `fieldValues` — o texto está certo, e descartar arte
+  legível-com-ressalva é pior do que entregar anotada. Visão fora do ar nunca
+  derruba a peça.
+- **No slide IRMÃO do carrossel, o guia vence o DNA e vem ANTES dele.**
+  `visualStyle` e `composition` saem do prompt (o guia já é a marca aplicada e
+  aprovada; descrevê-la em prosa é concorrência), e o LOOK SPINE sobe. Medido:
+  o arranjo anterior punha o LOOK SPINE aos 85% de um prompt de 13 mil chars,
+  atrás de 8,5 mil de DNA. O elemento gráfico do guia entra como ordem curta no
+  TOPO do LOOK SPINE — citar não bastava, ele já era citado 3 vezes.
+- **Descrição de fotografia do DNA não autoriza relumiar a foto.** O prompt
+  injeta `visualStyle` inteiro, e DNA que fala em "luz dramática" convivia com
+  "não reluza". A ressalva explícita existe no bloco de fidelidade — não a
+  remova achando que é redundante.
+- **Módulo consumido pela bancada não pode importar o Prisma.**
+  `parseApprovalChecklist` vive em `src/lib/brand/approval-checklist.ts`, sem
+  dependências, porque `brand-context.ts` puxa `@/lib/db` e a bancada é client
+  (mesma razão de `art-direction.ts`).
+- **`virar-regra` ACRESCENTA, `atualizar-dna` SUBSTITUI.** Correção aprovada na
+  conversa vira linha do DNA com data e motivo, sob o cabeçalho `Regras
+  aprendidas na prática:`. Só grava com `confirmado` — devolve `antes`/`depois`
+  primeiro.
+- **O dev server do painel Browser roda no diretório do projeto original,
+  mesmo em sessão de worktree** (confirmado por `lsof -d cwd`). Mudança feita
+  em worktree não é verificável por ele.
+
 ### Imagem: caixa é janela, não elástico (04/08/2026)
 
 - **`keepRatio` do Konva só vale nas alças dos CANTOS.** As do meio mudam um
