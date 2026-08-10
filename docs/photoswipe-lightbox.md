@@ -13,6 +13,63 @@ A galeria de criativos utiliza o [PhotoSwipe v5](https://photoswipe.com/) para e
 3. **`src/components/projects/creatives-gallery.tsx`** - Componente único da galeria do projeto (aba "Criativos" e rota `/projects/[id]/creativos`, que desde 09/08/2026 é só cabeçalho + este componente)
 4. **`src/app/(protected)/criativos/page.tsx`** - Galeria global (todos os projetos), implementação separada
 
+## Navegação em tela de toque (corrigido em 09/08/2026)
+
+O `photoswipe.css` do pacote esconde as setas em **qualquer** aparelho com
+toque, e só as revela quando o PhotoSwipe enxerga um mouse:
+
+```css
+.pswp--touch     .pswp__button--arrow { visibility: hidden;  }
+.pswp--has_mouse .pswp__button--arrow { visibility: visible; }
+```
+
+`pswp--touch` entra quando `'ontouchstart' in window || navigator.maxTouchPoints > 1`.
+`pswp--has_mouse` entra quando há um `mousedown` de verdade, ou no `updateSize`
+se `matchMedia('(any-hover: hover)')` casar. **No iPad e no celular nenhuma das
+duas coisas acontece**: a galeria abria com o contador certo ("3 / 60"), a
+navegação por gesto funcionando e **nenhum controle à vista**. Quem não
+descobria o arrasto concluía que o lightbox "abre uma só" — foi exatamente esse
+o relato.
+
+A correção é CSS, em `src/hooks/use-photoswipe.css`, ligada pela opção
+`mainClass: 'pswp--nav-sempre-visivel'` do hook:
+
+```css
+.pswp.pswp--nav-sempre-visivel .pswp__button--arrow { visibility: visible; }
+```
+
+Dois detalhes que não são acidentais:
+
+- **O seletor carrega um `.pswp` a mais** (especificidade 0,3,0 contra 0,2,0 do
+  pacote). O Next não garante a ordem entre o CSS de um chunk e o de outro, e
+  com a especificidade maior a regra vence sem depender disso.
+- **`pswp--one-slide` continua escondendo as setas** quando há um único item,
+  porque ali o pacote usa `display: none`, que ganha de `visibility`.
+
+O que **não** era a causa (verificado no navegador, com dados reais): cada item
+não monta instância própria — há uma única galeria com listener em
+`#creatives-gallery`; o `dataSource` inclui todos os itens (`getNumItems()`
+devolveu 60 e depois 64); e a paginação infinita não quebra a navegação, porque
+o PhotoSwipe consulta os filhos **no clique**, e o hook reinicializa quando
+`filtered.length` muda.
+
+## Vídeo no lightbox
+
+O PhotoSwipe só sabe desenhar imagem. Item marcado com `data-pswp-type="video"`
+— galeria de criativos, Drive, seletores do compositor de post — virava um
+**slide em branco** no meio da navegação. Desde 09/08/2026 o hook trata o tipo
+`video` (mesmo desenho que já existia em
+`components/templates/creatives-lightbox.tsx`):
+
+- `contentLoad` monta um `<video controls>` no lugar do conteúdo padrão;
+- **sem `autoplay`** — o PhotoSwipe pré-carrega os vizinhos, então abrir uma
+  imagem faria tocar a trilha do vídeo ao lado. Quem dá play é o
+  `contentActivate`, que só dispara no slide realmente ativo;
+- `close`/`contentDestroy` e a limpeza do efeito pausam e soltam os bytes.
+
+O `globals.css` força `video { height: auto !important }` abaixo de 768px; o
+`use-photoswipe.css` isenta `.pswp video`, como já fazia com `.pswp__img`.
+
 ## Hook `usePhotoSwipe`
 
 ### Uso
@@ -52,15 +109,18 @@ const MyGallery = () => {
 | Parâmetro | Tipo | Descrição |
 |-----------|------|-----------|
 | `gallerySelector` | `string` | Seletor CSS do container da galeria (ex: `#creatives-gallery`) |
-| `childSelector` | `string` | Seletor CSS dos links clicáveis (ex: `a`) |
+| `childSelector` | `string` | Seletor CSS dos links clicáveis (ex: `a[data-pswp-src]`) |
 | `dependencies` | `unknown[]` | Array de dependências para re-inicializar o lightbox quando mudarem |
+| `enabled` | `boolean` | Não inicializa enquanto for `false` (ex: modo lista, lista vazia) |
 
 ### Características
 
-- **Retry Logic**: Tenta inicializar até 5 vezes com intervalo de 200ms (útil para dados assíncronos)
+- **Uma tentativa e um retry**: se o container ainda não existe, tenta de novo
+  depois de 500ms
 - **Validação**: Verifica se o container e os filhos existem antes de inicializar
-- **Auto-cleanup**: Destrói a instância anterior ao re-inicializar ou desmontar
-- **Logging**: Console logs para debug (podem ser removidos em produção)
+- **Auto-cleanup**: uma limpeza só cancela o retry, para os vídeos e destrói a
+  instância — antes o caminho do retry devolvia uma limpeza que só cancelava o
+  timer, deixando a instância criada por ele viva num desmonte
 
 ## Configuração do PhotoSwipe
 
@@ -68,26 +128,24 @@ const MyGallery = () => {
 
 ```typescript
 {
-  gallery: '#creatives-gallery',
-  children: 'a',
-  pswpModule: () => import('photoswipe'), // Lazy loading
+  gallery: gallerySelector,
+  children: childSelector,
+  pswpModule: () => import('photoswipe'),   // Lazy loading
 
-  // Padding responsivo
-  paddingFn: (viewportSize) => ({
-    top: 30,
-    bottom: 30,
-    left: viewportSize.x < 768 ? 0 : 20,
-    right: viewportSize.x < 768 ? 0 : 20,
-  }),
+  // Setas visíveis também em tela de toque (ver seção acima)
+  mainClass: 'pswp--nav-sempre-visivel',
 
-  // Aparência
-  bgOpacity: 0.9,
-  showHideAnimationType: 'zoom',
-
-  // Zoom
-  initialZoomLevel: 'fit',      // Imagem ajustada à tela
-  secondaryZoomLevel: 1.5,      // Zoom ao clicar
-  maxZoomLevel: 3,              // Zoom máximo
+  preload: [1, 3],            // 1 anterior + 3 próximas
+  loop: true,
+  showHideAnimationType: 'fade',
+  wheelToZoom: true,
+  bgOpacity: 0.92,
+  pinchToClose: true,
+  closeOnVerticalDrag: true,
+  showAnimationDuration: 200,
+  hideAnimationDuration: 150,
+  zoom: true,
+  clickToCloseNonZoomable: true,
 }
 ```
 
@@ -237,8 +295,7 @@ data-pswp-width={1080}
 
 ## Próximas Melhorias
 
-- [ ] Adicionar suporte a keyboard navigation customizado
+- [x] ~~Adicionar suporte a vídeos~~ — feito em 09/08/2026 (seção acima)
 - [ ] Implementar share buttons no lightbox
-- [ ] Adicionar suporte a vídeos
 - [ ] Criar preset de opções por tipo de template (Story, Feed, Square)
 - [ ] Adicionar analytics de visualizações no lightbox

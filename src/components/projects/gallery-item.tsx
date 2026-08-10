@@ -229,8 +229,8 @@ export function GalleryItem({
           Let's make them fade in on hover for cleaner look, or keep them as 'meta' that is always there?
           User said "informações e botões só aparecesem ao passar o mouse". So opacity-0 default.
       */}
-      <div className="absolute top-3 right-3 z-30 flex flex-col gap-2 items-end pointer-events-none opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300">
-        <div className="px-2.5 py-1 rounded-lg bg-black/70 backdrop-blur-md text-white text-xs font-medium shadow-lg border border-white/10">
+      <div className="absolute top-3 right-3 z-30 flex max-w-[70%] flex-col gap-2 items-end pointer-events-none opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100 transition-opacity duration-300">
+        <div className="whitespace-nowrap rounded-lg border border-white/10 bg-black/70 px-2 py-0.5 text-[10px] font-medium text-white shadow-lg backdrop-blur-md sm:px-2.5 sm:py-1 sm:text-xs">
           {date}
         </div>
         {authorClerkId && (
@@ -414,12 +414,16 @@ export function GalleryItem({
       </a>
 
       {/* Action Buttons */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 flex gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
+      {/* Barra de ações. `gap-1 p-2` e botões que podem encolher (`min-w-0`,
+          sem padding lateral) porque no celular o card tem ~120px de largura e
+          até 5 botões: com o espaçamento antigo os últimos saíam para fora da
+          borda, cortados. */}
+      <div className="absolute bottom-0 left-0 right-0 p-2 sm:p-3 flex gap-1 sm:gap-2 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 pointer-coarse:translate-y-0 pointer-coarse:opacity-100 transition-all duration-300 z-30 pointer-events-auto bg-black/40 backdrop-blur-md border-t border-white/10">
         {onSchedule && status === 'COMPLETED' && resolvedAssetUrl && (
           <Button
             size="sm"
             variant="ghost"
-            className="flex-1 h-8 bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-sm rounded-md"
+            className="h-8 min-w-0 flex-1 rounded-md px-0 bg-primary hover:bg-primary/90 text-primary-foreground font-medium shadow-sm"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -435,7 +439,7 @@ export function GalleryItem({
           <Button
             size="sm"
             variant="ghost"
-            className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+            className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -451,7 +455,7 @@ export function GalleryItem({
           <Button
             size="sm"
             variant="ghost"
-            className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+            className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -466,7 +470,7 @@ export function GalleryItem({
         <Button
           size="sm"
           variant="ghost"
-          className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+          className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
           disabled={status !== 'COMPLETED' || !resolvedAssetUrl}
           onClick={(e) => {
             e.preventDefault()
@@ -486,7 +490,7 @@ export function GalleryItem({
           <Button
             size="sm"
             variant="ghost"
-            className="flex-1 h-8 bg-white/10 hover:bg-white/20 text-white border border-white/20 rounded-md"
+            className="h-8 min-w-0 flex-1 rounded-md px-0 bg-white/10 hover:bg-white/20 text-white border border-white/20"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
@@ -501,7 +505,7 @@ export function GalleryItem({
         <Button
           size="sm"
           variant="ghost"
-          className="flex-0 w-8 h-8 px-0 bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 border border-red-500/20 rounded-md"
+          className="h-8 w-8 shrink-0 rounded-md px-0 bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 border border-red-500/20"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()

@@ -346,6 +346,29 @@
       max-width: unset !important;
       height: unset !important;
     }
+
+    /*
+     * Breadcrumb é caminho, não texto corrido: o `hyphens: auto` acima partia
+     * cada rótulo no meio ("Dash-board > Proje-tos > Criati-vos") e ainda
+     * empilhava em três linhas. Aqui ele vira uma linha só, que rola de lado.
+     */
+    .breadcrumb-nav,
+    .breadcrumb-nav * {
+      hyphens: none;
+      -webkit-hyphens: none;
+      word-break: normal;
+      overflow-wrap: normal;
+      white-space: nowrap;
+    }
+
+    .breadcrumb-nav {
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+
+    .breadcrumb-nav::-webkit-scrollbar {
+      display: none;
+    }
   }
 
   /* Safari-specific fixes */

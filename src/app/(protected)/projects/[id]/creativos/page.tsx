@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { usePageConfig } from '@/hooks/use-page-config'
@@ -29,15 +30,32 @@ export default function ProjectCreativesPage() {
   const projectId = Number(params?.id)
   const isValidProject = Number.isFinite(projectId) && projectId > 0
 
+  const breadcrumbs = React.useMemo(
+    () =>
+      [
+        { label: 'Dashboard', href: '/studio' },
+        { label: 'Projetos', href: '/projects' },
+        isValidProject
+          ? { label: `Projeto ${projectId}`, href: `/projects/${projectId}` }
+          : undefined,
+        { label: 'Criativos' },
+      ].filter(Boolean) as { label: string; href?: string }[],
+    [isValidProject, projectId],
+  )
+
+  // `compactOnMobile`: no celular o conteúdo desta página é o grid, e
+  // breadcrumb + descrição custavam meia tela antes da primeira arte aparecer.
+  // O caminho de volta continua existindo no botão abaixo.
   usePageConfig(
-    'Galeria de Criativos',
-    'Visualize, melhore e agende todos os criativos do projeto.',
-    [
-      { label: 'Dashboard', href: '/studio' },
-      { label: 'Projetos', href: '/projects' },
-      isValidProject ? { label: `Projeto ${projectId}`, href: `/projects/${projectId}` } : undefined,
-      { label: 'Criativos' },
-    ].filter(Boolean) as { label: string; href?: string }[],
+    React.useMemo(
+      () => ({
+        title: 'Galeria de Criativos',
+        description: 'Visualize, melhore e agende todos os criativos do projeto.',
+        breadcrumbs,
+        compactOnMobile: true,
+      }),
+      [breadcrumbs],
+    ),
   )
 
   if (!isValidProject) {
@@ -49,11 +67,19 @@ export default function ProjectCreativesPage() {
   }
 
   return (
-    <div className="container mx-auto flex flex-col gap-6 py-8">
+    // Sem `container mx-auto` próprio: o <main> do shell já é um container, e o
+    // segundo somava padding — o conteúdo saía recuado em relação ao título que
+    // o próprio shell imprime logo acima.
+    <div className="flex flex-col gap-3 pb-4 sm:gap-6 sm:pb-8">
       {/* Sem <h1> próprio: o shell já imprime o título e a descrição do
           usePageConfig acima do breadcrumb — a página antiga repetia os dois. */}
-      <div className="flex justify-end">
-        <Button variant="ghost" onClick={() => router.push(`/projects/${projectId}`)}>
+      <div className="flex justify-start sm:justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push(`/projects/${projectId}`)}
+        >
+          <ArrowLeft className="mr-2 h-4 w-4" />
           Voltar ao projeto
         </Button>
       </div>
