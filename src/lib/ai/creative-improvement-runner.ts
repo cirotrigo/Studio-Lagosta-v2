@@ -38,13 +38,24 @@ import { googleDriveService } from '@/server/google-drive-service'
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024 // 4MB
 
 // Verificação de texto: até 2 gerações no total (a segunda só quando a
-// primeira diverge). O teto da function é 300s; cada geração leva 30–100s e
-// cada checagem de visão ~5–15s, então o orçamento fecha — mas é medido a cada
-// rodada e a retentativa é PULADA quando não sobra tempo para ela terminar.
+// primeira diverge). O teto da function é 300s e a retentativa é PULADA
+// quando não sobra tempo para ela TERMINAR.
 const MAX_GENERATION_ATTEMPTS = 2
 const BACKGROUND_BUDGET_MS = 290_000
 const FINALIZE_RESERVE_MS = 35_000 // resize + blob + drive + updates finais
+/** Piso: abaixo disto nem a geração mais rápida cabe. */
 const MIN_RETRY_BUDGET_MS = 45_000
+/**
+ * Folga sobre a duração MEDIDA da primeira geração para decidir a segunda.
+ *
+ * O piso sozinho era chute e mentia: em 09/08/2026, no runner irmão
+ * (arte-ia), o formato feed levou 131s e a retentativa passou no teste dos
+ * 45s com 117s de orçamento — abortou no meio, queimando dois minutos e a
+ * chamada da OpenAI para nada. Exigir o tempo que a geração anterior
+ * realmente levou faz o runner ou retentar de verdade, ou falhar rápido
+ * dizendo o motivo.
+ */
+const RETRY_FOLGA = 1.2
 
 export interface ImprovementJobArgs {
   jobGenerationId: string
@@ -242,14 +253,19 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
     let improvedBuffer: Buffer | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
+    /** Duração da geração anterior — base para decidir se a próxima cabe. */
+    let ultimaGeracaoMs = 0
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
-      if (attempt > 1 && remainingMs < MIN_RETRY_BUDGET_MS) {
-        console.warn(
-          `[improve.bg] sem orçamento para a tentativa ${attempt} (${Math.round(remainingMs / 1000)}s restantes) — mantendo o resultado divergente como FAILED`,
-        )
-        break
+      if (attempt > 1) {
+        const precisa = Math.max(MIN_RETRY_BUDGET_MS, Math.round(ultimaGeracaoMs * RETRY_FOLGA))
+        if (remainingMs < precisa) {
+          console.warn(
+            `[improve.bg] sem orçamento para a tentativa ${attempt}: restam ${Math.round(remainingMs / 1000)}s e a geração anterior levou ${Math.round(ultimaGeracaoMs / 1000)}s — mantendo o resultado divergente como FAILED em vez de abortar no meio`,
+          )
+          break
+        }
       }
 
       const genStartedAt = Date.now()
@@ -266,6 +282,7 @@ export async function processImprovementInBackground(args: ImprovementJobArgs): 
         timeoutMs: Math.max(30_000, remainingMs),
       })
       const generationMs = Date.now() - genStartedAt
+      ultimaGeracaoMs = generationMs
 
       if (expectedTexts.length === 0) {
         improvedBuffer = candidate
