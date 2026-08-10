@@ -206,6 +206,10 @@ model Project {
   description                 String?
   status                      ProjectStatus           @default(ACTIVE)
   logoUrl                     String?
+  /// Manual de identidade feito por DESIGNER (upload). Tem prioridade absoluta
+  /// sobre o Brand Reference Card auto-gerado: no insta-automatico, onde a
+  /// prática nasceu, o manual "funciona MUITO melhor" como referência visual.
+  brandManualUrl              String?
   googleDriveFolderId         String?
   makeWebhookAnalyzeUrl       String?
   makeWebhookCreativeUrl      String?
@@ -308,6 +312,12 @@ model BrandDNA {
   visualStyle    String?
   /// Luz, enquadramento, tratamento fotográfico
   photoDirection String?
+  /// Crivo de aprovação: perguntas binárias, UMA POR LINHA, na redação do DNA
+  /// do cliente. É semântica de REVISÃO (checklist antes de agendar), não de
+  /// geração — por isso mora fora de `contentRules`, que é injetado verbatim
+  /// no prompt de imagem. A polaridade é MISTA (há pergunta que reprova no
+  /// "sim" e pergunta que reprova no "não"): quem lê é gente, não o modelo.
+  approvalChecklist String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   Project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)

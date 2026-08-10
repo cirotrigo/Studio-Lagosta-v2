@@ -21,6 +21,11 @@ export interface BrandDNASections {
   composition: string | null
   visualStyle: string | null
   photoDirection: string | null
+  /**
+   * Crivo de aprovação, uma pergunta binária por linha. NUNCA entra em prompt
+   * de geração — é checklist de revisão humana antes de agendar.
+   */
+  approvalChecklist: string | null
 }
 
 export interface BrandContext {
@@ -35,6 +40,11 @@ export interface BrandContext {
   }
   colors: Array<{ name: string; hexCode: string }>
   logoUrl: string | null
+  /**
+   * Manual de identidade feito por designer. Quando existe, o Brand Reference
+   * Card serve ELE em vez do card auto-gerado.
+   */
+  brandManualUrl: string | null
   /** `Project.artImprovementPrompt` — direção de arte própria do improve. */
   artDirection: string | null
 }
@@ -45,6 +55,7 @@ export const BRAND_DNA_FIELDS = [
   'composition',
   'visualStyle',
   'photoDirection',
+  'approvalChecklist',
 ] as const
 
 export type BrandDNAField = (typeof BRAND_DNA_FIELDS)[number]
@@ -64,6 +75,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       id: true,
       name: true,
       logoUrl: true,
+      brandManualUrl: true,
       cuisineType: true,
       brandStyleDescription: true,
       artImprovementPrompt: true,
@@ -102,6 +114,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       // sem migração de dados.
       visualStyle: nonEmpty(dna?.visualStyle) ?? nonEmpty(project.brandStyleDescription),
       photoDirection: nonEmpty(dna?.photoDirection),
+      approvalChecklist: nonEmpty(dna?.approvalChecklist),
     },
     cuisineType: nonEmpty(project.cuisineType),
     fonts: {
@@ -111,6 +124,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
     },
     colors: project.BrandColor,
     logoUrl: nonEmpty(project.logoUrl) ?? nonEmpty(project.Logo[0]?.fileUrl),
+    brandManualUrl: nonEmpty(project.brandManualUrl),
     artDirection: nonEmpty(project.artImprovementPrompt),
   }
 }
@@ -145,5 +159,84 @@ export async function updateBrandDNA(
     composition: saved.composition,
     visualStyle: saved.visualStyle,
     photoDirection: saved.photoDirection,
+    approvalChecklist: saved.approvalChecklist,
   }
 }
+
+/**
+ * "Virar regra": transforma uma correção aprovada numa conversa em linha
+ * permanente do DNA, com data e motivo (Fase 4, item 3 do plano).
+ *
+ * É o mecanismo que fez o DNA do Espeto Gaúcho ir de 1.0 a 2.6 em dois dias:
+ * sem ele, cada correção vale para uma peça e é reaprendida na semana seguinte.
+ *
+ * ACRESCENTA — ao contrário de `updateBrandDNA`, que substitui a seção inteira.
+ * Perder o DNA existente porque alguém quis somar uma linha seria o pior
+ * resultado possível, então a regra nova entra sob um cabeçalho próprio no fim
+ * da seção, e o texto anterior fica intocado.
+ *
+ * Não grava sozinha: devolve `antes`/`depois` e só escreve com `confirmado`.
+ * O contrato é o mesmo do `atualizar-dna` — mostrar à pessoa o que muda antes
+ * de mudar.
+ */
+export const APRENDIZADO_HEADER = 'Regras aprendidas na prática:'
+
+export interface VirarRegraArgs {
+  projectId: number
+  secao: BrandDNAField
+  /** A regra, na forma imperativa em que deve valer daqui para a frente. */
+  regra: string
+  /** Por que ela existe — o caso concreto que a gerou. */
+  motivo: string
+  /** Data do aprendizado. Default: hoje. */
+  data?: Date
+  /** Sem isto nada é gravado: devolve só a proposta. */
+  confirmado?: boolean
+}
+
+export interface VirarRegraResult {
+  secao: BrandDNAField
+  antes: string | null
+  depois: string
+  linhaAdicionada: string
+  gravado: boolean
+}
+
+export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult> {
+  const regra = args.regra.trim()
+  const motivo = args.motivo.trim()
+  if (!regra) throw new Error('A regra não pode ser vazia.')
+  if (!motivo) throw new Error('Regra sem motivo não vira regra: descreva o caso que a gerou.')
+
+  const atual = await db.brandDNA.findUnique({ where: { projectId: args.projectId } })
+  const antes = nonEmpty(atual?.[args.secao] ?? null)
+
+  const dia = (args.data ?? new Date()).toISOString().slice(0, 10)
+  const linhaAdicionada = `- ${regra} (${dia} — ${motivo})`
+
+  let depois: string
+  if (!antes) {
+    depois = `${APRENDIZADO_HEADER}\n${linhaAdicionada}`
+  } else if (antes.includes(APRENDIZADO_HEADER)) {
+    // Já existe a lista: a linha entra no fim dela, que é o fim da seção.
+    depois = `${antes.trimEnd()}\n${linhaAdicionada}`
+  } else {
+    depois = `${antes.trimEnd()}\n\n${APRENDIZADO_HEADER}\n${linhaAdicionada}`
+  }
+
+  if (depois.length > BRAND_DNA_MAX_CHARS) {
+    throw new Error(
+      `A seção ${args.secao} passaria de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese: consolide as regras antigas antes de somar outra.`,
+    )
+  }
+
+  if (args.confirmado) {
+    await updateBrandDNA(args.projectId, { [args.secao]: depois })
+  }
+
+  return { secao: args.secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado }
+}
+
+// A leitura do crivo em itens mora em `approval-checklist.ts`, que não importa
+// nada — este módulo puxa o Prisma, e a bancada que consome o crivo é client.
+export { parseApprovalChecklist } from '@/lib/brand/approval-checklist'
