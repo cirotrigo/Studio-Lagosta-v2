@@ -1,0 +1,75 @@
+import { NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
+import { z } from 'zod'
+import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/access'
+import { CreativeError } from '@/lib/creatives/errors'
+import { agendarPost } from '@/lib/creatives/agendar'
+
+export const runtime = 'nodejs'
+export const maxDuration = 60
+
+/**
+ * Coloca na agenda uma arte que já existe (Generation ou Page) — a mesma
+ * função que a tool `colocar-na-agenda` do MCP usa.
+ *
+ * Existe separada do `POST /posts` (que é o composer completo, com validação
+ * por tipo, Instagram e scheduler) porque a bancada precisa do caminho curto:
+ * "esta arte, neste horário, como rascunho". `agendarPost` já resolve mídia,
+ * `renderStatus` e horário em BRT — regras que não podem divergir entre a UI
+ * e o chat.
+ */
+const bodySchema = z.object({
+  generationId: z.string().min(1).optional(),
+  pageId: z.string().min(1).optional(),
+  mediaUrls: z.array(z.string().url()).optional(),
+  /** "YYYY-MM-DD HH:mm" em BRT, ou ISO com fuso. */
+  quando: z.string().min(1),
+  situacao: z.enum(['rascunho', 'agendado']).optional().default('rascunho'),
+  postType: z.enum(['STORY', 'POST', 'REEL', 'CAROUSEL']).optional(),
+  caption: z.string().max(2200).optional(),
+})
+
+export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
+  try {
+    const { projectId } = await params
+    const id = Number(projectId)
+    const { userId, orgId } = await auth()
+    if (!userId) return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    if (!Number.isInteger(id) || id <= 0) {
+      return NextResponse.json({ error: 'Projeto inválido' }, { status: 400 })
+    }
+
+    const project = await fetchProjectWithShares(id)
+    if (!project) return NextResponse.json({ error: 'Projeto não encontrado' }, { status: 404 })
+    if (!hasProjectWriteAccess(project, { userId, orgId })) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 403 })
+    }
+
+    const parsed = bodySchema.safeParse(await req.json())
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Pedido inválido', details: parsed.error.flatten() },
+        { status: 400 },
+      )
+    }
+
+    const resultado = await agendarPost({
+      projectId: id,
+      generationId: parsed.data.generationId,
+      pageId: parsed.data.pageId,
+      mediaUrls: parsed.data.mediaUrls,
+      scheduledDatetime: parsed.data.quando,
+      situacao: parsed.data.situacao,
+      postType: parsed.data.postType,
+      caption: parsed.data.caption,
+    })
+
+    return NextResponse.json(resultado, { status: 201 })
+  } catch (error) {
+    if (error instanceof CreativeError) {
+      return NextResponse.json({ error: error.message, code: error.code }, { status: error.status })
+    }
+    console.error('[agendar] erro inesperado:', error)
+    return NextResponse.json({ error: 'Erro ao colocar na agenda' }, { status: 500 })
+  }
+}
