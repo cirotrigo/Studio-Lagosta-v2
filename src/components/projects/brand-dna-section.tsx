@@ -36,6 +36,7 @@ interface BrandDNASections {
   composition: string | null
   visualStyle: string | null
   photoDirection: string | null
+  approvalChecklist: string | null
 }
 
 interface BrandContextResponse {
@@ -99,6 +100,15 @@ const SECOES: Array<{
     usadoEm: 'artes',
     placeholder:
       'Luz e tratamento. Ex: luz quente lateral, fundo desfocado, vapor e brasa em evidência, nada de flash estourado.',
+  },
+  {
+    key: 'approvalChecklist',
+    label: 'Crivo de aprovação',
+    // Única seção que NÃO vai para prompt nenhum: é a lista que a pessoa lê na
+    // bancada antes de mandar a arte para a agenda.
+    usadoEm: 'checklist antes de agendar (não entra em prompt)',
+    placeholder:
+      'Uma pergunta por linha, do jeito que você conferiria a peça. Ex:\nA foto acontece dentro do salão real da casa?\nExiste mais de uma oferta na mesma peça?\nTem emoji dentro da arte?',
   },
 ]
 

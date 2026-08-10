@@ -71,6 +71,7 @@ import { fetchImageSource } from '@/lib/ai/fetch-image-source'
 import {
   loadBrandContext,
   updateBrandDNA,
+  virarRegra,
   BRAND_DNA_FIELDS,
   BRAND_DNA_MAX_CHARS,
   type BrandDNAField,
@@ -549,6 +550,11 @@ export const MCP_TOOLS: McpTool[] = [
         composition: { type: ['string', 'null'], description: 'Como os elementos se organizam nas artes. null limpa.' },
         visualStyle: { type: ['string', 'null'], description: 'A estética geral da marca (usado nas artes). null limpa.' },
         photoDirection: { type: ['string', 'null'], description: 'Luz e tratamento fotográfico (usado nas artes). null limpa.' },
+        approvalChecklist: {
+          type: ['string', 'null'],
+          description:
+            'Crivo de aprovação: perguntas binárias, UMA POR LINHA, conferidas por gente antes de agendar. NÃO entra em prompt de geração. null limpa.',
+        },
       },
       required: ['projectId'],
       additionalProperties: false,
@@ -573,7 +579,7 @@ export const MCP_TOOLS: McpTool[] = [
       }
       if (Object.keys(patch).length === 0) {
         throw new Error(
-          'Envie pelo menos uma seção (toneOfVoice, contentRules, composition, visualStyle, photoDirection).',
+          `Envie pelo menos uma seção (${BRAND_DNA_FIELDS.join(', ')}).`,
         )
       }
 
@@ -583,6 +589,62 @@ export const MCP_TOOLS: McpTool[] = [
         atualizado: true,
         dna,
         mensagem: `DNA atualizado (${alteradas}). Já vale para as próximas gerações — do chat e do site.`,
+      }
+    },
+  },
+
+  {
+    name: 'virar-regra',
+    description:
+      'Transforma uma correção que a pessoa aprovou na conversa numa regra permanente do DNA, com a data e o motivo. Use quando alguém corrigir a arte ou o texto e a correção valer daqui para a frente ("a logo sempre no canto direito", "nunca escrever preço em vermelho", "a foto do salão é sempre com luz acesa").\n\nDiferente de atualizar-dna: aqui a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto.\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa a linha que será somada e só then chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        secao: {
+          type: 'string',
+          enum: [...BRAND_DNA_FIELDS],
+          description:
+            'Onde a regra mora: contentRules (proibições), composition (layout), visualStyle (estética), photoDirection (foto), toneOfVoice (texto), approvalChecklist (crivo).',
+        },
+        regra: {
+          type: 'string',
+          description: 'A regra na forma imperativa, como deve valer daqui para a frente.',
+        },
+        motivo: {
+          type: 'string',
+          description: 'O caso concreto que gerou a regra. Sem motivo a regra não se explica daqui a três meses.',
+        },
+        confirmado: {
+          type: 'boolean',
+          description: 'Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.',
+        },
+      },
+      required: ['projectId', 'secao', 'regra', 'motivo'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const secao = args.secao as BrandDNAField
+      if (!BRAND_DNA_FIELDS.includes(secao)) {
+        throw new Error(`Seção inválida: ${String(args.secao)}. Use uma de ${BRAND_DNA_FIELDS.join(', ')}.`)
+      }
+
+      const resultado = await virarRegra({
+        projectId,
+        secao,
+        regra: String(args.regra ?? ''),
+        motivo: String(args.motivo ?? ''),
+        confirmado: args.confirmado === true,
+      })
+
+      return {
+        ...resultado,
+        mensagem: resultado.gravado
+          ? `Regra registrada em ${secao}. Vale a partir da próxima geração, do chat e do site.`
+          : `Proposta montada, NADA foi gravado ainda. Mostre a linha à pessoa e confirme para valer.`,
       }
     },
   },
