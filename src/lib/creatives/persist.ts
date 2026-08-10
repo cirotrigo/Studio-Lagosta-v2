@@ -139,6 +139,16 @@ export interface PersistCreativeInput {
   /** Procedência guardada na Generation (o que gerou a arte) */
   fieldValues: Record<string, unknown>
   authorName: string
+  /**
+   * Espelho colunar de `fieldValues.sourcePageId` — **só quando aponta para
+   * uma página-MODELO de verdade**.
+   *
+   * O `fieldValues` homônimo é ambíguo: `ajustar-arte` grava ali a página que
+   * ela mesma ajustou (a cópia). A coluna existe para a mineração ("qual
+   * modelo este cliente mais usa") sair da varredura de Json, e só serve se
+   * não herdar essa ambiguidade — por isso o ajuste NÃO a preenche.
+   */
+  sourcePageId?: string | null
 }
 
 export interface PersistCreativeResult {
@@ -181,6 +191,7 @@ export async function persistAndRenderCreative(
     page,
     fieldValues: input.fieldValues,
     authorName: input.authorName,
+    sourcePageId: input.sourcePageId ?? null,
   })
 }
 
@@ -198,6 +209,8 @@ export interface RenderPageInput {
   }
   fieldValues: Record<string, unknown>
   authorName: string
+  /** Ver `PersistCreativeInput.sourcePageId` — só página-MODELO entra aqui. */
+  sourcePageId?: string | null
 }
 
 /**
@@ -235,6 +248,7 @@ export async function renderPageAndRegister(input: RenderPageInput): Promise<Per
       // pageId entra sempre: é como conferir-arte localiza as camadas da arte
       // para o diagnóstico geométrico (sobreposição vs texto faltando).
       fieldValues: { ...input.fieldValues, pageId: page.id, thumbnailUrl: blob.url } as any,
+      sourcePageId: input.sourcePageId ?? null,
       resultUrl: blob.url,
       projectId: project.id,
       createdBy: project.userId,

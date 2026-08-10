@@ -83,6 +83,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       learningScope: normalizarEscopo(parsed.data.escopo),
       campaignId: parsed.data.campanhaId,
       decididoPor: dbUser?.id,
+      superficie: 'agenda',
     })
 
     return NextResponse.json(resultado, { status: 201 })

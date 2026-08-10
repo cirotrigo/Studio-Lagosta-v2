@@ -15,6 +15,8 @@ import { parseBRT } from '@/lib/creatives/agendar'
 import { ehHostProprio } from '@/lib/creatives/ingerir-midia'
 import { CreativeError } from '@/lib/creatives/errors'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
+import { fecharSugestaoDeSlot, registrarSlotDoPost } from '@/lib/aprendizado/sinal-de-agendamento'
+import type { Superficie } from '@/lib/aprendizado/vocabulario'
 
 export type AcaoAprovacao = 'APPROVE' | 'REVERT'
 
@@ -69,8 +71,13 @@ export async function processarAprovacao(params: {
   projectId: number
   postIds: string[]
   action: AcaoAprovacao
+  /** `User.id` INTERNO (cuid), NUNCA o clerkId. Auditoria do aprendizado. */
+  decididoPor?: string | null
+  /** Onde a decisão foi tomada. Padrão: a agenda. */
+  superficie?: Superficie
 }): Promise<ResultadoAprovacao> {
   const { projectId, postIds, action } = params
+  const superficie = params.superficie ?? 'agenda'
 
   if (action === 'APPROVE') {
     const project = await db.project.findUnique({
@@ -102,6 +109,10 @@ export async function processarAprovacao(params: {
       pageId: true,
       renderStatus: true,
       campaignId: true,
+      // Para o registro de aprendizado da aprovação (ver abaixo).
+      postType: true,
+      generationId: true,
+      sugestaoId: true,
     },
   })
 
@@ -180,6 +191,46 @@ export async function processarAprovacao(params: {
         },
       })
       processados.push(post.id)
+
+      /**
+       * O RÓTULO POSITIVO MAIS LIMPO DO SISTEMA: alguém olhou a arte, a copy e
+       * o horário e armou a publicação. Nenhum outro ponto do fluxo tem uma
+       * confirmação humana tão explícita.
+       *
+       * Duas coisas acontecem aqui, e são distintas:
+       *
+       *  1. A linha de SLOT, na mesma chave que `agendarPost` usa
+       *     (`slot:post:<id>`). No caminho normal (criar rascunho → aprovar) o
+       *     agendamento já a gravou e isto é no-op — de propósito: duas linhas
+       *     para o mesmo horário do mesmo post dobrariam a cadência de quem usa
+       *     a agenda direito. O valor está no caminho de fora: post criado pela
+       *     bancada ou por um import, que nunca passou por `agendarPost` e sem
+       *     isto não teria registro nenhum.
+       *  2. O DESFECHO da sugestão de slot, quando o post nasceu de uma. É a
+       *     aceitação, e vale mesmo quando (1) não gravou nada.
+       */
+      await registrarSlotDoPost({
+        projectId,
+        postId: post.id,
+        quando: post.scheduledDatetime,
+        postType: post.postType,
+        situacao: 'agendado',
+        pageId: post.pageId,
+        generationId: post.generationId,
+        campaignId: post.campaignId,
+        decididoPor: params.decididoPor ?? null,
+        superficie,
+      })
+      if (post.sugestaoId) {
+        await fecharSugestaoDeSlot({
+          sugestaoId: post.sugestaoId,
+          postId: post.id,
+          quando: post.scheduledDatetime,
+          desfecho: 'aceita-como-veio',
+          decididoPor: params.decididoPor ?? null,
+          superficie,
+        })
+      }
       continue
     }
 

@@ -27,6 +27,10 @@ import {
   resolveImageUrl,
 } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
+import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
+import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import { fecharSugestaoDeModelo, registrarSugestaoDeModelo } from '@/lib/aprendizado/sinal-de-modelo'
+import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
@@ -141,6 +145,14 @@ export interface PrepareCreativeResult {
     /** Mesmo formato do principal — sem isso a alternativa era escolha às cegas. */
     slotFields: SlotField[]
   }>
+  /**
+   * Id do sinal de aprendizado que registrou ESTA proposta de modelo (`null`
+   * quando havia candidato único — sem alternativa não houve preferência).
+   * Devolver a `createArteRapida` fecha o desfecho sem reconciliação; nenhum
+   * chamador de hoje faz isso, e por isso o fechamento por reconciliação
+   * existe (ver `sinal-de-modelo.ts`).
+   */
+  sugestaoId?: string | null
   brand: {
     brandStyle: string | null
     cuisineType: string | null
@@ -343,6 +355,25 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
 
   const slotFields: SlotField[] = slotFieldsFromLayers(page.layers)
 
+  /**
+   * O ÚNICO ponto que enxerga os modelos rejeitados. Daqui para a frente a
+   * lista some: quem cria a arte recebe só `sourcePageId`, e o que não foi
+   * escolhido nunca mais é mencionado. Registrado no momento da EMISSÃO, não
+   * na aceitação — proposta ignorada que não vira linha faz a taxa de
+   * aceitação valer 100% por construção.
+   *
+   * Os candidatos gravados são os OFERECIDOS (principal + alternativas), não
+   * todos os que o casamento por tema encontrou: registrar como proposto algo
+   * que ninguém viu inventaria uma rejeição que não houve.
+   */
+  const sugestaoId = await registrarSugestaoDeModelo({
+    projectId: project.id,
+    tema: input.theme,
+    dia: input.day ?? null,
+    candidatos: [bestRef.id, ...altRefs.map((p: any) => p.id)],
+    escolhido: bestRef.id,
+  })
+
   const kbEntries = await db.knowledgeBaseEntry.findMany({
     where: {
       projectId: project.id,
@@ -381,6 +412,7 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
       slotFields,
     },
     alternatives,
+    sugestaoId,
     brand: {
       // brandStyle mantém o nome antigo para não quebrar as skills que já
       // leem este bloco; o DNA visualStyle tem prioridade sobre o legado.
@@ -422,6 +454,13 @@ export interface CreateArteRapidaInput {
   name?: string
   /** Direct image URL, e.g. a Supabase/Blob upload. Wins over _driveImageId. */
   imageUrl?: string
+  /**
+   * Sinal de aprendizado que propôs este modelo (`prepareCreative().sugestaoId`).
+   * Sem ele o desfecho é atribuído por reconciliação — ver `sinal-de-modelo.ts`.
+   */
+  sugestaoId?: string | null
+  /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
+  decididoPor?: string | null
 }
 
 export interface CreateArteRapidaResult {
@@ -577,6 +616,10 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
     layers,
     background: sourcePage.background,
     authorName: 'arte-rapida',
+    // Espelho colunar do `fieldValues.sourcePageId`: aqui ele aponta para um
+    // MODELO de verdade, e é a coluna indexada que tira "qual modelo este
+    // cliente mais usa" da varredura de Json.
+    sourcePageId: sourcePage.id,
     fieldValues: {
       source: 'arte-rapida',
       sourceTemplateId: sourcePage.Template.id,
@@ -589,6 +632,24 @@ export async function createArteRapida(input: CreateArteRapidaInput): Promise<Cr
       slotValues,
       autocorrecao: fix.autocorrecao,
     },
+  })
+
+  /**
+   * A decisão de modelo, agora que ela existe de fato.
+   *
+   * Depois de persistir, de propósito: contar uso de uma arte que falhou ao
+   * renderizar mentiria sobre a preferência do cliente. Nenhuma das duas
+   * chamadas lança — se o registro falhar, a arte já está pronta e é dela que
+   * alguém precisa.
+   */
+  await registrarUsoDeModelo(sourcePage.id)
+  await fecharSugestaoDeModelo({
+    projectId,
+    pageIdUsado: sourcePage.id,
+    generationId: persisted.generationId,
+    sugestaoId: input.sugestaoId ?? null,
+    decididoPor: input.decididoPor ?? null,
+    superficie: 'chat',
   })
 
   return {
@@ -615,6 +676,8 @@ export interface AjustarArteInput {
   driveImageId?: string
   /** Renomeia a página. */
   name?: string
+  /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. É auditoria. */
+  decididoPor?: string | null
 }
 
 export interface AjustarArteResult {
@@ -701,6 +764,16 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
     input.imageUrl ?? (typeof slotValues._imageUrl === 'string' ? slotValues._imageUrl : undefined)
   const resolved = await resolveImageUrl(directUrl, driveImageId)
 
+  /**
+   * A copy ANTES do ajuste, lida do jeito profundo (`page-layers.ts`), não
+   * pelo `parseLayers` daqui: ele decodifica um nível só e devolve `[]` em
+   * silêncio na string dupla-codificada. Num diff de aprendizado isso viraria
+   * "não havia texto antes", e toda linha da arte apareceria como
+   * ACRESCENTADA pela pessoa — o diff falsamente vazio, ao contrário.
+   * `null` = ilegível, e ilegível não vira sinal.
+   */
+  const copyAntes = copyDeCamadas(page.layers)
+
   const sourceLayers = parseLayers(page.layers)
   const baked = bakeLayers(sourceLayers, slotValues, resolved.url)
   const { layers: bakedLayers, changedTextIds } = baked
@@ -778,6 +851,39 @@ export async function ajustarArte(input: AjustarArteInput): Promise<AjustarArteR
   // fila de render, senão publicam a arte antiga em silêncio.
   const invalidacao = await invalidateScheduledRenders(db, { pageIds: [page.id] })
   const postsInvalidados = invalidacao.invalidados
+
+  /**
+   * A CORREÇÃO EXPLÍCITA — o sinal mais limpo que existe aqui.
+   *
+   * `fieldValues.ajustes` já guardava "onde a IA errou", mas só como texto
+   * solto num Json sem índice. O que entra no corpus é o par completo: a copy
+   * que estava e a que ficou, com o diff campo a campo.
+   *
+   * É `registrarDecisaoSemSugestao` e não `registrarDesfecho` porque a copy
+   * original nunca foi registrada como PROPOSTA: ela foi escrita pelo LLM na
+   * conversa e chegou pronta em `createArteRapida`. Chamar isto de "sugestão
+   * recusada" inventaria um denominador que não existe — e é exatamente para
+   * este caso que a decisão absoluta carrega um `diff`.
+   *
+   * Sem mudança de texto (ajuste só de foto ou de nome) não há sinal de copy:
+   * gravar linha vazia só diluiria o corpus.
+   */
+  const copyDepois = copyDeCamadas(layers)
+  const diffDaCorrecao = diffDeCopy(copyAntes, copyDepois)
+  if (!diffDaCorrecao.ilegivel && diffDaCorrecao.mudou) {
+    await registrarDecisaoSemSugestao({
+      projectId,
+      tipo: 'copy',
+      escolhido: { copy: copyDepois, trocouFoto: imageApplied },
+      diff: diffDaCorrecao,
+      pageId: page.id,
+      generationId: persisted.generationId,
+      decididoPor: input.decididoPor ?? null,
+      superficie: 'chat',
+      // A Generation é criada por ajuste; retry que devolva a mesma não duplica.
+      chave: `copy:ajuste:${persisted.generationId}`,
+    })
+  }
 
   const camposAlterados = (layers as any[])
     .filter((l) => changedTextIds.includes(l.id))

@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
+import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
+import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
 import { z } from 'zod'
 import {
   fetchTemplateWithProject,
@@ -185,6 +187,62 @@ export async function PATCH(
       console.warn(
         `[API] Page ${pageId}: ${congelados.length} post(s) já entregues ao publicador não receberam a alteração`,
       )
+    }
+
+    /**
+     * A EDIÇÃO MANUAL no editor — a pessoa reescrevendo o que o gerador
+     * escreveu. O detector `layersChanged` acima já existia e só invalidava
+     * render; daqui para a frente ele também alimenta o corpus.
+     *
+     * Só entra quando o TEXTO mudou: `layersChanged` dispara também em
+     * mudança puramente geométrica (arrastar uma caixa), e uma linha de copy
+     * sem diferença de copy seria ruído.
+     *
+     * Fora da resposta (`after`): o autosave bate aqui a cada pausa da
+     * digitação e não pode esperar por telemetria. Nada aqui lança — as
+     * funções de `captura.ts` engolem o próprio erro.
+     */
+    if (layersChanged) {
+      const copyAntes = copyDeCamadas(existingPage.layers)
+      const copyDepois = copyDeCamadas(updateData.layers)
+      const diff = diffDeCopy(copyAntes, copyDepois)
+      if (!diff.ilegivel && diff.mudou) {
+        const projectId = template!.Project.id
+        after(async () => {
+          /**
+           * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca
+           * somente leitura: criar linha de User a partir daqui é justamente
+           * como nascem os Users fantasma, e isto é auditoria.
+           */
+          const dbUser = await db.user.findUnique({
+            where: { clerkId: userId },
+            select: { id: true },
+          })
+          await registrarDecisaoSemSugestao({
+            projectId,
+            tipo: 'copy',
+            escolhido: {
+              copy: copyDepois,
+              // A copy de um MODELO é texto de espelho, não copy de peça —
+              // quem agrega precisa poder separar sem outro join.
+              modelo: existingPage.isTemplate,
+            },
+            diff,
+            pageId,
+            decididoPor: dbUser?.id ?? null,
+            superficie: 'editor',
+            /**
+             * Balde de 10 minutos por página. Sem ele, digitar uma headline
+             * com o autosave ligado vira uma dezena de linhas quase iguais e
+             * dilui o corpus. Com ele fica a PRIMEIRA edição do balde — que é
+             * a mais valiosa, porque o lado "antes" dela ainda é o texto que
+             * a IA gerou. O preço é perder as revisões seguintes do mesmo
+             * balde; a edição que continua depois de 10 minutos entra inteira.
+             */
+            chave: `copy:editor:${pageId}:${Math.floor(Date.now() / 600_000)}`,
+          })
+        })
+      }
     }
 
     // Deserializar layers na resposta

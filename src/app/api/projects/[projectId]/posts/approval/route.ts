@@ -61,10 +61,22 @@ export async function POST(
       return NextResponse.json({ error: 'Lista de posts inválida.' }, { status: 400 })
     }
 
+    /**
+     * `decididoPor` é o `User.id` INTERNO, nunca o clerkId. Busca somente
+     * leitura de propósito: criar linha de User a partir daqui é como nascem
+     * os Users fantasma, e isto é auditoria do aprendizado.
+     */
+    const dbUser = await db.user.findUnique({
+      where: { clerkId: clerkUserId },
+      select: { id: true },
+    })
+
     const resultado = await processarAprovacao({
       projectId,
       postIds,
       action: body?.action === 'REVERT' ? 'REVERT' : 'APPROVE',
+      decididoPor: dbUser?.id ?? null,
+      superficie: 'agenda',
     })
 
     return NextResponse.json(resultado)

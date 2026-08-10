@@ -16,6 +16,13 @@ import {
   type EscopoAprendizado,
   type OrigemDecisao,
 } from '@/lib/posts/learning-scope'
+import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import {
+  fecharSugestaoDeSlot,
+  registrarCopyDoPost,
+  registrarSlotDoPost,
+} from '@/lib/aprendizado/sinal-de-agendamento'
+import type { Superficie } from '@/lib/aprendizado/vocabulario'
 import { PostType, PostStatus } from '@prisma/client'
 
 /**
@@ -36,6 +43,54 @@ export function parseBRT(input: string): Date {
     throw new CreativeError('DATA_INVALIDA', `Data não reconhecida: "${input}". Use "YYYY-MM-DD HH:mm" (BRT).`, 400)
   }
   return d
+}
+
+/**
+ * Só os valores de texto de um `slotValues`, no formato do diff de copy.
+ *
+ * `_driveImageId`/`_imageUrl` são reservados e objetos aninhados carregam
+ * `fileUrl` — nada disso é copy, e deixar entrar faria o diff acusar "campo
+ * removido" toda vez que a foto mudasse.
+ */
+function apenasTextos(valores: Record<string, unknown> | null): Record<string, string> | null {
+  if (!valores) return null
+  const out: Record<string, string> = {}
+  for (const [campo, valor] of Object.entries(valores)) {
+    if (campo.startsWith('_')) continue
+    const texto =
+      typeof valor === 'string'
+        ? valor
+        : valor && typeof valor === 'object' && typeof (valor as any).content === 'string'
+          ? ((valor as any).content as string)
+          : null
+    if (texto?.trim()) out[campo] = texto.trim()
+  }
+  return Object.keys(out).length > 0 ? out : null
+}
+
+/**
+ * Copy proposta e modelo de origem, a partir da Generation que virou o post.
+ *
+ * ⚠️ `fieldValues.sourcePageId` é AMBÍGUO: em `source: 'ajuste-arte'` ele
+ * aponta para a própria cópia ajustada, não para um modelo. A coluna
+ * `Generation.sourcePageId` (espelho novo) não tem esse vício e por isso vem
+ * primeiro; o Json só é consultado quando a coluna está vazia — o caso das
+ * linhas anteriores a 11/08/2026 — e nunca para arte ajustada.
+ */
+function lerProcedencia(
+  fieldValues: unknown,
+  colunaSourcePageId: string | null,
+): { copyProposta: Record<string, unknown> | null; sourcePageId: string | null } {
+  const fv = (fieldValues ?? {}) as Record<string, unknown>
+  const slotValues =
+    fv.slotValues && typeof fv.slotValues === 'object' && !Array.isArray(fv.slotValues)
+      ? (fv.slotValues as Record<string, unknown>)
+      : null
+
+  const doJson =
+    fv.source !== 'ajuste-arte' && typeof fv.sourcePageId === 'string' ? fv.sourcePageId : null
+
+  return { copyProposta: slotValues, sourcePageId: colunaSourcePageId ?? doJson }
 }
 
 export interface AgendarPostInput {
@@ -76,6 +131,12 @@ export interface AgendarPostInput {
   sugestaoId?: string
   /** Quem decidiu — `User.id` INTERNO (cuid), NUNCA o clerkId. */
   decididoPor?: string
+  /**
+   * Onde a decisão foi tomada, para o registro de aprendizado. O padrão é
+   * `chat` porque é de lá que vem a esmagadora maioria das chamadas; a agenda
+   * web informa o seu.
+   */
+  superficie?: Superficie
 }
 
 export async function agendarPost(input: AgendarPostInput) {
@@ -107,11 +168,23 @@ export async function agendarPost(input: AgendarPostInput) {
    * saindo com ela.
    */
   let midiaVeioDaPagina = false
+  /**
+   * As camadas da página COMO ELA ESTÁ no momento do agendamento — o lado
+   * FINAL do diff de copy, e a origem do `slotValues` que o post passa a
+   * gravar. Cru de propósito: quem decodifica é `copyDeCamadas`, a única
+   * leitura que distingue "página sem texto" de "não consegui ler".
+   */
+  let camadasDaPagina: unknown = null
 
   if (input.pageId) {
     const page = await db.page.findUnique({
       where: { id: input.pageId },
-      select: { templateId: true, thumbnail: true, Template: { select: { projectId: true } } },
+      select: {
+        templateId: true,
+        thumbnail: true,
+        layers: true,
+        Template: { select: { projectId: true } },
+      },
     })
     if (!page) {
       throw new CreativeError('PAGE_NOT_FOUND', `Página não encontrada: ${input.pageId}`, 404)
@@ -124,6 +197,7 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     templateId = page.templateId
+    camadasDaPagina = page.layers
     // A arte já foi renderizada na criação; reusar o PNG evita re-render na fila.
     //
     // Só serve o thumbnail que veio do render (URL do Blob). Depois que alguém
@@ -145,10 +219,18 @@ export async function agendarPost(input: AgendarPostInput) {
    * torna o match inequívoco.
    */
   let generationId: string | null = null
+  /**
+   * A copy PROPOSTA na criação da arte e o modelo de onde ela saiu — o lado de
+   * cima do diff. `fieldValues.slotValues` é o que o LLM escreveu; a página é
+   * o que sobrou depois de todo mundo mexer.
+   */
+  let copyProposta: Record<string, unknown> | null = null
+  let sourcePageId: string | null = null
+
   if (input.generationId) {
     const gen = await db.generation.findFirst({
       where: { id: input.generationId, projectId: project.id },
-      select: { id: true, resultUrl: true },
+      select: { id: true, resultUrl: true, fieldValues: true, sourcePageId: true },
     })
     if (!gen) {
       throw new CreativeError(
@@ -158,6 +240,7 @@ export async function agendarPost(input: AgendarPostInput) {
       )
     }
     generationId = gen.id
+    ;({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
     // Sem mídia e sem página, o generationId basta: a arte é o resultUrl da
     // própria Generation — é o caso da arte MELHORADA (que não tem página) e
     // poupa o chat de copiar URL à mão, com os erros que isso traz.
@@ -174,10 +257,11 @@ export async function agendarPost(input: AgendarPostInput) {
   } else if (mediaUrls.length > 0) {
     const gen = await db.generation.findFirst({
       where: { projectId: project.id, resultUrl: mediaUrls[0] },
-      select: { id: true },
+      select: { id: true, fieldValues: true, sourcePageId: true },
       orderBy: { createdAt: 'desc' },
     })
     generationId = gen?.id ?? null
+    if (gen) ({ copyProposta, sourcePageId } = lerProcedencia(gen.fieldValues, gen.sourcePageId))
   }
 
   /**
@@ -253,6 +337,30 @@ export async function agendarPost(input: AgendarPostInput) {
     )
   }
 
+  /**
+   * A copy que está indo para a agenda.
+   *
+   * Lado FINAL: a página como está agora — é ela que o cron re-renderiza e é
+   * ela que vai ao ar. Sem página (arte melhorada, mídia pronta), o que a
+   * Generation registrou é o melhor que existe.
+   *
+   * `copyDeCamadas` devolve `null` em página ILEGÍVEL, e isso não vira `{}`:
+   * copy desconhecida tem de ficar desconhecida, senão o post entra no corpus
+   * como "sem texto nenhum".
+   */
+  const copyDaPagina = copyDeCamadas(camadasDaPagina)
+  const copyPropostaTexto = apenasTextos(copyProposta)
+  const copyFinal = copyDaPagina ?? copyPropostaTexto
+
+  /**
+   * O diff que interessa: o que a IA propôs na criação × o que de fato está na
+   * arte na hora de agendar. Só existe com os dois lados — e a página tem de
+   * ser legível, senão o diff diria "não mudou nada" justamente onde não se
+   * sabe nada.
+   */
+  const diffDaCopy =
+    copyPropostaTexto && copyDaPagina ? diffDeCopy(copyPropostaTexto, copyDaPagina) : null
+
   const post = await db.socialPost.create({
     data: {
       projectId: project.id,
@@ -280,6 +388,9 @@ export async function agendarPost(input: AgendarPostInput) {
       origem: input.origem ?? null,
       sugestaoId: input.sugestaoId ?? null,
       decididoPor: input.decididoPor ?? null,
+      // A coluna existe desde sempre e só o `later-scheduler` a preenchia — o
+      // post que nasce do chat ficava sem registro nenhum do texto que carrega.
+      ...(copyFinal ? { slotValues: copyFinal } : {}),
     },
     select: {
       id: true,
@@ -290,6 +401,51 @@ export async function agendarPost(input: AgendarPostInput) {
       learningScope: true,
     },
   })
+
+  /**
+   * Sinais do agendamento. Depois do create, de propósito: a chave de
+   * idempotência é o id do post, e registrar antes deixaria linha órfã se a
+   * criação falhasse. Nenhuma destas chamadas lança — captura que quebra o
+   * agendamento é o defeito que `captura.ts` foi escrito para impedir.
+   */
+  const superficie = input.superficie ?? 'chat'
+  await registrarSlotDoPost({
+    projectId: project.id,
+    postId: post.id,
+    quando,
+    postType: post.postType,
+    situacao: vaiPublicar ? 'agendado' : 'rascunho',
+    pageId: input.pageId ?? null,
+    generationId,
+    campaignId: input.campaignId ?? null,
+    sourcePageId,
+    decididoPor: input.decididoPor ?? null,
+    superficie,
+  })
+  await registrarCopyDoPost({
+    projectId: project.id,
+    postId: post.id,
+    copyFinal,
+    diff: diffDaCopy,
+    pageId: input.pageId ?? null,
+    generationId,
+    campaignId: input.campaignId ?? null,
+    decididoPor: input.decididoPor ?? null,
+    superficie,
+  })
+  if (input.sugestaoId) {
+    await fecharSugestaoDeSlot({
+      sugestaoId: input.sugestaoId,
+      postId: post.id,
+      quando,
+      // O horário virou post: a proposta foi aceita. Se alguém a moveu antes
+      // de agendar, quem corrige o desfecho é o reagendamento — a janela vai
+      // até a publicação e evidência mais forte sobrescreve.
+      desfecho: input.origem === 'sugerido-editado' ? 'editada' : 'aceita-como-veio',
+      decididoPor: input.decididoPor ?? null,
+      superficie,
+    })
+  }
 
   const quandoBRT = formatarBRT(post.scheduledDatetime!)
   const tipo = post.postType === 'STORY' ? 'story' : post.postType.toLowerCase()

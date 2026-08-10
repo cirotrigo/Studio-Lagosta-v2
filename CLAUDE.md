@@ -1314,10 +1314,69 @@ convivem nela. Serviço em `src/lib/aprendizado/` (`captura.ts`,
 - **Espelhos colunares**: `Page.usedCount`/`lastUsedAt` e
   `Generation.sourcePageId` existem porque `fieldValues` é Json SEM índice —
   minerar "qual modelo este cliente mais usa" exigia varredura por path.
-  Incremento por `registrarUsoDeModelo`; **os pontos de criação ainda não
-  chamam ninguém** (é a tarefa seguinte). Ordenar por "menos usado" exige
+  Incremento por `registrarUsoDeModelo`. Ordenar por "menos usado" exige
   `MENOS_USADO_PRIMEIRO`: em Postgres `ASC` é NULLS LAST, e sem `nulls:
   'first'` o já-usado vem antes do nunca-usado.
+
+### Captura na via de TEMPLATES (F1 — superfícies, 11/08/2026)
+
+A via de template é a MAIS usada e não gasta API de imagem. Estes são os sete
+pontos onde a decisão passa e onde ela agora fica registrada:
+
+| Ponto | Grava |
+|---|---|
+| `prepareCreative` | sugestão `modelo` com TODOS os candidatos oferecidos |
+| `createArteRapida` | fecha a sugestão; `Page.usedCount`; `Generation.sourcePageId` |
+| `ajustarArte` | decisão `copy` com o diff antes→depois (a correção explícita) |
+| PATCH da página | decisão `copy`, superfície `editor`, quando o TEXTO muda |
+| `agendarPost` | `slot` + `copy` (diff proposta × final) + `SocialPost.slotValues` |
+| `processarAprovacao` | fecha a sugestão de slot; garante a linha de slot |
+| `gerar-criativo/finalize` | `source`, `sourcePageId` colunar e contador de uso |
+
+Regras que valem para código novo:
+
+- **`prepareCreative` é o ÚNICO ponto que enxerga os modelos REJEITADOS.**
+  Daí para a frente só circula `sourcePageId`. Registrar a lista na EMISSÃO é
+  o que impede a taxa de aceitação de valer 100% por construção — e a linha só
+  nasce com 2+ candidatos, porque com um só não houve preferência nenhuma.
+- **O desfecho do modelo é atribuído por RECONCILIAÇÃO, não por id.** Nenhuma
+  superfície devolve o `sugestaoId` de `prepareCreative` para
+  `createArteRapida` (o MCP local reimplementa o handler; as skills passam só
+  `sourcePageId`), então exigir o id deixaria toda proposta pendente. A
+  atribuição é conservadora: mesma janela de 6h, mesmo projeto, e a página
+  usada tem de estar entre os candidatos. `sinal-de-modelo.ts`.
+- 🔴 **A chave de slot é COMPARTILHADA entre `agendarPost` e
+  `processarAprovacao`** (`slot:post:<id>`, em `sinal-de-agendamento.ts`). O
+  caminho normal é criar rascunho e depois aprovar: com chaves diferentes, o
+  mesmo horário do mesmo post viraria duas linhas e a cadência de quem usa a
+  agenda direito valeria o dobro. A aprovação continua sendo quem FECHA a
+  sugestão de slot — isso é outra coisa, e acontece mesmo quando a linha já
+  existe.
+- **A captura do editor tem balde de 10 minutos por página.** O autosave bate
+  a cada pausa da digitação; sem o balde, escrever uma headline vira uma dezena
+  de linhas quase iguais. Fica a PRIMEIRA do balde, que é a mais valiosa —
+  o lado "antes" dela ainda é o texto que a IA gerou. Só entra quando o TEXTO
+  muda: `layersChanged` dispara também em arrastar caixa.
+- 🔴 **`fieldValues.sourcePageId` é AMBÍGUO**: em `source: 'ajuste-arte'` ele
+  aponta para a própria cópia ajustada, não para um modelo. A coluna
+  `Generation.sourcePageId` nasceu SEM esse vício e é preenchida só quando
+  aponta para modelo de verdade (`createArteRapida` e o `finalize`; o ajuste
+  não a preenche). Leitor novo usa a coluna primeiro.
+- 🔴 **O `finalize` grava nos DOIS livros-caixa na mesma requisição** —
+  `Generation` e `AICreativeGeneration` —, então a união ingênua conta cada
+  criação da UI duas vezes. `lerUsosDeModelo`
+  (`src/lib/aprendizado/historico-de-artes.ts`) unifica a LEITURA e deduplica
+  por janela de 60s; a linha da UI vence, sem perder o `generationId` do outro
+  lado. **Uma linha fundida não pode fundir de novo**, senão uma leva de três
+  artes do mesmo modelo colapsa numa só (defeito real, pego por teste).
+  `scripts/inventario-uso-modelos.ts` já consome o helper. Nenhum dado
+  histórico foi migrado — o que se padronizou é o `source` daqui para a frente.
+- **Registro nasce DEPOIS de a arte existir**: contar uso de uma arte que
+  falhou ao renderizar mentiria sobre a preferência do cliente. Mesma razão de
+  o rodízio de referência de estilo só marcar uso depois do sucesso.
+- **`decididoPor` é o `User.id` INTERNO, e a rota HTTP só LÊ** (`findUnique`
+  por `clerkId`, sem criar): criar User a partir de código de auditoria é como
+  nascem os Users fantasma.
 
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
