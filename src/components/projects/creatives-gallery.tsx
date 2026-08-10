@@ -136,6 +136,41 @@ function getBooleanField(values: Record<string, unknown>, key: string): boolean 
   return typeof value === 'boolean' ? value : undefined
 }
 
+/**
+ * Extensão do arquivo baixado.
+ *
+ * O tipo REAL vem do blob que acabou de ser buscado; a URL é só o segundo
+ * palpite, e vale apenas quando o trecho após o último ponto parece mesmo uma
+ * extensão. Sem essa checagem, URL sem extensão no caminho devolve pedaço do
+ * endereço e o nome do arquivo sai quebrado (`criativo-x.com/arte/9`).
+ */
+function inferDownloadExtension(
+  url: string,
+  blobType: string | null | undefined,
+  isVideo: boolean,
+): string {
+  const normalized = (blobType ?? '').toLowerCase()
+  if (normalized.includes('mp4')) return 'mp4'
+  if (normalized.includes('webm')) return 'webm'
+  if (normalized.includes('quicktime') || normalized.includes('mov')) return 'mov'
+  if (normalized.includes('gif')) return 'gif'
+  if (normalized.includes('png')) return 'png'
+  if (normalized.includes('jpeg') || normalized.includes('jpg')) return 'jpg'
+  if (normalized.includes('webp')) return 'webp'
+
+  try {
+    const { pathname } = new URL(url, window.location.origin)
+    const candidate = pathname.split('.').pop()
+    if (candidate && candidate !== pathname && /^[a-z0-9]{2,6}$/i.test(candidate)) {
+      return candidate.toLowerCase()
+    }
+  } catch {
+    // URL inválida: cai no default por tipo de mídia
+  }
+
+  return isVideo ? 'mp4' : 'png'
+}
+
 export function CreativesGallery({ projectId }: { projectId: number }) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
@@ -504,9 +539,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
         const blob = await response.blob()
         const blobUrl = URL.createObjectURL(blob)
 
-        const cleanPath = assetUrl.split('?')[0]
-        const extensionCandidate = cleanPath.split('.').pop()
-        const extension = extensionCandidate ? extensionCandidate.toLowerCase() : 'png'
+        const extension = inferDownloadExtension(
+          assetUrl,
+          blob.type,
+          getBooleanField(fieldValues, 'isVideo') === true,
+        )
 
         const link = document.createElement('a')
         link.href = blobUrl
@@ -555,9 +592,11 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
         const link = document.createElement('a')
         link.href = blobUrl
-        const cleanPath = assetUrl.split('?')[0]
-        const extensionCandidate = cleanPath.split('.').pop()
-        const extension = extensionCandidate ? extensionCandidate.toLowerCase() : 'png'
+        const extension = inferDownloadExtension(
+          assetUrl,
+          blob.type,
+          getBooleanField(fieldValues, 'isVideo') === true,
+        )
         link.download = `criativo-${generation.id}.${extension}`
         document.body.appendChild(link)
         link.click()

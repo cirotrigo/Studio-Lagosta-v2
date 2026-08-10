@@ -10,8 +10,8 @@ A galeria de criativos utiliza o [PhotoSwipe v5](https://photoswipe.com/) para e
 
 1. **`src/hooks/use-photoswipe.ts`** - Hook customizado que gerencia o ciclo de vida do PhotoSwipe
 2. **`src/components/projects/gallery-item.tsx`** - Item individual da galeria com suporte a PhotoSwipe
-3. **`src/app/(protected)/projects/[id]/creativos/page.tsx`** - Página da galeria de criativos
-4. **`src/components/projects/creatives-gallery.tsx`** - Componente reutilizável da galeria
+3. **`src/components/projects/creatives-gallery.tsx`** - Componente único da galeria do projeto (aba "Criativos" e rota `/projects/[id]/creativos`, que desde 09/08/2026 é só cabeçalho + este componente)
+4. **`src/app/(protected)/criativos/page.tsx`** - Galeria global (todos os projetos), implementação separada
 
 ## Hook `usePhotoSwipe`
 
