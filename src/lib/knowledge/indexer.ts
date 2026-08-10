@@ -18,6 +18,8 @@ export interface IndexEntryInput {
   category: KnowledgeCategory
   createdBy: string
   updatedBy?: string
+  /** Prazo de validade (F0.1). Ausente/null = vale para sempre. */
+  expiresAt?: Date | null
   tenant: TenantKey
 }
 
@@ -31,6 +33,7 @@ export interface IndexFileInput {
   category: KnowledgeCategory
   createdBy: string
   updatedBy?: string
+  expiresAt?: Date | null
   tenant: TenantKey
 }
 
@@ -49,6 +52,7 @@ export async function indexEntry(input: IndexEntryInput) {
     category,
     createdBy,
     updatedBy,
+    expiresAt,
     tenant,
   } = input
 
@@ -61,6 +65,7 @@ export async function indexEntry(input: IndexEntryInput) {
       content,
       tags,
       status,
+      expiresAt: expiresAt ?? null,
       metadata: metadata ?? undefined,
       createdBy,
       updatedBy,

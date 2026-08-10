@@ -168,6 +168,23 @@ export default function KnowledgeDetailPage() {
             <div>
               <span className="font-medium">Chunks:</span> {entry._count?.chunks || 0}
             </div>
+            <div>
+              <span className="font-medium">Vale até:</span>{' '}
+              {entry.expiresAt ? (
+                <span
+                  className={
+                    new Date(entry.expiresAt).getTime() <= Date.now() ? 'text-amber-600' : undefined
+                  }
+                >
+                  {new Date(entry.expiresAt).toLocaleDateString('pt-BR', {
+                    timeZone: 'America/Sao_Paulo',
+                  })}
+                  {new Date(entry.expiresAt).getTime() <= Date.now() && ' (vencida)'}
+                </span>
+              ) : (
+                'sem prazo'
+              )}
+            </div>
           </div>
 
           {/* Tags */}

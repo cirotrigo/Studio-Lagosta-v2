@@ -1,0 +1,217 @@
+{
+  "execucao_id": "2026-04-20_02-53",
+  "cliente": "Bacana",
+  "pasta_origem": "99_A-Classificar/",
+  "data": "2026-04-20T02:53:59.894Z",
+  "total_fotos": 5,
+  "dry_run": true,
+  "operacoes": [
+    {
+      "id": "op_001",
+      "arquivo_origem": "CMT06881.jpg",
+      "file_id_drive": "1R319Xim8_whk8JiJEqzU0o4S-0rOFou4",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com picanha bovina em fatias grossas, com capa de gordura dourada e brilhante. Ao fundo, caneca de chopp gelado. Servido em base preta retangular.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "espeto",
+          "churrasco",
+          "cerveja",
+          "carne",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-cerveja"
+    },
+    {
+      "id": "op_002",
+      "arquivo_origem": "CMT06886.jpg",
+      "file_id_drive": "1nB84mC1pkg-_59YjyhMcH5u1N5fSqKp8",
+      "destino": "07_Bebidas/Cervejas",
+      "destino_folder_id": "14BqD7w7ipKG-Rjf0BVDiI3Z23gDURPkA",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "bebida",
+        "corte": "cerveja",
+        "metodo_preparo": "nenhum",
+        "descricao_visual": "Copo de cerveja congelado com espuma, em cima de uma mesa de madeira escura. Luzes bokeh ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "cerveja",
+          "copo congelado",
+          "bebida gelada",
+          "happy hour"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "cerveja-copo-congelado-bokeh"
+    },
+    {
+      "id": "op_003",
+      "arquivo_origem": "CMT07204.jpg",
+      "file_id_drive": "1IuHGy-TZkk9Zik1K8VmyRX4GlZZx4tqR",
+      "destino": "04_Entradas-e-Porcoes/Paes-Queijos-Linguicas",
+      "destino_folder_id": "1sB9Cm3KDTaCLNB_35hWDZuKGYhsOWs_-",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "entradas_e_porcoes",
+        "corte": "queijo_coalho",
+        "metodo_preparo": "grelhado_com_mel",
+        "descricao_visual": "Queijo coalho em formato retangular com cortes, grelhado e com mel sendo derramado sobre ele. Apresentado em uma bandeja preta.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "maos",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "queijo coalho",
+          "mel",
+          "grelhado",
+          "entrada",
+          "porcao"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "queijo-coalho-mel"
+    },
+    {
+      "id": "op_004",
+      "arquivo_origem": "CMT08196.jpg",
+      "file_id_drive": "1WyD4Hu-3uXWbroenp-6uEkFFiY4bp_RP",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_porcao",
+        "corte": "frango",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com pedaços de frango assado e brilhante. Base de apoio retangular e escura.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "frango",
+          "espeto",
+          "porcao",
+          "churrascaria"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-espeto-vertical"
+    },
+    {
+      "id": "op_005",
+      "arquivo_origem": "CMT08294.jpg",
+      "file_id_drive": "1nZto55DyFSyMJotqA7t1fZUoQDBi7fpt",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "banana_empanada",
+        "metodo_preparo": "frito_com_sorvete",
+        "descricao_visual": "Banana frita empanada com canela e açúcar, acompanhada de sorvete e um espetinho de queijo coalho.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana frita",
+          "sorvete",
+          "sobremesa",
+          "doce",
+          "espetinho",
+          "queijo coalho"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-empanada-sorvete-espetinho"
+    }
+  ],
+  "resumo": {
+    "classificadas": 5,
+    "para_revisao": 0,
+    "erros": 0,
+    "por_pasta": {
+      "01_Carnes/No-Espeto/Picanha-Bovina": 1,
+      "07_Bebidas/Cervejas": 1,
+      "04_Entradas-e-Porcoes/Paes-Queijos-Linguicas": 1,
+      "04_Entradas-e-Porcoes/Frango-Porcoes": 1,
+      "06_Sobremesas/Quentes-com-Sorvete": 1
+    }
+  }
+}

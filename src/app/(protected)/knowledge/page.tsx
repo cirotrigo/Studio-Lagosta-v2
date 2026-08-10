@@ -20,7 +20,7 @@ import {
 } from '@/hooks/use-org-knowledge'
 import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
-import { Plus, BookOpen, Clock, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
+import { Plus, BookOpen, Clock, CalendarClock, Eye, Edit, Trash2, MoreVertical } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -139,6 +139,8 @@ export default function OrgKnowledgePage() {
   const [tags, setTags] = useState('')
   const [file, setFile] = useState<File | null>(null)
   const [category, setCategory] = useState<KnowledgeCategory>('ESTABELECIMENTO_INFO')
+  // "AAAA-MM-DD" vindo do <input type="date">; vazio significa "vale sempre".
+  const [validade, setValidade] = useState('')
 
   const { data, isLoading } = useOrgKnowledgeEntries(
     {
@@ -166,17 +168,21 @@ export default function OrgKnowledgePage() {
         content,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         status: 'ACTIVE',
+        expiresAt: validade || null,
       })
 
       toast({
         title: 'Conhecimento adicionado!',
-        description: 'A entrada foi indexada e está disponível para toda a organização.',
+        description: validade
+          ? `A entrada foi indexada e vale até ${formatarDataBR(validade)} — depois disso ela sai sozinha dos textos.`
+          : 'A entrada foi indexada e está disponível para toda a organização.',
       })
 
       // Reset form
       setTitle('')
       setContent('')
       setTags('')
+      setValidade('')
       setIsDialogOpen(false)
     } catch (error) {
       toast({
@@ -203,17 +209,21 @@ export default function OrgKnowledgePage() {
         fileContent,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         status: 'ACTIVE',
+        expiresAt: validade || null,
       })
 
       toast({
         title: 'Arquivo processado!',
-        description: 'O documento foi indexado e está disponível para busca.',
+        description: validade
+          ? `O documento foi indexado e vale até ${formatarDataBR(validade)}.`
+          : 'O documento foi indexado e está disponível para busca.',
       })
 
       // Reset form
       setTitle('')
       setFile(null)
       setTags('')
+      setValidade('')
       setIsDialogOpen(false)
     } catch (error) {
       toast({
@@ -354,6 +364,13 @@ export default function OrgKnowledgePage() {
                         />
                       </div>
 
+                      <ValidadeField
+                        id="validade"
+                        value={validade}
+                        onChange={setValidade}
+                        category={category}
+                      />
+
                       <Button type="submit" disabled={createMutation.isPending || !hasProject} className="w-full">
                         {createMutation.isPending ? 'Adicionando...' : 'Adicionar Conhecimento'}
                       </Button>
@@ -415,6 +432,13 @@ export default function OrgKnowledgePage() {
                           placeholder="Ex: manual, procedimentos, guia"
                         />
                       </div>
+
+                      <ValidadeField
+                        id="file-validade"
+                        value={validade}
+                        onChange={setValidade}
+                        category={category}
+                      />
 
                       <Button type="submit" disabled={uploadMutation.isPending || !file || !hasProject} className="w-full">
                         {uploadMutation.isPending ? 'Processando...' : 'Fazer Upload'}
@@ -492,6 +516,15 @@ export default function OrgKnowledgePage() {
                       </p>
                     )}
 
+                    {entry.expiresAt && (
+                      <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <CalendarClock className="h-3 w-3" />
+                        {new Date(entry.expiresAt).getTime() <= Date.now()
+                          ? `Venceu em ${formatarDataBR(entry.expiresAt)} — já não alimenta os textos`
+                          : `Vale até ${formatarDataBR(entry.expiresAt)}`}
+                      </p>
+                    )}
+
                     <p className="text-sm text-muted-foreground line-clamp-3">
                       {entry.content}
                     </p>
@@ -530,6 +563,53 @@ export default function OrgKnowledgePage() {
             </div>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+/**
+ * Data que veio como "AAAA-MM-DD" (o valor do input) ou como ISO completo (o
+ * `expiresAt` do banco), sempre lida no fuso de Brasília — a entrada gravada
+ * como fim do dia 31 é 03:00 UTC do dia 1º, e formatar em UTC mostraria o dia
+ * seguinte.
+ */
+function formatarDataBR(valor: string): string {
+  const data = /^\d{4}-\d{2}-\d{2}$/.test(valor) ? new Date(`${valor}T12:00:00-03:00`) : new Date(valor)
+  return Number.isNaN(data.getTime())
+    ? valor
+    : data.toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' })
+}
+
+/**
+ * Validade da entrada. O aviso de CAMPANHAS sem prazo é o mesmo que a tool
+ * `criar-entrada-base` dá no chat — e, como lá, é aviso e nunca veto: existe
+ * campanha permanente ("Quinta do Vinho, toda quinta").
+ */
+function ValidadeField({
+  id,
+  value,
+  onChange,
+  category,
+}: {
+  id: string
+  value: string
+  onChange: (v: string) => void
+  category: KnowledgeCategory
+}) {
+  return (
+    <div>
+      <Label htmlFor={id}>Vale até (opcional)</Label>
+      <Input id={id} type="date" value={value} onChange={(e) => onChange(e.target.value)} />
+      <p className="mt-1 text-xs text-muted-foreground">
+        O dia escolhido conta inteiro. Depois dele a entrada para sozinha de alimentar textos e
+        sugestões. Deixe em branco para informação permanente.
+      </p>
+      {category === 'CAMPANHAS' && !value && (
+        <p className="mt-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+          Campanha sem data de fim continua alimentando os textos para sempre — inclusive depois de
+          acabar. Se ela tem prazo, preencha aqui.
+        </p>
       )}
     </div>
   )

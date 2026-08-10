@@ -1,0 +1,73 @@
+{
+  "execucao_id": "2026-04-20_02-37",
+  "cliente": "Bacana",
+  "pasta_origem": "99_A-Classificar/",
+  "data": "2026-04-20T02:37:58.088Z",
+  "total_fotos": 5,
+  "dry_run": true,
+  "operacoes": [
+    {
+      "id": "op_001",
+      "arquivo_origem": "CMT06881.jpg",
+      "file_id_drive": "1R319Xim8_whk8JiJEqzU0o4S-0rOFou4",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+    },
+    {
+      "id": "op_002",
+      "arquivo_origem": "CMT06886.jpg",
+      "file_id_drive": "1nB84mC1pkg-_59YjyhMcH5u1N5fSqKp8",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+    },
+    {
+      "id": "op_003",
+      "arquivo_origem": "CMT07204.jpg",
+      "file_id_drive": "1IuHGy-TZkk9Zik1K8VmyRX4GlZZx4tqR",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+    },
+    {
+      "id": "op_004",
+      "arquivo_origem": "CMT08196.jpg",
+      "file_id_drive": "1WyD4Hu-3uXWbroenp-6uEkFFiY4bp_RP",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+    },
+    {
+      "id": "op_005",
+      "arquivo_origem": "CMT08294.jpg",
+      "file_id_drive": "1nZto55DyFSyMJotqA7t1fZUoQDBi7fpt",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "Could not resolve authentication method. Expected either apiKey or authToken to be set. Or for one of the \"X-Api-Key\" or \"Authorization\" headers to be explicitly omitted"
+    }
+  ],
+  "resumo": {
+    "classificadas": 0,
+    "para_revisao": 5,
+    "erros": 5,
+    "por_pasta": {
+      "99_Revisar-Manual": 5
+    }
+  }
+}

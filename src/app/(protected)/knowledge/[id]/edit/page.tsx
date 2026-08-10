@@ -25,6 +25,17 @@ import { useToast } from '@/hooks/use-toast'
 import { usePageConfig } from '@/hooks/use-page-config'
 import { ArrowLeft, Save } from 'lucide-react'
 
+/**
+ * ISO do banco → "AAAA-MM-DD" para o input, lido em Brasília: a validade é
+ * gravada como fim do dia BRT (03:00 UTC do dia seguinte), então fatiar o ISO
+ * cru mostraria o dia seguinte no campo.
+ */
+function paraCampoDeData(iso: string): string {
+  const data = new Date(iso)
+  if (Number.isNaN(data.getTime())) return ''
+  return new Date(data.getTime() - 3 * 3600_000).toISOString().slice(0, 10)
+}
+
 export default function KnowledgeEditPage() {
   const params = useParams()
   const router = useRouter()
@@ -38,6 +49,8 @@ export default function KnowledgeEditPage() {
   const [content, setContent] = useState('')
   const [tags, setTags] = useState('')
   const [status, setStatus] = useState<'ACTIVE' | 'DRAFT' | 'ARCHIVED'>('ACTIVE')
+  // "AAAA-MM-DD" para o <input type="date">; vazio = sem prazo.
+  const [validade, setValidade] = useState('')
 
   usePageConfig(
     `Editar: ${entry?.title || 'Carregando...'}`,
@@ -57,6 +70,7 @@ export default function KnowledgeEditPage() {
       setContent(entry.content)
       setTags(entry.tags?.join(', ') || '')
       setStatus(entry.status)
+      setValidade(entry.expiresAt ? paraCampoDeData(entry.expiresAt) : '')
     }
   }, [entry])
 
@@ -73,6 +87,8 @@ export default function KnowledgeEditPage() {
         content,
         tags: tags.split(',').map(t => t.trim()).filter(Boolean),
         status,
+        // Sempre enviado: string vazia é o pedido explícito de LIMPAR o prazo.
+        expiresAt: validade || null,
       })
 
       toast({
@@ -167,6 +183,26 @@ export default function KnowledgeEditPage() {
               onChange={(e) => setTags(e.target.value)}
               placeholder="Ex: processo, rh, onboarding"
             />
+          </div>
+
+          <div>
+            <Label htmlFor="validade">Vale até (opcional)</Label>
+            <Input
+              id="validade"
+              type="date"
+              value={validade}
+              onChange={(e) => setValidade(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              O dia escolhido conta inteiro. Depois dele a entrada para sozinha de alimentar textos e
+              sugestões. Limpe o campo para a entrada voltar a valer para sempre.
+            </p>
+            {entry.category === 'CAMPANHAS' && !validade && (
+              <p className="mt-1.5 rounded-md bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 dark:text-amber-400">
+                Campanha sem data de fim continua alimentando os textos para sempre — inclusive
+                depois de acabar.
+              </p>
+            )}
           </div>
 
           <div>

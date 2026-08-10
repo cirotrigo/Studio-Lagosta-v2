@@ -1,0 +1,1745 @@
+{
+  "execucao_id": "2026-04-20_03-05",
+  "cliente": "Bacana",
+  "pasta_origem": "99_A-Classificar/",
+  "data": "2026-04-20T03:11:07.459Z",
+  "total_fotos": 50,
+  "dry_run": true,
+  "operacoes": [
+    {
+      "id": "op_001",
+      "arquivo_origem": "CMT06870.jpg",
+      "file_id_drive": "11ILBUS3WtIWYA_6cHOfnb2qGSwerHLdk",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com quatro porções de picanha bovina, capa de gordura evidente, servido sobre tábua preta rústica em ambiente de restaurante. Mão segura o espeto.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "maos",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "espeto",
+          "churrasco",
+          "carne",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-vertical-porcoes"
+    },
+    {
+      "id": "op_002",
+      "arquivo_origem": "CMT06871.jpg",
+      "file_id_drive": "1huElkV3rGTSyXWHiCFQzKJ9Qu8na8yhq",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com pedaços de picanha bovina, capa de gordura grossa e dourada, levemente chamuscada. O espeto está apoiado em uma base preta retangular. Fundo desfocado com luzes.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "espeto",
+          "carne bovina",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-no-espeto-vertical"
+    },
+    {
+      "id": "op_003",
+      "arquivo_origem": "CMT06873.jpg",
+      "file_id_drive": "1FlEajX3sLQMjXHvaqPlztEaH1RoyMQ9p",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com picanha bovina em fatias grossas, capa de gordura dourada e pronunciada. A carne está disposta sobre uma base escura com o espeto espetado. Fundo desfocado com luzes.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "espeto",
+          "carne",
+          "bacana_churrascaria"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-vertical"
+    },
+    {
+      "id": "op_004",
+      "arquivo_origem": "CMT06874.jpg",
+      "file_id_drive": "10EZ3YQewsbA9m6k3nQ-8wOlOQudVZymo",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Picanha bovina cortada em fatias e espetada, com capa de gordura dourada e grossa, em espeto vertical. A foto mostra detalhes da carne, com o fundo desfocado e iluminação suave.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "carne",
+          "espeto",
+          "bacana_churrascaria"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-no-espeto-detalhe"
+    },
+    {
+      "id": "op_005",
+      "arquivo_origem": "CMT06878.jpg",
+      "file_id_drive": "1BFdxhoRQ3JKzO5pcDEM9U8lCFlHTci38",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com fatias de picanha bovina, com capa de gordura dourada, sobre uma base de metal escura em uma mesa de madeira. Fundo com iluminação bokeh.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "carne",
+          "espeto",
+          "gordura_dourada"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-vertical"
+    },
+    {
+      "id": "op_006",
+      "arquivo_origem": "CMT06880.jpg",
+      "file_id_drive": "1bWW04shHJtJByEfudKAeVe0fseCA-frH",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com picanha bovina em fatias, capa de gordura grossa e dourada, servido em base preta com resíduos de molho, caneca de chopp ao fundo, ambiente de restaurante.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "espeto",
+          "carne",
+          "cerveja"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-vertical-com-cerveja"
+    },
+    {
+      "id": "op_007",
+      "arquivo_origem": "CMT06883.jpg",
+      "file_id_drive": "1YYWkUhLJ_35x0WLx1ZX5Yo9C1ftWTlO7",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com picanha bovina em pedaços, capa de gordura grossa e dourada. Prancha de madeira escura, pinça e caneca de cerveja ao lado.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "espeto",
+          "churrasco",
+          "cerveja",
+          "carne"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-e-cerveja"
+    },
+    {
+      "id": "op_008",
+      "arquivo_origem": "CMT06885.jpg",
+      "file_id_drive": "1trh-XM73cAb8kFoz79jun9hGOEwtKSlF",
+      "destino": "07_Bebidas/Cervejas",
+      "destino_folder_id": "14BqD7w7ipKG-Rjf0BVDiI3Z23gDURPkA",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "bebida",
+        "corte": "cerveja",
+        "metodo_preparo": "nenhum",
+        "descricao_visual": "Caneca de chopp congelada com espuma em cima, sobre mesa de madeira escura com iluminação de fundo desfocada.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "cerveja",
+          "chopp",
+          "caneca",
+          "gelada",
+          "bebida"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "cerveja-caneca-congelada"
+    },
+    {
+      "id": "op_009",
+      "arquivo_origem": "CMT06887.jpg",
+      "file_id_drive": "1vzfOW-KInlcsE1794nzJ6QaEF3YETNdt",
+      "destino": "07_Bebidas/Cervejas",
+      "destino_folder_id": "14BqD7w7ipKG-Rjf0BVDiI3Z23gDURPkA",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "bebida",
+        "corte": "cerveja",
+        "metodo_preparo": "nenhum",
+        "descricao_visual": "Copo de cerveja claro, com espuma, bastante gelado, sobre mesa escura, em ambiente de restaurante com iluminação suave.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "cerveja",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "cerveja",
+          "bebida gelada",
+          "copo gelado",
+          "restaurante",
+          "noite"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "cerveja-copo-congelado"
+    },
+    {
+      "id": "op_010",
+      "arquivo_origem": "CMT06921.jpg",
+      "file_id_drive": "19vpzC48ujEIfSqOvuRDHwO6HFjUvvQmo",
+      "destino": "01_Carnes/No-Espeto/Espeto-Misto",
+      "destino_folder_id": "1a1ZKriu61lQuuZhlQE64jxaHLZjwhIkf",
+      "confianca": 0.9,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "misto",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto com queijo coalho tostado, linguiça toscana e pedaços de frango cru sendo assados na brasa.",
+        "estilo_foto": "bastidor",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "churrasqueira_e_grelha",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": null,
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "stories_bastidores"
+        ],
+        "tags": [
+          "espeto misto",
+          "queijo coalho",
+          "linguiça toscana",
+          "frango",
+          "churrasco"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": null
+      },
+      "novo_nome_sugerido": "espeto-misto-queijo-toscana-frango"
+    },
+    {
+      "id": "op_011",
+      "arquivo_origem": "CMT07886.jpg",
+      "file_id_drive": "1hejwO9tca8j-B7r0gUSma0Jrsx8szgHd",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Close-up de picanha bovina no espeto, com capa de gordura dourada e carne grelhada. A foto destaca a textura da carne e a suculência. Fundo desfocado com luzes bokeh.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "carne",
+          "espeto",
+          "gourmet",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-no-espeto-detalhe"
+    },
+    {
+      "id": "op_012",
+      "arquivo_origem": "CMT07888.jpg",
+      "file_id_drive": "1A7g4DoNkm9tnVY9NZs_asS_YAT6l1oGf",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Picanha bovina assada no espeto, com capa de gordura espessa e dourada, apresentada verticalmente.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "carne",
+          "espeto",
+          "gourmet"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-no-espeto-vertical"
+    },
+    {
+      "id": "op_013",
+      "arquivo_origem": "CMT07890.jpg",
+      "file_id_drive": "1qMVl9WaMfHxlU1AFHIGX1qtQtmY-SVNj",
+      "destino": "01_Carnes/No-Espeto/Ancho",
+      "destino_folder_id": "1EB-aln8ktN7v9kMalxE-qdAarP8pxIPw",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "ancho",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Peça de carne no espeto, com capa de gordura fina e formato característico de ancho. Espeto posicionado verticalmente sobre uma base escura.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "ancho",
+          "espeto",
+          "carne",
+          "churrasco",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [
+          "01_Carnes/No-Espeto/Alcatra",
+          "01_Carnes/No-Espeto/Maminha"
+        ],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "ancho-espeto-vertical"
+    },
+    {
+      "id": "op_014",
+      "arquivo_origem": "CMT07891.jpg",
+      "file_id_drive": "1D7wtsxACa5tgkRfQ6cw1ge5Xbqr7icqI",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_015",
+      "arquivo_origem": "CMT07892.jpg",
+      "file_id_drive": "1eW42wIbh76WHPwfOadz8MXMCv5-mlEwT",
+      "destino": "01_Carnes/No-Espeto/Picanha-Bovina",
+      "destino_folder_id": "1cgrcWCVKIkUvonvX4Mk5gmdBukuL0l2W",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "carne_no_espeto",
+        "corte": "picanha_bovina",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Picanha bovina no espeto vertical, com capa de gordura espessa e dourada no topo. Espeto fincado em base metálica escura. Fundo desfocado com luzes.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio",
+          "stories"
+        ],
+        "tags": [
+          "picanha",
+          "churrasco",
+          "espeto",
+          "carne",
+          "gordura",
+          "restaurante"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "picanha-bovina-espeto-vertical-detalhe"
+    },
+    {
+      "id": "op_016",
+      "arquivo_origem": "CMT08278.jpg",
+      "file_id_drive": "1-zb0jikkzjvnwHOA1vruDRzlYgxE6iaL",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_e_porcao",
+        "corte": "frango",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com tulipas de frango douradas e brilhantes, espeto apoiado em base metálica retangular. Fundo escuro.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "frango",
+          "tulipa",
+          "espeto",
+          "aperitivo",
+          "porcao"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-tulipa-espeto-vertical"
+    },
+    {
+      "id": "op_017",
+      "arquivo_origem": "CMT08279.jpg",
+      "file_id_drive": "1VaqY7Ei8QI-9OFWw0eE9wEKi1X4x34h-",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_ou_porcao",
+        "corte": "tulipa_de_frango",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Tulipas de frango assadas no espeto, dispostas verticalmente. Fundo escuro.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "estudio",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tulipa de frango",
+          "frango",
+          "espeto",
+          "porcao",
+          "entrada"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-porcao-tulipa-espeto"
+    },
+    {
+      "id": "op_018",
+      "arquivo_origem": "CMT08280.jpg",
+      "file_id_drive": "1mKWyYqu2eyHJNB-KYo-IM0vux3PeLW8t",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.92,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_ou_porcao",
+        "corte": "frango_tulipa",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com tulipas de frango caramelizadas. Fundo escuro, iluminação focada.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "frango",
+          "tulipa",
+          "espeto",
+          "churrasco",
+          "caramelizado",
+          "porcao",
+          "entrada"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-tulipa-espeto-vertical"
+    },
+    {
+      "id": "op_019",
+      "arquivo_origem": "CMT08281.jpg",
+      "file_id_drive": "1oWvgJ413052-NXODC-fu7vPH71NXT2hj",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_porcao",
+        "corte": "frango",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Espeto vertical com tulipas de frango douradas e brilhantes. Fundo desfocado com luzes bokeh.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "frango",
+          "tulipa",
+          "espeto",
+          "churrasco",
+          "aperitivo",
+          "porcao"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-tulipa-espeto-vertical"
+    },
+    {
+      "id": "op_020",
+      "arquivo_origem": "CMT08282.jpg",
+      "file_id_drive": "1VRJVnm_5nT7AQhXjnGtVCmxht7XSub6C",
+      "destino": "04_Entradas-e-Porcoes/Frango-Porcoes",
+      "destino_folder_id": "1-Sl3mMoIvWQ_KF4afKm_u3-6ita2BR3V",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "entrada_porcao",
+        "corte": "frango",
+        "metodo_preparo": "espeto",
+        "descricao_visual": "Tulipas de frango assadas no espeto vertical, apresentadas em ambiente de restaurante com iluminação suave.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio",
+          "stories_promocionais"
+        ],
+        "tags": [
+          "frango",
+          "tulipa",
+          "espeto",
+          "churrasco",
+          "aperitivo"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "frango-tulipa-no-espeto"
+    },
+    {
+      "id": "op_021",
+      "arquivo_origem": "CMT08284.jpg",
+      "file_id_drive": "1hN9kfDIKbp2dD2JCbvfe3eDqJTMa_QpZ",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_022",
+      "arquivo_origem": "CMT08287.jpg",
+      "file_id_drive": "1WrZRtjI-jRKG8deHoazBhOQl_hOKniSL",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "banana frita",
+        "metodo_preparo": "frito",
+        "descricao_visual": "Banana frita com sorvete e espetinho de carne na mesa do restaurante",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana frita",
+          "sorvete",
+          "carne",
+          "espeto"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-frita-sorvete-carne-espeto"
+    },
+    {
+      "id": "op_023",
+      "arquivo_origem": "CMT08288.jpg",
+      "file_id_drive": "1mcDKAM8z26FsgkLTiTjrxF1S8RP6uPbM",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "banana",
+        "metodo_preparo": "empanada",
+        "descricao_visual": "Banana empanada com espetinho de queijo coalho e sorvete em prato branco quadrado sobre mesa escura.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana empanada",
+          "queijo coalho",
+          "sorvete",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-empanada-queijo-espeto-sorvete"
+    },
+    {
+      "id": "op_024",
+      "arquivo_origem": "CMT08291.jpg",
+      "file_id_drive": "1wVILXUr5eDlFI12vHuqbpnyXOea3mn6R",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "n/a",
+        "metodo_preparo": "frito_espeto",
+        "descricao_visual": "Banana frita inteira em prato branco quadrado com cubos de queijo no espeto e uma bola de sorvete, decorado com hortelã.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana frita",
+          "queijo coalho",
+          "sorvete",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-frita-cubos-queijo-sorvete"
+    },
+    {
+      "id": "op_025",
+      "arquivo_origem": "CMT08295.jpg",
+      "file_id_drive": "1qSi-5saxQll4dS42XkDAnaot_LRJhXAO",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "banana_empanada",
+        "metodo_preparo": "frito_e_montado",
+        "descricao_visual": "Banana empanada servida em prato quadrado com sorvete e um espeto com pedaços de doce empanado. O prato está sobre uma mesa marrom escura, com um sofá capitonê preto ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana empanada",
+          "sorvete",
+          "espeto doce",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-empanada-com-sorvete-e-espeto-doce"
+    },
+    {
+      "id": "op_026",
+      "arquivo_origem": "CMT08297.jpg",
+      "file_id_drive": "1nD4GimTIV5hjet6_41yqlpG4sUAdVMwE",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_027",
+      "arquivo_origem": "CMT08298.jpg",
+      "file_id_drive": "1y5B1c3t4Ft6KM6rNdTbYMn_brFvuKakU",
+      "destino": "06_Sobremesas/Quentes-com-Sorvete",
+      "destino_folder_id": "1lXb47izEpWtbPLVDJXCZzK2XAr6499D7",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "banana_empanada",
+        "metodo_preparo": "frito_e_montado",
+        "descricao_visual": "Banana empanada com queijo no espeto e bola de sorvete em prato quadrado branco com canela e açúcar.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "banana empanada",
+          "queijo",
+          "sorvete",
+          "sobremesa",
+          "espeto"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "banana-empanada-espeto-queijo-sorvete"
+    },
+    {
+      "id": "op_028",
+      "arquivo_origem": "CMT08300.jpg",
+      "file_id_drive": "1G7gMmIZ_trVWrv98Hzf7ALo1OjhEitnw",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha",
+        "metodo_preparo": "montado",
+        "descricao_visual": "Casquinha de sorvete de chocolate recheada, servida com uma bola de sorvete de creme, morango e calda de chocolate em prato retangular branco.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-morango-calda"
+    },
+    {
+      "id": "op_029",
+      "arquivo_origem": "CMT08301.jpg",
+      "file_id_drive": "1DCfMrNkf9k00NoMq2JAzE-ve53iRKp3x",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha_sorvete",
+        "metodo_preparo": "montagem",
+        "descricao_visual": "Uma casquinha de sorvete de chocolate reclinada ao lado de uma bola de sorvete de creme com cobertura de chocolate e folhas de hortelã. Há também um morango e riscos de chocolate decorando o prato quadrado branco.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-morango-chocolate"
+    },
+    {
+      "id": "op_030",
+      "arquivo_origem": "CMT08302.jpg",
+      "file_id_drive": "1pRJBF-z65fMgdKcvcx_qeefff1WiXWLe",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha_recheada",
+        "metodo_preparo": "montado",
+        "descricao_visual": "Casquinha recheada com sorvete de chocolate, acompanhada de uma bola de sorvete de creme com calda de chocolate, morango e hortelã, sobre um prato quadrado branco. Ao fundo, sofá de couro capitonê preto.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-chocolate-morango"
+    },
+    {
+      "id": "op_031",
+      "arquivo_origem": "CMT08304.jpg",
+      "file_id_drive": "1Um-g-UqpdpPXSFWB7yk9JdTbkY-CAjGS",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha",
+        "metodo_preparo": "montado",
+        "descricao_visual": "Casquinha de sorvete recheada com sorvete de chocolate, uma bola de sorvete de creme com calda de chocolate, morango e hortelã em um prato branco quadrado. Fundo com sofá capitonê preto.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "morango",
+          "calda",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-morango-calda"
+    },
+    {
+      "id": "op_032",
+      "arquivo_origem": "CMT08306.jpg",
+      "file_id_drive": "17ug6LXQ0vydkkRIJVdzjDGd50XDYHRhe",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha",
+        "metodo_preparo": "montagem",
+        "descricao_visual": "Casquinha de sorvete de chocolate com calda de chocolate, uma bola de sorvete de creme com calda, morango e folha de hortelã em prato branco quadrado.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "calda",
+          "morango"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-chocolate-calda"
+    },
+    {
+      "id": "op_033",
+      "arquivo_origem": "CMT08308.jpg",
+      "file_id_drive": "17KmzmjcOa2obxznG5OTRFa21a9XNRJUy",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha",
+        "metodo_preparo": "recheado",
+        "descricao_visual": "Casquinha recheada com sorvete de chocolate e uma bola de sorvete de creme com morango e calda de chocolate, decorado com folhas de hortelã. Servido em prato branco retangular.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "casquinha",
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-recheada-sorvete-morango"
+    },
+    {
+      "id": "op_034",
+      "arquivo_origem": "CMT08309.jpg",
+      "file_id_drive": "1eze2n9_lUH7KNvW0NXfYFgvkvaMF_iEK",
+      "destino": "06_Sobremesas/Tacas-e-Cremes",
+      "destino_folder_id": "1GxBEDfaQxLrL8cPQ7jkOaAdPnvowWuNL",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "nao_aplicavel",
+        "metodo_preparo": "frio",
+        "descricao_visual": "Duas bolas de sorvete (uma de creme com calda e outra de chocolate em casquinha), decoradas com morango, hortelã e calda de chocolate em prato branco retangular.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa",
+          "doce"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "taca-sorvete-morango-chocolate"
+    },
+    {
+      "id": "op_035",
+      "arquivo_origem": "CMT08310.jpg",
+      "file_id_drive": "1U06PyQCjIwK39sDyTiEbo9HPkYEkNypJ",
+      "destino": "06_Sobremesas/Tacas-e-Cremes",
+      "destino_folder_id": "1GxBEDfaQxLrL8cPQ7jkOaAdPnvowWuNL",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "na",
+        "metodo_preparo": "frio",
+        "descricao_visual": "Uma bola de sorvete de creme e um cone de sorvete de chocolate, ambos com calda de chocolate, em um prato quadrado branco com um morango e folha de hortelã.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "sorvete",
+          "chocolate",
+          "morango",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "taca-sorvete-chocolate-morango"
+    },
+    {
+      "id": "op_036",
+      "arquivo_origem": "CMT08313.jpg",
+      "file_id_drive": "18G_MnE7-26cK6uLfeTexty1zLj2INq_n",
+      "destino": "06_Sobremesas/Churros-e-Casquinhas",
+      "destino_folder_id": "1K0K0gbphhJRpfTwFW0hFs7iQbMwe11hZ",
+      "confianca": 0.92,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "sobremesa",
+        "corte": "casquinha_sorvete",
+        "metodo_preparo": "montado",
+        "descricao_visual": "Casquinha de sorvete de chocolate e bola de sorvete de creme com morango e calda de chocolate em prato quadrado branco, decorado com folhinhas de hortelã. Detalhe do ambiente do restaurante no fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "premium",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": false,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "sorvete",
+          "casquinha",
+          "morango",
+          "chocolate",
+          "sobremesa"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "casquinha-sorvete-morango-calda"
+    },
+    {
+      "id": "op_037",
+      "arquivo_origem": "CMT08315.jpg",
+      "file_id_drive": "1n0mql2tjY3ywjn_B66kyVCmNvIkTXK6W",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Camarao",
+      "destino_folder_id": "1Eb6PpZHVm7DamoxuX6T-dOPamvMf_Vre",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "frito_grelhado",
+        "descricao_visual": "Filés de tilápia grelhados com camarões ao molho e legumes cozidos (brócolis, couve-flor e cenoura) em frigideira de ferro com cabo. Bowl de arroz branco ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarao",
+          "legumes",
+          "frutos do mar",
+          "peixe",
+          "frigideira"
+        ],
+        "hipoteses_alternativas": [
+          "03_Peixes-e-Frutos-do-Mar/Tilapia",
+          "01_Carnes/Pratos-Montados"
+        ],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-camarao-legumes-frigideira"
+    },
+    {
+      "id": "op_038",
+      "arquivo_origem": "CMT08316.jpg",
+      "file_id_drive": "13yq3Hx-MFv8XpWcurY8VRVUyMuASt0f9",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Camarao",
+      "destino_folder_id": "1Eb6PpZHVm7DamoxuX6T-dOPamvMf_Vre",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "camarao",
+        "metodo_preparo": "grelhado",
+        "descricao_visual": "Camarões grelhados com legumes (brócolis e cenoura) servidos em frigideira de ferro com cabo. Bowl quadrado branco com arroz ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "camarão",
+          "frutos do mar",
+          "legumes",
+          "grelhado",
+          "frigideira",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "camarao-grelhado-legumes-frigideira"
+    },
+    {
+      "id": "op_039",
+      "arquivo_origem": "CMT08318.jpg",
+      "file_id_drive": "17wy_s0BgFjWSIxAwHwoZbeePL8UyRYk7",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Tilapia",
+      "destino_folder_id": "1Wsm8IEqypCIveXyAMl8nda8PclvbLW86",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "grelhado_com_molho",
+        "descricao_visual": "Filés de tilápia grelhados com camarão ao molho, servidos em frigideira de ferro com legumes cozidos (brócolis e cenoura). Bowl quadrado branco com acompanhamento (arroz?).",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": null,
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "cardapio_digital",
+          "feed_instagram",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarão",
+          "legumes",
+          "frigideira",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [
+          "03_Peixes-e-Frutos-do-Mar/Camarao",
+          "02_Outros-Pratos/Grandes-Porcoes"
+        ],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-com-camarao-e-legumes-frigideira"
+    },
+    {
+      "id": "op_040",
+      "arquivo_origem": "CMT08320.jpg",
+      "file_id_drive": "1EGe8gcz-uZHW_h_LLKRpsBvRL7J80oyk",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_041",
+      "arquivo_origem": "CMT08322.jpg",
+      "file_id_drive": "1RPyTo3pyjZHgx4wJQlI7bQJ30mlugA7x",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Tilapia",
+      "destino_folder_id": "1Wsm8IEqypCIveXyAMl8nda8PclvbLW86",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "grelhado_com_camarão_e_legumes",
+        "descricao_visual": "Filés de tilápia grelhados em frigideira com camarões salteados e legumes cozidos, acompanhado de arroz branco em bowl quadrado.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "cardapio_digital",
+          "feed_instagram",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarao",
+          "legumes",
+          "arroz",
+          "peixe"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-camarao-legumes-frigideira"
+    },
+    {
+      "id": "op_042",
+      "arquivo_origem": "CMT08325.jpg",
+      "file_id_drive": "1th8NoTr6YfhhjnTdD7qG7ZVxgrJmdenT",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_043",
+      "arquivo_origem": "CMT08327.jpg",
+      "file_id_drive": "1CXshbXtyd25F3BV-d9J6czmLRcNPX_Qi",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Camarao",
+      "destino_folder_id": "1Eb6PpZHVm7DamoxuX6T-dOPamvMf_Vre",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "fritos_grelhados",
+        "descricao_visual": "Filés de tilápia grelhada cobertos com camarões salteados, acompanhados de legumes cozidos (brócolis, couve-flor, cenoura, vagem). Servido em frigideira de ferro. Bowl de arroz branco ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "cardapio_digital",
+          "feed_instagram",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarao",
+          "legumes",
+          "frigideira",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [
+          "03_Peixes-e-Frutos-do-Mar/Tilapia",
+          "02_Outros-Pratos/Grandes-Porcoes"
+        ],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia_camarao_legumes_frigideira"
+    },
+    {
+      "id": "op_044",
+      "arquivo_origem": "CMT08328.jpg",
+      "file_id_drive": "1O_3aCL981UBV-rAUBmBq2P51nuBIDEhD",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Tilapia",
+      "destino_folder_id": "1Wsm8IEqypCIveXyAMl8nda8PclvbLW86",
+      "confianca": 0.92,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "grelhado",
+        "descricao_visual": "Filés de tilápia grelhados servidos em frigideira de ferro com camarões ao alho e óleo e legumes cozidos (brócolis, couve-flor, cenoura e vagem). Bowl de arroz branco ao fundo.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarão",
+          "legumes",
+          "peixe",
+          "frutos do mar",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-grelhada-camarao-legumes-fritadeira"
+    },
+    {
+      "id": "op_045",
+      "arquivo_origem": "CMT08331.jpg",
+      "file_id_drive": "1iQIMWjs-Wmg87yDeB6-YCxKkZfHHHetJ",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_046",
+      "arquivo_origem": "CMT08332.jpg",
+      "file_id_drive": "1VbppqYwv4cH2dmSed-AIBJei-yNffV7y",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_047",
+      "arquivo_origem": "CMT08333.jpg",
+      "file_id_drive": "1WYDrgTuK5BOBH-ZkTiAcOVdwbtgN32qx",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    },
+    {
+      "id": "op_048",
+      "arquivo_origem": "CMT08334.jpg",
+      "file_id_drive": "107STsED0IvwYcUCVQfax5sGJqLqDxeZA",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Camarao",
+      "destino_folder_id": "1Eb6PpZHVm7DamoxuX6T-dOPamvMf_Vre",
+      "confianca": 0.85,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "camarao",
+        "metodo_preparo": "chapa",
+        "descricao_visual": "Filés de tilápia grelhados na chapa, cobertos com camarões ao molho, acompanhados de brócolis e cenoura cozidos. Servido em frigideira de ferro com cabo, acompanhado de bowl quadrado branco com arroz.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "noturno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "cardapio_digital",
+          "feed_instagram"
+        ],
+        "tags": [
+          "tilapia",
+          "camarao",
+          "frutos_do_mar",
+          "legumes",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [
+          "03_Peixes-e-Frutos-do-Mar/Tilapia"
+        ],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-e-camarao-na-chapa-com-legumes"
+    },
+    {
+      "id": "op_049",
+      "arquivo_origem": "CMT08335.jpg",
+      "file_id_drive": "1F7I925IeEdYnpjxgwMU5_45SOFwIJRUf",
+      "destino": "03_Peixes-e-Frutos-do-Mar/Tilapia",
+      "destino_folder_id": "1Wsm8IEqypCIveXyAMl8nda8PclvbLW86",
+      "confianca": 0.95,
+      "acao": "mover",
+      "revisar_recomendado": false,
+      "analise": {
+        "categoria": "peixes_e_frutos_do_mar",
+        "corte": "tilapia",
+        "metodo_preparo": "chapa_frigideira_com_legumes_e_camarao",
+        "descricao_visual": "Filés de tilápia grelhados em frigideira de ferro com camarões salteados e legumes cozidos (brócolis, cenoura, couve-flor). Acompanha bowl quadrado branco com arroz.",
+        "estilo_foto": "profissional",
+        "qualidade_tecnica": "alta",
+        "contexto_foto": "ambiente_restaurante",
+        "mood": "diurno",
+        "tem_pessoas": "nao",
+        "tem_caneca_bacana": false,
+        "tem_bebida": "",
+        "tem_bowl_arroz": true,
+        "usos_recomendados": [
+          "feed_instagram",
+          "cardapio_digital",
+          "google_meu_negocio"
+        ],
+        "tags": [
+          "tilapia",
+          "camarao",
+          "legumes",
+          "frigideira",
+          "arroz"
+        ],
+        "hipoteses_alternativas": [],
+        "motivo_revisao": ""
+      },
+      "novo_nome_sugerido": "tilapia-camarao-legumes-frigideira"
+    },
+    {
+      "id": "op_050",
+      "arquivo_origem": "CMT08338.jpg",
+      "file_id_drive": "1sH5Y-FThxRVkgRYeu4U1gumzdDBkYOa4",
+      "destino": "99_Revisar-Manual",
+      "destino_folder_id": "1GH8oNTSWQBrnFmPIPgwUugIxYic5EV8z",
+      "confianca": 0,
+      "acao": "mover",
+      "revisar_recomendado": true,
+      "erro": "[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent: [429 Too Many Requests] Resource exhausted. Please try again later. Please refer to https://cloud.google.com/vertex-ai/generative-ai/docs/error-code-429 for more details."
+    }
+  ],
+  "resumo": {
+    "classificadas": 41,
+    "para_revisao": 9,
+    "erros": 9,
+    "por_pasta": {
+      "01_Carnes/No-Espeto/Picanha-Bovina": 10,
+      "07_Bebidas/Cervejas": 2,
+      "01_Carnes/No-Espeto/Espeto-Misto": 1,
+      "01_Carnes/No-Espeto/Ancho": 1,
+      "99_Revisar-Manual": 9,
+      "04_Entradas-e-Porcoes/Frango-Porcoes": 5,
+      "06_Sobremesas/Quentes-com-Sorvete": 5,
+      "06_Sobremesas/Churros-e-Casquinhas": 7,
+      "06_Sobremesas/Tacas-e-Cremes": 2,
+      "03_Peixes-e-Frutos-do-Mar/Camarao": 4,
+      "03_Peixes-e-Frutos-do-Mar/Tilapia": 4
+    }
+  }
+}

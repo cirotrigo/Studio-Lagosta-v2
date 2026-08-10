@@ -1,0 +1,349 @@
+{
+  "aplicado": true,
+  "data": "2026-08-01T16:36:37.746Z",
+  "paginas": [
+    {
+      "pageId": "cmnifneln000bjy04tb9bqwbe",
+      "projeto": 3,
+      "nome": "MODELO — Parrilla",
+      "template": "TERO — Semana Temática (Cópia)",
+      "acao": "drive:1NagYBQVVFWmkGz2gNWSA1fBL2YuOV6bz",
+      "urlsAntigas": [
+        "https://lh3.googleusercontent.com/drive-storage/AJQWtBMKfvM3JyuehZahtPTkJi1h6FjaR5TvArbBALFtFIkAF9WuGSGJjLycwGrIOmkwQnsLjHNBM2_BuDZeKfUCBx_DTYYFLxdlmCieYMgrJ5cMXef-QA=s1920"
+      ],
+      "urlNova": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/1NagYBQVVFWmkGz2gNWSA1fBL2YuOV6bz-s1920.jpg",
+      "camadasTrocadas": 1,
+      "layersAntes": "[{\"id\":\"bg-img-17\",\"name\":\"Imagem - Background\",\"type\":\"image\",\"order\":0,\"visible\":true,\"locked\":false,\"isDynamic\":true,\"size\":{\"width\":1080,\"height\":1920},\"position\":{\"x\":0,\"y\":0},\"style\":{\"objectFit\":\"cover\",\"border\":{\"width\":0,\"color\":\"#000000\",\"radius\":0},\"blur\":0,\"brightness\":0,\"contrast\":0},\"fileUrl\":\"https://lh3.googleusercontent.com/drive-storage/AJQWtBMKfvM3JyuehZahtPTkJi1h6FjaR5TvArbBALFtFIkAF9WuGSGJjLycwGrIOmkwQnsLjHNBM2_BuDZeKfUCBx_DTYYFLxdlmCieYMgrJ5cMXef-QA=s1920\"},{\"id\":\"grad-bot-17\",\"name\":\"Gradiente - Baixo\",\"type\":\"gradient\",\"order\":1,\"visible\":true,\"locked\":false,\"rotation\":0,\"size\":{\"width\":1080,\"height\":1920},\"position\":{\"x\":0,\"y\":0},\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":0,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.6,\"position\":0},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0,\"position\":0.25}]}},{\"id\":\"a87dd0ca-bfe7-4414-bd39-b0081f4c0642\",\"name\":\"Gradiente - Topo Copy\",\"type\":\"gradient\",\"order\":2,\"visible\":true,\"locked\":false,\"rotation\":0,\"size\":{\"width\":1100,\"height\":974},\"position\":{\"x\":-10,\"y\":-4.9999999999999885},\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":180,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.93,\"position\":0.03},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0.01,\"position\":0.94}]}},{\"id\":\"pre-17\",\"name\":\"Pre-titulo\",\"type\":\"text\",\"order\":3,\"visible\":true,\"locked\":false,\"rotation\":0,\"content\":\"400G DE ANCHO\",\"size\":{\"width\":900,\"height\":50},\"position\":{\"x\":90,\"y\":300},\"style\":{\"align\":\"center\",\"color\":\"#EF7B4F\",\"fontSize\":34,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"effects\":{\"shadow\":{\"enabled\":true,\"shadowColor\":\"#000000\",\"shadowBlur\":10,\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"titulo-17\",\"name\":\"Titulo\",\"type\":\"text\",\"order\":4,\"visible\":true,\"locked\":false,\"rotation\":0,\"content\":\"ANGUS NA PARRILLA\",\"size\":{\"width\":970,\"height\":150},\"position\":{\"x\":54,\"y\":360},\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":76,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Didot HTF B06 Bold\",\"fontWeight\":700,\"lineHeight\":1,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"effects\":{\"shadow\":{\"enabled\":false,\"shadowColor\":\"#000000\",\"shadowBlur\":10,\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"sub-17\",\"name\":\"Subtitulo\",\"type\":\"text\",\"order\":5,\"visible\":true,\"locked\":false,\"rotation\":0,\"content\":\"Serve dois, marca pra sempre\",\"size\":{\"width\":880,\"height\":243},\"position\":{\"x\":99,\"y\":457},\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":38,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"effects\":{\"shadow\":{\"enabled\":false,\"shadowColor\":\"#000000\",\"shadowBlur\":10,\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"rodape-17\",\"name\":\"Rodape-1\",\"type\":\"text\",\"order\":6,\"visible\":true,\"locked\":false,\"rotation\":0,\"content\":\"Parrilla Tero — serve 2 pessoas\",\"size\":{\"width\":875,\"height\":50},\"position\":{\"x\":101,\"y\":1740},\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":32,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"bold\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"effects\":{\"shadow\":{\"enabled\":false,\"shadowColor\":\"#000000\",\"shadowBlur\":10,\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"cta-17\",\"name\":\"CTA\",\"type\":\"text\",\"order\":7,\"visible\":true,\"locked\":false,\"rotation\":0,\"content\":\"Reserve sua mesa\",\"size\":{\"width\":763,\"height\":50},\"position\":{\"x\":157,\"y\":1800.0000000000002},\"style\":{\"align\":\"center\",\"color\":\"#EF7B4F\",\"fontSize\":28,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"none\"},\"effects\":{\"shadow\":{\"enabled\":false,\"shadowColor\":\"#000000\",\"shadowBlur\":10,\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"logo-17\",\"name\":\"Logo - TERO\",\"type\":\"logo\",\"order\":8,\"visible\":true,\"locked\":false,\"rotation\":0,\"size\":{\"width\":193,\"height\":84},\"position\":{\"x\":444,\"y\":142},\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"fileUrl\":\"https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/logos/1759897315226-TERO_brasaevinho-branco.png\"}]"
+    },
+    {
+      "pageId": "cmnifneln000djy04m02xjxqy",
+      "projeto": 3,
+      "nome": "MODELO — Domingo",
+      "template": "TERO — Semana Temática (Cópia)",
+      "acao": "drive:1NagYBQVVFWmkGz2gNWSA1fBL2YuOV6bz",
+      "urlsAntigas": [
+        "https://lh3.googleusercontent.com/drive-storage/AJQWtBMLSYgaYPn0wDUOpnYyHogwNeF5bdteszPoyuEKkpLEQ6s7KP_OT1QaPsO10vVuAJMDQIKWpeFDvXVc1Zxyo9yOxHFZB8Z_Pw1SNwJgiw6X9bsZWg=s1920"
+      ],
+      "urlNova": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/1NagYBQVVFWmkGz2gNWSA1fBL2YuOV6bz-s1920.jpg",
+      "camadasTrocadas": 1,
+      "layersAntes": "[{\"id\":\"bg-img-2\",\"name\":\"Imagem - Background\",\"size\":{\"width\":1080,\"height\":1920},\"type\":\"image\",\"order\":0,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://lh3.googleusercontent.com/drive-storage/AJQWtBMLSYgaYPn0wDUOpnYyHogwNeF5bdteszPoyuEKkpLEQ6s7KP_OT1QaPsO10vVuAJMDQIKWpeFDvXVc1Zxyo9yOxHFZB8Z_Pw1SNwJgiw6X9bsZWg=s1920\",\"visible\":true,\"position\":{\"x\":0,\"y\":0},\"isDynamic\":true},{\"id\":\"grad-bot-2\",\"name\":\"Gradiente - Baixo\",\"size\":{\"width\":1080,\"height\":1920},\"type\":\"gradient\",\"order\":1,\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":0,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.5,\"position\":0},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0,\"position\":0.15}]},\"locked\":false,\"visible\":true,\"position\":{\"x\":0,\"y\":0},\"rotation\":0},{\"id\":\"c55fd83e-a0d7-4f7d-8c31-1a71c439a82d\",\"name\":\"Gradiente - Topo Copy Copy\",\"size\":{\"width\":1100,\"height\":974},\"type\":\"gradient\",\"order\":2,\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":180,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.93,\"position\":0.03},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0.01,\"position\":0.94}]},\"locked\":false,\"visible\":true,\"position\":{\"x\":-11,\"y\":-7},\"rotation\":0},{\"id\":\"pre-2\",\"name\":\"Pre-titulo\",\"size\":{\"width\":900,\"height\":50},\"type\":\"text\",\"order\":3,\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":34,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"SEGUNDA À NOITE\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":90,\"y\":300},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"titulo-2\",\"name\":\"Titulo\",\"size\":{\"width\":900,\"height\":216},\"type\":\"text\",\"order\":4,\"style\":{\"align\":\"center\",\"color\":\"#EF7B4F\",\"fontSize\":68,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Didot HTF B06 Bold\",\"fontWeight\":700,\"lineHeight\":1,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"TEM ESSE SILÊNCIO BOM\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":88.5,\"y\":359.9999999999961},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"sub-2\",\"name\":\"Subtitulo\",\"size\":{\"width\":803,\"height\":190},\"type\":\"text\",\"order\":5,\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":40,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"Velas, vinho e o som da brasa ao fundo\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":138,\"y\":457},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"rodape-2\",\"name\":\"Rodape-1\",\"size\":{\"width\":810,\"height\":50},\"type\":\"text\",\"order\":6,\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":28,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"Segunda 18h30 às 23h30\",\"effects\":{\"shadow\":{\"enabled\":true,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":133.4999999999999,\"y\":1740.000000000001},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"cta-2\",\"name\":\"CTA\",\"size\":{\"width\":780,\"height\":50},\"type\":\"text\",\"order\":7,\"style\":{\"align\":\"center\",\"color\":\"#EF7B4F\",\"fontSize\":28,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"none\"},\"locked\":false,\"content\":\"Venha nos visitar\",\"effects\":{\"shadow\":{\"enabled\":true,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":148.4999999999999,\"y\":1800.000000000001},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"logo-2\",\"name\":\"Logo - TERO\",\"size\":{\"width\":193,\"height\":84},\"type\":\"logo\",\"order\":8,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/logos/1759897315226-TERO_brasaevinho-branco.png\",\"visible\":true,\"position\":{\"x\":444,\"y\":142},\"rotation\":0}]"
+    },
+    {
+      "pageId": "cmniyomfj000lsww0qr0oame0",
+      "projeto": 3,
+      "nome": "Sáb 04.3 Entrecôte",
+      "template": "TERO — Semana Temática",
+      "acao": "resgate:cmt04289",
+      "urlsAntigas": [
+        "https://lh3.googleusercontent.com/drive-storage/AJQWtBO4FsG6PwECp2GgO7lRuvYLUm_m-gzHsA_82ukzbEfYSm9a5hrVsJrrwHAc5DQ-Jjp2B-iygkjKRt3Sd66Prh0wR7srW0Ydj8anHM0JS76rPL9u=s1920"
+      ],
+      "urlNova": "https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/drive-cache/recovered-cmt04289.jpg",
+      "camadasTrocadas": 1,
+      "layersAntes": "[{\"id\":\"bg-img-1-0-new5\",\"name\":\"Imagem - Background\",\"size\":{\"width\":1080,\"height\":1920},\"type\":\"image\",\"order\":0,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://lh3.googleusercontent.com/drive-storage/AJQWtBO4FsG6PwECp2GgO7lRuvYLUm_m-gzHsA_82ukzbEfYSm9a5hrVsJrrwHAc5DQ-Jjp2B-iygkjKRt3Sd66Prh0wR7srW0Ydj8anHM0JS76rPL9u=s1920\",\"visible\":true,\"position\":{\"x\":0,\"y\":0},\"isDynamic\":true},{\"id\":\"49c1ca63-96f1-4f9a-b0b1-69e1c2708394\",\"name\":\"Imagem - CMT04289.jpg\",\"size\":{\"width\":1080,\"height\":2700},\"type\":\"image\",\"order\":1,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/uploads/user_3348L5utqkVPHDPW0cTFzGzsLnD/drive-1775225469211-CMT04289.jpg\",\"visible\":true,\"position\":{\"x\":0,\"y\":-780},\"rotation\":0},{\"id\":\"grad-bot-1-0-new5\",\"name\":\"Gradiente - Baixo\",\"size\":{\"width\":1080,\"height\":1920},\"type\":\"gradient\",\"order\":2,\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":0,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.75,\"position\":0},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0,\"position\":0.35}]},\"locked\":false,\"visible\":true,\"position\":{\"x\":0,\"y\":0},\"rotation\":0},{\"id\":\"grad-top-1-0-new5\",\"name\":\"Gradiente - Topo\",\"size\":{\"width\":1080,\"height\":1100},\"type\":\"gradient\",\"order\":3,\"style\":{\"gradientType\":\"linear\",\"gradientAngle\":180,\"gradientStops\":[{\"id\":\"1\",\"color\":\"#000000\",\"opacity\":0.78,\"position\":0.4},{\"id\":\"2\",\"color\":\"#000000\",\"opacity\":0,\"position\":0.89}]},\"locked\":false,\"visible\":true,\"position\":{\"x\":0,\"y\":-343},\"rotation\":0},{\"id\":\"pre-1-0-new5\",\"name\":\"Pre-titulo\",\"size\":{\"width\":1074,\"height\":236},\"type\":\"text\",\"order\":4,\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":70,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Didot HTF B06 Bold\",\"fontWeight\":700,\"lineHeight\":1,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"ENTRECÔTE AU POIVRE\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":3,\"y\":230},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"titulo-1-0-new5\",\"name\":\"Titulo\",\"size\":{\"width\":863,\"height\":66},\"type\":\"text\",\"order\":5,\"style\":{\"align\":\"center\",\"color\":\"#ffffff\",\"fontSize\":39,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":0.9,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"meio de campo ao estilo Tero\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":108.5,\"y\":188},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":0.9},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"rodape-1-0-new5\",\"name\":\"Rodape-1\",\"size\":{\"width\":777,\"height\":50},\"type\":\"text\",\"order\":6,\"style\":{\"align\":\"center\",\"color\":\"#FFFFFF\",\"fontSize\":28,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"bold\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"Restaurant Week - Menu Jantar\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":-10,\"y\":1752},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"cta-1-0-new5\",\"name\":\"CTA\",\"size\":{\"width\":480,\"height\":50},\"type\":\"text\",\"order\":7,\"style\":{\"align\":\"center\",\"color\":\"#EF7B4F\",\"fontSize\":28,\"fontStyle\":\"normal\",\"textAlign\":\"center\",\"fontFamily\":\"Montserrat\",\"fontWeight\":\"400\",\"lineHeight\":1.2,\"letterSpacing\":2,\"textTransform\":\"uppercase\"},\"locked\":false,\"content\":\"Faça sua reserva\",\"effects\":{\"shadow\":{\"enabled\":false,\"shadowBlur\":10,\"shadowColor\":\"#000000\",\"shadowOffsetX\":3,\"shadowOffsetY\":3,\"shadowOpacity\":0.6}},\"visible\":true,\"position\":{\"x\":0,\"y\":1789},\"rotation\":0,\"textboxConfig\":{\"autoWrap\":{\"breakMode\":\"word\",\"autoExpand\":false,\"lineHeight\":1.2},\"textMode\":\"auto-wrap-fixed\"}},{\"id\":\"logo-1-0-new5\",\"name\":\"Logo - TERO\",\"size\":{\"width\":171,\"height\":74},\"type\":\"logo\",\"order\":8,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/logos/1759897315226-TERO_brasaevinho-branco.png\",\"visible\":true,\"position\":{\"x\":91,\"y\":1659},\"rotation\":0},{\"id\":\"a171ab1d-c2a0-4495-8fd0-6cc6bd75e461-new5\",\"name\":\"Elemento - Ativo 1icones.png\",\"size\":{\"width\":149,\"height\":146},\"type\":\"image\",\"order\":9,\"style\":{\"blur\":0,\"border\":{\"color\":\"#000000\",\"width\":0,\"radius\":0},\"contrast\":0,\"objectFit\":\"cover\",\"brightness\":0},\"locked\":false,\"fileUrl\":\"https://2rhsgfleozgl5jbm.public.blob.vercel-storage.com/projects/3/elements/1773696067600-Ativo_1icones.png\",\"visible\":true,\"position\":{\"x\":844,\"y\":1704},\"rotation\":0}]"
+    },
+    {
+      "pageId": "cmn6yx0zu0001swe3xrr3gaa2",
+      "projeto": 7,
+      "nome": "Pag.10",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn6yx2k10007swe3hip2mpmx",
+      "projeto": 7,
+      "nome": "Pag.11",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn6yx2zq0009swe3vpi3u3y7",
+      "projeto": 7,
+      "nome": "Pag.03",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7jq6cb0001swugfimkcq4b",
+      "projeto": 7,
+      "nome": "Pag.16",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7jq6tl0007swugs2jerlkm",
+      "projeto": 7,
+      "nome": "Pag.14",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0b7j0001swcks2kl813o",
+      "projeto": 7,
+      "nome": "Pag.19",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0bk60005swckkyog8t09",
+      "projeto": 7,
+      "nome": "Pag.21",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0bsr0009swck16aj4say",
+      "projeto": 7,
+      "nome": "Pag.36",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0bx1000bswckl4bhybo4",
+      "projeto": 7,
+      "nome": "Pag.23",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0c1k000dswcks2kbtsxp",
+      "projeto": 7,
+      "nome": "Pag.24",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0ca2000hswckwe6aklzx",
+      "projeto": 7,
+      "nome": "Pag.26",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0cij000lswckjb8eruob",
+      "projeto": 7,
+      "nome": "Pag.28",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0cve000rswckuhojkfca",
+      "projeto": 7,
+      "nome": "Pag.31",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0czl000tswckahtpt9it",
+      "projeto": 7,
+      "nome": "Pag.32",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0d7z000xswcku7k08ino",
+      "projeto": 7,
+      "nome": "Pag.18",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0dge0011swckaytozder",
+      "projeto": 7,
+      "nome": "Pag.37",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7zi2fq0001swemjrkcs8k4",
+      "projeto": 7,
+      "nome": "Pag.06",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7zi2p80003swemkr173qi0",
+      "projeto": 7,
+      "nome": "Pag.07",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7zi2ua0005swem42rpp9z2",
+      "projeto": 7,
+      "nome": "Pag.08",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7zi2z90007swemxu1dbfu0",
+      "projeto": 7,
+      "nome": "Pag.09",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn83jucg000vl7048i9xjgcw",
+      "projeto": 7,
+      "nome": "Pag.14",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83juch0013l7040ky2inmk",
+      "projeto": 7,
+      "nome": "Pag.18",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83juch0015l7047d7swx44",
+      "projeto": 7,
+      "nome": "Pag.19",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83juci001jl7040wjndj4s",
+      "projeto": 7,
+      "nome": "Pag.26",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83juck0025l70428feq102",
+      "projeto": 7,
+      "nome": "Pag.37",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn6yx1od0003swe332nwx1dg",
+      "projeto": 7,
+      "nome": "Pag.05",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7jq6kw0003swugc6u6hiuy",
+      "projeto": 7,
+      "nome": "Pag.12",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7jq6xw0009swugs2lv5cql",
+      "projeto": 7,
+      "nome": "Pag.38",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7s0bfy0003swckcdkbk634",
+      "projeto": 7,
+      "nome": "Pag.20",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7s0c5u000fswckbvpziknh",
+      "projeto": 7,
+      "nome": "Pag.25",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7s0cmw000nswck56p4ymrb",
+      "projeto": 7,
+      "nome": "Pag.29",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7s0d3r000vswck4mfstk9d",
+      "projeto": 7,
+      "nome": "Pag.33",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmn7s0dkk0013swckocyiw1lh",
+      "projeto": 7,
+      "nome": "Pag.35",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn7s0dot0015swckk0q95js1",
+      "projeto": 7,
+      "nome": "Pag.04",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83juce000bl704lr7tynlh",
+      "projeto": 7,
+      "nome": "Pag.04",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": true
+    },
+    {
+      "pageId": "cmn83jucg000rl7040cke93hb",
+      "projeto": 7,
+      "nome": "Pag.12",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmnifpt960013swnv7m9b75ut",
+      "projeto": 3,
+      "nome": "Dom 20. Brunch",
+      "acao": "irrecuperavel",
+      "motivo": "foto-perdida",
+      "coberta": false
+    },
+    {
+      "pageId": "cmniyokkw0005sww0sa8ubzsa",
+      "projeto": 3,
+      "nome": "Sex 03.2 Executivo Sobrecoxa",
+      "acao": "irrecuperavel",
+      "motivo": "fundo-indeterminavel-coberto",
+      "coberta": true
+    }
+  ]
+}

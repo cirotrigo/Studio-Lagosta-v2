@@ -1,0 +1,22 @@
+[mcp_servers.ai-context]
+command = "npx"
+args = [
+    "@ai-coders/context",
+    "mcp",
+]
+
+[mcp_servers.context7]
+command = "npx"
+args = [
+    "-y",
+    "@upstash/context7-mcp@latest",
+]
+
+[mcp_servers.studio-lagosta]
+command = "/Users/cirotrigo/Documents/Studio-Lagosta-v2/scripts/mcp-wrapper.sh"
+
+[mcp_servers.studio-remoto]
+url = "https://www.lagostacriativa.com.br/api/mcp"
+
+[mcp_servers.studio-remoto.http_headers]
+Authorization = "Bearer 81bd5c4209a7bb03470b6a41302a95a0f229dc228f68098666c1eca403676def"

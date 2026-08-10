@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { criarEntradaBase } from '@/lib/knowledge/entries'
+import { formatarValidade } from '@/lib/knowledge/vigencia'
 
 /**
  * Fonte única da identidade da marca para TODO prompt de geração.
@@ -175,7 +177,13 @@ export async function updateBrandDNA(
  * resultado possível, então a regra nova entra sob um cabeçalho próprio no fim
  * da seção, e o texto anterior fica intocado.
  *
- * Não grava sozinha: devolve `antes`/`depois` e só escreve com `confirmado`.
+ * TRIAGEM (F0.1): regra COM PRAZO não vai para o DNA. O DNA é eterno e entra
+ * INCONDICIONALMENTE em todo prompt — uma linha de campanha ali continuaria
+ * mandando no gerador meses depois do fim dela, e ninguém lembraria de apagar.
+ * Com `validade`, a regra vira entrada CAMPANHAS na base, com `expiresAt`: sai
+ * de cena sozinha no dia seguinte ao fim.
+ *
+ * Não grava sozinha: devolve a proposta e só escreve com `confirmado`.
  * O contrato é o mesmo do `atualizar-dna` — mostrar à pessoa o que muda antes
  * de mudar.
  */
@@ -183,18 +191,29 @@ export const APRENDIZADO_HEADER = 'Regras aprendidas na prática:'
 
 export interface VirarRegraArgs {
   projectId: number
-  secao: BrandDNAField
+  /** Onde a regra mora no DNA. Ignorada — e dispensável — quando há `validade`. */
+  secao?: BrandDNAField
   /** A regra, na forma imperativa em que deve valer daqui para a frente. */
   regra: string
   /** Por que ela existe — o caso concreto que a gerou. */
   motivo: string
   /** Data do aprendizado. Default: hoje. */
   data?: Date
+  /**
+   * Prazo da regra. Presente, ela NÃO vai para o DNA: vira entrada CAMPANHAS
+   * na base de conhecimento, que expira sozinha.
+   */
+  validade?: Date | null
+  /** Título da entrada na base, quando há validade. Default: derivado da regra. */
+  titulo?: string
+  /** Autor da entrada na base (id INTERNO do User). Exigido quando há validade. */
+  autor?: string
   /** Sem isto nada é gravado: devolve só a proposta. */
   confirmado?: boolean
 }
 
-export interface VirarRegraResult {
+export interface VirarRegraResultDNA {
+  destino: 'dna'
   secao: BrandDNAField
   antes: string | null
   depois: string
@@ -202,16 +221,40 @@ export interface VirarRegraResult {
   gravado: boolean
 }
 
+export interface VirarRegraResultBase {
+  destino: 'base'
+  categoria: 'CAMPANHAS'
+  titulo: string
+  conteudo: string
+  validade: Date
+  entradaId?: string
+  gravado: boolean
+}
+
+export type VirarRegraResult = VirarRegraResultDNA | VirarRegraResultBase
+
 export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult> {
   const regra = args.regra.trim()
   const motivo = args.motivo.trim()
   if (!regra) throw new Error('A regra não pode ser vazia.')
   if (!motivo) throw new Error('Regra sem motivo não vira regra: descreva o caso que a gerou.')
 
-  const atual = await db.brandDNA.findUnique({ where: { projectId: args.projectId } })
-  const antes = nonEmpty(atual?.[args.secao] ?? null)
-
   const dia = (args.data ?? new Date()).toISOString().slice(0, 10)
+
+  if (args.validade) {
+    return virarRegraDeCampanha({ ...args, regra, motivo, dia, validade: args.validade })
+  }
+
+  const secao = args.secao
+  if (!secao) {
+    throw new Error(
+      'Regra sem prazo vai para o DNA: informe a seção (contentRules, composition, visualStyle, photoDirection, toneOfVoice ou approvalChecklist). Se a regra vale só até uma data, mande a validade.',
+    )
+  }
+
+  const atual = await db.brandDNA.findUnique({ where: { projectId: args.projectId } })
+  const antes = nonEmpty(atual?.[secao] ?? null)
+
   const linhaAdicionada = `- ${regra} (${dia} — ${motivo})`
 
   let depois: string
@@ -226,15 +269,80 @@ export async function virarRegra(args: VirarRegraArgs): Promise<VirarRegraResult
 
   if (depois.length > BRAND_DNA_MAX_CHARS) {
     throw new Error(
-      `A seção ${args.secao} passaria de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese: consolide as regras antigas antes de somar outra.`,
+      `A seção ${secao} passaria de ${BRAND_DNA_MAX_CHARS} caracteres. O DNA é síntese: consolide as regras antigas antes de somar outra.`,
     )
   }
 
   if (args.confirmado) {
-    await updateBrandDNA(args.projectId, { [args.secao]: depois })
+    await updateBrandDNA(args.projectId, { [secao]: depois })
   }
 
-  return { secao: args.secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado }
+  return { destino: 'dna', secao, antes, depois, linhaAdicionada, gravado: !!args.confirmado }
+}
+
+/**
+ * O ramo com prazo. Reusa `criarEntradaBase` — a mesma gravação do
+ * `criar-entrada-base` do MCP, com indexação e rollback — em vez de escrever
+ * na tabela por fora.
+ */
+async function virarRegraDeCampanha(args: {
+  projectId: number
+  regra: string
+  motivo: string
+  dia: string
+  validade: Date
+  titulo?: string
+  autor?: string
+  confirmado?: boolean
+}): Promise<VirarRegraResultBase> {
+  const titulo = (args.titulo?.trim() || `Regra de campanha — ${resumir(args.regra)}`).slice(0, 200)
+  const conteudo = [
+    args.regra,
+    '',
+    `Por quê: ${args.motivo} (registrado em ${args.dia})`,
+    `Vale até ${formatarValidade(args.validade)}.`,
+  ].join('\n')
+
+  if (!args.confirmado) {
+    return {
+      destino: 'base',
+      categoria: 'CAMPANHAS',
+      titulo,
+      conteudo,
+      validade: args.validade,
+      gravado: false,
+    }
+  }
+
+  if (!args.autor) {
+    throw new Error('Gravar regra com prazo exige o autor da entrada (id interno do usuário).')
+  }
+
+  const entrada = await criarEntradaBase({
+    projectId: args.projectId,
+    category: 'CAMPANHAS',
+    title: titulo,
+    content: conteudo,
+    tags: ['regra', 'campanha'],
+    expiresAt: args.validade,
+    metadata: { origem: 'virar-regra' },
+    autor: args.autor,
+  })
+
+  return {
+    destino: 'base',
+    categoria: 'CAMPANHAS',
+    titulo,
+    conteudo,
+    validade: args.validade,
+    entradaId: entrada.id,
+    gravado: true,
+  }
+}
+
+function resumir(texto: string, max = 60): string {
+  const limpo = texto.replace(/\s+/g, ' ').trim()
+  return limpo.length <= max ? limpo : `${limpo.slice(0, max - 1).trimEnd()}…`
 }
 
 // A leitura do crivo em itens mora em `approval-checklist.ts`, que não importa

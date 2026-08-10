@@ -1,0 +1,10 @@
+=== Execução 2026-04-20_02-53 | 2026-04-20T03:03:31.697Z ===
+DRY RUN: true
+
+[001] ✓ (0.95) CMT06881.jpg → 01_Carnes/No-Espeto/Picanha-Bovina/picanha-bovina-espeto-cerveja_op_001.jpg
+[002] ✓ (0.95) CMT06886.jpg → 07_Bebidas/Cervejas/cerveja-copo-congelado-bokeh_op_002.jpg
+[003] ~ (0.85) CMT07204.jpg → 04_Entradas-e-Porcoes/Paes-Queijos-Linguicas/queijo-coalho-mel_op_003.jpg
+[004] ✓ (0.95) CMT08196.jpg → 04_Entradas-e-Porcoes/Frango-Porcoes/frango-espeto-vertical_op_004.jpg
+[005] ✓ (0.95) CMT08294.jpg → 06_Sobremesas/Quentes-com-Sorvete/banana-empanada-sorvete-espetinho_op_005.jpg
+
+=== Resumo: movidos=5 revisão=0 pulados=0 ===

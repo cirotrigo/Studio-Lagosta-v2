@@ -27,6 +27,7 @@ import {
   resolveImageUrl,
 } from '@/lib/creatives/persist'
 import { invalidateScheduledRenders } from '@/lib/posts/invalidate-renders'
+import { vigenteEm } from '@/lib/knowledge/vigencia'
 import { reflowLayersAfterFill } from '@/lib/combo-stack-reflow'
 import { createServerTextMeasurer } from '@/lib/creatives/server-text-measurer'
 import { aplicarAutofixOuFalhar, type AutofixReport } from '@/lib/creatives/text-autofix'
@@ -346,6 +347,9 @@ export async function prepareCreative(input: PrepareCreativeInput): Promise<Prep
     where: {
       projectId: project.id,
       status: 'ACTIVE',
+      // Arte rápida é para AGORA: campanha vencida aqui vira texto que promete
+      // uma promoção que já acabou.
+      ...vigenteEm(),
       category: { in: KB_CATEGORIES },
     },
     select: { category: true, title: true, content: true },

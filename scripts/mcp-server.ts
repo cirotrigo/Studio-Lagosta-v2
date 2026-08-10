@@ -13,6 +13,9 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod'
 import { google } from 'googleapis'
 import { PrismaClient } from '../prisma/generated/client'
+// Caminho relativo de propósito: este servidor roda fora do bundle do Next,
+// onde o alias `@/` pode não resolver. O módulo não tem dependência nenhuma.
+import { vigenteEm } from '../src/lib/knowledge/vigencia'
 import { put } from '@vercel/blob'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -1577,7 +1580,8 @@ server.tool(
   },
   async ({ projectId, category }) => {
     try {
-      const where: any = { projectId, status: 'ACTIVE' }
+      // Entrada vencida (campanha encerrada) não pode alimentar texto nenhum.
+      const where: any = { projectId, status: 'ACTIVE', ...vigenteEm() }
       if (category) where.category = category
 
       const entries = await prisma.knowledgeBaseEntry.findMany({
@@ -1588,6 +1592,7 @@ server.tool(
           content: true,
           category: true,
           tags: true,
+          expiresAt: true,
         },
         orderBy: { category: 'asc' },
       })
@@ -1845,6 +1850,7 @@ server.tool(
         where: {
           projectId,
           status: 'ACTIVE',
+          ...vigenteEm(),
           category: { in: ['TOM_DE_VOZ', 'ESTABELECIMENTO_INFO', 'HORARIOS', 'DIFERENCIAIS'] },
         },
         select: { category: true, title: true, content: true },
