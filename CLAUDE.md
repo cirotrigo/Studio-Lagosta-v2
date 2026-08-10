@@ -1164,6 +1164,39 @@ pasta) e lê os bytes do disco.
   tool são texto do modelo e o servidor está na Vercel, sem acesso ao disco de
   quem conversa. Pelo celular/claude.ai o caminho continua sendo `pedir-foto`.
 
+### Escopo de aprendizado do post (F0.2, 10/08/2026)
+
+`SocialPost.learningScope` (`ROTINA` default | `CAMPANHA` | `PONTUAL`) decide o
+que o sistema pode aprender com cada post. Vocabulário em
+`src/lib/posts/learning-scope.ts` (módulo SEM Prisma — o compositor da bancada
+é client).
+
+- **Capturar sempre, marcar por item, filtrar na agregação.** Nunca introduza
+  um interruptor global de captura: esquecido desligado perde sinal, que é
+  IRREVERSÍVEL; esquecido ligado contamina. E uma leva normal mistura os três
+  tipos, então a marca é do ITEM. O "modo aprendizado" da bancada é açúcar de
+  UI (`escopoPadrao`, que **de propósito fica fora do `partialize`** do store:
+  padrão persistido é o interruptor esquecido ligado com outro nome).
+- **Quem filtra é o consumidor.** `sugerirPosts` tira PONTUAL do HISTÓRICO e
+  mantém no cálculo de slot ocupado — post pontual ocupa o horário do mesmo
+  jeito. CAMPANHA ainda conta na cadência; separar o sub-perfil é da fase de
+  destilação.
+- **`campaignId` não tem foreign key**, mesmo precedente de
+  `Generation.sourceGenerationId`: arquivar a campanha não pode arrastar o
+  post. Consequência: todo leitor é defensivo — campanha inexistente ou sem
+  `expiresAt` produz silêncio, nunca erro (`campanha-vigencia.ts`).
+- **Campanha vencida AVISA, nunca veta** (`aprovar-rascunhos`, `ver-agenda`,
+  e a rota de aprovação): a campanha pode ter sido prorrogada e o prazo da
+  base pode estar velho. Recusar publicação por metadado é pior que publicar.
+- **`decididoPor` é o `User.id` INTERNO (cuid), NUNCA o clerkId** — e falhar
+  ao resolvê-lo não pode derrubar o agendamento (é auditoria): `quemDecidiu`
+  no MCP engole o erro, e a rota HTTP busca o User só para LEITURA, sem criar
+  linha (criar é justamente como nascem os Users fantasma).
+- `origem`/`sugestaoId` existem na coluna e no serviço, mas ainda não são
+  preenchidos pela bancada: quem define "sugestão" é a fase de captura, e
+  rotular "aceitou o horário sugerido" como `sugerido-aceito` contaminaria o
+  corpus com uma semântica que não é a dela.
+
 ### Important Patterns
 - Database access only through Prisma client singleton in `lib/db.ts`
 - Authentication utilities centralized in `lib/auth-utils.ts`
