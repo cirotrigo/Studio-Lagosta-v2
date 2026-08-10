@@ -24,7 +24,18 @@ interface StatusResposta {
   id: string
   status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
   resultUrl: string | null
-  fieldValues?: { error?: string; textCheckAlert?: string } | null
+  fieldValues?: {
+    error?: string
+    textCheckAlert?: string
+    qaEntregueComRessalva?: boolean
+    qaMotivo?: string
+  } | null
+}
+
+/** O aviso que o card mostra: texto divergente OU ressalva do QA visual/logo. */
+function avisoDe(fv: StatusResposta['fieldValues']): string | null {
+  if (!fv) return null
+  return fv.textCheckAlert ?? (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)
 }
 
 export function useBancada(projectId: number) {
@@ -83,8 +94,9 @@ export function useBancada(projectId: number) {
                 status: 'pronto',
                 resultUrl: r.resultUrl,
                 // A arte pode sair COM aviso (texto que o comparador não achou
-                // — decisão de 10/08: entregar e deixar o olho decidir).
-                aviso: r.fieldValues?.textCheckAlert ?? null,
+                // ou ressalva do QA — decisão de 10/08: entregar e deixar o
+                // olho decidir; corrigir é botão com preço).
+                aviso: avisoDe(r.fieldValues),
               })
               queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
             } else if (r.status === 'FAILED') {
@@ -126,7 +138,7 @@ export function useBancada(projectId: number) {
                 signal: AbortSignal.timeout(10_000),
               })
               if (r.status === 'COMPLETED') {
-                return { ...slide, resultUrl: r.resultUrl, aviso: r.fieldValues?.textCheckAlert ?? null }
+                return { ...slide, resultUrl: r.resultUrl, aviso: avisoDe(r.fieldValues) }
               }
               if (r.status === 'FAILED') {
                 return { ...slide, erro: r.fieldValues?.error ?? 'A geração falhou.' }

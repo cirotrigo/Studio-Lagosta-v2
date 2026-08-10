@@ -322,12 +322,23 @@ function Card({
           )}
 
           {/* Arte pronta COM aviso: sai, mas pede o olho. É o contrato da
-              conferência desde 10/08 — o comparador avisa, nunca veta. */}
+              conferência desde 10/08 — o comparador avisa, nunca veta. E a
+              correção é BOTÃO COM PREÇO, não reflexo: cada geração é uma
+              chamada paga, e a maioria das reprovações medidas era falso
+              negativo. Quem olhou e concordou com o aviso decide gastar. */}
           {item.status === 'pronto' && item.aviso && (
-            <p className="flex w-full items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
-              <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-              {item.aviso}
-            </p>
+            <div className="w-full space-y-1.5">
+              <p className="flex items-start gap-1.5 text-xs text-amber-600 dark:text-amber-500">
+                <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                {item.aviso}
+              </p>
+              {item.tipo !== 'carrossel' && (
+                <Button size="sm" variant="outline" onClick={onGerar}>
+                  <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  Corrigir — gerar de novo (25 créditos)
+                </Button>
+              )}
+            </div>
           )}
 
           {item.status === 'pronto' && (
