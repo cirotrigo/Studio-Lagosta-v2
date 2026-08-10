@@ -209,10 +209,14 @@ export default function ProjectDetailPage() {
       <Tabs
         value={activeTab}
         onValueChange={(value) =>
-          // A agenda não é mais uma aba: clicar nela navega para a tela cheia.
+          // Agenda e bancada não são abas: clicar nelas navega para a tela
+          // cheia. Ficam aqui porque é onde a pessoa procura pelo trabalho do
+          // cliente — separá-las do resto só as esconderia.
           value === 'agenda'
             ? router.push(agendaHref(projectId))
-            : router.push(`/projects/${projectId}?tab=${value}`)
+            : value === 'bancada'
+              ? router.push(`/projects/${projectId}/bancada`)
+              : router.push(`/projects/${projectId}?tab=${value}`)
         }
         className="w-full max-w-full overflow-x-hidden"
       >
@@ -220,6 +224,7 @@ export default function ProjectDetailPage() {
           <TabsTrigger value="drive">Drive</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
           <TabsTrigger value="modelos">Modelos</TabsTrigger>
+          <TabsTrigger value="bancada">Bancada</TabsTrigger>
           <TabsTrigger value="criativos">Criativos</TabsTrigger>
           <TabsTrigger value="agenda">Agenda</TabsTrigger>
           <TabsTrigger value="metricas">Métricas</TabsTrigger>
