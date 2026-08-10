@@ -13,6 +13,7 @@ import { reindexEntry, deleteEntry } from '@/lib/knowledge/indexer'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
 import { getUserFromClerkId } from '@/lib/auth-utils'
+import { parseValidade, avisoValidadeAusente } from '@/lib/knowledge/vigencia'
 
 const UpdateEntrySchema = z.object({
   title: z.string().min(1).max(500).optional(),
@@ -21,6 +22,11 @@ const UpdateEntrySchema = z.object({
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional(),
   category: z.nativeEnum(KnowledgeCategory).optional(),
   metadata: z.record(z.any()).nullable().optional(),
+  /**
+   * Validade (F0.1). Ausente = não mexe; string vazia ou null = LIMPA o prazo.
+   * Os três estados precisam sobreviver até o `data` do update.
+   */
+  expiresAt: z.string().nullable().optional(),
 })
 
 /**
@@ -163,6 +169,16 @@ export async function PUT(
 
     const { title, content, tags, status } = parsed.data
 
+    let expiresAt: Date | null | undefined
+    try {
+      expiresAt = parseValidade(parsed.data.expiresAt)
+    } catch (erro) {
+      return NextResponse.json(
+        { error: erro instanceof Error ? erro.message : 'Validade inválida' },
+        { status: 400 }
+      )
+    }
+
     // Check if content changed - if so, need to reindex
     const contentChanged = content && content !== existingEntry.content
     const titleChanged = title && title !== existingEntry.title
@@ -177,6 +193,7 @@ export async function PUT(
         ...(status && { status }),
         ...(parsed.data.category && { category: parsed.data.category }),
         ...(parsed.data.metadata !== undefined && { metadata: parsed.data.metadata }),
+        ...(expiresAt !== undefined && { expiresAt }),
         updatedBy: dbUser.id,
         updatedAt: new Date(),
       },
@@ -207,7 +224,8 @@ export async function PUT(
       console.error('[knowledge] Failed to invalidate RAG cache after entry update', cacheError)
     }
 
-    return NextResponse.json(updatedEntry)
+    const aviso = avisoValidadeAusente(updatedEntry.category, updatedEntry.expiresAt)
+    return NextResponse.json({ ...updatedEntry, ...(aviso ? { aviso } : {}) })
   } catch (error) {
     console.error('Error updating knowledge entry:', error)
     return NextResponse.json({ error: 'Erro interno do servidor' }, { status: 500 })

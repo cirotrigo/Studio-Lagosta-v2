@@ -14,6 +14,7 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
+import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
 
 const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'] as const
 const JANELA_HISTORICO_DIAS = 56
@@ -163,8 +164,10 @@ export async function sugerirPosts(params: {
       select: { id: true, name: true, tags: true, Template: { select: { name: true, tags: true } } },
     }),
     db.knowledgeBaseEntry.findMany({
-      where: { projectId, status: 'ACTIVE', category: 'CAMPANHAS' },
-      select: { title: true, content: true },
+      // Campanha já vencida nunca é tema de post novo. O corte fino é por
+      // slot, logo abaixo — aqui só se poda o que já morreu.
+      where: { projectId, status: 'ACTIVE', category: 'CAMPANHAS', ...vigenteEm(agora) },
+      select: { title: true, content: true, expiresAt: true },
     }),
   ])
 
@@ -184,9 +187,17 @@ export async function sugerirPosts(params: {
       : undefined
   }
 
-  const campanhasDoDia = (dia: number) => {
+  /**
+   * A referência é a DATA DO SLOT, não "agora": o planejamento mira dia
+   * futuro, e campanha que vence antes do slot não pode entrar na copy
+   * daquele slot — é exatamente o erro que se vê quando a sugestão de sexta
+   * cita um festival que acaba na quarta.
+   */
+  const campanhasDoDia = (dia: number, quandoUTC: number) => {
     const alvo = normalizar(DIAS_SEMANA[dia])
+    const quando = new Date(quandoUTC)
     const titulos = campanhas
+      .filter((c) => estaVigente(c.expiresAt, quando))
       .filter((c) => normalizar(`${c.title} ${c.content}`).includes(alvo))
       .map((c) => c.title)
     return titulos.length > 0 ? titulos : undefined
@@ -215,6 +226,8 @@ export async function sugerirPosts(params: {
       )
       if (ocupado) continue
 
+      const campanhasDoSlot = campanhasDoDia(dia, quandoUTC)
+
       sugestoes.push({
         data: dataISO,
         diaSemana: DIAS_SEMANA[dia],
@@ -223,7 +236,7 @@ export async function sugerirPosts(params: {
         scheduledDatetime: `${dataISO} ${slot.hora}`,
         motivo: `costuma postar ${DIAS_SEMANA[dia]} por volta das ${slot.hora} (${slot.ocorrencias}x nas últimas ${slot.semanasObservadas} ${slot.semanasObservadas === 1 ? 'ocasião' : 'ocasiões'})`,
         ...(modeloDoDia(dia) ? { modeloSugerido: modeloDoDia(dia) } : {}),
-        ...(campanhasDoDia(dia) ? { campanhasDoDia: campanhasDoDia(dia) } : {}),
+        ...(campanhasDoSlot ? { campanhasDoDia: campanhasDoSlot } : {}),
       })
     }
   }

@@ -22,6 +22,8 @@ export interface KnowledgeBaseEntry {
   workspaceId: string | null
   createdAt: string
   updatedAt: string
+  /** Validade: depois dela a entrada deixa de alimentar textos e sugestões. */
+  expiresAt: string | null
   _count?: {
     chunks: number
   }

@@ -13,6 +13,7 @@ import { getUserFromClerkId } from '@/lib/auth-utils'
 import { indexEntry, indexFile } from '@/lib/knowledge/indexer'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
 import { KnowledgeCategory } from '@prisma/client'
+import { parseValidade, avisoValidadeAusente } from '@/lib/knowledge/vigencia'
 
 // Schemas
 const CreateEntrySchema = z.object({
@@ -23,6 +24,8 @@ const CreateEntrySchema = z.object({
   tags: z.array(z.string()).optional(),
   metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional().default('ACTIVE'),
+  /** Validade (F0.1): AAAA-MM-DD ou ISO. Vazio/null = vale para sempre. */
+  expiresAt: z.string().nullable().optional(),
 })
 
 const UploadFileSchema = z.object({
@@ -34,6 +37,7 @@ const UploadFileSchema = z.object({
   tags: z.array(z.string()).optional(),
   metadata: z.record(z.any()).optional(),
   status: z.enum(['ACTIVE', 'DRAFT', 'ARCHIVED']).optional().default('ACTIVE'),
+  expiresAt: z.string().nullable().optional(),
 })
 
 /**
@@ -186,6 +190,15 @@ export async function POST(req: NextRequest) {
       }
 
       const { title, filename, fileContent, tags, status, projectId, category, metadata } = parsed.data
+      let expiresAt: Date | null
+      try {
+        expiresAt = parseValidade(parsed.data.expiresAt) ?? null
+      } catch (erro) {
+        return NextResponse.json(
+          { error: erro instanceof Error ? erro.message : 'Validade inválida' },
+          { status: 400 }
+        )
+      }
 
       // Verificar acesso ao projeto
       const project = await db.project.findFirst({
@@ -209,6 +222,7 @@ export async function POST(req: NextRequest) {
         status,
         metadata,
         category,
+        expiresAt,
         createdBy: dbUser.id,
         tenant: {
           projectId,
@@ -223,7 +237,9 @@ export async function POST(req: NextRequest) {
         console.error('[knowledge] Failed to invalidate RAG cache after file upload', cacheError)
       }
 
-      return NextResponse.json(result, { status: 201 })
+      // Aviso, nunca veto: campanha sem prazo pode ser permanente.
+      const aviso = avisoValidadeAusente(category, expiresAt)
+      return NextResponse.json({ ...result, ...(aviso ? { aviso } : {}) }, { status: 201 })
     } else {
       // Validate text entry
       const parsed = CreateEntrySchema.safeParse(body)
@@ -235,6 +251,15 @@ export async function POST(req: NextRequest) {
       }
 
       const { title, content, tags, status, projectId, category, metadata } = parsed.data
+      let expiresAt: Date | null
+      try {
+        expiresAt = parseValidade(parsed.data.expiresAt) ?? null
+      } catch (erro) {
+        return NextResponse.json(
+          { error: erro instanceof Error ? erro.message : 'Validade inválida' },
+          { status: 400 }
+        )
+      }
 
       // Verificar acesso ao projeto
       const project = await db.project.findFirst({
@@ -257,6 +282,7 @@ export async function POST(req: NextRequest) {
         status,
         metadata,
         category,
+        expiresAt,
         createdBy: dbUser.id,
         tenant: {
           projectId,
@@ -271,7 +297,8 @@ export async function POST(req: NextRequest) {
         console.error('[knowledge] Failed to invalidate RAG cache after entry create', cacheError)
       }
 
-      return NextResponse.json(result, { status: 201 })
+      const aviso = avisoValidadeAusente(category, expiresAt)
+      return NextResponse.json({ ...result, ...(aviso ? { aviso } : {}) }, { status: 201 })
     }
   } catch (error) {
     console.error('Error creating organization knowledge:', error)

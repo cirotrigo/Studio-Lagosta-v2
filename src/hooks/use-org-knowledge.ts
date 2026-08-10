@@ -22,6 +22,8 @@ export interface CreateOrgEntryInput {
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   metadata?: Record<string, unknown>
+  /** Validade: "AAAA-MM-DD" (dia inteiro, fuso de Brasília). Vazio = para sempre. */
+  expiresAt?: string | null
 }
 
 export interface UploadOrgFileInput {
@@ -33,6 +35,7 @@ export interface UploadOrgFileInput {
   tags?: string[]
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   metadata?: Record<string, unknown>
+  expiresAt?: string | null
 }
 
 export interface UpdateOrgEntryInput {
@@ -42,6 +45,8 @@ export interface UpdateOrgEntryInput {
   status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'
   category?: KnowledgeCategory
   metadata?: Record<string, unknown> | null
+  /** Ausente = não mexe; string vazia ou null = limpa o prazo. */
+  expiresAt?: string | null
 }
 
 /**

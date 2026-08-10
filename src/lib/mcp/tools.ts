@@ -40,6 +40,13 @@ import { pedirFoto, verFoto } from '@/lib/creatives/chat-upload'
 import { reindexEntry } from '@/lib/knowledge/indexer'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { criarEntradaBase } from '@/lib/knowledge/entries'
+import {
+  vigenteEm,
+  parseValidade,
+  avisoValidadeAusente,
+  formatarValidade,
+} from '@/lib/knowledge/vigencia'
 import { getUserFromClerkId } from '@/lib/auth-utils'
 import {
   startImprovement,
@@ -464,7 +471,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'consultar-base',
     description:
-      'Base de conhecimento do cliente: tom de voz, horário de funcionamento, cardápio, diferenciais e campanhas. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.',
+      'Base de conhecimento do cliente: tom de voz, horário de funcionamento, cardápio, diferenciais e campanhas. CONSULTE SEMPRE antes de escrever qualquer texto — é o que evita prometer horário errado ou inventar preço. Se achar informação conflitante, aponte para a pessoa em vez de escolher sozinho.\n\nEntrada com validade vencida não aparece aqui. Cada entrada traz `validade` quando tem prazo — se você está escrevendo para uma data FUTURA, confira se a campanha ainda estará no ar naquele dia.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -485,12 +492,30 @@ export const MCP_TOOLS: McpTool[] = [
         where: {
           projectId: requireNumber(args, 'projectId'),
           status: 'ACTIVE',
+          // Campanha vencida não pode alimentar texto nenhum. O cron diário
+          // arquiva, mas ele roda uma vez por dia — o filtro é o que garante
+          // que ninguém leia a entrada nas horas entre o vencimento e a faxina.
+          ...vigenteEm(),
           ...(category ? { category } : {}),
         },
-        select: { id: true, title: true, content: true, category: true, tags: true, updatedAt: true },
+        select: {
+          id: true,
+          title: true,
+          content: true,
+          category: true,
+          tags: true,
+          updatedAt: true,
+          expiresAt: true,
+        },
         orderBy: { category: 'asc' },
       })
-      return { count: entries.length, entries }
+      return {
+        count: entries.length,
+        entries: entries.map(({ expiresAt, ...resto }) => ({
+          ...resto,
+          validade: expiresAt ? formatarValidade(expiresAt) : null,
+        })),
+      }
     },
   },
 
@@ -647,7 +672,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'virar-regra',
     description:
-      'Transforma uma correção que a pessoa aprovou na conversa numa regra permanente do DNA, com a data e o motivo. Use quando alguém corrigir a arte ou o texto e a correção valer daqui para a frente ("a logo sempre no canto direito", "nunca escrever preço em vermelho", "a foto do salão é sempre com luz acesa").\n\nDiferente de atualizar-dna: aqui a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto.\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa a linha que será somada e só then chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
+      'Transforma uma correção que a pessoa aprovou na conversa numa regra que vale daqui para a frente. Use quando alguém corrigir a arte ou o texto e a correção não for só para aquela peça.\n\n⚖️ TRIAGEM, antes de chamar: **regra temporária ou de campanha → base de conhecimento com validade** (mande `validade`; ex: "durante o Festival Italiano o rótulo aparece na foto"). **Identidade permanente da marca → DNA** (mande `secao`; ex: "a logo sempre no canto direito", "nunca escrever preço em vermelho"). O DNA é eterno e entra em TODO prompt — regra com prazo ali continuaria mandando meses depois do fim da campanha, e ninguém lembraria de tirar. Na dúvida, pergunte à pessoa até quando a regra vale.\n\nNo DNA a regra é ACRESCENTADA ao fim da seção, o texto que já existia fica intacto (diferente de atualizar-dna, que substitui).\n\nFluxo: chame primeiro sem `confirmado` para ver a proposta, mostre à pessoa o que será gravado e só então chame com `confirmado: true`. Nunca registre dedução sua como regra — só o que a pessoa confirmou.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -656,7 +681,7 @@ export const MCP_TOOLS: McpTool[] = [
           type: 'string',
           enum: [...BRAND_DNA_FIELDS],
           description:
-            'Onde a regra mora: contentRules (proibições), composition (layout), visualStyle (estética), photoDirection (foto), toneOfVoice (texto), approvalChecklist (crivo).',
+            'Onde a regra mora no DNA: contentRules (proibições), composition (layout), visualStyle (estética), photoDirection (foto), toneOfVoice (texto), approvalChecklist (crivo). Obrigatória para regra PERMANENTE; dispensável quando você manda validade.',
         },
         regra: {
           type: 'string',
@@ -666,20 +691,30 @@ export const MCP_TOOLS: McpTool[] = [
           type: 'string',
           description: 'O caso concreto que gerou a regra. Sem motivo a regra não se explica daqui a três meses.',
         },
+        validade: {
+          type: 'string',
+          description:
+            'Último dia em que a regra vale (AAAA-MM-DD). Manda a regra para a base de conhecimento, categoria CAMPANHAS, em vez do DNA — ela deixa de valer sozinha depois dessa data.',
+        },
+        titulo: {
+          type: 'string',
+          description: 'Título da entrada na base, quando a regra tem validade (ex: "Festival Italiano — agosto"). Opcional.',
+        },
         confirmado: {
           type: 'boolean',
           description: 'Só grava com true. Sem isto devolve a proposta para você mostrar à pessoa.',
         },
       },
-      required: ['projectId', 'secao', 'regra', 'motivo'],
+      required: ['projectId', 'regra', 'motivo'],
       additionalProperties: false,
     },
     handler: async (args, principal) => {
       const projectId = requireNumber(args, 'projectId')
       await assertProjetoPermitido(projectId, principal)
 
-      const secao = args.secao as BrandDNAField
-      if (!BRAND_DNA_FIELDS.includes(secao)) {
+      const validade = parseValidade(args.validade) ?? null
+      const secao = typeof args.secao === 'string' ? (args.secao as BrandDNAField) : undefined
+      if (secao && !BRAND_DNA_FIELDS.includes(secao)) {
         throw new Error(`Seção inválida: ${String(args.secao)}. Use uma de ${BRAND_DNA_FIELDS.join(', ')}.`)
       }
 
@@ -688,13 +723,27 @@ export const MCP_TOOLS: McpTool[] = [
         secao,
         regra: String(args.regra ?? ''),
         motivo: String(args.motivo ?? ''),
+        validade,
+        titulo: typeof args.titulo === 'string' ? args.titulo : undefined,
+        // Só o ramo com prazo escreve na base, e só ele precisa de autor.
+        autor: validade ? await resolverAutor(projectId, principal) : undefined,
         confirmado: args.confirmado === true,
       })
+
+      if (resultado.destino === 'base') {
+        return {
+          ...resultado,
+          validade: formatarValidade(resultado.validade),
+          mensagem: resultado.gravado
+            ? `Regra guardada na base como campanha, valendo até ${formatarValidade(resultado.validade)}. Depois disso ela para de valer sozinha — não vai para o DNA justamente por ter prazo.`
+            : `Proposta montada, NADA foi gravado ainda. Como a regra tem prazo, ela vai para a base de conhecimento (campanha), não para o DNA. Mostre à pessoa e confirme para valer.`,
+        }
+      }
 
       return {
         ...resultado,
         mensagem: resultado.gravado
-          ? `Regra registrada em ${secao}. Vale a partir da próxima geração, do chat e do site.`
+          ? `Regra registrada em ${resultado.secao}. Vale a partir da próxima geração, do chat e do site.`
           : `Proposta montada, NADA foi gravado ainda. Mostre a linha à pessoa e confirme para valer.`,
       }
     },
@@ -1855,7 +1904,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'criar-entrada-base',
     description:
-      'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\n⚠️ Tom de voz, regras da marca, estilo visual e direção fotográfica NÃO vão aqui — vão no DNA (atualizar-dna). A base é buscada por relevância e identidade cadastrada nela não chega aos geradores; a categoria TOM_DE_VOZ existe só por legado.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
+      'Cria uma entrada nova na base de conhecimento do cliente. TUDO que estiver na base vira insumo dos textos futuros — deste chat e do Claudinho — então só grave informação CONFIRMADA pela pessoa (preço, horário, política, campanha), nunca suposição sua.\n\n⏳ CAMPANHA COM DATA DE FIM → GRAVE A VALIDADE. Festival, promoção de mês, cardápio sazonal, feriado: pergunte até quando vale e mande em `validade`. É o que faz a campanha parar de aparecer nos textos e nas sugestões no dia seguinte ao fim, sem ninguém precisar lembrar de arquivar.\n\n⚠️ Tom de voz, regras da marca, estilo visual e direção fotográfica NÃO vão aqui — vão no DNA (atualizar-dna). A base é buscada por relevância e identidade cadastrada nela não chega aos geradores; a categoria TOM_DE_VOZ existe só por legado.\n\nAntes de criar, consulte a base: se já existe entrada sobre o assunto, o certo é atualizar-entrada-base, não duplicar. Mostre o texto final à pessoa e só grave com o OK dela.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1868,6 +1917,11 @@ export const MCP_TOOLS: McpTool[] = [
         title: { type: 'string', description: 'Título curto e específico (ex: "Promoção Costela no Bafo — agosto").' },
         content: { type: 'string', description: 'O conteúdo, em texto corrido, do jeito que deve alimentar as copies.' },
         tags: { type: 'array', items: { type: 'string' }, description: 'Etiquetas opcionais para busca.' },
+        validade: {
+          type: 'string',
+          description:
+            'Último dia em que a informação vale (AAAA-MM-DD, no fuso de Brasília — o dia inteiro conta). Depois disso a entrada sai sozinha dos textos e das sugestões. Obrigatório na prática para CAMPANHAS com data de fim; omita só para informação permanente (horário, cardápio fixo, política).',
+        },
       },
       required: ['projectId', 'category', 'title', 'content'],
       additionalProperties: false,
@@ -1883,46 +1937,32 @@ export const MCP_TOOLS: McpTool[] = [
 
       const title = requireString(args, 'title')
       const content = requireString(args, 'content')
+      const expiresAt = parseValidade(args.validade) ?? null
 
-      // Grava e indexa como uma coisa só: se a indexação falhar, a entrada é
-      // desfeita. Sem isso, o erro voltaria ao modelo enquanto a entrada já
-      // estaria valendo — e o retry natural dele criaria uma duplicata.
-      const entry = await db.knowledgeBaseEntry.create({
-        data: {
-          projectId,
-          category: categoria,
-          title,
-          content,
-          tags: Array.isArray(args.tags)
-            ? args.tags.filter((t: unknown): t is string => typeof t === 'string')
-            : [],
-          status: 'ACTIVE',
-          metadata: { origem: 'chat-conector' },
-          createdBy: autor,
-          userId: autor,
-        },
-        select: { id: true, title: true },
+      const entry = await criarEntradaBase({
+        projectId,
+        category: categoria,
+        title,
+        content,
+        tags: Array.isArray(args.tags)
+          ? args.tags.filter((t: unknown): t is string => typeof t === 'string')
+          : [],
+        expiresAt,
+        autor,
       })
 
-      try {
-        await reindexEntry(entry.id, { projectId, userId: autor })
-      } catch (erro) {
-        await db.knowledgeBaseEntry.delete({ where: { id: entry.id } }).catch(() => {})
-        console.error('[mcp] indexação falhou ao criar entrada — entrada desfeita:', erro)
-        throw new CreativeError(
-          'FALHA_INDEXACAO',
-          'Não consegui indexar a entrada para a busca, então nada foi gravado. Tente de novo em instantes.',
-          502,
-        )
-      }
-
-      await invalidateProjectCache(projectId).catch((e) =>
-        console.error('[mcp] invalidateProjectCache falhou:', e))
+      // Aviso, NUNCA veto: há campanha permanente ("Quinta do Vinho, toda
+      // quinta") e recusar a gravação deixaria a pessoa sem saída.
+      const aviso = avisoValidadeAusente(categoria, expiresAt)
 
       return {
         criada: true,
         entradaId: entry.id,
-        mensagem: `Entrada "${entry.title}" criada em ${categoria}. Já vale para os próximos textos.`,
+        validade: expiresAt ? formatarValidade(expiresAt) : null,
+        mensagem: expiresAt
+          ? `Entrada "${entry.title}" criada em ${categoria}, valendo até ${formatarValidade(expiresAt)}. Depois disso ela sai sozinha dos textos.`
+          : `Entrada "${entry.title}" criada em ${categoria}. Já vale para os próximos textos.`,
+        ...(aviso ? { aviso } : {}),
       }
     },
   },
@@ -1930,7 +1970,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'atualizar-entrada-base',
     description:
-      'Atualiza uma entrada existente da base de conhecimento (o entradaId vem de consultar-base). É assim que preço, horário ou regra desatualizada se corrige — a mudança vale para TODOS os textos futuros, deste chat e do Claudinho.\n\nFluxo obrigatório: consultar-base → mostrar à pessoa o texto ATUAL e o texto NOVO lado a lado → só gravar com o OK explícito. Campos não enviados ficam como estão.',
+      'Atualiza uma entrada existente da base de conhecimento (o entradaId vem de consultar-base). É assim que preço, horário ou regra desatualizada se corrige — a mudança vale para TODOS os textos futuros, deste chat e do Claudinho.\n\n⏳ Campanha que ganhou ou mudou data de fim: mande `validade`. Prorrogou, é a data nova; virou permanente, mande null.\n\nFluxo obrigatório: consultar-base → mostrar à pessoa o texto ATUAL e o texto NOVO lado a lado → só gravar com o OK explícito. Campos não enviados ficam como estão.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1943,6 +1983,11 @@ export const MCP_TOOLS: McpTool[] = [
           type: 'string',
           enum: Object.values(KnowledgeCategory),
           description: 'Nova categoria (opcional).',
+        },
+        validade: {
+          type: ['string', 'null'],
+          description:
+            'Último dia em que a informação vale (AAAA-MM-DD, fuso de Brasília — o dia inteiro conta). null tira o prazo e a entrada volta a valer para sempre.',
         },
       },
       required: ['projectId', 'entradaId'],
@@ -1986,8 +2031,19 @@ export const MCP_TOOLS: McpTool[] = [
       if (category && !Object.values(KnowledgeCategory).includes(category)) {
         throw new Error(`Categoria inválida. Use uma de: ${Object.values(KnowledgeCategory).join(', ')}`)
       }
-      if (title === undefined && content === undefined && tags === undefined && category === undefined) {
-        throw new Error('Nada para atualizar: envie title, content, tags ou category.')
+      // undefined = não veio no pedido; null = veio vazio de propósito e LIMPA
+      // o prazo. Os dois casos precisam sobreviver até o `data` do update.
+      const expiresAt = parseValidade(
+        Object.prototype.hasOwnProperty.call(args, 'validade') ? args.validade : undefined,
+      )
+      if (
+        title === undefined &&
+        content === undefined &&
+        tags === undefined &&
+        category === undefined &&
+        expiresAt === undefined
+      ) {
+        throw new Error('Nada para atualizar: envie title, content, tags, category ou validade.')
       }
 
       await db.knowledgeBaseEntry.update({
@@ -1997,6 +2053,7 @@ export const MCP_TOOLS: McpTool[] = [
           ...(content !== undefined ? { content } : {}),
           ...(tags !== undefined ? { tags } : {}),
           ...(category !== undefined ? { category } : {}),
+          ...(expiresAt !== undefined ? { expiresAt } : {}),
           updatedBy: autor,
         },
       })
@@ -2026,14 +2083,22 @@ export const MCP_TOOLS: McpTool[] = [
       await invalidateProjectCache(projectId).catch((e) =>
         console.error('[mcp] invalidateProjectCache falhou:', e))
 
+      // O aviso olha o estado FINAL da entrada, não o que veio no pedido:
+      // mudar a categoria para CAMPANHAS numa entrada sem prazo também merece
+      // a cutucada.
+      const validadeFinal = expiresAt !== undefined ? expiresAt : existente.expiresAt
+      const aviso = avisoValidadeAusente(category ?? existente.category, validadeFinal)
+
       return {
         atualizada: true,
         entradaId,
         // Devolve o texto anterior: é a única trilha de recuperação, já que o
         // banco não guarda versão antiga.
         textoAnterior: { title: existente.title, content: existente.content },
+        validade: validadeFinal ? formatarValidade(validadeFinal) : null,
         mensagem: `Entrada "${title ?? existente.title}" atualizada. Já vale para os próximos textos.`,
         ...(avisoBusca ? { avisoBusca } : {}),
+        ...(aviso ? { aviso } : {}),
       }
     },
   },
