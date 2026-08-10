@@ -108,6 +108,23 @@ export function usePhotoSwipe({
         lastClosedAt = Date.now()
       })
 
+      // Miniatura como fundo enquanto a arte grande carrega.
+      //
+      // O pacote usa placeholder de IMAGEM só no primeiro slide — o código é
+      // literal: `this.data.msrc && this.slide.isFirstSlide ? this.data.msrc :
+      // false`. Ao navegar, o placeholder vira um <div> vazio e o slide fica
+      // PRETO até a arte chegar. Como as artes têm ~1 MB e 2160x3840, isso é
+      // quase um segundo de tela vazia por slide fora da rede local — e é
+      // exatamente com o que "navega mas a foto não carrega" se parece.
+      //
+      // `msrc` o próprio PhotoSwipe já preenche com o `currentSrc` da <img> do
+      // card, então a miniatura que a pessoa já viu no grid aparece na hora e
+      // vai ficando nítida. Card que ainda não carregou (loading="lazy") tem
+      // `currentSrc` vazio e cai no comportamento antigo, sem quebrar.
+      lightboxRef.current.addFilter('placeholderSrc', (placeholderSrc, content) => {
+        return content.data.msrc || placeholderSrc
+      })
+
       // Slide de vídeo. O PhotoSwipe só sabe desenhar imagem: item marcado com
       // `data-pswp-type="video"` (galeria de criativos, Drive, seletores de
       // post) virava um slide EM BRANCO no meio da navegação. Mesmo desenho já
