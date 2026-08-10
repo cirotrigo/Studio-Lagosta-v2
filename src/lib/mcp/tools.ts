@@ -288,13 +288,15 @@ export const MCP_TOOLS: McpTool[] = [
       additionalProperties: false,
     },
     handler: async (args, principal) => {
-      await assertProjetoPermitido(requireNumber(args, 'projectId'), principal)
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
       return createArteRapida({
-        projectId: requireNumber(args, 'projectId'),
+        projectId,
         sourcePageId: requireString(args, 'sourcePageId'),
         slotValues: (args.slotValues && typeof args.slotValues === 'object' ? args.slotValues : {}) as Record<string, unknown>,
         name: typeof args.name === 'string' ? args.name : undefined,
         imageUrl: typeof args.imageUrl === 'string' ? args.imageUrl : undefined,
+        decididoPor: await quemDecidiu(projectId, principal),
       })
     },
   },
@@ -1054,7 +1056,13 @@ export const MCP_TOOLS: McpTool[] = [
         throw new Error('Lista de posts inválida: todos os ids precisam ser textos (vindos de ver-agenda).')
       }
       const postIds = brutos
-      return processarAprovacao({ projectId, postIds, action: 'APPROVE' })
+      return processarAprovacao({
+        projectId,
+        postIds,
+        action: 'APPROVE',
+        decididoPor: await quemDecidiu(projectId, principal),
+        superficie: 'chat',
+      })
     },
   },
 
@@ -1172,6 +1180,7 @@ export const MCP_TOOLS: McpTool[] = [
         imageUrl: typeof args.imageUrl === 'string' ? args.imageUrl : undefined,
         driveImageId: typeof args.driveImageId === 'string' ? args.driveImageId : undefined,
         name: typeof args.name === 'string' ? args.name : undefined,
+        decididoPor: await quemDecidiu(projectId, principal),
       })
 
       /**

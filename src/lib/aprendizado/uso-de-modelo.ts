@@ -10,9 +10,12 @@
  * Precedente idêntico na casa: `Generation.styleRefAt` / `styleRefUsedAt`,
  * criados para o rodízio de referências de estilo.
  *
- * ⚠️ Este módulo só INCREMENTA. Ligar a contagem nos pontos de criação
- * (`createArteRapida`, `create-from-template`, o bake do editor) é da tarefa
- * seguinte — de propósito, para não colidir com quem está instrumentando.
+ * ⚠️ Este módulo só INCREMENTA — a LEITURA dos dois livros-caixa históricos
+ * (que é outra pergunta, e mais suja) vive em `historico-de-artes.ts`.
+ *
+ * Quem já conta: `createArteRapida` e o `finalize` do gerar-criativo. O
+ * contador é PROSPECTIVO — ele nasce zerado e não conhece o passado; para
+ * "quanto este modelo foi usado até hoje" é `lerUsosDeModelo` que responde.
  */
 
 import { db } from '@/lib/db'

@@ -68,6 +68,7 @@
 import * as fs from 'fs'
 import { PrismaClient } from '../prisma/generated/client'
 import { DIAS_SEMANA, diasDoModelo, normalizar } from '../src/lib/posts/dia-semana'
+import { lerUsosDeModelo } from '../src/lib/aprendizado/historico-de-artes'
 
 const db = new PrismaClient()
 
@@ -181,21 +182,18 @@ async function coletar(): Promise<Modelo[]> {
   const corte = JANELA_DIAS > 0 ? new Date(Date.now() - JANELA_DIAS * 86_400_000) : null
   const dentroDaJanela = (d: Date) => (corte ? d >= corte : true)
 
-  // (1) Generation.fieldValues->>'sourcePageId' — varredura com select enxuto.
-  const geracoes = await db.$queryRawUnsafe<Array<{ pid: string; source: string | null; criadaEm: Date; genId: string }>>(
-    `select "id" as "genId",
-            "fieldValues"->>'sourcePageId' as pid,
-            "fieldValues"->>'source' as source,
-            "createdAt" as "criadaEm"
-       from "Generation"
-      where "fieldValues"->>'sourcePageId' is not null`,
-  )
-
-  // (2) AICreativeGeneration.layoutType = 'template:<pageId>'
-  const uiGeracoes = await db.aICreativeGeneration.findMany({
-    where: { layoutType: { startsWith: 'template:' } },
-    select: { pageId: true, layoutType: true, createdAt: true },
-  })
+  /**
+   * (1) e (2) — os dois livros-caixa, agora por `lerUsosDeModelo`.
+   *
+   * O conhecimento que este script tinha em prosa (a ambiguidade do
+   * `sourcePageId` do `ajuste-arte`, o formato `template:<pageId>`) virou o
+   * módulo `src/lib/aprendizado/historico-de-artes.ts`, para que a mineração da
+   * F2 não precise redescobri-lo. Uma diferença de comportamento: o helper
+   * DEDUPLICA o par que o `finalize` grava nos dois livros na mesma
+   * requisição — antes a mesma criação era contada duas vezes, inflando a via
+   * da UI.
+   */
+  const usosDeModelo = await lerUsosDeModelo({ cliente: db, modeloPageIds: [...ids] })
 
   // (3) SocialPost — enriquecimento
   const postsDiretos = await db.socialPost.findMany({
@@ -205,14 +203,10 @@ async function coletar(): Promise<Modelo[]> {
 
   // Cópias alcançáveis: página gerada pela UI, e Generation derivada do modelo.
   const copiaParaModelo = new Map<string, string>()
-  for (const g of uiGeracoes) {
-    const modelo = g.layoutType.slice('template:'.length)
-    if (ids.has(modelo)) copiaParaModelo.set(g.pageId, modelo)
-  }
   const generationParaModelo = new Map<string, string>()
-  for (const g of geracoes) {
-    if (g.source === 'ajuste-arte') continue
-    if (ids.has(g.pid)) generationParaModelo.set(g.genId, g.pid)
+  for (const uso of usosDeModelo) {
+    if (uso.copiaPageId) copiaParaModelo.set(uso.copiaPageId, uso.modeloPageId)
+    if (uso.generationId) generationParaModelo.set(uso.generationId, uso.modeloPageId)
   }
 
   const postsDerivados =
@@ -242,11 +236,9 @@ async function coletar(): Promise<Modelo[]> {
     if (!atual || quando > atual) ultimo.set(pid, quando)
   }
 
-  for (const g of geracoes) {
-    if (g.source === 'ajuste-arte') continue // sourcePageId aponta para a própria cópia
-    marcar(g.pid, 'arteRapida', g.criadaEm)
+  for (const uso of usosDeModelo) {
+    marcar(uso.modeloPageId, uso.via === 'ui' ? 'ui' : 'arteRapida', uso.quando)
   }
-  for (const g of uiGeracoes) marcar(g.layoutType.slice('template:'.length), 'ui', g.createdAt)
   for (const p of postsDiretos) marcar(p.pageId!, 'postsDiretos', p.createdAt)
   for (const p of postsDerivados) {
     const modelo =

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import { db } from '@/lib/db'
 import { put } from '@vercel/blob'
+import { registrarUsoDeModelo } from '@/lib/aprendizado/uso-de-modelo'
 import type { Layer } from '@/types/template'
 
 export const runtime = 'nodejs'
@@ -158,10 +159,19 @@ export async function POST(request: Request) {
         resultUrl: blob.url,
         fileName: blob.pathname,
         fieldValues: {
+          // `source` faltava aqui e em nenhum outro gerador: sem ele a linha
+          // não dá para separar da arte-rápida numa varredura de fieldValues,
+          // e é justamente o campo que distingue uso de MODELO de ajuste de
+          // cópia (`ajuste-arte`). Padronizado com os demais.
+          source: 'gerar-criativo',
           images,
           texts,
           sourcePageId: templatePageId,
+          pageId: newPage.id,
         },
+        // Espelho colunar indexado — aqui o `sourcePageId` aponta mesmo para a
+        // página-modelo escolhida na tela, sem a ambiguidade do ajuste.
+        sourcePageId: templatePageId,
         templateName: templatePage.Template.name,
         projectName: templatePage.Template.Project?.name,
         createdBy: userId,
@@ -186,6 +196,12 @@ export async function POST(request: Request) {
     })
 
     console.log('[Gerar Criativo Finalize] Created AICreativeGeneration:', aiCreative.id)
+
+    // Contador de uso do modelo — o mesmo espelho que a arte-rápida alimenta.
+    // Sem ele a via da UI ficaria invisível para "qual modelo este cliente
+    // mais usa", que é a pergunta que a curadoria de 10/08 teve de responder
+    // varrendo Json à mão.
+    await registrarUsoDeModelo(templatePageId)
 
     return NextResponse.json({
       success: true,
