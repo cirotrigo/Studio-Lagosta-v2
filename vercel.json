@@ -148,6 +148,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/cron/generation-jobs",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/video-processing",
       "schedule": "*/2 * * * *"
     },
