@@ -402,21 +402,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     let ultimaGeracaoMs = 0
     /** Último QA rodado — vai para o registro atômico mesmo quando reprova. */
     let qaInfo: Record<string, unknown> = {}
+    // Desde 10/08/2026 (decisão do Ciro, pelo custo real): SÓ a proporção
+    // errada regera sozinha — a arte seria inutilizável, o `cover` cortaria a
+    // faixa do texto. Texto e QA divergentes ENTREGAM com alerta na primeira
+    // geração; corrigir é botão com preço na mão do usuário, porque cada
+    // tentativa é uma chamada paga (~US$0,10-0,19) e a maioria das reprovações
+    // medidas era falso negativo do verificador.
     let ultimoQaMotivo: string | null = null
-    /**
-     * A melhor peça REPROVADA até aqui. Existe porque reprovar não pode
-     * significar jogar fora: quando a retentativa não acontece (orçamento), é
-     * ela que é entregue, com a ressalva anotada.
-     */
-    let melhorCandidato: {
-      buffer: Buffer
-      ressalva: string
-      aspecto: Awaited<ReturnType<typeof checarProporcao>>
-      visual: Awaited<ReturnType<typeof inspecionarArte>> | null
-      logoCheck: Awaited<ReturnType<typeof conferirLogo>> | null
-    } | null = null
-    /** Última peça gerada com texto divergente — entregue com alerta no fim. */
-    let ultimoCandidatoTexto: Buffer | null = null
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
@@ -495,49 +487,45 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
                 : ''),
           )
 
-          const ehUltima = attempt >= MAX_GENERATION_ATTEMPTS
-          if ((!visual.aprovada || logoCheck?.ok === false) && !ehUltima) {
-            ultimoQaMotivo =
-              logoCheck?.ok === false
-                ? `logo divergente: ${logoCheck.detalhe?.divergencias.join('; ') || 'não confere com o arquivo oficial'}`
-                : visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
-            // ⚠️ GUARDA a peça antes de tentar de novo. O `continue` aposta numa
-            // retentativa que o orçamento pode recusar logo em seguida — e foi
-            // isso que jogou fora DUAS artes prontas do Espeto em 10/08: texto
-            // certo, proporção certa, e o único senão era a fidelidade da logo.
-            // Arte com ressalva vale mais que arte nenhuma, e o crédito já foi
-            // gasto de qualquer forma.
-            melhorCandidato = { buffer: candidate, ressalva: ultimoQaMotivo, aspecto, visual, logoCheck }
-            continue
-          }
-          if (logoCheck?.ok === false) {
-            console.warn(
-              `[arte-ia.bg] entregando com logo divergente (última tentativa): ${logoCheck.detalhe?.divergencias.join('; ')}`,
-            )
-          }
-          // Na última tentativa a peça é entregue mesmo com ressalva: o texto
-          // está certo, e descartar arte legível-com-ressalva é pior do que
-          // entregá-la com o defeito anotado para quem revisa.
-          if (!visual.aprovada) {
-            console.warn(
-              `[arte-ia.bg] entregando com ressalva de QA (última tentativa): ${visual.detalhe?.problemas.join('; ')}`,
-            )
+          // Divergência de qualidade (visual ou logo) NÃO regera sozinha:
+          // cada tentativa é uma chamada paga do modelo de imagem, e o dado de
+          // 10/08 mostrou que a maioria das reprovações era falso negativo do
+          // verificador. A peça sai JÁ, com a ressalva visível — corrigir (e
+          // pagar outra geração) é decisão de quem olha, não do pipeline.
+          const ressalvaQa =
+            logoCheck?.ok === false
+              ? `A marca desenhada pode ter divergido do arquivo oficial: ${logoCheck.detalhe?.divergencias.join('; ') || 'confira a logo'}.`
+              : !visual.aprovada
+                ? visual.detalhe?.problemas.join('; ') || 'A inspeção visual apontou problema de legibilidade.'
+                : null
+          if (ressalvaQa) {
+            console.warn(`[arte-ia.bg] entregando com ressalva de QA: ${ressalvaQa}`)
+            qaInfo = { ...qaInfo, qaEntregueComRessalva: true, qaMotivo: ressalvaQa }
           }
           resultBuffer = candidate
           textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
           break
         }
         lastMissing = check.missing
-        // Guardada mesmo divergente: se a retentativa não vier (ou também
-        // divergir), é ELA que vai ao usuário, com o alerta — decisão do Ciro
-        // em 10/08/2026, depois de duas reprovações que eram falso negativo
-        // do comparador ("R$ 9,90" vs "R$9,90"). Quem confere texto no fim é
-        // o olho de quem aprova; o comparador vira aviso, não veto.
-        ultimoCandidatoTexto = candidate
-        textCheckInfo = {
-          textCheck: 'failed',
-          textCheckAttempts: attemptsLog,
-          textCheckExtracted: check.extracted.slice(0, 30),
+        // Texto divergente também ENTREGA, com o alerta — decisão do Ciro em
+        // 10/08/2026, depois de duas reprovações que eram falso negativo do
+        // comparador ("R$ 9,90" vs "R$9,90") e de mais uma chamada paga
+        // queimada na retentativa automática. Quem confere texto no fim é o
+        // olho de quem aprova; o comparador vira aviso, e a correção vira
+        // botão com preço, não reflexo do pipeline.
+        {
+          const sample = check.missing.slice(0, 3).map((t) => `"${t}"`).join(', ')
+          const alerta = `A conferência automática não encontrou ${sample}${check.missing.length > 3 ? ` (+${check.missing.length - 3})` : ''} na arte. Confira o texto no olho antes de aprovar — pode ser erro real do desenho ou implicância do comparador.`
+          console.warn(`[arte-ia.bg] entregando com ALERTA de texto: ${alerta}`)
+          resultBuffer = candidate
+          textCheckInfo = {
+            textCheck: 'failed',
+            entregueComAlerta: true,
+            textCheckAlert: alerta,
+            textCheckAttempts: attemptsLog,
+            textCheckExtracted: check.extracted.slice(0, 30),
+          }
+          break
         }
       } catch (visionError) {
         console.warn('[arte-ia.bg] visão indisponível — aplicando sem verificação:', visionError)
@@ -552,49 +540,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
-    // Reprovado pelo QA e sem retentativa: entrega o guardado com a ressalva.
-    // Falhar aqui significaria cobrar o crédito e não entregar nada — e a peça
-    // existe, com o texto certo e a proporção certa.
-    if (!resultBuffer && melhorCandidato) {
-      console.warn(`[arte-ia.bg] entregando com ressalva de QA: ${melhorCandidato.ressalva}`)
-      resultBuffer = melhorCandidato.buffer
-      textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
-      qaInfo = {
-        qa: 'failed',
-        qaEntregueComRessalva: true,
-        qaMotivo: melhorCandidato.ressalva,
-        qaResumo: resumirQA(melhorCandidato.aspecto, melhorCandidato.visual),
-        qaAspecto: { ...melhorCandidato.aspecto },
-        qaVisual: melhorCandidato.visual?.detalhe ?? null,
-        qaLogo: melhorCandidato.logoCheck?.detalhe ?? null,
-      }
-    }
-
-    if (!resultBuffer && ultimoQaMotivo && lastMissing.length === 0) {
-      // Só chega aqui o que NÃO produziu peça aproveitável — proporção errada,
-      // que é o único QA sem candidato guardado (cortar seria pior que falhar).
+    if (!resultBuffer && ultimoQaMotivo) {
+      // Só chega aqui a proporção errada nas duas tentativas — o único caso
+      // que não produz peça aproveitável (cortar seria pior que falhar).
       throw new Error(`QA reprovou após ${attemptsLog.length} tentativa(s): ${ultimoQaMotivo}`)
     }
 
-    if (!resultBuffer && ultimoCandidatoTexto) {
-      // Texto divergente nas duas tentativas: a arte SAI, com o alerta. Decisão
-      // do Ciro (10/08/2026): "mostre ela mesmo que falhe, mas deixe o alerta
-      // da falha para o usuário conferir visualmente". A alternativa — FAILED
-      // sem imagem nenhuma — já queimou peça boa por falso negativo do
-      // comparador, e esconder a arte tira do usuário justamente a prova de
-      // que ele precisa para julgar.
-      const sample = lastMissing.slice(0, 3).map((t) => `"${t}"`).join(', ')
-      const alerta = `A conferência automática não encontrou ${sample}${lastMissing.length > 3 ? ` (+${lastMissing.length - 3})` : ''} na arte. Confira o texto no olho antes de aprovar — pode ser erro real do desenho ou implicância do comparador.`
-      console.warn(`[arte-ia.bg] entregando com ALERTA de texto: ${alerta}`)
-      resultBuffer = ultimoCandidatoTexto
-      textCheckInfo = { ...textCheckInfo, entregueComAlerta: true, textCheckAlert: alerta }
-    }
-
     if (!resultBuffer) {
-      const sample = lastMissing.slice(0, 3).map((t) => `"${t}"`).join(', ')
-      throw new Error(
-        `texto divergente após ${attemptsLog.length} tentativa(s): a arte não reproduziu ${sample}${lastMissing.length > 3 ? ` (+${lastMissing.length - 3})` : ''}`,
-      )
+      // Rede de segurança: com a entrega-com-alerta nos dois caminhos, não
+      // deveria haver como chegar aqui com a geração tendo funcionado.
+      throw new Error('geração terminou sem peça e sem motivo registrado')
     }
 
     // ── Finalização: resize → logo → Blob → backup Drive → Generation ────
