@@ -43,11 +43,19 @@ export function normalizeForComparison(value: string): string {
     .replace(/[‘’‚′]/g, "'")
     .replace(/[“”„″]/g, '"')
     .replace(/[–—−]/g, '-')
-    // Separadores de ponto são visualmente idênticos e o modelo de visão
-    // transcreve qualquer um deles ("MESA · PRAIA" vira "MESA . PRAIA"):
-    // unificar a família toda no ponto simples não afeta preço (a vírgula de
-    // "R$ 49,90" continua vírgula).
-    .replace(/[•∙●・·]/g, '.')
+    // Separador de lista vira ESPAÇO, não ponto.
+    //
+    // Ele não é conteúdo: é diagramação. E o modelo escolhe como diagramar —
+    // "R$ 89,00 por pessoa · Das 10h às 15h" ele pode desenhar com o ponto
+    // médio, com barra, ou simplesmente QUEBRANDO A LINHA. Mapeando para ponto,
+    // o esperado virava "…PESSOA.DAS 10H…" (a regra abaixo cola a pontuação nos
+    // vizinhos) e a arte com quebra de linha virava "…PESSOA DAS 10H…": nunca
+    // casavam. Reprovou duas artes boas do Espeto em 10/08 por causa de um
+    // caractere de separação.
+    //
+    // Como espaço, as três formas convergem. Preço e hora seguem protegidos —
+    // a vírgula de "R$ 49,90" e os dígitos não são tocados.
+    .replace(/[•∙●・·|]/g, ' ')
     // A visão também espalha espaços em volta da pontuação ("VITÓRIA - ES",
     // "CANTO , VITÓRIA"). Colar a pontuação nos vizinhos normaliza os DOIS
     // lados da comparação sem tocar na pontuação em si.

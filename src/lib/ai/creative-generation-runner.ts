@@ -392,6 +392,18 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     /** Último QA rodado — vai para o registro atômico mesmo quando reprova. */
     let qaInfo: Record<string, unknown> = {}
     let ultimoQaMotivo: string | null = null
+    /**
+     * A melhor peça REPROVADA até aqui. Existe porque reprovar não pode
+     * significar jogar fora: quando a retentativa não acontece (orçamento), é
+     * ela que é entregue, com a ressalva anotada.
+     */
+    let melhorCandidato: {
+      buffer: Buffer
+      ressalva: string
+      aspecto: Awaited<ReturnType<typeof checarProporcao>>
+      visual: Awaited<ReturnType<typeof inspecionarArte>> | null
+      logoCheck: Awaited<ReturnType<typeof conferirLogo>> | null
+    } | null = null
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
@@ -476,6 +488,13 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               logoCheck?.ok === false
                 ? `logo divergente: ${logoCheck.detalhe?.divergencias.join('; ') || 'não confere com o arquivo oficial'}`
                 : visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
+            // ⚠️ GUARDA a peça antes de tentar de novo. O `continue` aposta numa
+            // retentativa que o orçamento pode recusar logo em seguida — e foi
+            // isso que jogou fora DUAS artes prontas do Espeto em 10/08: texto
+            // certo, proporção certa, e o único senão era a fidelidade da logo.
+            // Arte com ressalva vale mais que arte nenhuma, e o crédito já foi
+            // gasto de qualquer forma.
+            melhorCandidato = { buffer: candidate, ressalva: ultimoQaMotivo, aspecto, visual, logoCheck }
             continue
           }
           if (logoCheck?.ok === false) {
@@ -514,10 +533,28 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
+    // Reprovado pelo QA e sem retentativa: entrega o guardado com a ressalva.
+    // Falhar aqui significaria cobrar o crédito e não entregar nada — e a peça
+    // existe, com o texto certo e a proporção certa.
+    if (!resultBuffer && melhorCandidato) {
+      console.warn(`[arte-ia.bg] entregando com ressalva de QA: ${melhorCandidato.ressalva}`)
+      resultBuffer = melhorCandidato.buffer
+      textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
+      qaInfo = {
+        qa: 'failed',
+        qaEntregueComRessalva: true,
+        qaMotivo: melhorCandidato.ressalva,
+        qaResumo: resumirQA(melhorCandidato.aspecto, melhorCandidato.visual),
+        qaAspecto: { ...melhorCandidato.aspecto },
+        qaVisual: melhorCandidato.visual?.detalhe ?? null,
+        qaLogo: melhorCandidato.logoCheck?.detalhe ?? null,
+      }
+    }
+
     if (!resultBuffer && ultimoQaMotivo && lastMissing.length === 0) {
-      // Reprovado pelo QA, não pelo texto: a mensagem precisa dizer isso, senão
-      // quem lê procura divergência de texto que não existe.
-      throw new Error(`QA reprovou após ${MAX_GENERATION_ATTEMPTS} tentativa(s): ${ultimoQaMotivo}`)
+      // Só chega aqui o que NÃO produziu peça aproveitável — proporção errada,
+      // que é o único QA sem candidato guardado (cortar seria pior que falhar).
+      throw new Error(`QA reprovou após ${attemptsLog.length} tentativa(s): ${ultimoQaMotivo}`)
     }
 
     if (!resultBuffer) {
