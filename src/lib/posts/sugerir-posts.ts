@@ -14,8 +14,8 @@
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
+import { DIAS_SEMANA, casaComDia, normalizar } from '@/lib/posts/dia-semana'
 
-const DIAS_SEMANA = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'] as const
 const JANELA_HISTORICO_DIAS = 56
 /** Slot ocupado se já existe post a menos de 45min dele. */
 const TOLERANCIA_SLOT_MIN = 45
@@ -64,13 +64,6 @@ function horaLabel(minutos: number): string {
   const h = Math.floor(minutos / 60)
   const m = minutos % 60
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
-}
-
-function normalizar(s: string): string {
-  return s
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
 }
 
 export async function sugerirPosts(params: {
@@ -169,11 +162,9 @@ export async function sugerirPosts(params: {
   ])
 
   const modeloDoDia = (dia: number) => {
-    const alvo = normalizar(DIAS_SEMANA[dia])
-    const achado = modelos.find((m) => {
-      const textos = [m.name, m.Template.name, ...(m.tags ?? []), ...(m.Template.tags ?? [])].map(normalizar)
-      return textos.some((t) => t.includes(alvo))
-    })
+    const achado = modelos.find((m) =>
+      casaComDia([m.name, m.Template.name, ...(m.tags ?? []), ...(m.Template.tags ?? [])], dia),
+    )
     return achado
       ? {
           pageId: achado.id,
