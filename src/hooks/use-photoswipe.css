@@ -30,16 +30,25 @@
   visibility: visible;
 }
 
-/* Alvo de toque maior e um pouco de contraste sobre foto clara. */
+/*
+ * Fundo circular na seta, em QUALQUER aparelho.
+ *
+ * O padrão do pacote é um chevron branco fino, sem fundo, colado na borda da
+ * janela. Numa tela de 1440px com uma arte 9:16 no centro, a seta fica a ~500px
+ * da imagem (centro medido em x=1403) e some contra foto clara — dá para olhar
+ * direto para ela e não perceber que é um botão. O fundo resolve a leitura sem
+ * mudar posição nem tamanho do alvo no desktop.
+ */
+.pswp.pswp--nav-sempre-visivel .pswp__button--arrow .pswp__icn {
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 999px;
+  padding: 4px;
+}
+
+/* No toque o alvo encolhe um pouco para não cobrir tanto da arte. */
 @media (hover: none) and (pointer: coarse) {
   .pswp.pswp--nav-sempre-visivel .pswp__button--arrow {
     width: 60px;
-  }
-
-  .pswp.pswp--nav-sempre-visivel .pswp__button--arrow .pswp__icn {
-    background: rgba(0, 0, 0, 0.45);
-    border-radius: 999px;
-    padding: 4px;
   }
 }
 

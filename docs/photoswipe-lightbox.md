@@ -70,6 +70,35 @@ O PhotoSwipe só sabe desenhar imagem. Item marcado com `data-pswp-type="video"`
 O `globals.css` força `video { height: auto !important }` abaixo de 768px; o
 `use-photoswipe.css` isenta `.pswp video`, como já fazia com `.pswp__img`.
 
+## Miniatura enquanto a arte grande carrega
+
+O pacote usa placeholder de imagem **só no primeiro slide**. O código é
+literal (`photoswipe.esm.js`, na criação do placeholder):
+
+```js
+this.data.msrc && this.slide.isFirstSlide ? this.data.msrc : false
+```
+
+Ao navegar, o placeholder vira um `<div>` vazio e o slide fica **preto** até a
+arte chegar. Como os criativos são ~1 MB a 2160×3840 (medido em produção),
+isso é quase um segundo de tela vazia por slide fora da rede local — e é com
+isso que "navega mas a foto não carrega" se parece.
+
+O filtro oficial `placeholderSrc` estende a miniatura a todos os slides:
+
+```ts
+lightbox.addFilter('placeholderSrc', (placeholderSrc, content) =>
+  content.data.msrc || placeholderSrc)
+```
+
+`msrc` o próprio PhotoSwipe preenche com o `currentSrc` da `<img>` do card —
+no nosso caso a miniatura otimizada do Next (`&w=750&q=75`), que já está em
+cache porque a pessoa acabou de vê-la no grid.
+
+**Limite conhecido:** card que ainda não renderizou a miniatura (`loading="lazy"`,
+bem abaixo da dobra) tem `currentSrc` vazio, então não há o que mostrar e o
+comportamento antigo vale para ele. Não quebra — só não ganha o fundo.
+
 ## Hook `usePhotoSwipe`
 
 ### Uso
