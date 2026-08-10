@@ -514,7 +514,11 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     '6. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
     '7. Paleta da marca apenas na camada gráfica (textos, destaques, filetes, selos); a fotografia mantém as cores reais — não dessature nem recolora madeira, tons de pele, verdes e dourados que já existem na foto.',
     '8. Uma cor de destaque por peça.',
-    '9. Respeite a safe area do formato (story: 200px de topo e de rodapé livres de informação; feed: margens generosas, nada de texto ou logo encostado na borda).',
+    // Com o PORQUÊ, porque a regra seca perdeu: na v2 do happy hour o pedido
+    // "título no topo" venceu a safe area e o título começou a ~70px da borda
+    // — exatamente sob o nome do perfil que o Instagram sobrepõe ali. O Ciro
+    // pegou no olho (10/08/2026).
+    '9. SAFE AREA DO STORY — o Instagram DESENHA POR CIMA da peça: o nome do perfil e o avatar no topo, e os controles de resposta no rodapé. Os primeiros ~250px do topo e os últimos ~250px do rodapé ficam LIVRES de texto e de logo, mesmo quando o pedido do cliente falar em "topo" ou "rodapé" — topo e rodapé são as zonas LOGO ABAIXO/ACIMA dessas faixas. No feed: margens generosas, nada encostado na borda.',
     // A regra que faltava, e a mais importante para o resultado parecer feito
     // por gente: ONDE o texto pousa é decisão de quem OLHA a foto. As regras
     // acima são limites; dentro delas, quem diagrama é o modelo. Sem isto o
