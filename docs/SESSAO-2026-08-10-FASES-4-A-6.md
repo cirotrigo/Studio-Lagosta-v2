@@ -275,7 +275,67 @@ regra-mãe manda evitar. E nunca em carrossel — ali quem manda é o slide-guia
 O uso só é registrado depois de a arte existir: marcar antes faria uma geração
 que falhou "gastar" a referência sem ela ter chegado ao modelo.
 
-## 10. Armadilhas medidas nesta sessão
+## 10. Onde o texto pousa é decisão de quem OLHA a foto
+
+O Ciro mandou 6 artes do Espeto feitas pelo Claudinho, com a leitura de que o
+modelo escolhe bem o lugar do texto quando fica livre. As peças confirmam: o
+bloco vai para a área calma e **muda de peça para peça** — coluna à esquerda,
+faixa no rodapé, bloco no topo — e a logo acompanha (topo-esquerda,
+topo-direita, base-esquerda).
+
+Duas coisas no prompt trabalhavam contra isso, e as duas eram erro de porte:
+
+**O teto de texto estava na unidade errada.** A regra que produziu essas artes
+é `TODO o conjunto de texto ocupa no máximo ~1/5 do QUADRO` (área) mais
+`a headline não passa de ~15% da ALTURA`. Eu escrevi "≤25% da altura", trazido
+do pipeline de MELHORIA, onde a regra é outra. Área e altura decidem layouts
+diferentes: um teto de altura proíbe a coluna alta e estreita — exatamente o
+layout do "A PARTIR DAS 17H", que ocupa ~40% da altura numa faixa de ~35% da
+largura. Pouca área, muita altura.
+
+`art-direction.ts` NÃO foi tocado: aquele teto é deliberado, validado em teste
+com este mesmo cliente em 29-30/07 e explicitamente protegido. Os dois
+pipelines divergem de propósito — a melhoria refina uma arte que já existe, a
+geração compõe olhando o espaço negativo da foto.
+
+**Faltava a regra de AUTONOMIA** do insta-automatico ("escolha a composição que
+melhor preserve o sujeito e o espaço negativo; varie a diagramação entre
+peças"). Sem ela o prompt é só limite: dez regras e nenhuma licença para
+decidir, e toda peça sai com o mesmo layout. A logo também perdeu o canto
+cravado na peça avulsa — quem vê a foto sabe onde ela está vazia. No slide
+irmão de carrossel o canto continua fixo, porque ali o LOOK SPINE manda repetir
+o guia.
+
+## 11. Reprovar não pode significar jogar a arte fora
+
+Quatro gerações do Espeto voltaram FAILED sem entregar nada. As duas causas
+eram defeitos do QA que eu tinha acabado de escrever:
+
+- **O QA descartava a peça apostando numa retentativa que o orçamento recusava
+  em seguida.** O `continue` saía do laço, a checagem de budget quebrava, e o
+  resultado ficava null: crédito gasto, arte pronta, nada entregue. O caminho
+  "entrega com ressalva" existia só para a última tentativa e nunca era
+  alcançado. Agora a peça reprovada é GUARDADA e entregue com a ressalva quando
+  a retentativa não acontece.
+- **O separador de lista era impossível de casar.** `·` virava ponto na
+  normalização, e a regra seguinte cola pontuação nos vizinhos: o esperado
+  virava `…PESSOA.DAS 10H…`. A arte que desenhou o mesmo conteúdo QUEBRANDO A
+  LINHA virava `…PESSOA DAS 10H…`. Nunca casavam. O separador não é conteúdo, é
+  diagramação — e quem diagrama é o modelo. Virou espaço.
+
+**O que NÃO foi resolvido**: no formato story a retentativa quase nunca
+acontece. A geração leva ~110-128s e o teto da rota é `maxDuration = 300`;
+duas gerações não cabem numa invocação. A margem virou aditiva (20s, que é o
+que a checagem realmente consome) em vez de 1,2× — o que recupera casos de
+borda, e só isso. A saída estrutural é retentar em OUTRA invocação, no padrão
+da fila de render.
+
+Vale registrar que a verificação de texto acertou: a peça do happy hour caiu
+porque o modelo escreveu **"CHOOPP CANECA"**. E que o QA visual deu um falso
+positivo ("texto claro sobre foto clara" numa peça com texto branco sobre área
+escura) — inofensivo agora que ele só anota a ressalva.
+
+## 12. Armadilhas medidas nesta sessão
 
 - 🔴 **Em Postgres, `ORDER BY … ASC` é NULLS LAST** — e foi isso que quebrou o
   rodízio na primeira versão: a referência já usada (timestamp) vinha ANTES das
