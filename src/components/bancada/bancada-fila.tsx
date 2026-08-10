@@ -43,7 +43,7 @@ const COR: Record<BancadaItem['status'], string> = {
 }
 
 export function BancadaFila({ projectId }: { projectId: number }) {
-  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, remover } = useBancada(projectId)
+  const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, descartar } = useBancada(projectId)
   const perguntasDoCrivo = useCrivoDoProjeto(projectId)
 
   /** Agendamento segurado pelo crivo, esperando a leitura item a item. */
@@ -78,7 +78,7 @@ export function BancadaFila({ projectId }: { projectId: number }) {
             }
             agendar(item, quando, situacao)
           }}
-          onRemover={() => remover(item.id)}
+          onRemover={() => descartar(item)}
         />
       ))}
 

@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
+import { useAprendizado } from '@/hooks/use-aprendizado'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 
@@ -95,6 +96,10 @@ interface RespostaAcervo {
   pastasDisponiveis: string[]
   images: ImagemAcervo[]
   aviso?: string
+  /** Sinal desta busca (F1) — a lista ranqueada é a proposta. */
+  sugestaoId?: string
+  /** A foto do topo do ranking, a que o sistema de fato recomendou. */
+  propostaTopo?: string | null
 }
 
 export function contarPorPapel(refs: ReferenciaSelecionada[], papel: PapelReferencia) {
@@ -180,6 +185,8 @@ export function ArteIaImagePicker({
     placeholderData: (anterior) => anterior,
   })
 
+  const { registrarDesfecho } = useAprendizado(projectId)
+
   const { upload, isUploading, progress } = useBlobUpload({
     onError: (err) =>
       toast({ title: 'Falha no upload', description: err.message, variant: 'destructive' }),
@@ -197,11 +204,43 @@ export function ArteIaImagePicker({
     [papelPadrao],
   )
 
+  /**
+   * Buscas cujo desfecho já foi fechado nesta sessão.
+   *
+   * O sinal a colher é "desta lista, o que a pessoa levou PRIMEIRO" — e uma
+   * escolha só. Fechar a cada clique faria a segunda foto de um carrossel
+   * sobrescrever o "levou o topo" da primeira (`trocada` vence
+   * `aceita-como-veio`), transformando toda seleção múltipla em recusa.
+   */
+  const buscasFechadas = React.useRef<Set<string>>(new Set())
+
+  /**
+   * O que a pessoa escolheu, comparado com o que o acervo propôs.
+   *
+   * A ordem do acervo é a recomendação (menos usada primeiro); levar a
+   * primeira é aceitar a proposta, cavar até a 40ª é recusá-la. Sem isto o
+   * ranqueamento nunca fica sabendo que erra.
+   */
+  const registrarEscolhaDeFoto = (driveFileId?: string) => {
+    const sugestaoId = acervo?.sugestaoId
+    if (!sugestaoId || !driveFileId) return
+    if (buscasFechadas.current.has(sugestaoId)) return
+    buscasFechadas.current.add(sugestaoId)
+
+    const posicao = (acervo?.images ?? []).findIndex((i) => i.driveFileId === driveFileId)
+    registrarDesfecho({
+      sugestaoId,
+      desfecho: driveFileId === acervo?.propostaTopo ? 'aceita-como-veio' : 'trocada',
+      escolhido: { driveFileId, ...(posicao >= 0 ? { posicao: posicao + 1 } : {}) },
+    })
+  }
+
   const adicionar = (nova: Omit<ReferenciaSelecionada, 'papel'>) => {
     if (referencias.some((r) => r.key === nova.key)) {
       onChange(referencias.filter((r) => r.key !== nova.key))
       return
     }
+    registrarEscolhaDeFoto(nova.driveFileId)
     if (modoSequencia) {
       if (referencias.length >= modoSequencia.max) {
         toast({

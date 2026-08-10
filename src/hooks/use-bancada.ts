@@ -14,6 +14,7 @@ import * as React from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
+import { useAprendizado } from '@/hooks/use-aprendizado'
 import { useBancadaStore, type BancadaItem, type BancadaSlide } from '@/stores/bancada-store'
 
 const POLL_MS = 5_000
@@ -38,12 +39,24 @@ function avisoDe(fv: StatusResposta['fieldValues']): string | null {
   return fv.textCheckAlert ?? (fv.qaEntregueComRessalva && fv.qaMotivo ? fv.qaMotivo : null)
 }
 
+/** A copy do item, na forma que vai para o corpus: um bloco por posição. */
+function copyDoItem(item: BancadaItem): string[] {
+  if (item.tipo === 'carrossel') {
+    return (item.slides ?? [])
+      .slice()
+      .sort((a, b) => a.ordem - b.ordem)
+      .flatMap((s) => s.copy)
+  }
+  return item.copy
+}
+
 export function useBancada(projectId: number) {
   const { toast } = useToast()
   const queryClient = useQueryClient()
   const itens = useBancadaStore((s) => s.itens)
   const atualizar = useBancadaStore((s) => s.atualizar)
-  const remover = useBancadaStore((s) => s.remover)
+  const removerDaFila = useBancadaStore((s) => s.remover)
+  const { registrarDesfecho, registrarEscolha } = useAprendizado(projectId)
 
   const doProjeto = React.useMemo(
     () => itens.filter((i) => i.projectId === projectId),
@@ -193,8 +206,39 @@ export function useBancada(projectId: number) {
 
   // ── Ações ─────────────────────────────────────────────────────────────────
 
+  /**
+   * A copy que a pessoa escreveu, registrada como ESCOLHA ABSOLUTA — não há
+   * dica de copy ainda, então não há proposta a comparar. É o corpus das
+   * primeiras semanas: sem isto, o aprendizado começa vazio e só passa a
+   * existir quando o sistema já estiver sugerindo texto (tarde demais para
+   * saber o que ele deveria sugerir).
+   *
+   * Sai no GERAR, não no "adicionar à fila": aqui a copy é a que virou arte
+   * paga. A chave é o id do item — "tentar de novo" no mesmo card não vira
+   * segundo sinal, e a copy do item não é editável depois de montada.
+   */
+  const registrarCopyEscolhida = React.useCallback(
+    (item: BancadaItem) => {
+      const blocos = copyDoItem(item)
+      if (blocos.length === 0) return
+      registrarEscolha({
+        tipo: 'copy',
+        chave: `item:${item.id}`,
+        escolhido: {
+          blocos,
+          formato: item.formato,
+          tipoDePeca: item.tipo ?? 'peca',
+          ...(item.legenda ? { legenda: item.legenda } : {}),
+          ...(item.pedido ? { pedido: item.pedido } : {}),
+        },
+      })
+    },
+    [registrarEscolha],
+  )
+
   const gerar = React.useCallback(
     async (item: BancadaItem) => {
+      registrarCopyEscolhida(item)
       atualizar(item.id, { status: 'gerando', erro: null, criadoEm: Date.now() })
       try {
         const resposta = await api.post<{ generation: { id: string } }>(
@@ -219,7 +263,7 @@ export function useBancada(projectId: number) {
         toast({ title: 'Não deu para gerar', description: msg, variant: 'destructive' })
       }
     },
-    [atualizar, toast],
+    [atualizar, registrarCopyEscolhida, toast],
   )
 
   /** Dispara UM slide e devolve o generationId. */
@@ -268,6 +312,7 @@ export function useBancada(projectId: number) {
     async (item: BancadaItem) => {
       const slides = item.slides ?? []
       if (slides.length < 3) return
+      registrarCopyEscolhida(item)
       atualizar(item.id, { status: 'gerando', erro: null, criadoEm: Date.now() })
       try {
         const [capaId, guiaId] = await Promise.all([
@@ -285,7 +330,7 @@ export function useBancada(projectId: number) {
         toast({ title: 'Não deu para gerar', description: msg, variant: 'destructive' })
       }
     },
-    [atualizar, gerarSlide, toast],
+    [atualizar, gerarSlide, registrarCopyEscolhida, toast],
   )
 
   /** Etapa 2: confirmado o look, gera os slides 3..N EM PARALELO. */
@@ -346,6 +391,14 @@ export function useBancada(projectId: number) {
             ...(item.escopo && item.escopo !== 'ROTINA'
               ? { escopo: item.escopo.toLowerCase() as 'campanha' | 'pontual' }
               : {}),
+            /**
+             * A sugestão de horário que este item carrega. Quem decide o
+             * desfecho é o SERVIDOR, comparando o horário proposto com o
+             * `quando` que chega aqui — o card deixa mudar data e hora antes
+             * de agendar, e "aceitei" declarado pela tela seria só o viés de
+             * quem está agendando.
+             */
+            ...(item.sugestaoId ? { sugestaoId: item.sugestaoId } : {}),
           },
         )
         atualizar(item.id, { status: 'agendado', postId: r.postId, quando: r.quando })
@@ -362,6 +415,29 @@ export function useBancada(projectId: number) {
     [atualizar, queryClient, toast],
   )
 
+  /**
+   * Tirar da fila — e é aqui que estava o buraco maior do aprendizado.
+   *
+   * O descarte é um `delete` no localStorage: a proposta de horário que a
+   * pessoa jogou fora nunca chegava ao servidor, então o corpus só via o que
+   * foi aceito. Item agendado NÃO conta como descarte (ele já cumpriu o
+   * caminho; sumir do card é limpeza de tela).
+   */
+  const descartar = React.useCallback(
+    (item: BancadaItem) => {
+      if (item.sugestaoId && item.status !== 'agendado') {
+        registrarDesfecho({
+          sugestaoId: item.sugestaoId,
+          desfecho: 'descartada',
+          escolhido: { motivo: 'tirado da fila da bancada', estado: item.status },
+          ...(item.generationId ? { generationId: item.generationId } : {}),
+        })
+      }
+      removerDaFila(item.id)
+    },
+    [registrarDesfecho, removerDaFila],
+  )
+
   return {
     itens: doProjeto,
     gerar,
@@ -369,6 +445,7 @@ export function useBancada(projectId: number) {
     confirmarEstilo,
     agendar,
     atualizar,
-    remover,
+    descartar,
+    remover: removerDaFila,
   }
 }

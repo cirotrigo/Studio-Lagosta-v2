@@ -45,6 +45,7 @@ import {
   type BancadaReferencia,
 } from '@/stores/bancada-store'
 import { ESCOPOS, type EscopoAprendizado } from '@/lib/posts/learning-scope'
+import { useAprendizado } from '@/hooks/use-aprendizado'
 
 type Formato = 'story' | 'feed' | 'quadrado'
 
@@ -62,6 +63,8 @@ interface SugestaoSlot {
   diaSemana: string
   hora: string
   motivo: string
+  /** Sinal desta proposta (F1) — viaja com o item até o agendamento. */
+  sugestaoId?: string
 }
 
 /**
@@ -84,6 +87,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const itens = useBancadaStore((s) => s.itens)
   const escopoPadrao = useBancadaStore((s) => s.escopoPadrao)
   const setEscopoPadrao = useBancadaStore((s) => s.setEscopoPadrao)
+  const { registrarDesfecho } = useAprendizado(projectId)
 
   const [tipo, setTipo] = React.useState<'peca' | 'carrossel'>('peca')
   const [formato, setFormato] = React.useState<Formato>('story')
@@ -194,7 +198,26 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
 
   const adicionarNaFila = () => {
     if (impedimento) return
-    const motivo = disponiveis.find((s) => s.scheduledDatetime === slot)?.motivo
+    const proposta = disponiveis.find((s) => s.scheduledDatetime === slot)
+    const motivo = proposta?.motivo
+
+    /**
+     * O horário proposto foi trocado por um digitado à mão.
+     *
+     * Este é o sinal que mais falta hoje: o seletor já vem com o próximo slot
+     * livre marcado, então digitar uma data é uma RECUSA da proposta — e ela
+     * morria no navegador. `editada` (e não `descartada`) porque o post existe,
+     * só que em outro horário; é o mesmo vocabulário do "o horário andou".
+     */
+    if (quandoManual && proposta?.sugestaoId) {
+      registrarDesfecho({
+        sugestaoId: proposta.sugestaoId,
+        desfecho: 'editada',
+        escolhido: { scheduledDatetime: quandoManual, origem: 'horario-digitado' },
+      })
+    }
+    // Só carrega a proposta adiante quando o horário É o dela.
+    const sugestaoId = quandoManual ? null : (proposta?.sugestaoId ?? null)
 
     if (ehCarrossel) {
       const slides: BancadaSlide[] = slidesDaCopy.map((s) => ({
@@ -228,6 +251,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
         referencias: [],
         quando,
         motivoDoSlot: quandoManual ? null : (motivo ?? null),
+        sugestaoId,
         escopo,
       })
       limpar()
@@ -251,6 +275,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
       })),
       quando,
       motivoDoSlot: quandoManual ? null : (motivo ?? null),
+      sugestaoId,
       escopo,
     }
     adicionar(item)
