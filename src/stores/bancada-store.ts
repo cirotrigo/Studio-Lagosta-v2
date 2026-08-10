@@ -79,6 +79,16 @@ export interface BancadaItem {
   escopo?: EscopoAprendizado
   /** Por que este horário (motivo do slot) — some quando o operador escolhe à mão. */
   motivoDoSlot?: string | null
+  /**
+   * O sinal da sugestão de horário que este item aceitou (F1). Vai junto no
+   * agendamento e é lá, no SERVIDOR, que o desfecho é decidido comparando o
+   * horário proposto com o agendado — a superfície não declara "aceitei".
+   *
+   * Só existe quando o horário veio do seletor de slots: horário digitado à
+   * mão não tem proposta atrás, e a proposta que estava selecionada já foi
+   * fechada como `editada` no compositor.
+   */
+  sugestaoId?: string | null
   status: BancadaStatus
   criadoEm: number
   /** Generation no servidor, a partir do "Gerar". */

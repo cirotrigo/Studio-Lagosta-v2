@@ -6,6 +6,7 @@ import { fetchProjectWithShares, hasProjectWriteAccess } from '@/lib/projects/ac
 import { CreativeError } from '@/lib/creatives/errors'
 import { agendarPost } from '@/lib/creatives/agendar'
 import { normalizarEscopo } from '@/lib/posts/learning-scope'
+import { avaliarSlotSugerido, fecharDesfechoDoSlot } from '@/lib/aprendizado/desfecho-de-slot'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -36,6 +37,14 @@ const bodySchema = z.object({
   escopo: z.enum(['rotina', 'campanha', 'pontual']).optional(),
   /** Entrada CAMPANHAS da base que dá o escopo temporal. */
   campanhaId: z.string().min(1).optional(),
+  /**
+   * A sugestão de horário que originou este post (`sugestaoId` de
+   * `GET /slots`). Vira coluna no post E fecha o sinal — e o desfecho é
+   * calculado AQUI, comparando o horário proposto com o `quando` que chegou:
+   * a bancada deixa mudar data e hora antes de agendar, então aceitar o
+   * rótulo da tela seria contar como aceitação o que foi edição.
+   */
+  sugestaoId: z.string().min(1).max(64).optional(),
 })
 
 export async function POST(req: Request, { params }: { params: Promise<{ projectId: string }> }) {
@@ -71,6 +80,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
      */
     const dbUser = await db.user.findUnique({ where: { clerkId: userId }, select: { id: true } })
 
+    /**
+     * Antes de criar o post: é a comparação com o horário PROPOSTO que dá
+     * tanto o desfecho do sinal quanto a `origem` gravada na coluna — e a
+     * coluna só existe no momento do create. Sem sugestão, `null` e o post
+     * nasce como sempre nasceu.
+     */
+    const veredito = await avaliarSlotSugerido(parsed.data.sugestaoId, parsed.data.quando)
+
     const resultado = await agendarPost({
       projectId: id,
       generationId: parsed.data.generationId,
@@ -82,8 +99,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ project
       caption: parsed.data.caption,
       learningScope: normalizarEscopo(parsed.data.escopo),
       campaignId: parsed.data.campanhaId,
+      origem: veredito?.origem,
+      sugestaoId: parsed.data.sugestaoId,
       decididoPor: dbUser?.id,
       superficie: 'agenda',
+    })
+
+    // Só depois de o post existir — é ele que o sinal aponta.
+    await fecharDesfechoDoSlot(veredito, {
+      postId: resultado.postId,
+      generationId: parsed.data.generationId,
+      pageId: parsed.data.pageId,
+      decididoPor: dbUser?.id,
+      superficie: 'bancada',
     })
 
     return NextResponse.json(resultado, { status: 201 })

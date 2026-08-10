@@ -34,6 +34,7 @@ import {
   formatarBRT,
 } from '@/lib/posts/agenda-acoes'
 import { sugerirPosts } from '@/lib/posts/sugerir-posts'
+import { avaliarSlotSugerido, fecharDesfechoDoSlot } from '@/lib/aprendizado/desfecho-de-slot'
 import { avisosDeCampanhaVencida } from '@/lib/posts/campanha-vigencia'
 import {
   escopoEmPortugues,
@@ -425,7 +426,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'sugerir-posts',
     description:
-      'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.',
+      'Sugere os próximos posts a partir da CADÊNCIA real do cliente: analisa as últimas 8 semanas (dia da semana × horário), acha os buracos dos próximos dias e devolve slots prontos — cada um com o motivo, o modelo do cliente para aquele dia (quando existe) e as campanhas da base que citam o dia (ex.: Quinta do Vinho). Use quando a pessoa pedir "o que postar essa semana", ou proativamente ao notar a agenda vazia. Você escreve a copy; a sugestão é o esqueleto de quando/o quê.\n\nCada slot vem com um `sugestaoId`: guarde-o e devolva em colocar-na-agenda quando o post nascer daquele horário, mesmo que você o tenha mudado. É só um dado técnico — nunca fale dele na conversa.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -996,6 +997,11 @@ export const MCP_TOOLS: McpTool[] = [
           description:
             'Id da entrada de CAMPANHAS da base (de consultar-base) a que este post pertence. Informar isso já marca o post como campanha, e é o que permite avisar quando um post está marcado para depois do fim dela.',
         },
+        sugestaoId: {
+          type: 'string',
+          description:
+            'Se este post veio de um horário proposto por sugerir-posts, devolva aqui o sugestaoId daquele slot — inclusive quando você mudou o horário. É assim que o sistema aprende quais sugestões são boas: sem isso ele só enxerga o que foi aceito. Não invente nem reaproveite id de outra proposta; sem sugestão, omita.',
+        },
       },
       required: ['projectId', 'scheduledDatetime'],
       additionalProperties: false,
@@ -1008,11 +1014,23 @@ export const MCP_TOOLS: McpTool[] = [
       const situacao =
         args.situacao ?? (args.status === 'SCHEDULED' ? 'agendado' : args.status ? 'rascunho' : undefined)
 
-      return agendarPost({
+      const scheduledDatetime = requireString(args, 'scheduledDatetime')
+      const decididoPor = await quemDecidiu(projectId, principal)
+      /**
+       * Quem decide se a sugestão foi aceita ou editada é a COMPARAÇÃO de
+       * horários, aqui — não o relato do modelo, que tem todo incentivo a
+       * dizer que acertou. Vale para a origem gravada no post também.
+       */
+      const veredito = await avaliarSlotSugerido(
+        typeof args.sugestaoId === 'string' ? args.sugestaoId : undefined,
+        scheduledDatetime,
+      )
+
+      const resultado = await agendarPost({
         projectId,
         postType: args.postType,
         caption: args.caption,
-        scheduledDatetime: requireString(args, 'scheduledDatetime'),
+        scheduledDatetime,
         pageId: args.pageId,
         mediaUrls: args.mediaUrls,
         generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
@@ -1021,9 +1039,21 @@ export const MCP_TOOLS: McpTool[] = [
         // derrubar o agendamento: marca errada se conserta, post perdido não.
         learningScope: normalizarEscopo(args.escopo),
         campaignId: typeof args.campanhaId === 'string' ? args.campanhaId : undefined,
+        origem: veredito?.origem,
+        sugestaoId: veredito?.sugestaoId,
         // User.id INTERNO — nunca o clerkId. Falha aqui não derruba o agendamento.
-        decididoPor: await quemDecidiu(projectId, principal),
+        decididoPor,
       })
+
+      await fecharDesfechoDoSlot(veredito, {
+        postId: resultado.postId,
+        generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+        pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
+        decididoPor,
+        superficie: 'chat',
+      })
+
+      return resultado
     },
   },
   {

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { deleteVectorsByEntry } from '@/lib/knowledge/vector-client'
 import { invalidateProjectCache } from '@/lib/knowledge/cache'
+import { expirarSugestoesPendentes } from '@/lib/aprendizado/captura'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300 // 5 minutes
@@ -10,6 +11,14 @@ export const maxDuration = 300 // 5 minutes
  * Cron job para arquivar entradas de conhecimento expiradas
  * Execução: Diária (ex: 03:00 UTC)
  * Vercel Cron: 0 3 * * *
+ *
+ * Carona deliberada: a varredura que fecha como `expirada` a SUGESTÃO que
+ * ninguém decidiu roda aqui, e não em cron novo. É a mesma natureza de
+ * trabalho (o que venceu, vence), a cadência diária basta para uma janela de
+ * 14 dias, e cron novo custa uma entrada no `vercel.json` para um `updateMany`
+ * que costuma tocar zero linha. Sem ela, proposta ignorada ficaria pendente
+ * para sempre e o KPI de aceitação nunca fecharia — indiferença sumiria do
+ * denominador em vez de contar como o que é.
  */
 export async function GET(req: Request) {
   try {
@@ -25,6 +34,16 @@ export async function GET(req: Request) {
     const startTime = Date.now()
 
     console.log('[cron:archive-expired-knowledge] Starting job at', now.toISOString())
+
+    // Antes do early return de "nada expirado": as duas varreduras são
+    // independentes, e sair cedo por falta de entrada de conhecimento deixaria
+    // as sugestões pendentes para sempre.
+    const sugestoesExpiradas = await expirarSugestoesPendentes()
+    if (sugestoesExpiradas > 0) {
+      console.log(
+        `[cron:archive-expired-knowledge] ${sugestoesExpiradas} sugestão(ões) sem desfecho marcadas como expiradas`,
+      )
+    }
 
     // Buscar entradas expiradas que ainda estão ACTIVE
     const expiredEntries = await db.knowledgeBaseEntry.findMany({
@@ -50,6 +69,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         success: true,
         archived: 0,
+        sugestoesExpiradas,
         message: 'No expired entries to archive',
         durationMs: Date.now() - startTime,
       })
@@ -126,6 +146,7 @@ export async function GET(req: Request) {
     return NextResponse.json({
       success: true,
       archived: archivedCount,
+      sugestoesExpiradas,
       total: expiredEntries.length,
       vectorsDeleted: vectorsDeletedCount,
       errors: errors.length > 0 ? errors : undefined,
