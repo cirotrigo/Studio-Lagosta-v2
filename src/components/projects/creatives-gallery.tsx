@@ -1108,6 +1108,7 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
                   onImprove={() => handleImprove(generation)}
                   isImproved={Boolean(generation.sourceGenerationId)}
                   isStyleRef={styleRefLocal[generation.id] ?? Boolean(generation.styleRefAt)}
+                  avisoConferencia={getStringField(generation.fieldValues, 'textCheckAlert')}
                   onToggleStyleRef={() =>
                     styleRefMutation.mutate({
                       id: generation.id,

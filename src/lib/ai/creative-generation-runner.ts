@@ -415,6 +415,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       visual: Awaited<ReturnType<typeof inspecionarArte>> | null
       logoCheck: Awaited<ReturnType<typeof conferirLogo>> | null
     } | null = null
+    /** Última peça gerada com texto divergente — entregue com alerta no fim. */
+    let ultimoCandidatoTexto: Buffer | null = null
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
@@ -526,6 +528,12 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           break
         }
         lastMissing = check.missing
+        // Guardada mesmo divergente: se a retentativa não vier (ou também
+        // divergir), é ELA que vai ao usuário, com o alerta — decisão do Ciro
+        // em 10/08/2026, depois de duas reprovações que eram falso negativo
+        // do comparador ("R$ 9,90" vs "R$9,90"). Quem confere texto no fim é
+        // o olho de quem aprova; o comparador vira aviso, não veto.
+        ultimoCandidatoTexto = candidate
         textCheckInfo = {
           textCheck: 'failed',
           textCheckAttempts: attemptsLog,
@@ -566,6 +574,20 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       // Só chega aqui o que NÃO produziu peça aproveitável — proporção errada,
       // que é o único QA sem candidato guardado (cortar seria pior que falhar).
       throw new Error(`QA reprovou após ${attemptsLog.length} tentativa(s): ${ultimoQaMotivo}`)
+    }
+
+    if (!resultBuffer && ultimoCandidatoTexto) {
+      // Texto divergente nas duas tentativas: a arte SAI, com o alerta. Decisão
+      // do Ciro (10/08/2026): "mostre ela mesmo que falhe, mas deixe o alerta
+      // da falha para o usuário conferir visualmente". A alternativa — FAILED
+      // sem imagem nenhuma — já queimou peça boa por falso negativo do
+      // comparador, e esconder a arte tira do usuário justamente a prova de
+      // que ele precisa para julgar.
+      const sample = lastMissing.slice(0, 3).map((t) => `"${t}"`).join(', ')
+      const alerta = `A conferência automática não encontrou ${sample}${lastMissing.length > 3 ? ` (+${lastMissing.length - 3})` : ''} na arte. Confira o texto no olho antes de aprovar — pode ser erro real do desenho ou implicância do comparador.`
+      console.warn(`[arte-ia.bg] entregando com ALERTA de texto: ${alerta}`)
+      resultBuffer = ultimoCandidatoTexto
+      textCheckInfo = { ...textCheckInfo, entregueComAlerta: true, textCheckAlert: alerta }
     }
 
     if (!resultBuffer) {

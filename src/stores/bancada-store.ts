@@ -39,6 +39,8 @@ export interface BancadaSlide {
   generationId?: string
   resultUrl?: string | null
   erro?: string | null
+  /** Aviso da conferência automática deste slide (texto não encontrado). */
+  aviso?: string | null
 }
 
 export interface BancadaReferencia {
@@ -76,6 +78,12 @@ export interface BancadaItem {
   generationId?: string
   resultUrl?: string | null
   erro?: string | null
+  /**
+   * Arte PRONTA mas com aviso da conferência automática (ex.: texto que o
+   * comparador não achou). Não bloqueia nada — é o convite para conferir no
+   * olho antes de agendar.
+   */
+  aviso?: string | null
   /** Post criado ao agendar — o card vira "agendado" e sai do caminho. */
   postId?: string
 }

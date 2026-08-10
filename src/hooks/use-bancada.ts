@@ -24,7 +24,7 @@ interface StatusResposta {
   id: string
   status: 'PROCESSING' | 'COMPLETED' | 'FAILED'
   resultUrl: string | null
-  fieldValues?: { error?: string } | null
+  fieldValues?: { error?: string; textCheckAlert?: string } | null
 }
 
 export function useBancada(projectId: number) {
@@ -79,7 +79,13 @@ export function useBancada(projectId: number) {
             })
             if (!vivo) return
             if (r.status === 'COMPLETED') {
-              atualizar(item.id, { status: 'pronto', resultUrl: r.resultUrl })
+              atualizar(item.id, {
+                status: 'pronto',
+                resultUrl: r.resultUrl,
+                // A arte pode sair COM aviso (texto que o comparador não achou
+                // — decisão de 10/08: entregar e deixar o olho decidir).
+                aviso: r.fieldValues?.textCheckAlert ?? null,
+              })
               queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
             } else if (r.status === 'FAILED') {
               atualizar(item.id, {
@@ -119,7 +125,9 @@ export function useBancada(projectId: number) {
               const r = await api.get<StatusResposta>(`/api/generations/${slide.generationId}`, {
                 signal: AbortSignal.timeout(10_000),
               })
-              if (r.status === 'COMPLETED') return { ...slide, resultUrl: r.resultUrl }
+              if (r.status === 'COMPLETED') {
+                return { ...slide, resultUrl: r.resultUrl, aviso: r.fieldValues?.textCheckAlert ?? null }
+              }
               if (r.status === 'FAILED') {
                 return { ...slide, erro: r.fieldValues?.error ?? 'A geração falhou.' }
               }
@@ -147,7 +155,17 @@ export function useBancada(projectId: number) {
               ? { status: 'erro' as const, erro: novos.find((s) => s.erro)?.erro ?? 'Um slide falhou.' }
               : esperandoConfirmacao
                 ? { status: 'guia-pronto' as const }
-                : { status: 'pronto' as const, resultUrl: novos[0]?.resultUrl ?? null }),
+                : {
+                    status: 'pronto' as const,
+                    resultUrl: novos[0]?.resultUrl ?? null,
+                    aviso: (() => {
+                      const comAviso = novos.filter((s) => s.aviso)
+                      if (comAviso.length === 0) return null
+                      return comAviso.length === 1
+                        ? `Slide ${comAviso[0].ordem}: ${comAviso[0].aviso}`
+                        : `Slides ${comAviso.map((s) => s.ordem).join(', ')} precisam de conferência de texto.`
+                    })(),
+                  }),
         })
         if (!emVoo) queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
       }
