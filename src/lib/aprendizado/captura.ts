@@ -192,6 +192,36 @@ export async function registrarSugestoes(entradas: SugestaoEmitida[]): Promise<A
 }
 
 /**
+ * Ids já gravados destas chaves (`chave` → `id`), numa consulta só.
+ *
+ * O `upsert` de `registrarSugestao` já garante que reemitir não duplica, mas
+ * cobra uma ida ao banco POR ITEM: uma leva de 15 slots custa 15 escritas a
+ * cada refetch da bancada — e a bancada refaz a consulta ao voltar para a aba.
+ * Com esta leitura, a leva REEMITIDA custa um SELECT e nenhuma escrita; só o
+ * que é novo passa pelo upsert.
+ *
+ * Não substitui o `chave` no `registrarSugestao`: duas emissões simultâneas
+ * podem ver o mesmo vazio aqui, e quem resolve a corrida é o índice único.
+ */
+export async function sugestoesJaEmitidas(chaves: string[]): Promise<Map<string, string>> {
+  const mapa = new Map<string, string>()
+  const alvos = chaves.filter((c) => !!c)
+  if (alvos.length === 0) return mapa
+  try {
+    const existentes = await db.learningSignal.findMany({
+      where: { chave: { in: alvos } },
+      select: { id: true, chave: true },
+    })
+    for (const s of existentes) if (s.chave) mapa.set(s.chave, s.id)
+  } catch (erro) {
+    // Sem a leitura, o caminho de baixo apenas volta a custar um upsert por
+    // item — mais caro, nunca incorreto.
+    console.error('[aprendizado] falha ao ler sugestões já emitidas:', erro)
+  }
+  return mapa
+}
+
+/**
  * Fecha (ou revisa) o desfecho de uma sugestão.
  *
  * Idempotente: gravar o mesmo desfecho duas vezes não duplica nem sobrescreve.

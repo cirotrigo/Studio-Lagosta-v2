@@ -10,14 +10,43 @@
  *
  * Quem escreve a copy é o assistente na conversa; aqui é só o esqueleto de
  * quando/o quê — determinístico e barato.
+ *
+ * Cada slot devolvido é também uma SUGESTÃO REGISTRADA (F1): a linha nasce no
+ * momento da emissão, não quando alguém aceita — sem isso a proposta ignorada
+ * some e a taxa de aceitação vira 100% por construção. Ver `sugestaoId` em
+ * `SugestaoSlot` e a nota sobre volume em `chaveDoSlot`.
  */
 import { db } from '@/lib/db'
 import { CreativeError } from '@/lib/creatives/errors'
 import { formatarBRT } from '@/lib/posts/agenda-acoes'
 import { DIAS_SEMANA, casaComDia, normalizar } from '@/lib/posts/dia-semana'
 import { vigenteEm, estaVigente } from '@/lib/knowledge/vigencia'
+import { registrarSugestoes, sugestoesJaEmitidas } from '@/lib/aprendizado/captura'
+import { chaveDeSugestao } from '@/lib/aprendizado/chaves'
 
 const JANELA_HISTORICO_DIAS = 56
+
+/**
+ * Versão da heurística de cadência. Entra na chave de idempotência: mudou a
+ * regra (peso por recência, corte de campanha — tudo isso é F2), a safra nova
+ * não pode herdar o desfecho de uma proposta que era outra.
+ */
+const VERSAO_DA_CADENCIA = 'cadencia-v1'
+const SERVICO = 'sugerir-posts'
+
+/**
+ * A proposta é "este cliente, neste horário" — não "esta chamada".
+ *
+ * `sugerirPosts` é consultado pela bancada (que refaz a consulta ao voltar
+ * para a aba), pela rota `/slots` e pela tool do MCP, e devolve até ~15 slots
+ * por chamada. Sem chave, uma semana de uso normal gravaria milhares de linhas
+ * para as mesmas dezenas de propostas, e o denominador do KPI viraria ficção.
+ * Com ela, recarregar a tela não cria nada: o mesmo slot devolve o mesmo id, e
+ * o desfecho continua sendo um só.
+ */
+function chaveDoSlot(projectId: number, scheduledDatetime: string): string {
+  return chaveDeSugestao('slot', VERSAO_DA_CADENCIA, projectId, scheduledDatetime)
+}
 /** Slot ocupado se já existe post a menos de 45min dele. */
 const TOLERANCIA_SLOT_MIN = 45
 /** Horários agregados em blocos de 30min para achar o padrão. */
@@ -40,6 +69,13 @@ export interface SugestaoSlot {
   motivo: string
   modeloSugerido?: { pageId: string; nome: string; template: string; temas: string[] }
   campanhasDoDia?: string[]
+  /**
+   * Id do sinal desta proposta. Devolva-o em `colocar-na-agenda` / `POST
+   * /agendar`: é o que liga o post à sugestão que o originou e permite dizer
+   * se o horário foi aceito como veio ou andou. Ausente só quando a captura
+   * falhou — e falha de captura nunca derruba a sugestão.
+   */
+  sugestaoId?: string
 }
 
 export interface SugerirPostsResult {
@@ -239,6 +275,8 @@ export async function sugerirPosts(params: {
     }
   }
 
+  await registrarEmissao(projectId, sugestoes)
+
   return {
     diasAnalisados: JANELA_HISTORICO_DIAS,
     postsNoHistorico: historico.length,
@@ -247,4 +285,58 @@ export async function sugerirPosts(params: {
     sugestoes,
     avisos,
   }
+}
+
+/**
+ * Grava as propostas emitidas e carimba cada slot com o seu `sugestaoId`.
+ *
+ * Muta `sugestoes` de propósito — é a mesma lista que vai na resposta, e
+ * copiá-la só para acrescentar um campo esconderia que o id é da linha que
+ * acabou de ser gravada.
+ *
+ * Duas idas ao banco no melhor caso (leitura + nada a escrever) e nunca lança:
+ * sugestão sem sinal continua sendo uma sugestão útil.
+ */
+async function registrarEmissao(projectId: number, sugestoes: SugestaoSlot[]): Promise<void> {
+  if (sugestoes.length === 0) return
+
+  const chaves = sugestoes.map((s) => chaveDoSlot(projectId, s.scheduledDatetime))
+  const jaEmitidas = await sugestoesJaEmitidas(chaves)
+
+  const novas: number[] = []
+  sugestoes.forEach((s, i) => {
+    const id = jaEmitidas.get(chaves[i])
+    if (id) s.sugestaoId = id
+    else novas.push(i)
+  })
+  if (novas.length === 0) return
+
+  const ids = await registrarSugestoes(
+    novas.map((i) => {
+      const s = sugestoes[i]
+      return {
+        projectId,
+        tipo: 'slot' as const,
+        servico: SERVICO,
+        versao: VERSAO_DA_CADENCIA,
+        chave: chaves[i],
+        // O modelo do dia é parte da proposta: quem aceita o slot costuma
+        // aceitar o modelo junto, e é isso que a F2 vai querer separar.
+        pageId: s.modeloSugerido?.pageId ?? null,
+        sugerido: {
+          scheduledDatetime: s.scheduledDatetime,
+          data: s.data,
+          hora: s.hora,
+          diaSemana: s.diaSemana,
+          motivo: s.motivo,
+          ...(s.modeloSugerido ? { modeloSugerido: s.modeloSugerido } : {}),
+          ...(s.campanhasDoDia ? { campanhasDoDia: s.campanhasDoDia } : {}),
+        },
+      }
+    }),
+  )
+  novas.forEach((indice, n) => {
+    const id = ids[n]
+    if (id) sugestoes[indice].sugestaoId = id
+  })
 }
