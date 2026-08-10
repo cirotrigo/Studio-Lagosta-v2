@@ -34,7 +34,8 @@ import {
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
 import { comporLogo, instrucaoAreaReservada, type LogoCorner } from '@/lib/ai/logo-compositor'
-import { decodificarGuia } from '@/lib/ai/carousel-guide-decoder'
+import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
+import { checarProporcao, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
@@ -121,6 +122,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
   const startedAt = Date.now()
   let textCheckInfo: Record<string, unknown> = { textCheck: 'skipped' }
   let promptUsado: string | null = null
+  /** Registro atômico: qual referência de marca o modelo recebeu de fato. */
+  let brandCardOrigem: 'manual-designer' | 'card-gerado' | null = null
 
   try {
     const brand = await loadBrandContext(args.projectId)
@@ -183,7 +186,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // ── Slide-guia do carrossel: a arte aprovada que define o look ───────
     // Entra como imagem porque instrução textual de "mesmo estilo" o modelo
     // reinterpreta; a arte do guia ele copia.
-    let guiaDescrito: string | null = null
+    let guiaLido: GuiaLido | null = null
     if (args.guideResultUrl) {
       try {
         const guia = await fetchImageSource(args.guideResultUrl)
@@ -192,8 +195,15 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         // A imagem sozinha deixa o modelo decidir o que é essencial; a
         // descrição por visão transforma "copie o estilo" em lista de
         // decisões explícitas. Indisponível, o LOOK SPINE textual segue.
-        guiaDescrito = await decodificarGuia(sane.buffer)
-        if (guiaDescrito) console.log('[arte-ia.bg] guia decodificado para o LOOK SPINE')
+        guiaLido = await decodificarGuia(sane.buffer)
+        if (guiaLido) {
+          console.log(
+            `[arte-ia.bg] guia decodificado para o LOOK SPINE` +
+              (guiaLido.elementosGraficos.length > 0
+                ? ` | elementos gráficos a replicar: ${guiaLido.elementosGraficos.join('; ')}`
+                : ' | guia sem elemento gráfico'),
+          )
+        }
       } catch (error) {
         console.warn('[arte-ia.bg] slide-guia não baixou — o slide sai sem referência de série:', error)
       }
@@ -210,7 +220,15 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         return null
       })
       if (card) {
-        loadedRefs.push({ role: 'brand-card', buffer: card.buffer, mimeType: card.mimeType })
+        brandCardOrigem = card.origem
+        loadedRefs.push({
+          role: 'brand-card',
+          buffer: card.buffer,
+          mimeType: card.mimeType,
+          // O rótulo entra no preâmbulo: o manual do designer é um documento
+          // de marca de verdade, e dizer isso muda o peso que o modelo dá.
+          label: card.origem === 'manual-designer' ? 'manual oficial de identidade' : undefined,
+        })
       }
       if (brand?.logoUrl) {
         try {
@@ -277,7 +295,8 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               // padrão que os demais copiam. A capa é foto pura e não conta.
               ehGuia: !args.carrossel.guideGenerationId,
               temGuia: !!args.guideResultUrl,
-              descricaoDoGuia: guiaDescrito,
+              descricaoDoGuia: guiaLido?.descricao ?? null,
+              elementosDoGuia: guiaLido?.elementosGraficos ?? null,
             }
           : null,
       })
@@ -287,13 +306,16 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     promptUsado = prompt
     console.log(`[arte-ia.bg] prompt pronto (${prompt.length} chars, trilha ${args.track})`)
 
-    // ── Geração (+ verificação de texto na trilha `arte`) ────────────────
+    // ── Geração (+ verificação de texto e QA na trilha `arte`) ───────────
     const expectedTexts = args.track === 'arte' ? args.copy : []
     let resultBuffer: Buffer | null = null
     const attemptsLog: Array<Record<string, unknown>> = []
     let lastMissing: string[] = []
     /** Duração da geração anterior — base para decidir se a próxima cabe. */
     let ultimaGeracaoMs = 0
+    /** Último QA rodado — vai para o registro atômico mesmo quando reprova. */
+    let qaInfo: Record<string, unknown> = {}
+    let ultimoQaMotivo: string | null = null
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
@@ -312,12 +334,26 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       const generationMs = Date.now() - genStartedAt
       ultimaGeracaoMs = generationMs
 
+      // ── QA 1: proporção. Roda ANTES da visão porque é local, instantâneo e
+      // pega o defeito mais caro. O `resize(fit: 'cover')` da finalização
+      // CORTA sem avisar quando a proporção diverge, e o corte come justamente
+      // a faixa onde o texto mora. Assert, nunca resize de proporção errada.
+      const aspecto = await checarProporcao(candidate, args.finalSize)
+      if (!aspecto.ok) {
+        ultimoQaMotivo = `proporção ${aspecto.largura}x${aspecto.altura} diverge ${(aspecto.desvio * 100).toFixed(0)}% da pedida (${args.finalSize.width}x${args.finalSize.height})`
+        qaInfo = { qa: 'failed', qaMotivo: ultimoQaMotivo, qaAspecto: { ...aspecto } }
+        attemptsLog.push({ attempt, generationMs, qa: 'aspecto', ok: false, ...aspecto })
+        console.warn(`[arte-ia.bg] tentativa ${attempt}: ${ultimoQaMotivo} — regerando em vez de cortar`)
+        continue
+      }
+
       if (expectedTexts.length === 0) {
         resultBuffer = candidate
         textCheckInfo =
           args.track === 'arte'
             ? { textCheck: 'skipped', textCheckReason: 'peça sem texto (capa pura)' }
             : { textCheck: 'skipped', textCheckReason: 'trilha imagem — peça não leva texto' }
+        qaInfo = { qa: 'passed', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
         break
       }
 
@@ -330,6 +366,32 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           `[arte-ia.bg] tentativa ${attempt}: geração ${(generationMs / 1000).toFixed(1)}s, checagem ${(checkMs / 1000).toFixed(1)}s → ${check.passed ? 'texto OK' : `divergente (${check.missing.length})`}`,
         )
         if (check.passed) {
+          // ── QA 2: legibilidade e texto cortado na borda. Só faz sentido em
+          // peça COM texto, e só depois de o texto estar certo — inspecionar
+          // arte que já vai ser regerada é chamada jogada fora.
+          const visual = await inspecionarArte(candidate)
+          qaInfo = {
+            qa: visual.pulada ? 'skipped' : visual.aprovada ? 'passed' : 'failed',
+            qaResumo: resumirQA(aspecto, visual),
+            qaAspecto: { ...aspecto },
+            qaVisual: visual.detalhe ?? null,
+            ...(visual.motivo ? { qaMotivo: visual.motivo } : {}),
+          }
+          console.log(`[arte-ia.bg] tentativa ${attempt}: ${resumirQA(aspecto, visual)}`)
+
+          const ehUltima = attempt >= MAX_GENERATION_ATTEMPTS
+          if (!visual.aprovada && !ehUltima) {
+            ultimoQaMotivo = visual.detalhe?.problemas.join('; ') || 'inspeção visual reprovou'
+            continue
+          }
+          // Na última tentativa a peça é entregue mesmo com ressalva: o texto
+          // está certo, e descartar arte legível-com-ressalva é pior do que
+          // entregá-la com o defeito anotado para quem revisa.
+          if (!visual.aprovada) {
+            console.warn(
+              `[arte-ia.bg] entregando com ressalva de QA (última tentativa): ${visual.detalhe?.problemas.join('; ')}`,
+            )
+          }
           resultBuffer = candidate
           textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
           break
@@ -348,8 +410,15 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           textCheckReason: `visão indisponível: ${visionError instanceof Error ? visionError.message : String(visionError)}`,
           textCheckAttempts: attemptsLog,
         }
+        qaInfo = { qa: 'skipped', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
         break
       }
+    }
+
+    if (!resultBuffer && ultimoQaMotivo && lastMissing.length === 0) {
+      // Reprovado pelo QA, não pelo texto: a mensagem precisa dizer isso, senão
+      // quem lê procura divergência de texto que não existe.
+      throw new Error(`QA reprovou após ${MAX_GENERATION_ATTEMPTS} tentativa(s): ${ultimoQaMotivo}`)
     }
 
     if (!resultBuffer) {
@@ -419,7 +488,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       promptIssues,
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
       autoAnchorId: autoAnchorUsada,
+      brandCardOrigem,
       elapsedSeconds,
+      ...qaInfo,
       ...logoInfo,
       ...textCheckInfo,
     })
