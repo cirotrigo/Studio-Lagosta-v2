@@ -23,6 +23,7 @@ import * as React from 'react'
 import Link from 'next/link'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { ProjectSwitcher } from '@/components/projects/project-switcher'
 
 type ItemDeMenu = {
   /** Identidade do item — casa com `?tab=` ou com o fim do caminho. */
@@ -61,6 +62,16 @@ export function ProjectNav({ projectId }: { projectId: number }) {
     return ITENS.some((i) => i.chave === tab && !i.rota) ? tab! : 'templates'
   }, [pathname, searchParams])
 
+  /**
+   * Onde estamos, em forma reaproveitável por outro projeto. É o que faz a
+   * troca de cliente cair na MESMA tela em vez de na home dele.
+   */
+  const sufixoDaRota = React.useMemo(() => {
+    const item = ITENS.find((i) => i.chave === ativo)
+    if (item?.rota) return `/${item.rota}`
+    return `?tab=${ativo}`
+  }, [ativo])
+
   return (
     <nav
       aria-label="Seções do projeto"
@@ -68,6 +79,11 @@ export function ProjectNav({ projectId }: { projectId: number }) {
       // celular e empurrariam o conteúdo para baixo da dobra.
       className="-mx-1 flex items-center gap-1 overflow-x-auto px-1 pb-1"
     >
+      {/* O seletor de cliente abre a barra: é o contexto de tudo que vem
+          depois dela, e trocar ali mantém a pessoa na mesma tela. */}
+      <ProjectSwitcher projectId={projectId} sufixoDaRota={sufixoDaRota} />
+      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+
       {ITENS.map((item) => {
         const href = item.rota
           ? `/projects/${projectId}/${item.rota}`
