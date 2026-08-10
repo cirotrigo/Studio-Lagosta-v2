@@ -14,6 +14,50 @@
 
 ---
 
+## Placar de execução (10/08/2026)
+
+| Fase | Estado | PR |
+|---|---|---|
+| F0.1 vigência de campanha | **no ar** | #43 |
+| F0.2 escopo de aprendizado | **no ar**, migration aplicada em produção | #44 |
+| F0.3 fila durável | em implementação | — |
+| F0.4 inventário de modelos | **no ar**; curadoria aplicada (41 → 19 modelos) | #42 |
+| causa-raiz da poluição (`create-page`) | **no ar** | #45 |
+| F1 captura | próxima | — |
+
+**Correções ao que este plano dizia, descobertas na execução:**
+
+- **`decididoPor` é TEXT, não Int** — `User.id` é `cuid` neste schema. O plano
+  dizia `Int?`; uma coluna numérica não guardaria o id interno, que é o ponto
+  do campo.
+- **Data pura de validade = FIM do dia em BRT** (`23:59:59.999-03:00`): "vale
+  até 31/08" inclui o 31 inteiro. E `new Date('2026-02-31')` **não** é
+  `Invalid Date` — o V8 rola para março em silêncio, o que estenderia a
+  campanha por dias; só a conferência componente a componente pega.
+- **A causa-raiz da poluição de modelos era o `create-page` do MCP local**,
+  que gravava `isTemplate ?? true` — o OPOSTO do default do schema — enquanto
+  a skill `create-template-pages` usa essa tool para as peças da SEMANA.
+  Corrigido; as 4 skills fora do repo foram atualizadas junto.
+- **Modelo não pode ser apagado pela UI** (403 `template_page`): conteúdo
+  marcado por engano ficava preso até alguém despromover. Reforça a regra
+  "despromover, nunca excluir".
+- **Estado medido da base**: 1 entrada com prazo contra 16 CAMPANHAS ativas
+  sem prazo — a coluna estava 100% dormente, como o plano supunha.
+- **Curadoria**: o Ciro escolheu a opção agressiva (9 + 13 em revisão = 22
+  despromovidos). Consequências aceitas: Seu Quinto ficou sem nenhum modelo e
+  alguns dias perderam `modeloSugerido`. Rollback versionado em
+  `docs/manifests/curadoria-modelos-2026-08-10.json`.
+
+**Armadilhas de worktree** (para toda tarefa futura em sessão isolada):
+`.env`, `.env.development.local` e `node_modules` não vêm (untracked);
+`prisma/generated` também não, e symlinkar o do repo principal traz client
+DESATUALIZADO com ~30 erros de tipo falsos — rodar `npx prisma generate`
+dentro do worktree. `npm run db:migrate` pede RESET até no branch de dev
+(drift `McpOAuth*` / `Project.subtitleFontFamily`): validar com
+`npx tsx scripts/dev-db.ts prisma migrate deploy` + `migrate diff`.
+
+---
+
 ## Frente A — Aprendizado por uso
 
 ### O que "aprender" significa aqui
