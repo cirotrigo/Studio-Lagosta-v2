@@ -28,6 +28,7 @@ import { ProjectAssetsPanel } from '@/components/projects/project-assets-panel'
 import { CreativesGallery } from '@/components/projects/creatives-gallery'
 import { TemplatesGallery } from '@/components/projects/templates-gallery'
 import { ModelosTab } from '@/components/projects/modelos-tab'
+import { ArtesReferenciaTab } from '@/components/projects/artes-referencia-tab'
 import { GoogleDriveFolderSelector } from '@/components/projects/google-drive-folder-selector'
 import { InstagramAccountConfig } from '@/components/projects/instagram-account-config'
 import { LaterProviderConfig } from '@/components/projects/later-provider-config'
@@ -206,33 +207,12 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      <Tabs
-        value={activeTab}
-        onValueChange={(value) =>
-          // Agenda e bancada não são abas: clicar nelas navega para a tela
-          // cheia. Ficam aqui porque é onde a pessoa procura pelo trabalho do
-          // cliente — separá-las do resto só as esconderia.
-          value === 'agenda'
-            ? router.push(agendaHref(projectId))
-            : value === 'bancada'
-              ? router.push(`/projects/${projectId}/bancada`)
-              : router.push(`/projects/${projectId}?tab=${value}`)
-        }
-        className="w-full max-w-full overflow-x-hidden"
-      >
-        <TabsList>
-          <TabsTrigger value="drive">Drive</TabsTrigger>
-          <TabsTrigger value="templates">Templates</TabsTrigger>
-          <TabsTrigger value="modelos">Modelos</TabsTrigger>
-          <TabsTrigger value="bancada">Bancada</TabsTrigger>
-          <TabsTrigger value="criativos">Criativos</TabsTrigger>
-          <TabsTrigger value="agenda">Agenda</TabsTrigger>
-          <TabsTrigger value="metricas">Métricas</TabsTrigger>
-          {/* value continua 'assets' de propósito: links ?tab=assets espalhados
-              (e o hábito) seguem funcionando — só o rótulo virou Marca */}
-          <TabsTrigger value="assets">Marca</TabsTrigger>
-          <TabsTrigger value="configuracoes">Configurações</TabsTrigger>
-        </TabsList>
+      {/* A barra de navegação vive no layout (`ProjectNav`), não aqui: Agenda e
+          Bancada são rotas próprias, e enquanto a barra era desta página elas a
+          levavam embora ao abrir. O `Tabs` continua, só que como seletor de
+          conteúdo governado pela URL — sem `TabsList` e sem `onValueChange`,
+          porque quem navega agora são os links do menu. */}
+      <Tabs value={activeTab} className="w-full max-w-full overflow-x-hidden">
 
         <TabsContent value="drive" className="mt-3 md:mt-4 space-y-4">
           {!driveConfigured && (
@@ -323,12 +303,33 @@ export default function ProjectDetailPage() {
           />
         </TabsContent>
 
+        {/* Modelos guarda DUAS coisas que só têm o nome em comum: páginas de
+            template (estrutura editável, escolhida por tag) e artes prontas
+            aprovadas (imagem de referência que inspira a próxima geração).
+            Juntas numa lista só, ninguém achava as segundas. */}
         <TabsContent value="modelos" className="mt-3 md:mt-4">
-          <p className="mb-3 text-sm text-muted-foreground">
-            Curadoria de templates por tema. Aplique tags para que a skill
-            /arte-rapida encontre o template certo a partir de uma frase em PT.
-          </p>
-          <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
+          <Tabs defaultValue="templates" className="w-full">
+            <TabsList>
+              <TabsTrigger value="templates">Modelos de template</TabsTrigger>
+              <TabsTrigger value="artes">Artes de referência</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="templates" className="mt-3 md:mt-4">
+              <p className="mb-3 text-sm text-muted-foreground">
+                Curadoria de templates por tema. Aplique tags para que a skill
+                /arte-rapida encontre o template certo a partir de uma frase em PT.
+              </p>
+              <ModelosTab projectId={projectId} canCurate={Boolean(projectDetails.canCurate)} />
+            </TabsContent>
+
+            <TabsContent value="artes" className="mt-3 md:mt-4">
+              <p className="mb-3 text-sm text-muted-foreground">
+                As artes aprovadas que servem de inspiração para as próximas gerações desta marca.
+                Marque com a estrela na aba Criativos.
+              </p>
+              <ArtesReferenciaTab projectId={projectId} />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         <TabsContent value="criativos" className="mt-3 md:mt-4">

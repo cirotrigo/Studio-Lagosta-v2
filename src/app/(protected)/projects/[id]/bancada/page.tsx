@@ -9,7 +9,7 @@
  */
 
 import * as React from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { usePageConfig } from '@/hooks/use-page-config'
@@ -19,7 +19,6 @@ import { useBancadaStore } from '@/stores/bancada-store'
 
 export default function BancadaPage() {
   const params = useParams()
-  const router = useRouter()
   const projectId = Number(params?.id)
   const valido = Number.isFinite(projectId) && projectId > 0
 
@@ -53,13 +52,9 @@ export default function BancadaPage() {
   }
 
   return (
-    <div className="container mx-auto flex flex-col gap-6 py-8">
-      <div className="flex justify-end">
-        <Button variant="ghost" onClick={() => router.push(`/projects/${projectId}`)}>
-          Voltar ao projeto
-        </Button>
-      </div>
-
+    // Sem "Voltar ao projeto": o menu do projeto agora persiste no layout, e
+    // um botão de volta ao lado dele só competiria com a própria navegação.
+    <div className="flex flex-col gap-6 py-2">
       <BancadaCompositor projectId={projectId} />
 
       <section className="space-y-3">
