@@ -33,6 +33,7 @@ import {
   type GenerationTrack,
 } from '@/lib/ai/image-prompt-builder'
 import { googleDriveService } from '@/server/google-drive-service'
+import { comporLogo, instrucaoAreaReservada, type LogoCorner } from '@/lib/ai/logo-compositor'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { MAX_ANCHOR_REFS } from '@/lib/ai/image-prompt-builder'
 import type { FeatureKey } from '@/lib/credits/feature-config'
@@ -46,6 +47,12 @@ const MAX_REF_DIM = 3000
 const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024
 
 const MAX_GENERATION_ATTEMPTS = 2
+/**
+ * Canto reservado para a logo. Fixo (e não escolhido pela medição de calma)
+ * porque o prompt precisa saber ONDE deixar limpo ANTES de gerar — medir
+ * depois só serviria para achar um canto que o modelo não preparou.
+ */
+const LOGO_CORNER: LogoCorner = 'bottom-right'
 const BACKGROUND_BUDGET_MS = 290_000
 const FINALIZE_RESERVE_MS = 35_000
 const MIN_RETRY_BUDGET_MS = 45_000
@@ -150,7 +157,11 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       }
     }
 
-    // ── Referências do sistema: brand card + logo (só na trilha `arte`) ───
+    // ── Referências do sistema: brand card (só na trilha `arte`) ─────────
+    // A logo NÃO entra como referência para o modelo desenhar: ela é composta
+    // depois (logo-compositor). O card mostra a logo apenas para o modelo
+    // reconhecer a marca, e o prompt proíbe reproduzi-la.
+    let logoParaCompor: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {
         console.warn('[arte-ia.bg] brand card falhou — seguindo sem ele:', error)
@@ -162,11 +173,14 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       if (brand?.logoUrl) {
         try {
           const logo = await fetchImageSource(brand.logoUrl)
-          const sane = await sanitizeInput(logo.buffer, MAX_REF_DIM, { preservePng: true })
-          loadedRefs.push({ role: 'logo', label: 'logo oficial', ...sane })
+          logoParaCompor = logo.buffer
         } catch (error) {
-          console.warn('[arte-ia.bg] logo não baixou — seguindo sem ela:', error)
+          console.warn('[arte-ia.bg] logo não baixou — a arte sai sem marca:', error)
         }
+      } else {
+        console.warn(
+          `[arte-ia.bg] projeto ${args.projectId} sem logo cadastrada — a arte sai sem marca`,
+        )
       }
     }
 
@@ -210,6 +224,9 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
         brand,
         refs: ordered.map((r) => ({ role: r.role, label: r.label })),
         instrucaoImagem: args.instrucaoImagem,
+        // Só reserva área quando existe logo para colar lá; sem logo, pedir
+        // um canto vazio seria desperdiçar composição à toa.
+        blocoLogo: logoParaCompor ? instrucaoAreaReservada(LOGO_CORNER) : null,
       })
     }
 
@@ -281,11 +298,37 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       )
     }
 
-    // ── Finalização: resize → Blob → backup Drive → Generation ───────────
-    const finalBuffer = await sharp(resultBuffer)
+    // ── Finalização: resize → logo → Blob → backup Drive → Generation ────
+    let finalBuffer = await sharp(resultBuffer)
       .resize(args.finalSize.width, args.finalSize.height, { fit: 'cover', position: 'center' })
       .jpeg({ quality: 92 })
       .toBuffer()
+
+    // A logo REAL entra aqui, depois do resize — nunca desenhada pelo modelo.
+    // Falha ao compor não derruba a arte: ela sai sem marca e o aviso fica
+    // gravado, porque arte sem logo ainda é editável e uma logo inventada não.
+    let logoInfo: Record<string, unknown> = { logoComposta: false }
+    if (logoParaCompor) {
+      try {
+        const comLogo = await comporLogo(finalBuffer, logoParaCompor, {
+          cornerReservado: LOGO_CORNER,
+        })
+        finalBuffer = comLogo.buffer
+        logoInfo = {
+          logoComposta: true,
+          logoCanto: comLogo.corner,
+          logoMudouDeCanto: comLogo.moveu,
+        }
+        console.log(
+          `[arte-ia.bg] logo oficial composta no canto ${comLogo.corner}` +
+            (comLogo.moveu ? ` (o canto reservado ${LOGO_CORNER} estava ocupado)` : ''),
+        )
+      } catch (logoError) {
+        const msg = logoError instanceof Error ? logoError.message : String(logoError)
+        console.warn('[arte-ia.bg] composição da logo falhou — arte sai sem marca:', msg)
+        logoInfo = { logoComposta: false, logoErro: msg.slice(0, 200) }
+      }
+    }
 
     const blob = await put(
       `arte-ia/${args.projectId}/${sanitizeName(args.pedido || args.copy[0] || 'arte')}_${Date.now()}.jpg`,
@@ -316,6 +359,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
       refsUsadas: ordered.map((r) => ({ role: r.role, label: r.label ?? null })),
       autoAnchorId: autoAnchorUsada,
       elapsedSeconds,
+      ...logoInfo,
       ...textCheckInfo,
     })
 

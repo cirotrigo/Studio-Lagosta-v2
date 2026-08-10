@@ -75,6 +75,15 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
         select: { name: true, hexCode: true },
         orderBy: { createdAt: 'asc' },
       },
+      // A logo real mora na tabela Logo (aba Assets) — `Project.logoUrl` está
+      // NULL nos 10 projetos, e era por isso que nenhum gerador recebia logo
+      // nenhuma. Descoberto em 09/08/2026 quando o gpt-image INVENTOU a
+      // logomarca do By Rock por não ter recebido a verdadeira.
+      Logo: {
+        select: { fileUrl: true },
+        orderBy: [{ isProjectLogo: 'desc' }, { createdAt: 'asc' }],
+        take: 1,
+      },
     },
   })
   if (!project) return null
@@ -101,7 +110,7 @@ export async function loadBrandContext(projectId: number): Promise<BrandContext 
       body: nonEmpty(project.bodyFontFamily),
     },
     colors: project.BrandColor,
-    logoUrl: nonEmpty(project.logoUrl),
+    logoUrl: nonEmpty(project.logoUrl) ?? nonEmpty(project.Logo[0]?.fileUrl),
     artDirection: nonEmpty(project.artImprovementPrompt),
   }
 }

@@ -173,12 +173,12 @@ export function buildReferencePreamble(refs: ArtReferenceDescriptor[]): string {
         break
       case 'brand-card':
         lines.push(
-          `${idx} is the brand identity card: official logo, color palette and typography samples. It is the ONLY source for fonts and graphic-layer colors.`,
+          `${idx} is the brand identity card: it shows the official logo, color palette and typography samples. It is the ONLY source for fonts and graphic-layer colors. The logo in it is there so you RECOGNIZE the brand — never redraw or reproduce it in the piece.`,
         )
         break
       case 'logo':
         lines.push(
-          `${idx} is the official logo in high resolution${ref.label ? ` (${ref.label})` : ''}. Place it exactly once, discreetly, never distorted or redrawn.`,
+          `${idx} is the official logo${ref.label ? ` (${ref.label})` : ''}, shown for brand recognition only. Do NOT draw it into the piece — the system composites the real file after generation.`,
         )
         break
     }
@@ -306,6 +306,12 @@ export interface BuildArtePromptArgs {
    * foto se melhora, nunca se modifica.
    */
   instrucaoImagem?: string | null
+  /**
+   * Bloco que proíbe desenhar a logo e reserva a área onde o sistema vai
+   * compor o arquivo oficial (logo-compositor). Sem ele o modelo INVENTA a
+   * logomarca — aconteceu com o By Rock em 09/08/2026.
+   */
+  blocoLogo?: string | null
 }
 
 /**
@@ -355,10 +361,14 @@ export function buildArtePrompt(args: BuildArtePromptArgs): string {
     '2. O texto mora no espaço LIVRE da foto — nunca sobre o prato, rosto ou assunto principal. Use gradiente de leitura sutil onde o texto pousar.',
     '3. Tipografia SOMENTE a da carta de identidade fornecida — nunca substitua por fonte parecida.',
     '4. Paleta da marca apenas na camada gráfica (textos, destaques); a fotografia mantém as cores reais.',
-    '5. Uma cor de destaque por peça; a logo aparece UMA vez, discreta, nunca deformada ou redesenhada.',
+    '5. Uma cor de destaque por peça.',
     '6. Respeite a safe area do formato (story: 200px topo e rodapé livres de informação).',
   ]
   sections.push(regras.join('\n'))
+
+  // Depois das regras e antes do pedido: a proibição de desenhar logo precisa
+  // estar acima do que o cliente pede, porque "coloque a marca" é pedido comum.
+  if (args.blocoLogo) sections.push(args.blocoLogo)
 
   if (args.brand) {
     const identidade: string[] = [`[IDENTIDADE — ${args.brand.projectName}]`]
