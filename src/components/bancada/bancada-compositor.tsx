@@ -10,20 +10,34 @@
  */
 
 import * as React from 'react'
+import Image from 'next/image'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, ChevronDown } from 'lucide-react'
+import { Plus, ChevronDown, Image as ImageIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Input } from '@/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { api } from '@/lib/api-client'
 import { cn } from '@/lib/utils'
 import {
   ArteIaImagePicker,
   contarPorPapel,
+  PAPEIS,
   type PapelReferencia,
   type ReferenciaSelecionada,
 } from '@/components/creatives/arte-ia-image-picker'
+
+/** Rótulo curto do papel para a etiqueta da miniatura ("Prato", "Ambiente"…). */
+function rotuloDoPapel(papel: PapelReferencia): string {
+  return PAPEIS.find((p) => p.valor === papel)?.titulo ?? papel
+}
 import {
   useBancadaStore,
   type NovoItem,
@@ -71,6 +85,7 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
   const [tipo, setTipo] = React.useState<'peca' | 'carrossel'>('peca')
   const [formato, setFormato] = React.useState<Formato>('story')
   const [copyTexto, setCopyTexto] = React.useState('')
+  const [pickerAberto, setPickerAberto] = React.useState(false)
   const [legenda, setLegenda] = React.useState('')
   const [pedido, setPedido] = React.useState('')
   const [instrucao, setInstrucao] = React.useState('')
@@ -293,16 +308,76 @@ export function BancadaCompositor({ projectId }: { projectId: number }) {
         </div>
       )}
 
+      {/* A escolha de fotos vive num MODAL (pedido do Ciro, 10/08): o picker
+          inline dominava o compositor e ainda escondia o acervo real atrás
+          das 40 primeiras fotos. Aqui fica só o resumo do que foi escolhido;
+          o acervo inteiro — com busca, pastas e "Carregar mais" — abre por
+          cima, com espaço de verdade para a grade. */}
       <div className="space-y-2">
         <Label>{ehCarrossel ? 'Fotos dos slides (a ordem é a do carrossel)' : 'Fotos do acervo'}</Label>
-        <ArteIaImagePicker
-          projectId={projectId}
-          referencias={referencias}
-          onChange={setReferencias}
-          papelPadrao={papelPadrao}
-          modoSequencia={ehCarrossel ? { max: 8 } : null}
-        />
+
+        {referencias.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {referencias.map((ref, indice) => (
+              <div
+                key={ref.key}
+                className="group relative h-16 w-16 overflow-hidden rounded-md border border-border/60 bg-muted/30"
+                title={ref.label ?? 'Foto escolhida'}
+              >
+                <Image
+                  src={ref.thumbUrl}
+                  alt={ref.label ?? 'Foto escolhida'}
+                  fill
+                  sizes="64px"
+                  className="object-cover"
+                  unoptimized
+                />
+                <span className="absolute inset-x-0 bottom-0 truncate bg-black/60 px-1 text-center text-[9px] leading-4 text-white">
+                  {ehCarrossel ? (indice === 0 ? 'capa' : `slide ${indice + 1}`) : rotuloDoPapel(ref.papel)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReferencias(referencias.filter((r) => r.key !== ref.key))}
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                  title="Tirar esta foto"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <Button type="button" variant="outline" onClick={() => setPickerAberto(true)}>
+          <ImageIcon className="mr-2 h-4 w-4" />
+          {referencias.length === 0
+            ? 'Escolher fotos do acervo'
+            : `Fotos escolhidas (${referencias.length}) — mudar`}
+        </Button>
       </div>
+
+      <Dialog open={pickerAberto} onOpenChange={setPickerAberto}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {ehCarrossel ? 'Fotos dos slides — a ordem de escolha é a do carrossel' : 'Fotos do acervo'}
+            </DialogTitle>
+          </DialogHeader>
+          <ArteIaImagePicker
+            projectId={projectId}
+            referencias={referencias}
+            onChange={setReferencias}
+            papelPadrao={papelPadrao}
+            modoSequencia={ehCarrossel ? { max: 8 } : null}
+            alturaDaGrade="50dvh"
+          />
+          <DialogFooter>
+            <Button type="button" onClick={() => setPickerAberto(false)}>
+              Concluir{referencias.length > 0 ? ` (${referencias.length})` : ''}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {ehCarrossel && referencias.length > 0 && (
         <div className="space-y-2">

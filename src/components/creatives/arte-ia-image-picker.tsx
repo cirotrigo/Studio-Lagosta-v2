@@ -127,6 +127,13 @@ interface Props {
   projectId: number
   referencias: ReferenciaSelecionada[]
   onChange: (refs: ReferenciaSelecionada[]) => void
+  /**
+   * Altura máxima da grade de fotos. Estilo inline, e não classe Tailwind,
+   * porque valor arbitrário novo pode não gerar CSS neste repo (família de
+   * classes mortas medida em 08-10/08). Default compacto para uso inline;
+   * dentro de um modal vale passar algo como '50dvh'.
+   */
+  alturaDaGrade?: string
   /** Papel sugerido para a próxima imagem escolhida. */
   papelPadrao?: PapelReferencia
   /**
@@ -143,23 +150,34 @@ export function ArteIaImagePicker({
   onChange,
   papelPadrao = 'subject',
   modoSequencia = null,
+  alturaDaGrade = '16rem',
 }: Props) {
   const { toast } = useToast()
   const [busca, setBusca] = React.useState('')
   const [temaAtivo, setTemaAtivo] = React.useState('')
   const [pasta, setPasta] = React.useState('')
+  /**
+   * Quantas fotos pedir. Cresce pelo "Carregar mais" — o acervo real tem
+   * centenas de fotos (o By Rock tem 840) e a grade parava nas 40 primeiras
+   * sem dizer que havia mais. Volta a 40 quando o filtro muda: a lista é
+   * outra, o apetite recomeça.
+   */
+  const [limite, setLimite] = React.useState(40)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  const { data: acervo, isLoading } = useQuery<RespostaAcervo>({
-    queryKey: ['projeto', projectId, 'acervo', temaAtivo, pasta],
+  const { data: acervo, isLoading, isFetching } = useQuery<RespostaAcervo>({
+    queryKey: ['projeto', projectId, 'acervo', temaAtivo, pasta, limite],
     queryFn: () => {
       const qs = new URLSearchParams()
       if (temaAtivo) qs.set('tema', temaAtivo)
       if (pasta) qs.set('pasta', pasta)
-      qs.set('limite', '40')
+      qs.set('limite', String(limite))
       return api.get<RespostaAcervo>(`/api/projects/${projectId}/acervo?${qs.toString()}`)
     },
     staleTime: 2 * 60_000,
+    // O "Carregar mais" refaz a consulta com limite maior; sem manter o dado
+    // anterior na tela, a grade inteira piscaria para voltar com +80 fotos.
+    placeholderData: (anterior) => anterior,
   })
 
   const { upload, isUploading, progress } = useBlobUpload({
@@ -332,6 +350,7 @@ export function ArteIaImagePicker({
             onSubmit={(e) => {
               e.preventDefault()
               setTemaAtivo(busca.trim())
+              setLimite(40)
             }}
           >
             <div className="relative flex-1">
@@ -352,7 +371,10 @@ export function ArteIaImagePicker({
             <div className="flex flex-wrap gap-1">
               <button
                 type="button"
-                onClick={() => setPasta('')}
+                onClick={() => {
+                  setPasta('')
+                  setLimite(40)
+                }}
                 className={cn(
                   'rounded-full border px-2 py-0.5 text-[11px]',
                   pasta === '' ? 'border-primary bg-primary/10' : 'border-border/60',
@@ -364,7 +386,10 @@ export function ArteIaImagePicker({
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setPasta(p === pasta ? '' : p)}
+                  onClick={() => {
+                    setPasta(p === pasta ? '' : p)
+                    setLimite(40)
+                  }}
                   title={p}
                   className={cn(
                     'max-w-[160px] truncate rounded-full border px-2 py-0.5 text-[11px]',
@@ -406,7 +431,10 @@ export function ArteIaImagePicker({
             </div>
           ) : (
             <>
-              <div className="grid max-h-64 grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6">
+              <div
+                className="grid grid-cols-4 gap-2 overflow-y-auto pr-1 sm:grid-cols-6"
+                style={{ maxHeight: alturaDaGrade }}
+              >
                 {acervo.images.map((img) => {
                   const selecionada = referencias.some((r) => r.key === img.driveFileId)
                   return (
@@ -446,9 +474,24 @@ export function ArteIaImagePicker({
                   )
                 })}
               </div>
-              <p className="text-[11px] text-muted-foreground">
-                {acervo.total} de {acervo.acervoCompleto} fotos · as menos usadas aparecem primeiro
-              </p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[11px] text-muted-foreground">
+                  {acervo.images.length} de {acervo.total} fotos · as menos usadas aparecem primeiro
+                </p>
+                {/* Como no Claudinho: a grade cresce sob demanda. Sem o botão,
+                    as 40 primeiras pareciam ser o acervo inteiro. */}
+                {acervo.images.length < acervo.total && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={isFetching}
+                    onClick={() => setLimite((l) => l + 80)}
+                  >
+                    {isFetching ? 'Carregando…' : `Carregar mais (${acervo.total - acervo.images.length})`}
+                  </Button>
+                )}
+              </div>
             </>
           )}
         </TabsContent>

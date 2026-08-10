@@ -30,7 +30,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
   const url = new URL(req.url)
   const theme = url.searchParams.get('tema')?.trim() || undefined
   const folder = url.searchParams.get('pasta')?.trim() || undefined
-  const limit = Math.min(Math.max(Number(url.searchParams.get('limite')) || 40, 1), 100)
+  // Teto 500 (era 100): o "Carregar mais" do picker cresce o pedido em passos
+  // de 80, e os acervos reais passam de 800 fotos — com teto 100 o botão
+  // morria na segunda página. O custo é só o slice de um catálogo que já está
+  // inteiro em memória; as miniaturas quem pagina é o navegador, por lazy load.
+  const limit = Math.min(Math.max(Number(url.searchParams.get('limite')) || 40, 1), 500)
 
   try {
     const resultado = await buscarNoAcervo({ projectId: projectIdNum, theme, folder, limit })
