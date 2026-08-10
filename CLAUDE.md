@@ -591,6 +591,13 @@ código; o `.env.example` tem apenas os nomes.
 
 ### Registro de mudanças recentes
 
+`docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md` é o mais recente: o
+Studio passou a CRIAR arte por IA (não só melhorar), com bancada, carrossel
+com visual coerente e referências por papel. O plano que originou o trabalho
+está em `docs/PLANO-2026-08-09-GERACAO-IA-E-BANCADA.md`, com o placar das
+fases. As regras duráveis estão na seção "Geração de arte por IA, bancada e
+carrossel" mais abaixo.
+
 `docs/SESSAO-2026-07-26-EDITOR-INSTAGRAM.md` detalha as 29 mudanças de julho/2026
 em gradientes, vazamento entre páginas, fontes no export, integração do
 Instagram, métricas, combinações tipográficas e histórico de migrations — com as
@@ -766,6 +773,53 @@ limpeza. Regras que ficaram:
   legado na página /knowledge.
 - **CI mínimo no ar** (`.github/workflows/ci.yml`): typecheck + lint em
   push/PR. Lint com ERRO agora quebra o CI — a main foi zerada nesta sessão.
+
+### Geração de arte por IA, bancada e carrossel (09/08/2026)
+
+O Studio passou a **criar** arte por IA, não só melhorar. Motor em
+`src/lib/ai/creative-generation-{service,runner}.ts`, tela em
+`/projects/[id]/bancada`, e no chat pelas tools `gerar-imagem`,
+`criar-carrossel`, `confirmar-estilo-carrossel`, `ver-carrossel`. O arco
+inteiro está em `docs/SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md`.
+
+Regras que valem para código novo:
+
+- **A LOGO NUNCA é desenhada pela IA.** Modelo de imagem distorce logotipo — em
+  09/08 o gpt-image INVENTOU a logomarca do By Rock. O prompt proíbe desenhar
+  qualquer marca e o sistema compõe o PNG oficial com sharp
+  (`logo-compositor.ts`). Reservar área no prompt não basta: o modelo escreve
+  por cima, então o compositor mede o desvio-padrão de luminância dos 4 cantos
+  e foge do bloco de texto. Falha ao compor deixa a arte SEM marca, nunca com
+  uma inventada.
+- **`Project.logoUrl` está NULL nos 10 projetos** — a logo mora na tabela
+  `Logo` (aba Assets). `loadBrandContext` já cai nela; consumidor novo de
+  identidade usa o loader, nunca um `select` próprio.
+- **Referências têm PAPEL** (`subject`, `anchor-ambient`, `anchor-dish`,
+  `style`, `series-guide`, `brand-card`, `logo`) e o preâmbulo que declara cada
+  papel é escrito pelo BACKEND — nunca deixado a cargo do LLM. Tetos: 1
+  subject, 3 âncoras, 2 style; refs demais causam deriva visual.
+- **A ÂNCORA MANDA, o prompt só descreve a ação.** Descrever arquitetura por
+  texto faz o modelo inventar um lugar genérico. Ambiente se ancora em foto
+  real (anchor sheet em `ProjectAnchorImage`, injetada sozinha na trilha
+  `imagem`).
+- **Duas trilhas que nunca se misturam**: `imagem` (cena SEM texto, prompt de
+  12 parágrafos físicos em inglês, validado contra 17 buzzwords e contra os
+  termos de carne crua que disparam o filtro) e `arte` (peça com a copy
+  verbatim, conferida por visão).
+- **Capa de carrossel é foto PURA** — o serviço recusa copy no slide 1. O
+  primeiro slide com texto é o GUIA, e os demais só são gerados depois que
+  alguém CONFIRMA o look dele. A coerência vem da arte do guia como referência
+  + LOOK SPINE + o guia decodificado por visão
+  (`carousel-guide-decoder.ts`); sem o último, a cor de destaque varia entre
+  slides.
+- **Retentativa por divergência de texto usa o tempo MEDIDO** da geração
+  anterior (×1,2), não um teto fixo. O teto de 45s fazia a retentativa abortar
+  no meio quando a geração levava 131s. Vale nos dois runners.
+- **Toda geração grava `{prompt, refs, params, veredito}`** em
+  `Generation.fieldValues`, no sucesso e na falha — é o registro que permite
+  aprender com cada run.
+- **Migration continua sendo escrita à mão + `db:deploy`** (as duas desta
+  sessão foram assim).
 
 ### Imagem: caixa é janela, não elástico (04/08/2026)
 

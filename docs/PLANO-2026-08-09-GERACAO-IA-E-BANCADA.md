@@ -108,6 +108,23 @@ Zernio, congelamento, créditos, verificação de texto por visão, motor de slo
 
 ## 4. Plano por fases
 
+> **PLACAR EM 09/08/2026 (fim do dia)** — o relato completo, com os defeitos
+> descobertos e as armadilhas medidas, está em
+> [SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md](SESSAO-2026-08-09-GERACAO-IA-BANCADA-CARROSSEL.md).
+>
+> | Fase | Situação |
+> |---|---|
+> | 1 — Motor de geração v2 | ✅ no ar |
+> | 2 — Multi-seleção + DNA profundo | ✅ no ar (falta o crivo por projeto) |
+> | 3 — Bancada de stories | ✅ no ar |
+> | 4 — QA pós-render + DNA vivo | ⚠️ parcial: verificação de texto e prévia no ar; "virar regra" não |
+> | 5 — Carrossel | ✅ no ar (tela e chat) |
+> | 6 — Paralelo e desligamento | ⬜ não começou |
+>
+> Estimativa original: ~4 semanas até a paridade. Fases 1, 2, 3 e 5 saíram em
+> um dia porque o Studio já tinha mais pronto do que o levantamento sugeria —
+> o que faltava era quase todo **método**, não infraestrutura.
+
 ### Fase 1 — Motor de geração v2 (`creative-generation-runner`) · ~1,5 semana
 
 > **STATUS 09/08/2026: IMPLEMENTADA** (exceto item 3 parcial — o card
@@ -241,6 +258,12 @@ fire-and-forget (`after()` + polling), o serial é só escolha do cliente.
 
 ### Fase 4 — QA pós-render + loop DNA vivo · ~3 dias
 
+> **STATUS 09/08/2026: PARCIAL.** A verificação de texto por visão já roda em
+> toda arte com copy (herdada do improve), e a prévia em tamanho grande antes
+> de agendar entrou junto com a bancada. **Faltam**: o QA de legibilidade e
+> corte por visão, o checklist de reprovação de prato, e o botão "virar regra"
+> que grava a correção aprovada no BrandDNA.
+
 1. QA por visão além do texto: legibilidade, texto cortado, proporção
    (assert de aspect ratio — nunca resize de proporção errada), retry ≤2.
 2. Checklist de reprovação de prato (forma mudou, logo inventado, reflexo
@@ -250,6 +273,22 @@ fire-and-forget (`after()` + polling), o serial é só escolha do cliente.
    motivo — o mecanismo que fez o DNA do Espeto ir de 1.0 a 2.6 em dois dias.
 
 ### Fase 5 — Carrossel · ~1,5 semana
+
+> **STATUS 09/08/2026: modo IA IMPLEMENTADO**, na tela e no chat.
+> `carouselGroupId` + `slideOrder` na Generation (migration
+> `20260810020000`), capa recusa copy, `series-guide` + LOOK SPINE de 8 itens
+> + typography lock, e o guia é DECODIFICADO POR VISÃO
+> (`carousel-guide-decoder.ts`) para "copie o estilo" virar lista de decisões
+> explícitas — sem isso o destaque de cor variava entre slides. Etapa de
+> confirmação preservada nas duas superfícies. Tools MCP `criar-carrossel`,
+> `confirmar-estilo-carrossel` e `ver-carrossel`.
+>
+> **Modo fotos NÃO foi feito** — e talvez não precise: o PostComposer já
+> aceita 2–10 mídias e o Zernio publica. O que faltaria é o center-crop 4:5
+> automático e o fluxo nomeado. Reavaliar quando alguém sentir falta.
+>
+> Sobra visível: o elemento gráfico (a onda sonora aparece no guia e não nos
+> irmãos). Provavelmente exige citá-lo na instrução, não só na descrição.
 
 1. **Modo fotos** (rápido): fluxo nomeado sobre o PostComposer CAROUSEL —
    2–10 fotos, center-crop 4:5 automático com EXIF, slides "arte" opcionais
