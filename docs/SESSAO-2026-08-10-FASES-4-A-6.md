@@ -335,7 +335,28 @@ porque o modelo escreveu **"CHOOPP CANECA"**. E que o QA visual deu um falso
 positivo ("texto claro sobre foto clara" numa peça com texto branco sobre área
 escura) — inofensivo agora que ele só anota a ressalva.
 
-## 12. Armadilhas medidas nesta sessão
+## 12. Produto: o que mudou nas telas
+
+Além do motor, a sessão mexeu na navegação e na bancada — tudo mergeado (PRs
+#31 a #40).
+
+- **Menu do projeto no layout** (`ProjectNav`): a barra persiste entre as
+  telas, e Agenda e Bancada abrem sob ela mantendo a URL própria. Antes, as
+  duas trocavam a página inteira e levavam a barra junto.
+- **Seletor de cliente** no menu, com busca e a logo de cada marca, que
+  **preserva a sub-rota**: `/projects/6/bancada` → `/projects/11/bancada`. Fica
+  no menu e não na barra global porque lá apareceria em telas sem projeto.
+- **Fotos do acervo em modal**, com "Carregar mais" de verdade (o picker
+  mostrava 40 de 444 sem botão nenhum) e **navegação de pastas em dois
+  níveis** — a lista chapada cortava em 12 chips e o By Rock tem 67 pastas.
+- **Modelos separado** em "Modelos de template" e "Artes de referência".
+- **Arte com problema agora APARECE**, com alerta: badge âmbar na galeria,
+  aviso no card da bancada e botão "Corrigir — gerar de novo (25 créditos)".
+
+O próximo passo combinado com o Ciro está em
+[PROXIMO-PASSO-CADENCIA-E-DICA-DE-COPY.md](PROXIMO-PASSO-CADENCIA-E-DICA-DE-COPY.md).
+
+## 13. Armadilhas medidas nesta sessão
 
 - 🔴 **Em Postgres, `ORDER BY … ASC` é NULLS LAST** — e foi isso que quebrou o
   rodízio na primeira versão: a referência já usada (timestamp) vinha ANTES das

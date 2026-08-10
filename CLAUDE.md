@@ -625,7 +625,14 @@ Arco completo em `docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md`
 
 ### Registro de mudanças recentes
 
-`docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md` é o mais recente:
+`docs/SESSAO-2026-08-10-FASES-4-A-6.md` é o mais recente: crivo de aprovação,
+QA por visão, referências de estilo em rodízio, a logo desenhada pelo modelo,
+o menu do projeto com seletor de cliente e a bancada com acervo em modal. O
+próximo passo combinado — cadência de postagem e dica de copy, evoluindo o que
+o Claudinho fazia — está levantado em
+`docs/PROXIMO-PASSO-CADENCIA-E-DICA-DE-COPY.md`.
+
+`docs/SESSAO-2026-08-10-GALERIA-LIGHTBOX-E-RESPONSIVIDADE.md`:
 lightbox que não navegava (três causas independentes), a galeria baixando a si
 mesma em resolução cheia, e a responsividade no iPad e no celular.
 
