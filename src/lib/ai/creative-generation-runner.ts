@@ -57,15 +57,26 @@ const MAX_OPENAI_INPUT_BYTES = 4 * 1024 * 1024
 
 const MAX_GENERATION_ATTEMPTS = 2
 /**
- * Folga sobre a duração MEDIDA da primeira geração para decidir a segunda.
+ * Margem ADITIVA sobre a duração MEDIDA da geração anterior, para decidir a
+ * retentativa.
  *
- * Um teto fixo é chute: em 09/08/2026 o formato feed levou 131s e a
- * retentativa começou com 117s de orçamento — abortou no meio, queimando dois
- * minutos e a chamada da OpenAI para nada. Medir a primeira e exigir esse
- * tempo (com folga) faz o runner ou retentar de verdade, ou falhar rápido
- * dizendo o motivo.
+ * O princípio de 09/08/2026 continua: medir a primeira e exigir esse tempo, em
+ * vez de um teto fixo — foi um teto de 45s que fez a retentativa abortar no
+ * meio quando a geração levava 131s, queimando dois minutos e uma chamada da
+ * OpenAI para terminar no mesmo FAILED.
+ *
+ * A folga de 1,2× era proporcional ao tempo de GERAÇÃO, mas o que se gasta
+ * depois dela não escala com ela: é a checagem de texto (~5-10s) mais o QA por
+ * visão (~5-10s). Numa geração de 2 minutos, 20% viram 24s de exigência a mais
+ * sem nada para cobrir — e em 10/08 isso recusou uma retentativa que cabia,
+ * por 0,4 segundo (geração 109,5s, restavam 131s, exigiu 131,4s).
+ *
+ * ⚠️ Isto recupera só os casos de borda. O teto real é o `maxDuration = 300`
+ * da rota: duas gerações de ~120s não cabem numa invocação, e nenhuma folga
+ * resolve isso. A saída estrutural é retentar em OUTRA invocação (padrão da
+ * fila de render), não espremer esta.
  */
-const RETRY_FOLGA = 1.2
+const MARGEM_POS_GERACAO_MS = 20_000
 /**
  * Canto reservado para a logo. Fixo (e não escolhido pela medição de calma)
  * porque o prompt precisa saber ONDE deixar limpo ANTES de gerar — medir
@@ -408,7 +419,7 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       const remainingMs = BACKGROUND_BUDGET_MS - FINALIZE_RESERVE_MS - (Date.now() - startedAt)
       if (attempt > 1) {
-        const precisa = Math.max(MIN_RETRY_BUDGET_MS, Math.round(ultimaGeracaoMs * RETRY_FOLGA))
+        const precisa = Math.max(MIN_RETRY_BUDGET_MS, ultimaGeracaoMs + MARGEM_POS_GERACAO_MS)
         if (remainingMs < precisa) {
           console.warn(
             `[arte-ia.bg] sem orçamento para a tentativa ${attempt}: restam ${Math.round(remainingMs / 1000)}s e a geração anterior levou ${Math.round(ultimaGeracaoMs / 1000)}s — parando em vez de abortar no meio`,
