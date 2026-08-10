@@ -39,23 +39,33 @@ export function PageHeader({ className }: PageHeaderProps) {
   
   const breadcrumbs = metadata.breadcrumbs || generateAutoBreadcrumbs();
   const showBreadcrumbs = metadata.showBreadcrumbs !== false;
-  
+  const compact = metadata.compactOnMobile === true;
+
   // Se não houver título e descrição, não renderizar nada
   if (!metadata.title && !metadata.description && !showBreadcrumbs) {
     return null;
   }
-  
+
   return (
-    <div className={cn("space-y-4 mb-6", className)}>
+    <div className={cn("space-y-2 sm:space-y-4 mb-4 sm:mb-6", className)}>
       {/* Breadcrumbs */}
       {showBreadcrumbs && breadcrumbs.length > 0 && (
-        <nav aria-label="Breadcrumb" className="flex items-center space-x-1 text-sm text-muted-foreground">
+        <nav
+          aria-label="Breadcrumb"
+          className={cn(
+            // Uma linha só, com rolagem lateral: o `hyphens: auto` que o
+            // globals.css aplica a tudo abaixo de 768px partia os rótulos no
+            // meio ("Criati-vos"). `breadcrumb-nav` desfaz isso.
+            "breadcrumb-nav items-center space-x-1 text-sm text-muted-foreground",
+            compact ? "hidden sm:flex" : "flex"
+          )}
+        >
           {breadcrumbs.map((item, index) => {
             const isLast = index === breadcrumbs.length - 1;
-            
+
             return (
               <React.Fragment key={`${item.label}-${index}`}>
-                {index > 0 && <ChevronRight className="h-4 w-4" />}
+                {index > 0 && <ChevronRight className="h-4 w-4 shrink-0" />}
                 {isLast || !item.href ? (
                   <span className="text-foreground font-medium">{item.label}</span>
                 ) : (
@@ -68,15 +78,22 @@ export function PageHeader({ className }: PageHeaderProps) {
           })}
         </nav>
       )}
-      
+
       {/* Título e Descrição */}
       {(metadata.title || metadata.description) && (
         <div>
           {metadata.title && (
-            <h1 className="text-3xl font-bold">{metadata.title}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold">{metadata.title}</h1>
           )}
           {metadata.description && (
-            <p className="text-muted-foreground mt-2">{metadata.description}</p>
+            <p
+              className={cn(
+                "text-sm sm:text-base text-muted-foreground mt-1 sm:mt-2",
+                compact && "hidden sm:block"
+              )}
+            >
+              {metadata.description}
+            </p>
           )}
         </div>
       )}

@@ -50,7 +50,7 @@ export function CreditStatus({ className, showUpgradeButton = true }: CreditStat
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className={cn("flex items-center gap-2", className)}>
+            <div className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap", className)}>
               <Coins
                 className={cn(
                   "h-4 w-4",
@@ -68,7 +68,17 @@ export function CreditStatus({ className, showUpgradeButton = true }: CreditStat
                 {remaining}
               </span>
               {showUpgradeButton && isAdmin && (
-                <Button size="sm" variant={isEmpty ? "destructive" : "outline"} asChild>
+                // Some abaixo de lg: entre 768 e 1023 (iPad em pé) a topbar tem
+                // ~480px úteis com a sidebar aberta, e este botão espremia o
+                // seletor de organização até sobrar só a setinha. O saldo e o
+                // tooltip continuam à vista; gerenciar créditos segue no menu
+                // lateral, em Organização.
+                <Button
+                  size="sm"
+                  variant={isEmpty ? "destructive" : "outline"}
+                  className="hidden lg:flex"
+                  asChild
+                >
                   <Link href={`/organization/${organization!.id}/credits`}>
                     Gerenciar créditos
                   </Link>
@@ -109,7 +119,7 @@ export function CreditStatus({ className, showUpgradeButton = true }: CreditStat
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className={cn("flex items-center gap-2", className)}>
+          <div className={cn("flex shrink-0 items-center gap-2 whitespace-nowrap", className)}>
             <Coins
               className={cn(
                 "h-4 w-4",

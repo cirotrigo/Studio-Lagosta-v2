@@ -1,0 +1,55 @@
+/*
+ * Ajustes do PhotoSwipe que precisam vencer o CSS do próprio pacote.
+ *
+ * Importado logo depois de `photoswipe/style.css` em `use-photoswipe.ts`. Ainda
+ * assim TODO seletor aqui carrega um `.pswp` a mais do que o do pacote: o Next
+ * não garante a ordem entre o CSS de um chunk e o de outro, e especificidade
+ * maior (0,3,0 contra 0,2,0) resolve independentemente da ordem.
+ */
+
+/*
+ * SETAS EM TELA DE TOQUE.
+ *
+ * O pacote esconde as setas em qualquer aparelho com toque:
+ *
+ *   .pswp--touch    .pswp__button--arrow { visibility: hidden }
+ *   .pswp--has_mouse .pswp__button--arrow { visibility: visible }
+ *
+ * `pswp--touch` entra quando `'ontouchstart' in window || maxTouchPoints > 1`,
+ * e `pswp--has_mouse` só entra quando o PhotoSwipe VÊ um mouse (mousedown, ou
+ * `any-hover: hover` no resize). No iPad e no celular isso nunca acontece — a
+ * galeria abria com o contador "3 / 60" e nenhum controle à vista, de forma
+ * que a única saída era arrastar. Quem não descobria o gesto concluía, com
+ * razão, que o lightbox "abre uma só".
+ *
+ * `pswp--one-slide` continua escondendo as setas quando há um único item,
+ * porque lá o pacote usa `display: none` — que ganha de `visibility` sem
+ * depender de ordem nenhuma.
+ */
+.pswp.pswp--nav-sempre-visivel .pswp__button--arrow {
+  visibility: visible;
+}
+
+/* Alvo de toque maior e um pouco de contraste sobre foto clara. */
+@media (hover: none) and (pointer: coarse) {
+  .pswp.pswp--nav-sempre-visivel .pswp__button--arrow {
+    width: 60px;
+  }
+
+  .pswp.pswp--nav-sempre-visivel .pswp__button--arrow .pswp__icn {
+    background: rgba(0, 0, 0, 0.45);
+    border-radius: 999px;
+    padding: 4px;
+  }
+}
+
+/*
+ * O `globals.css` força `img, video { max-width: 100% !important; height: auto
+ * !important }` abaixo de 768px para conter estouro de layout. A regra já era
+ * desfeita para `.pswp__img`; o slide de VÍDEO precisa da mesma isenção, senão
+ * o vídeo abre com altura automática dentro de um contêiner de altura total.
+ */
+.pswp video {
+  max-width: unset !important;
+  height: 100% !important;
+}

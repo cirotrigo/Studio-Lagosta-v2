@@ -19,7 +19,7 @@ import { useToast } from '@/hooks/use-toast'
 import { usePhotoSwipe } from '@/hooks/use-photoswipe'
 import { GalleryItem } from './gallery-item'
 import { MemberFilter } from '../filters/member-filter'
-import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar, Sparkles } from 'lucide-react'
+import { Eye, Download, RefreshCw, Grid3X3, List, Search, Trash2, HardDrive, Calendar, Sparkles, SlidersHorizontal } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { PostComposer, type PostFormData } from '@/components/posts/post-composer'
 import { WEEKDAY_OPTIONS } from '@/lib/weekday-options'
@@ -193,6 +193,17 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
   const [improveInitialRequest, setImproveInitialRequest] = React.useState<string | null>(null)
   const [compareTarget, setCompareTarget] = React.useState<CompareTarget | null>(null)
   const [gerarArteAberto, setGerarArteAberto] = React.useState(false)
+  // Painel de filtros no celular. A partir de lg ele é sempre exibido por CSS,
+  // então este estado não vale nada lá — não precisa ser sincronizado.
+  const [filtrosAbertos, setFiltrosAbertos] = React.useState(false)
+
+  // Quantos filtros estão mexidos, para o botão avisar que há corte ativo
+  // mesmo com o painel fechado.
+  const filtrosAtivos =
+    (statusFilter === 'all' ? 0 : 1) +
+    (memberFilter ? 1 : 0) +
+    weekdayFilter.size +
+    (onlyWithResult ? 0 : 1)
 
   // Serializa weekdays ordenados pra estabilidade do queryKey
   const weekdaysParam = React.useMemo(
@@ -729,9 +740,14 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
 
   return (
     <>
-      <Card className="flex flex-col gap-4 p-4 mb-6 max-w-full overflow-hidden">
-        <div className="flex flex-col sm:flex-row gap-3 w-full">
-          <div className="relative w-full sm:max-w-sm">
+      <Card className="flex flex-col gap-3 p-3 mb-4 sm:gap-4 sm:p-4 sm:mb-6 max-w-full overflow-hidden">
+        {/* Sempre à vista: busca, o botão que abre os filtros no celular e o
+            atualizar. O resto desce para o painel colapsável abaixo. */}
+        <div className="flex items-center gap-2 w-full">
+          {/* `sm:max-w-sm`, não `lg:max-w-sm`: nesta build a variante `lg:` de
+              max-width não gera CSS nenhum (o input saía com a largura toda).
+              Ver a nota sobre classes mortas na memória do projeto. */}
+          <div className="relative min-w-0 flex-1 sm:max-w-sm">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
               placeholder="Buscar por template ou ID"
@@ -740,7 +756,37 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               onChange={(event) => setSearchTerm(event.target.value)}
             />
           </div>
-          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Button
+            variant={filtrosAbertos ? 'default' : 'outline'}
+            size="icon"
+            className="relative shrink-0 lg:hidden"
+            aria-expanded={filtrosAbertos}
+            aria-controls="creatives-filters"
+            title="Filtros"
+            onClick={() => setFiltrosAbertos((aberto) => !aberto)}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            {filtrosAtivos > 0 && (
+              <span className="absolute right-0 top-0 flex h-4 w-4 translate-x-1 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+                {filtrosAtivos}
+              </span>
+            )}
+          </Button>
+          <Button variant="ghost" size="icon" className="shrink-0" title="Atualizar" onClick={() => refetch()}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* Filtros: escondidos no celular até abrir; sempre à vista a partir de
+            lg, onde cabem sem empurrar o grid para fora da tela. */}
+        <div
+          id="creatives-filters"
+          className={cn(
+            'flex-col gap-3 lg:flex',
+            filtrosAbertos ? 'flex' : 'hidden',
+          )}
+        >
+          <div className="flex flex-wrap items-center gap-2">
             <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
               <SelectTrigger className="w-full sm:w-[160px]">
                 <SelectValue />
@@ -762,128 +808,139 @@ export function CreativesGallery({ projectId }: { projectId: number }) {
               />
             )}
           </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs font-medium text-muted-foreground mr-1">Dia:</span>
-          <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
-            {WEEKDAY_OPTIONS.map((option) => {
-              const active = weekdayFilter.has(option.value)
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  title={option.label}
-                  className={cn(
-                    'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                    active
-                      ? 'bg-primary text-primary-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  onClick={() =>
-                    setWeekdayFilter((prev) => {
-                      const next = new Set(prev)
-                      if (next.has(option.value)) next.delete(option.value)
-                      else next.add(option.value)
-                      return next
-                    })
-                  }
-                >
-                  {option.short}
-                </button>
-              )
-            })}
-          </div>
-          {weekdayFilter.size > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 text-xs text-muted-foreground"
-              onClick={() => setWeekdayFilter(new Set())}
-            >
-              Limpar
-            </Button>
-          )}
-        </div>
-
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 w-full">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
-            <label htmlFor="only-result" className="whitespace-nowrap">Somente com arquivo</label>
-          </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-2">
-              <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('grid')}>
+            <span className="text-xs font-medium text-muted-foreground">Dia:</span>
+            {/* flex-wrap: com 7 chips a fila estourava a largura no celular e
+                Sáb/Dom ficavam cortados fora da borda do card. */}
+            <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
+              {WEEKDAY_OPTIONS.map((option) => {
+                const active = weekdayFilter.has(option.value)
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    title={option.label}
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors sm:px-3',
+                      active
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() =>
+                      setWeekdayFilter((prev) => {
+                        const next = new Set(prev)
+                        if (next.has(option.value)) next.delete(option.value)
+                        else next.add(option.value)
+                        return next
+                      })
+                    }
+                  >
+                    {option.short}
+                  </button>
+                )
+              })}
+            </div>
+            {weekdayFilter.size > 0 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs text-muted-foreground"
+                onClick={() => setWeekdayFilter(new Set())}
+              >
+                Limpar
+              </Button>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <Switch id="only-result" checked={onlyWithResult} onCheckedChange={setOnlyWithResult} />
+              <label htmlFor="only-result" className="whitespace-nowrap">Somente com arquivo</label>
+            </div>
+            {/* Grade/lista mora aqui, junto da densidade: é preferência de
+                exibição, e mantê-la na barra de ações fazia os cinco controles
+                quebrarem em três linhas no celular. */}
+            <div className="flex items-center gap-1">
+              <Button variant={viewMode === 'grid' ? 'default' : 'outline'} size="icon" title="Grade" onClick={() => setViewMode('grid')}>
                 <Grid3X3 className="h-4 w-4" />
               </Button>
-              <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" onClick={() => setViewMode('list')}>
+              <Button variant={viewMode === 'list' ? 'default' : 'outline'} size="icon" title="Lista" onClick={() => setViewMode('list')}>
                 <List className="h-4 w-4" />
               </Button>
-              {viewMode === 'grid' && (
-                <div className="flex items-center gap-1 rounded-full border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
-                  {GRID_DENSITY_OPTIONS.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      className={cn(
-                        'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-                        gridDensity === option.value
-                          ? 'bg-primary text-primary-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                      onClick={() => setGridDensity(option.value)}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
+            {viewMode === 'grid' && (
+              <div className="flex flex-wrap items-center gap-1 rounded-2xl border border-border/60 bg-background/80 px-1 py-1 shadow-sm">
+                {GRID_DENSITY_OPTIONS.map((option) => (
+                  <button
+                    key={option.value}
+                    type="button"
+                    className={cn(
+                      'rounded-full px-2.5 py-1 text-xs font-medium transition-colors sm:px-3',
+                      gridDensity === option.value
+                        ? 'bg-primary text-primary-foreground'
+                        : 'text-muted-foreground hover:text-foreground'
+                    )}
+                    onClick={() => setGridDensity(option.value)}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Ações. Os rótulos só entram a partir de xl: entre 768 e 1024 (iPad)
+            os cinco botões com texto não cabiam na linha e transbordavam. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
               disabled={selectedIds.size === 0}
               onClick={handleBulkDownload}
-              className="flex-1 sm:flex-none"
+              title="Baixar selecionados"
             >
-              <Download className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Baixar ({selectedIds.size})</span>
-              <span className="sm:hidden ml-2">({selectedIds.size})</span>
+              <Download className="h-4 w-4" />
+              <span className="ml-2 hidden xl:inline">Baixar</span>
+              {/* A contagem só entra quando há seleção: "(0)" fixo em quatro
+                  botões era o que fazia a barra quebrar em três linhas no
+                  celular, sem informar nada. */}
+              {selectedIds.size > 0 && <span className="ml-1">({selectedIds.size})</span>}
             </Button>
             <Button
               variant="outline"
               size="sm"
               disabled={selectedIds.size === 0}
               onClick={handleBulkDelete}
-              className="flex-1 sm:flex-none"
+              title="Excluir selecionados"
             >
-              <Trash2 className="h-4 w-4 text-red-500 sm:mr-2" />
-              <span className="hidden sm:inline">Excluir ({selectedIds.size})</span>
-              <span className="sm:hidden ml-2">({selectedIds.size})</span>
+              <Trash2 className="h-4 w-4 text-red-500" />
+              <span className="ml-2 hidden xl:inline">Excluir</span>
+              {selectedIds.size > 0 && <span className="ml-1">({selectedIds.size})</span>}
             </Button>
-            <Button size="sm" onClick={() => setGerarArteAberto(true)} className="flex-1 sm:flex-none">
-              <Sparkles className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Gerar com IA</span>
-            </Button>
-            <Button variant="ghost" size="icon" onClick={() => refetch()}>
-              <RefreshCw className="h-4 w-4" />
+            <Button size="sm" onClick={() => setGerarArteAberto(true)} title="Gerar com IA">
+              <Sparkles className="h-4 w-4" />
+              <span className="ml-2">Gerar com IA</span>
             </Button>
           </div>
         </div>
       </Card>
 
       {showGridSummary && (
-        <div className="mb-4 rounded-xl border border-border/50 bg-muted/30 px-4 py-3">
+        <div className="mb-4 rounded-xl border border-border/50 bg-muted/30 px-3 py-2 sm:px-4 sm:py-3">
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span className="font-medium text-foreground">
               Mostrando {filtered.length} de {totalGenerations} criativos
             </span>
-            <span className="text-xs text-muted-foreground">
+            <span className="hidden text-xs text-muted-foreground lg:inline">
               Ajuste a densidade para visualizar mais cards no grid
             </span>
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+          {/* A legenda por status só ganha espaço onde ele sobra — no celular
+              eram mais 5 linhas antes da primeira arte. */}
+          <div className="mt-2 hidden flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground sm:flex">
             {STATUS_ORDER.map((status) => (
               <span key={status} className="flex items-center gap-1">
                 <span className={cn('h-2.5 w-2.5 rounded-full', STATUS_COLORS[status])} />

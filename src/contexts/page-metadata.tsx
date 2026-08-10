@@ -12,6 +12,15 @@ export interface PageMetadata {
   description?: string;
   breadcrumbs?: BreadcrumbItem[];
   showBreadcrumbs?: boolean;
+  /**
+   * Em telas pequenas, esconde breadcrumb e descrição e encolhe o título.
+   *
+   * É opt-in por página de propósito: o cabeçalho do shell é o mesmo para todo
+   * mundo, e páginas cujo conteúdo começa logo abaixo dele (galeria, grade)
+   * perdiam meia tela para um breadcrumb que no celular sai hifenizado
+   * ("Dash-board > Proje-tos") e sem serventia.
+   */
+  compactOnMobile?: boolean;
 }
 
 interface PageMetadataContextType {
@@ -62,6 +71,7 @@ export function useSetPageMetadata(metadata: PageMetadata) {
     metadata.title,
     metadata.description,
     metadata.showBreadcrumbs,
+    metadata.compactOnMobile,
     // Para arrays, usamos JSON.stringify para comparação profunda
     JSON.stringify(metadata.breadcrumbs)
   ]);
