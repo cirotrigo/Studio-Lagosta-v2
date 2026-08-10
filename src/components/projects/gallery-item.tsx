@@ -40,6 +40,29 @@ interface GalleryItemProps {
 }
 
 const VIDEO_EXTENSIONS = ['.mp4', '.webm', '.mov', '.avi', '.mkv']
+
+/**
+ * Dimensões que vão no `data-pswp-*` a partir da PROPORÇÃO medida na miniatura.
+ *
+ * A proporção da miniatura é confiável; o tamanho dela não (é o que o
+ * otimizador do Next decidiu servir — 360px de largura numa janela pequena).
+ * Quando as dimensões declaradas do criativo batem com a proporção medida,
+ * usa-se elas, que são as reais e preservam o zoom. Quando não batem — caso
+ * dos criativos recuperados do Drive, com Template.dimensions mentindo —, cai
+ * numa caixa de 1080 de largura, que é a resolução de projeto das artes.
+ */
+function dimensoesParaLightbox(
+  proporcaoMedida: number,
+  larguraDeclarada: number,
+  alturaDeclarada: number,
+): [number, number] {
+  const proporcaoDeclarada = larguraDeclarada / alturaDeclarada
+  if (Math.abs(proporcaoDeclarada - proporcaoMedida) < 0.02) {
+    return [larguraDeclarada, alturaDeclarada]
+  }
+  const largura = 1080
+  return [largura, Math.round(largura / proporcaoMedida)]
+}
 // Build-cache bust: pswp-dim-fix-v3
 const PSWP_FIX_VERSION = 'v3'
 void PSWP_FIX_VERSION
@@ -74,7 +97,16 @@ export function GalleryItem({
 }: GalleryItemProps) {
   const [imageLoaded, setImageLoaded] = React.useState(false)
   const [isInView, setIsInView] = React.useState(false)
-  const [imageDimensions, setImageDimensions] = React.useState({ width: pswpWidth, height: pswpHeight })
+  /**
+   * Proporção medida na miniatura, quando ela já carregou.
+   *
+   * Guardar a PROPORÇÃO e não as dimensões é o que encerra uma disputa antiga:
+   * o `onLoad` gravava no estado o tamanho da miniatura (360x639 numa janela
+   * pequena) e o re-render sobrescrevia o `data-pswp-*` que o código
+   * imperativo tinha acabado de corrigir — o lightbox abria a arte em 360px.
+   * Agora o React é a única fonte do atributo, derivado desta proporção.
+   */
+  const [proporcaoMedida, setProporcaoMedida] = React.useState<number | null>(null)
   const ref = React.useRef<HTMLDivElement>(null)
   // Marca que data-pswp-* já foi sincronizado com a imagem real, pra evitar
   // recursão quando o handler dispara link.click() depois de carregar a imagem
@@ -142,28 +174,25 @@ export function GalleryItem({
       return
     }
 
+    // Sem sonda de rede aqui.
+    //
+    // Havia um `new window.Image()` apontando para `effectiveDisplayUrl` — a
+    // arte ORIGINAL — só para ler `naturalWidth/naturalHeight`. Com 60 cards
+    // isso baixava a galeria inteira em resolução cheia por trás da miniatura:
+    // medido em produção, 38 MB e 54 requisições diretas de ~1 MB numa única
+    // carga de página. Era essa banda que faltava para a miniatura do vizinho
+    // e para a arte do lightbox aparecerem ao navegar.
+    //
+    // A medição já vinha de graça do `onLoad` da <Image> logo abaixo, que lê a
+    // proporção da MINIATURA (mesma proporção do original, que é tudo que o
+    // card usa) e ainda grava os data-pswp-*.
     setImageLoaded(false)
-    const img = new window.Image()
-    img.src = effectiveDisplayUrl
-    img.onload = () => {
-      const realWidth = img.naturalWidth
-      const realHeight = img.naturalHeight
+  }, [effectiveDisplayUrl])
 
-      if (realWidth !== imageDimensions.width || realHeight !== imageDimensions.height) {
-        setImageDimensions({ width: realWidth, height: realHeight })
-      }
-    }
-    img.onerror = () => {
-      console.warn(`Failed to load image dimensions for: ${effectiveDisplayUrl}`)
-      setImageLoaded(true)
-    }
-    return () => {
-      img.onload = null
-      img.onerror = null
-    }
-  }, [effectiveDisplayUrl, id, imageDimensions.width, imageDimensions.height])
-
-  const aspectRatio = imageDimensions.width / imageDimensions.height
+  const aspectRatio = proporcaoMedida ?? pswpWidth / pswpHeight
+  // Dimensões que o PhotoSwipe lê. Derivadas — nada de escrita imperativa no
+  // DOM concorrendo com o render.
+  const [pswpLargura, pswpAltura] = dimensoesParaLightbox(aspectRatio, pswpWidth, pswpHeight)
 
   const getOrientation = () => {
     if (aspectRatio > 1.5) return 'landscape'
@@ -244,8 +273,8 @@ export function GalleryItem({
       <a
         href={resolvedAssetUrl ?? effectiveDisplayUrl ?? '#'}
         data-pswp-src={resolvedAssetUrl ?? undefined}
-        data-pswp-width={imageDimensions.width}
-        data-pswp-height={imageDimensions.height}
+        data-pswp-width={pswpLargura}
+        data-pswp-height={pswpAltura}
         data-pswp-type={resolvedAssetUrl && isVideoAsset ? 'video' : 'image'}
         className={cn(
           'relative block bg-muted overflow-hidden w-full h-full rounded-xl', // inner rounding
@@ -268,32 +297,47 @@ export function GalleryItem({
           const link = e.currentTarget as HTMLAnchorElement
           const img = link.querySelector('img') as HTMLImageElement | null
 
-          // Caminho rápido: thumbnail já tá carregado, usa as dimensões reais.
+          // Miniatura já carregada: o atributo já está certo pelo render, não
+          // há nada a fazer aqui.
           if (img && img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) {
-            link.setAttribute('data-pswp-width', String(img.naturalWidth))
-            link.setAttribute('data-pswp-height', String(img.naturalHeight))
-            dimensionsLockedRef.current = true
             return
           }
 
           // Caminho lento: <img> ainda em loading="lazy" e Template.dimensions
-          // pode estar mentindo. Carrega o asset diretamente, fixa data-pswp-*
-          // e re-dispara o clique pro PhotoSwipe.
+          // pode estar mentindo. Mede a PROPORÇÃO e re-dispara o clique.
+          //
+          // A sonda vai na miniatura otimizada, não no original: só a
+          // proporção importa aqui, e o original custa ~1 MB de espera ANTES
+          // do lightbox abrir. Pelo otimizador o mesmo enquadramento sai em
+          // ~30 KB (medido: 640px de largura contra 2160 do original).
           if (resolvedAssetUrl) {
             e.preventDefault()
             e.stopPropagation()
             const probe = new window.Image()
             const finish = (w: number | null, h: number | null) => {
               if (w && h && w > 0 && h > 0) {
-                link.setAttribute('data-pswp-width', String(w))
-                link.setAttribute('data-pswp-height', String(h))
+                // Escreve no DOM e não no estado: o re-clique é síncrono logo
+                // abaixo e o render do React não teria acontecido a tempo.
+                const [lw, lh] = dimensoesParaLightbox(w / h, pswpWidth, pswpHeight)
+                link.setAttribute('data-pswp-width', String(lw))
+                link.setAttribute('data-pswp-height', String(lh))
+                setProporcaoMedida(w / h)
               }
               dimensionsLockedRef.current = true
               link.click()
             }
             probe.onload = () => finish(probe.naturalWidth, probe.naturalHeight)
-            probe.onerror = () => finish(null, null)
-            probe.src = resolvedAssetUrl
+            // Se o otimizador recusar a origem, cai no original — melhor medir
+            // devagar do que abrir com a proporção errada.
+            probe.onerror = () => {
+              if (probe.src.includes('/_next/image')) {
+                probe.onerror = () => finish(null, null)
+                probe.src = resolvedAssetUrl
+                return
+              }
+              finish(null, null)
+            }
+            probe.src = `/_next/image?url=${encodeURIComponent(resolvedAssetUrl)}&w=640&q=60`
           }
         }}
       >
@@ -328,28 +372,10 @@ export function GalleryItem({
                   const img = e.currentTarget as HTMLImageElement
                   if (img.naturalWidth <= 0 || img.naturalHeight <= 0) return
 
-                  // Atualiza data-pswp-* diretamente via DOM com a proporção real
-                  // do thumbnail, escalada pra 1080w. Bypass de React state pra
-                  // garantir que PhotoSwipe vê dimensões corretas mesmo quando
-                  // props vieram de Template.dimensions errado (ex: criativos
-                  // recuperados do Drive).
-                  const link = ref.current?.querySelector('a')
-                  if (link) {
-                    const scaledW = 1080
-                    const scaledH = Math.round((img.naturalHeight / img.naturalWidth) * scaledW)
-                    link.setAttribute('data-pswp-width', String(scaledW))
-                    link.setAttribute('data-pswp-height', String(scaledH))
-                  }
-
-                  if (
-                    img.naturalWidth !== imageDimensions.width ||
-                    img.naturalHeight !== imageDimensions.height
-                  ) {
-                    setImageDimensions({
-                      width: img.naturalWidth,
-                      height: img.naturalHeight,
-                    })
-                  }
+                  // Só a proporção. O `data-pswp-*` sai do render a partir
+                  // dela — é o que corrige os criativos recuperados do Drive,
+                  // cujo Template.dimensions mente sobre o formato.
+                  setProporcaoMedida(img.naturalWidth / img.naturalHeight)
                 }}
                 loading="lazy"
               />
