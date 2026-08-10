@@ -941,6 +941,14 @@ documentado (e NÃO executado) em `docs/DESLIGAMENTO-CLAUDINHO.md`.
   quatro cantos IGUAIS desde que existe — a logo ia sempre para o canto
   reservado, e o mecanismo de fugir do bloco de copy nunca funcionou. Vale para
   qualquer medição por região.
+- 🔴 **`bg-zinc-400` não gera CSS neste repo** — computa `rgba(0,0,0,0)`,
+  medido no navegador em 10/08/2026. Cor de fundo fora do conjunto já usado
+  vai em estilo INLINE. Some à família de classes mortas (`sm:w-28`,
+  `w-[7rem]`, `lg:max-w-sm`, `sm:ml-auto`).
+- **Selo de marca precisa de fundo CINZA MÉDIO**: as logos dos clientes ocupam
+  os dois extremos de luminância (Quintal e TERO em 255, Bacana 252, contra
+  Wine Vix 54 e By Rock 89). Fundo claro engole as brancas, escuro engole as
+  pretas — e as intermediárias são coloridas, então quem as separa é a matiz.
 - **A logo do projeto é a ASSINATURA, não o ícone** (alinhado com o `LOGO_MAP`
   do insta-automatico em 10/08). Como metade delas é branca (Quintal, TERO e
   Bacana com luminância 255/255/252), o compositor passou a exigir **contraste**
