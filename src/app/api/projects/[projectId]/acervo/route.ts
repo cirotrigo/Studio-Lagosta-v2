@@ -45,8 +45,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ projectI
         const cru = await listarImagensDoDrive(projectIdNum, limit, folder)
         return NextResponse.json({
           temCatalogo: false,
-          total: cru.images.length,
-          acervoCompleto: cru.total,
+          // `total` é quantas casam com o filtro, NÃO quantas vieram nesta
+          // página: é dele que o seletor tira o "Carregar mais". Passar a
+          // contagem já cortada zerava o botão e escondia 886 das 926 fotos.
+          total: cru.total,
+          acervoCompleto: cru.acervoCompleto,
           // A varredura crua também descobre as pastas — o seletor mostra os
           // mesmos chips que mostra em projeto catalogado.
           pastasDisponiveis: cru.pastasDisponiveis,

@@ -279,7 +279,10 @@ export async function listarImagensDoDrive(projectId: number, limit = 30, folder
     : imagens
 
   return {
+    /** Quantas casam com o filtro — é o que o "Carregar mais" do seletor lê. */
     total: filtradas.length,
+    /** O acervo inteiro, sem filtro de pasta. */
+    acervoCompleto: imagens.length,
     images: filtradas.slice(0, limit),
     pastasDisponiveis: Array.from(pastas).sort(),
     /** Verdadeiro quando o teto de pastas cortou a varredura. */
