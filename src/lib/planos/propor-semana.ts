@@ -49,8 +49,10 @@ import type { FormatoDoItem } from '@/lib/planos/vocabulario'
 import {
   distribuirPilares,
   escolherFotoSemRepetir,
+  completarAteOAlvo,
   espalharPorDia,
   gradeSemente,
+  POSTS_POR_DIA_ALVO,
   ROTULO_DE_COLD_START,
   type SlotParaProposta,
 } from '@/lib/planos/proposta-de-semana'
@@ -68,7 +70,16 @@ const VERSAO_DA_SEMENTE = 'semente-v1'
 const SERVICO = 'propor-semana'
 
 /** Quantos posts uma semana proposta tem, quando ninguém pede outra coisa. */
-const MAX_ITENS_PADRAO = 7
+/**
+ * O teto padrão de uma leva: o ritmo da agência multiplicado pelos dias.
+ *
+ * 🔴 Era 7 — UM post por dia numa semana. A cadência já encontrava 14 a 22
+ * horários típicos para a maioria dos clientes (medido em 11/08/2026) e este
+ * teto jogava fora dois terços deles.
+ */
+function tetoPadrao(dias: number): number {
+  return dias * POSTS_POR_DIA_ALVO
+}
 
 /** Fotos pedidas por assunto além do necessário, para haver de onde desviar. */
 const FOLGA_DE_FOTOS = 4
@@ -298,7 +309,7 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
     throw new CreativeError('PROJECT_NOT_FOUND', `Projeto inválido: ${input.projectId}`, 400)
   }
   const dias = Math.min(Math.max(input.dias ?? 7, 1), 14)
-  const maxItens = Math.min(Math.max(input.maxItens ?? MAX_ITENS_PADRAO, 1), MAX_ITENS_POR_PLANO)
+  const maxItens = Math.min(Math.max(input.maxItens ?? tetoPadrao(dias), 1), MAX_ITENS_POR_PLANO)
   const formato = formatoValido(input.formato)
   const agora = new Date()
   const avisos: string[] = []
@@ -321,6 +332,25 @@ export async function proporSemana(input: ProporSemanaInput): Promise<ResultadoD
   let slots = espalharPorDia(daCadencia.map(slotDaCadencia), maxItens)
   const coldStart = slots.length === 0
   let itensSemeados = 0
+
+  /**
+   * O ritmo é PUXADO, não espelhado. A cadência aprendida reflete o que o
+   * cliente fez; para quem andou postando pouco, espelhar é ajudá-lo a
+   * continuar pouco. Os slots completados carregam rótulo próprio — nunca o
+   * motivo estatístico dos reais.
+   */
+  if (!coldStart) {
+    const antes = slots.length
+    slots = completarAteOAlvo(slots, { agora, dias, maxItens })
+    const completados = slots.filter((s) => s.semente)
+    if (completados.length > 0) {
+      itensSemeados = completados.length
+      await registrarSemente(projectId, completados)
+      avisos.push(
+        `Este cliente vem publicando menos que ${POSTS_POR_DIA_ALVO} por dia; completei ${slots.length - antes} horário(s) para fechar o ritmo. Eles vêm marcados — ajuste ou tire o que não fizer sentido.`,
+      )
+    }
+  }
 
   if (coldStart) {
     const semente = gradeSemente({ agora, dias, maxItens })

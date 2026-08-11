@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
 import { useFilaDoPlano } from '@/hooks/use-planos'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
-import { situacaoParaExibir } from '@/lib/planos/para-bancada'
+import { formatarQuandoBR, situacaoParaExibir } from '@/lib/planos/para-bancada'
 import { progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
 import type { BancadaItem } from '@/stores/bancada-store'
 
@@ -156,6 +156,7 @@ function Card({
     : (item.resultUrl ?? item.referencias.find((r) => r.papel === 'subject')?.thumbUrl)
 
   const quandoTexto = quando.data && quando.hora ? `${quando.data} ${quando.hora}` : ''
+  const selo = formatarQuandoBR(quando.data, quando.hora)
 
   // Prévia: só o que JÁ virou arte. Miniatura de referência não entra — ver a
   // foto crua em tela cheia não ajuda a decidir se a peça está boa.
@@ -197,6 +198,28 @@ function Card({
 
   return (
     <div className="flex gap-3 rounded-xl border border-border/60 bg-card/40 p-3">
+      {/* O selo de agenda ABRE o card, antes da foto: numa fila de leva
+          semanal, QUANDO o post sai é a primeira coisa que se procura — e a
+          data crua em "2026-08-11 14:30" obrigava a pessoa a decodificar o
+          formato ISO para descobrir o dia da semana. */}
+      {selo && (
+        <div
+          className="flex h-36 w-14 flex-shrink-0 flex-col items-center justify-center rounded-lg border border-border/60 bg-muted/30 text-center"
+          title={selo.completo}
+        >
+          <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {selo.diaSemana}
+          </span>
+          <span className="text-2xl font-semibold leading-none">{selo.dia}</span>
+          <span className="text-[10px] text-muted-foreground">{selo.mes}</span>
+          {selo.hora && (
+            <span className="mt-1.5 rounded bg-background px-1.5 py-0.5 text-[11px] font-medium tabular-nums">
+              {selo.hora}
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Miniatura em largura FIXA, sem variante responsiva: `sm:w-28` e
           `w-[7rem]` não geram CSS neste repo (medido em 09/08/2026 — a imagem
           ficava `w-full` e engolia o card). `w-28`/`h-36` geram. */}

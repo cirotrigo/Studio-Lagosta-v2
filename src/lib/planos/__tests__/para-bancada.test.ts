@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   caminhoDeTransicao,
+  formatarQuandoBR,
   fundirComOLocal,
   hidratarItens,
   paraItemDaBancada,
@@ -476,5 +477,43 @@ describe('caminhoDeTransicao', () => {
   it('o caminho até o erro existe a partir de qualquer ponto editável', () => {
     expect(caminhoDeTransicao('proposto', 'erro')).toEqual(['na-fila', 'erro'])
     expect(caminhoDeTransicao('gerando', 'erro')).toEqual(['erro'])
+  })
+})
+
+
+describe('formatarQuandoBR', () => {
+  it('monta o selo no padrão brasileiro', () => {
+    const q = formatarQuandoBR('2026-08-11', '14:30')!
+    expect(q.diaSemana).toBe('Ter.')
+    expect(q.dia).toBe('11')
+    expect(q.mes).toBe('ago.')
+    expect(q.hora).toBe('14:30')
+    expect(q.completo).toBe('Ter. 11 de ago. 14:30')
+  })
+
+  /**
+   * 🔴 `new Date('2026-08-11')` é meia-noite UTC, que em Brasília é 21h do dia
+   * 10 — o selo mostraria SEGUNDA numa terça. Por isso o dia da semana sai de
+   * `Date.UTC` com os componentes, e este teste trava a regressão.
+   */
+  it('não escorrega um dia por causa de fuso', () => {
+    expect(formatarQuandoBR('2026-08-11', '00:00')!.diaSemana).toBe('Ter.')
+    expect(formatarQuandoBR('2026-08-17', '23:59')!.diaSemana).toBe('Seg.')
+  })
+
+  it('dia que não existe não vira o mês seguinte em silêncio', () => {
+    expect(formatarQuandoBR('2026-02-31', '10:00')).toBeNull()
+  })
+
+  it('sem data não desenha selo', () => {
+    expect(formatarQuandoBR(null, '10:00')).toBeNull()
+    expect(formatarQuandoBR('', '10:00')).toBeNull()
+    expect(formatarQuandoBR('11/08/2026', '10:00')).toBeNull()
+  })
+
+  it('sem hora ainda mostra o dia', () => {
+    const q = formatarQuandoBR('2026-08-11', null)!
+    expect(q.hora).toBe('')
+    expect(q.completo).toBe('Ter. 11 de ago.')
   })
 })

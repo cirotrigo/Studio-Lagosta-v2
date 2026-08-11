@@ -26,8 +26,23 @@ import type { Pilar } from '@/lib/aprendizado/pilares'
 const OFFSET_BRT_MS = 3 * 3_600_000
 
 /**
- * A grade-semente do cliente sem rotina: um horário de almoço e um de jantar,
- * alternados por dia.
+ * O ritmo que a agência pratica: **três stories por dia**, em todo cliente.
+ *
+ * É regra de negócio, não estatística — mas a medição de 11/08/2026 a sustenta:
+ * seis dos nove clientes publicam entre 3,1 e 3,9 por dia nos últimos 90 dias
+ * (Seu Quinto 3,9 · Empório 3,6 · TERO 3,5 · Wine Vix 3,2 · Real Gelateria e
+ * Quintal 3,1). Os outros três estão abaixo (Bacana 2,2 · By Rock 2,1 · Espeto
+ * 1,4) — e é justamente para eles que a leva precisa PUXAR o ritmo em vez de
+ * espelhar a queda.
+ *
+ * 🔴 Antes disto o teto padrão era 7 itens na semana — UM por dia. A cadência
+ * já encontrava 14 a 22 horários típicos para a maioria dos clientes, e o teto
+ * jogava fora dois terços deles.
+ */
+export const POSTS_POR_DIA_ALVO = 3
+
+/**
+ * A grade-semente do cliente sem rotina: almoço, tarde e jantar.
  *
  * Não são "os melhores horários" — são um ponto de partida honesto, e por isso
  * o motivo de cada item diz exatamente isso. Inventar uma estatística
@@ -35,11 +50,29 @@ const OFFSET_BRT_MS = 3 * 3_600_000
  * histórico seria a pior coisa que esta função poderia fazer: a pessoa
  * confiaria num número que não existe.
  */
-const HORARIOS_SEMENTE = ['11:30', '18:30'] as const
+const HORARIOS_SEMENTE = ['11:30', '15:00', '18:30'] as const
+
+/** Como cada horário-semente é descrito no motivo. */
+const NOME_DO_HORARIO: Record<string, string> = {
+  '11:30': 'almoço',
+  '15:00': 'tarde',
+  '18:30': 'jantar',
+}
 
 /** O rótulo que TODO item semeado carrega. Não mude sem mudar o teste. */
 export const ROTULO_DE_COLD_START =
   'ponto de partida — ainda não conheço a rotina deste cliente'
+
+/**
+ * O rótulo do slot que COMPLETA o ritmo — diferente do cold start de propósito.
+ *
+ * Aqui o cliente TEM rotina; ela é que anda mais magra que as três por dia que
+ * a agência pratica. Dizer "ainda não conheço a rotina" seria falso, e dizer
+ * "costuma postar às 15h" seria pior ainda: inventaria a estatística que este
+ * módulo existe para não inventar.
+ */
+export const ROTULO_DE_COMPLEMENTO =
+  'completei para o ritmo de 3 por dia — este cliente vem postando menos que isso'
 
 export interface SlotParaProposta {
   /** "AAAA-MM-DD HH:mm" em Brasília, pronto para `criarPlano`. */
@@ -97,20 +130,80 @@ export function gradeSemente(opcoes: {
   const { agora, dias, maxItens } = opcoes
   const slots: SlotParaProposta[] = []
 
+  // Dia a dia, e dentro do dia os três horários — assim um teto baixo corta o
+  // FIM da semana, e não o segundo e o terceiro story de cada dia.
   for (let offset = 1; offset <= dias && slots.length < maxItens; offset++) {
     const data = diaBRTDe(new Date(agora.getTime() + offset * 24 * 3_600_000))
-    const hora = HORARIOS_SEMENTE[(offset - 1) % HORARIOS_SEMENTE.length]
-    slots.push({
-      scheduledDatetime: `${data} ${hora}`,
-      data,
-      hora,
-      diaSemana: diaDaSemanaBRT(data),
-      motivo: `${ROTULO_DE_COLD_START}; escolhi um horário de ${hora === '11:30' ? 'almoço' : 'jantar'}`,
-      semente: true,
-    })
+    for (const hora of HORARIOS_SEMENTE) {
+      if (slots.length >= maxItens) break
+      slots.push({
+        scheduledDatetime: `${data} ${hora}`,
+        data,
+        hora,
+        diaSemana: diaDaSemanaBRT(data),
+        motivo: `${ROTULO_DE_COLD_START}; escolhi um horário de ${NOME_DO_HORARIO[hora] ?? 'movimento'}`,
+        semente: true,
+      })
+    }
   }
 
   return slots
+}
+
+/**
+ * Completa os dias que ficaram abaixo do ritmo, sem tocar no que a cadência já
+ * sabia.
+ *
+ * 🔴 A cadência aprendida **espelha** o que o cliente fez; ela não puxa. Para
+ * quem andou postando pouco — o Espeto caiu a 1,4 por dia — espelhar significa
+ * propor uma semana magra e ajudar o cliente a continuar magro. Os slots reais
+ * vêm primeiro e com o motivo estatístico deles; os completados entram nos
+ * horários-semente que sobraram naquele dia, com o rótulo dizendo o que são.
+ *
+ * Dia que já tem o alvo (ou mais) não é tocado: quem publica quatro vezes na
+ * sexta continua com as quatro.
+ */
+export function completarAteOAlvo(
+  slots: SlotParaProposta[],
+  opcoes: { agora: Date; dias: number; alvoPorDia?: number; maxItens: number },
+): SlotParaProposta[] {
+  const alvo = Math.max(1, opcoes.alvoPorDia ?? POSTS_POR_DIA_ALVO)
+  const porDia = new Map<string, SlotParaProposta[]>()
+  for (const s of slots) {
+    const lista = porDia.get(s.data)
+    if (lista) lista.push(s)
+    else porDia.set(s.data, [s])
+  }
+
+  const saida = [...slots]
+  for (let offset = 1; offset <= opcoes.dias; offset++) {
+    if (saida.length >= opcoes.maxItens) break
+    const data = diaBRTDe(new Date(opcoes.agora.getTime() + offset * 24 * 3_600_000))
+    const doDia = porDia.get(data) ?? []
+    // Dia sem NENHUM slot real não é buraco de ritmo: é dia em que o cliente
+    // não costuma publicar, e inventar três ali seria desenhar uma semana que
+    // ele nunca teve. Só completa quem já tem pelo menos um.
+    if (doDia.length === 0 || doDia.length >= alvo) continue
+
+    const ocupadas = new Set(doDia.map((s) => s.hora))
+    for (const hora of HORARIOS_SEMENTE) {
+      if (doDia.length >= alvo || saida.length >= opcoes.maxItens) break
+      if (ocupadas.has(hora)) continue
+      const novo: SlotParaProposta = {
+        scheduledDatetime: `${data} ${hora}`,
+        data,
+        hora,
+        diaSemana: diaDaSemanaBRT(data),
+        motivo: `${ROTULO_DE_COMPLEMENTO}; escolhi um horário de ${NOME_DO_HORARIO[hora] ?? 'movimento'}`,
+        semente: true,
+      }
+      doDia.push(novo)
+      ocupadas.add(hora)
+      saida.push(novo)
+    }
+  }
+
+  return saida.sort((a, b) => a.scheduledDatetime.localeCompare(b.scheduledDatetime))
 }
 
 /**

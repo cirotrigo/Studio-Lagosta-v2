@@ -583,3 +583,66 @@ export function caminhoDeTransicao(de: StatusDoItem, para: StatusDoItem): Status
   }
   return []
 }
+
+// ── A data no cartão ────────────────────────────────────────────────────────
+
+const DIAS_ABREV = ['Dom.', 'Seg.', 'Ter.', 'Qua.', 'Qui.', 'Sex.', 'Sáb.'] as const
+const MESES_ABREV = [
+  'jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.',
+  'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.',
+] as const
+
+export interface QuandoNoCartao {
+  /** "Ter." */
+  diaSemana: string
+  /** "11" */
+  dia: string
+  /** "ago." */
+  mes: string
+  /** "14:30" */
+  hora: string
+  /** "Ter. 11 de ago. 14:30" — para `title` e leitores de tela. */
+  completo: string
+}
+
+/**
+ * "2026-08-11" + "14:30" → as partes do selo de agenda, em português.
+ *
+ * 🔴 NÃO passa por `new Date("2026-08-11")`: o construtor lê data pura como
+ * meia-noite UTC, que em Brasília é 21h do dia ANTERIOR — o selo mostraria a
+ * terça como segunda. A string já é uma data de calendário BRT, então o dia da
+ * semana sai de `Date.UTC` com os componentes, sem fuso no meio.
+ *
+ * Devolve `null` quando não há data: o cartão não desenha selo em vez de
+ * desenhar um selo vazio.
+ */
+export function formatarQuandoBR(
+  data: string | null | undefined,
+  hora: string | null | undefined,
+): QuandoNoCartao | null {
+  const bruto = (data ?? '').trim()
+  const m = bruto.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!m) return null
+  const ano = Number(m[1])
+  const mes = Number(m[2])
+  const dia = Number(m[3])
+
+  const teste = new Date(Date.UTC(ano, mes - 1, dia))
+  // Dia que não existe NÃO vira Invalid Date — o V8 rola para o mês seguinte em
+  // silêncio ("2026-02-31" vira 3 de março). Só a conferência componente a
+  // componente pega, e é a mesma lição de `parseValidade`.
+  if (
+    teste.getUTCFullYear() !== ano ||
+    teste.getUTCMonth() !== mes - 1 ||
+    teste.getUTCDate() !== dia
+  ) {
+    return null
+  }
+
+  const horaLimpa = (hora ?? '').trim()
+  const diaSemana = DIAS_ABREV[teste.getUTCDay()]
+  const mesAbrev = MESES_ABREV[mes - 1]
+  const completo = `${diaSemana} ${dia} de ${mesAbrev}${horaLimpa ? ` ${horaLimpa}` : ''}`
+
+  return { diaSemana, dia: String(dia), mes: mesAbrev, hora: horaLimpa, completo }
+}
