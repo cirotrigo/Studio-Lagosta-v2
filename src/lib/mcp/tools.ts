@@ -33,6 +33,7 @@ import {
   editarPost,
   formatarBRT,
 } from '@/lib/posts/agenda-acoes'
+import { trocarArteDoPost } from '@/lib/posts/trocar-arte-do-post'
 import { sugerirPosts } from '@/lib/posts/sugerir-posts'
 import { avaliarSlotSugerido, fecharDesfechoDoSlot } from '@/lib/aprendizado/desfecho-de-slot'
 import { listarFeedbacks, normalizarVeredito } from '@/lib/aprendizado/feedback-de-arte'
@@ -494,7 +495,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'editar-post',
     description:
-      'Edita a legenda e/ou o tipo de um RASCUNHO da agenda (o postId vem de ver-agenda). Post já aprovado não se edita direto: traga para rascunho antes (voltar-para-rascunho), edite e aprove de novo — editar algo armado mudaria uma publicação real sem re-aprovação. Para mudar horário use reagendar-post; para trocar a arte use ajustar-arte na página.',
+      'Edita a legenda e/ou o tipo de um RASCUNHO da agenda (o postId vem de ver-agenda). Post já aprovado não se edita direto: traga para rascunho antes (voltar-para-rascunho), edite e aprove de novo — editar algo armado mudaria uma publicação real sem re-aprovação. Para mudar horário use reagendar-post. Para PÔR OUTRA ARTE no post use trocar-arte-do-post; ajustar-arte serve para mexer nos textos e na foto DENTRO da arte que já está lá.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -517,6 +518,46 @@ export const MCP_TOOLS: McpTool[] = [
       })
     },
   },
+
+  {
+    name: 'trocar-arte-do-post',
+    description:
+      'Põe OUTRA arte num RASCUNHO da agenda (o postId vem de ver-agenda). É o caminho para "essa arte não ficou boa, usa aquela outra": a arte antiga sai, a nova entra, e o horário, a legenda e o resto do post continuam como estavam.\n\nA arte nova vem de um dos dois: `generationId` (uma arte que já existe na galeria — de criar-arte, gerar-imagem, melhorar-arte ou de um upload) OU `pageId` (uma arte criada aqui, que é renderizada na hora, com a página como ela está agora). Informe apenas UM dos dois.\n\nEm CARROSSEL ela troca UM slide só: `indice` diz qual (0 = a primeira imagem, 1 = a segunda…), e os demais slides ficam intactos. Sem `indice`, troca a primeira.\n\nSó vale para rascunho. Post já aprovado precisa voltar para rascunho antes (voltar-para-rascunho), trocar, e ser aprovado de novo — trocar a arte de algo armado mudaria uma publicação real sem re-aprovação. Para mexer nos textos ou na foto DENTRO da arte que já está no post, o caminho continua sendo ajustar-arte.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        postId: { type: 'string', description: 'Id do rascunho (de ver-agenda).' },
+        generationId: {
+          type: 'string',
+          description: 'A arte pronta que vai entrar (id de criar-arte/gerar-imagem/melhorar-arte).',
+        },
+        pageId: {
+          type: 'string',
+          description: 'A arte criada aqui que vai entrar — é renderizada na hora, como a página está agora.',
+        },
+        indice: {
+          type: 'number',
+          description: 'Qual imagem trocar num carrossel: 0 é a primeira, 1 a segunda. Padrão 0.',
+        },
+      },
+      required: ['projectId', 'postId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+      return trocarArteDoPost({
+        projectId,
+        postId: requireString(args, 'postId'),
+        generationId: typeof args.generationId === 'string' ? args.generationId : undefined,
+        pageId: typeof args.pageId === 'string' ? args.pageId : undefined,
+        indice: typeof args.indice === 'number' ? args.indice : undefined,
+        decididoPor: await quemDecidiu(projectId, principal),
+      })
+    },
+  },
+
   {
     name: 'consultar-base',
     description:
