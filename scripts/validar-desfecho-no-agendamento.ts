@@ -9,6 +9,15 @@
  * sai na primeira linha — o teste passaria sem exercitar nada. Foi o que
  * aconteceu na primeira tentativa.
  *
+ * São três posts, e os dois últimos existem porque o primeiro sozinho passaria
+ * mesmo com a captura quebrada:
+ *
+ *   2) copy usada como veio  → fecha a dica como `aceita-como-veio`;
+ *   3) copy MEXIDA           → fecha como `editada` (o desfecho é calculado com
+ *      o lado FINAL, não com a proposta);
+ *   4) post SEM leva         → continua abrindo a sua `escolha-propria`. É o
+ *      controle: o risco desta mudança é gravar de MENOS.
+ *
  * Protocolo da casa: projeto 8, REMINDER, +7 dias, cleanup completo, guard por
  * COMPUTE contra produção.
  */
@@ -29,7 +38,17 @@ function garantirDev(): void {
   const atual = computeDe(process.env.DATABASE_URL)
   if (!atual) { console.error('DATABASE_URL inválida'); process.exit(1) }
   const env = resolve(process.cwd(), '.env')
-  if (!existsSync(env)) return
+  /**
+   * 🔴 Falha FECHADA. Produção se identifica pelo compute que está no `.env`
+   * (regra da casa); sem esse arquivo não há com o que comparar, e seguir em
+   * frente seria escrever num banco desconhecido achando que o guard olhou.
+   * Acontece de verdade: worktree não herda o `.env`, que é gitignored.
+   */
+  if (!existsSync(env)) {
+    console.error('\n🔴 RECUSADO: não há .env aqui para dizer qual compute é PRODUÇÃO.')
+    console.error('   Traga o .env do repositório principal para esta cópia antes de rodar.\n')
+    process.exit(1)
+  }
   for (const l of readFileSync(env, 'utf8').split('\n')) {
     const m = l.trim().match(/^(DATABASE_URL|DIRECT_URL)=(.*)$/)
     if (!m) continue
@@ -72,37 +91,72 @@ async function main() {
   let erro: unknown = null
 
   try {
+    const templateId = (await db.template.findFirst({ where: { projectId: PROJECT_ID }, select: { id: true } }))!.id
+    /**
+     * A arte de um item, com a copy onde `agendarPost` a procura.
+     *
+     * ⚠️ `fieldValues.slotValues` não é enfeite do fixture: sem ela `copyFinal`
+     * sai nulo e `registrarCopyDoPost` retorna na primeira linha — o teste
+     * inteiro passaria sem exercitar nada.
+     */
+    const criarArte = async (tag: string, blocos: string[]) => {
+      const gen = await db.generation.create({
+        data: {
+          projectId: PROJECT_ID, templateId, status: 'COMPLETED', createdBy: proj.userId,
+          resultUrl: `https://example.invalid/${tag}.png`,
+          fieldValues: {
+            source: 'demo-3a',
+            slotValues: Object.fromEntries(blocos.map((b, i) => [`bloco${i + 1}`, b])),
+          },
+        },
+        select: { id: true },
+      })
+      gens.push(gen.id)
+      return gen.id
+    }
+    const copyDoPost = (postId: string) =>
+      db.learningSignal.findMany({
+        where: { projectId: PROJECT_ID, tipo: 'copy', postId },
+        select: { id: true, sugeridoEm: true, desfecho: true },
+      })
+
     console.log('1) plano com dica de copy registrada (como propor-semana faz)')
     const { plano } = await criarPlano({
       projectId: PROJECT_ID, titulo: '[demo-3a] leva', inicio: daquiA(7, '00:00'), fim: daquiA(9, '23:59'),
       origem: 'propor-semana', versao: 'demo',
-      itens: [{ ordem: 0, quando: daquiA(7, '19:00'), tema: 'happy hour', formato: 'story',
-        via: 'ia', copyProposta: ['SEXTA É HAPPY HOUR', 'chopp em dobro'] }],
+      itens: [
+        { ordem: 0, quando: daquiA(7, '19:00'), tema: 'happy hour', formato: 'story',
+          via: 'ia', copyProposta: ['SEXTA É HAPPY HOUR', 'chopp em dobro'] },
+        // Horário DIFERENTE de propósito: sem `sugestaoId`, a âncora da dica é o
+        // horário em Brasília — dois itens no mesmo minuto disputariam a mesma
+        // proposta e o segundo caso fecharia a dica do primeiro.
+        { ordem: 1, quando: daquiA(8, '20:00'), tema: 'noite de cortes', formato: 'story',
+          via: 'ia', copyProposta: ['NOITE DE CORTES', 'terça a domingo, das 18h'] },
+      ],
     })
     planoId = plano.id
-    const item = plano.itens[0]
+    const [item, itemEditado] = plano.itens
 
-    // A arte que o item produziu.
-    const gen = await db.generation.create({
-      data: { projectId: PROJECT_ID, templateId: (await db.template.findFirst({ where: { projectId: PROJECT_ID }, select: { id: true } }))!.id,
-              status: 'COMPLETED', createdBy: proj.userId, resultUrl: 'https://example.invalid/demo-3a.png', fieldValues: { source: 'demo-3a', slotValues: { bloco1: 'SEXTA É HAPPY HOUR', bloco2: 'chopp em dobro' } } },
-      select: { id: true },
-    })
-    gens.push(gen.id)
-    await db.itemDePlano.update({ where: { id: item.id }, data: { generationId: gen.id } })
+    const gen = await criarArte('demo-3a', ['SEXTA É HAPPY HOUR', 'chopp em dobro'])
+    await db.itemDePlano.update({ where: { id: item.id }, data: { generationId: gen } })
+    // O item cuja copy alguém MEXEU antes de agendar.
+    const genEditada = await criarArte('demo-3a-editada', ['NOITE DE CORTES', 'terça a sábado, das 19h'])
+    await db.itemDePlano.update({ where: { id: itemEditado.id }, data: { generationId: genEditada } })
 
     await registrarDicasDeCopy({
       projectId: PROJECT_ID, servico: 'propor-semana', versao: VERSAO_DA_DICA,
-      dicas: [{ ancora: ancoraDaDica(item)!, blocos: item.copyProposta, legenda: null }],
+      dicas: [item, itemEditado].map((i) => ({
+        ancora: ancoraDaDica(i)!, blocos: i.copyProposta ?? [], legenda: null,
+      })),
     })
     const emitidas = await db.learningSignal.count({
       where: { projectId: PROJECT_ID, tipo: 'copy', sugeridoEm: { not: null }, id: { notIn: [...sinaisAntes] } },
     })
-    conferir(emitidas === 1, 'a dica de copy foi EMITIDA como proposta', `${emitidas} linha(s)`)
+    conferir(emitidas === 2, 'as dicas de copy foram EMITIDAS como propostas', `${emitidas} linha(s)`)
 
     console.log('\n2) agendar o post — o ponto de maior volume')
     const post = await agendarPost({
-      projectId: PROJECT_ID, generationId: gen.id, scheduledDatetime: daquiA(7, '19:00'),
+      projectId: PROJECT_ID, generationId: gen, scheduledDatetime: daquiA(7, '19:00'),
       situacao: 'rascunho', postType: 'STORY', superficie: 'bancada',
     })
     posts.push(post.postId)
@@ -110,20 +164,69 @@ async function main() {
     // A transição do item não faz parte da prova: quem fecha a dica é o
     // agendarPost acima, e ela acontece antes de o item saber do post.
 
-    const copySignals = await db.learningSignal.findMany({
-      where: { projectId: PROJECT_ID, tipo: 'copy', id: { notIn: [...sinaisAntes] } },
-      select: { id: true, sugeridoEm: true, desfecho: true },
-    })
+    const copySignals = await copyDoPost(post.postId)
     conferir(copySignals.length === 1, '🔴 UMA linha de copy, não duas', `${copySignals.length} linha(s)`)
     conferir(!!copySignals[0]?.sugeridoEm, 'a linha continua sendo a PROPOSTA (tem sugeridoEm)')
     conferir(
-      copySignals[0]?.desfecho === 'aceita-como-veio' || copySignals[0]?.desfecho === 'editada',
+      copySignals[0]?.desfecho === 'aceita-como-veio',
       'ela ganhou DESFECHO em vez de virar escolha-propria',
       String(copySignals[0]?.desfecho),
     )
+
+    /**
+     * O desfecho é CALCULADO, e com o lado FINAL. Sem este caso, um fio trocado
+     * — passar a copy PROPOSTA como se fosse a final — deixaria tudo
+     * `aceita-como-veio` para sempre e o teste de cima passaria igual.
+     */
+    console.log('\n3) copy mexida antes de agendar fecha como "editada"')
+    const postEditado = await agendarPost({
+      projectId: PROJECT_ID, generationId: genEditada, scheduledDatetime: daquiA(8, '20:00'),
+      situacao: 'rascunho', postType: 'STORY', superficie: 'bancada',
+    })
+    posts.push(postEditado.postId)
+    await db.socialPost.update({ where: { id: postEditado.postId }, data: { publishType: 'REMINDER' } })
+
+    const daEditada = await copyDoPost(postEditado.postId)
+    conferir(daEditada.length === 1, 'também uma linha só', `${daEditada.length} linha(s)`)
     conferir(
-      copySignals.every((s) => s.desfecho !== 'escolha-propria'),
-      'nenhuma linha de escolha-propria foi aberta',
+      daEditada[0]?.desfecho === 'editada',
+      'e o desfecho acompanha o texto que foi de fato comprometido',
+      String(daEditada[0]?.desfecho),
+    )
+
+    /**
+     * ── O CONTROLE ────────────────────────────────────────────────────────
+     * O risco desta mudança não é gravar demais: é gravar de MENOS. Se o
+     * resolvedor deixasse de devolver `sem-plano` (ou devolvesse `erro` num
+     * soluço de banco), TODO post comum perderia a sua linha de copy em
+     * silêncio — e é quase só disso que o corpus das primeiras semanas é feito.
+     * Os casos de cima passariam iguais com a captura morta.
+     */
+    console.log('\n4) controle: post que NÃO veio de leva continua sendo escolha própria')
+    const genAvulsa = await criarArte('demo-3a-avulsa', ['CHOPP GELADO O DIA TODO'])
+    const postAvulso = await agendarPost({
+      projectId: PROJECT_ID, generationId: genAvulsa, scheduledDatetime: daquiA(9, '18:00'),
+      situacao: 'rascunho', postType: 'STORY', superficie: 'bancada',
+    })
+    posts.push(postAvulso.postId)
+    await db.socialPost.update({ where: { id: postAvulso.postId }, data: { publishType: 'REMINDER' } })
+
+    const daAvulsa = await copyDoPost(postAvulso.postId)
+    conferir(daAvulsa.length === 1, 'a arte avulsa gerou a SUA linha', `${daAvulsa.length} linha(s)`)
+    conferir(
+      daAvulsa[0]?.desfecho === 'escolha-propria' && !daAvulsa[0]?.sugeridoEm,
+      'e ela é "escolha-propria", sem metade de cima',
+      String(daAvulsa[0]?.desfecho),
+    )
+
+    const todas = await db.learningSignal.findMany({
+      where: { projectId: PROJECT_ID, tipo: 'copy', id: { notIn: [...sinaisAntes] } },
+      select: { desfecho: true },
+    })
+    conferir(todas.length === 3, 'no total: 3 linhas de copy para 3 posts', `${todas.length} linha(s)`)
+    conferir(
+      todas.filter((s) => s.desfecho === 'escolha-propria').length === 1,
+      'e só a avulsa é escolha-propria — nenhuma linha paralela para as de leva',
     )
 
     console.log(`\n${mau === 0 ? '✅' : '❌'} ${ok} conferências ok, ${mau} falharam`)

@@ -1926,6 +1926,25 @@ copy depois tem de FECHAR aquela proposta — nunca abrir uma decisão nova.
   ela `agendarPost` resolve `copyFinal` como nulo e `registrarCopyDoPost` sai
   na primeira linha — o teste passa sem exercitar nada. Aconteceu de verdade em
   11/08; a prova está em `scripts/validar-desfecho-no-agendamento.ts`.
+- 🔴 **O risco desta mudança é gravar de MENOS, e só o CONTROLE pega isso.** Se
+  o resolvedor deixasse de devolver `sem-plano`, todo post comum perderia a sua
+  linha de copy em silêncio — e é quase só disso que o corpus das primeiras
+  semanas é feito. Por isso a prova tem três posts: copy usada como veio
+  (`aceita-como-veio`), copy mexida (`editada` — sem ela, um fio trocado que
+  passasse a proposta como se fosse o texto final deixaria tudo em aceitação
+  para sempre) e post sem leva (`escolha-propria`).
+- **`slotEmBrasilia` e as chaves moram em `sinal-de-agendamento-contrato.ts`.**
+  O serviço arrasta o Prisma por dois caminhos (`captura` e
+  `fechar-copy-por-pagina`), e `@/lib/db` lança no import sem `DATABASE_URL`:
+  apontado para o serviço, o teste dessas três funções não carregava e as 9
+  asserções nunca rodaram. O mesmo split desfaz o CICLO que o fechamento criou
+  (`sinal-de-agendamento` → `fechar-copy-por-pagina` → `sinal-de-copy-do-plano`
+  → `sinal-de-agendamento`).
+- 🔴 **O guard por compute dos scripts de validação falha ABERTO sem `.env`** —
+  e worktree não herda o `.env`, que é gitignored. Em
+  `validar-desfecho-no-agendamento.ts` ele agora recusa rodar nesse caso; os
+  outros scripts com o mesmo molde ainda voltam em silêncio, achando que
+  conferiram.
 - **Fechado ANTES de o corpus acumular, de propósito**: o volume era zero
   porque `propor-semana` tinha nascido no dia anterior. Captura errada não se
   conserta retroativamente — a mesma razão de registrar a sugestão na EMISSÃO.
