@@ -17,11 +17,42 @@ import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
+import { FeedbackDeArte } from '@/components/creatives/feedback-de-arte'
+import { useBancadaStore } from '@/stores/bancada-store'
 
 export interface PreviewSlide {
   ordem: number
   url: string
   legenda?: string
+}
+
+/**
+ * De qual arte é esta imagem — resolvido pela própria fila.
+ *
+ * A prévia recebe URLs, não ids, e o feedback precisa da Generation (é ela que
+ * guarda o prompt que produziu a peça). Em vez de pedir mais um campo a quem
+ * chama, o dado é procurado onde ele já está: a fila da bancada guarda
+ * `generationId` e `projectId` em cada item e em cada slide de carrossel.
+ *
+ * URL que não pertence à fila (nada hoje) simplesmente não mostra o rodapé —
+ * arte sem Generation não tem prompt para aprender.
+ */
+function useArteDaFila(url: string | undefined) {
+  const itens = useBancadaStore((s) => s.itens)
+  return React.useMemo(() => {
+    if (!url) return null
+    for (const item of itens) {
+      if (item.resultUrl === url && item.generationId) {
+        return { generationId: item.generationId, projectId: item.projectId }
+      }
+      for (const slide of item.slides ?? []) {
+        if (slide.resultUrl === url && slide.generationId) {
+          return { generationId: slide.generationId, projectId: item.projectId }
+        }
+      }
+    }
+    return null
+  }, [itens, url])
 }
 
 interface Props {
@@ -72,6 +103,8 @@ export function BancadaPreview({ slides, inicial, open, onOpenChange, titulo }: 
   }, [open, ordenados.length, ir])
 
   const atual = ordenados[indice]
+  // Hook antes de qualquer saída antecipada — a prévia sem slides ainda monta.
+  const arte = useArteDaFila(atual?.url)
   if (!atual) return null
   const varios = ordenados.length > 1
 
@@ -158,6 +191,13 @@ export function BancadaPreview({ slides, inicial, open, onOpenChange, titulo }: 
               </button>
             ))}
           </div>
+        )}
+
+        {/* O julgamento da peça, no rodapé: é aqui que a arte é olhada de
+            verdade antes de ir para a agenda. Um clique resolve; o texto só
+            aparece em "preciso melhorar". */}
+        {arte && (
+          <FeedbackDeArte generationId={arte.generationId} superficie="bancada" />
         )}
       </DialogContent>
     </Dialog>
