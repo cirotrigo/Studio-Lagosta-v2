@@ -41,7 +41,7 @@ import {
   type LogoMode,
 } from '@/lib/ai/logo-compositor'
 import { decodificarGuia, type GuiaLido } from '@/lib/ai/carousel-guide-decoder'
-import { checarProporcao, conferirLogo, inspecionarArte, resumirQA } from '@/lib/ai/creative-qa'
+import { checarProporcao, resumirQA } from '@/lib/ai/creative-qa'
 import { ancoraAmbienteAutomatica } from '@/lib/ai/anchor-images'
 import { escolherReferenciaDeEstilo, registrarUsoDaReferencia } from '@/lib/ai/style-references'
 import { pedirNovaTentativa } from '@/lib/ai/generation-queue'
@@ -284,8 +284,6 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
     // modelo desenha a dele mesmo com o "DO NOT DRAW".
     const logoMode: LogoMode = args.logoMode ?? 'modelo'
     let logoParaCompor: Buffer | null = null
-    /** Arquivo oficial guardado para o QA conferir o que o modelo desenhou. */
-    let logoOficialParaConferir: Buffer | null = null
     if (args.track === 'arte') {
       const card = await getBrandReferenceCard(brand).catch((error) => {
         console.warn('[arte-ia.bg] brand card falhou — seguindo sem ele:', error)
@@ -314,9 +312,6 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
               mimeType: logo.contentType || 'image/png',
               label: 'arquivo oficial — reproduzir fielmente',
             })
-            // Guardado para o QA comparar o que o modelo desenhou com o
-            // original — é o que substitui a garantia que a colagem dava.
-            logoOficialParaConferir = logo.buffer
           } else {
             logoParaCompor = logo.buffer
           }
@@ -479,49 +474,19 @@ export async function processArtGenerationInBackground(args: ArtGenerationJobArg
           `[arte-ia.bg] tentativa ${attempt}: geração ${(generationMs / 1000).toFixed(1)}s, checagem ${(checkMs / 1000).toFixed(1)}s → ${check.passed ? 'texto OK' : `divergente (${check.missing.length})`}`,
         )
         if (check.passed) {
-          // ── QA 2: legibilidade e texto cortado na borda. Só faz sentido em
-          // peça COM texto, e só depois de o texto estar certo — inspecionar
-          // arte que já vai ser regerada é chamada jogada fora.
-          const visual = await inspecionarArte(candidate)
-
-          // A marca só é conferida quando foi o MODELO que a desenhou. No modo
-          // `compor` o PNG oficial é colado, e conferir isso seria conferir um
-          // `cp`.
-          const logoCheck =
-            logoMode === 'modelo' && logoOficialParaConferir
-              ? await conferirLogo(candidate, logoOficialParaConferir)
-              : null
-
-          qaInfo = {
-            qa: visual.pulada ? 'skipped' : visual.aprovada && logoCheck?.ok !== false ? 'passed' : 'failed',
-            qaResumo: resumirQA(aspecto, visual),
-            qaAspecto: { ...aspecto },
-            qaVisual: visual.detalhe ?? null,
-            ...(logoCheck ? { qaLogo: logoCheck.detalhe ?? null, qaLogoPulada: logoCheck.pulada } : {}),
-            ...(visual.motivo ? { qaMotivo: visual.motivo } : {}),
-          }
-          console.log(
-            `[arte-ia.bg] tentativa ${attempt}: ${resumirQA(aspecto, visual)}` +
-              (logoCheck
-                ? ` | logo ${logoCheck.pulada ? 'não conferida' : logoCheck.ok ? 'fiel' : `DIVERGENTE (${logoCheck.detalhe?.divergencias.join('; ')})`}`
-                : ''),
-          )
-
-          // Divergência de qualidade (visual ou logo) NÃO regera sozinha:
-          // cada tentativa é uma chamada paga do modelo de imagem, e o dado de
-          // 10/08 mostrou que a maioria das reprovações era falso negativo do
-          // verificador. A peça sai JÁ, com a ressalva visível — corrigir (e
-          // pagar outra geração) é decisão de quem olha, não do pipeline.
-          const ressalvaQa =
-            logoCheck?.ok === false
-              ? `A marca desenhada pode ter divergido do arquivo oficial: ${logoCheck.detalhe?.divergencias.join('; ') || 'confira a logo'}.`
-              : !visual.aprovada
-                ? visual.detalhe?.problemas.join('; ') || 'A inspeção visual apontou problema de legibilidade.'
-                : null
-          if (ressalvaQa) {
-            console.warn(`[arte-ia.bg] entregando com ressalva de QA: ${ressalvaQa}`)
-            qaInfo = { ...qaInfo, qaEntregueComRessalva: true, qaMotivo: ressalvaQa }
-          }
+          /**
+           * A inspeção visual por IA (legibilidade + fidelidade da logo) foi
+           * DESLIGADA em 10/08/2026, por decisão do Ciro, depois de DOIS
+           * falsos negativos confirmados no mesmo dia: o verificador reprovou
+           * o "STEAKHOUSE" do By Rock alegando que o arquivo oficial era
+           * minúsculo (é maiúsculo) e o "I" amarelo do Wine Vix alegando que
+           * o oficial era branco (é amarelo — conferido baixando o arquivo).
+           * Alarme falso repetido ensina quem aprova a ignorar o aviso, que é
+           * pior do que não ter aviso. A revisão visual é de quem aprova, no
+           * olho; `conferirLogo`/`inspecionarArte` seguem em creative-qa.ts
+           * para quem quiser religar com um verificador confiável.
+           */
+          qaInfo = { qa: 'passed', qaResumo: resumirQA(aspecto, null), qaAspecto: { ...aspecto } }
           resultBuffer = candidate
           textCheckInfo = { textCheck: 'passed', textCheckAttempts: attemptsLog }
           break
