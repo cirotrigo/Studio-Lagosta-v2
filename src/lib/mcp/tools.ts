@@ -42,6 +42,7 @@ import {
   planoAtivo,
   MAX_ITENS_POR_PLANO,
 } from '@/lib/planos/plano-service'
+import { proporSemana } from '@/lib/planos/propor-semana'
 import { reconciliarPlano } from '@/lib/planos/reconciliar'
 import { executarPlano } from '@/lib/planos/executar-plano'
 import { regenerarItem } from '@/lib/planos/regenerar'
@@ -515,6 +516,59 @@ export const MCP_TOOLS: McpTool[] = [
   },
 
   // ── O ciclo do plano de conteúdo: montar → conferir → ajustar → produzir ──
+
+  {
+    name: 'propor-semana',
+    description:
+      'Monta a semana inteira do cliente e a GUARDA no Studio: pega os horários da rotina dele, dá um assunto diferente a cada post, escolhe uma foto do acervo para cada um e escreve o texto — tudo de uma vez. É por onde começar quando a pessoa disser "monta minha semana", "o que eu posto essa semana?" ou "prepara os posts do By Rock".\n\nNÃO produz arte nenhuma e NÃO gasta crédito: o que sai daqui é a proposta, e a pessoa pode mexer no que quiser antes. Para mudar um item use editar-item-do-plano; para PRODUZIR as artes use executar-plano, que mostra a conta e pede confirmação antes de tocar.\n\nApresente a leva em português, item a item (dia, hora, assunto e o texto proposto), e diga que nada foi produzido ainda. Quando o cliente ainda não tem rotina, a resposta vem marcada como ponto de partida — conte isso com todas as letras em vez de apresentar os horários como se fossem o hábito dele.\n\nUse criar-plano quando VOCÊ já apurou tudo na conversa e só quer guardar; use esta aqui para o Studio montar.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'number', description: 'ID do cliente.' },
+        dias: { type: 'number', description: 'Quantos dias à frente olhar (default 7, máx 14).' },
+        maxItens: { type: 'number', description: 'Quantos posts no máximo (default 7).' },
+        formato: {
+          type: 'string',
+          enum: ['story', 'feed', 'quadrado'],
+          description: 'Formato das peças (default story).',
+        },
+        observacao: {
+          type: 'string',
+          description: 'Recado de quem pediu ("é semana de festival", "foca no delivery").',
+        },
+        titulo: { type: 'string', description: 'Como a pessoa chama esta leva.' },
+      },
+      required: ['projectId'],
+      additionalProperties: false,
+    },
+    handler: async (args, principal) => {
+      const projectId = requireNumber(args, 'projectId')
+      await assertProjetoPermitido(projectId, principal)
+
+      const r = await proporSemana({
+        projectId,
+        dias: typeof args.dias === 'number' ? args.dias : undefined,
+        maxItens: typeof args.maxItens === 'number' ? args.maxItens : undefined,
+        formato: typeof args.formato === 'string' ? args.formato : null,
+        observacao: typeof args.observacao === 'string' ? args.observacao : null,
+        titulo: typeof args.titulo === 'string' ? args.titulo : null,
+        criadoPor: await quemDecidiu(projectId, principal),
+      })
+
+      return {
+        planoId: r.plano.id,
+        titulo: r.plano.titulo,
+        pontoDePartida: r.coldStart,
+        itens: r.plano.itens.map((item) => itemParaChat(item)),
+        progresso: r.plano.progresso.frase,
+        assuntos: r.taxonomia.assuntosUsados,
+        ...(r.copy.indisponivel ? { textoIndisponivel: true } : {}),
+        ...(r.fotos.semFoto > 0 ? { itensSemFoto: r.fotos.semFoto } : {}),
+        ...(r.avisos.length > 0 ? { avisos: r.avisos } : {}),
+        mensagem: `${r.mensagem} Para mexer em algum item use editar-item-do-plano; para produzir as artes, executar-plano (ele mostra a conta antes).`,
+      }
+    },
+  },
 
   {
     name: 'criar-plano',

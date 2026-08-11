@@ -216,15 +216,24 @@ export function useBancada(projectId: number) {
   // ── Ações ─────────────────────────────────────────────────────────────────
 
   /**
-   * A copy que a pessoa escreveu, registrada como ESCOLHA ABSOLUTA — não há
-   * dica de copy ainda, então não há proposta a comparar. É o corpus das
-   * primeiras semanas: sem isto, o aprendizado começa vazio e só passa a
-   * existir quando o sistema já estiver sugerindo texto (tarde demais para
-   * saber o que ele deveria sugerir).
+   * A copy que virou arte — o sinal sai no GERAR, não no "adicionar à fila":
+   * aqui o texto é o que virou trabalho pago. A chave é o id do item, então
+   * "tentar de novo" no mesmo card não vira segundo sinal.
    *
-   * Sai no GERAR, não no "adicionar à fila": aqui a copy é a que virou arte
-   * paga. A chave é o id do item — "tentar de novo" no mesmo card não vira
-   * segundo sinal, e a copy do item não é editável depois de montada.
+   * O que o servidor faz com isto depende de ter havido PROPOSTA:
+   *
+   *  - card montado na bancada (ou item de leva sem dica) → **escolha
+   *    absoluta**, que é o corpus das primeiras semanas: sem ele o aprendizado
+   *    só passaria a existir quando o sistema já sugerisse texto — tarde demais
+   *    para saber o que ele deveria sugerir;
+   *  - card que veio de um item com dica de copy (`propor-semana`) → o
+   *    **desfecho da dica**, calculado no servidor comparando o texto proposto
+   *    com este. Mandar os dois viraria dois sinais com sentidos opostos sobre
+   *    o mesmo texto — o defeito que a F1 já corrigiu uma vez no slot.
+   *
+   * Por isso o `itemDePlanoId` vai junto e a escolha entre os dois caminhos NÃO
+   * é feita aqui: a tela não tem como comparar o que foi proposto, e quem está
+   * gerando tem todo incentivo a relatar acerto.
    */
   const registrarCopyEscolhida = React.useCallback(
     (item: BancadaItem) => {
@@ -233,6 +242,7 @@ export function useBancada(projectId: number) {
       registrarEscolha({
         tipo: 'copy',
         chave: `item:${item.id}`,
+        ...(item.itemDePlanoId ? { itemDePlanoId: item.itemDePlanoId } : {}),
         escolhido: {
           blocos,
           formato: item.formato,

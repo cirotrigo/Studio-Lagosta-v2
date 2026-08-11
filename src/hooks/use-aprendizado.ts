@@ -38,9 +38,18 @@ export interface EscolhaAbsoluta extends Vinculos {
   diff?: unknown
   /**
    * Idempotência: com ela, gerar o mesmo item duas vezes (o "tentar de novo"
-   * do card) registra UM sinal. O servidor namespaceia por projeto e tipo.
+   * do card) registra UM sinal. O servidor namespeia por projeto e tipo.
    */
   chave?: string
+  /**
+   * O item da leva que este card representa, quando ele veio de um plano.
+   *
+   * Quem decide o que fazer com ele é o SERVIDOR: se aquele item recebeu dica
+   * de copy, o que se registra é o DESFECHO da dica (calculado comparando o
+   * texto proposto com o final), e não uma escolha nova — senão o mesmo texto
+   * viraria dois sinais com sentidos opostos.
+   */
+  itemDePlanoId?: string
 }
 
 export function useAprendizado(projectId: number, superficie: Superficie = 'bancada') {
