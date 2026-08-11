@@ -4,6 +4,10 @@ import { db } from '@/lib/db'
 import { invalidateScheduledRenders, normalizeLayersString } from '@/lib/posts/invalidate-renders'
 import { registrarDecisaoSemSugestao } from '@/lib/aprendizado/captura'
 import { copyDeCamadas, diffDeCopy } from '@/lib/aprendizado/diff-copy'
+import {
+  caiNaEscolhaPropria,
+  fecharDicaDeCopyDaPagina,
+} from '@/lib/aprendizado/fechar-copy-por-pagina'
 import { z } from 'zod'
 import {
   fetchTemplateWithProject,
@@ -218,6 +222,30 @@ export async function PATCH(
             where: { clerkId: userId },
             select: { id: true },
           })
+          /**
+           * Se esta página é a arte de um item de plano, a copy JÁ foi
+           * proposta (`propor-semana` a registrou como sugestão emitida) e o
+           * que se grava é o DESFECHO dela. Abrir uma decisão nova aqui faria
+           * o mesmo texto virar dois sinais com sentidos opostos — o defeito
+           * que a F1 já corrigiu uma vez no slot (`e3236624`).
+           *
+           * O desfecho é calculado comparando proposta × final; a tela não
+           * declara nada. Só `sem-plano` cai no registro de sempre.
+           *
+           * Custa uma consulta por autosave que MUDA TEXTO — dentro do
+           * `after()`, fora da resposta. Reescrever a mesma página várias
+           * vezes no mesmo minuto não cria linhas novas: `registrarDesfecho`
+           * só grava quando a evidência é mais forte que a já registrada.
+           */
+          const fechamento = await fecharDicaDeCopyDaPagina({
+            projectId,
+            pageId,
+            copyFinal: copyDepois,
+            decididoPor: dbUser?.id ?? null,
+            superficie: 'editor',
+          })
+          if (!caiNaEscolhaPropria(fechamento)) return
+
           await registrarDecisaoSemSugestao({
             projectId,
             tipo: 'copy',

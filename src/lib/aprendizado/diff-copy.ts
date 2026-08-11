@@ -109,6 +109,18 @@ function normalizarLado(lado: LadoDaCopy): { comChave: Record<string, string> | 
 }
 
 /**
+ * Os textos de um lado da copy, na ordem, já limpos — as MESMAS regras que o
+ * diff usa (campo reservado `_…` fora, vazio fora, sem espaço nas pontas).
+ *
+ * Existe para quem precisa entregar `string[]` a jusante (a dica de copy guarda
+ * `blocos`) sem reimplementar a normalização: duas noções de "o que conta como
+ * texto da peça" fariam o mesmo texto comparar diferente conforme o caminho.
+ */
+export function valoresDaCopy(lado: LadoDaCopy): string[] {
+  return normalizarLado(lado)?.valores ?? []
+}
+
+/**
  * Semelhança por bigramas (Dice) sobre o texto normalizado. Barata,
  * independente de ordem de palavras e sem dependência externa.
  */
