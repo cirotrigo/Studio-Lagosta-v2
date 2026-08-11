@@ -18,6 +18,8 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { PapelReferencia } from '@/components/creatives/arte-ia-image-picker'
 import { ESCOPO_PADRAO, type EscopoAprendizado } from '@/lib/posts/learning-scope'
+import { hidratarItens, temTrabalhoNoServidor, type PlanoDoServidor } from '@/lib/planos/para-bancada'
+import type { StatusDoItem, ViaDoItem } from '@/lib/planos/vocabulario'
 
 /**
  * `guia-pronto` só existe no carrossel: capa e slide-guia ficaram prontos e a
@@ -55,6 +57,26 @@ export interface BancadaReferencia {
 export interface BancadaItem {
   id: string
   projectId: number
+  /**
+   * O item do plano de conteúdo (F3) que este card representa — a CHAVE DE
+   * DEDUPE entre o servidor e o navegador. Card montado aqui na bancada não
+   * tem: ele nunca esteve no servidor, e é isso que o protege da hidratação.
+   */
+  itemDePlanoId?: string
+  planoId?: string
+  /**
+   * A situação do item NO PLANO, que é mais fina que a da bancada: `rascunho`
+   * cobre proposto, editado, aprovado, reprovado e a espera da fila. Guardá-la
+   * é o que permite mostrar a etiqueta certa e calcular de onde partir quando o
+   * avanço volta ao servidor.
+   */
+  situacaoNoPlano?: StatusDoItem
+  /** Por onde a arte deve nascer: modelo do cliente (sem custo) ou IA. */
+  via?: ViaDoItem
+  /** Do que a peça trata — o assunto combinado no plano. */
+  tema?: string | null
+  /** Por que o item foi reprovado no plano. Recusa com motivo não é beco. */
+  motivoReprovacao?: string | null
   trilha: 'arte' | 'imagem'
   formato: 'story' | 'feed' | 'quadrado'
   /** 'peca' = arte única; 'carrossel' = série de slides. */
@@ -127,6 +149,15 @@ interface BancadaState {
   limparFinalizados: (projectId: number) => void
   setHidratou: (v: boolean) => void
   setEscopoPadrao: (escopo: EscopoAprendizado) => void
+  /**
+   * Reconcilia a fila com o plano ativo do projeto — é o que faz o chat e a
+   * bancada enxergarem a MESMA leva.
+   *
+   * ⚠️ Só pode ser chamada com uma resposta que CHEGOU: `null` significa "este
+   * projeto não tem leva ativa", não "a consulta ainda não voltou". Ver o
+   * contrato em `hidratarItens`.
+   */
+  hidratarDoPlano: (projectId: number, plano: PlanoDoServidor | null) => void
 }
 
 const STORAGE_KEY = 'lagosta.bancada'
@@ -169,6 +200,11 @@ export const useBancadaStore = create(
       setHidratou: (v) => set({ hidratou: v }),
 
       setEscopoPadrao: (escopo) => set({ escopoPadrao: escopo }),
+
+      hidratarDoPlano: (projectId, plano) =>
+        // `hidratarItens` devolve a MESMA referência quando nada mudou, e é o
+        // que impede a fila de repintar a cada refetch da consulta.
+        set((state) => ({ itens: hidratarItens(state.itens, plano, projectId) })),
     }),
     {
       name: STORAGE_KEY,
@@ -186,10 +222,12 @@ export const useBancadaStore = create(
            * `generationId` fazia a série voltar para "na fila" a cada recarga
            * mesmo com capa e guia prontos — e quem clicasse em Gerar de novo
            * pagaria duas vezes pelo mesmo trabalho.
+           *
+           * O predicado mudou de casa para `@/lib/planos/para-bancada` (módulo
+           * puro) porque a hidratação do plano precisa da MESMA resposta para
+           * decidir o que fazer com um card cujo item sumiu da leva. A regra
+           * aqui não mudou nem um caractere.
            */
-          const temTrabalhoNoServidor = (i: BancadaItem) =>
-            !!i.generationId || (i.slides ?? []).some((s) => !!s.generationId)
-
           state.itens = state.itens.map((i) => {
             if (i.status === 'gerando' && !temTrabalhoNoServidor(i)) {
               return { ...i, status: 'rascunho' as const }

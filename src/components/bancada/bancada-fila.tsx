@@ -17,7 +17,10 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { useBancada } from '@/hooks/use-bancada'
+import { useFilaDoPlano } from '@/hooks/use-planos'
 import { BancadaPreview, type PreviewSlide } from '@/components/bancada/bancada-preview'
+import { situacaoParaExibir } from '@/lib/planos/para-bancada'
+import { progressoDoPlano, ROTULO_DO_STATUS, VIAS, type StatusDoItem } from '@/lib/planos/vocabulario'
 import type { BancadaItem } from '@/stores/bancada-store'
 
 const ROTULO: Record<BancadaItem['status'], string> = {
@@ -39,6 +42,25 @@ const COR: Record<BancadaItem['status'], string> = {
 }
 
 /**
+ * O card do plano fala o vocabulário do PLANO, que é mais fino: "na fila" da
+ * bancada cobre proposto, editado, aprovado, reprovado e a espera da fila de
+ * geração, e essas cinco coisas são diferentes para quem combinou a leva. Os
+ * rótulos vêm de `ROTULO_DO_STATUS` — nunca escritos à mão aqui, porque jargão
+ * de banco na tela é a regra que esta casa mais repete.
+ */
+const COR_DO_PLANO: Record<StatusDoItem, string> = {
+  proposto: 'bg-slate-500/15 text-slate-300',
+  editado: 'bg-slate-500/15 text-slate-300',
+  aprovado: 'bg-sky-500/15 text-sky-400',
+  reprovado: 'bg-destructive/15 text-destructive',
+  'na-fila': 'bg-slate-500/15 text-slate-300',
+  gerando: 'bg-primary/15 text-primary',
+  pronto: 'bg-emerald-500/15 text-emerald-400',
+  erro: 'bg-destructive/15 text-destructive',
+  agendado: 'bg-amber-500/15 text-amber-400',
+}
+
+/**
  * CRIVO DESATIVADO em 11/08/2026, por decisão do Ciro: a conferência (~15-20s
  * de LLM) + a leitura item a item ATRASAVAM o agendamento a ponto de ninguém
  * querer usar. O aprendizado de dois dias de crivo: porta no fim do fluxo
@@ -54,12 +76,32 @@ const COR: Record<BancadaItem['status'], string> = {
  */
 export function BancadaFila({ projectId }: { projectId: number }) {
   const { itens, gerar, gerarCapaEGuia, confirmarEstilo, agendar, descartar } = useBancada(projectId)
+  /**
+   * A leva combinada no servidor entra na MESMA fila — é o que faz o chat e a
+   * bancada enxergarem o mesmo trabalho. A hidratação acontece dentro deste
+   * hook; o que volta aqui serve só ao cabeçalho.
+   */
+  const { plano, carregando } = useFilaDoPlano(projectId)
+
+  /**
+   * O progresso da leva sai dos itens DA TELA, não do agregado que o servidor
+   * mandou: quem acabou de clicar em Gerar precisa ver "1 gerando" na hora, e a
+   * consulta seguinte só volta segundos depois.
+   */
+  const progresso = React.useMemo(() => {
+    if (!plano) return null
+    const doPlano = itens.filter((i) => i.itemDePlanoId && i.planoId === plano.id)
+    if (doPlano.length === 0) return null
+    return progressoDoPlano(doPlano.map((i) => ({ status: situacaoParaExibir(i) })))
+  }, [itens, plano])
 
   if (itens.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-border/60 py-12 text-center">
         <p className="text-sm text-muted-foreground">
-          A fila está vazia. Monte um item acima para começar.
+          {carregando
+            ? 'Procurando a leva combinada…'
+            : 'A fila está vazia. Monte um item acima para começar.'}
         </p>
       </div>
     )
@@ -67,6 +109,12 @@ export function BancadaFila({ projectId }: { projectId: number }) {
 
   return (
     <div className="space-y-3">
+      {progresso && (
+        <div className="flex flex-wrap items-baseline justify-between gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2">
+          <p className="text-sm font-medium">{plano?.titulo || 'Leva combinada'}</p>
+          <p className="text-xs text-muted-foreground">{progresso.frase}</p>
+        </div>
+      )}
       {itens.map((item) => (
         <Card
           key={item.id}
@@ -135,6 +183,18 @@ function Card({
     setPreviewAberta(true)
   }
 
+  const doPlano = !!item.itemDePlanoId
+  const situacaoNoPlano = situacaoParaExibir(item)
+  const via = VIAS.find((v) => v.valor === (item.via ?? 'template'))
+  /**
+   * A via `template` monta a arte sobre um modelo já aprovado do cliente e não
+   * gasta crédito de imagem — é o padrão do plano justamente por isso. A
+   * bancada, porém, só tem o motor de geração: aqui o item sairia por IA, com
+   * preço. Em vez de esconder a diferença atrás do mesmo botão azul, a peça
+   * cara vira uma escolha explícita.
+   */
+  const viaTemplate = doPlano && (item.via ?? 'template') === 'template'
+
   return (
     <div className="flex gap-3 rounded-xl border border-border/60 bg-card/40 p-3">
       {/* Miniatura em largura FIXA, sem variante responsiva: `sm:w-28` e
@@ -172,9 +232,36 @@ function Card({
 
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          <span className={cn('rounded-full px-2 py-0.5 text-[11px] font-medium', COR[item.status])}>
-            {ROTULO[item.status]}
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-[11px] font-medium',
+              doPlano ? COR_DO_PLANO[situacaoNoPlano] : COR[item.status],
+            )}
+          >
+            {doPlano ? ROTULO_DO_STATUS[situacaoNoPlano] : ROTULO[item.status]}
           </span>
+          {/* De onde o card veio. Com as duas origens na mesma fila, saber qual
+              é qual muda o que se espera do card: o do plano foi combinado
+              antes e volta ao servidor a cada passo. */}
+          <span
+            className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+            title={
+              doPlano
+                ? 'Veio da leva combinada — o que acontecer aqui volta para o plano.'
+                : 'Montado aqui na bancada, só neste navegador.'
+            }
+          >
+            {doPlano ? 'do plano' : 'montado aqui'}
+          </span>
+          {doPlano && via && (
+            <span
+              className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+              title={via.custo}
+            >
+              {via.rotulo}
+              {via.valor === 'template' ? ' · sem custo de imagem' : ''}
+            </span>
+          )}
           <span className="text-[11px] text-muted-foreground">
             {ehCarrossel
               ? `Carrossel · ${slides.length} slides`
@@ -206,7 +293,7 @@ function Card({
         <p className="truncate text-sm font-medium">
           {ehCarrossel
             ? (slides.find((s) => s.copy.length > 0)?.copy[0] ?? '(carrossel)')
-            : (item.copy[0] ?? '(sem copy)')}
+            : (item.copy[0] ?? item.tema ?? '(sem copy)')}
         </p>
         {!ehCarrossel && item.copy.length > 1 && (
           <p className="truncate text-xs text-muted-foreground">{item.copy.slice(1).join(' · ')}</p>
@@ -262,23 +349,50 @@ function Card({
         {item.motivoDoSlot && item.status === 'rascunho' && (
           <p className="text-[11px] text-muted-foreground">🎯 {item.motivoDoSlot}</p>
         )}
+        {/* Recusa com motivo não é beco: o item continua na fila e pode ser
+            gerado depois de ajustado. Esconder o porquê seria transformar a
+            reprovação num card mudo. */}
+        {item.motivoReprovacao && (
+          <p className="text-xs text-amber-600 dark:text-amber-500">
+            Reprovado: {item.motivoReprovacao}
+          </p>
+        )}
         {item.erro && <p className="text-xs text-destructive">{item.erro}</p>}
 
         <div className="flex flex-wrap items-center gap-2 pt-1">
-          {(item.status === 'rascunho' || item.status === 'erro') && (
-            <Button size="sm" onClick={onGerar}>
-              {item.status === 'erro' ? (
-                <RefreshCw className="mr-2 h-4 w-4" />
-              ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
-              )}
-              {item.status === 'erro'
-                ? 'Tentar de novo'
-                : ehCarrossel
-                  ? 'Gerar capa e guia (50 créditos)'
-                  : 'Gerar arte (25 créditos)'}
-            </Button>
-          )}
+          {(item.status === 'rascunho' || item.status === 'erro') &&
+            (viaTemplate ? (
+              <div className="w-full space-y-1.5">
+                <p className="text-xs text-muted-foreground">
+                  O plano previa montar esta arte sobre um modelo do cliente, sem gastar crédito
+                  de imagem. A bancada só cria por IA — gerar aqui tem preço e troca a via do
+                  item.
+                </p>
+                <Button size="sm" variant="outline" onClick={onGerar}>
+                  {item.status === 'erro' ? (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  ) : (
+                    <Sparkles className="mr-2 h-4 w-4" />
+                  )}
+                  {item.status === 'erro'
+                    ? 'Tentar de novo por IA (25 créditos)'
+                    : 'Gerar por IA mesmo assim (25 créditos)'}
+                </Button>
+              </div>
+            ) : (
+              <Button size="sm" onClick={onGerar}>
+                {item.status === 'erro' ? (
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                {item.status === 'erro'
+                  ? 'Tentar de novo'
+                  : ehCarrossel
+                    ? 'Gerar capa e guia (50 créditos)'
+                    : 'Gerar arte (25 créditos)'}
+              </Button>
+            ))}
 
           {item.status === 'guia-pronto' &&
             (() => {

@@ -15,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api-client'
 import { useToast } from '@/hooks/use-toast'
 import { useAprendizado } from '@/hooks/use-aprendizado'
+import { useAvancoDoItem } from '@/hooks/use-planos'
 import { useBancadaStore, type BancadaItem, type BancadaSlide } from '@/stores/bancada-store'
 
 const POLL_MS = 5_000
@@ -57,6 +58,12 @@ export function useBancada(projectId: number) {
   const atualizar = useBancadaStore((s) => s.atualizar)
   const removerDaFila = useBancadaStore((s) => s.remover)
   const { registrarDesfecho, registrarEscolha } = useAprendizado(projectId)
+  /**
+   * A volta ao servidor do que este card decidiu. Só vale para o card que VEIO
+   * de um plano — o montado aqui na bancada não tem item lá para mover. É
+   * fire-and-forget: nada abaixo espera por ele.
+   */
+  const relatarAvanco = useAvancoDoItem(projectId)
 
   const doProjeto = React.useMemo(
     () => itens.filter((i) => i.projectId === projectId),
@@ -91,10 +98,10 @@ export function useBancada(projectId: number) {
         gerando.map(async (item) => {
           if (!item.generationId) return
           if (Date.now() - item.criadoEm > TETO_GERACAO_MS) {
-            atualizar(item.id, {
-              status: 'erro',
-              erro: 'A geração passou de 8 minutos. Ela pode ainda terminar e aparecer na galeria.',
-            })
+            const erro =
+              'A geração passou de 8 minutos. Ela pode ainda terminar e aparecer na galeria.'
+            atualizar(item.id, { status: 'erro', erro })
+            relatarAvanco(item, { para: 'erro', erro })
             return
           }
           try {
@@ -111,12 +118,12 @@ export function useBancada(projectId: number) {
                 // olho decidir; corrigir é botão com preço).
                 aviso: avisoDe(r.fieldValues),
               })
+              relatarAvanco(item, { para: 'pronto', generationId: item.generationId })
               queryClient.invalidateQueries({ queryKey: ['generations', projectId] })
             } else if (r.status === 'FAILED') {
-              atualizar(item.id, {
-                status: 'erro',
-                erro: r.fieldValues?.error ?? 'A geração falhou.',
-              })
+              const erro = r.fieldValues?.error ?? 'A geração falhou.'
+              atualizar(item.id, { status: 'erro', erro })
+              relatarAvanco(item, { para: 'erro', erro })
             }
           } catch {
             // erro transitório de rede: tenta de novo no próximo tick
@@ -131,9 +138,11 @@ export function useBancada(projectId: number) {
       vivo = false
       clearInterval(timer)
     }
-  }, [gerando, atualizar, queryClient, projectId])
+  }, [gerando, atualizar, relatarAvanco, queryClient, projectId])
 
   // ── Acompanhamento dos slides do carrossel ───────────────────────────────
+  // Sem relato ao plano: um item de plano é sempre UMA peça (`ItemDePlano` não
+  // tem slides), então carrossel é necessariamente card montado na bancada.
   React.useEffect(() => {
     if (carrosseisGerando.length === 0) return
     let vivo = true
@@ -257,13 +266,26 @@ export function useBancada(projectId: number) {
           },
         )
         atualizar(item.id, { generationId: resposta.generation.id })
+        /**
+         * A via do item vira `ia` quando a arte sai daqui: a bancada só tem o
+         * motor de geração, e um item que o plano previa montar sobre um modelo
+         * do cliente (custo de imagem zero) acabou de custar crédito. Deixar o
+         * plano dizendo "template" apagaria justamente o sinal que a F3 quer —
+         * qual via as pessoas realmente escolhem.
+         */
+        relatarAvanco(item, {
+          para: 'gerando',
+          generationId: resposta.generation.id,
+          ...(item.via === 'template' ? { via: 'ia' as const } : {}),
+        })
       } catch (error) {
         const msg = error instanceof Error ? error.message : 'Erro ao iniciar a geração'
         atualizar(item.id, { status: 'erro', erro: msg })
+        relatarAvanco(item, { para: 'erro', erro: msg })
         toast({ title: 'Não deu para gerar', description: msg, variant: 'destructive' })
       }
     },
-    [atualizar, registrarCopyEscolhida, toast],
+    [atualizar, registrarCopyEscolhida, relatarAvanco, toast],
   )
 
   /** Dispara UM slide e devolve o generationId. */
@@ -402,6 +424,7 @@ export function useBancada(projectId: number) {
           },
         )
         atualizar(item.id, { status: 'agendado', postId: r.postId, quando: r.quando })
+        relatarAvanco(item, { para: 'agendado', postId: r.postId })
         queryClient.invalidateQueries({ queryKey: ['social-posts', item.projectId] })
         toast({
           title: situacao === 'agendado' ? 'Agendado' : 'Salvo como rascunho na agenda',
@@ -412,7 +435,7 @@ export function useBancada(projectId: number) {
         toast({ title: 'Não deu para agendar', description: msg, variant: 'destructive' })
       }
     },
-    [atualizar, queryClient, toast],
+    [atualizar, relatarAvanco, queryClient, toast],
   )
 
   /**
