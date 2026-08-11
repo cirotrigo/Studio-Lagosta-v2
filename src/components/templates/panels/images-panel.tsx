@@ -3,13 +3,15 @@
 import * as React from 'react'
 import Image from 'next/image'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { ScrollArea } from '@/components/ui/scroll-area'
-import { Upload, HardDrive, Loader2, FolderOpen, Image as ImageIcon, ChevronRight, ArrowLeft, Folder } from 'lucide-react'
+import { Upload, HardDrive, Loader2, FolderOpen, Image as ImageIcon, ChevronRight, ArrowLeft, Folder, Search, X } from 'lucide-react'
 import { useTemplateEditor, createDefaultLayer } from '@/contexts/template-editor-context'
 import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useProject } from '@/hooks/use-project'
+import { useAcervo } from '@/hooks/use-acervo'
+import { useAprendizado } from '@/hooks/use-aprendizado'
 import type { GoogleDriveItem } from '@/types/google-drive'
 
 interface BreadcrumbItem {
@@ -31,6 +33,24 @@ export function ImagesPanelContent() {
   const [nextPageToken, setNextPageToken] = React.useState<string | undefined>(undefined)
   const [isLoadingMore, setIsLoadingMore] = React.useState(false)
   const initializedFolderKeyRef = React.useRef<string | null>(null)
+
+  // Busca semântica no acervo (mesmo catálogo do picker da bancada).
+  const [busca, setBusca] = React.useState('')
+  const [temaAtivo, setTemaAtivo] = React.useState('')
+  const [limiteBusca, setLimiteBusca] = React.useState(40)
+  const buscaAtiva = temaAtivo.length > 0
+  const {
+    data: resultadoBusca,
+    isLoading: isBuscando,
+    isFetching: isBuscandoMais,
+  } = useAcervo(projectId, { tema: temaAtivo, limite: limiteBusca, enabled: buscaAtiva })
+  const { registrarDesfecho } = useAprendizado(projectId, 'editor')
+  /**
+   * Buscas cujo desfecho já foi fechado nesta sessão. O sinal a colher é
+   * "desta lista, o que a pessoa levou PRIMEIRO" — uma escolha só por busca,
+   * como no ArteIaImagePicker.
+   */
+  const buscasFechadas = React.useRef<Set<string>>(new Set())
 
   const { upload: uploadToBlob, isUploading } = useBlobUpload()
 
@@ -80,8 +100,6 @@ export function ImagesPanelContent() {
       setNextPageToken(undefined)
     }
 
-    console.log('[ImagesPanel] Loading Drive files from folder:', folderId, folderName, 'pageToken:', pageToken)
-
     try {
       // Build URL with pagination support
       const params = new URLSearchParams({
@@ -92,11 +110,7 @@ export function ImagesPanelContent() {
         params.append('pageToken', pageToken)
       }
 
-      const url = `/api/google-drive/files?${params.toString()}`
-      console.log('[ImagesPanel] Fetching:', url)
-
-      const response = await fetch(url)
-      console.log('[ImagesPanel] Response status:', response.status)
+      const response = await fetch(`/api/google-drive/files?${params.toString()}`)
 
       if (!response.ok) {
         const errorText = await response.text()
@@ -105,16 +119,10 @@ export function ImagesPanelContent() {
       }
 
       const data = await response.json()
-      console.log('[ImagesPanel] Received data:', data)
 
       // The API returns 'items' and 'nextPageToken'
       const items = data.items || []
       const newNextPageToken = data.nextPageToken
-      console.log('[ImagesPanel] Items count:', items.length, 'nextPageToken:', newNextPageToken)
-
-      if (items.length > 0 && !isLoadingMore) {
-        console.log('[ImagesPanel] First item:', items[0])
-      }
 
       // Append items if loading more, otherwise replace
       setDriveItems(prev => isLoadingMore ? [...prev, ...items] : items)
@@ -308,7 +316,48 @@ export function ImagesPanelContent() {
     }
   }, [navigateToFolder, importDriveFile, isApplyingMedia])
 
+  /**
+   * O que a pessoa escolheu, comparado com o que o acervo propôs. A ordem da
+   * lista é a recomendação (menos usada primeiro); levar a primeira é aceitar
+   * a proposta. Sem isto o ranqueamento nunca fica sabendo que erra.
+   */
+  const registrarEscolhaDaBusca = React.useCallback(
+    (driveFileId: string) => {
+      const sugestaoId = resultadoBusca?.sugestaoId
+      if (!sugestaoId) return
+      if (buscasFechadas.current.has(sugestaoId)) return
+      buscasFechadas.current.add(sugestaoId)
+
+      const posicao = (resultadoBusca?.images ?? []).findIndex((i) => i.driveFileId === driveFileId)
+      registrarDesfecho({
+        sugestaoId,
+        desfecho: driveFileId === resultadoBusca?.propostaTopo ? 'aceita-como-veio' : 'trocada',
+        escolhido: { driveFileId, ...(posicao >= 0 ? { posicao: posicao + 1 } : {}) },
+      })
+    },
+    [resultadoBusca, registrarDesfecho],
+  )
+
+  const limparBusca = React.useCallback(() => {
+    setBusca('')
+    setTemaAtivo('')
+    setLimiteBusca(40)
+  }, [])
+
   const isBusy = isUploading || isApplyingMedia
+
+  const driveFolders = driveItems.filter((item) => item.kind === 'folder')
+  const driveFiles = driveItems.filter((item) => item.kind !== 'folder')
+
+  /**
+   * Breadcrumbs compactados: o painel tem ~224px úteis (aside w-64), então a
+   * partir de 4 níveis mostramos raiz … últimos dois. Os intermediários
+   * continuam alcançáveis pelo botão de voltar.
+   */
+  const visibleCrumbs: Array<BreadcrumbItem | null> =
+    breadcrumbs.length > 3
+      ? [breadcrumbs[0], null, ...breadcrumbs.slice(-2)]
+      : breadcrumbs
 
   return (
     <div className="relative">
@@ -340,135 +389,290 @@ export function ImagesPanelContent() {
 
         {/* Google Drive Tab - First */}
         <TabsContent value="drive" className="mt-2 space-y-2">
-          {/* Navigation Header - Compact */}
-          {breadcrumbs.length > 0 && (
-            <div className="flex items-center gap-2">
-              {breadcrumbs.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={navigateBack}
-                  className="h-7 w-7 p-0 flex-shrink-0"
-                  title="Voltar"
-                >
-                  <ArrowLeft className="h-3.5 w-3.5" />
-                </Button>
-              )}
-
-              {/* Breadcrumbs */}
-              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground min-w-0">
-                {breadcrumbs.map((crumb, index) => (
-                  <React.Fragment key={crumb.id}>
-                    {index > 0 && <ChevronRight className="h-3 w-3 flex-shrink-0" />}
-                    <button
-                      onClick={() => navigateToFolder(crumb.id, crumb.name)}
-                      className={`truncate max-w-[100px] hover:text-foreground ${index === breadcrumbs.length - 1 ? 'font-medium text-foreground' : ''
-                        }`}
-                      title={crumb.name}
-                    >
-                      {crumb.name}
-                    </button>
-                  </React.Fragment>
-                ))}
+          {/* Busca semântica no acervo — cobre o catálogo inteiro, não só a pasta aberta */}
+          {driveFolderId && (
+            <form
+              className="flex gap-1.5"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const tema = busca.trim()
+                if (!tema) {
+                  limparBusca()
+                  return
+                }
+                setTemaAtivo(tema)
+                setLimiteBusca(40)
+              }}
+            >
+              <div className="relative flex-1">
+                <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Buscar: picanha, happy hour…"
+                  className="h-8 pl-7 text-xs"
+                />
               </div>
-            </div>
+              <Button type="submit" size="sm" variant="secondary" className="h-8 px-2.5 text-xs">
+                Buscar
+              </Button>
+            </form>
           )}
 
-          {/* Files/Folders Grid */}
-          {!driveFolderId ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
-              <HardDrive className="mb-2 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-muted-foreground">
-                Google Drive não configurado
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Configure nas configurações do projeto
-              </p>
-            </div>
-          ) : isLoadingDrive ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-            </div>
-          ) : driveItems.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
-              <FolderOpen className="mb-2 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium text-muted-foreground">
-                Pasta vazia
-              </p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                Nenhum arquivo encontrado
-              </p>
-            </div>
-          ) : (
-            <ScrollArea className="h-[520px]">
-              <div className="grid grid-cols-3 gap-2">
-                {driveItems.map((item) => {
-                  const isFolder = item.kind === 'folder'
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => handleDriveItemClick(item)}
-                      disabled={isBusy}
-                      className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isFolder ? (
-                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-2" title={item.name}>
-                          <div className="relative">
-                            <Folder className="h-10 w-10 text-primary/80 transition-transform group-hover:scale-110" />
-                            <div className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-primary/20" />
-                          </div>
-                          <p className="w-full px-1 text-[10px] font-medium text-muted-foreground text-center line-clamp-2 break-words leading-tight group-hover:text-foreground">
-                            {item.name}
-                          </p>
-                        </div>
-                      ) : item.thumbnailLink ? (
-                        <div className="relative h-full w-full">
-                          <Image
-                            src={item.thumbnailLink}
-                            alt={item.name}
-                            fill
-                            className="object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                        </div>
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
-                        </div>
-                      )}
-                      {!isFolder && (
-                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-2 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
-                          <p className="truncate text-[10px] font-medium text-white/90">
-                            {item.name}
-                          </p>
-                        </div>
-                      )}
-                    </button>
-                  )
-                })}
+          {buscaAtiva ? (
+            /* ── Resultados da busca semântica ─────────────────────────── */
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="min-w-0 truncate text-[11px] text-muted-foreground">
+                  Resultados para <span className="font-medium text-foreground">“{temaAtivo}”</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={limparBusca}
+                  className="flex flex-shrink-0 items-center gap-1 text-[11px] text-primary hover:underline"
+                >
+                  <X className="h-3 w-3" />
+                  Limpar
+                </button>
               </div>
 
-              {/* Load More Button */}
-              {nextPageToken && (
-                <div className="mt-3 flex justify-center">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadMoreItems}
-                    disabled={isLoadingMore || isApplyingMedia}
-                    className="w-full h-8 text-xs"
+              {resultadoBusca?.aviso && (
+                <p className="text-[11px] italic text-amber-600 dark:text-amber-500">
+                  {resultadoBusca.aviso}
+                </p>
+              )}
+
+              {isBuscando && !resultadoBusca ? (
+                <div className="grid grid-cols-3 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                  {Array.from({ length: 9 }).map((_, i) => (
+                    <div key={i} className="aspect-square animate-pulse rounded-xl bg-muted" />
+                  ))}
+                </div>
+              ) : !resultadoBusca || resultadoBusca.images.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+                  <ImageIcon className="mb-2 h-8 w-8 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-muted-foreground">Nenhuma foto encontrada</p>
+                  <button
+                    type="button"
+                    onClick={limparBusca}
+                    className="mt-1 text-xs text-primary underline"
                   >
-                    {isLoadingMore ? (
-                      <>
-                        <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
-                        Carregando...
-                      </>
-                    ) : (
-                      `Carregar mais (${driveItems.filter(item => item.kind !== 'folder').length})`
+                    Limpar a busca e voltar às pastas
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-3 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                    {resultadoBusca.images.map((img) => (
+                      <button
+                        key={img.driveFileId}
+                        type="button"
+                        onClick={() => {
+                          if (isBusy) return
+                          registrarEscolhaDaBusca(img.driveFileId)
+                          importDriveFile(img.driveFileId, img.fileName)
+                        }}
+                        disabled={isBusy}
+                        title={`${img.menuItem ?? img.fileName}${img.folder ? ` · ${img.folder}` : ''}${
+                          img.ultimoUso === 'nunca' ? ' · nunca usada' : ` · usada em ${img.ultimoUso}`
+                        }`}
+                        className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <Image
+                          src={`/api/drive/thumbnail/${img.driveFileId}`}
+                          alt={img.fileName}
+                          fill
+                          sizes="120px"
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                          unoptimized
+                        />
+                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                          <p className="truncate text-[10px] font-medium text-white/90">
+                            {img.menuItem ?? img.fileName}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] text-muted-foreground">
+                      {resultadoBusca.images.length} de {resultadoBusca.total} · menos usadas primeiro
+                    </p>
+                    {resultadoBusca.images.length < resultadoBusca.total && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-7 px-2 text-[11px]"
+                        disabled={isBuscandoMais}
+                        onClick={() => setLimiteBusca((l) => l + 80)}
+                      >
+                        {isBuscandoMais ? 'Carregando…' : 'Carregar mais'}
+                      </Button>
                     )}
-                  </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            /* ── Navegação por pastas ───────────────────────────────────── */
+            <>
+              {/* Navigation Header - Compact */}
+              {breadcrumbs.length > 0 && (
+                <div className="flex items-center gap-2">
+                  {breadcrumbs.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={navigateBack}
+                      className="h-7 w-7 p-0 flex-shrink-0"
+                      title="Voltar"
+                    >
+                      <ArrowLeft className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+
+                  {/* Breadcrumbs */}
+                  <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground min-w-0">
+                    {visibleCrumbs.map((crumb, index) => (
+                      <React.Fragment key={crumb?.id ?? `ellipsis-${index}`}>
+                        {index > 0 && <ChevronRight className="h-3 w-3 flex-shrink-0" />}
+                        {crumb ? (
+                          <button
+                            onClick={() => navigateToFolder(crumb.id, crumb.name)}
+                            className={`truncate max-w-[100px] hover:text-foreground ${
+                              crumb.id === breadcrumbs[breadcrumbs.length - 1]?.id
+                                ? 'font-medium text-foreground'
+                                : ''
+                            }`}
+                            title={crumb.name}
+                          >
+                            {crumb.name}
+                          </button>
+                        ) : (
+                          <span title="Use o botão de voltar para os níveis intermediários">…</span>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
                 </div>
               )}
-            </ScrollArea>
+
+              {/* Files/Folders */}
+              {!driveFolderId ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+                  <HardDrive className="mb-2 h-10 w-10 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Google Drive não configurado
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Configure nas configurações do projeto
+                  </p>
+                </div>
+              ) : isLoadingDrive ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                </div>
+              ) : driveItems.length === 0 ? (
+                <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-border/60 py-8">
+                  <FolderOpen className="mb-2 h-10 w-10 text-muted-foreground/50" />
+                  <p className="text-sm font-medium text-muted-foreground">
+                    Pasta vazia
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Nenhum arquivo encontrado
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {/* Pastas em LISTA: o nome fica sempre visível, em qualquer
+                      largura de painel. Na grade quadrada anterior o nome era
+                      cortado pelo overflow do tile (~69px no aside w-64). */}
+                  {driveFolders.length > 0 && (
+                    <div className="space-y-1">
+                      {driveFolders.map((folder) => (
+                        <button
+                          key={folder.id}
+                          type="button"
+                          onClick={() => handleDriveItemClick(folder)}
+                          disabled={isBusy}
+                          title={folder.name}
+                          className="group flex w-full items-center gap-2 rounded-lg border border-border/40 bg-card/50 px-2.5 py-2 text-left transition-colors hover:border-primary/50 hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <Folder className="h-4 w-4 flex-shrink-0 text-primary/80" />
+                          <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                            {folder.name}
+                          </span>
+                          <ChevronRight className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {driveFolders.length > 0 && driveFiles.length > 0 && (
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                      Fotos ({driveFiles.length}{nextPageToken ? '+' : ''})
+                    </p>
+                  )}
+
+                  {driveFiles.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {driveFiles.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => handleDriveItemClick(item)}
+                          disabled={isBusy}
+                          title={item.name}
+                          className="group relative aspect-square overflow-hidden rounded-xl border border-border/40 bg-card/50 transition-all hover:border-primary/50 hover:bg-muted/50 hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {item.thumbnailLink ? (
+                            <div className="relative h-full w-full">
+                              <Image
+                                src={item.thumbnailLink}
+                                alt={item.name}
+                                fill
+                                className="object-cover transition-transform duration-500 group-hover:scale-105"
+                              />
+                            </div>
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center">
+                              <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
+                            </div>
+                          )}
+                          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent p-1.5 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+                            <p className="truncate text-[10px] font-medium text-white/90">
+                              {item.name}
+                            </p>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Load More Button */}
+                  {nextPageToken && (
+                    <div className="flex justify-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={loadMoreItems}
+                        disabled={isLoadingMore || isApplyingMedia}
+                        className="w-full h-8 text-xs"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <Loader2 className="mr-1.5 h-3 w-3 animate-spin" />
+                            Carregando...
+                          </>
+                        ) : (
+                          'Carregar mais'
+                        )}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </TabsContent>
 
@@ -513,16 +717,20 @@ export function ImagesPanelContent() {
           </div>
         </TabsContent>
       </Tabs>
-      {
-        isBusy && (
-          <div className="absolute inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-            <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Aplicando imagem...
-            </div>
+      {isBusy && (
+        <div className="absolute inset-0 z-40 flex items-start justify-center bg-background/80 backdrop-blur-sm">
+          {/* O conteúdo agora rola no host (sem ScrollArea de altura fixa), então
+              o overlay pode ficar mais alto que a janela — o sticky mantém o
+              spinner à vista. Estilo inline: top-1/3 não existe no repo. */}
+          <div
+            className="flex items-center gap-2 text-sm font-medium text-foreground"
+            style={{ position: 'sticky', top: '35vh' }}
+          >
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Aplicando imagem...
           </div>
-        )
-      }
-    </div >
+        </div>
+      )}
+    </div>
   )
 }

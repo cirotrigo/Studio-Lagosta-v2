@@ -15,7 +15,6 @@
 
 import * as React from 'react'
 import Image from 'next/image'
-import { useQuery } from '@tanstack/react-query'
 import { Search, Upload, X, Check, ImageIcon, Info } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -24,7 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { useToast } from '@/hooks/use-toast'
 import { useBlobUpload } from '@/hooks/use-blob-upload'
 import { useAprendizado } from '@/hooks/use-aprendizado'
-import { api } from '@/lib/api-client'
+import { useAcervo } from '@/hooks/use-acervo'
 import { cn } from '@/lib/utils'
 
 export type PapelReferencia = 'subject' | 'anchor-ambient' | 'anchor-dish' | 'style'
@@ -77,30 +76,6 @@ export const PAPEIS: PapelInfo[] = [
 const MAX_ANCORAS = 3
 const ALLOWED_MIME = ['image/jpeg', 'image/png', 'image/webp']
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-
-interface ImagemAcervo {
-  driveFileId: string
-  fileName: string
-  folder: string
-  menuItem: string | null
-  tags: string[]
-  bestFor: string[]
-  quality: string | null
-  ultimoUso: string
-}
-
-interface RespostaAcervo {
-  temCatalogo: boolean
-  total: number
-  acervoCompleto: number
-  pastasDisponiveis: string[]
-  images: ImagemAcervo[]
-  aviso?: string
-  /** Sinal desta busca (F1) — a lista ranqueada é a proposta. */
-  sugestaoId?: string
-  /** A foto do topo do ranking, a que o sistema de fato recomendou. */
-  propostaTopo?: string | null
-}
 
 export function contarPorPapel(refs: ReferenciaSelecionada[], papel: PapelReferencia) {
   return refs.filter((r) => r.papel === papel).length
@@ -170,19 +145,10 @@ export function ArteIaImagePicker({
   const [limite, setLimite] = React.useState(40)
   const inputRef = React.useRef<HTMLInputElement>(null)
 
-  const { data: acervo, isLoading, isFetching } = useQuery<RespostaAcervo>({
-    queryKey: ['projeto', projectId, 'acervo', temaAtivo, pasta, limite],
-    queryFn: () => {
-      const qs = new URLSearchParams()
-      if (temaAtivo) qs.set('tema', temaAtivo)
-      if (pasta) qs.set('pasta', pasta)
-      qs.set('limite', String(limite))
-      return api.get<RespostaAcervo>(`/api/projects/${projectId}/acervo?${qs.toString()}`)
-    },
-    staleTime: 2 * 60_000,
-    // O "Carregar mais" refaz a consulta com limite maior; sem manter o dado
-    // anterior na tela, a grade inteira piscaria para voltar com +80 fotos.
-    placeholderData: (anterior) => anterior,
+  const { data: acervo, isLoading, isFetching } = useAcervo(projectId, {
+    tema: temaAtivo || undefined,
+    pasta: pasta || undefined,
+    limite,
   })
 
   const { registrarDesfecho } = useAprendizado(projectId)
